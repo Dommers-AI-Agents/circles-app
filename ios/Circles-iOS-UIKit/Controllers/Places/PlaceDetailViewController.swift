@@ -305,6 +305,7 @@ class PlaceDetailViewController: BaseViewController {
     // owner-only contact row come and go with customer preview
     private var ownerEditDecorated = false
     private var ownerContactEditRow: UILabel?
+    private var ownerDescriptionEditRow: UILabel?
     private var ownerDescriptionEditor: UITextView?
 
     // Practical actions row: Directions / Website / Call / Edit
@@ -4123,6 +4124,10 @@ extension PlaceDetailViewController {
 
         categoryLabel.isUserInteractionEnabled = true
         categoryLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(ownerEditCategoryTapped)))
+        // The pencil next to the category chip opened the whole legacy edit
+        // screen — repoint it at the category picker it sits beside
+        categoryEditButton.removeTarget(nil, action: nil, for: .allEvents)
+        categoryEditButton.addTarget(self, action: #selector(ownerEditCategoryTapped), for: .touchUpInside)
 
         // The description's link-tap gesture is for customers tapping the
         // Phone/Website lines; the owner tapping their own description means
@@ -4144,44 +4149,54 @@ extension PlaceDetailViewController {
         nameLabel.text = editing ? "\(place.name) ✎" : place.name
         addressLabel.text = editing ? "\(place.address) ✎" : place.address
 
-        // Empty description: give the owner somewhere to tap
-        let hasDescription = !(place.description ?? "").isEmpty
-        if !hasDescription {
-            descriptionLabel.attributedText = nil
-            descriptionLabel.text = editing ? "Add a public description ✎" : nil
-            descriptionLabel.textColor = Constants.Colors.primary
-            descriptionLabel.isHidden = !editing
-        }
-
-        // Owner-only phone/website row (customers use the action chips)
+        // Explicit, labeled owner rows in the About card — a bare paragraph
+        // tap was invisible, and one trailing ✎ read as "website only"
         if editing {
-            let row = ownerContactEditRow ?? {
-                let label = UILabel()
-                label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-                label.textColor = Constants.Colors.primary
-                label.numberOfLines = 0
-                label.isUserInteractionEnabled = true
-                label.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(ownerEditContactTapped)))
+            let descRow = ownerDescriptionEditRow ?? {
+                let label = makeOwnerEditRowLabel(action: #selector(ownerEditDescriptionTapped))
+                aboutStackView.addArrangedSubview(label)
+                ownerDescriptionEditRow = label
+                return label
+            }()
+            let hasDescription = !(place.description ?? "").isEmpty
+            descRow.text = hasDescription ? "📝 Edit description ✎" : "📝 Add a description ✎"
+            descRow.isHidden = false
+
+            let contactRow = ownerContactEditRow ?? {
+                let label = makeOwnerEditRowLabel(action: #selector(ownerEditContactTapped))
                 aboutStackView.addArrangedSubview(label)
                 ownerContactEditRow = label
                 return label
             }()
             let phoneText = (place.phone ?? "").isEmpty ? "Add phone" : place.phone!
             let webText = (place.website ?? "").isEmpty ? "Add website" : place.website!
-            row.text = "📞 \(phoneText) · 🌐 \(webText) ✎"
-            row.isHidden = false
+            contactRow.text = "📞 \(phoneText) ✎\n🌐 \(webText) ✎"
+            contactRow.isHidden = false
         } else {
+            ownerDescriptionEditRow?.isHidden = true
             ownerContactEditRow?.isHidden = true
         }
 
         // The About card may have been collapsed for lack of content — the
         // owner's edit affordances count as content
         let aboutIsEmpty = descriptionLabel.isHidden && hoursLabel.isHidden
-            && userRatingLabel.isHidden && (ownerContactEditRow?.isHidden ?? true)
+            && userRatingLabel.isHidden
+            && (ownerContactEditRow?.isHidden ?? true)
+            && (ownerDescriptionEditRow?.isHidden ?? true)
         aboutTitleLabel.isHidden = aboutIsEmpty
         aboutCardView.isHidden = aboutIsEmpty
         aboutTopConstraint?.constant = aboutIsEmpty ? 0 : Constants.Spacing.medium
         aboutHeightConstraint?.isActive = aboutIsEmpty
+    }
+
+    private func makeOwnerEditRowLabel(action: Selector) -> UILabel {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        label.textColor = Constants.Colors.primary
+        label.numberOfLines = 0
+        label.isUserInteractionEnabled = true
+        label.addGestureRecognizer(UITapGestureRecognizer(target: self, action: action))
+        return label
     }
 
     // MARK: Field editors

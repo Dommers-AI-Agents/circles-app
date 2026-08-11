@@ -1648,6 +1648,23 @@ exports.updatePlace = async (req, res, next) => {
       });
     }
 
+    // Legacy descriptions embed literal "Phone: …" / "Website: …" lines (the
+    // sanitizer preserves them for display). A contact-info edit must rewrite
+    // those lines too, or the About text keeps showing the old numbers.
+    if ((updateData.phone || updateData.website) && updateData.description === undefined) {
+      const currentDescription = place.description || '';
+      let syncedDescription = currentDescription;
+      if (updateData.phone) {
+        syncedDescription = syncedDescription.replace(/^\s*Phone:.*$/m, `Phone: ${updateData.phone}`);
+      }
+      if (updateData.website) {
+        syncedDescription = syncedDescription.replace(/^\s*Website:.*$/m, `Website: ${updateData.website}`);
+      }
+      if (syncedDescription !== currentDescription) {
+        updateData.description = syncedDescription;
+      }
+    }
+
     await placeRef.update(updateData);
 
     // Piggy bank: 1 FavCoin for your first photo on this venue (dedup key is
@@ -1668,9 +1685,17 @@ exports.updatePlace = async (req, res, next) => {
     // Venue-level edits update the canonical record once, for every saver
     await propagateVenueUpdates(req.params.id, place.globalPlaceId, updateData);
 
-    // Get updated place
+    // Get updated place. The response must reflect the canonical venue
+    // record — phone/website/rating live there and are overlaid on reads; a
+    // raw save doc here made a just-saved contact edit look like a no-op.
     const updatedPlaceDoc = await placeRef.get();
-    const updatedPlace = serializeDoc(updatedPlaceDoc);
+    let updatedPlace = serializeDoc(updatedPlaceDoc);
+    try {
+      const { venueData } = await getGlobalSocial(updatedPlaceDoc);
+      if (venueData) updatedPlace = overlayVenueFields(updatedPlace, venueData);
+    } catch (overlayError) {
+      console.error('⚠️ Update-response venue overlay failed (non-fatal):', overlayError.message);
+    }
 
     res.status(200).json({
       success: true,
