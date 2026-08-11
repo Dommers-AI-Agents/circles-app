@@ -527,12 +527,15 @@ class PlaceDetailViewController: BaseViewController {
 
     // Places imported via Apple Maps stored contact info only inside the
     // description text ("Phone: …" / "Website: …") — recover it so the
-    // quick-action chips can own it and the About card doesn't repeat it
-    private lazy var effectivePhone: String? =
+    // quick-action chips can own it and the About card doesn't repeat it.
+    // Computed (not lazy): an owner's contact save must refresh these.
+    private var effectivePhone: String? {
         place.phone ?? Self.descriptionValue(in: place.description, prefix: "Phone:")
+    }
 
-    private lazy var effectiveWebsite: String? =
+    private var effectiveWebsite: String? {
         place.website ?? Self.descriptionValue(in: place.description, prefix: "Website:")
+    }
 
     private static func descriptionValue(in description: String?, prefix: String) -> String? {
         guard let description = description else { return nil }
@@ -4191,6 +4194,19 @@ extension PlaceDetailViewController {
         aboutHeightConstraint?.isActive = aboutIsEmpty
     }
 
+    static func strippingContactLines(_ text: String?) -> String {
+        guard let text = text else { return "" }
+        return text
+            .components(separatedBy: "\n")
+            .filter { line in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                return !trimmed.hasPrefix("Phone:") && !trimmed.hasPrefix("Website:")
+            }
+            .joined(separator: "\n")
+            .replacingOccurrences(of: "\n\n\n", with: "\n\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func makeOwnerEditRowLabel(action: Selector) -> UILabel {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
@@ -4232,10 +4248,13 @@ extension PlaceDetailViewController {
         // A half-sheet with the text view pinned to the keyboard — the inline
         // in-card editor kept losing the fight with keyboard geometry (typed
         // text ended up hidden behind or above it)
+        // The description is PROSE — phone/website are separate fields with
+        // their own editor row, so their legacy embedded lines never appear
+        // in (or survive) the description editor
         let editor = OwnerDescriptionEditorViewController()
-        editor.initialText = place.description ?? ""
+        editor.initialText = Self.strippingContactLines(place.description)
         editor.onSave = { [weak self] text in
-            self?.saveOwnerField(description: text)
+            self?.saveOwnerField(description: Self.strippingContactLines(text))
         }
         let nav = UINavigationController(rootViewController: editor)
         if let sheet = nav.sheetPresentationController {
