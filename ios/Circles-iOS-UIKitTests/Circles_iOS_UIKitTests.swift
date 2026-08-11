@@ -6,7 +6,7 @@
 //
 
 import Testing
-@testable import Circles_iOS_UIKit
+@testable import Circles_iOS
 
 struct Circles_iOS_UIKitTests {
 
