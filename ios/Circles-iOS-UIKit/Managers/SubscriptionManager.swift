@@ -96,11 +96,27 @@ class SubscriptionManager {
             throw SubscriptionError.productNotFound
         }
         
-        let transaction = try await service.purchase(product)
-        
-        if transaction != nil {
-            // Show success
-            AlertPresenter.showSuccess("Welcome to Circles Premium! 🎉", from: viewController)
+        switch try await service.purchase(product) {
+        case .success(_, let backendSynced):
+            if backendSynced {
+                AlertPresenter.showSuccess("Welcome to Circles Premium! 🎉", from: viewController)
+            } else {
+                // Apple charged them but the server hasn't recorded it yet —
+                // the unfinished transaction re-syncs on next launch
+                AlertPresenter.showSuccess(
+                    title: "Payment Confirmed",
+                    message: "Your payment went through — premium unlocks automatically within a few minutes.",
+                    from: viewController
+                )
+            }
+        case .pending:
+            AlertPresenter.showSuccess(
+                title: "Approval Requested",
+                message: "This purchase is waiting for approval (Ask to Buy). Premium unlocks automatically once it's approved.",
+                from: viewController
+            )
+        case .cancelled:
+            break
         }
     }
     
@@ -165,6 +181,19 @@ class SubscriptionManager {
     }
     
     @MainActor
+    /// Server-enforced limit errors (403 upgradeRequired on create-circle
+    /// etc.) route to the paywall instead of a raw error alert — the server
+    /// is the authority, the paywall is the answer. Returns true when the
+    /// error was a limit and the paywall was shown.
+    @discardableResult
+    func presentPaywallIfLimitError(_ error: Error, from viewController: UIViewController, reason: PaywallReason) -> Bool {
+        if let apiError = error as? APIError, case .httpError(let statusCode, _) = apiError, statusCode == 403 {
+            showPaywall(from: viewController, reason: reason)
+            return true
+        }
+        return false
+    }
+
     func showPaywall(from viewController: UIViewController, reason: PaywallReason) {
         let paywallVC = PaywallViewController(reason: reason)
         let navController = UINavigationController(rootViewController: paywallVC)
@@ -190,13 +219,12 @@ class SubscriptionManager {
             throw SubscriptionError.productNotFound
         }
         
-        // Purchase with free trial
-        let transaction = try await service.purchase(product)
-        
-        if transaction != nil {
+        // Purchase with free trial — only record trial dates for a purchase
+        // that actually completed (a cancelled sheet used to count as one)
+        if case .success = try await service.purchase(product) {
             // Record trial start
             userDefaults.set(Date(), forKey: kTrialStartDate)
-            
+
             let trialEndDate = Calendar.current.date(byAdding: .day, value: 7, to: Date())
             userDefaults.set(trialEndDate, forKey: kTrialEndDate)
         }

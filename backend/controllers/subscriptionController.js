@@ -23,9 +23,60 @@ const APPLE_SHARED_SECRET = process.env.APPLE_SHARED_SECRET || '';
 // @desc    Verify Apple receipt and update subscription status
 // @route   POST /api/users/subscription/verify
 // @access  Private
+
+// The webhook handler parks events it can't match to a user ("for later
+// matching when the user verifies receipt") — this IS that later matching,
+// called after each successful receipt verification. The row is always
+// consumed; its payload is applied only when it's a renewal carrying a
+// NEWER expiry than the account now holds (in every other case the receipt
+// is the fresher truth). Sibling rows minted by duplicate deliveries under
+// different transaction ids (identical product + expiry) are consumed too.
+async function consumePendingSubscriptions({ scope, originalTransactionId, userId, effectiveExpiryMs }) {
+    try {
+        const col = admin.firestore().collection('pendingSubscriptions');
+        const docId = scope === 'business'
+            ? `business_${originalTransactionId}`
+            : String(originalTransactionId);
+        const doc = await col.doc(docId).get();
+        if (!doc.exists) return;
+        const parked = doc.data();
+        await col.doc(docId).delete();
+        console.log(`📬 Consumed parked ${scope} webhook ${docId} for ${userId} (${parked.notificationType})`);
+
+        // Twin cleanup (consumer only — business ids are singular)
+        if (scope !== 'business' && parked.expiresDate && parked.productId) {
+            const twins = await col
+                .where('expiresDate', '==', parked.expiresDate)
+                .where('productId', '==', parked.productId)
+                .get();
+            for (const twin of twins.docs) {
+                await twin.ref.delete();
+                console.log(`📬 Consumed twin parked webhook ${twin.id}`);
+            }
+        }
+
+        // Apply only renewals that know a newer expiry than the account does
+        const RENEWAL_TYPES = ['DID_RENEW', 'SUBSCRIBED'];
+        const parkedExpiryMs = Number(parked.expiresDate) || 0;
+        if (!RENEWAL_TYPES.includes(parked.notificationType)) return;
+        if (parked.environment === 'Sandbox') return;
+        if (parkedExpiryMs <= (effectiveExpiryMs || 0)) return;
+
+        const expiryIso = new Date(parkedExpiryMs).toISOString();
+        const update = scope === 'business'
+            ? { ownerSubscriptionStatus: 'active', ownerSubscriptionExpiryDate: expiryIso }
+            : { subscriptionStatus: 'active', subscriptionExpiryDate: expiryIso };
+        await admin.firestore().collection('users').doc(userId).set(update, { merge: true });
+        invalidateUserCache(userId);
+        console.log(`📬 Applied parked ${scope} renewal for ${userId}: expiry -> ${expiryIso}`);
+    } catch (error) {
+        console.error('⚠️ Pending-subscription replay failed (non-fatal):', error.message);
+    }
+}
+
 exports.verifySubscription = async (req, res) => {
     try {
-        const { receipt, transactionId, productId, originalTransactionId, purchaseDate, expirationDate } = req.body;
+        const { receipt, signedTransaction, transactionId, productId, originalTransactionId, purchaseDate, expirationDate } = req.body;
         const userId = req.user?.uid || req.userId; // Check both req.user.uid and req.userId
 
         if (!userId) {
@@ -35,36 +86,84 @@ exports.verifySubscription = async (req, res) => {
             });
         }
 
-        if (!receipt) {
+        // The legacy app receipt is not guaranteed to contain a purchase
+        // StoreKit 2 just completed (and a brand-new original transaction is
+        // never in latest_receipt_info for an older receipt). The signed
+        // transaction JWS the client sends alongside IS that purchase, signed
+        // by Apple — verify it against the pinned root and treat it as an
+        // authoritative receipt entry.
+        let jwsEntry = null;
+        let jwsEnvironment = null;
+        let jwsAppAccountToken = null;
+        if (signedTransaction) {
+            try {
+                const tx = verifyAppleJws(signedTransaction);
+                jwsEnvironment = tx.environment || null;
+                jwsAppAccountToken = tx.appAccountToken || null;
+                if (tx.productId && tx.originalTransactionId) {
+                    jwsEntry = {
+                        product_id: tx.productId,
+                        original_transaction_id: String(tx.originalTransactionId),
+                        expires_date_ms: String(tx.expiresDate || 0),
+                        purchase_date_ms: String(tx.purchaseDate || 0),
+                        is_trial_period: tx.offerDiscountType === 'FREE_TRIAL' ? 'true' : 'false',
+                        // A transaction JWS carries no renewal preference; a
+                        // just-made purchase renews unless the user turns it off
+                        auto_renew_status: '1'
+                    };
+                }
+            } catch (e) {
+                console.warn('⚠️ signedTransaction failed verification — falling back to receipt:', e.message);
+            }
+        }
+
+        if (!receipt && !jwsEntry) {
             return res.status(400).json({
                 success: false,
                 error: 'Receipt data is required'
             });
         }
 
+        // Remember the purchase's account token so webhooks for a first-ever
+        // subscription (an origTx no account holds yet) can find this user
+        if (jwsAppAccountToken) {
+            admin.firestore().collection('users').doc(userId)
+                .set({ appleAppAccountToken: jwsAppAccountToken }, { merge: true })
+                .catch((e) => console.warn('⚠️ appAccountToken save failed:', e.message));
+        }
+
         // Verify receipt with Apple
-        let verificationResponse = await axios.post(APPLE_VERIFY_RECEIPT_URL, {
-            'receipt-data': receipt,
-            'password': APPLE_SHARED_SECRET,
-            'exclude-old-transactions': true
-        });
-
-        let verificationData = verificationResponse.data;
-
-        // If status is 21007, it means sandbox receipt was sent to production
-        // Retry with sandbox URL
-        if (verificationData.status === 21007) {
-            console.log('Sandbox receipt detected, retrying with sandbox URL...');
-            verificationResponse = await axios.post('https://sandbox.itunes.apple.com/verifyReceipt', {
+        let verificationData = { status: 0 };
+        if (receipt) {
+            let verificationResponse = await axios.post(APPLE_VERIFY_RECEIPT_URL, {
                 'receipt-data': receipt,
                 'password': APPLE_SHARED_SECRET,
                 'exclude-old-transactions': true
             });
+
             verificationData = verificationResponse.data;
+
+            // If status is 21007, it means sandbox receipt was sent to production
+            // Retry with sandbox URL
+            if (verificationData.status === 21007) {
+                console.log('Sandbox receipt detected, retrying with sandbox URL...');
+                verificationResponse = await axios.post('https://sandbox.itunes.apple.com/verifyReceipt', {
+                    'receipt-data': receipt,
+                    'password': APPLE_SHARED_SECRET,
+                    'exclude-old-transactions': true
+                });
+                verificationData = verificationResponse.data;
+            }
         }
 
         if (verificationData.status !== 0) {
             console.error('Receipt verification failed:', verificationData.status);
+            if (jwsEntry) {
+                // The signed transaction already proves the purchase — a bad
+                // or stale receipt must not block recording it
+                console.warn('⚠️ Proceeding on verified signedTransaction despite receipt failure');
+                verificationData = { status: 0 };
+            } else {
             // Provide more specific error messages
             let errorMessage = 'Invalid receipt';
             switch (verificationData.status) {
@@ -81,6 +180,7 @@ exports.verifySubscription = async (req, res) => {
                 success: false,
                 error: errorMessage
             });
+            }
         }
 
         // Extract receipt entries.
@@ -92,9 +192,9 @@ exports.verifySubscription = async (req, res) => {
         // 'expired'; and processing only one entry meant whichever family it
         // belonged to starved the other of updates. Process the NEWEST entry
         // of EACH family independently.
-        const receiptEntries = verificationData.latest_receipt_info
+        const receiptEntries = (verificationData.latest_receipt_info
             || verificationData.receipt?.in_app
-            || [];
+            || []).concat(jwsEntry ? [jwsEntry] : []);
         if (receiptEntries.length === 0) {
             return res.status(400).json({
                 success: false,
@@ -125,7 +225,9 @@ exports.verifySubscription = async (req, res) => {
         let businessResponse = null;
         if (businessEntry) {
             const b = entryStatus(businessEntry);
-            const environment = verificationData.environment || 'Production';
+            const environment = (businessEntry === jwsEntry && jwsEnvironment)
+                ? jwsEnvironment
+                : (verificationData.environment || jwsEnvironment || 'Production');
             const ownerRef = admin.firestore().collection('users').doc(userId);
             const existing = (await ownerRef.get()).data() || {};
 
@@ -140,6 +242,7 @@ exports.verifySubscription = async (req, res) => {
                     scope: 'business',
                     status: existing.ownerSubscriptionStatus,
                     expiryDate: existing.ownerSubscriptionExpiryDate,
+                    autoRenewEnabled: true,
                     productId: existing.ownerSubscriptionProductId,
                     venueId: existing.ownerSubscriptionVenueId || null,
                     ignored: 'sandbox_receipt_for_production_account'
@@ -206,6 +309,13 @@ exports.verifySubscription = async (req, res) => {
             }, { merge: true });
             invalidateUserCache(userId);
 
+            await consumePendingSubscriptions({
+                scope: 'business',
+                originalTransactionId: businessEntry.original_transaction_id,
+                userId,
+                effectiveExpiryMs: new Date(finalExpiryIso).getTime() || 0
+            });
+
             // Admin alert on the signup transition only: a routine re-verify
             // (same transaction, already active) stays silent.
             const wasBusinessActive = ['active', 'trial', 'grace_period'].includes(existing.ownerSubscriptionStatus);
@@ -250,7 +360,9 @@ exports.verifySubscription = async (req, res) => {
         if (consumerEntry) {
             const c = entryStatus(consumerEntry);
             const userRef = admin.firestore().collection('users').doc(userId);
-            const environment = verificationData.environment || 'Production';
+            const environment = (consumerEntry === jwsEntry && jwsEnvironment)
+                ? jwsEnvironment
+                : (verificationData.environment || jwsEnvironment || 'Production');
             const updateData = {
                 subscriptionStatus: c.status,
                 subscriptionExpiryDate: new Date(c.expiresDateMs).toISOString(),
@@ -276,16 +388,17 @@ exports.verifySubscription = async (req, res) => {
             const wasProduction = (existingData.subscriptionEnvironment || 'Production') === 'Production';
             const hadRealEntitlement = !!existingData.appleOriginalTransactionId || hasManualPremium;
             if (isSandbox && wasProduction && hadRealEntitlement) {
+                // Do NOT return here: the same receipt may also carry a
+                // business purchase whose response (assembled above) must
+                // still reach the client.
                 console.warn(`🧪 Ignoring SANDBOX receipt for ${userId}: production entitlement already on file`);
-                return res.status(200).json({
-                    success: true,
-                    ignored: 'sandbox_receipt_for_production_account',
-                    subscription: {
-                        status: existingData.subscriptionStatus,
-                        expiryDate: existingData.subscriptionExpiryDate
-                    }
-                });
-            }
+                consumerResponse = {
+                    status: existingData.subscriptionStatus,
+                    expiryDate: existingData.subscriptionExpiryDate,
+                    autoRenewEnabled: true,
+                    ignored: 'sandbox_receipt_for_production_account'
+                };
+            } else {
 
             // Never let a stale/expired device receipt downgrade a manually
             // verified premium user — keep their existing status and expiry
@@ -311,6 +424,15 @@ exports.verifySubscription = async (req, res) => {
 
             await userRef.set(updateData, { merge: true });
             invalidateUserCache(userId);
+
+            await consumePendingSubscriptions({
+                scope: 'consumer',
+                originalTransactionId: consumerEntry.original_transaction_id,
+                userId,
+                // The account may hold a webhook-granted expiry newer than
+                // this receipt — never let a parked row regress past either
+                effectiveExpiryMs: Math.max(c.expiresDateMs || 0, existingExpiry ? existingExpiry.getTime() : 0)
+            });
 
             // Admin alert on the signup transition only (new subscriber, or a
             // lapsed one coming back) — never on routine re-verifies.
@@ -344,6 +466,7 @@ exports.verifySubscription = async (req, res) => {
                 autoRenewEnabled: consumerEntry.auto_renew_status === '1',
                 productId: consumerEntry.product_id
             };
+            } // end sandbox-guard else
         }
 
         // Respond with the family the user just acted on; both families'
@@ -479,7 +602,9 @@ function verifyAppleJws(signedPayload) {
     }
     const leafKey = certs[0].publicKey.export({ type: 'spki', format: 'pem' });
     const payload = jwt.verify(signedPayload, leafKey, { algorithms: ['ES256'] });
-    const bundleId = payload && payload.data && payload.data.bundleId;
+    // Notification envelopes carry bundleId under data; a transaction JWS
+    // (jwsRepresentation from StoreKit 2) carries it at the top level
+    const bundleId = (payload && payload.data && payload.data.bundleId) || (payload && payload.bundleId);
     if (bundleId && bundleId !== EXPECTED_BUNDLE_ID) {
         throw new Error(`notification is for foreign bundleId ${bundleId}`);
     }
@@ -531,18 +656,30 @@ exports.handleSubscriptionWebhook = async (req, res) => {
         if (ownerSubscriptionService.isBusinessProduct(productId)) {
             await handleBusinessWebhook({
                 notificationType, originalTransactionId, expiresDate, renewal,
-                environment: notificationEnvironment
+                environment: notificationEnvironment,
+                appAccountToken: transaction.appAccountToken || null
             });
             return;
         }
 
         // Find user by original transaction ID
-        const usersSnapshot = await admin.firestore()
+        let usersSnapshot = await admin.firestore()
             .collection('users')
             .where('appleOriginalTransactionId', '==', originalTransactionId)
             .limit(1)
             .get();
-        
+
+        // A first-ever subscription has an original transaction id no account
+        // holds yet — but the app stamps purchases with the user's account
+        // token, and verify stores it as appleAppAccountToken.
+        if (usersSnapshot.empty && transaction.appAccountToken) {
+            usersSnapshot = await admin.firestore()
+                .collection('users')
+                .where('appleAppAccountToken', '==', transaction.appAccountToken)
+                .limit(1)
+                .get();
+        }
+
         if (usersSnapshot.empty) {
             console.log('No user found for transaction:', originalTransactionId);
             // Store the transaction ID for later matching when user verifies receipt
@@ -550,6 +687,7 @@ exports.handleSubscriptionWebhook = async (req, res) => {
                 notificationType,
                 productId,
                 expiresDate,
+                environment: notificationEnvironment || 'Production',
                 processedAt: new Date().toISOString()
             });
             return;
@@ -672,12 +810,22 @@ exports.handleSubscriptionWebhook = async (req, res) => {
 
 // Business-subscription webhook handling: same notification types as consumer,
 // mapped onto the owner* fields.
-async function handleBusinessWebhook({ notificationType, originalTransactionId, expiresDate, renewal, environment }) {
-    const usersSnapshot = await admin.firestore()
+async function handleBusinessWebhook({ notificationType, originalTransactionId, expiresDate, renewal, environment, appAccountToken }) {
+    let usersSnapshot = await admin.firestore()
         .collection('users')
         .where('ownerOriginalTransactionId', '==', originalTransactionId)
         .limit(1)
         .get();
+
+    // First-ever business subscription: no owner holds this origTx yet — match
+    // by the account token the app stamped on the purchase.
+    if (usersSnapshot.empty && appAccountToken) {
+        usersSnapshot = await admin.firestore()
+            .collection('users')
+            .where('appleAppAccountToken', '==', appAccountToken)
+            .limit(1)
+            .get();
+    }
 
     if (usersSnapshot.empty) {
         console.log('No user found for business transaction:', originalTransactionId);
@@ -685,6 +833,7 @@ async function handleBusinessWebhook({ notificationType, originalTransactionId, 
             scope: 'business',
             notificationType,
             expiresDate,
+            environment: environment || 'Production',
             processedAt: new Date().toISOString()
         });
         return;

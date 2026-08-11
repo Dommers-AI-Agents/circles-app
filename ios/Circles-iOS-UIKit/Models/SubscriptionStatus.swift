@@ -5,18 +5,28 @@ enum SubscriptionStatus: String, Codable {
     case none = "none"
     case trial = "trial"
     case active = "active"
+    // Billing retry — Apple keeps entitlement alive while retrying payment
+    case gracePeriod = "grace_period"
     case expired = "expired"
     case cancelled = "cancelled"
-    
+
+    /// A status string this build doesn't know must never fail the whole
+    /// response decode (that reads as "sync failed" to callers) — fall back
+    /// to .none instead.
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = SubscriptionStatus(rawValue: raw) ?? .none
+    }
+
     var isActive: Bool {
         switch self {
-        case .trial, .active:
+        case .trial, .active, .gracePeriod:
             return true
         case .none, .expired, .cancelled:
             return false
         }
     }
-    
+
     var displayName: String {
         switch self {
         case .none:
@@ -25,18 +35,20 @@ enum SubscriptionStatus: String, Codable {
             return "Free Trial"
         case .active:
             return "Premium"
+        case .gracePeriod:
+            return "Premium"
         case .expired:
             return "Expired"
         case .cancelled:
             return "Cancelled"
         }
     }
-    
+
     var badgeColor: UIColor {
         switch self {
         case .none:
             return Constants.Colors.secondaryLabel
-        case .trial:
+        case .trial, .gracePeriod:
             return .systemOrange
         case .active:
             return Constants.Colors.primary
@@ -51,7 +63,9 @@ struct SubscriptionInfo: Codable {
     let expiryDate: Date?
     let trialStartDate: Date?
     let trialEndDate: Date?
-    let autoRenewEnabled: Bool
+    // Optional: guard/ignored responses from the backend omit it, and that
+    // must not fail the decode
+    let autoRenewEnabled: Bool?
     let productId: String?
     
     var daysLeftInTrial: Int? {

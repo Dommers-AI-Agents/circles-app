@@ -309,7 +309,13 @@ class SubscriptionViewController: BaseViewController {
             }
             upgradeButton.isHidden = true
             manageButton.isHidden = false
-            
+
+        case .gracePeriod:
+            statusDescriptionLabel.text = "There's a billing issue with your subscription"
+            expiryLabel.text = "Update your payment method in Settings to keep premium access"
+            upgradeButton.isHidden = true
+            manageButton.isHidden = false
+
         case .expired:
             statusDescriptionLabel.text = "Your subscription has expired"
             expiryLabel.text = "Renew to regain access to premium features"

@@ -70,7 +70,7 @@ exports.securityHeaders = helmet({
 // Opaque payload fields the XSS regexes must never touch: base64 receipts and
 // signed JWS blobs are not HTML, and stripping "on…=" runs from them corrupts
 // the payload (Apple then rejects the receipt as malformed, error 21002).
-const SANITIZE_EXEMPT_KEYS = new Set(['receipt', 'receiptData', 'signedPayload']);
+const SANITIZE_EXEMPT_KEYS = new Set(['receipt', 'receiptData', 'signedPayload', 'signedTransaction']);
 
 // Input sanitization middleware
 exports.sanitizeInput = (req, res, next) => {

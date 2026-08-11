@@ -1,5 +1,6 @@
 import Foundation
 import StoreKit
+import CryptoKit
 
 @MainActor
 class SubscriptionService: ObservableObject {
@@ -138,7 +139,14 @@ class SubscriptionService: ObservableObject {
     /// the entitlement to this one venue.
     func purchase(_ product: SubscriptionProduct, venueId: String? = nil) async throws -> PurchaseResult {
         do {
-            let result = try await product.product.purchase()
+            // Stamp the purchase with a token derived from the app account, so
+            // Apple's server notifications can be matched to this user even for
+            // a first-ever subscription (an origTx no account holds yet)
+            var options: Set<Product.PurchaseOption> = []
+            if let userId = AuthService.shared.currentUser?.id {
+                options.insert(.appAccountToken(Self.appAccountToken(for: userId)))
+            }
+            let result = try await product.product.purchase(options: options)
 
             switch result {
             case .success(let verification):
@@ -154,7 +162,8 @@ class SubscriptionService: ObservableObject {
                 let synced = await syncSubscriptionWithBackend(
                     transaction: transaction,
                     venueId: venueId,
-                    attempts: 3
+                    attempts: 3,
+                    signedTransaction: verification.jwsRepresentation
                 )
                 if synced {
                     await transaction.finish()
@@ -304,7 +313,10 @@ class SubscriptionService: ObservableObject {
             for await update in Transaction.updates {
                 guard case .verified(let transaction) = update else { continue }
                 await updateSubscriptionStatus()
-                let synced = await syncSubscriptionWithBackend(transaction: transaction)
+                let synced = await syncSubscriptionWithBackend(
+                    transaction: transaction,
+                    signedTransaction: update.jwsRepresentation
+                )
                 if synced {
                     await transaction.finish()
                 }
@@ -322,6 +334,28 @@ class SubscriptionService: ObservableObject {
             return safe
         }
     }
+
+    // MARK: - App Account Token
+
+    // Load-bearing constant: purchases are permanently stamped with tokens
+    // derived from it. Changing it orphans every token already sent to Apple.
+    private static let appAccountTokenNamespace = UUID(uuidString: "9A1F9C3D-6B2E-4A54-8D2B-4E1C3F7A5B60")!
+
+    /// Deterministic UUID (v5, SHA-1 name-based) derived from the user's id —
+    /// the same account always yields the same token, letting the backend match
+    /// App Store server notifications to the purchasing user even for a
+    /// first-ever subscription.
+    static func appAccountToken(for userId: String) -> UUID {
+        var data = Data()
+        withUnsafeBytes(of: appAccountTokenNamespace.uuid) { data.append(contentsOf: $0) }
+        data.append(Data(userId.utf8))
+        var bytes = Array(Insecure.SHA1.hash(data: data))
+        bytes[6] = (bytes[6] & 0x0F) | 0x50   // version 5
+        bytes[8] = (bytes[8] & 0x3F) | 0x80   // RFC 4122 variant
+        let uuid: uuid_t = (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+                            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15])
+        return UUID(uuid: uuid)
+    }
     
     // MARK: - Backend Sync
     
@@ -332,21 +366,32 @@ class SubscriptionService: ObservableObject {
     private func syncSubscriptionWithBackend(
         transaction: Transaction,
         venueId: String? = nil,
-        attempts: Int = 1
+        attempts: Int = 1,
+        signedTransaction: String? = nil
     ) async -> Bool {
-        guard let receiptString = await loadReceiptBase64() else {
-            Logger.debug("❌ No app receipt available (even after refresh) — backend sync skipped")
+        // The legacy receipt is NOT guaranteed to contain a StoreKit 2 purchase
+        // that just happened (especially a brand-new subscription) — the signed
+        // transaction JWS is the authoritative proof, so its absence is only
+        // fatal when there's no receipt either.
+        let receiptString = await loadReceiptBase64()
+        if receiptString == nil && signedTransaction == nil {
+            Logger.debug("❌ No app receipt and no signed transaction — backend sync skipped")
             return false
         }
 
         var body: [String: Any] = [
-            "receipt": receiptString,
             "transactionId": transaction.id,
             "productId": transaction.productID,
             "originalTransactionId": transaction.originalID,
             "purchaseDate": ISO8601DateFormatter().string(from: transaction.purchaseDate),
             "expirationDate": transaction.expirationDate.map { ISO8601DateFormatter().string(from: $0) } ?? nil
         ]
+        if let receiptString = receiptString {
+            body["receipt"] = receiptString
+        }
+        if let signedTransaction = signedTransaction {
+            body["signedTransaction"] = signedTransaction
+        }
         // Business purchases bind to the venue they were bought for
         if let venueId = venueId {
             body["venueId"] = venueId
@@ -415,9 +460,11 @@ class SubscriptionService: ObservableObject {
         }
 
         // Latest transaction per scope — consumer and business verify
-        // separately (the backend routes each by productId)
-        var latestConsumer: Transaction? = nil
-        var latestBusiness: Transaction? = nil
+        // separately (the backend routes each by productId). Keep the JWS
+        // alongside: it's the proof the backend can verify even when the
+        // legacy receipt is stale.
+        var latestConsumer: (transaction: Transaction, jws: String)? = nil
+        var latestBusiness: (transaction: Transaction, jws: String)? = nil
 
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else {
@@ -429,26 +476,26 @@ class SubscriptionService: ObservableObject {
             }
 
             if SubscriptionProduct.isBusinessProductId(transaction.productID) {
-                if latestBusiness == nil || transaction.purchaseDate > latestBusiness!.purchaseDate {
-                    latestBusiness = transaction
+                if latestBusiness == nil || transaction.purchaseDate > latestBusiness!.transaction.purchaseDate {
+                    latestBusiness = (transaction, result.jwsRepresentation)
                 }
-            } else if latestConsumer == nil || transaction.purchaseDate > latestConsumer!.purchaseDate {
-                latestConsumer = transaction
+            } else if latestConsumer == nil || transaction.purchaseDate > latestConsumer!.transaction.purchaseDate {
+                latestConsumer = (transaction, result.jwsRepresentation)
             }
         }
 
-        if let transaction = latestConsumer {
+        if let (transaction, jws) = latestConsumer {
             Logger.debug("📱 Found active subscription, syncing with backend...")
-            await syncSubscriptionWithBackend(transaction: transaction)
+            await syncSubscriptionWithBackend(transaction: transaction, signedTransaction: jws)
         } else {
             Logger.debug("💎 No active subscription found - checking backend status...")
             // Even if no local subscription, check backend in case it has valid data
             await checkTrialStatus()
         }
 
-        if let transaction = latestBusiness {
+        if let (transaction, jws) = latestBusiness {
             Logger.debug("🏪 Found active business subscription, syncing with backend...")
-            await syncSubscriptionWithBackend(transaction: transaction, venueId: venueId)
+            await syncSubscriptionWithBackend(transaction: transaction, venueId: venueId, signedTransaction: jws)
         }
     }
     
