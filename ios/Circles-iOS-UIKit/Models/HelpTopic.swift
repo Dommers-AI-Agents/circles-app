@@ -10,6 +10,10 @@ struct HelpTopic {
     let category: HelpCategory
     let relatedTopics: [String]? // IDs of related topics
     let videoTimestamp: TimeInterval? // For linking to specific video sections
+    // External destination (e.g. a hosted video tutorial) — the topic screen
+    // shows a prominent button that opens it
+    var externalURL: String? = nil
+    var externalURLTitle: String? = nil
     
     enum HelpCategory: String, CaseIterable {
         case gettingStarted = "Getting Started"
@@ -739,6 +743,31 @@ class HelpContentProvider {
     var storeOwnersTopics: [HelpTopic] {
         return [
             HelpTopic(
+                id: "store-video-tutorial",
+                title: "▶ Watch the store owner tutorial",
+                subtitle: "Start here — the whole program in a few minutes",
+                content: """
+                The fastest way to learn the store owner program: a short narrated video tour, from claiming your business to running your loyalty program.
+
+                **What it covers:**
+                1. Welcome to FavCircles for stores
+                2. Claiming your business
+                3. What happens after approval
+                4. The free tier — your dashboard and window QR
+                5. FavCircles Business — unlocking the full toolkit
+                6. The loyalty program and register card
+                7. Offers your customers redeem with points
+                8. Announcements that reach your followers
+
+                Tap the button above to watch — it opens in your browser.
+                """,
+                category: .storeOwners,
+                relatedTopics: ["store-rewards-program", "store-getting-started"],
+                videoTimestamp: nil,
+                externalURL: "https://favcircles.com/store-owner-tutorial.html",
+                externalURLTitle: "▶ Watch the tutorial"
+            ),
+            HelpTopic(
                 id: "store-rewards-program",
                 title: "How the rewards program works",
                 subtitle: "Store points, offers, and what they cost you",
@@ -765,7 +794,7 @@ class HelpContentProvider {
                 Customers also earn FavCoins — a separate crypto coin — for using FavCircles generally. You don't fund, grant, or redeem FavCoins. Your loyalty currency is store points.
                 """,
                 category: .storeOwners,
-                relatedTopics: ["store-getting-started", "store-loyalty-codes", "favcoin-vs-store-points"],
+                relatedTopics: ["store-video-tutorial", "store-getting-started", "store-loyalty-codes", "favcoin-vs-store-points"],
                 videoTimestamp: nil
             ),
             HelpTopic(

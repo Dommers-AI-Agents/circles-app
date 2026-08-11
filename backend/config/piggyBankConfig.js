@@ -17,7 +17,10 @@ module.exports = {
   // pricing via ruleVersion.
   // 2026.08-c: brand redemption codes (order-box cards / booth handouts) —
   // a real-world purchase touchpoint, priced like posting a moment.
-  RULE_VERSION: '2026.08-c',
+  // 2026.08-d: check-in drops to half a coin — showing up is lighter than
+  // creating content, and the fractional amount buys the dancing-leprechaun
+  // deposit animation (Wesley).
+  RULE_VERSION: '2026.08-d',
   CLEARING_WINDOW_HOURS: 24,
   COINS: {
     ADD_PLACE: 3,
@@ -27,7 +30,7 @@ module.exports = {
     REFERRAL_SIGNUP: 20,
     PLACE_ADOPTED: 5,
     SUGGESTION_POSTED: 1,
-    CHECK_IN: 1,
+    CHECK_IN: 0.5,             // half a coin — and under 1, so the leprechaun dances
     PLACE_PHOTO: 1,
     MOMENT_POSTED: 2,
     PROFILE_COMPLETED: 5,

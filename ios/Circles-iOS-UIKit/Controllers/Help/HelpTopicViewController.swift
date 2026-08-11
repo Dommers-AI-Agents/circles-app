@@ -57,6 +57,23 @@ class HelpTopicViewController: BaseViewController {
         return textView
     }()
     
+    // Prominent external-link button (hosted video tutorials) — sits ABOVE
+    // the content, because "watch this first" must not hide below a scroll
+    private lazy var watchButton: UIButton = {
+        let button = UIButton.primaryButton(title: "▶ Watch")
+        button.addTarget(self, action: #selector(watchExternalTapped), for: .touchUpInside)
+        button.isHidden = true
+        return button
+    }()
+
+    private var contentTopToSubtitle: NSLayoutConstraint?
+    private var contentTopToWatch: NSLayoutConstraint?
+
+    @objc private func watchExternalTapped() {
+        guard let urlString = topic.externalURL, let url = URL(string: urlString) else { return }
+        UIApplication.shared.open(url)
+    }
+
     private lazy var videoButton: UIButton = {
         let button = UIButton.secondaryButton(title: "Jump to Video Section")
         button.addTarget(self, action: #selector(jumpToVideoTapped), for: .touchUpInside)
@@ -111,6 +128,7 @@ class HelpTopicViewController: BaseViewController {
         contentView.addSubview(categoryLabel)
         contentView.addSubview(titleLabel)
         contentView.addSubview(subtitleLabel)
+        contentView.addSubview(watchButton)
         contentView.addSubview(contentTextView)
         contentView.addSubview(videoButton)
         contentView.addSubview(relatedTopicsLabel)
@@ -147,7 +165,10 @@ class HelpTopicViewController: BaseViewController {
             subtitleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             
             // Content
-            contentTextView.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 20),
+            watchButton.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 16),
+            watchButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            watchButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
             contentTextView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             contentTextView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             
@@ -185,6 +206,22 @@ class HelpTopicViewController: BaseViewController {
         // Content with markdown formatting
         let attributedContent = formatMarkdownContent(topic.content)
         contentTextView.attributedText = attributedContent
+
+        // External tutorial button: above the content, impossible to miss
+        if contentTopToSubtitle == nil {
+            contentTopToSubtitle = contentTextView.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 20)
+            contentTopToWatch = contentTextView.topAnchor.constraint(equalTo: watchButton.bottomAnchor, constant: 20)
+        }
+        if let urlString = topic.externalURL, !urlString.isEmpty {
+            watchButton.isHidden = false
+            watchButton.setTitle(topic.externalURLTitle ?? "▶ Watch", for: .normal)
+            contentTopToSubtitle?.isActive = false
+            contentTopToWatch?.isActive = true
+        } else {
+            watchButton.isHidden = true
+            contentTopToWatch?.isActive = false
+            contentTopToSubtitle?.isActive = true
+        }
         
         // Video button
         if let timestamp = topic.videoTimestamp {

@@ -3000,6 +3000,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
 
     func updateActivityFeed() {
+        resolveMissingActivityActors()
         regroupActivities()
         isLoadingActivities = false
         activityLoadingIndicator.stopAnimating()
@@ -3027,6 +3028,35 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         view.layoutIfNeeded()
 
         fillActivityViewportIfNeeded()
+    }
+
+    /// Patches actorless feed rows from users the app already knows: the
+    /// signed-in user first (your own activity must NEVER render anonymous),
+    /// then actors carried by other rows in the same feed. Rows that still
+    /// can't be resolved keep actor nil and render name-less rather than
+    /// showing a wrong identity.
+    private func resolveMissingActivityActors() {
+        guard activities.contains(where: { $0.actor == nil }) else { return }
+
+        var knownActors: [String: User] = [:]
+        for activity in activities {
+            if let actor = activity.actor {
+                knownActors[activity.actorId] = actor
+            }
+        }
+
+        let me = AuthService.shared.currentUser
+
+        activities = activities.map { activity in
+            guard activity.actor == nil else { return activity }
+            if let me = me, IDNormalizer.isSameUser(activity.actorId, me.id) {
+                return activity.withActor(me)
+            }
+            if let known = knownActors[activity.actorId] {
+                return activity.withActor(known)
+            }
+            return activity
+        }
     }
 
     /// Grouping can collapse an entire fetched page into a single row (e.g. one

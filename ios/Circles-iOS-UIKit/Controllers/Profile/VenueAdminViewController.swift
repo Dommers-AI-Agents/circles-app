@@ -325,7 +325,7 @@ extension VenueAdminViewController: UITableViewDataSource, UITableViewDelegate {
 
 extension VenueAdminViewController {
     @objc func ownerGuideTapped() {
-        guard let topic = HelpContentProvider.shared.topic(withId: "store-rewards-program") else { return }
+        guard let topic = HelpContentProvider.shared.topic(withId: "store-video-tutorial") else { return }
         navigationController?.pushViewController(HelpTopicViewController(topic: topic), animated: true)
     }
 }

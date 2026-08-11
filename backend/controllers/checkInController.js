@@ -208,7 +208,7 @@ exports.createCheckIn = async (req, res) => {
     const checkInDoc = await checkInRef.get();
     const checkInId = checkInRef.id;
 
-    // Piggy bank: 1 FavCoin per venue per day for showing up. Venue identity
+    // Piggy bank: half a FavCoin per venue per day for showing up. Venue identity
     // falls back to name+address for check-ins at places without a saved doc.
     // Awaited for the coin-drop; credit() never throws.
     const piggyBank = await require('../services/piggyBankService').credit({

@@ -98,6 +98,20 @@ struct Activity: Codable {
         )
     }
 
+    /// Copy with a locally-resolved actor. Rows can arrive actorless (stale
+    /// cache, partial server hydration); the feed patches them from users it
+    /// already knows rather than rendering an anonymous row.
+    func withActor(_ newActor: User) -> Activity {
+        return Activity(
+            id: id, type: type, actorId: actorId, actor: newActor,
+            targetType: targetType, targetId: targetId, targetName: targetName,
+            circleId: circleId, circleName: circleName, metadata: metadata,
+            timestamp: timestamp, isRead: isRead,
+            reactionCount: reactionCount, commentCount: commentCount,
+            userReaction: userReaction, reactionSummary: reactionSummary
+        )
+    }
+
     /// Copy with an updated comment count (same in-place row update pattern)
     func withCommentCount(_ newCount: Int) -> Activity {
         return Activity(

@@ -636,10 +636,12 @@ class CreateCircleViewController: UIViewController {
                         self.delegate?.didCreateCircle(circle)
                         self.dismiss(animated: true)
                     case .failure(let error):
-                        self.presentAlert(
-                            title: "Error",
-                            message: "Failed to create circle: \(error.localizedDescription)"
-                        )
+                        if !SubscriptionManager.shared.presentPaywallIfLimitError(error, from: self, reason: .circleLimit) {
+                            self.presentAlert(
+                                title: "Error",
+                                message: "Failed to create circle: \(error.localizedDescription)"
+                            )
+                        }
                     }
                 }
             }
@@ -679,10 +681,12 @@ class CreateCircleViewController: UIViewController {
                         self.dismiss(animated: true)
                         
                     case .failure(let error):
-                        self.presentAlert(
-                            title: "Error",
-                            message: "Failed to create circle: \(error.localizedDescription)"
-                        )
+                        if !SubscriptionManager.shared.presentPaywallIfLimitError(error, from: self, reason: .circleLimit) {
+                            self.presentAlert(
+                                title: "Error",
+                                message: "Failed to create circle: \(error.localizedDescription)"
+                            )
+                        }
                     }
                 }
             }

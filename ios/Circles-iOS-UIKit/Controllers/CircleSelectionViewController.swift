@@ -275,7 +275,11 @@ class CircleSelectionViewController: UIViewController {
                     self.dismiss(animated: true)
                     
                 case .failure(let error):
-                    self.showError(error)
+                    // At the free-tier circle cap the server says so with a
+                    // 403 — offer the upgrade, not a dead-end error
+                    if !SubscriptionManager.shared.presentPaywallIfLimitError(error, from: self, reason: .circleLimit) {
+                        self.showError(error)
+                    }
                 }
             }
         }
