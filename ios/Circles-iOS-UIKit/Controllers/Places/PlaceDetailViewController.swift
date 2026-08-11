@@ -306,7 +306,6 @@ class PlaceDetailViewController: BaseViewController {
     private var ownerEditDecorated = false
     private var ownerContactEditRow: UILabel?
     private var ownerDescriptionEditRow: UILabel?
-    private var ownerDescriptionEditor: UITextView?
 
     // Practical actions row: Directions / Website / Call / Edit
     private let practicalButtonsStackView: UIStackView = {
@@ -4148,6 +4147,9 @@ extension PlaceDetailViewController {
 
         nameLabel.text = editing ? "\(place.name) ✎" : place.name
         addressLabel.text = editing ? "\(place.address) ✎" : place.address
+        // The category pencil is normally gated on save-edit rights — the
+        // venue owner always gets it (it opens the category picker)
+        categoryEditButton.isHidden = !editing
 
         // Explicit, labeled owner rows in the About card — a bare paragraph
         // tap was invisible, and one trailing ✎ read as "website only"
@@ -4226,66 +4228,20 @@ extension PlaceDetailViewController {
     }
 
     @objc private func ownerEditDescriptionTapped() {
-        guard isVenueOwner, !viewingAsCustomer, ownerDescriptionEditor == nil else { return }
-        guard let index = aboutStackView.arrangedSubviews.firstIndex(of: descriptionLabel) else { return }
-
-        // The editor must be unmistakable against the card in dark mode —
-        // page-background black made it an invisible typing target
-        let editor = UITextView()
-        editor.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        editor.textColor = Constants.Colors.label
-        editor.backgroundColor = Constants.Colors.tertiaryBackground
-        editor.layer.cornerRadius = 8
-        editor.layer.borderWidth = 1
-        editor.layer.borderColor = Constants.Colors.primary.withAlphaComponent(0.5).cgColor
-        editor.text = place.description ?? ""
-        editor.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
-
-        let toolbar = UIToolbar()
-        toolbar.sizeToFit()
-        toolbar.items = [
-            UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(ownerDescriptionCancelTapped)),
-            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
-            UIBarButtonItem(barButtonSystemItem: .save, target: self, action: #selector(ownerDescriptionSaveTapped))
-        ]
-        editor.inputAccessoryView = toolbar
-
-        aboutStackView.insertArrangedSubview(editor, at: index)
-        descriptionLabel.isHidden = true
-        ownerDescriptionEditor = editor
-        editor.becomeFirstResponder()
-
-        // Bring the editor above the keyboard — otherwise the owner types
-        // blind with only QuickType echoing their words
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            guard let self = self, let editor = self.ownerDescriptionEditor else { return }
-            let rect = editor.convert(editor.bounds, to: self.scrollView)
-            self.scrollView.setContentOffset(
-                CGPoint(x: 0, y: max(0, rect.minY - 120)),
-                animated: true
-            )
+        guard isVenueOwner, !viewingAsCustomer else { return }
+        // A half-sheet with the text view pinned to the keyboard — the inline
+        // in-card editor kept losing the fight with keyboard geometry (typed
+        // text ended up hidden behind or above it)
+        let editor = OwnerDescriptionEditorViewController()
+        editor.initialText = place.description ?? ""
+        editor.onSave = { [weak self] text in
+            self?.saveOwnerField(description: text)
         }
-    }
-
-    @objc private func ownerDescriptionCancelTapped() {
-        dismissOwnerDescriptionEditor()
-        refreshOwnerEditAffordances()
-        if !(place.description ?? "").isEmpty {
-            descriptionLabel.isHidden = false
+        let nav = UINavigationController(rootViewController: editor)
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
         }
-    }
-
-    @objc private func ownerDescriptionSaveTapped() {
-        guard let editor = ownerDescriptionEditor else { return }
-        let text = editor.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        dismissOwnerDescriptionEditor()
-        saveOwnerField(description: text)
-    }
-
-    private func dismissOwnerDescriptionEditor() {
-        ownerDescriptionEditor?.resignFirstResponder()
-        ownerDescriptionEditor?.removeFromSuperview()
-        ownerDescriptionEditor = nil
+        present(nav, animated: true)
     }
 
     @objc private func ownerEditContactTapped() {
@@ -4326,7 +4282,7 @@ extension PlaceDetailViewController {
 
     // MARK: Save
 
-    private func saveOwnerField(
+    fileprivate func saveOwnerField(
         name: String? = nil,
         description: String? = nil,
         category: PlaceCategory? = nil,
@@ -4355,6 +4311,63 @@ extension PlaceDetailViewController {
                     }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Owner description sheet
+// Half-sheet editor with the text view pinned to the keyboard layout guide —
+// immune to the scroll/keyboard geometry that made in-card editing type-blind.
+private final class OwnerDescriptionEditorViewController: BaseViewController {
+
+    var initialText = ""
+    var onSave: ((String) -> Void)?
+
+    private let textView: UITextView = {
+        let view = UITextView()
+        view.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
+        view.textColor = Constants.Colors.label
+        view.backgroundColor = Constants.Colors.secondaryBackground
+        view.layer.cornerRadius = 10
+        view.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 12, right: 8)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
+    override var loadsDataOnViewDidLoad: Bool { false }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = "Description"
+        view.backgroundColor = Constants.Colors.background
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .cancel, target: self, action: #selector(cancelTapped))
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .save, target: self, action: #selector(saveTapped))
+
+        textView.text = initialText
+        view.addSubview(textView)
+        NSLayoutConstraint.activate([
+            textView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Constants.Spacing.medium),
+            textView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
+            textView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium),
+            textView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -Constants.Spacing.small)
+        ])
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        textView.becomeFirstResponder()
+    }
+
+    @objc private func cancelTapped() {
+        dismiss(animated: true)
+    }
+
+    @objc private func saveTapped() {
+        let text = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        dismiss(animated: true) { [onSave] in
+            onSave?(text)
         }
     }
 }
