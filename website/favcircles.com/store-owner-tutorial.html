@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FavCircles for Store Owners — Video Tutorial</title>
+  <meta name="description" content="How to claim your business, run a points-based loyalty program, and reach your customers on FavCircles — in under five minutes.">
+  <link rel="icon" href="favCircles.ico">
+
+  <meta property="og:type" content="video.other">
+  <meta property="og:title" content="FavCircles for Store Owners — Video Tutorial">
+  <meta property="og:description" content="Claim your business, run a points-based loyalty program, and reach your customers — all in one app.">
+  <meta property="og:url" content="https://favcircles.com/store-owner-tutorial.html">
+  <meta property="og:image" content="https://favcircles.com/videos/store-owner-tutorial-poster.jpg">
+  <meta property="og:image:width" content="1920">
+  <meta property="og:image:height" content="1080">
+  <meta property="og:video" content="https://favcircles.com/videos/store-owner-tutorial.mp4">
+  <meta property="og:video:type" content="video/mp4">
+  <meta property="og:video:width" content="1920">
+  <meta property="og:video:height" content="1080">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="FavCircles for Store Owners — Video Tutorial">
+  <meta name="twitter:image" content="https://favcircles.com/videos/store-owner-tutorial-poster.jpg">
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+      background: radial-gradient(1400px 900px at 30% 20%, #123B63, #0E2A47);
+      color: #fff; min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 32px 20px;
+    }
+    h1 { font-size: clamp(24px, 4vw, 40px); font-weight: 800; text-align: center; margin-bottom: 8px; }
+    h1 .hl { color: #4FD1C5; }
+    p.sub { color: #C6D5E6; font-size: clamp(14px, 2vw, 18px); text-align: center; margin-bottom: 28px; }
+    .player { width: 100%; max-width: 960px; }
+    video {
+      width: 100%; display: block; border-radius: 14px;
+      box-shadow: 0 30px 80px rgba(0,0,0,.5);
+      background: #0E2A47;
+    }
+    .foot { margin-top: 26px; font-size: 14px; color: #8FB8DD; text-align: center; }
+    .foot a { color: #4FD1C5; text-decoration: none; font-weight: 600; }
+    .video-actions { text-align: right; margin-top: 14px; }
+    .share-btn {
+      display: inline-block; background: #4FD1C5; color: #0E2A47;
+      border: none; cursor: pointer; padding: 10px 22px; border-radius: 50px;
+      font-weight: 700; font-size: 15px; font-family: inherit;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .share-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(79, 209, 197, 0.4); }
+  </style>
+</head>
+<body>
+  <h1>FavCircles <span class="hl">for Store Owners</span></h1>
+  <p class="sub">Claim your business, reward your regulars, and reach your customers — in under five minutes.</p>
+  <div class="player">
+    <video src="videos/store-owner-tutorial.mp4"
+           poster="videos/store-owner-tutorial-poster.jpg"
+           controls playsinline preload="metadata"></video>
+    <div class="video-actions">
+      <button class="share-btn" type="button" id="share-btn">↗&nbsp; Share this video</button>
+    </div>
+  </div>
+  <p class="foot">Questions? Visit <a href="support.html">FavCircles Support</a> · <a href="index.html">favcircles.com</a></p>
+  <script>
+    document.getElementById('share-btn').addEventListener('click', function () {
+      var btn = this;
+      var data = {
+        title: 'FavCircles for Store Owners — Video Tutorial',
+        text: 'How to claim your store and run loyalty on FavCircles, in 4 minutes.',
+        url: 'https://favcircles.com/store-owner-tutorial.html'
+      };
+      if (navigator.share) {
+        navigator.share(data).catch(function () {});
+      } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(data.url).then(function () {
+          var original = btn.textContent;
+          btn.textContent = '✓ Link copied!';
+          setTimeout(function () { btn.textContent = original; }, 2000);
+        });
+      }
+    });
+  </script>
+</body>
+</html>

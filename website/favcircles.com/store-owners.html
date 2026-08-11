@@ -70,6 +70,40 @@
             transition: transform 0.3s, box-shadow 0.3s;
         }
         .cta:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25); }
+        .cta-row { display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center; }
+        .cta-ghost {
+            display: inline-block;
+            border: 2px solid rgba(255, 255, 255, 0.85);
+            color: white;
+            padding: 0.8rem 1.7rem;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 700;
+            transition: background 0.3s, transform 0.3s;
+        }
+        .cta-ghost:hover { background: rgba(255, 255, 255, 0.15); transform: translateY(-2px); }
+        .band video {
+            width: 100%;
+            display: block;
+            border-radius: 14px;
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.25);
+            background: #0E2A47;
+        }
+        .video-actions { text-align: right; margin-top: 0.9rem; }
+        .share-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 0.65rem 1.4rem;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            font-family: inherit;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .share-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4); }
         .band {
             background: white;
             border-radius: 20px;
@@ -148,9 +182,26 @@
             <div class="copy">
                 <h1>Your best customers are already talking about you.</h1>
                 <p class="lead">Every time someone saves your shop to a circle, they're recommending you to the people who trust them most. FavCircles gives you that page — claim it, own it, and turn fans into regulars.</p>
-                <a class="cta" href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener">Get the app &amp; claim your venue</a>
+                <div class="cta-row">
+                    <a class="cta" href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener">Get the app &amp; claim your venue</a>
+                    <a class="cta-ghost" href="#tutorial">▶&nbsp; Watch the 4-minute tutorial</a>
+                </div>
             </div>
         </section>
+
+        <div class="band" id="tutorial">
+            <h2>▶ Watch: the store owner toolkit in 4 minutes</h2>
+            <p>Claiming your venue, your free dashboard and window QR, FavCircles Business, the register QR loyalty program, offers, announcements, loyalty codes, and online stores — the whole toolkit, narrated step by step.</p>
+            <video src="/videos/store-owner-tutorial.mp4"
+                   poster="/videos/store-owner-tutorial-poster.jpg"
+                   controls playsinline preload="metadata"></video>
+            <div class="video-actions">
+                <button class="share-btn" type="button"
+                        data-share-title="FavCircles for Store Owners — Tutorial"
+                        data-share-text="How to claim your store and run loyalty on FavCircles, in 4 minutes."
+                        data-share-url="https://favcircles.com/store-owners.html#tutorial">↗&nbsp; Share this video</button>
+            </div>
+        </div>
 
         <div class="grid3">
             <div class="card">
@@ -188,6 +239,27 @@
             <p style="margin-top: 1rem; margin-bottom: 0;">Questions first? Email <a href="mailto:wesley@favcircles.com" style="color:#667eea;">wesley@favcircles.com</a> — a founder answers.</p>
         </div>
     </main>
+
+    <script>
+        document.querySelectorAll('.share-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var data = {
+                    title: btn.getAttribute('data-share-title'),
+                    text: btn.getAttribute('data-share-text'),
+                    url: btn.getAttribute('data-share-url')
+                };
+                if (navigator.share) {
+                    navigator.share(data).catch(function () {});
+                } else if (navigator.clipboard) {
+                    navigator.clipboard.writeText(data.url).then(function () {
+                        var original = btn.textContent;
+                        btn.textContent = '✓ Link copied!';
+                        setTimeout(function () { btn.textContent = original; }, 2000);
+                    });
+                }
+            });
+        });
+    </script>
 
     <footer>
         <div class="container">

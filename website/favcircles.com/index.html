@@ -158,6 +158,47 @@
 
         .hero-sub a { color: white; }
 
+        .watch-link {
+            display: inline-block;
+            margin-top: 1.1rem;
+            border: 2px solid rgba(255, 255, 255, 0.85);
+            color: white;
+            padding: 0.7rem 1.5rem;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 700;
+            transition: background 0.3s, transform 0.3s;
+        }
+
+        .watch-link:hover { background: rgba(255, 255, 255, 0.15); transform: translateY(-2px); }
+
+        .band video {
+            width: 100%;
+            display: block;
+            border-radius: 14px;
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.25);
+            background: #0E2A47;
+            margin: 0.4rem 0 0.9rem 0;
+        }
+
+        .video-actions { text-align: right; margin-bottom: 1.4rem; }
+
+        .share-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 0.65rem 1.4rem;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            font-family: inherit;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .share-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4); }
+
         .features {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -364,7 +405,8 @@
                 <span class="icon">&#63743;</span>
                 <span><span class="label">Download free on the</span><br><span class="store">App Store</span></span>
             </a>
-            <p class="hero-sub">Android coming soon — <a href="mailto:wesley@favcircles.com?subject=Notify%20me%20about%20FavCircles%20for%20Android">get notified</a>.</p>
+            <p class="hero-sub">Android coming soon.</p>
+            <div><a class="watch-link" href="#how">▶&nbsp; Watch how it works — 90 seconds</a></div>
             <a class="scroll-cue" href="#why" aria-label="Scroll down">⌄</a>
         </section>
 
@@ -386,8 +428,18 @@
             </div>
         </div>
 
-        <div class="band">
+        <div class="band" id="how">
             <h2>How it works</h2>
+            <p>Circles, places, friends, Moments, store points, and FavCoins — the whole app, in 90 seconds.</p>
+            <video src="/videos/user-tour.mp4"
+                   poster="/videos/user-tour-poster.jpg"
+                   controls playsinline preload="metadata"></video>
+            <div class="video-actions">
+                <button class="share-btn" type="button"
+                        data-share-title="FavCircles — How it works"
+                        data-share-text="See how FavCircles works in 90 seconds."
+                        data-share-url="https://favcircles.com/#how">↗&nbsp; Share this video</button>
+            </div>
             <div class="steps">
                 <div class="step">
                     <span class="num">1</span>
@@ -457,6 +509,27 @@
 
         <p class="safety">FavCircles is a community built on trust. Every post can be reported, any user can be blocked, and we have <a href="/terms.html">zero tolerance for objectionable content</a>. Questions? Visit <a href="/support.html">Support</a>.</p>
     </main>
+
+    <script>
+        document.querySelectorAll('.share-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var data = {
+                    title: btn.getAttribute('data-share-title'),
+                    text: btn.getAttribute('data-share-text'),
+                    url: btn.getAttribute('data-share-url')
+                };
+                if (navigator.share) {
+                    navigator.share(data).catch(function () {});
+                } else if (navigator.clipboard) {
+                    navigator.clipboard.writeText(data.url).then(function () {
+                        var original = btn.textContent;
+                        btn.textContent = '✓ Link copied!';
+                        setTimeout(function () { btn.textContent = original; }, 2000);
+                    });
+                }
+            });
+        });
+    </script>
 
     <footer>
         <div class="container">
