@@ -7,8 +7,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 VOICE="en-US-AvaNeural"
-PAD=1.0          # seconds of silence after each VO
-FADE=0.4         # per-scene fade in/out (fade-in skipped on first scene so the video opens on content)
+PAD=0.6          # tighter cuts
+FADE=0.3
 W=1920; H=1080
 mkdir -p out
 rm -f out/concat.txt
@@ -34,7 +34,7 @@ pathlib.Path('out/render-$name.html').write_text(html)
     "file://$PWD/out/render-$name.html" 2>/dev/null
   sips --resampleWidth $W "$png" >/dev/null
 
-  python3 -m edge_tts --voice "$VOICE" --file "$dir/vo.txt" --write-media "$mp3" >/dev/null 2>&1
+  python3 -m edge_tts --voice "$VOICE" --rate=+8% --file "$dir/vo.txt" --write-media "$mp3" >/dev/null 2>&1
   vodur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$mp3")
   dur=$(echo "$vodur + $PAD" | bc)
   fadeout=$(echo "$dur - $FADE" | bc)
@@ -69,9 +69,9 @@ done < out/concat.txt
 ffmpeg -y -v error "${inputs[@]}" \
   -filter_complex "${fc}concat=n=$n:v=1:a=1[v][a]" -map "[v]" -map "[a]" \
   -c:v libx264 -pix_fmt yuv420p -preset medium -crf 18 -c:a aac -b:a 192k \
-  -movflags +faststart out/store-owner-tutorial.mp4
-ffmpeg -y -v error -i out/store-owner-tutorial.mp4 -c:v libx264 -preset slow -crf 26 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart out/store-owner-tutorial-web.mp4
+  -movflags +faststart out/user-tour.mp4
+ffmpeg -y -v error -i out/user-tour.mp4 -c:v libx264 -preset slow -crf 26 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart out/user-tour-web.mp4
 # poster image for embeds (explicit poster = no black preview anywhere)
-ffmpeg -y -v error -i out/store-owner-tutorial-web.mp4 -frames:v 1 -q:v 2 out/store-owner-tutorial-poster.jpg
+ffmpeg -y -v error -i out/user-tour-web.mp4 -frames:v 1 -q:v 2 out/user-tour-poster.jpg
 echo "DONE"
-ls -lh out/store-owner-tutorial.mp4 out/store-owner-tutorial-web.mp4
+ls -lh out/user-tour.mp4 out/user-tour-web.mp4
