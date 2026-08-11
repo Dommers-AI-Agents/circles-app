@@ -4229,10 +4229,15 @@ extension PlaceDetailViewController {
         guard isVenueOwner, !viewingAsCustomer, ownerDescriptionEditor == nil else { return }
         guard let index = aboutStackView.arrangedSubviews.firstIndex(of: descriptionLabel) else { return }
 
+        // The editor must be unmistakable against the card in dark mode —
+        // page-background black made it an invisible typing target
         let editor = UITextView()
         editor.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        editor.backgroundColor = Constants.Colors.background
+        editor.textColor = Constants.Colors.label
+        editor.backgroundColor = Constants.Colors.tertiaryBackground
         editor.layer.cornerRadius = 8
+        editor.layer.borderWidth = 1
+        editor.layer.borderColor = Constants.Colors.primary.withAlphaComponent(0.5).cgColor
         editor.text = place.description ?? ""
         editor.heightAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
 
@@ -4249,6 +4254,17 @@ extension PlaceDetailViewController {
         descriptionLabel.isHidden = true
         ownerDescriptionEditor = editor
         editor.becomeFirstResponder()
+
+        // Bring the editor above the keyboard — otherwise the owner types
+        // blind with only QuickType echoing their words
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self = self, let editor = self.ownerDescriptionEditor else { return }
+            let rect = editor.convert(editor.bounds, to: self.scrollView)
+            self.scrollView.setContentOffset(
+                CGPoint(x: 0, y: max(0, rect.minY - 120)),
+                animated: true
+            )
+        }
     }
 
     @objc private func ownerDescriptionCancelTapped() {
