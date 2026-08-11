@@ -165,20 +165,27 @@ class MediaCacheService {
             // Check if expired (skip for permanent content)
             if !cachedMedia.isPermanent && cachedMedia.isExpired {
                 Logger.debug("⚠️ MediaCacheService: Cache expired for \(mediaId)")
-                self.removeFromCache(mediaId: mediaId)
+                // cacheIndex mutations must go through a barrier — this closure is a
+                // concurrent reader, and mutating here corrupts the dictionary
+                self.cacheQueue.async(flags: .barrier) {
+                    self.removeFromCache(mediaId: mediaId)
+                }
                 DispatchQueue.main.async {
                     completion(nil)
                 }
                 return
             }
-            
+
             // Read from disk
             do {
                 let data = try Data(contentsOf: URL(fileURLWithPath: cachedMedia.localPath))
-                
+
                 // Update last accessed time
                 cachedMedia.markAccessed()
-                self.cacheIndex[mediaId] = cachedMedia
+                let updatedMedia = cachedMedia
+                self.cacheQueue.async(flags: .barrier) {
+                    self.cacheIndex[mediaId] = updatedMedia
+                }
                 
                 // Add to memory cache
                 self.memoryCache.setObject(data as NSData, forKey: mediaId as NSString, cost: data.count)
@@ -357,13 +364,15 @@ class MediaCacheService {
     // MARK: - Public Interface
     
     func getCacheStatistics() -> CacheMetadata {
-        return CacheMetadata(
-            totalSize: calculateUserCacheSize() + calculateNetworkCacheSize(),
-            itemCount: cacheIndex.count,
-            lastCleanup: Date(),
-            userContentSize: calculateUserCacheSize(),
-            networkContentSize: calculateNetworkCacheSize()
-        )
+        return cacheQueue.sync {
+            CacheMetadata(
+                totalSize: calculateUserCacheSize() + calculateNetworkCacheSize(),
+                itemCount: cacheIndex.count,
+                lastCleanup: Date(),
+                userContentSize: calculateUserCacheSize(),
+                networkContentSize: calculateNetworkCacheSize()
+            )
+        }
     }
     
     func clearNetworkCache() {
