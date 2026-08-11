@@ -1311,6 +1311,9 @@ exports.getReelsFeed = async (req, res) => {
       userIds.map(id => db.collection(COLLECTIONS.USERS).doc(id).get())
     );
     
+    // Viewer's follow state rides along so the reel cell can render
+    // Follow vs already-following without a second request
+    const viewerFollowing = new Set((userDoc.data() || {}).following || []);
     const usersMap = {};
     userDocs.forEach(doc => {
       if (doc.exists) {
@@ -1319,7 +1322,8 @@ exports.getReelsFeed = async (req, res) => {
           id: doc.id,
           displayName: userData.displayName,
           profilePicture: userData.profilePicture,
-          isVerified: userData.isVerified || false
+          isVerified: userData.isVerified || false,
+          isFollowing: viewerFollowing.has(doc.id)
         };
       }
     });

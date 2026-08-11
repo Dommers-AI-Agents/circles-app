@@ -396,10 +396,51 @@ extension VideoReelsViewController: VideoReelCellDelegate {
         }
     }
     
+    func videoReelCellDidTapFollow(_ cell: VideoReelCell) {
+        guard let indexPath = collectionView.indexPath(for: cell) else { return }
+        let ownerId = reels[indexPath.item].userId
+
+        APIService.shared.request(
+            endpoint: "users/\(ownerId)/follow",
+            method: .post,
+            requiresAuth: true
+        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let response):
+                    PiggyBankDepositView.play(credit: response.piggyBank)
+                    self.markReelOwnerFollowed(ownerId)
+                    cell.showFollowConfirmed()
+                case .failure(let error):
+                    // "Already following" means the local state was stale —
+                    // adopt the server's answer and hide the button
+                    if error.serverMessage?.lowercased().contains("already following") == true {
+                        self.markReelOwnerFollowed(ownerId)
+                        cell.showFollowConfirmed()
+                    } else {
+                        cell.resetFollowButton()
+                        Logger.debug("Failed to follow from reel: \(error)")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Stamp isFollowing on every loaded reel from this owner so recycled
+    /// cells render the followed state.
+    private func markReelOwnerFollowed(_ ownerId: String) {
+        for index in reels.indices where reels[index].userId == ownerId {
+            if let user = reels[index].user {
+                reels[index].user = user.copy(isFollowing: true)
+            }
+        }
+    }
+
     func videoReelCellDidTapComment(_ cell: VideoReelCell) {
         guard let indexPath = collectionView.indexPath(for: cell) else { return }
         let reel = reels[indexPath.item]
-        
+
         // Pause current video
         pauseAllVideos()
         

@@ -368,6 +368,11 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
             method: method,
             requiresAuth: true
         ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+            if case .success(let response) = result, !wasLiked {
+                // Liking someone's moment earns a nickel — celebrate it here
+                // too, not just in the full-screen player
+                PiggyBankDepositView.play(credit: response.piggyBank)
+            }
             if case .failure(let error) = result {
                 // Revert on failure
                 DispatchQueue.main.async {
@@ -375,17 +380,58 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
                     reel.likedByCurrentUser = wasLiked
                     reel.likeCount = wasLiked ? reel.likeCount + 1 : max(0, reel.likeCount - 1)
                     self.reels[indexPath.item] = reel
-                    
+
                     if let cell = self.reelsCollectionView.cellForItem(at: indexPath) as? VideoReelCell {
                         cell.configure(with: reel, player: self.reelPlayers[indexPath.item])
                     }
-                    
+
                     Logger.debug("Failed to update like: \(error)")
                 }
             }
         }
     }
     
+    func videoReelCellDidTapFollow(_ cell: VideoReelCell) {
+        guard let indexPath = reelsCollectionView.indexPath(for: cell) else { return }
+        let ownerId = reels[indexPath.item].userId
+
+        APIService.shared.request(
+            endpoint: "users/\(ownerId)/follow",
+            method: .post,
+            requiresAuth: true
+        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let response):
+                    PiggyBankDepositView.play(credit: response.piggyBank)
+                    self.markReelOwnerFollowed(ownerId)
+                    cell.showFollowConfirmed()
+                case .failure(let error):
+                    // "Already following" means the local state was stale —
+                    // adopt the server's answer and hide the button
+                    if error.serverMessage?.lowercased().contains("already following") == true {
+                        self.markReelOwnerFollowed(ownerId)
+                        cell.showFollowConfirmed()
+                    } else {
+                        cell.resetFollowButton()
+                        Logger.debug("Failed to follow from reel: \(error)")
+                    }
+                }
+            }
+        }
+    }
+
+    /// Stamp isFollowing on every loaded reel from this owner so recycled
+    /// cells render the followed state.
+    private func markReelOwnerFollowed(_ ownerId: String) {
+        for index in reels.indices where reels[index].userId == ownerId {
+            if let user = reels[index].user {
+                reels[index].user = user.copy(isFollowing: true)
+            }
+        }
+    }
+
     func videoReelCellDidTapComment(_ cell: VideoReelCell) {
         // Not opening full screen - just show comments in a sheet
         guard let indexPath = reelsCollectionView.indexPath(for: cell) else { return }

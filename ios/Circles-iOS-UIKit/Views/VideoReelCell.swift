@@ -12,6 +12,7 @@ protocol VideoReelCellDelegate: AnyObject {
     func videoReelCellDidTapLikeCount(_ cell: VideoReelCell)
     /// Owner-only "..." menu (delete / change privacy)
     func videoReelCellDidTapMoreOptions(_ cell: VideoReelCell)
+    func videoReelCellDidTapFollow(_ cell: VideoReelCell)
 }
 
 class VideoReelCell: UICollectionViewCell {
@@ -363,6 +364,7 @@ class VideoReelCell: UICollectionViewCell {
         reactionButton.addTarget(self, action: #selector(reactionTapped), for: .touchUpInside)
         soundButton.addTarget(self, action: #selector(soundTapped), for: .touchUpInside)
         moreButton.addTarget(self, action: #selector(moreTapped), for: .touchUpInside)
+        followButton.addTarget(self, action: #selector(followTapped), for: .touchUpInside)
         watchOnPlatformButton.addTarget(self, action: #selector(watchOnPlatformTapped), for: .touchUpInside)
         playPauseButton.addTarget(self, action: #selector(playPauseTapped), for: .touchUpInside)
         
@@ -595,9 +597,14 @@ class VideoReelCell: UICollectionViewCell {
             profileImageView.image = UIImage(systemName: "person.circle.fill")
         }
         
-        // Update follow button visibility (hidden on your own moment)
+        // Follow button: hidden on your own moment and when you already
+        // follow the owner; reset to a tappable "Follow" on cell reuse
         let isOwnMoment = reel.userId == AuthService.shared.currentUser?.id
-        followButton.isHidden = isOwnMoment
+        let alreadyFollowing = reel.user?.isFollowing ?? false
+        followButton.isHidden = isOwnMoment || alreadyFollowing
+        followButton.isEnabled = true
+        followButton.alpha = 1.0
+        followButton.setTitle("Follow", for: .normal)
         // The "..." menu shows on EVERY moment: owners get delete/privacy,
         // everyone else gets report/unfollow/block (App Review 1.2)
         moreButton.isHidden = false
@@ -658,6 +665,26 @@ class VideoReelCell: UICollectionViewCell {
 
     @objc private func moreTapped() {
         delegate?.videoReelCellDidTapMoreOptions(self)
+    }
+
+    @objc private func followTapped() {
+        followButton.isEnabled = false // guard against double-taps while the request runs
+        delegate?.videoReelCellDidTapFollow(self)
+    }
+
+    /// Flip the button to a confirmed "Following" state after a successful
+    /// follow. It stays visible as feedback; the next configure hides it.
+    func showFollowConfirmed() {
+        followButton.setTitle("Following", for: .normal)
+        followButton.isEnabled = false
+        followButton.alpha = 0.7
+    }
+
+    /// Re-arm the button after a failed follow request.
+    func resetFollowButton() {
+        followButton.isEnabled = true
+        followButton.alpha = 1.0
+        followButton.setTitle("Follow", for: .normal)
     }
     
     @objc private func watchOnPlatformTapped() {
@@ -931,5 +958,6 @@ class VideoReelCell: UICollectionViewCell {
         
         // Reset follow button
         followButton.isHidden = false
+        resetFollowButton()
     }
 }
