@@ -585,13 +585,29 @@ class PaywallViewController: BaseViewController {
         
         Task {
             do {
-                let transaction = try await SubscriptionService.shared.purchase(product)
-                
+                let result = try await SubscriptionService.shared.purchase(product)
+
                 DispatchQueue.main.async { [weak self] in
                     self?.hideLoadingState()
-                    
-                    if transaction != nil {
-                        Logger.debug("✅ Subscription purchase successful!")
+
+                    switch result {
+                    case .cancelled:
+                        Logger.debug("ℹ️ User cancelled subscription purchase")
+                        self?.purchaseButton.isEnabled = true
+
+                    case .pending:
+                        Logger.debug("⏳ Subscription purchase pending approval")
+                        self?.purchaseButton.isEnabled = true
+                        if let self = self {
+                            AlertPresenter.showSuccess(
+                                title: "Approval Requested",
+                                message: "This purchase is waiting for approval (Ask to Buy). Premium unlocks automatically once it's approved.",
+                                from: self
+                            )
+                        }
+
+                    case .success(_, let backendSynced):
+                        Logger.debug("✅ Subscription purchase successful! backendSynced=\(backendSynced)")
                         // Dismiss FIRST, then congratulate from the screen
                         // underneath. Presenting the alert here and then
                         // calling dismiss() made the dismiss swallow the
@@ -599,18 +615,24 @@ class PaywallViewController: BaseViewController {
                         // stayed stuck on screen.
                         let presenter = self?.presentingViewController
                         self?.dismiss(animated: true) {
-                            if let presenter = presenter {
+                            guard let presenter = presenter else { return }
+                            if backendSynced {
                                 AlertPresenter.showSuccess(
                                     title: "Welcome to Circles Premium! 🎉",
                                     message: "Enjoy unlimited access to all features.",
                                     from: presenter
                                 )
+                            } else {
+                                // Charged at Apple, not yet recorded by our
+                                // server — the unfinished transaction re-syncs
+                                // on next launch. Don't pretend it's active.
+                                AlertPresenter.showSuccess(
+                                    title: "Payment Confirmed",
+                                    message: "Your payment went through — Premium activates automatically within a few minutes.",
+                                    from: presenter
+                                )
                             }
                         }
-                    } else {
-                        // User cancelled
-                        Logger.debug("ℹ️ User cancelled subscription purchase")
-                        self?.purchaseButton.isEnabled = true
                     }
                 }
             } catch {

@@ -122,11 +122,21 @@ class SubscriptionService: ObservableObject {
     }
     
     // MARK: - Purchase Subscription
-    
+
+    /// Outcome of a purchase attempt. Apple charging the user and the backend
+    /// recording the entitlement are separate steps — callers must not tell
+    /// the user "you're all set" unless `backendSynced` is true.
+    enum PurchaseResult {
+        case success(Transaction, backendSynced: Bool)
+        case cancelled
+        /// Ask to Buy / deferred — approval arrives later via Transaction.updates
+        case pending
+    }
+
     /// `venueId`: for Business products, the venue this subscription is being
     /// purchased for — each store subscribes separately, and the backend binds
     /// the entitlement to this one venue.
-    func purchase(_ product: SubscriptionProduct, venueId: String? = nil) async throws -> Transaction? {
+    func purchase(_ product: SubscriptionProduct, venueId: String? = nil) async throws -> PurchaseResult {
         do {
             let result = try await product.product.purchase()
 
@@ -137,40 +147,49 @@ class SubscriptionService: ObservableObject {
                 // Update subscription status
                 await updateSubscriptionStatus()
 
-                // Finish the transaction
-                await transaction.finish()
+                // Sync with backend BEFORE finishing: an unfinished transaction
+                // is redelivered by StoreKit on the next launch, which gives a
+                // failed backend sync a natural retry instead of stranding a
+                // paid-but-unrecorded subscription.
+                let synced = await syncSubscriptionWithBackend(
+                    transaction: transaction,
+                    venueId: venueId,
+                    attempts: 3
+                )
+                if synced {
+                    await transaction.finish()
+                }
 
-                // Sync with backend
-                await syncSubscriptionWithBackend(transaction: transaction, venueId: venueId)
-                
-                return transaction
-                
+                return .success(transaction, backendSynced: synced)
+
             case .userCancelled:
                 Logger.debug("⚠️ User cancelled purchase")
-                return nil
-                
+                return .cancelled
+
             case .pending:
-                Logger.debug("⏳ Purchase pending")
-                return nil
-                
+                Logger.debug("⏳ Purchase pending (Ask to Buy) — will land via Transaction.updates")
+                return .pending
+
             @unknown default:
                 Logger.debug("❓ Unknown purchase result")
-                return nil
+                return .cancelled
             }
         } catch {
             Logger.debug("❌ Purchase failed: \(error)")
             throw error
         }
     }
-    
+
     // MARK: - Restore Purchases
 
-    func restorePurchases() async throws {
+    /// `venueId`: when restoring from a venue's paywall, lets the backend bind
+    /// a not-yet-bound business subscription to that venue.
+    func restorePurchases(venueId: String? = nil) async throws {
         try await AppStore.sync()
         await updateSubscriptionStatus()
 
         // Sync with backend after restore
-        await syncCurrentSubscriptionWithBackend()
+        await syncCurrentSubscriptionWithBackend(venueId: venueId)
     }
     
     // MARK: - Check Subscription Status
@@ -278,8 +297,17 @@ class SubscriptionService: ObservableObject {
     
     private func observeTransactionUpdates() -> Task<Void, Never> {
         Task(priority: .background) {
-            for await _ in Transaction.updates {
+            // Renewals, revocations, purchases approved after Ask to Buy, and
+            // purchases made on other devices all arrive here. Each one must
+            // reach the backend, and is only finished once the backend has it
+            // (unfinished transactions redeliver on next launch = free retry).
+            for await update in Transaction.updates {
+                guard case .verified(let transaction) = update else { continue }
                 await updateSubscriptionStatus()
+                let synced = await syncSubscriptionWithBackend(transaction: transaction)
+                if synced {
+                    await transaction.finish()
+                }
             }
         }
     }
@@ -297,57 +325,87 @@ class SubscriptionService: ObservableObject {
     
     // MARK: - Backend Sync
     
-    private func syncSubscriptionWithBackend(transaction: Transaction, venueId: String? = nil) async {
-        // Get receipt data
-        guard let appStoreReceiptURL = Bundle.main.appStoreReceiptURL,
-              FileManager.default.fileExists(atPath: appStoreReceiptURL.path) else {
-            Logger.debug("❌ No receipt found")
-            return
+    /// Sends the receipt (+ venueId for business purchases) to the backend and
+    /// AWAITS the result — success means the server recorded the entitlement.
+    /// Retries with backoff; returns false only after every attempt failed.
+    @discardableResult
+    private func syncSubscriptionWithBackend(
+        transaction: Transaction,
+        venueId: String? = nil,
+        attempts: Int = 1
+    ) async -> Bool {
+        guard let receiptString = await loadReceiptBase64() else {
+            Logger.debug("❌ No app receipt available (even after refresh) — backend sync skipped")
+            return false
         }
 
-        do {
-            let receiptData = try Data(contentsOf: appStoreReceiptURL)
-            let receiptString = receiptData.base64EncodedString()
+        var body: [String: Any] = [
+            "receipt": receiptString,
+            "transactionId": transaction.id,
+            "productId": transaction.productID,
+            "originalTransactionId": transaction.originalID,
+            "purchaseDate": ISO8601DateFormatter().string(from: transaction.purchaseDate),
+            "expirationDate": transaction.expirationDate.map { ISO8601DateFormatter().string(from: $0) } ?? nil
+        ]
+        // Business purchases bind to the venue they were bought for
+        if let venueId = venueId {
+            body["venueId"] = venueId
+        }
 
-            var body: [String: Any] = [
-                "receipt": receiptString,
-                "transactionId": transaction.id,
-                "productId": transaction.productID,
-                "originalTransactionId": transaction.originalID,
-                "purchaseDate": ISO8601DateFormatter().string(from: transaction.purchaseDate),
-                "expirationDate": transaction.expirationDate.map { ISO8601DateFormatter().string(from: $0) } ?? nil
-            ]
-            // Business purchases bind to the venue they were bought for
-            if let venueId = venueId {
-                body["venueId"] = venueId
-            }
+        let isBusinessReceipt = SubscriptionProduct.isBusinessProductId(transaction.productID)
+        let totalAttempts = max(1, attempts)
 
-            let isBusinessReceipt = SubscriptionProduct.isBusinessProductId(transaction.productID)
-            APIService.shared.request(
-                endpoint: "users/subscription/verify",
-                method: .post,
-                body: body,
-                requiresAuth: true
-            ) { (result: Result<SubscriptionResponse, APIError>) in
-                switch result {
-                case .success(let response):
-                    Logger.debug("✅ Subscription synced with backend")
-                    // A business receipt must never overwrite the consumer
-                    // premium status shown in the app
-                    if !isBusinessReceipt {
-                        self.updateLocalSubscriptionInfo(response.subscription)
+        for attempt in 1...totalAttempts {
+            let succeeded = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                APIService.shared.request(
+                    endpoint: "users/subscription/verify",
+                    method: .post,
+                    body: body,
+                    requiresAuth: true
+                ) { (result: Result<SubscriptionResponse, APIError>) in
+                    switch result {
+                    case .success(let response):
+                        Logger.debug("✅ Subscription synced with backend")
+                        // A business receipt must never overwrite the consumer
+                        // premium status shown in the app
+                        if !isBusinessReceipt {
+                            self.updateLocalSubscriptionInfo(response.subscription)
+                        }
+                        continuation.resume(returning: true)
+                    case .failure(let error):
+                        Logger.debug("❌ Failed to sync subscription (attempt \(attempt)/\(totalAttempts)): \(error)")
+                        continuation.resume(returning: false)
                     }
-                case .failure(let error):
-                    Logger.debug("❌ Failed to sync subscription: \(error)")
                 }
             }
-        } catch {
-            Logger.debug("❌ Failed to read receipt: \(error)")
+            if succeeded { return true }
+            if attempt < totalAttempts {
+                try? await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
+            }
         }
+        return false
     }
 
-    /// Sync current subscription with backend (called on app launch and restore)
-    func syncCurrentSubscriptionWithBackend() async {
+    /// The backend's verifyReceipt consumes the legacy app-receipt file, which
+    /// StoreKit 2 does not guarantee exists. Refresh it once if missing.
+    private func loadReceiptBase64() async -> String? {
+        if let receipt = readReceiptBase64() { return receipt }
+        Logger.debug("🧾 App receipt missing — requesting a receipt refresh")
+        await ReceiptRefresher.refresh()
+        return readReceiptBase64()
+    }
+
+    private func readReceiptBase64() -> String? {
+        guard let url = Bundle.main.appStoreReceiptURL,
+              FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return data.base64EncodedString()
+    }
+
+    /// Sync current subscription with backend (called on app launch, login,
+    /// and restore). `venueId` lets a venue-scoped restore bind an unbound
+    /// business subscription.
+    func syncCurrentSubscriptionWithBackend(venueId: String? = nil) async {
         Logger.debug("🔄 Syncing current subscription with backend...")
 
         // Skip if user is not logged in
@@ -390,7 +448,7 @@ class SubscriptionService: ObservableObject {
 
         if let transaction = latestBusiness {
             Logger.debug("🏪 Found active business subscription, syncing with backend...")
-            await syncSubscriptionWithBackend(transaction: transaction)
+            await syncSubscriptionWithBackend(transaction: transaction, venueId: venueId)
         }
     }
     
@@ -471,6 +529,47 @@ enum SubscriptionError: LocalizedError {
         case .networkError:
             return "Network error occurred"
         }
+    }
+}
+
+// MARK: - Receipt Refresh (legacy StoreKit 1 API — StoreKit 2 has no
+// receipt-refresh equivalent, and the backend consumes the legacy receipt file)
+
+private final class ReceiptRefresher: NSObject, SKRequestDelegate {
+    // SKRequest.delegate is unsafe-unretained; keep the in-flight refresher
+    // alive until its callback fires.
+    private static var active: ReceiptRefresher?
+
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var request: SKReceiptRefreshRequest?
+
+    static func refresh() async {
+        let refresher = ReceiptRefresher()
+        active = refresher
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            refresher.continuation = continuation
+            let request = SKReceiptRefreshRequest()
+            refresher.request = request
+            request.delegate = refresher
+            request.start()
+        }
+        active = nil
+    }
+
+    func requestDidFinish(_ request: SKRequest) {
+        finish()
+    }
+
+    func request(_ request: SKRequest, didFailWithError error: Error) {
+        Logger.debug("🧾 Receipt refresh failed: \(error)")
+        finish()
+    }
+
+    private func finish() {
+        request?.delegate = nil
+        request = nil
+        continuation?.resume()
+        continuation = nil
     }
 }
 

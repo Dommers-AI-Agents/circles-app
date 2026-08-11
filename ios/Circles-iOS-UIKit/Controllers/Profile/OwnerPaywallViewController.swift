@@ -183,12 +183,20 @@ class OwnerPaywallViewController: BaseViewController {
 
         guard !businessProducts.isEmpty else {
             let note = UILabel()
-            note.text = "Business plans aren't available right now. Please try again later."
+            note.text = "Business plans aren't available right now."
             note.font = UIFont.systemFont(ofSize: 14)
             note.textColor = .secondaryLabel
             note.textAlignment = .center
             note.numberOfLines = 0
             productsStack.addArrangedSubview(note)
+
+            // Product loads fail transiently (network, StoreKit hiccups) —
+            // give the owner a way back that isn't pop-and-repush
+            let retryButton = UIButton.secondaryButton(title: "Try Again")
+            retryButton.addAction(UIAction { [weak self] _ in
+                self?.loadData()
+            }, for: .touchUpInside)
+            productsStack.addArrangedSubview(retryButton)
             return
         }
 
@@ -229,16 +237,40 @@ class OwnerPaywallViewController: BaseViewController {
         let loading = AlertPresenter.showLoading(message: "Processing...", from: self)
         Task { @MainActor in
             do {
-                let transaction = try await SubscriptionService.shared.purchase(product, venueId: venueId)
+                let result = try await SubscriptionService.shared.purchase(product, venueId: venueId)
                 loading.dismiss(animated: true) {
-                    guard transaction != nil else { return } // cancelled/pending
-                    AlertPresenter.showSuccess(
-                        title: "Welcome to Business",
-                        message: "Your store tools are unlocked — dashboard, announcements, offers, and loyalty.",
-                        from: self
-                    ) { [weak self] in
-                        self?.onSubscribed?()
-                        self?.navigationController?.popViewController(animated: true)
+                    switch result {
+                    case .cancelled:
+                        break
+                    case .pending:
+                        AlertPresenter.showSuccess(
+                            title: "Approval Requested",
+                            message: "This purchase is waiting for approval (Ask to Buy). Your store tools unlock automatically once it's approved.",
+                            from: self
+                        )
+                    case .success(_, let backendSynced):
+                        if backendSynced {
+                            AlertPresenter.showSuccess(
+                                title: "Welcome to Business",
+                                message: "Your store tools are unlocked — dashboard, announcements, offers, and loyalty.",
+                                from: self
+                            ) { [weak self] in
+                                self?.onSubscribed?()
+                                self?.navigationController?.popViewController(animated: true)
+                            }
+                        } else {
+                            // Apple charged them but our server hasn't recorded
+                            // it yet — the unfinished transaction re-syncs on
+                            // next launch, so be honest instead of celebrating.
+                            AlertPresenter.showSuccess(
+                                title: "Payment Confirmed",
+                                message: "Your payment went through, but activating your store tools is taking longer than usual. They'll unlock automatically within a few minutes — reopen this store's dashboard to check.",
+                                from: self
+                            ) { [weak self] in
+                                self?.onSubscribed?()
+                                self?.navigationController?.popViewController(animated: true)
+                            }
+                        }
                     }
                 }
             } catch {
@@ -253,25 +285,61 @@ class OwnerPaywallViewController: BaseViewController {
         let loading = AlertPresenter.showLoading(message: "Restoring...", from: self)
         Task { @MainActor in
             do {
-                try await SubscriptionService.shared.restorePurchases()
-                let restored = SubscriptionService.shared.isBusinessSubscriber
+                try await SubscriptionService.shared.restorePurchases(venueId: venueId)
+                // Apple only knows this Apple ID has A business subscription —
+                // the server knows which store it's bound to. Confirm against
+                // the server before telling the owner this venue is active.
+                let hasAppleSub = SubscriptionService.shared.isBusinessSubscriber
+                self.confirmRestoreAgainstServer(hasAppleSub: hasAppleSub, loading: loading)
+            } catch {
                 loading.dismiss(animated: true) {
-                    if restored {
+                    self.showError(error)
+                }
+            }
+        }
+    }
+
+    private func confirmRestoreAgainstServer(hasAppleSub: Bool, loading: UIAlertController) {
+        guard let venueId = venueId else {
+            loading.dismiss(animated: true) {
+                if hasAppleSub {
+                    AlertPresenter.showSuccess(
+                        title: "Restored",
+                        message: "Your business subscription is active.",
+                        from: self
+                    ) { [weak self] in
+                        self?.onSubscribed?()
+                        self?.navigationController?.popViewController(animated: true)
+                    }
+                } else {
+                    AlertPresenter.showError(message: "No business subscription found to restore.", from: self)
+                }
+            }
+            return
+        }
+
+        RewardsService.shared.getMyVenues { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                let mine = (try? result.get())?.first { $0.venueId == venueId }
+                loading.dismiss(animated: true) {
+                    if mine?.ownerPremium == true {
                         AlertPresenter.showSuccess(
                             title: "Restored",
-                            message: "Your business subscription is active.",
+                            message: "Your business subscription is active for this store.",
                             from: self
                         ) { [weak self] in
                             self?.onSubscribed?()
                             self?.navigationController?.popViewController(animated: true)
                         }
+                    } else if hasAppleSub {
+                        AlertPresenter.showError(
+                            message: "Your Apple ID has a Business subscription, but it's assigned to a different store. Each store needs its own subscription.",
+                            from: self
+                        )
                     } else {
                         AlertPresenter.showError(message: "No business subscription found to restore.", from: self)
                     }
-                }
-            } catch {
-                loading.dismiss(animated: true) {
-                    self.showError(error)
                 }
             }
         }

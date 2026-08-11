@@ -62,7 +62,9 @@ class VenueManageViewController: BaseViewController {
         self.windowCode = venue.windowCode
         self.windowStickerUrl = venue.windowStickerUrl
         self.venuePlaceId = venue.globalPlaceId ?? venue.googlePlaceId
-        self.ownerPremium = venue.ownerPremium ?? true
+        // Default LOCKED until the server confirms — an optimistic-true here
+        // showed free owners unlocked tools that then 403'd on tap
+        self.ownerPremium = venue.ownerPremium ?? false
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -142,9 +144,12 @@ class VenueManageViewController: BaseViewController {
         let paywallVC = OwnerPaywallViewController()
         paywallVC.venueId = venueId
         paywallVC.onSubscribed = { [weak self] in
-            self?.ownerPremium = true
-            self?.tableView.reloadData()
-            self?.updateBusinessHeader(premium: true)
+            // Server truth, not local optimism: the purchase path now awaits
+            // the backend verify (and the backend busts its user cache), so
+            // this refresh comes back premium — and if activation is still in
+            // flight, the screen stays honest instead of unlocking rows that
+            // would 403.
+            self?.refreshOwnerPremium()
         }
         navigationController?.pushViewController(paywallVC, animated: true)
     }
