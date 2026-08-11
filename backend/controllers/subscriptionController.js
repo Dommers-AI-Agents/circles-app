@@ -2,6 +2,7 @@ const admin = require('firebase-admin');
 const axios = require('axios');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
 const ownerSubscriptionService = require('../services/ownerSubscriptionService');
+const { invalidateUserCache } = require('../middleware/firebaseAuth');
 
 // Supported Product IDs
 // Consumer premium:
@@ -124,14 +125,32 @@ exports.verifySubscription = async (req, res) => {
         let businessResponse = null;
         if (businessEntry) {
             const b = entryStatus(businessEntry);
+            const environment = verificationData.environment || 'Production';
             const ownerRef = admin.firestore().collection('users').doc(userId);
+            const existing = (await ownerRef.get()).data() || {};
+
+            // Sandbox guard, mirroring the consumer family: a dev/TestFlight
+            // build signed into a sandbox Apple ID must never overwrite a real
+            // paid owner entitlement (sandbox subs expire in minutes).
+            const ownerWasProduction =
+                (existing.ownerSubscriptionEnvironment || 'Production') === 'Production';
+            if (environment === 'Sandbox' && ownerWasProduction && existing.ownerOriginalTransactionId) {
+                console.warn(`🧪 Ignoring SANDBOX business receipt for ${userId}: production owner entitlement on file`);
+                businessResponse = {
+                    scope: 'business',
+                    status: existing.ownerSubscriptionStatus,
+                    expiryDate: existing.ownerSubscriptionExpiryDate,
+                    productId: existing.ownerSubscriptionProductId,
+                    venueId: existing.ownerSubscriptionVenueId || null,
+                    ignored: 'sandbox_receipt_for_production_account'
+                };
+            } else {
 
             // The subscription covers exactly ONE venue. Bind the venue the
             // client purchased for, but only when it's this user's venue and
             // either no binding exists yet or this is a brand-new subscription
             // (new original transaction) — a routine re-verify from another
             // store's paywall must never silently move premium between stores.
-            const existing = (await ownerRef.get()).data() || {};
             let venueBinding = existing.ownerSubscriptionVenueId || null;
             const requestedVenueId = req.body.venueId || null;
             const isNewSubscription =
@@ -146,18 +165,50 @@ exports.verifySubscription = async (req, res) => {
                 }
             }
 
-            await ownerRef.update({
-                ownerSubscriptionStatus: b.status,
-                ownerSubscriptionExpiryDate: new Date(b.expiresDateMs).toISOString(),
+            // Self-heal: an active subscription that was never bound (the
+            // purchase-time verify failed, or a restore/launch sync carried no
+            // venueId) is useless. If the owner has exactly one physical
+            // venue, bind it — there is nothing else it could mean.
+            if (!venueBinding && (b.status === 'active' || b.status === 'trial')) {
+                const ownedSnap = await admin.firestore()
+                    .collection('stickerVenues')
+                    .where('ownerUserId', '==', userId)
+                    .limit(10).get();
+                const physical = ownedSnap.docs.filter(d => d.data().isVirtual !== true);
+                if (physical.length === 1) {
+                    venueBinding = physical[0].id;
+                    console.warn(`🏪 Self-heal: bound unbound business sub for ${userId} to their only venue ${venueBinding}`);
+                }
+            }
+
+            // A webhook-granted billing-retry grace period outlives a receipt
+            // whose newest entry is the already-lapsed period — re-verifies on
+            // launch must not stomp it back to 'expired' mid-retry.
+            let finalStatus = b.status;
+            let finalExpiryIso = new Date(b.expiresDateMs).toISOString();
+            const storedOwnerExpiry = existing.ownerSubscriptionExpiryDate
+                ? new Date(existing.ownerSubscriptionExpiryDate) : null;
+            if (existing.ownerSubscriptionStatus === 'grace_period' &&
+                storedOwnerExpiry && storedOwnerExpiry > new Date() &&
+                b.expiresDateMs <= storedOwnerExpiry.getTime()) {
+                finalStatus = 'grace_period';
+                finalExpiryIso = storedOwnerExpiry.toISOString();
+            }
+
+            await ownerRef.set({
+                ownerSubscriptionStatus: finalStatus,
+                ownerSubscriptionExpiryDate: finalExpiryIso,
                 ownerSubscriptionProductId: businessEntry.product_id,
                 ownerOriginalTransactionId: businessEntry.original_transaction_id,
                 ownerSubscriptionVenueId: venueBinding,
+                ownerSubscriptionEnvironment: environment,
                 lastOwnerReceiptVerification: new Date().toISOString()
-            });
+            }, { merge: true });
+            invalidateUserCache(userId);
 
             // Admin alert on the signup transition only: a routine re-verify
             // (same transaction, already active) stays silent.
-            const wasBusinessActive = ['active', 'trial'].includes(existing.ownerSubscriptionStatus);
+            const wasBusinessActive = ['active', 'trial', 'grace_period'].includes(existing.ownerSubscriptionStatus);
             if ((b.status === 'active' || b.status === 'trial') && (isNewSubscription || !wasBusinessActive)) {
                 require('../services/notificationService').notifyAdminPremiumSignup({
                     scope: 'business',
@@ -185,12 +236,13 @@ exports.verifySubscription = async (req, res) => {
             }
             businessResponse = {
                 scope: 'business',
-                status: b.status,
-                expiryDate: new Date(b.expiresDateMs).toISOString(),
+                status: finalStatus,
+                expiryDate: finalExpiryIso,
                 autoRenewEnabled: businessEntry.auto_renew_status === '1',
                 productId: businessEntry.product_id,
                 venueId: venueBinding
             };
+            } // end sandbox-guard else
         }
 
         // ---- Consumer premium family ----
@@ -242,13 +294,23 @@ exports.verifySubscription = async (req, res) => {
                 delete updateData.subscriptionExpiryDate;
             }
 
+            // A webhook-granted billing-retry grace period outlives a receipt
+            // whose newest entry is the lapsed period — don't stomp it.
+            if (existingData.subscriptionStatus === 'grace_period' &&
+                existingExpiry && existingExpiry > new Date() &&
+                c.expiresDateMs <= existingExpiry.getTime()) {
+                delete updateData.subscriptionStatus;
+                delete updateData.subscriptionExpiryDate;
+            }
+
             // If it's a trial, record trial dates
             if (c.isTrialPeriod && c.status === 'trial' && !existingData.trialStartDate) {
                 updateData.trialStartDate = new Date(parseInt(consumerEntry.purchase_date_ms)).toISOString();
                 updateData.trialEndDate = new Date(c.expiresDateMs).toISOString();
             }
 
-            await userRef.update(updateData);
+            await userRef.set(updateData, { merge: true });
+            invalidateUserCache(userId);
 
             // Admin alert on the signup transition only (new subscriber, or a
             // lapsed one coming back) — never on routine re-verifies.
@@ -382,10 +444,17 @@ function decodeJwsPayload(jws) {
     }
 }
 
+// Apple Root CA - G3 DER SHA-256 (https://www.apple.com/certificateauthority/).
+// The ONLY trust anchor an App Store Server Notification chain may terminate
+// at. The previous check (`/Apple/.test(root.subject)`) accepted any
+// self-signed root that merely *named itself* Apple — i.e. anyone could forge
+// a chain and flip arbitrary subscriptions.
+const APPLE_ROOT_CA_G3_SHA256 = '63343ABFB89A6A03EBB57E9B3F5FA7BE7C4F5C756F3017B3A8C488C3653E9179';
+const EXPECTED_BUNDLE_ID = 'com.favcircles.circles';
+
 // Verify an App Store Server Notification V2 envelope: ES256 signature against
-// the x5c leaf certificate, each chain link signed by its parent, and an
-// Apple-issued root. (Pinning the exact Apple Root CA G3 fingerprint via
-// Apple's official app-store-server-library is the eventual upgrade.)
+// the x5c leaf certificate, each chain link signed by its parent, chain
+// validity dates, a root pinned to Apple Root CA G3, and our own bundle id.
 function verifyAppleJws(signedPayload) {
     const crypto = require('crypto');
     const jwt = require('jsonwebtoken');
@@ -398,9 +467,23 @@ function verifyAppleJws(signedPayload) {
         if (!certs[i].verify(certs[i + 1].publicKey)) throw new Error(`certificate chain broken at link ${i}`);
     }
     const root = certs[certs.length - 1];
-    if (!/Apple/.test(root.subject)) throw new Error('chain does not terminate at an Apple root');
+    const rootFingerprint = (root.fingerprint256 || '').replace(/:/g, '').toUpperCase();
+    if (rootFingerprint !== APPLE_ROOT_CA_G3_SHA256) {
+        throw new Error('chain does not terminate at the pinned Apple Root CA G3');
+    }
+    const now = new Date();
+    for (const cert of certs) {
+        if (now < new Date(cert.validFrom) || now > new Date(cert.validTo)) {
+            throw new Error('certificate in chain is expired or not yet valid');
+        }
+    }
     const leafKey = certs[0].publicKey.export({ type: 'spki', format: 'pem' });
-    return jwt.verify(signedPayload, leafKey, { algorithms: ['ES256'] });
+    const payload = jwt.verify(signedPayload, leafKey, { algorithms: ['ES256'] });
+    const bundleId = payload && payload.data && payload.data.bundleId;
+    if (bundleId && bundleId !== EXPECTED_BUNDLE_ID) {
+        throw new Error(`notification is for foreign bundleId ${bundleId}`);
+    }
+    return payload;
 }
 
 exports.handleSubscriptionWebhook = async (req, res) => {
@@ -438,11 +521,18 @@ exports.handleSubscriptionWebhook = async (req, res) => {
         const { originalTransactionId, expiresDate, productId } = transaction;
         console.log(`🍎 Webhook: ${notificationType} ${subtype || ''} | product=${productId} | origTx=${originalTransactionId} | expires=${expiresDate ? new Date(Number(expiresDate)).toISOString() : '-'}`);
 
+        const notificationEnvironment = (data && data.environment)
+            || (transaction && transaction.environment)
+            || 'Production';
+
         // Business (store-owner) notifications update owner* fields on the
         // user found by the owner transaction id — fully separate from the
         // consumer premium path below
         if (ownerSubscriptionService.isBusinessProduct(productId)) {
-            await handleBusinessWebhook({ notificationType, originalTransactionId, expiresDate, renewal });
+            await handleBusinessWebhook({
+                notificationType, originalTransactionId, expiresDate, renewal,
+                environment: notificationEnvironment
+            });
             return;
         }
 
@@ -473,18 +563,23 @@ exports.handleSubscriptionWebhook = async (req, res) => {
         // build signed into a tester Apple ID generates real Apple webhooks —
         // and sandbox subscriptions expire in minutes, so an EXPIRED for a test
         // purchase would mark a paying customer expired.
-        const notificationEnvironment = (data && data.environment)
-            || (transaction && transaction.environment)
-            || 'Production';
         const storedEnvironment = userData.subscriptionEnvironment || 'Production';
         if (notificationEnvironment === 'Sandbox' && storedEnvironment === 'Production') {
             console.warn(`🧪 Ignoring SANDBOX ${notificationType} for ${userId} — account holds a production entitlement`);
             return;
         }
 
+        // Apple retries and can deliver out of order: a stale EXPIRED landing
+        // after a DID_RENEW must not kill a renewed subscription. Downgrades
+        // whose expiry is OLDER than what we already have on file are stale.
+        const notifExpiryMs = expiresDate ? Number(expiresDate) : null;
+        const storedExpiryMs = userData.subscriptionExpiryDate
+            ? Date.parse(userData.subscriptionExpiryDate) : null;
+        const isStaleDowngrade = notifExpiryMs && storedExpiryMs && notifExpiryMs < storedExpiryMs;
+
         // Process based on notification type
         let updateData = {};
-        
+
         switch (notificationType) {
             case 'SUBSCRIBED':
             case 'DID_RENEW':
@@ -494,8 +589,12 @@ exports.handleSubscriptionWebhook = async (req, res) => {
                     lastWebhookReceived: new Date().toISOString()
                 };
                 break;
-                
+
             case 'DID_FAIL_TO_RENEW':
+                if (isStaleDowngrade) {
+                    console.log(`🍎 Ignoring stale ${notificationType} for ${userId} (older than stored expiry)`);
+                    return;
+                }
                 // Check if in grace period
                 if (renewal && renewal.gracePeriodExpiresDate) {
                     updateData = {
@@ -510,15 +609,23 @@ exports.handleSubscriptionWebhook = async (req, res) => {
                     lastWebhookReceived: new Date().toISOString()
                 };
                 break;
-                
+
             case 'EXPIRED':
+                if (isStaleDowngrade) {
+                    console.log(`🍎 Ignoring stale EXPIRED for ${userId} (older than stored expiry)`);
+                    return;
+                }
                 updateData = {
                     subscriptionStatus: 'expired',
-                    subscriptionExpiryDate: new Date(Number(expiresDate)).toISOString(),
                     lastWebhookReceived: new Date().toISOString()
                 };
+                // GRACE_PERIOD_EXPIRED-style events can arrive without an
+                // expiresDate — never write new Date(NaN)
+                if (notifExpiryMs) {
+                    updateData.subscriptionExpiryDate = new Date(notifExpiryMs).toISOString();
+                }
                 break;
-                
+
             case 'GRACE_PERIOD_EXPIRED':
                 updateData = {
                     subscriptionStatus: 'expired',
@@ -552,6 +659,7 @@ exports.handleSubscriptionWebhook = async (req, res) => {
             }
             if (Object.keys(updateData).length > 0) {
                 await admin.firestore().collection('users').doc(userId).update(updateData);
+                invalidateUserCache(userId);
                 console.log(`Updated user ${userId} subscription status via webhook (${notificationType})`);
             }
         }
@@ -564,7 +672,7 @@ exports.handleSubscriptionWebhook = async (req, res) => {
 
 // Business-subscription webhook handling: same notification types as consumer,
 // mapped onto the owner* fields.
-async function handleBusinessWebhook({ notificationType, originalTransactionId, expiresDate, renewal }) {
+async function handleBusinessWebhook({ notificationType, originalTransactionId, expiresDate, renewal, environment }) {
     const usersSnapshot = await admin.firestore()
         .collection('users')
         .where('ownerOriginalTransactionId', '==', originalTransactionId)
@@ -582,6 +690,23 @@ async function handleBusinessWebhook({ notificationType, originalTransactionId, 
         return;
     }
 
+    const userDoc = usersSnapshot.docs[0];
+    const userData = userDoc.data() || {};
+
+    // Sandbox events must never touch a production owner entitlement (a
+    // sandbox test sub expires in minutes and would lock a paying store).
+    const storedOwnerEnvironment = userData.ownerSubscriptionEnvironment || 'Production';
+    if ((environment || 'Production') === 'Sandbox' && storedOwnerEnvironment === 'Production') {
+        console.warn(`🧪 Ignoring SANDBOX business ${notificationType} for ${userDoc.id} — production owner entitlement on file`);
+        return;
+    }
+
+    // Out-of-order retries: a downgrade older than the stored expiry is stale.
+    const notifExpiryMs = expiresDate ? Number(expiresDate) : null;
+    const storedExpiryMs = userData.ownerSubscriptionExpiryDate
+        ? Date.parse(userData.ownerSubscriptionExpiryDate) : null;
+    const isStaleDowngrade = notifExpiryMs && storedExpiryMs && notifExpiryMs < storedExpiryMs;
+
     let updateData = {};
     switch (notificationType) {
         case 'SUBSCRIBED':
@@ -592,6 +717,10 @@ async function handleBusinessWebhook({ notificationType, originalTransactionId, 
             };
             break;
         case 'DID_FAIL_TO_RENEW': {
+            if (isStaleDowngrade) {
+                console.log(`🍎 Ignoring stale business ${notificationType} for ${userDoc.id}`);
+                return;
+            }
             if (renewal && renewal.gracePeriodExpiresDate) {
                 updateData = {
                     ownerSubscriptionStatus: 'grace_period',
@@ -604,10 +733,16 @@ async function handleBusinessWebhook({ notificationType, originalTransactionId, 
         }
         case 'EXPIRED':
         case 'GRACE_PERIOD_EXPIRED':
-            updateData = {
-                ownerSubscriptionStatus: 'expired',
-                ownerSubscriptionExpiryDate: new Date(Number(expiresDate)).toISOString()
-            };
+            if (isStaleDowngrade) {
+                console.log(`🍎 Ignoring stale business ${notificationType} for ${userDoc.id}`);
+                return;
+            }
+            updateData = { ownerSubscriptionStatus: 'expired' };
+            // GRACE_PERIOD_EXPIRED can arrive without expiresDate — never
+            // write new Date(NaN) (it throws and loses the whole update)
+            if (notifExpiryMs) {
+                updateData.ownerSubscriptionExpiryDate = new Date(notifExpiryMs).toISOString();
+            }
             break;
         case 'REFUND':
         case 'REVOKE':
@@ -619,8 +754,9 @@ async function handleBusinessWebhook({ notificationType, originalTransactionId, 
     }
 
     updateData.lastOwnerWebhookReceived = new Date().toISOString();
-    await usersSnapshot.docs[0].ref.update(updateData);
-    console.log(`Updated user ${usersSnapshot.docs[0].id} business subscription via webhook (${notificationType})`);
+    await userDoc.ref.update(updateData);
+    invalidateUserCache(userDoc.id);
+    console.log(`Updated user ${userDoc.id} business subscription via webhook (${notificationType})`);
 }
 
 // @desc    Start free trial (for testing)

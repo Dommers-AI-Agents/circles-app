@@ -30,6 +30,18 @@ const stampLastActive = (userId) => {
 const USER_CACHE_TTL_MS = 20 * 1000;
 const userCache = new Map(); // decoded.uid -> { userData, finalUserId, expires }
 
+// Entitlement writes (subscription verify, webhooks) must be visible to the
+// very next GET — a freshly paying owner otherwise sees "locked" dashboards
+// for up to TTL seconds. Callers pass the uid they wrote for; we drop every
+// cache entry that resolved to that user (alt ids share a finalUserId).
+exports.invalidateUserCache = (userId) => {
+  if (!userId) return;
+  userCache.delete(userId);
+  for (const [key, entry] of userCache) {
+    if (entry.finalUserId === userId) userCache.delete(key);
+  }
+};
+
 const buildReqUser = (decoded, userData, finalUserId) => ({
   uid: finalUserId,
   firebaseDocId: finalUserId,

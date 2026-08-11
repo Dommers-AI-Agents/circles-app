@@ -67,6 +67,11 @@ exports.securityHeaders = helmet({
   crossOriginEmbedderPolicy: false // Allow embedding from social media platforms
 });
 
+// Opaque payload fields the XSS regexes must never touch: base64 receipts and
+// signed JWS blobs are not HTML, and stripping "on…=" runs from them corrupts
+// the payload (Apple then rejects the receipt as malformed, error 21002).
+const SANITIZE_EXEMPT_KEYS = new Set(['receipt', 'receiptData', 'signedPayload']);
+
 // Input sanitization middleware
 exports.sanitizeInput = (req, res, next) => {
   // Recursively sanitize strings in request body
@@ -84,7 +89,7 @@ exports.sanitizeInput = (req, res, next) => {
       const sanitized = {};
       for (const key in obj) {
         if (obj.hasOwnProperty(key)) {
-          sanitized[key] = sanitize(obj[key]);
+          sanitized[key] = SANITIZE_EXEMPT_KEYS.has(key) ? obj[key] : sanitize(obj[key]);
         }
       }
       return sanitized;
@@ -95,7 +100,7 @@ exports.sanitizeInput = (req, res, next) => {
   if (req.body) {
     req.body = sanitize(req.body);
   }
-  
+
   next();
 };
 
