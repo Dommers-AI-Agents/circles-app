@@ -13,6 +13,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     private let locationManager = CLLocationManager()
     private var userLocation: CLLocation?
     private var selectedCategory: PlaceCategory?
+    private var selectedTag: String? // Raw tag value from place.tags; nil = All
     private var isSharedViaLink: Bool = false
     private var editors: [User] = []
     
@@ -163,6 +164,17 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         return button
     }()
     
+    private let tagChipBar: TagChipBar = {
+        let bar = TagChipBar()
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.isHidden = true // Shown only when the circle's places have tags
+        return bar
+    }()
+
+    // Collapse the chip row to zero height when no place has tags
+    private var tagChipBarHeightConstraint: NSLayoutConstraint?
+    private var tagChipBarTopConstraint: NSLayoutConstraint?
+
     private let mapView: MKMapView = {
         let mapView = MKMapView()
         mapView.layer.cornerRadius = 12
@@ -353,6 +365,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         
         contentView.addSubview(placesLabel)
         contentView.addSubview(categoryFilterButton)
+        contentView.addSubview(tagChipBar)
         contentView.addSubview(mapView)
         contentView.addSubview(expandMapButton)
         contentView.addSubview(zoomToMeButton)
@@ -454,8 +467,12 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             categoryFilterButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             categoryFilterButton.heightAnchor.constraint(equalToConstant: 32),
             
+            // Tag chip bar (zero height + zero top spacing when hidden)
+            tagChipBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            tagChipBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+
             // Map view
-            mapView.topAnchor.constraint(equalTo: placesLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            mapView.topAnchor.constraint(equalTo: tagChipBar.bottomAnchor, constant: Constants.Spacing.medium),
             mapView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             mapView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             mapView.heightAnchor.constraint(equalToConstant: 200),
@@ -494,6 +511,18 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         
         // Initially activate the editors constraint (will be switched in configureEditors)
         circleInfoViewBottomToEditorsConstraint?.isActive = true
+
+        // Tag chip bar collapses to zero height (and zero top spacing) when the
+        // circle's places have no tags, so the layout is unchanged without it
+        tagChipBarTopConstraint = tagChipBar.topAnchor.constraint(equalTo: placesLabel.bottomAnchor, constant: 0)
+        tagChipBarTopConstraint?.isActive = true
+        tagChipBarHeightConstraint = tagChipBar.heightAnchor.constraint(equalToConstant: 0)
+        tagChipBarHeightConstraint?.isActive = true
+
+        tagChipBar.onSelect = { [weak self] tag in
+            self?.selectedTag = tag
+            self?.applyFilter()
+        }
         
         // Add constraints for add place button if it exists
         if circle.canAddPlaces {
@@ -885,6 +914,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                         
                         // Places are already ordered by the backend based on the circle's places array
                         self?.places = places
+                        self?.updateTagChips()
                         self?.applyFilter()
                         self?.updateAddPlaceButtonTitle()
                     case .failure(let error):
@@ -892,6 +922,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                         // Don't use sample places - show empty state instead
                         self?.places = []
                         self?.filteredPlaces = []
+                        self?.updateTagChips()
                         self?.updateAddPlaceButtonTitle()
                     }
                     
@@ -919,6 +950,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                         
                         // Places are already ordered by the backend based on the circle's places array
                         self?.places = places
+                        self?.updateTagChips()
                         self?.applyFilter()
                         self?.updateAddPlaceButtonTitle()
                     case .failure(let error):
@@ -926,6 +958,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                         // Don't use sample places - show empty state instead
                         self?.places = []
                         self?.filteredPlaces = []
+                        self?.updateTagChips()
                         self?.updateAddPlaceButtonTitle()
                     }
                     
@@ -1811,13 +1844,61 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         present(actionSheet, animated: true)
     }
     
-    private func applyFilter() {
-        if let category = selectedCategory {
-            filteredPlaces = places.filter { $0.category == category }
-        } else {
-            filteredPlaces = places
+    /// Re-derives the tag chip row from the current places. Chips are the 12
+    /// most common distinct tags (case-insensitive), most frequent first. The
+    /// row is hidden entirely when no place has tags; the current selection is
+    /// preserved if its tag still exists, otherwise it resets to All.
+    private func updateTagChips() {
+        // Count tags case-insensitively, keeping the first-seen raw spelling
+        var counts: [String: Int] = [:] // lowercased -> count
+        var rawSpelling: [String: String] = [:] // lowercased -> raw value
+        for place in places {
+            guard let tags = place.tags else { continue }
+            // De-dupe within a single place so one place can't inflate a tag
+            let uniqueTags = Set(tags.map { $0.lowercased() })
+            for lowered in uniqueTags {
+                let trimmed = lowered.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                counts[trimmed, default: 0] += 1
+                if rawSpelling[trimmed] == nil {
+                    rawSpelling[trimmed] = tags.first { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == trimmed }
+                }
+            }
         }
-        
+
+        // Most common first, alphabetical tie-break; cap at 12 chips
+        let orderedTags = counts
+            .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+            .prefix(12)
+            .compactMap { rawSpelling[$0.key] }
+
+        let hasTags = !orderedTags.isEmpty
+        tagChipBar.isHidden = !hasTags
+        tagChipBarHeightConstraint?.constant = hasTags ? 36 : 0
+        tagChipBarTopConstraint?.constant = hasTags ? Constants.Spacing.medium : 0
+
+        // Reset selection to All if the selected tag disappeared
+        if let selected = selectedTag,
+           !orderedTags.contains(where: { $0.caseInsensitiveCompare(selected) == .orderedSame }) {
+            selectedTag = nil
+        }
+        tagChipBar.setTags(orderedTags, selected: selectedTag)
+    }
+
+    private func applyFilter() {
+        filteredPlaces = places.filter { place in
+            if let category = selectedCategory, place.category != category {
+                return false
+            }
+            if let tag = selectedTag {
+                let placeTags = place.tags ?? []
+                guard placeTags.contains(where: { $0.caseInsensitiveCompare(tag) == .orderedSame }) else {
+                    return false
+                }
+            }
+            return true
+        }
+
         tableView.reloadData()
         
         // Update table view height
@@ -2329,8 +2410,9 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
     
     // MARK: - Drag Delegate
     func tableView(_ tableView: UITableView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
-        // Disable drag when filtering
-        guard selectedCategory == nil else { return [] }
+        // Disable drag when filtering (category or tag) — row indexes would
+        // not map back to the circle's true place order
+        guard selectedCategory == nil, selectedTag == nil else { return [] }
         
         // Only allow drag if user can edit the circle
         guard circle.canEdit else { return [] }
