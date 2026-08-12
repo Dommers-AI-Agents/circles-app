@@ -380,14 +380,14 @@ async function executeImport(userId, payload) {
       return { error: limitCheck.error };
     }
     // Visible to connections from day one (these places were largely
-    // shareable on the source platform already) but OFF the home map by
-    // default — a bulk dump shouldn't bury it. The owner can flip showOnMap
-    // from the circle's edit screen.
+    // shareable on the source platform already) AND on the home map — a new
+    // user imports precisely to jump-start their map. Anyone who finds the
+    // pins overwhelming can hide the circle via its showOnMap toggle.
     const circleData = createCircle({
       name: importCircleName,
       description: `Places imported from ${payload.source === 'google_maps' ? 'Google Maps' : payload.source === 'mapstr' ? 'Mapstr' : 'Swarm'}`,
       privacy: 'myNetwork',
-      showOnMap: false
+      showOnMap: true
     }, userId);
     const circleErrors = validateCircle(circleData);
     if (circleErrors.length > 0) {

@@ -191,7 +191,7 @@ extension ImportReviewViewController: UITableViewDataSource, UITableViewDelegate
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
         section == sections.count - 1
-            ? "Tap a place to include or exclude it. Everything imports into your \"\(targetCircleName)\" circle, kept off the home map until you turn it on from that circle's settings. Places without a pin yet will be located automatically after import."
+            ? "Tap a place to include or exclude it. Everything imports into your \"\(targetCircleName)\" circle and appears on your map — you can hide the circle from the map anytime in its settings. Places without a pin yet will be located automatically after import."
             : nil
     }
 

@@ -192,31 +192,18 @@ class SubscriptionLimitService {
   }
 
   /**
-   * Check if user can import places from other platforms
+   * Check if user can import places from other platforms.
+   *
+   * Import is FREE for everyone (2026-08-12): it's the acquisition wedge for
+   * Mapstr/Google Maps/Swarm switchers — a paywall in front of "bring your
+   * places with you" kills the conversion funnel, and an imported map seeds
+   * the network (imports are myNetwork-visible). The tier hook stays so this
+   * can be re-tightened by restoring the CAN_IMPORT check.
    * @param {string} userId - The user's ID
    * @returns {Promise<Object>} Result with canImport flag and error message if applicable
    */
   async canImport(userId) {
-    try {
-      const subscriptionData = await this.getUserSubscriptionData(userId);
-      const tier = getTierForStatus(subscriptionData.subscriptionStatus);
-
-      if (!tier.CAN_IMPORT) {
-        return {
-          canImport: false,
-          error: LIMIT_ERROR_MESSAGES.IMPORT_LIMIT
-        };
-      }
-
-      return { canImport: true };
-    } catch (error) {
-      console.error('Error checking import permission:', error);
-      // Deny import on error (fail closed for premium features)
-      return {
-        canImport: false,
-        error: 'Unable to verify subscription status'
-      };
-    }
+    return { canImport: true };
   }
 
   /**
