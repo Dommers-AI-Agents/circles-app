@@ -24,6 +24,41 @@ const googleMapsClient = new Client({});
 const googleApiKey = () => process.env.GOOGLE_MAPS_API_KEY || process.env.PLACES_API_KEY;
 
 const VALID_SOURCES = ['mapstr', 'google_maps', 'swarm'];
+
+// Every import lands in ONE circle per source ("Google Imports", …) so the
+// user can review/reorganize/delete the batch as a unit instead of having
+// Takeout list names scattered through their circles. The original list name
+// survives on each place as sourceListName. Import circles are created with
+// showOnMap:false — a 500-place dump shouldn't bury the home map; the owner
+// can flip it on from the circle's edit screen.
+const IMPORT_CIRCLE_NAMES = {
+  google_maps: 'Google Imports',
+  mapstr: 'Mapstr Imports',
+  swarm: 'Swarm Imports'
+};
+
+// User-visible tag stamped on every imported place (filter/sweep handle)
+const IMPORT_TAGS = {
+  google_maps: 'google-import',
+  mapstr: 'mapstr-import',
+  swarm: 'swarm-import'
+};
+
+// Venue-level duplicate matching: same normalized name within this distance
+// is the same place regardless of address formatting ("130 W Bland St" vs
+// "130, W Bland St, …, United States")
+const DUPLICATE_RADIUS_METERS = 250;
+
+function distanceMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const s = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+const normalizedName = s => (s || '').toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
 const MAX_PLACES_PER_REQUEST = 300;
 const RESOLVER_CONCURRENCY = 3;
 
@@ -71,6 +106,7 @@ async function loadUserPlaceIndex(userId) {
   const bySourceExternalId = new Map();
   const byGooglePlaceId = new Map();
   const byNameAddress = new Map(); // key → [{placeId, circleId, name}]
+  const byNormName = new Map();    // normalized name → [{...entry, lat, lng}]
 
   snapshot.forEach(doc => {
     const place = doc.data();
@@ -81,9 +117,26 @@ async function loadUserPlaceIndex(userId) {
     const key = nameAddressKey(place.name, place.address);
     if (!byNameAddress.has(key)) byNameAddress.set(key, []);
     byNameAddress.get(key).push(entry);
+    const coords = place.location && place.location.coordinates;
+    if (Array.isArray(coords) && coords.length === 2) {
+      const nameKey = normalizedName(place.name);
+      if (!byNormName.has(nameKey)) byNormName.set(nameKey, []);
+      byNormName.get(nameKey).push({ ...entry, lat: coords[1], lng: coords[0] });
+    }
   });
 
-  return { bySourceExternalId, byGooglePlaceId, byNameAddress };
+  return { bySourceExternalId, byGooglePlaceId, byNameAddress, byNormName };
+}
+
+// Venue-level duplicate check: same normalized name saved within
+// DUPLICATE_RADIUS_METERS. Catches case and address-format variants the
+// exact name+address key misses ("OROSOKO Sound Bar" vs "Orosoko Sound Bar").
+// Coordinate-less rows can't proximity-match — chains ("Planet Fitness")
+// would false-positive on name alone.
+function findNearbySameName(index, name, lat, lng) {
+  if (typeof lat !== 'number' || typeof lng !== 'number') return null;
+  const candidates = index.byNormName.get(normalizedName(name)) || [];
+  return candidates.find(c => distanceMeters(lat, lng, c.lat, c.lng) < DUPLICATE_RADIUS_METERS) || null;
 }
 
 async function loadOwnedCircles(userId) {
@@ -191,11 +244,16 @@ async function prepareImport(userId, payload) {
   ]);
   const circlesByName = new Map(ownedCircles.map(c => [normalizeText(c.name), c]));
 
+  // Everything imports into the one per-source circle; source list names are
+  // kept for grouping in the preview and stamped as sourceListName on places.
+  const importCircleName = IMPORT_CIRCLE_NAMES[payload.source];
+  const importCircle = circlesByName.get(normalizeText(importCircleName)) || null;
+
   const counts = { new: 0, duplicate: 0, unmapped: 0 };
   const lists = [];
 
   for (const list of payload.lists) {
-    const existingCircle = circlesByName.get(normalizeText(list.name)) || null;
+    const existingCircle = importCircle;
     // Track name+address duplicates within this request too, so two identical
     // rows in one file don't both come back 'new'.
     const seenInList = new Set();
@@ -240,12 +298,14 @@ async function prepareImport(userId, payload) {
           : 'Address pending';
       }
 
-      // Duplicate detection: stable external id → google place id → name+address
+      // Duplicate detection: stable external id → google place id →
+      // name+address → same name within 250m (venue-level)
       const dupKey = nameAddressKey(result.name, result.address);
       const existing =
         (result.sourceExternalId && index.bySourceExternalId.get(result.sourceExternalId)) ||
         (result.googlePlaceId && index.byGooglePlaceId.get(result.googlePlaceId)) ||
         (index.byNameAddress.get(dupKey) || [])[0] ||
+        findNearbySameName(index, result.name, result.lat, result.lng) ||
         (seenInList.has(dupKey) ? { placeId: null, circleId: null, name: result.name } : null);
 
       if (existing) {
@@ -267,7 +327,15 @@ async function prepareImport(userId, payload) {
     });
   }
 
-  return { preview: { lists, counts } };
+  return {
+    preview: {
+      lists,
+      counts,
+      // Where every selected place will land, so the review screen can say so
+      targetCircleName: importCircleName,
+      targetCircleExists: !!importCircle
+    }
+  };
 }
 
 /**
@@ -283,48 +351,54 @@ async function executeImport(userId, payload) {
   const index = await loadUserPlaceIndex(userId);
   const results = [];
 
+  // Resolve the single per-source import circle once ("Google Imports", …).
+  // Every list lands here; the source list name survives as sourceListName.
+  const importCircleName = IMPORT_CIRCLE_NAMES[payload.source];
+  const importTag = IMPORT_TAGS[payload.source];
+  const ownedCircles = await loadOwnedCircles(userId);
+  const existingImportCircle = ownedCircles.find(
+    c => normalizeText(c.name) === normalizeText(importCircleName)
+  );
+
+  let circleRef;
+  let createdImportCircleThisRun = false;
+  if (existingImportCircle) {
+    circleRef = db.collection(COLLECTIONS.CIRCLES).doc(existingImportCircle.id);
+  } else {
+    const limitCheck = await subscriptionLimitService.canCreateCircle(userId);
+    if (!limitCheck.canCreate) {
+      return { error: limitCheck.error };
+    }
+    // Visible to connections from day one (these places were largely
+    // shareable on the source platform already) but OFF the home map by
+    // default — a bulk dump shouldn't bury it. The owner can flip showOnMap
+    // from the circle's edit screen.
+    const circleData = createCircle({
+      name: importCircleName,
+      description: `Places imported from ${payload.source === 'google_maps' ? 'Google Maps' : payload.source === 'mapstr' ? 'Mapstr' : 'Swarm'}`,
+      privacy: 'myNetwork',
+      showOnMap: false
+    }, userId);
+    const circleErrors = validateCircle(circleData);
+    if (circleErrors.length > 0) {
+      return { error: circleErrors.join(', ') };
+    }
+    // createCircle drops unknown keys — stamp import markers after
+    circleData.isImportCircle = true;
+    circleData.importSource = payload.source;
+    circleRef = await db.collection(COLLECTIONS.CIRCLES).add(circleData);
+    createdImportCircleThisRun = true;
+  }
+
   for (const list of payload.lists) {
-    const circleName = (list.circleName || list.name || '').trim();
     const listResult = {
-      circleId: null,
-      circleName,
+      circleId: circleRef.id,
+      circleName: importCircleName,
       created: 0,
       skippedDuplicates: 0,
       failed: []
     };
-
-    // Resolve target circle: merge into an owned circle, or create one
-    let circleRef = null;
-    if (list.existingCircleId) {
-      const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(list.existingCircleId).get();
-      if (!circleDoc.exists || circleDoc.data().owner !== userId) {
-        listResult.failed.push({ name: circleName, reason: 'Target circle not found or not owned by you' });
-        results.push(listResult);
-        continue;
-      }
-      circleRef = circleDoc.ref;
-      listResult.circleId = circleDoc.id;
-      listResult.circleName = circleDoc.data().name;
-    } else {
-      const limitCheck = await subscriptionLimitService.canCreateCircle(userId);
-      if (!limitCheck.canCreate) {
-        listResult.failed.push({ name: circleName, reason: limitCheck.error });
-        results.push(listResult);
-        continue;
-      }
-      // Imported circles are visible to the user's connections from day one
-      // (these places were largely shareable/visible on the source platform
-      // already) — the import IS the user's map seed, not a hidden archive.
-      const circleData = createCircle({ name: circleName, privacy: 'myNetwork' }, userId);
-      const circleErrors = validateCircle(circleData);
-      if (circleErrors.length > 0) {
-        listResult.failed.push({ name: circleName, reason: circleErrors.join(', ') });
-        results.push(listResult);
-        continue;
-      }
-      circleRef = await db.collection(COLLECTIONS.CIRCLES).add(circleData);
-      listResult.circleId = circleRef.id;
-    }
+    const circleName = (list.circleName || list.name || '').trim();
 
     // Create places in one Firestore batch per list (≤300 places by cap,
     // well under the 500-op batch limit including the circle update).
@@ -340,7 +414,10 @@ async function executeImport(userId, payload) {
       const alreadyExists =
         (sourceId && index.bySourceExternalId.has(sourceId)) ||
         (place.googlePlaceId && index.byGooglePlaceId.has(place.googlePlaceId)) ||
-        index.byNameAddress.has(dupKey);
+        index.byNameAddress.has(dupKey) ||
+        !!findNearbySameName(index, place.name,
+          typeof place.lat === 'number' ? place.lat : null,
+          typeof place.lng === 'number' ? place.lng : null);
 
       if (alreadyExists) {
         listResult.skippedDuplicates++;
@@ -361,7 +438,8 @@ async function executeImport(userId, payload) {
         // Imported captions belong to the importer alone; publishing another
         // platform's private notes as venue comments would be a leak.
         privateNotes: place.notes || null,
-        tags: place.tags || [],
+        // Source tag makes the whole batch filterable/sweepable later
+        tags: [...new Set([...(place.tags || []), importTag])],
         website: place.sourceUrl || null,
         googlePlaceId: place.googlePlaceId || null,
         applePoiCategory: typeof place.applePoiCategory === 'string' ? place.applePoiCategory : null,
@@ -400,6 +478,11 @@ async function executeImport(userId, payload) {
       if (sourceId) index.bySourceExternalId.set(sourceId, entry);
       if (place.googlePlaceId) index.byGooglePlaceId.set(place.googlePlaceId, entry);
       index.byNameAddress.set(dupKey, [entry]);
+      if (hasCoordinates) {
+        const nameKey = normalizedName(place.name);
+        if (!index.byNormName.has(nameKey)) index.byNormName.set(nameKey, []);
+        index.byNormName.get(nameKey).push({ ...entry, lat: place.lat, lng: place.lng });
+      }
     }
 
     if (newPlaceIds.length > 0) {
@@ -425,14 +508,17 @@ async function executeImport(userId, payload) {
           console.error(`⚠️ Import: global-place link failed for ${placeId} (non-fatal):`, linkError.message);
         }
       });
-    } else if (!list.existingCircleId && listResult.circleId) {
-      // Created a circle but every place was a duplicate/failure — keep the
-      // empty circle only if the user explicitly asked for it; delete otherwise.
-      await circleRef.delete();
-      listResult.circleId = null;
     }
 
     results.push(listResult);
+  }
+
+  // Created the import circle this run but every place across every list was
+  // a duplicate/failure — don't leave an empty circle behind.
+  const totalCreated = results.reduce((sum, r) => sum + r.created, 0);
+  if (createdImportCircleThisRun && totalCreated === 0) {
+    await circleRef.delete();
+    results.forEach(r => { r.circleId = null; });
   }
 
   return { results };

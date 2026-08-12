@@ -60,10 +60,12 @@ async function verifyVideoProcessing(videoUrl, previewUrl, thumbnailUrl) {
 // Helper function to ensure My Moments circle exists for a user
 async function ensureMyMomentsCircle(userId) {
   try {
-    // Check if My Moments circle already exists
+    // Check if My Moments circle already exists.
+    // Circles key ownership on `owner` — the old `userId` filter matched
+    // nothing, so every moment-with-new-place minted a fresh circle.
     const circlesRef = db.collection(COLLECTIONS.CIRCLES);
     const myMomentsQuery = await circlesRef
-      .where('userId', '==', userId)
+      .where('owner', '==', userId)
       .where('isSystemCircle', '==', true)
       .where('name', '==', 'My Moments')
       .limit(1)
@@ -91,6 +93,47 @@ async function ensureMyMomentsCircle(userId) {
     console.error('Error ensuring My Moments circle:', error);
     throw error;
   }
+}
+
+// Venue-level lookup: does this user already have a live save of this place?
+// Same normalized name within 250m counts as the same venue regardless of
+// address formatting — creating a second save fragments likes/comments across
+// two canonical records (the "Leroy Fox saved twice" bug; import dedup got
+// the same tier 2026-08-12). Without coordinates there's no safe match —
+// name alone would collapse chains ("Planet Fitness").
+async function findExistingUserPlaceForVenue(userId, name, coordinates) {
+  if (!name || !Array.isArray(coordinates) || coordinates.length !== 2) return null;
+
+  const norm = s => (s || '').toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+  const target = norm(name);
+  const [lng, lat] = coordinates;
+
+  const distanceMeters = (lat1, lng1, lat2, lng2) => {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const s = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(s));
+  };
+
+  const snapshot = await db.collection(COLLECTIONS.PLACES)
+    .where('addedBy', '==', userId)
+    .get();
+
+  let match = null;
+  snapshot.forEach(doc => {
+    if (match) return;
+    const place = doc.data();
+    if (place.deletedAt) return;
+    if (norm(place.name) !== target) return;
+    const coords = place.location && place.location.coordinates;
+    if (Array.isArray(coords) && coords.length === 2 &&
+        distanceMeters(lat, lng, coords[1], coords[0]) < 250) {
+      match = { id: doc.id, ...place };
+    }
+  });
+  return match;
 }
 
 // Helper function to create a place in My Moments circle
@@ -126,6 +169,15 @@ async function createPlaceInMyMoments(userId, circleId, placeData) {
     const newPlace = createPlace(placeDataForCreation, circleId, userId);
 
     const placeRef = await db.collection(COLLECTIONS.PLACES).add(newPlace);
+
+    // Track membership on the circle doc too — every other save path does,
+    // and the circle screen counts on places[]/placesCount
+    const { FieldValue } = require('firebase-admin').firestore;
+    await db.collection(COLLECTIONS.CIRCLES).doc(circleId).update({
+      places: FieldValue.arrayUnion(placeRef.id),
+      placesCount: FieldValue.increment(1),
+      updatedAt: new Date().toISOString()
+    });
 
     // Link the save to its canonical venue record (best-effort)
     const { ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
@@ -328,24 +380,34 @@ exports.initiateVideoUpload = async (req, res) => {
     let finalPlaceName = placeName;
     
     if (isNewPlace) {
-      // Ensure My Moments circle exists for the user
-      const myMomentsCircle = await ensureMyMomentsCircle(userId);
-      
-      // Create the new place in My Moments circle
-      const newPlace = await createPlaceInMyMoments(userId, myMomentsCircle.id, {
-        name: placeName,
-        address: placeAddress,
-        coordinates: placeCoordinates,
-        category: placeCategory || 'other',
-        description: placeDescription,
-        phone: placePhone,
-        website: placeWebsite
-      });
-      
-      finalPlaceId = newPlace.id;
-      finalPlaceName = newPlace.name;
-      
-      console.log(`📍 Created new place "${finalPlaceName}" in My Moments circle for user ${userId}`);
+      // The client flags isNewPlace whenever the place came from search
+      // rather than the user's saves — but the user may well have this venue
+      // saved already. Reuse it instead of minting a My Moments copy.
+      const existingSave = await findExistingUserPlaceForVenue(userId, placeName, placeCoordinates);
+      if (existingSave) {
+        finalPlaceId = existingSave.id;
+        finalPlaceName = existingSave.name;
+        console.log(`📍 Reusing existing save "${finalPlaceName}" (${finalPlaceId}) for moment instead of creating a My Moments copy`);
+      } else {
+        // Ensure My Moments circle exists for the user
+        const myMomentsCircle = await ensureMyMomentsCircle(userId);
+
+        // Create the new place in My Moments circle
+        const newPlace = await createPlaceInMyMoments(userId, myMomentsCircle.id, {
+          name: placeName,
+          address: placeAddress,
+          coordinates: placeCoordinates,
+          category: placeCategory || 'other',
+          description: placeDescription,
+          phone: placePhone,
+          website: placeWebsite
+        });
+
+        finalPlaceId = newPlace.id;
+        finalPlaceName = newPlace.name;
+
+        console.log(`📍 Created new place "${finalPlaceName}" in My Moments circle for user ${userId}`);
+      }
     }
     
     // Create video document (also used for photos in Reels)

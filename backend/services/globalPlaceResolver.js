@@ -222,6 +222,70 @@ async function createGlobalPlaceFromLegacy(legacyPlaceDoc) {
   return { resolvedId: docRef.id, resolvedData: globalPlaceData };
 }
 
+// Create a canonical venue record straight from business details — no legacy
+// save doc required. Used by the store-owner "add & claim your business" flow,
+// where the owner's store may never have been saved by anyone. Callers should
+// try findCanonicalByNameAndLocation first; this always creates.
+async function createGlobalPlaceFromDetails({ name, address, location, category, phone, website, applePoiCategory }) {
+  const incomingCategory = category || 'other';
+  let resolvedCategory = incomingCategory;
+  let categoryMeta = { categorySource: incomingCategory === 'other' ? null : 'client' };
+  if (incomingCategory === 'other') {
+    const derived = deriveCategory({ applePoiCategory, name, address });
+    if (derived.category !== 'other') {
+      resolvedCategory = derived.category;
+      categoryMeta = {
+        categorySource: derived.source,
+        categoryConfidence: derived.confidence,
+        categoryBefore: 'other',
+        categoryClassifiedAt: new Date().toISOString()
+      };
+    } else {
+      categoryMeta.needsCategoryReview = true;
+    }
+  }
+
+  const loc = deriveLocation({ address, location });
+  const locationMeta = loc.placed
+    ? {
+        state: loc.state, stateCode: loc.stateCode, city: loc.city,
+        cityKey: loc.cityKey, neighborhood: loc.neighborhood,
+        country: loc.country, countryCode: loc.countryCode,
+        locationSource: loc.source, locationDerivedAt: new Date().toISOString()
+      }
+    : {
+        neighborhood: loc.neighborhood || null,
+        country: loc.country || null, countryCode: loc.countryCode || null
+      };
+
+  let deduplicationKey = null;
+  if (name && address) {
+    try { deduplicationKey = generatePlaceKey({ name, address }); } catch (e) { /* fine */ }
+  }
+
+  const globalPlaceData = createGlobalPlace({
+    name,
+    address: address || '',
+    location: location || null,
+    phone: phone || null,
+    website: website || null,
+    category: resolvedCategory,
+    ...categoryMeta,
+    ...locationMeta,
+    deduplicationKey,
+    legacyPlaceIds: [],
+    photos: [],
+    videos: [],
+    publicReviews: []
+  });
+  globalPlaceData.dataCompleteness = calculateDataCompleteness(globalPlaceData);
+  globalPlaceData.qualityScore = calculateQualityScore(globalPlaceData);
+
+  const docRef = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).add(globalPlaceData);
+  console.log(`🆕 [GlobalPlace] Created globalPlace ${docRef.id} from business details ("${name}")`);
+  return { resolvedId: docRef.id, resolvedData: globalPlaceData };
+}
+
 // Venue-level fields owned by the canonical globalPlaces record. Save docs
 // keep only the denormalized query cache (name/address/location/geohash/
 // category) plus per-user data; these get stripped once the link exists.
@@ -292,10 +356,10 @@ async function findCanonicalByNameAndLocation(name, location, excludeId = null) 
     const data = doc.data();
     if (data.deletedAt) return;
     const candidateName = normalizeVenueName(data.name);
-    const namesMatch = candidateName === normalized ||
-      candidateName.includes(normalized) ||
-      normalized.includes(candidateName);
-    if (!namesMatch) return;
+    // Exact normalized equality only. Containment matching linked distinct
+    // neighbors — "Chelsea Market Baskets" is 150m from "Chelsea Market" and
+    // is not the same venue (found during the 2026-08-12 dedup migration).
+    if (candidateName !== normalized) return;
     const candidateCoords = data.location && data.location.coordinates;
     if (!Array.isArray(candidateCoords) || candidateCoords.length !== 2) return;
     const distance = haversineMeters(lat, lng, candidateCoords[1], candidateCoords[0]);
@@ -395,4 +459,10 @@ async function flagForCategoryReview(globalPlaceId, venueData) {
   }
 }
 
-module.exports = { resolveGlobalPlace, createGlobalPlaceFromLegacy, ensureGlobalPlaceLink, findCanonicalByNameAndLocation };
+module.exports = {
+  resolveGlobalPlace,
+  createGlobalPlaceFromLegacy,
+  createGlobalPlaceFromDetails,
+  ensureGlobalPlaceLink,
+  findCanonicalByNameAndLocation
+};

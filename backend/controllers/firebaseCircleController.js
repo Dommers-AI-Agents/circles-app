@@ -615,6 +615,9 @@ exports.updateCircle = async (req, res, next) => {
     if (req.body.coverImage !== undefined) updateData.coverImage = req.body.coverImage;
     if (req.body.location !== undefined) updateData.location = req.body.location;
     if (req.body.tags !== undefined) updateData.tags = req.body.tags;
+    // Owner's map-clutter control: false hides this circle's places from the
+    // big home map (viewport + own pins); the circle stays fully browsable
+    if (typeof req.body.showOnMap === 'boolean') updateData.showOnMap = req.body.showOnMap;
 
     // Add timestamp
     updateData.updatedAt = new Date().toISOString();

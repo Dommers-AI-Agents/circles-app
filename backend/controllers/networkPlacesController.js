@@ -40,7 +40,9 @@ const getNetworkPlacesInViewport = async (req, res) => {
     radiusM = Math.min(Math.max(radiusM, MIN_RADIUS_M), MAX_RADIUS_M);
     limit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), MAX_LIMIT) : DEFAULT_LIMIT;
 
-    const { circleIds } = await getAllowedCircleIds(userId, { connectionId });
+    // mapOnly: honors each circle owner's showOnMap opt-out (map clutter
+    // control for bulk-import circles) — list/browse endpoints are unaffected
+    const { circleIds } = await getAllowedCircleIds(userId, { connectionId, mapOnly: true });
     if (circleIds.length === 0) {
       return res.status(200).json({
         success: true,

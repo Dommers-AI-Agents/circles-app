@@ -132,6 +132,22 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         return segmentedControl
     }()
     
+    private let showOnMapLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Show on home map"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
+        label.textColor = Constants.Colors.darkGray
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private let showOnMapSwitch: UISwitch = {
+        let toggle = UISwitch()
+        toggle.isOn = true
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        return toggle
+    }()
+
     private let locationLabel: UILabel = {
         let label = UILabel()
         label.text = "Location (optional)"
@@ -259,6 +275,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                descriptionTextView.text != (circle.description ?? "") ||
                getCurrentCategory() != circle.category ||
                getCurrentPrivacy() != circle.privacy ||
+               showOnMapSwitch.isOn != (circle.showOnMap ?? true) ||
                locationTextField.text != (circle.location ?? "") ||
                getCurrentTags() != (circle.tags ?? []) ||
                selectedImage != nil ||
@@ -316,6 +333,8 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         contentView.addSubview(categoryButton)
         contentView.addSubview(privacyLabel)
         contentView.addSubview(privacySegmentedControl)
+        contentView.addSubview(showOnMapLabel)
+        contentView.addSubview(showOnMapSwitch)
         contentView.addSubview(locationLabel)
         contentView.addSubview(locationTextField)
         contentView.addSubview(tagsLabel)
@@ -398,9 +417,15 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
             privacySegmentedControl.topAnchor.constraint(equalTo: privacyLabel.bottomAnchor, constant: Constants.Spacing.small),
             privacySegmentedControl.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             privacySegmentedControl.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            
+
+            // Show on home map row
+            showOnMapLabel.topAnchor.constraint(equalTo: privacySegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
+            showOnMapLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            showOnMapSwitch.centerYAnchor.constraint(equalTo: showOnMapLabel.centerYAnchor),
+            showOnMapSwitch.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+
             // Location label
-            locationLabel.topAnchor.constraint(equalTo: privacySegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
+            locationLabel.topAnchor.constraint(equalTo: showOnMapLabel.bottomAnchor, constant: Constants.Spacing.medium),
             locationLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Location text field
@@ -488,7 +513,10 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         if let privacyIndex = privacyLevels.firstIndex(of: circle.privacy) {
             privacySegmentedControl.selectedSegmentIndex = privacyIndex
         }
-        
+
+        // Set map visibility (missing = shown)
+        showOnMapSwitch.isOn = circle.showOnMap ?? true
+
         // Set tags
         if let tags = circle.tags {
             tagsTextField.text = tags.joined(separator: ", ")
@@ -616,7 +644,8 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
             var body: [String: Any] = [
                 "name": name,
                 "privacy": privacy.rawValue,
-                "category": category.rawValue
+                "category": category.rawValue,
+                "showOnMap": showOnMapSwitch.isOn
             ]
             
             // Add custom category ID if selected
@@ -674,6 +703,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                 customCategoryId: selectedCategory?.customCategoryId,
                 location: location,
                 tags: tags,
+                showOnMap: showOnMapSwitch.isOn,
                 coverImage: coverImageData
             ) { [weak self] result in
             DispatchQueue.main.async {

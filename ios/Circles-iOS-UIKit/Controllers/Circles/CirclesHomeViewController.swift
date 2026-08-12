@@ -4609,7 +4609,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Present full screen map with current filter states, opening at the
         // same region the embedded map is showing
         let fullScreenMap = FullScreenMapViewController(
-            places: allPlaces,
+            places: excludingHiddenCircles(allPlaces),
             initialRegion: mapViewController?.currentRegion,
             selectedCategory: selectedCategory,  // Pass current category filter
             selectedConnectionId: selectedConnectionId  // Pass current connection filter
@@ -4955,9 +4955,31 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         hideLoadingState()
     }
     
+    /// Drops places whose owning circle is known locally and has been hidden
+    /// from the home map (showOnMap == false). Places whose circle isn't
+    /// loaded locally pass through — the server already excludes hidden
+    /// circles from network viewport results.
+    func excludingHiddenCircles(_ places: [Place]) -> [Place] {
+        var hiddenIds = Set<String>()
+        for circle in self.circles where circle.showOnMap == false {
+            hiddenIds.insert(circle.id)
+        }
+        for circle in self.networkCircles where circle.showOnMap == false {
+            hiddenIds.insert(circle.id)
+        }
+        guard !hiddenIds.isEmpty else { return places }
+        return places.filter { place in
+            guard let circleId = place.circleId else { return true }
+            return !hiddenIds.contains(circleId)
+        }
+    }
+
     func applyFiltersToPlaces(_ places: [Place]) -> [Place] {
         Logger.debug("📍 Connection filter - selectedConnectionId: \(self.selectedConnectionId ?? "nil")")
-        
+
+        // Hide circles the owner toggled off the home map
+        let places = excludingHiddenCircles(places)
+
         // Apply connection filter if selected
         var mapFilteredPlaces = places
         
@@ -5119,7 +5141,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             }
         }
 
-        for place in allPlaces {
+        for place in excludingHiddenCircles(allPlaces) {
             if let circleId = place.circleId, userCircleIds.contains(circleId) {
                 userPlaces.append(place)
             } else if let circleId = place.circleId, let circle = networkCircles.first(where: { $0.id == circleId }) {
@@ -5187,7 +5209,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 && selectedConnectionId != nil
                 && selectedConnectionId != "my_places_only"
             modal.updateConnectionBuckets(buildConnectionPlaceBuckets().connectionPlaces)
-            modal.updatePlaces(allPlaces, adjustRegion: modalShouldZoom)
+            modal.updatePlaces(excludingHiddenCircles(allPlaces), adjustRegion: modalShouldZoom)
         }
 
         // Keep the distance-sorted list in sync when it's visible

@@ -83,11 +83,13 @@ const createUser = (userData) => {
       newFollowers: true,
       dailyDigest: false,
       // New notification preferences
-      dailySummary: true,
+      // Digest/promo pushes are opt-in (App Review 4.5.4: promotional pushes
+      // need consent). Personal, actionable pushes above stay default-on.
+      dailySummary: false,
       summaryTime: '12:00',
       timezone: 'America/New_York',
       socialActivity: true,
-      discoveryPrompts: true,
+      discoveryPrompts: false,
       milestones: true,
       weekendRecommendations: true,
       reengagement: true,
@@ -129,6 +131,11 @@ const createCircle = (circleData, ownerId) => {
     places: circleData.places || [],
     placesCount: circleData.placesCount || 0, // Count of places for efficient display
     privacy: circleData.privacy || 'public', // public, myNetwork, private
+    // Owner's choice: false keeps this circle's places off the big home map
+    // (viewport + own-pins) while the circle itself stays fully browsable.
+    // Import circles default to false — a 500-place Takeout dump shouldn't
+    // bury the map. Missing/undefined means true everywhere it's read.
+    showOnMap: circleData.showOnMap !== undefined ? !!circleData.showOnMap : true,
     allowNetworkEdit: circleData.allowNetworkEdit || false,
     isSystemCircle: circleData.isSystemCircle || false, // Flag for system-created circles like "My Moments"
     isCheckInCircle: circleData.isCheckInCircle || false, // Flag for the auto-created "Check-in Places" circle (dedup lookup key)

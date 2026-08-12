@@ -14,6 +14,7 @@ struct Circle: Codable, Identifiable {
     let placesWithDetails: [Place]? // Populated with full place details including who added them
     let privacy: PrivacyLevel
     let allowNetworkEdit: Bool? // Allow network connections to edit this circle
+    let showOnMap: Bool? // Whether this circle's places appear on the home map (nil = true)
     let category: CircleCategory
     let customCategoryId: String? // Reference to user's custom category
     let location: String?
@@ -45,7 +46,7 @@ struct Circle: Codable, Identifiable {
         case id = "_id"
         case name, description, coverImage, owner, ownerDetails
         case editors, editorsDetails
-        case places, placesCount, placesWithDetails, privacy, allowNetworkEdit, category, customCategoryId
+        case places, placesCount, placesWithDetails, privacy, allowNetworkEdit, showOnMap, category, customCategoryId
         case location, tags, sharedWith, followers, activeShares, shareSettings
         case isSharedWithMe, sharedBy, myAccessLevel
         case likes, likesCount, commentsCount
@@ -71,6 +72,7 @@ struct Circle: Codable, Identifiable {
         placesWithDetails = try container.decodeIfPresent(LossyDecodableArray<Place>.self, forKey: .placesWithDetails)?.elements
         privacy = try container.decode(PrivacyLevel.self, forKey: .privacy)
         allowNetworkEdit = try container.decodeIfPresent(Bool.self, forKey: .allowNetworkEdit)
+        showOnMap = try container.decodeIfPresent(Bool.self, forKey: .showOnMap)
         category = try container.decode(CircleCategory.self, forKey: .category)
         customCategoryId = try container.decodeIfPresent(String.self, forKey: .customCategoryId)
         location = try container.decodeIfPresent(String.self, forKey: .location)
@@ -107,7 +109,7 @@ struct Circle: Codable, Identifiable {
     init(id: String, name: String, description: String?, coverImage: String?, owner: String,
          ownerDetails: User?, editors: [String]?, editorsDetails: [User]?,
          places: [String]?, placesCount: Int?, placesWithDetails: [Place]?,
-         privacy: PrivacyLevel, allowNetworkEdit: Bool?, category: CircleCategory, customCategoryId: String? = nil, location: String?,
+         privacy: PrivacyLevel, allowNetworkEdit: Bool?, showOnMap: Bool? = nil, category: CircleCategory, customCategoryId: String? = nil, location: String?,
          tags: [String]?, sharedWith: [String]?, followers: [String]?,
          activeShares: [CircleShare]?, shareSettings: ShareSettings?,
          isSharedWithMe: Bool?, sharedBy: User?, myAccessLevel: AccessLevel?,
@@ -128,6 +130,7 @@ struct Circle: Codable, Identifiable {
         self.placesWithDetails = placesWithDetails
         self.privacy = privacy
         self.allowNetworkEdit = allowNetworkEdit
+        self.showOnMap = showOnMap
         self.category = category
         self.customCategoryId = customCategoryId
         self.location = location

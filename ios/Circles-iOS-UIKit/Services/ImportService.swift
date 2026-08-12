@@ -60,6 +60,9 @@ struct ImportCounts: Decodable {
 struct ImportPreview: Decodable {
     let lists: [ImportPreviewList]
     let counts: ImportCounts
+    /// The single per-source circle everything imports into ("Google Imports").
+    /// Optional so older backend responses still decode.
+    let targetCircleName: String?
 }
 
 private struct ImportPrepareResponse: Decodable {
@@ -136,6 +139,7 @@ final class ImportService {
 
         var mergedLists: [ImportPreviewList] = []
         var counts = (new: 0, duplicate: 0, unmapped: 0)
+        var targetCircleName: String?
 
         func processNext(_ index: Int) {
             guard index < workItems.count else {
@@ -156,7 +160,8 @@ final class ImportService {
                 }
                 let preview = ImportPreview(
                     lists: order.compactMap { byName[$0] },
-                    counts: ImportCounts(new: counts.new, duplicate: counts.duplicate, unmapped: counts.unmapped)
+                    counts: ImportCounts(new: counts.new, duplicate: counts.duplicate, unmapped: counts.unmapped),
+                    targetCircleName: targetCircleName
                 )
                 completion(.success(preview))
                 return
@@ -182,6 +187,7 @@ final class ImportService {
                     counts.new += response.preview.counts.new
                     counts.duplicate += response.preview.counts.duplicate
                     counts.unmapped += response.preview.counts.unmapped
+                    if targetCircleName == nil { targetCircleName = response.preview.targetCircleName }
                     processNext(index + 1)
                 case .failure(let error):
                     completion(.failure(error))

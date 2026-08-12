@@ -1,8 +1,10 @@
 import UIKit
 
-/// Review screen shown between prepare and execute: one section per proposed
-/// circle, with editable names, per-place checkmarks, and duplicate /
-/// unresolved badges. Nothing is written until the user confirms.
+/// Review screen shown between prepare and execute: one section per source
+/// list, with per-place checkmarks and duplicate/unmapped badges. Everything
+/// imports into the single per-source circle ("Google Imports", …) — the
+/// backend decides that; list names survive on each place as its source list.
+/// Nothing is written until the user confirms.
 class ImportReviewViewController: BaseViewController {
 
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -23,6 +25,7 @@ class ImportReviewViewController: BaseViewController {
 
     private let source: ImportSource
     private var sections: [ReviewSection]
+    private let targetCircleName: String
 
     private lazy var tableView: UITableView = {
         let table = UITableView(frame: .zero, style: .insetGrouped)
@@ -45,6 +48,7 @@ class ImportReviewViewController: BaseViewController {
 
     init(source: ImportSource, preview: ImportPreview) {
         self.source = source
+        self.targetCircleName = preview.targetCircleName ?? "Imports"
         self.sections = preview.lists.map { list in
             ReviewSection(
                 circleName: list.proposedCircleName,
@@ -162,25 +166,6 @@ class ImportReviewViewController: BaseViewController {
         }
     }
 
-    private func renameSection(_ sectionIndex: Int) {
-        let section = sections[sectionIndex]
-        AlertPresenter.showTextInput(
-            title: "Circle Name",
-            message: "Places from this list will be added to a circle with this name.",
-            placeholder: "Circle name",
-            initialText: section.circleName,
-            from: self
-        ) { [weak self] newName in
-            guard let self = self,
-                  let newName = newName?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !newName.isEmpty else { return }
-            self.sections[sectionIndex].circleName = newName
-            // Renaming detaches a suggested merge — the import will create a
-            // circle with the new name instead
-            self.sections[sectionIndex].existingCircleId = nil
-            self.tableView.reloadSections(IndexSet(integer: sectionIndex), with: .automatic)
-        }
-    }
 }
 
 // MARK: - UITableViewDataSource / Delegate
@@ -197,12 +182,13 @@ extension ImportReviewViewController: UITableViewDataSource, UITableViewDelegate
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         let reviewSection = sections[section]
-        let suffix = reviewSection.existingCircleId != nil ? " (adds to existing circle)" : ""
-        return "\(reviewSection.circleName) — \(reviewSection.selectedCount) of \(reviewSection.places.count)\(suffix)"
+        return "\(reviewSection.circleName) — \(reviewSection.selectedCount) of \(reviewSection.places.count)"
     }
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        section == sections.count - 1 ? "Tap a place to include or exclude it. Tap a section header to rename the circle." : nil
+        section == sections.count - 1
+            ? "Tap a place to include or exclude it. Everything imports into your \"\(targetCircleName)\" circle, kept off the home map until you turn it on from that circle's settings."
+            : nil
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -241,19 +227,4 @@ extension ImportReviewViewController: UITableViewDataSource, UITableViewDelegate
         updateImportButton()
     }
 
-    func tableView(_ tableView: UITableView, willDisplayHeaderView view: UIView, forSection section: Int) {
-        // Make section headers tappable for renaming
-        if view.gestureRecognizers?.isEmpty ?? true {
-            let tap = UITapGestureRecognizer(target: self, action: #selector(headerTapped(_:)))
-            view.addGestureRecognizer(tap)
-            view.tag = section
-        } else {
-            view.tag = section
-        }
-    }
-
-    @objc private func headerTapped(_ gesture: UITapGestureRecognizer) {
-        guard let sectionIndex = gesture.view?.tag, sectionIndex < sections.count else { return }
-        renameSection(sectionIndex)
-    }
 }

@@ -16,10 +16,17 @@ const db = getFirestore();
  * @param {string|null} [options.connectionId] - If set, restrict to circles
  *   owned by this user. Must be an accepted connection of userId (otherwise
  *   an empty result is returned).
+ * @param {boolean} [options.mapOnly] - If true, drop circles whose owner set
+ *   showOnMap === false (their map-clutter opt-out, e.g. bulk-import circles).
+ *   Missing showOnMap counts as visible.
  * @returns {Promise<{circleIds: string[]}>}
  */
-async function getAllowedCircleIds(userId, { connectionId = null } = {}) {
+async function getAllowedCircleIds(userId, { connectionId = null, mapOnly = false } = {}) {
   const circleIds = new Set();
+  const addCircle = (doc) => {
+    if (mapOnly && doc.data().showOnMap === false) return;
+    circleIds.add(doc.id);
+  };
 
   // Accepted connections in both directions
   const [connectionsQuery1, connectionsQuery2] = await Promise.all([
@@ -47,7 +54,7 @@ async function getAllowedCircleIds(userId, { connectionId = null } = {}) {
       .where('owner', '==', connectionId)
       .where('privacy', 'in', ['public', 'myNetwork'])
       .get();
-    connectionCircles.docs.forEach(doc => circleIds.add(doc.id));
+    connectionCircles.docs.forEach(addCircle);
     return { circleIds: Array.from(circleIds) };
   }
 
@@ -56,8 +63,8 @@ async function getAllowedCircleIds(userId, { connectionId = null } = {}) {
     db.collection(COLLECTIONS.CIRCLES).where('owner', '==', userId).get(),
     db.collection(COLLECTIONS.CIRCLES).where('sharedWith', 'array-contains', userId).get()
   ]);
-  ownCircles.docs.forEach(doc => circleIds.add(doc.id));
-  sharedCircles.docs.forEach(doc => circleIds.add(doc.id));
+  ownCircles.docs.forEach(addCircle);
+  sharedCircles.docs.forEach(addCircle);
 
   // Connections' public/myNetwork circles, batched by 10 owners
   // (10 owners * 2 privacy values = 20 disjunctions, under Firestore's 30 limit)
@@ -76,7 +83,7 @@ async function getAllowedCircleIds(userId, { connectionId = null } = {}) {
           .get()
       )
     );
-    results.forEach(snapshot => snapshot.docs.forEach(doc => circleIds.add(doc.id)));
+    results.forEach(snapshot => snapshot.docs.forEach(addCircle));
   }
 
   return { circleIds: Array.from(circleIds) };
