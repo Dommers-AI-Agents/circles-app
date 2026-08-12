@@ -76,6 +76,21 @@
             font-style: italic;
             color: #444;
         }
+        .video-actions { text-align: right; margin: -0.4rem 0 1rem; }
+        .share-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 0.6rem 1.3rem;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.92rem;
+            font-family: inherit;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .share-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4); }
         .cta-band {
             text-align: center;
             padding: 1rem 0 0;
@@ -171,9 +186,12 @@
         <section class="faq-group">
             <h2>Bringing your places with you 📍</h2>
             <p class="lead">Watch how a Mapstr, Google Maps, or Swarm export becomes your circles — with ChatGPT doing the work (1:47):</p>
-            <video controls preload="metadata" poster="/import-tutorial-poster.jpg" style="width:100%; border-radius:12px; margin:0.3rem 0 1.2rem; display:block;">
+            <video controls preload="metadata" poster="/import-tutorial-poster.jpg" style="width:100%; border-radius:12px; margin:0.3rem 0 0.8rem; display:block;">
                 <source src="/import-tutorial.mp4" type="video/mp4">
             </video>
+            <div class="video-actions">
+                <button class="share-btn" type="button" id="share-import-video">↗&nbsp; Share this video</button>
+            </div>
             <details open>
                 <summary>Can I import places I've saved in other apps?</summary>
                 <p>Yes — from <strong>Mapstr</strong>, <strong>Google Maps</strong>, and <strong>Swarm/Foursquare</strong>. Years of saved spots become circles your friends can actually use, in a couple of minutes.</p>
@@ -236,5 +254,24 @@
             </p>
         </div>
     </footer>
+    <script>
+    document.getElementById('share-import-video').addEventListener('click', function () {
+        var btn = this;
+        var data = {
+            title: 'Import your places into FavCircles with AI',
+            text: 'Move your Mapstr, Google Maps, and Swarm places into FavCircles by just asking ChatGPT — 2 minute video.',
+            url: 'https://favcircles.com/faq.html'
+        };
+        if (navigator.share) {
+            navigator.share(data).catch(function () {});
+        } else if (navigator.clipboard) {
+            navigator.clipboard.writeText(data.url).then(function () {
+                var original = btn.textContent;
+                btn.textContent = '✓ Link copied!';
+                setTimeout(function () { btn.textContent = original; }, 2000);
+            });
+        }
+    });
+    </script>
 </body>
 </html>
