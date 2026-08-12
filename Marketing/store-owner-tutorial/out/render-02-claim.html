@@ -1,0 +1,238 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>/* FavCircles tutorial scene design system — 1920x1080 frames */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --brand: #3182CE;        /* Constants.Colors.primary */
+  --brand-light: #63B3ED;  /* secondary */
+  --accent: #4FD1C5;       /* accent teal */
+  --ink: #1A202C;
+  --ink-2: #4A5568;
+  --ink-3: #718096;
+  --bg-deep: #0E2A47;      /* dark stage background */
+  --bg-deep-2: #123B63;
+  --card: #FFFFFF;
+  --line: #E2E8F0;
+  --gold: #F6C445;
+  --green: #38A169;
+  --red: #E53E3E;
+}
+html, body { width: 1920px; height: 1080px; overflow: hidden; }
+body {
+  font-family: -apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  background: radial-gradient(1400px 900px at 30% 20%, var(--bg-deep-2), var(--bg-deep));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+/* ---------- stage layout: text left, phone right ---------- */
+.stage { display: flex; width: 100%; height: 100%; align-items: center; padding: 0 110px; gap: 90px; }
+.copy { flex: 1; min-width: 0; }
+.copy .kicker {
+  display: inline-block; font-size: 26px; font-weight: 700; letter-spacing: 3px;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 26px;
+}
+.copy .step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 64px; height: 64px; border-radius: 50%; background: var(--accent);
+  color: #0E2A47; font-size: 34px; font-weight: 800; margin-bottom: 28px;
+}
+.copy h1 { font-size: 74px; font-weight: 800; line-height: 1.08; margin-bottom: 30px; letter-spacing: -1px; }
+.copy h1 .hl { color: var(--accent); }
+.copy p.lead { font-size: 34px; line-height: 1.45; color: #CBD8E8; max-width: 760px; }
+.copy ul.points { list-style: none; margin-top: 40px; }
+.copy ul.points li {
+  font-size: 31px; color: #E4EDF7; margin-bottom: 24px; padding-left: 52px; position: relative; line-height: 1.35;
+}
+.copy ul.points li::before {
+  content: "✓"; position: absolute; left: 0; top: 0;
+  width: 36px; height: 36px; border-radius: 50%; background: rgba(79,209,197,.18);
+  color: var(--accent); font-size: 22px; font-weight: 800; display: flex; align-items: center; justify-content: center;
+}
+
+/* ---------- iPhone mockup ---------- */
+.phone-wrap { flex: 0 0 auto; position: relative; }
+.phone {
+  width: 430px; height: 875px; background: #0b0b0f; border-radius: 62px; padding: 16px;
+  box-shadow: 0 40px 90px rgba(0,0,0,.55), 0 0 0 2px rgba(255,255,255,.08);
+  position: relative;
+}
+.screen {
+  width: 100%; height: 100%; border-radius: 47px; background: #F7FAFC; overflow: hidden;
+  position: relative; color: var(--ink); display: flex; flex-direction: column;
+}
+.notch {
+  position: absolute; top: 30px; left: 50%; transform: translateX(-50%);
+  width: 120px; height: 34px; background: #0b0b0f; border-radius: 20px; z-index: 50;
+}
+.statusbar {
+  height: 56px; flex: 0 0 auto; display: flex; justify-content: space-between; align-items: flex-end;
+  padding: 0 30px 4px; font-size: 15px; font-weight: 600; color: var(--ink);
+}
+.navbar {
+  flex: 0 0 auto; padding: 12px 18px 14px; display: flex; align-items: center; gap: 10px;
+  background: #fff; border-bottom: 1px solid var(--line);
+}
+.navbar .back { color: var(--brand); font-size: 22px; }
+.navbar .title { font-size: 19px; font-weight: 700; flex: 1; text-align: center; }
+.navbar .spacer { width: 22px; }
+.content { flex: 1; overflow: hidden; background: #F7FAFC; }
+
+/* generic in-screen widgets */
+.cardx {
+  background: #fff; border-radius: 16px; margin: 12px 14px; padding: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.07);
+}
+.btn-primary {
+  display: block; background: var(--brand); color: #fff; text-align: center;
+  border-radius: 12px; padding: 15px; font-size: 17px; font-weight: 700;
+}
+.btn-ghost {
+  display: block; background: #EDF2F7; color: var(--ink); text-align: center;
+  border-radius: 12px; padding: 15px; font-size: 17px; font-weight: 600;
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; border-radius: 999px;
+  padding: 5px 12px; font-size: 13px; font-weight: 700;
+}
+.chip.store { background: #E6FFFA; color: #0B7A6F; border: 1px solid #81E6D9; }
+.chip.gold { background: #FFF8E1; color: #8a6d00; border: 1px solid #F6C445; }
+.row { display: flex; align-items: center; gap: 12px; }
+.avatar {
+  width: 52px; height: 52px; border-radius: 50%; flex: 0 0 auto;
+  background: linear-gradient(135deg, var(--brand-light), var(--brand));
+  display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 20px;
+}
+.tag { font-size: 12px; color: var(--ink-3); }
+
+/* callout ring to highlight a UI element */
+.ring {
+  position: absolute; border: 5px solid var(--gold); border-radius: 18px;
+  box-shadow: 0 0 0 6px rgba(246,196,69,.25), 0 0 30px rgba(246,196,69,.45);
+  z-index: 40; pointer-events: none;
+}
+
+/* ---------- title / section cards (full-bleed, no phone) ---------- */
+.titlecard {
+  width: 100%; height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center; padding: 0 200px;
+}
+.titlecard .logo-dot {
+  width: 120px; height: 120px; border-radius: 50%; margin-bottom: 46px;
+  background: conic-gradient(from 210deg, var(--accent), var(--brand-light), var(--brand), var(--accent));
+  display: flex; align-items: center; justify-content: center; font-size: 56px;
+  box-shadow: 0 24px 70px rgba(49,130,206,.45);
+}
+.titlecard h1 { font-size: 96px; font-weight: 800; letter-spacing: -2px; margin-bottom: 30px; }
+.titlecard h1 .hl { color: var(--accent); }
+.titlecard p { font-size: 40px; color: #C6D5E6; line-height: 1.4; }
+.watermark {
+  position: absolute; bottom: 44px; left: 110px; font-size: 24px; font-weight: 700;
+  color: rgba(255,255,255,.5); letter-spacing: 1px;
+}
+.scene-progress {
+  position: absolute; bottom: 48px; right: 110px; display: flex; gap: 10px;
+}
+.scene-progress i { width: 34px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.22); }
+.scene-progress i.on { background: var(--accent); }
+
+/* ---------- iOS-style alert over a dimmed screen ---------- */
+.dim { position: absolute; inset: 0; background: rgba(0,0,0,.42); z-index: 60; }
+.ios-alert {
+  position: absolute; left: 50%; top: 46%; transform: translate(-50%,-50%);
+  width: 300px; background: rgba(248,248,250,.98); border-radius: 16px; z-index: 70;
+  box-shadow: 0 18px 60px rgba(0,0,0,.4); overflow: hidden; color: var(--ink);
+}
+.ios-alert .a-title { font-size: 18px; font-weight: 700; text-align: center; padding: 20px 18px 4px; }
+.ios-alert .a-msg { font-size: 13.5px; text-align: center; color: var(--ink-2); padding: 2px 20px 14px; line-height: 1.35; }
+.ios-alert .a-field {
+  margin: 0 16px 8px; background: #fff; border: 1px solid #D7DCE3; border-radius: 8px;
+  padding: 9px 10px; font-size: 14px; color: var(--ink-3);
+}
+.ios-alert .a-field.filled { color: var(--ink); }
+.ios-alert .a-btns { display: flex; border-top: 1px solid #D9DBE0; margin-top: 12px; }
+.ios-alert .a-btn {
+  flex: 1; text-align: center; padding: 13px 0; font-size: 17px; color: var(--brand);
+}
+.ios-alert .a-btn.bold { font-weight: 700; }
+.ios-alert .a-btn + .a-btn { border-left: 1px solid #D9DBE0; }
+
+/* table rows a la inset-grouped UITableView */
+.tsection { margin: 14px 14px 4px; }
+.tsection .thead { font-size: 13px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .4px; padding: 0 6px 6px; display:flex; align-items:center; gap:6px; }
+.tsection .tbody { background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.trow { display: flex; align-items: center; gap: 10px; padding: 13px 14px; border-bottom: 1px solid #EFF2F6; font-size: 15.5px; }
+.trow:last-child { border-bottom: none; }
+.trow .t-label { flex: 1; font-weight: 500; }
+.trow .t-sub { display:block; font-size: 12.5px; color: var(--ink-3); font-weight: 400; margin-top: 2px; }
+.trow .t-value { color: var(--ink-3); font-size: 14px; }
+.trow .chev { color: #C5CCD6; font-size: 16px; }
+.trow .lock { color: #A0AEC0; font-size: 15px; }
+.trow.locked .t-label, .trow.locked .t-value { color: #A0AEC0; }
+.trow .ico { width: 28px; height: 28px; border-radius: 7px; display:flex; align-items:center; justify-content:center; font-size: 15px; flex: 0 0 auto; }
+
+/* stat cards grid */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 14px; }
+.stat-card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.stat-card .v { font-size: 26px; font-weight: 800; color: var(--ink); }
+.stat-card .k { font-size: 12.5px; color: var(--ink-3); font-weight: 600; margin-top: 2px; }
+
+/* qr placeholder */
+.qr { width: 200px; height: 200px; margin: 18px auto 10px; background:
+  conic-gradient(#111 90deg, #fff 0 180deg, #111 0 270deg, #fff 0) 0 0/50px 50px; border: 10px solid #fff;
+  outline: 1px solid #E2E8F0; image-rendering: pixelated; position: relative;
+}
+.qr::after { content:""; position:absolute; inset: 30%; background:#fff; border:8px solid #111; }
+.codebox { font-family: "SF Mono", Menlo, monospace; letter-spacing: 1px; }
+</style></head>
+<body>
+<div class="stage">
+  <div class="copy">
+    <div class="kicker">Step 1 · Claim</div>
+    <h1>Claim <span class="hl">your store</span></h1>
+    <p class="lead">Find your business's place page in FavCircles.</p>
+    <ul class="points">
+      <li>Look for the card that asks <b>“Is this your store?”</b></li>
+      <li>Tap <b>Claim your store</b> and enter your name and business email</li>
+      <li>We verify your ownership and set you up — you'll get an email and a notification</li>
+    </ul>
+  </div>
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="notch"></div>
+      <div class="screen">
+        <div class="statusbar"><span>9:41</span><span style="letter-spacing:1px;">●●● ▮</span></div>
+        <div class="navbar"><span class="back">‹</span><span class="title">Bluebird Coffee</span><span class="spacer"></span></div>
+        <div class="content">
+          <div style="height:150px; background:linear-gradient(135deg,#63B3ED,#3182CE); display:flex; align-items:flex-end; padding:14px;">
+            <div style="color:#fff;"><div style="font-size:21px; font-weight:800;">Bluebird Coffee</div><div style="font-size:13px; opacity:.9;">Cafe · 412 Main St</div></div>
+          </div>
+          <div class="cardx">
+            <div class="row" style="margin-bottom:12px;">
+              <div class="ico" style="background:#EBF4FF; width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center;">🏪</div>
+              <div style="font-size:16px; font-weight:600;">Is this your store?</div>
+            </div>
+            <div class="btn-primary">Claim your store</div>
+          </div>
+          <div class="cardx" style="opacity:.6;">
+            <div style="font-size:14px; font-weight:700; margin-bottom:8px;">Notes</div>
+            <div style="font-size:13px; color:#718096;">Best cortado in the neighborhood…</div>
+          </div>
+        </div>
+        <div class="dim"></div>
+        <div class="ios-alert">
+          <div class="a-title">Claim Bluebird Coffee</div>
+          <div class="a-msg">Tell us how to reach you — we'll verify that you own this business and set you up as its owner.</div>
+          <div class="a-field filled">Maria Alvarez</div>
+          <div class="a-field filled">maria@bluebirdcoffee.com</div>
+          <div class="a-field">Phone (optional)</div>
+          <div class="a-btns"><div class="a-btn">Cancel</div><div class="a-btn bold">Submit claim</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="watermark">favcircles.com</div>
+<div class="scene-progress"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+</body></html>
