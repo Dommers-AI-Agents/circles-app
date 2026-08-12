@@ -70,8 +70,35 @@ class HelpTopicViewController: BaseViewController {
     private var contentTopToWatch: NSLayoutConstraint?
 
     @objc private func watchExternalTapped() {
+        if topic.showsAiSetupEmail {
+            sendAiSetupEmail()
+            return
+        }
         guard let urlString = topic.externalURL, let url = URL(string: urlString) else { return }
         UIApplication.shared.open(url)
+    }
+
+    /// The connector setup happens on the owner's computer — email them the
+    /// step-by-step guide with the URL ready to copy.
+    private func sendAiSetupEmail() {
+        let loading = AlertPresenter.showLoading(message: "Sending...", from: self)
+        RewardsService.shared.emailAiSetup { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let emailedTo):
+                        AlertPresenter.showSuccess(
+                            title: "Guide Sent",
+                            message: "Setup instructions are on their way to \(emailedTo). Open the email on your computer — the whole setup takes about two minutes.",
+                            from: self
+                        )
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
     }
 
     private lazy var videoButton: UIButton = {
@@ -215,6 +242,12 @@ class HelpTopicViewController: BaseViewController {
         if let urlString = topic.externalURL, !urlString.isEmpty {
             watchButton.isHidden = false
             watchButton.setTitle(topic.externalURLTitle ?? "▶ Watch", for: .normal)
+            contentTopToSubtitle?.isActive = false
+            contentTopToWatch?.isActive = true
+        } else if topic.showsAiSetupEmail {
+            // Same prominent slot, different action: email the setup guide
+            watchButton.isHidden = false
+            watchButton.setTitle("✉️ Email me the setup guide", for: .normal)
             contentTopToSubtitle?.isActive = false
             contentTopToWatch?.isActive = true
         } else {

@@ -446,6 +446,7 @@ export class Backend {
 
   async updateVenuePlace(venueId: string, fields: {
     name?: string; description?: string; category?: string; phone?: string; website?: string;
+    openingHours?: OpeningHour[];
   }): Promise<VenuePlaceDetails> {
     const res = await this.request<{ data: VenuePlaceDetails }>(
       "PATCH", `/rewards/venues/${encodeURIComponent(venueId)}/place`, fields);
@@ -565,6 +566,13 @@ export interface VenueEvent {
   user?: VenuePerson | null;
 }
 
+export interface OpeningHour {
+  day: number; // 0 = Sunday … 6 = Saturday
+  open?: string | null; // "HH:MM" 24h
+  close?: string | null;
+  isClosed?: boolean;
+}
+
 export interface VenuePlaceDetails {
   globalPlaceId: string;
   name: string;
@@ -572,6 +580,7 @@ export interface VenuePlaceDetails {
   category?: string | null;
   phone?: string | null;
   website?: string | null;
+  openingHours?: OpeningHour[] | null;
 }
 
 export interface VenueOffer {

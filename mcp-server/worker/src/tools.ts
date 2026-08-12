@@ -1665,6 +1665,53 @@ function registerStoreOwnerTools(server: McpServer, backend: Backend): void {
     }
   );
 
+  const HOUR_INPUT = z.object({
+    day: z.number().int().min(0).max(6).describe("0 = Sunday, 1 = Monday … 6 = Saturday"),
+    open: z.string().regex(/^([01]?\d|2[0-3]):[0-5]\d$/).optional().describe("Opening time, 24h HH:MM"),
+    close: z.string().regex(/^([01]?\d|2[0-3]):[0-5]\d$/).optional().describe("Closing time, 24h HH:MM"),
+    isClosed: z.boolean().optional().describe("true if closed all day"),
+  });
+
+  const HOUR_OUT = z.object({
+    day: z.number(),
+    open: z.string().nullable(),
+    close: z.string().nullable(),
+    isClosed: z.boolean(),
+  });
+
+  server.registerTool(
+    "set_store_hours",
+    {
+      title: "Set store hours",
+      description:
+        "Set the store's weekly opening hours, shown on its place page. Provide ALL SEVEN days (the list replaces the stored week) — days the store is closed get isClosed: true. Times are 24-hour HH:MM. Owner-set hours are never overwritten by automatic data refreshes. Confirm the full schedule with the user before saving.",
+      inputSchema: {
+        venueId: VENUE_ID_INPUT,
+        hours: z.array(HOUR_INPUT).min(1).max(7),
+      },
+      outputSchema: { openingHours: z.array(HOUR_OUT) },
+      annotations: { title: "Set store hours", ...UPDATE },
+      _meta: inv("Setting store hours", "Store hours set"),
+    },
+    async ({ venueId, hours }: { venueId?: string; hours: { day: number; open?: string; close?: string; isClosed?: boolean }[] }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const updated = await backend.updateVenuePlace(venue.venueId, { openingHours: hours });
+        const saved = updated.openingHours || [];
+        const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        const lines = saved.map((h) =>
+          `- ${DAYS[h.day]}: ${h.isClosed ? "Closed" : `${h.open}–${h.close}`}`);
+        return ok(`Hours updated for ${venue.venueName}:\n${lines.join("\n")}`, {
+          openingHours: saved.map((h) => ({
+            day: h.day, open: h.open ?? null, close: h.close ?? null, isClosed: h.isClosed === true,
+          })),
+        });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
   server.registerTool(
     "list_store_photos",
     {

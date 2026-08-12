@@ -430,6 +430,102 @@ A good first move: post one offer worth walking in for, and put the window stick
     }
   }
 
+  // On-demand from the store-owner help section: everything needed to connect
+  // ChatGPT or Claude to the FavCircles MCP server, in an email they can open
+  // on their computer (the setup happens in the assistant's settings, not in
+  // our app, so a durable reference beats in-app text).
+  async sendAiSetupEmail(toEmail, name = null) {
+    try {
+      const greeting = name ? `Hi ${name},` : 'Hi there,';
+      const subject = 'Manage your store with ChatGPT or Claude — setup guide 🤖';
+
+      const starterPrompts = [
+        'How is my store doing this month?',
+        'Who are my regulars, and when are my busiest hours?',
+        'Post an announcement: live music this Friday 7–9pm',
+        'Create a reward: free smoothie for 250 points',
+        'Update my store hours: open 7am–7pm weekdays, 8am–5pm weekends',
+      ];
+
+      const htmlContent = `
+        <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a202c;">
+          <h1 style="font-size: 22px;">Manage your store with AI 🤖</h1>
+          <p style="font-size: 15px; line-height: 1.6;">${greeting}</p>
+          <p style="font-size: 15px; line-height: 1.6;">
+            You can connect your FavCircles store to ChatGPT or Claude and manage it by just asking —
+            stats, announcements, offers, store hours, loyalty codes, all of it. One-time setup, about two minutes.
+          </p>
+
+          <h2 style="font-size: 17px; margin-top: 24px;">Connect Claude (claude.ai)</h2>
+          <ol style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
+            <li>Open <strong>claude.ai → Settings → Connectors</strong></li>
+            <li>Click <strong>Add custom connector</strong></li>
+            <li>Paste this URL: <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">https://mcp.favcircles.com/mcp</code></li>
+            <li>Sign in with your FavCircles email and password when asked</li>
+          </ol>
+
+          <h2 style="font-size: 17px; margin-top: 24px;">Connect ChatGPT</h2>
+          <ol style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
+            <li>Open <strong>ChatGPT → Settings → Apps &amp; Connectors</strong> (turn on <em>Developer mode</em> under Advanced if you don't see an add option)</li>
+            <li>Choose <strong>Create / Add connector</strong></li>
+            <li>Name it <strong>FavCircles</strong> and paste the same URL: <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;">https://mcp.favcircles.com/mcp</code></li>
+            <li>Sign in with your FavCircles email and password when asked</li>
+          </ol>
+
+          <p style="font-size: 13px; line-height: 1.6; color: #64748b;">
+            Note: signing in requires a FavCircles password. If you normally sign in with Apple or Google,
+            set a password first in the app (Profile → Settings).
+          </p>
+
+          <h2 style="font-size: 17px; margin-top: 24px;">Then just ask</h2>
+          <ul style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
+            ${starterPrompts.map((p) => `<li>"${p}"</li>`).join('\n            ')}
+          </ul>
+
+          <p style="font-size: 15px; line-height: 1.6;">
+            Full guide with screenshots: <a href="https://favcircles.com/connect-claude.html">favcircles.com/connect-claude.html</a>.
+            Reply to this email if you get stuck — happy to help personally.
+          </p>
+          <p style="font-size: 15px; line-height: 1.6;">— Wesley &amp; the FavCircles team</p>
+        </div>`;
+
+      const textContent = `Manage your store with AI 🤖
+
+${greeting}
+
+Connect your FavCircles store to ChatGPT or Claude and manage it by just asking — stats, announcements, offers, store hours, loyalty codes. One-time setup, about two minutes.
+
+CONNECT CLAUDE (claude.ai)
+1. Open claude.ai → Settings → Connectors
+2. Click "Add custom connector"
+3. Paste this URL: https://mcp.favcircles.com/mcp
+4. Sign in with your FavCircles email and password when asked
+
+CONNECT CHATGPT
+1. Open ChatGPT → Settings → Apps & Connectors (enable Developer mode under Advanced if needed)
+2. Choose "Create / Add connector"
+3. Name it FavCircles and paste the same URL: https://mcp.favcircles.com/mcp
+4. Sign in with your FavCircles email and password when asked
+
+Note: signing in requires a FavCircles password. If you normally sign in with Apple or Google, set a password first in the app (Profile → Settings).
+
+THEN JUST ASK
+${starterPrompts.map((p) => `• "${p}"`).join('\n')}
+
+Full guide: https://favcircles.com/connect-claude.html
+Reply to this email if you get stuck.
+
+— Wesley & the FavCircles team`;
+
+      await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent });
+      console.log(`✅ AI setup email sent to ${toEmail}`);
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error sending AI setup email:', error);
+      throw error;
+    }
+  }
+
   // Sent when an ownership claim is approved — the push can be missed; this
   // is the durable "you now manage this business" record plus the pitch for
   // what Business unlocks.

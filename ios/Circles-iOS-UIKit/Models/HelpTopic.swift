@@ -14,6 +14,9 @@ struct HelpTopic {
     // shows a prominent button that opens it
     var externalURL: String? = nil
     var externalURLTitle: String? = nil
+    // Store owners' AI-assistant topic: shows an "Email me the setup guide"
+    // button (setup happens on their computer, so a durable email wins)
+    var showsAiSetupEmail: Bool = false
     
     enum HelpCategory: String, CaseIterable {
         case gettingStarted = "Getting Started"
@@ -766,6 +769,34 @@ class HelpContentProvider {
                 videoTimestamp: nil,
                 externalURL: "https://favcircles.com/store-owner-tutorial.html",
                 externalURLTitle: "▶ Watch the tutorial"
+            ),
+            HelpTopic(
+                id: "store-ai-assistant",
+                title: "Manage your store with AI",
+                subtitle: "Connect ChatGPT or Claude and just ask",
+                content: """
+                Your FavCircles store can be managed from ChatGPT or Claude — connect once, then run your store by asking in plain English:
+
+                • "How is my store doing this month?"
+                • "Who are my regulars, and when are my busiest hours?"
+                • "Post an announcement: live music Friday 7–9pm"
+                • "Create a reward: free smoothie for 250 points"
+                • "Update my hours: 7am–7pm weekdays, 8–5 weekends"
+
+                **Setup (one time, ~2 minutes, on your computer):**
+
+                1. In Claude: Settings → Connectors → Add custom connector. In ChatGPT: Settings → Apps & Connectors (enable Developer mode under Advanced if needed).
+                2. Paste the FavCircles connector URL: mcp.favcircles.com/mcp
+                3. Sign in with your FavCircles email and password.
+
+                Since the setup happens on your computer, tap the button above and we'll email you the full step-by-step guide with the URL ready to copy.
+
+                Note: signing in requires a FavCircles password. If you use Sign in with Apple or Google, set a password first in Profile → Settings.
+                """,
+                category: .storeOwners,
+                relatedTopics: ["store-video-tutorial", "store-rewards-program"],
+                videoTimestamp: nil,
+                showsAiSetupEmail: true
             ),
             HelpTopic(
                 id: "store-rewards-program",

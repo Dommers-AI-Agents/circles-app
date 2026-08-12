@@ -1121,6 +1121,36 @@ exports.setVenueCoverPhoto = async (req, res) => {
   }
 };
 
+// @desc    Email the caller the ChatGPT/Claude connector setup guide. Any
+//          user who owns at least one venue qualifies (the setup happens on
+//          their computer in the assistant's settings, so a durable email
+//          beats in-app text).
+// @route   POST /api/rewards/email-ai-setup
+// @access  Private (venue owners)
+exports.emailAiSetup = async (req, res) => {
+  try {
+    const uid = req.user.uid;
+    const owned = await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
+      .where('ownerUserId', '==', uid).limit(1).get();
+    if (owned.empty && req.user.isSuperUser !== true) {
+      return res.status(403).json({ success: false, error: 'Only store owners can request the AI setup guide' });
+    }
+
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(uid).get();
+    const user = userDoc.exists ? userDoc.data() : {};
+    const toEmail = user.email || req.user.email;
+    if (!toEmail) {
+      return res.status(400).json({ success: false, error: 'No email address on your account' });
+    }
+
+    await emailService.sendAiSetupEmail(toEmail, user.displayName || null);
+    res.json({ success: true, data: { emailedTo: toEmail } });
+  } catch (error) {
+    console.error('❌ Failed to send AI setup email:', error);
+    res.status(500).json({ success: false, error: 'Failed to send the setup email' });
+  }
+};
+
 // @desc    Owner edit of the venue's canonical place record (name,
 //          description, category, phone, website) — no personal save doc
 //          needed, unlike PUT /api/places/:id. Writes the globalPlaces doc
@@ -1137,7 +1167,7 @@ exports.updateVenuePlace = async (req, res) => {
       return res.status(400).json({ success: false, error: 'This venue has no linked place record' });
     }
 
-    const { name, description, category, phone, website } = req.body;
+    const { name, description, category, phone, website, openingHours } = req.body;
     const VALID_CATEGORIES = ['restaurant', 'cafe', 'bar', 'hotel', 'retail', 'service', 'attraction',
       'entertainment', 'healthcare', 'fitness', 'education', 'outdoor', 'transport', 'finance', 'other'];
 
@@ -1160,8 +1190,44 @@ exports.updateVenuePlace = async (req, res) => {
     if (typeof phone === 'string') updates['googleData.phone'] = phone.trim();
     if (typeof website === 'string') updates['googleData.website'] = website.trim();
 
+    // Owner-set hours REPLACE the stored week, in the exact shape the iOS
+    // place page renders: [{day 0=Sunday..6, open "HH:MM", close, isClosed}]
+    if (openingHours !== undefined) {
+      if (!Array.isArray(openingHours) || openingHours.length === 0) {
+        return res.status(400).json({ success: false, error: 'openingHours must be a non-empty array of {day, open, close, isClosed}' });
+      }
+      const timeRe = /^([01]?\d|2[0-3]):[0-5]\d$/;
+      const hourErrors = [];
+      const cleaned = [];
+      const seenDays = new Set();
+      openingHours.forEach((h, i) => {
+        const day = Number(h && h.day);
+        if (!Number.isInteger(day) || day < 0 || day > 6) {
+          hourErrors.push(`entry ${i}: day must be 0 (Sunday) through 6 (Saturday)`);
+          return;
+        }
+        if (seenDays.has(day)) {
+          hourErrors.push(`entry ${i}: duplicate day ${day}`);
+          return;
+        }
+        seenDays.add(day);
+        const isClosed = h.isClosed === true;
+        if (!isClosed && (!timeRe.test(h.open || '') || !timeRe.test(h.close || ''))) {
+          hourErrors.push(`entry ${i}: open/close must be 24h "HH:MM" unless isClosed is true`);
+          return;
+        }
+        cleaned.push({ day, open: isClosed ? null : h.open, close: isClosed ? null : h.close, isClosed });
+      });
+      if (hourErrors.length > 0) {
+        return res.status(400).json({ success: false, error: hourErrors.join('; ') });
+      }
+      updates['googleData.openingHours'] = cleaned.sort((a, b) => a.day - b.day);
+      // Owner-set hours must survive any future Google-data refresh
+      updates['googleData.hoursSource'] = 'owner';
+    }
+
     if (Object.keys(updates).length === 0) {
-      return res.status(400).json({ success: false, error: 'Nothing to update — provide name, description, category, phone, or website' });
+      return res.status(400).json({ success: false, error: 'Nothing to update — provide name, description, category, phone, website, or openingHours' });
     }
 
     if (updates.name) {
@@ -1202,7 +1268,8 @@ exports.updateVenuePlace = async (req, res) => {
         description: g.description || null,
         category: g.category || null,
         phone: (g.googleData || {}).phone || null,
-        website: (g.googleData || {}).website || null
+        website: (g.googleData || {}).website || null,
+        openingHours: (g.googleData || {}).openingHours || null
       }
     });
   } catch (error) {

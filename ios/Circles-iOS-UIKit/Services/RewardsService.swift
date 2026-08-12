@@ -383,6 +383,18 @@ class RewardsService {
         }
     }
 
+    /// Email the caller the ChatGPT/Claude connector setup guide (owners only)
+    func emailAiSetup(completion: @escaping (Result<String, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/email-ai-setup",
+            method: .post,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<EmailQRData>, APIError>) in
+            completion(result.map { $0.data.emailedTo }.mapError { $0 as Error })
+        }
+    }
+
     func getVenueFollowers(venueId: String, completion: @escaping (Result<VenueFollowersData, Error>) -> Void) {
         apiService.request(
             endpoint: "rewards/venues/\(venueId)/followers",

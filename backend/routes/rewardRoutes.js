@@ -63,6 +63,7 @@ router.post('/claims/:claimId/deny', requireSuperUser, rewardController.denyClai
 // and ownerManuallyVerified bypass): offers, announcements, earn rate, and
 // the register QR — the loyalty program.
 router.get('/my-venues', rewardController.getMyVenues);
+router.post('/email-ai-setup', rewardController.emailAiSetup);
 router.get('/venues/:venueId/dashboard', rewardController.requireVenueOwner, rewardController.getVenueDashboard);
 // Stat drill-downs (who follows / who saved / the scan ledger) are Business-
 // tier detail, like the dashboard's monthly history
