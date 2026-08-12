@@ -40,6 +40,8 @@ router.get('/venues/by-place/:placeId', rewardController.getVenueByPlace);
 router.post('/venues/:venueId/claim', rewardController.claimVenue);
 // Claim straight from a place page — works whether or not a venue is enrolled
 router.post('/places/:placeId/claim', rewardController.claimPlace);
+// Add-and-claim: business never saved by anyone — submit by details
+router.post('/businesses/claim', rewardController.claimBusinessByDetails);
 
 // Super-user endpoints (in-app venue management + granting access)
 const requireSuperUser = (req, res, next) => {

@@ -141,6 +141,32 @@
             border-radius: 50px;
             font-weight: 600;
         }
+        .band .cta2-outline {
+            display: inline-block;
+            border: 2px solid #667eea;
+            color: #667eea;
+            padding: 0.7rem 1.5rem;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+            transition: background 0.3s, color 0.3s;
+        }
+        .band .cta2-outline:hover { background: #667eea; color: white; }
+        .sheet-band { display: flex; align-items: center; gap: 2.4rem; }
+        .sheet-band .thumb { flex: 0 0 230px; max-width: 230px; }
+        .sheet-band .thumb img {
+            width: 100%;
+            display: block;
+            border-radius: 10px;
+            border: 1px solid #e5e2ee;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .sheet-band .thumb a:hover img {
+            transform: translateY(-4px);
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
+        }
+        .sheet-band .copy { flex: 1 1 300px; }
         footer {
             background: rgba(0, 0, 0, 0.2);
             color: white;
@@ -157,6 +183,9 @@
             .page-hero { flex-direction: column; text-align: center; padding-top: 1.6rem; gap: 2rem; }
             .page-hero h1 { font-size: 2.1rem; }
             .band { padding: 1.8rem 1.3rem; }
+            .sheet-band { flex-direction: column; text-align: center; }
+            .sheet-band .thumb { flex-basis: auto; }
+            .sheet-band .cta-row, .sheet-band .cta2-row { justify-content: center; }
         }
     </style>
 </head>
@@ -231,9 +260,28 @@
             </ul>
         </div>
 
+        <div class="band" id="sell-sheet">
+            <div class="sheet-band">
+                <div class="thumb">
+                    <a href="/FavCircles-Founding-Store-Sell-Sheet.pdf" target="_blank" rel="noopener">
+                        <img src="/img/sell-sheet-thumb.png" alt="FavCircles founding store sell sheet — one-page overview of the loyalty program, pricing, and how to claim your store">
+                    </a>
+                </div>
+                <div class="copy">
+                    <h2>The whole pitch, on one page</h2>
+                    <p>What your customers earn, how rewards get redeemed at your counter, what it costs next to standalone loyalty platforms, and the four steps to claim your store — print it, or hand it to your business partner.</p>
+                    <div class="cta-row cta2-row" style="gap: 0.8rem; margin-bottom: 1rem;">
+                        <a class="cta2" href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener">Sign up with the app today →</a>
+                        <a class="cta2-outline" href="/FavCircles-Founding-Store-Sell-Sheet.pdf" target="_blank" rel="noopener">⤓&nbsp; Download the sell sheet (PDF)</a>
+                    </div>
+                    <p style="margin-bottom: 0;">Want to learn more or talk it through first? Email <a href="mailto:wesley@favcircles.com?subject=FavCircles%20for%20my%20store" style="color:#667eea;">wesley@favcircles.com</a> — a founder answers, usually same day.</p>
+                </div>
+            </div>
+        </div>
+
         <div class="band">
             <h2>Start free, grow when you're ready</h2>
-            <p><strong>Free:</strong> claim your venue, complete your page, and be discoverable to every FavCircles user near you.</p>
+            <p><strong>Free:</strong> claim your venue, complete your page, and be discoverable to every FavCircles user near you. Not on the map yet? Add your business right in the app — search, claim, done.</p>
             <p><strong>FavCircles Business:</strong> unlocks announcements, specials, loyalty rewards programs, and insights about your followers. Billed monthly through the App Store with a free trial — cancel anytime.</p>
             <a class="cta2" href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener">Claim your business today →</a>
             <p style="margin-top: 1rem; margin-bottom: 0;">Questions first? Email <a href="mailto:wesley@favcircles.com" style="color:#667eea;">wesley@favcircles.com</a> — a founder answers.</p>

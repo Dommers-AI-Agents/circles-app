@@ -397,19 +397,23 @@ exports.getVenueByPlace = async (req, res) => {
     );
 
     if (!venue) {
-      // Not in the sticker program — but a Google-backed business can still
-      // be claimed by its owner ("Is this your store?"), so surface the
-      // caller's claim state keyed by the place.
+      // Not in the sticker program — but any resolvable place can be claimed
+      // by its owner ("Is this your store?"). Claims are verified by a human,
+      // so no Google backing is required: Apple-sourced saves (no
+      // googlePlaceId) used to silently hide the claim card.
       let googlePlaceId = req.query.googlePlaceId || null;
       let globalPlaceId = null;
+      let placeResolved = false;
       try {
         const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(req.params.placeId).get();
         if (placeDoc.exists) {
+          placeResolved = true;
           googlePlaceId = placeDoc.data().googlePlaceId || googlePlaceId;
           globalPlaceId = placeDoc.data().globalPlaceId || null;
         } else {
           const globalDoc = await db.collection('globalPlaces').doc(req.params.placeId).get();
           if (globalDoc.exists) {
+            placeResolved = true;
             googlePlaceId = globalDoc.data().googlePlaceId || googlePlaceId;
             globalPlaceId = globalDoc.id;
           }
@@ -418,7 +422,7 @@ exports.getVenueByPlace = async (req, res) => {
         console.error('⚠️ Claimability lookup failed:', lookupError.message);
       }
 
-      const claim = { canClaim: !!googlePlaceId, myClaimStatus: null };
+      const claim = { canClaim: placeResolved || !!googlePlaceId, myClaimStatus: null };
       if (claim.canClaim) {
         try {
           const placeKey = globalPlaceId || googlePlaceId || req.params.placeId;
@@ -1777,11 +1781,9 @@ exports.claimPlace = async (req, res) => {
       googlePlaceId = place.googlePlaceId || googlePlaceId;
     }
 
-    // Only real businesses (Google-backed) can be claimed
-    if (!googlePlaceId) {
-      return res.status(400).json({ success: false, error: 'This place cannot be claimed' });
-    }
-
+    // Any resolved place is claimable — ownership is verified by a human, so
+    // Apple-sourced saves without a googlePlaceId are fine. (The place-exists
+    // check above already 404'd unresolvable ids.)
     const placeKey = globalPlaceId || googlePlaceId || placeId;
     const claimRef = db.collection(STICKER_COLLECTIONS.VENUE_CLAIM_REQUESTS)
       .doc(sanitizeKeyPart(`place_${placeKey}_${userId}`));
@@ -1802,6 +1804,94 @@ exports.claimPlace = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ claimPlace failed:', error);
+    res.status(500).json({ success: false, error: 'Failed to submit ownership claim' });
+  }
+};
+
+// @desc    Add-and-claim: a store owner whose business was never saved by any
+//          user submits it by details. Reuses an existing canonical venue
+//          record when one matches (name + proximity), otherwise creates one —
+//          no personal circle save required — then files the ownership claim.
+// @route   POST /api/rewards/businesses/claim
+//          body: { name, address, lat, lng, category?, phone?, website?,
+//                  applePoiCategory?, contactName, contactEmail,
+//                  contactPhone?, message? }
+// @access  Private
+exports.claimBusinessByDetails = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { name, address, lat, lng } = req.body || {};
+
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ success: false, error: 'Business name is required' });
+    }
+    if (!address || !String(address).trim()) {
+      return res.status(400).json({ success: false, error: 'Business address is required' });
+    }
+    if (typeof lat !== 'number' || typeof lng !== 'number' ||
+        Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      return res.status(400).json({ success: false, error: 'A map location is required' });
+    }
+    if (!req.body?.contactName || !req.body?.contactEmail) {
+      return res.status(400).json({ success: false, error: 'Contact name and business email are required' });
+    }
+
+    const location = { type: 'Point', coordinates: [lng, lat] };
+    const {
+      findCanonicalByNameAndLocation,
+      createGlobalPlaceFromDetails
+    } = require('../services/globalPlaceResolver');
+
+    // Reuse the canonical venue if it exists under any name/address variant
+    let globalPlaceId;
+    let placeName = String(name).trim();
+    let placeAddress = String(address).trim();
+    const matched = await findCanonicalByNameAndLocation(placeName, location);
+    if (matched) {
+      globalPlaceId = matched.id;
+      placeName = matched.data().name || placeName;
+      placeAddress = matched.data().address || placeAddress;
+    } else {
+      const created = await createGlobalPlaceFromDetails({
+        name: placeName,
+        address: placeAddress,
+        location,
+        category: req.body.category || 'other',
+        phone: req.body.phone || null,
+        website: req.body.website || null,
+        applePoiCategory: req.body.applePoiCategory || null
+      });
+      globalPlaceId = created.resolvedId;
+    }
+
+    // Already an enrolled venue? Same guard as claimPlace.
+    const venue = await rewardService.findVenueByPlace(globalPlaceId, req.body?.googlePlaceId);
+    if (venue && venue.ownerUserId) {
+      return res.status(409).json({ success: false, error: 'This business already has an owner' });
+    }
+
+    const claimRef = venue
+      ? db.collection(STICKER_COLLECTIONS.VENUE_CLAIM_REQUESTS)
+          .doc(sanitizeKeyPart(`${venue.venueId}_${userId}`))
+      : db.collection(STICKER_COLLECTIONS.VENUE_CLAIM_REQUESTS)
+          .doc(sanitizeKeyPart(`place_${globalPlaceId}_${userId}`));
+
+    await submitClaim(res, claimRef, {
+      ...(venue ? { venueId: venue.venueId, venueName: venue.venueName } : {}),
+      userId,
+      userEmail: req.user.email,
+      userDisplayName: req.user.displayName || req.user.name,
+      message: req.body?.message,
+      contactName: req.body.contactName,
+      contactEmail: req.body.contactEmail,
+      contactPhone: req.body?.contactPhone,
+      globalPlaceId,
+      googlePlaceId: req.body?.googlePlaceId || null,
+      placeName,
+      placeAddress
+    });
+  } catch (error) {
+    console.error('❌ claimBusinessByDetails failed:', error);
     res.status(500).json({ success: false, error: 'Failed to submit ownership claim' });
   }
 };

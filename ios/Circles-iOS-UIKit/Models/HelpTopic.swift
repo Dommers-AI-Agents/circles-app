@@ -765,10 +765,31 @@ class HelpContentProvider {
                 Tap the button above to watch — it opens in your browser.
                 """,
                 category: .storeOwners,
-                relatedTopics: ["store-rewards-program", "store-getting-started"],
+                relatedTopics: ["store-owner-webpage", "store-rewards-program", "store-getting-started"],
                 videoTimestamp: nil,
                 externalURL: "https://favcircles.com/store-owner-tutorial.html",
                 externalURLTitle: "▶ Watch the tutorial"
+            ),
+            HelpTopic(
+                id: "store-owner-webpage",
+                title: "The store owner program, on one page",
+                subtitle: "Sell sheet, video, and a direct line to us",
+                content: """
+                Everything about the store owner program lives on one page at FavCircles.com — handy for sharing with a business partner or reading on a bigger screen.
+
+                **What you'll find there:**
+                • The one-page sell sheet — the whole program on a single page you can download, print, or pass along
+                • The narrated video tutorial, from claiming your business to running your loyalty program
+                • What's free, what FavCircles Business adds, and what it costs
+                • A direct line to us — email wesley@favcircles.com and a founder answers
+
+                Tap the button above to open the page in your browser.
+                """,
+                category: .storeOwners,
+                relatedTopics: ["store-video-tutorial", "store-getting-started", "store-rewards-program"],
+                videoTimestamp: nil,
+                externalURL: "https://favcircles.com/store-owners.html",
+                externalURLTitle: "Open the store owner page"
             ),
             HelpTopic(
                 id: "store-ai-assistant",
@@ -838,6 +859,9 @@ class HelpContentProvider {
                 2. On its page, tap Claim this business and add your contact info
                 3. FavCircles verifies you're the owner and approves the claim
                 4. You'll get a notification — your store now appears under My Venues
+
+                **Don't see your store?**
+                If nobody has saved it yet, add it yourself: on your profile, tap the storefront icon → My Venues → the + button, search for your business, and submit your claim in one step. No need to save it to a circle first.
 
                 **Where everything lives:**
                 • On your profile, tap the storefront icon → My Venues

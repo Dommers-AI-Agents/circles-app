@@ -12,7 +12,7 @@ class OwnerVenuesViewController: BaseViewController {
 
     override var enablesPullToRefresh: Bool { true }
     override var emptyStateMessage: String? {
-        "No venues are linked to your account yet.\nContact FavCircles to enroll your business."
+        "No venues are linked to your account yet.\nAdd & claim your business to get started."
     }
 
     // MARK: - UI Elements
@@ -24,6 +24,10 @@ class OwnerVenuesViewController: BaseViewController {
         table.estimatedRowHeight = 64
         return table
     }()
+
+    /// Shown with the empty state — owners whose business was never saved by
+    /// any user can add + claim it from scratch
+    private lazy var emptyClaimButton = UIButton.primaryButton(title: "Add & claim your business")
 
     // MARK: - Lifecycle
 
@@ -47,7 +51,11 @@ class OwnerVenuesViewController: BaseViewController {
             image: UIImage(systemName: "book"),
             style: .plain, target: self, action: #selector(ownerGuideTapped))
         guideButton.accessibilityLabel = "Store owner guide"
-        navigationItem.rightBarButtonItems = [storefrontButton, onlineStoreButton, guideButton]
+        let claimButton = UIBarButtonItem(
+            image: UIImage(systemName: "plus"),
+            style: .plain, target: self, action: #selector(claimBusinessTapped))
+        claimButton.accessibilityLabel = "Add and claim your business"
+        navigationItem.rightBarButtonItems = [claimButton, storefrontButton, onlineStoreButton, guideButton]
 
         tableView.dataSource = self
         tableView.delegate = self
@@ -59,6 +67,16 @@ class OwnerVenuesViewController: BaseViewController {
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        emptyClaimButton.isHidden = true
+        emptyClaimButton.addTarget(self, action: #selector(claimBusinessTapped), for: .touchUpInside)
+        view.addSubview(emptyClaimButton)
+        NSLayoutConstraint.activate([
+            emptyClaimButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            emptyClaimButton.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: 90),
+            emptyClaimButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+            emptyClaimButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40)
         ])
     }
 
@@ -79,8 +97,10 @@ class OwnerVenuesViewController: BaseViewController {
                     self.tableView.reloadData()
                     if venues.isEmpty {
                         self.showEmptyState()
+                        self.emptyClaimButton.isHidden = false
                     } else {
                         self.hideEmptyState()
+                        self.emptyClaimButton.isHidden = true
                         // Single venue: jump straight to managing it (once)
                         if venues.count == 1 && !self.hasAutoPushed {
                             self.hasAutoPushed = true
@@ -97,6 +117,12 @@ class OwnerVenuesViewController: BaseViewController {
     private func manage(_ venue: AdminVenue, animated: Bool = true) {
         let manageVC = VenueManageViewController(venue: venue)
         navigationController?.pushViewController(manageVC, animated: animated)
+    }
+
+    // MARK: - Add & claim
+
+    @objc private func claimBusinessTapped() {
+        navigationController?.pushViewController(ClaimBusinessViewController(), animated: true)
     }
 
     // MARK: - Brand tools

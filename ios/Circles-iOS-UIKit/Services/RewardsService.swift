@@ -213,6 +213,40 @@ class RewardsService {
         }
     }
 
+    /// Claim a business that no user has saved yet — the owner picks it from an
+    /// Apple Maps search and we create the venue record + claim in one shot.
+    /// Same human-verification flow as `claimPlace`.
+    func claimBusiness(name: String, address: String, latitude: Double, longitude: Double, category: String? = nil, phone: String? = nil, website: String? = nil, applePoiCategory: String? = nil, contactName: String, contactEmail: String, contactPhone: String? = nil, message: String? = nil, completion: @escaping (Result<VenueClaim, Error>) -> Void) {
+        var body: [String: Any] = [
+            "name": name,
+            "address": address,
+            "lat": latitude,
+            "lng": longitude,
+            "contactName": contactName,
+            "contactEmail": contactEmail
+        ]
+        if let category = category, !category.isEmpty { body["category"] = category }
+        if let phone = phone, !phone.isEmpty { body["phone"] = phone }
+        if let website = website, !website.isEmpty { body["website"] = website }
+        if let applePoiCategory = applePoiCategory, !applePoiCategory.isEmpty { body["applePoiCategory"] = applePoiCategory }
+        if let contactPhone = contactPhone, !contactPhone.isEmpty { body["contactPhone"] = contactPhone }
+        if let message = message, !message.isEmpty { body["message"] = message }
+
+        apiService.request(
+            endpoint: "rewards/businesses/claim",
+            method: .post,
+            body: body,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<ClaimResponseData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.claim))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     // MARK: - Venue owner announcements
 
     func addAnnouncement(venueId: String, title: String, message: String, expiresAt: String? = nil, completion: @escaping (Result<[VenueAnnouncement], Error>) -> Void) {
