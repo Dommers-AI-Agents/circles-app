@@ -528,6 +528,7 @@ extension SettingsViewController {
         // Reset cell to default state to prevent reuse issues
         cell.textLabel?.text = ""
         cell.textLabel?.textColor = Constants.Colors.label
+        cell.textLabel?.numberOfLines = 1
         cell.detailTextLabel?.text = nil
         cell.accessoryType = .none
         cell.accessoryView = nil
@@ -562,7 +563,22 @@ extension SettingsViewController {
             if let row = DataRow(rawValue: indexPath.row) {
                 switch row {
                 case .importPlaces, .exportData:
-                    cell.textLabel?.text = row.title
+                    if row == .importPlaces {
+                        // Say WHERE from — the bare title didn't tell users
+                        // this covers the platforms they're coming from
+                        let title = NSMutableAttributedString(string: row.title)
+                        title.append(NSAttributedString(
+                            string: "\nMapstr · Google Maps · Swarm",
+                            attributes: [
+                                .font: UIFont.systemFont(ofSize: 12),
+                                .foregroundColor: UIColor.secondaryLabel
+                            ]
+                        ))
+                        cell.textLabel?.numberOfLines = 0
+                        cell.textLabel?.attributedText = title
+                    } else {
+                        cell.textLabel?.text = row.title
+                    }
                     cell.accessoryType = .disclosureIndicator
 
                     // Add icon
