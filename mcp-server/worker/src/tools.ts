@@ -195,12 +195,14 @@ const SERVER_INSTRUCTIONS = `FavCircles is a private, trust-based recommendation
 Conventions:
 - Circle and place ids come from list_circles / get_circle / search_places; pass them unchanged to mutation tools.
 - Deletions are two-tier: delete_* moves items to a recoverable trash; permanently_delete_* is irreversible. Always get explicit user confirmation before any delete, and name the exact item being deleted.
-- Never fabricate places or attribute recommendations to people who didn't make them.`;
+- Never fabricate places or attribute recommendations to people who didn't make them.
+
+Store owners: users who claimed their business get store-management tools (list_my_stores first; other store tools take its venueId, optional for single-store owners). Announcements broadcast to every follower and redemption codes are worth real loyalty points — always confirm exact content/amounts with the user before posting or minting. Some store tools need the FavCircles Business tier; a 403 means the owner should upgrade in the app, not that something is broken.`;
 
 export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
   const backend = new Backend(auth, apiBase);
   const server = new McpServer(
-    { name: "favcircles", version: "0.6.0" },
+    { name: "favcircles", version: "0.7.0" },
     { instructions: SERVER_INSTRUCTIONS }
   );
 
@@ -1339,7 +1341,635 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
     }
   );
 
+  registerStoreOwnerTools(server, backend);
+
   return server;
+}
+
+// ---- Store-owner tools ------------------------------------------------------
+// Every tool is scoped by the backend's requireVenueOwner middleware — a
+// non-owner token just gets 403s. venueId is optional everywhere: single-store
+// owners (nearly all) never see an id.
+
+const STORE_OUT = z.object({
+  venueId: z.string(),
+  storeName: z.string(),
+  placeName: z.string().nullable(),
+  address: z.string().nullable(),
+  businessTier: z.boolean(),
+  earnRate: z.number().nullable(),
+  saves: z.number(),
+  followers: z.number(),
+  visits: z.number(),
+  scans: z.number(),
+  redemptions: z.number(),
+});
+
+const STORE_PERSON_OUT = z.object({
+  id: z.string(),
+  displayName: z.string(),
+  username: z.string().nullable(),
+  savedAt: z.string().nullable(),
+});
+
+const STORE_EVENT_OUT = z.object({
+  id: z.string(),
+  type: z.string(),
+  points: z.number(),
+  createdAt: z.string().nullable(),
+  offerTitle: z.string().nullable(),
+  customerName: z.string().nullable(),
+});
+
+const OFFER_OUT = z.object({
+  offerId: z.string(),
+  title: z.string(),
+  pointsCost: z.number(),
+  active: z.boolean(),
+});
+
+const ANNOUNCEMENT_OUT = z.object({
+  announcementId: z.string().nullable(),
+  title: z.string(),
+  message: z.string(),
+  expiresAt: z.string().nullable(),
+  active: z.boolean(),
+});
+
+function registerStoreOwnerTools(server: McpServer, backend: Backend): void {
+  const OWNER = { readOnlyHint: true, openWorldHint: false };
+
+  function storeStruct(v: import("./backend").OwnerVenue) {
+    const s = v.stats || {};
+    return {
+      venueId: v.venueId,
+      storeName: v.venueName,
+      placeName: v.placeName ?? null,
+      address: v.placeAddress ?? null,
+      businessTier: v.ownerPremium === true,
+      earnRate: v.earnRate ?? null,
+      saves: s.saves ?? 0,
+      followers: s.followers ?? 0,
+      visits: s.visits ?? 0,
+      scans: s.scans ?? 0,
+      redemptions: s.redemptions ?? 0,
+    };
+  }
+
+  /** Resolve which store a tool targets. Omitted venueId = the only store. */
+  async function resolveVenue(venueId?: string): Promise<import("./backend").OwnerVenue> {
+    const { venues } = await backend.getMyVenues();
+    if (venues.length === 0) {
+      throw new Error("You don't manage any stores on FavCircles. Claim your store from its place page in the app first.");
+    }
+    if (venueId) {
+      const match = venues.find((v) => v.venueId === venueId);
+      if (!match) throw new Error(`No store with venueId ${venueId}. Your stores: ${venues.map((v) => `${v.venueName} (${v.venueId})`).join(", ")}`);
+      return match;
+    }
+    if (venues.length === 1) return venues[0];
+    throw new Error(`You manage ${venues.length} stores — pass venueId. Options: ${venues.map((v) => `${v.venueName} (${v.venueId})`).join(", ")}`);
+  }
+
+  /** Business-tier 403s become guidance, not raw errors. */
+  function storeErr(e: unknown): ToolResult {
+    if (e instanceof BackendError && e.status === 403 && /business/i.test(e.message)) {
+      return ok("This needs FavCircles Business for this store. The owner can upgrade from the store's dashboard in the FavCircles app ($49.99/mo after a 3-month free trial).");
+    }
+    return err(e);
+  }
+
+  const VENUE_ID_INPUT = z.string().optional().describe("The store's venueId from list_my_stores. Omit if the user manages only one store.");
+
+  server.registerTool(
+    "list_my_stores",
+    {
+      title: "List my stores",
+      description:
+        "List the stores (venues) the current user owns/manages on FavCircles, with headline stats and whether each has the Business tier. Call this first for any store-management task — it provides the venueId other store tools take.",
+      inputSchema: {},
+      outputSchema: { count: z.number(), stores: z.array(STORE_OUT) },
+      annotations: { title: "List my stores", ...OWNER },
+      _meta: inv("Loading your stores", "Loaded your stores"),
+    },
+    async (): Promise<ToolResult> => {
+      try {
+        const { venues } = await backend.getMyVenues();
+        const stores = venues.map(storeStruct);
+        if (stores.length === 0) {
+          return ok("You don't manage any stores on FavCircles yet. Claim your store from its place page in the app.", { count: 0, stores: [] });
+        }
+        const lines = stores.map((s) =>
+          `- ${s.storeName} (venueId: ${s.venueId})${s.businessTier ? " · Business" : " · free tier"}\n  saves ${s.saves} · followers ${s.followers} · visits ${s.visits} · scans ${s.scans} · redemptions ${s.redemptions}`);
+        return ok(`You manage ${stores.length} store(s):\n\n${lines.join("\n")}`, { count: stores.length, stores });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "get_store_dashboard",
+    {
+      title: "Store stats dashboard",
+      description:
+        "Headline stats for a store (saves, followers, visits, QR scans, sign-ups, redemptions) plus, on the Business tier, the last 6 months of trends. The answer to \"how is my store doing?\".",
+      inputSchema: { venueId: VENUE_ID_INPUT },
+      outputSchema: {
+        storeName: z.string(),
+        businessTier: z.boolean(),
+        saves: z.number(), followers: z.number(), visits: z.number(),
+        scans: z.number(), signups: z.number(), redemptions: z.number(),
+        monthly: z.record(z.string(), z.record(z.string(), z.number())).nullable(),
+      },
+      annotations: { title: "Store stats dashboard", ...OWNER },
+      _meta: inv("Loading store stats", "Loaded store stats"),
+    },
+    async ({ venueId }: { venueId?: string }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const d = await backend.getVenueDashboard(venue.venueId);
+        const h = d.headline;
+        const structured = {
+          storeName: d.venueName, businessTier: d.premium.active,
+          saves: h.saves, followers: h.followers, visits: h.visits,
+          scans: h.scans, signups: h.signups, redemptions: h.redemptions,
+          monthly: d.detail?.monthly ?? null,
+        };
+        let text = `${d.venueName}: ${h.saves} saves · ${h.followers} followers · ${h.visits} visits · ${h.scans} QR scans · ${h.signups} sign-ups · ${h.redemptions} redemptions`;
+        if (d.detail) {
+          const months = Object.keys(d.detail.monthly).sort().reverse();
+          text += `\n\nLast ${months.length} months (newest first):\n` + months.map((m) => {
+            const v = d.detail!.monthly[m] || {};
+            return `- ${m}: visits ${v.visits ?? 0}, scans ${v.scans ?? 0}, saves ${v.saves ?? 0}, redeemed ${v.redemptions ?? 0}`;
+          }).join("\n");
+          text += `\n${d.detail.newSavesThisMonth} new save(s) this month.`;
+        } else {
+          text += "\n(Monthly trends need the Business tier.)";
+        }
+        return ok(text, structured);
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "get_store_followers",
+    {
+      title: "Store followers",
+      description:
+        "Who follows this store on FavCircles. Following is a directed act toward the business, so the full list is visible to the owner. Business tier.",
+      inputSchema: { venueId: VENUE_ID_INPUT },
+      outputSchema: { count: z.number(), followers: z.array(STORE_PERSON_OUT) },
+      annotations: { title: "Store followers", ...OWNER },
+      _meta: inv("Loading followers", "Loaded followers"),
+    },
+    async ({ venueId }: { venueId?: string }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const data = await backend.getVenueFollowers(venue.venueId);
+        const followers = data.followers.map((p) => ({
+          id: p.id, displayName: p.displayName, username: p.username ?? null, savedAt: null,
+        }));
+        const text = data.count === 0
+          ? `${venue.venueName} has no followers yet.`
+          : `${venue.venueName} has ${data.count} follower(s):\n${followers.map((f) => `- ${f.displayName}${f.username ? ` (@${f.username})` : ""}`).join("\n")}`;
+        return ok(text, { count: data.count, followers });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "get_store_savers",
+    {
+      title: "Who saved my store",
+      description:
+        "Who saved this store's place. The total counts everyone; the identity list includes only savers whose save is publicly visible under their privacy settings — always explain that gap rather than treating it as missing data. Business tier.",
+      inputSchema: { venueId: VENUE_ID_INPUT },
+      outputSchema: { totalCount: z.number(), visibleCount: z.number(), hiddenCount: z.number(), savers: z.array(STORE_PERSON_OUT) },
+      annotations: { title: "Who saved my store", ...OWNER },
+      _meta: inv("Loading savers", "Loaded savers"),
+    },
+    async ({ venueId }: { venueId?: string }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const data = await backend.getVenueSavers(venue.venueId);
+        const savers = data.savers.map((p) => ({
+          id: p.id, displayName: p.displayName, username: p.username ?? null, savedAt: p.savedAt ?? null,
+        }));
+        const hidden = data.totalCount - data.count;
+        let text = `${data.totalCount} people saved ${venue.venueName}.`;
+        if (savers.length > 0) {
+          text += `\nVisible savers:\n${savers.map((s) => `- ${s.displayName}${s.savedAt ? ` (saved ${s.savedAt.slice(0, 10)})` : ""}`).join("\n")}`;
+        }
+        if (hidden > 0) text += `\n${hidden} kept their save private — their identities are not shared with businesses.`;
+        return ok(text, { totalCount: data.totalCount, visibleCount: data.count, hiddenCount: hidden, savers });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "get_store_activity",
+    {
+      title: "Store activity & busiest times",
+      description:
+        "The store's loyalty ledger — every QR scan, sign-up, save, and reward redemption with who and when — plus computed busiest hours and days. Use for \"when are my busiest times?\" and \"who are my regulars?\". Business tier.",
+      inputSchema: { venueId: VENUE_ID_INPUT },
+      outputSchema: {
+        eventCount: z.number(),
+        busiestHours: z.array(z.string()),
+        busiestDays: z.array(z.string()),
+        events: z.array(STORE_EVENT_OUT),
+      },
+      annotations: { title: "Store activity", ...OWNER },
+      _meta: inv("Loading store activity", "Loaded store activity"),
+    },
+    async ({ venueId }: { venueId?: string }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const data = await backend.getVenueActivity(venue.venueId);
+        const events = data.events.map((ev) => ({
+          id: ev.id, type: ev.type, points: ev.points,
+          createdAt: ev.createdAt ?? null, offerTitle: ev.offerTitle ?? null,
+          customerName: ev.user?.displayName ?? null,
+        }));
+
+        const hourCounts = new Map<number, number>();
+        const dayCounts = new Map<string, number>();
+        const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        for (const ev of events) {
+          if (!ev.createdAt) continue;
+          const d = new Date(ev.createdAt);
+          if (isNaN(d.getTime())) continue;
+          hourCounts.set(d.getUTCHours(), (hourCounts.get(d.getUTCHours()) ?? 0) + 1);
+          dayCounts.set(DAYS[d.getUTCDay()], (dayCounts.get(DAYS[d.getUTCDay()]) ?? 0) + 1);
+        }
+        const topHours = [...hourCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
+          .map(([h]) => `${h}:00 UTC`);
+        const topDays = [...dayCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([d]) => d);
+
+        let text = `${events.length} recent event(s) at ${venue.venueName}.`;
+        if (topDays.length) text += ` Busiest days: ${topDays.join(", ")}. Busiest hours (UTC): ${topHours.join(", ")}.`;
+        text += `\n\nMost recent:\n${events.slice(0, 15).map((ev) =>
+          `- ${ev.createdAt?.slice(0, 16) ?? "?"} · ${ev.customerName ?? "A customer"} · ${ev.type.replace(/_/g, " ")}${ev.offerTitle ? ` (${ev.offerTitle})` : ""}`).join("\n")}`;
+        return ok(text, { eventCount: events.length, busiestHours: topHours, busiestDays: topDays, events });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "update_store_details",
+    {
+      title: "Update store details",
+      description:
+        "Edit the store's public place listing: name, description (prose — contact info has its own fields), category, phone, and/or website. Changes propagate to every user who saved the place. Address changes are NOT supported here (they need the map-confirmed flow in the app).",
+      inputSchema: {
+        venueId: VENUE_ID_INPUT,
+        name: z.string().min(1).optional().describe("New store name"),
+        description: z.string().optional().describe("Public description (prose only — no phone/website lines)"),
+        category: z.enum(PLACE_CATEGORIES).optional(),
+        phone: z.string().optional(),
+        website: z.string().optional(),
+      },
+      outputSchema: {
+        name: z.string(), description: z.string().nullable(), category: z.string().nullable(),
+        phone: z.string().nullable(), website: z.string().nullable(),
+      },
+      annotations: { title: "Update store details", ...UPDATE },
+      _meta: inv("Updating store details", "Updated store details"),
+    },
+    async ({ venueId, ...fields }: { venueId?: string; name?: string; description?: string; category?: string; phone?: string; website?: string }): Promise<ToolResult> => {
+      try {
+        if (!fields.name && fields.description === undefined && !fields.category && fields.phone === undefined && fields.website === undefined) {
+          return err(new Error("Provide at least one of: name, description, category, phone, website"));
+        }
+        const venue = await resolveVenue(venueId);
+        const updated = await backend.updateVenuePlace(venue.venueId, fields);
+        const structured = {
+          name: updated.name, description: updated.description ?? null, category: updated.category ?? null,
+          phone: updated.phone ?? null, website: updated.website ?? null,
+        };
+        return ok(
+          `Updated ${updated.name}. Now: category ${updated.category ?? "—"}, phone ${updated.phone ?? "—"}, website ${updated.website ?? "—"}${updated.description ? `, description: "${updated.description}"` : ""}. Visible to everyone who saved the place.`,
+          structured);
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "list_store_photos",
+    {
+      title: "List store photos",
+      description: "The store's photo gallery URLs and which one is the cover photo (leads the place page). Use before set_store_cover_photo.",
+      inputSchema: { venueId: VENUE_ID_INPUT },
+      outputSchema: { count: z.number(), coverPhotoUrl: z.string().nullable(), photos: z.array(z.string()) },
+      annotations: { title: "List store photos", ...OWNER },
+      _meta: inv("Loading photos", "Loaded photos"),
+    },
+    async ({ venueId }: { venueId?: string }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        if (!venue.globalPlaceId) return err(new Error("This store has no linked place record"));
+        const gp = await backend.getGlobalPlace(venue.globalPlaceId);
+        const photos = (gp.photos || []).map((p: any) => (typeof p === "string" ? p : p.url)).filter(Boolean);
+        const cover = gp.coverPhotoUrl ?? null;
+        const text = photos.length === 0
+          ? `${venue.venueName} has no photos yet — add some from the app.`
+          : `${venue.venueName} has ${photos.length} photo(s):\n${photos.map((u: string, i: number) => `${i + 1}. ${u}${u === cover ? "  ← cover" : ""}`).join("\n")}`;
+        return ok(text, { count: photos.length, coverPhotoUrl: cover, photos });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "set_store_cover_photo",
+    {
+      title: "Set store cover photo",
+      description: "Choose which existing photo leads the store's place page for everyone. The URL must be one of the store's photos (see list_store_photos).",
+      inputSchema: {
+        venueId: VENUE_ID_INPUT,
+        url: z.string().describe("Photo URL from list_store_photos"),
+      },
+      outputSchema: { coverPhotoUrl: z.string().nullable() },
+      annotations: { title: "Set store cover photo", ...UPDATE },
+      _meta: inv("Setting cover photo", "Cover photo set"),
+    },
+    async ({ venueId, url }: { venueId?: string; url: string }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const cover = await backend.setVenueCoverPhoto(venue.venueId, url);
+        return ok(`Cover photo updated for ${venue.venueName}.`, { coverPhotoUrl: cover });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "post_store_announcement",
+    {
+      title: "Post store announcement",
+      description:
+        "Publish an announcement on the store's place page and to its followers' feeds (deals, happy hours, events). This BROADCASTS to every follower — always confirm the exact title and message with the user before posting. Business tier.",
+      inputSchema: {
+        venueId: VENUE_ID_INPUT,
+        title: z.string().min(1).max(80),
+        message: z.string().min(1).max(500),
+        expiresAt: z.string().optional().describe("ISO date when the announcement should stop showing (optional)"),
+      },
+      outputSchema: { announcements: z.array(ANNOUNCEMENT_OUT) },
+      annotations: { title: "Post store announcement", ...CREATE },
+      _meta: inv("Posting announcement", "Announcement posted"),
+    },
+    async ({ venueId, title, message, expiresAt }: { venueId?: string; title: string; message: string; expiresAt?: string }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const announcements = await backend.addAnnouncement(venue.venueId, { title, message, ...(expiresAt ? { expiresAt } : {}) });
+        return ok(`Posted "${title}" to ${venue.venueName} — live on the place page and in followers' feeds.`,
+          { announcements: announcements.map(annStruct) });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "update_store_announcement",
+    {
+      title: "Update store announcement",
+      description: "Edit or deactivate an existing announcement (find its id via get_store_dashboard/list_my_stores announcements or prior tool output). Business tier.",
+      inputSchema: {
+        venueId: VENUE_ID_INPUT,
+        announcementId: z.string(),
+        title: z.string().max(80).optional(),
+        message: z.string().max(500).optional(),
+        expiresAt: z.string().nullable().optional(),
+        active: z.boolean().optional(),
+      },
+      outputSchema: { announcements: z.array(ANNOUNCEMENT_OUT) },
+      annotations: { title: "Update store announcement", ...UPDATE },
+      _meta: inv("Updating announcement", "Announcement updated"),
+    },
+    async ({ venueId, announcementId, ...fields }: { venueId?: string; announcementId: string; title?: string; message?: string; expiresAt?: string | null; active?: boolean }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const announcements = await backend.updateAnnouncement(venue.venueId, announcementId, fields);
+        return ok(`Announcement updated at ${venue.venueName}.`, { announcements: announcements.map(annStruct) });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "delete_store_announcement",
+    {
+      title: "Delete store announcement",
+      description: "Permanently remove an announcement from the store. Confirm with the user first — this cannot be undone. Business tier.",
+      inputSchema: { venueId: VENUE_ID_INPUT, announcementId: z.string() },
+      outputSchema: { announcements: z.array(ANNOUNCEMENT_OUT) },
+      annotations: { title: "Delete store announcement", ...DESTRUCTIVE },
+      _meta: inv("Deleting announcement", "Announcement deleted"),
+    },
+    async ({ venueId, announcementId }: { venueId?: string; announcementId: string }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const announcements = await backend.deleteAnnouncement(venue.venueId, announcementId);
+        return ok(`Announcement deleted from ${venue.venueName}.`, { announcements: announcements.map(annStruct) });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "create_store_offer",
+    {
+      title: "Create loyalty offer",
+      description:
+        "Add a loyalty reward customers can redeem with points earned at this store (e.g. \"Free smoothie\" for 250 points). Confirm title and cost with the user before creating. Business tier.",
+      inputSchema: {
+        venueId: VENUE_ID_INPUT,
+        title: z.string().min(1),
+        pointsCost: z.number().int().positive(),
+      },
+      outputSchema: { offers: z.array(OFFER_OUT) },
+      annotations: { title: "Create loyalty offer", ...CREATE },
+      _meta: inv("Creating offer", "Offer created"),
+    },
+    async ({ venueId, title, pointsCost }: { venueId?: string; title: string; pointsCost: number }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const offers = await backend.addOffer(venue.venueId, { title, pointsCost });
+        return ok(`Created "${title}" (${pointsCost} pts) at ${venue.venueName}. Active offers: ${offers.filter((o) => o.active !== false).length}.`,
+          { offers: offers.map(offerStruct) });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "update_store_offer",
+    {
+      title: "Update loyalty offer",
+      description: "Edit an offer's title or cost, or activate/deactivate it (deactivating hides it from customers without deleting history). Business tier.",
+      inputSchema: {
+        venueId: VENUE_ID_INPUT,
+        offerId: z.string(),
+        title: z.string().optional(),
+        pointsCost: z.number().int().positive().optional(),
+        active: z.boolean().optional(),
+      },
+      outputSchema: { offers: z.array(OFFER_OUT) },
+      annotations: { title: "Update loyalty offer", ...UPDATE },
+      _meta: inv("Updating offer", "Offer updated"),
+    },
+    async ({ venueId, offerId, ...fields }: { venueId?: string; offerId: string; title?: string; pointsCost?: number; active?: boolean }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const offers = await backend.updateOffer(venue.venueId, offerId, fields);
+        return ok(`Offer updated at ${venue.venueName}.`, { offers: offers.map(offerStruct) });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "set_store_earn_rate",
+    {
+      title: "Set loyalty earn rate",
+      description: "Set how many points customers earn per register-QR scan at this store. Business tier.",
+      inputSchema: {
+        venueId: VENUE_ID_INPUT,
+        earnRate: z.number().int().positive().describe("Points per visit scan"),
+      },
+      outputSchema: { earnRate: z.number() },
+      annotations: { title: "Set loyalty earn rate", ...UPDATE },
+      _meta: inv("Setting earn rate", "Earn rate set"),
+    },
+    async ({ venueId, earnRate }: { venueId?: string; earnRate: number }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const applied = await backend.setEarnRate(venue.venueId, earnRate);
+        return ok(`${venue.venueName} now awards ${applied} points per visit.`, { earnRate: applied });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "create_redemption_codes",
+    {
+      title: "Create redemption codes",
+      description:
+        "Mint a batch of one-time codes worth points at this store (for order-box cards, booth handouts, promos). Each code is redeemable once. Confirm count, points, and label with the user first. Business tier.",
+      inputSchema: {
+        venueId: VENUE_ID_INPUT,
+        count: z.number().int().min(1).max(500),
+        points: z.number().int().positive(),
+        label: z.string().optional().describe("Batch label, e.g. 'Summer promo'"),
+      },
+      outputSchema: { count: z.number(), codes: z.array(z.string()) },
+      annotations: { title: "Create redemption codes", ...CREATE },
+      _meta: inv("Minting codes", "Codes minted"),
+    },
+    async ({ venueId, count, points, label }: { venueId?: string; count: number; points: number; label?: string }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const data = await backend.createRedemptionCodes(venue.venueId, { count, points, ...(label ? { label } : {}) });
+        const codes = (data.codes || []).map((c: any) => (typeof c === "string" ? c : c.code || c.id)).filter(Boolean);
+        return ok(`Minted ${codes.length} code(s) worth ${points} pts each at ${venue.venueName}${label ? ` (batch: ${label})` : ""}:\n${codes.join("\n")}`,
+          { count: codes.length, codes });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "list_redemption_codes",
+    {
+      title: "List redemption codes",
+      description: "The store's redemption codes and their status (active vs already redeemed, by whom). Business tier.",
+      inputSchema: { venueId: VENUE_ID_INPUT },
+      outputSchema: {
+        total: z.number(),
+        active: z.number(),
+        redeemed: z.number(),
+        codes: z.array(z.object({
+          code: z.string(), points: z.number().nullable(), label: z.string().nullable(),
+          active: z.boolean(), redeemedAt: z.string().nullable(),
+        })),
+      },
+      annotations: { title: "List redemption codes", ...OWNER },
+      _meta: inv("Loading codes", "Loaded codes"),
+    },
+    async ({ venueId }: { venueId?: string }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const data = await backend.listRedemptionCodes(venue.venueId);
+        const codes = (data.codes || []).map((c: any) => ({
+          code: c.code || c.id || "?",
+          points: c.points ?? null,
+          label: c.label ?? null,
+          active: c.active !== false,
+          redeemedAt: c.redeemedAt ?? null,
+        }));
+        const active = codes.filter((c: any) => c.active).length;
+        return ok(`${venue.venueName}: ${codes.length} code(s), ${active} active, ${codes.length - active} redeemed/expired.`,
+          { total: codes.length, active, redeemed: codes.length - active, codes });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "email_store_qr",
+    {
+      title: "Email my store's QR codes",
+      description: "Re-send the store's window sticker and register-card QR codes to the owner's email on file (for printing replacements).",
+      inputSchema: { venueId: VENUE_ID_INPUT },
+      outputSchema: { emailedTo: z.string() },
+      annotations: { title: "Email store QR codes", ...CREATE },
+      _meta: inv("Emailing QR codes", "QR codes emailed"),
+    },
+    async ({ venueId }: { venueId?: string }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        const emailedTo = await backend.emailVenueQR(venue.venueId);
+        return ok(`QR codes for ${venue.venueName} emailed to ${emailedTo}.`, { emailedTo });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
+  function offerStruct(o: import("./backend").VenueOffer) {
+    return { offerId: o.offerId, title: o.title, pointsCost: o.pointsCost, active: o.active !== false };
+  }
+
+  function annStruct(a: import("./backend").VenueAnnouncement) {
+    return {
+      announcementId: a.announcementId ?? a.id ?? null,
+      title: a.title, message: a.message,
+      expiresAt: a.expiresAt ?? null, active: a.active !== false,
+    };
+  }
 }
 
 function toRecommendation(

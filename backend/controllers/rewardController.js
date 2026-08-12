@@ -1121,6 +1121,96 @@ exports.setVenueCoverPhoto = async (req, res) => {
   }
 };
 
+// @desc    Owner edit of the venue's canonical place record (name,
+//          description, category, phone, website) — no personal save doc
+//          needed, unlike PUT /api/places/:id. Writes the globalPlaces doc
+//          once and fans cache fields to every saver's copy. Built for the
+//          MCP store-owner tools; address deliberately excluded (address
+//          changes need the geocode-confirmed flow).
+// @route   PATCH /api/rewards/venues/:venueId/place
+// @access  Venue owner (or super user)
+exports.updateVenuePlace = async (req, res) => {
+  try {
+    const venue = req.venue;
+    const globalPlaceId = await venueGlobalPlaceId(venue);
+    if (!globalPlaceId) {
+      return res.status(400).json({ success: false, error: 'This venue has no linked place record' });
+    }
+
+    const { name, description, category, phone, website } = req.body;
+    const VALID_CATEGORIES = ['restaurant', 'cafe', 'bar', 'hotel', 'retail', 'service', 'attraction',
+      'entertainment', 'healthcare', 'fitness', 'education', 'outdoor', 'transport', 'finance', 'other'];
+
+    const updates = {};
+    if (typeof name === 'string' && name.trim()) updates.name = name.trim();
+    if (typeof description === 'string') {
+      // Description is prose — contact data lives in its own fields
+      updates.description = description
+        .split('\n')
+        .filter((line) => !/^\s*(Phone|Website):/i.test(line))
+        .join('\n')
+        .trim();
+    }
+    if (typeof category === 'string' && category) {
+      if (!VALID_CATEGORIES.includes(category)) {
+        return res.status(400).json({ success: false, error: `Invalid category. Valid: ${VALID_CATEGORIES.join(', ')}` });
+      }
+      updates.category = category;
+    }
+    if (typeof phone === 'string') updates['googleData.phone'] = phone.trim();
+    if (typeof website === 'string') updates['googleData.website'] = website.trim();
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, error: 'Nothing to update — provide name, description, category, phone, or website' });
+    }
+
+    if (updates.name) {
+      const { buildSearchTokens } = require('../models/GlobalPlace');
+      updates.nameLower = updates.name.toLowerCase();
+      updates.searchTokens = buildSearchTokens(updates.name);
+    }
+    updates.updatedAt = new Date().toISOString();
+
+    const gpRef = db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId);
+    await gpRef.update(updates);
+
+    // Fan denormalized query-cache fields out to every save doc
+    const cacheUpdates = {};
+    if (updates.name) cacheUpdates.name = updates.name;
+    if (updates.category) cacheUpdates.category = updates.category;
+    if (Object.keys(cacheUpdates).length > 0) {
+      const savesSnapshot = await db.collection(COLLECTIONS.PLACES)
+        .where('globalPlaceId', '==', globalPlaceId).get();
+      const batch = db.batch();
+      savesSnapshot.docs.forEach((doc) => batch.update(doc.ref, cacheUpdates));
+      await batch.commit();
+      // Keep the venue's own place-name cache in step (venueName — the
+      // store's brand name in the rewards program — stays owner-controlled)
+      if (updates.name) {
+        await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
+          .doc(venue.venueId).update({ placeName: updates.name, updatedAt: new Date().toISOString() });
+      }
+    }
+
+    const gpDoc = await gpRef.get();
+    const g = gpDoc.data();
+    res.json({
+      success: true,
+      data: {
+        globalPlaceId,
+        name: g.name,
+        description: g.description || null,
+        category: g.category || null,
+        phone: (g.googleData || {}).phone || null,
+        website: (g.googleData || {}).website || null
+      }
+    });
+  } catch (error) {
+    console.error('❌ Failed to update venue place:', error);
+    res.status(500).json({ success: false, error: 'Failed to update store details' });
+  }
+};
+
 // @desc    Add an offer to a venue
 // @route   POST /api/rewards/venues/:venueId/offers
 // @access  Venue owner (or super user)

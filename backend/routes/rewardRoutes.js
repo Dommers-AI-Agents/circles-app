@@ -71,6 +71,9 @@ router.get('/venues/:venueId/savers', rewardController.requireVenueOwner, requir
 router.get('/venues/:venueId/activity', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.getVenueActivity);
 // Cover photo is basic storefront presence — free owner tier
 router.put('/venues/:venueId/cover-photo', rewardController.requireVenueOwner, rewardController.setVenueCoverPhoto);
+// Canonical place-record edit (name/description/category/phone/website) —
+// free owner tier, same as the in-app tap-to-edit surface
+router.patch('/venues/:venueId/place', rewardController.requireVenueOwner, rewardController.updateVenuePlace);
 router.post('/venues/:venueId/email-qr', rewardController.requireVenueOwner, rewardController.emailVenueQR);
 router.patch('/venues/:venueId/info', rewardController.requireVenueOwner, rewardController.updateVenueInfo);
 router.post('/venues/:venueId/offers', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.addOffer);

@@ -411,4 +411,181 @@ export class Backend {
     if (!place) throw new BackendError("Place create succeeded but no place in response", 500);
     return place;
   }
+
+  // ---- Store-owner (rewards) API -------------------------------------------
+
+  async getMyVenues(): Promise<{ venues: OwnerVenue[]; count: number }> {
+    const res = await this.request<{ data: { venues: OwnerVenue[]; count: number } }>(
+      "GET", "/rewards/my-venues");
+    return res.data;
+  }
+
+  async getVenueDashboard(venueId: string): Promise<VenueDashboard> {
+    const res = await this.request<{ data: VenueDashboard }>(
+      "GET", `/rewards/venues/${encodeURIComponent(venueId)}/dashboard`);
+    return res.data;
+  }
+
+  async getVenueFollowers(venueId: string): Promise<{ count: number; followers: VenuePerson[] }> {
+    const res = await this.request<{ data: { count: number; followers: VenuePerson[] } }>(
+      "GET", `/rewards/venues/${encodeURIComponent(venueId)}/followers`);
+    return res.data;
+  }
+
+  async getVenueSavers(venueId: string): Promise<{ totalCount: number; count: number; savers: VenuePerson[] }> {
+    const res = await this.request<{ data: { totalCount: number; count: number; savers: VenuePerson[] } }>(
+      "GET", `/rewards/venues/${encodeURIComponent(venueId)}/savers`);
+    return res.data;
+  }
+
+  async getVenueActivity(venueId: string): Promise<{ events: VenueEvent[] }> {
+    const res = await this.request<{ data: { events: VenueEvent[] } }>(
+      "GET", `/rewards/venues/${encodeURIComponent(venueId)}/activity`);
+    return res.data;
+  }
+
+  async updateVenuePlace(venueId: string, fields: {
+    name?: string; description?: string; category?: string; phone?: string; website?: string;
+  }): Promise<VenuePlaceDetails> {
+    const res = await this.request<{ data: VenuePlaceDetails }>(
+      "PATCH", `/rewards/venues/${encodeURIComponent(venueId)}/place`, fields);
+    return res.data;
+  }
+
+  async getGlobalPlace(globalPlaceId: string): Promise<{ photos?: { url: string }[]; coverPhotoUrl?: string | null }> {
+    const res = await this.request<{ place?: any; data?: any }>(
+      "GET", `/places/global/${encodeURIComponent(globalPlaceId)}`);
+    return res.place || res.data || res;
+  }
+
+  async setVenueCoverPhoto(venueId: string, url: string | null): Promise<string | null> {
+    const res = await this.request<{ data: { coverPhotoUrl: string | null } }>(
+      "PUT", `/rewards/venues/${encodeURIComponent(venueId)}/cover-photo`, { url });
+    return res.data.coverPhotoUrl;
+  }
+
+  async addAnnouncement(venueId: string, input: { title: string; message: string; expiresAt?: string }): Promise<VenueAnnouncement[]> {
+    const res = await this.request<{ data: { announcements: VenueAnnouncement[] } }>(
+      "POST", `/rewards/venues/${encodeURIComponent(venueId)}/announcements`, input);
+    return res.data.announcements;
+  }
+
+  async updateAnnouncement(venueId: string, announcementId: string, input: {
+    title?: string; message?: string; expiresAt?: string | null; active?: boolean;
+  }): Promise<VenueAnnouncement[]> {
+    const res = await this.request<{ data: { announcements: VenueAnnouncement[] } }>(
+      "PUT", `/rewards/venues/${encodeURIComponent(venueId)}/announcements/${encodeURIComponent(announcementId)}`, input);
+    return res.data.announcements;
+  }
+
+  async deleteAnnouncement(venueId: string, announcementId: string): Promise<VenueAnnouncement[]> {
+    const res = await this.request<{ data: { announcements: VenueAnnouncement[] } }>(
+      "DELETE", `/rewards/venues/${encodeURIComponent(venueId)}/announcements/${encodeURIComponent(announcementId)}`);
+    return res.data.announcements;
+  }
+
+  async addOffer(venueId: string, input: { title: string; pointsCost: number }): Promise<VenueOffer[]> {
+    const res = await this.request<{ data: { offers: VenueOffer[] } }>(
+      "POST", `/rewards/venues/${encodeURIComponent(venueId)}/offers`, input);
+    return res.data.offers;
+  }
+
+  async updateOffer(venueId: string, offerId: string, input: {
+    title?: string; pointsCost?: number; active?: boolean;
+  }): Promise<VenueOffer[]> {
+    const res = await this.request<{ data: { offers: VenueOffer[] } }>(
+      "PUT", `/rewards/venues/${encodeURIComponent(venueId)}/offers/${encodeURIComponent(offerId)}`, input);
+    return res.data.offers;
+  }
+
+  async setEarnRate(venueId: string, earnRate: number): Promise<number> {
+    const res = await this.request<{ data: { earnRate: number } }>(
+      "PATCH", `/rewards/venues/${encodeURIComponent(venueId)}`, { earnRate });
+    return res.data.earnRate;
+  }
+
+  async createRedemptionCodes(venueId: string, input: { count: number; points: number; label?: string }): Promise<{ codes: any[]; summary?: unknown }> {
+    const res = await this.request<{ data: { codes: any[]; summary?: unknown } }>(
+      "POST", `/rewards/venues/${encodeURIComponent(venueId)}/codes`, input);
+    return res.data;
+  }
+
+  async listRedemptionCodes(venueId: string): Promise<{ codes: any[]; summary?: unknown }> {
+    const res = await this.request<{ data: { codes: any[]; summary?: unknown } }>(
+      "GET", `/rewards/venues/${encodeURIComponent(venueId)}/codes`);
+    return res.data;
+  }
+
+  async emailVenueQR(venueId: string): Promise<string> {
+    const res = await this.request<{ data: { emailedTo: string } }>(
+      "POST", `/rewards/venues/${encodeURIComponent(venueId)}/email-qr`);
+    return res.data.emailedTo;
+  }
+}
+
+// ---- Store-owner types ------------------------------------------------------
+
+export interface OwnerVenue {
+  venueId: string;
+  venueName: string;
+  placeName?: string | null;
+  placeAddress?: string | null;
+  googlePlaceId?: string | null;
+  globalPlaceId?: string | null;
+  ownerPremium?: boolean;
+  earnRate?: number | null;
+  isVirtual?: boolean;
+  stats?: { scans?: number; signups?: number; saves?: number; visits?: number; redemptions?: number; followers?: number };
+  offers?: VenueOffer[];
+  announcements?: VenueAnnouncement[];
+}
+
+export interface VenueDashboard {
+  venueId: string;
+  venueName: string;
+  premium: { active: boolean };
+  headline: { saves: number; followers: number; visits: number; scans: number; signups: number; redemptions: number };
+  detail?: { monthly: Record<string, Record<string, number>>; newSavesThisMonth: number } | null;
+}
+
+export interface VenuePerson {
+  id: string;
+  displayName: string;
+  username?: string | null;
+  profilePicture?: string | null;
+  savedAt?: string | null;
+}
+
+export interface VenueEvent {
+  id: string;
+  type: string;
+  points: number;
+  createdAt?: string | null;
+  offerTitle?: string | null;
+  user?: VenuePerson | null;
+}
+
+export interface VenuePlaceDetails {
+  globalPlaceId: string;
+  name: string;
+  description?: string | null;
+  category?: string | null;
+  phone?: string | null;
+  website?: string | null;
+}
+
+export interface VenueOffer {
+  offerId: string;
+  title: string;
+  pointsCost: number;
+  active?: boolean;
+}
+
+export interface VenueAnnouncement {
+  announcementId?: string;
+  id?: string;
+  title: string;
+  message: string;
+  expiresAt?: string | null;
+  active?: boolean;
 }
