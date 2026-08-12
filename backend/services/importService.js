@@ -44,6 +44,16 @@ const IMPORT_TAGS = {
   swarm: 'swarm-import'
 };
 
+// The source list name ("Want to go", "Favorite places") also becomes a tag —
+// once everything lands in one import circle, it's the only user-visible
+// trace of how the source platform grouped these places
+const listNameTag = (name) => (name || '')
+  .toLowerCase()
+  .trim()
+  .replace(/[^a-z0-9\s-]/g, '')
+  .replace(/\s+/g, '-')
+  .slice(0, 40) || null;
+
 // Venue-level duplicate matching: same normalized name within this distance
 // is the same place regardless of address formatting ("130 W Bland St" vs
 // "130, W Bland St, …, United States")
@@ -438,8 +448,9 @@ async function executeImport(userId, payload) {
         // Imported captions belong to the importer alone; publishing another
         // platform's private notes as venue comments would be a leak.
         privateNotes: place.notes || null,
-        // Source tag makes the whole batch filterable/sweepable later
-        tags: [...new Set([...(place.tags || []), importTag])],
+        // Source tag makes the whole batch filterable/sweepable later; the
+        // original list name rides along as a tag too ("want-to-go")
+        tags: [...new Set([...(place.tags || []), importTag, listNameTag(circleName)].filter(Boolean))],
         website: place.sourceUrl || null,
         googlePlaceId: place.googlePlaceId || null,
         applePoiCategory: typeof place.applePoiCategory === 'string' ? place.applePoiCategory : null,
