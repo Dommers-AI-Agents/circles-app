@@ -800,15 +800,29 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case "daily_summary":
             // Clear badge count since daily summaries are informational only
             UIApplication.shared.applicationIconBadgeNumber = 0
-            
+
             // Navigate to Home tab and trigger daily summary display
             // The summary will be fetched from API when displayed
             DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToDailySummary"),
-                    object: nil,
-                    userInfo: ["showDailySummary": true]
-                )
+                let mainUIReady = UIApplication.shared.connectedScenes
+                    .compactMap { $0 as? UIWindowScene }
+                    .flatMap { $0.windows }
+                    .contains { $0.rootViewController is CirclesTabBarController }
+
+                if mainUIReady {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("NavigateToDailySummary"),
+                        object: nil,
+                        userInfo: ["showDailySummary": true]
+                    )
+                } else {
+                    // Cold start: the tab bar isn't installed yet, so a
+                    // NotificationCenter post would be dropped unheard. Stash
+                    // the same pending deep link the universal-link flow uses;
+                    // SceneDelegate.handlePendingDeepLink runs it once the
+                    // main interface is up.
+                    UserDefaults.standard.set("daily-summary", forKey: "pendingDeepLink")
+                }
             }
             
         case "check_in", "checkin":

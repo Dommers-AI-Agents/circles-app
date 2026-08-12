@@ -161,10 +161,14 @@ class NotificationPreferencesViewController: BaseTableViewController {
     
     private func savePreferences() {
         guard hasChanges else { return }
-        
+
         isLoading = true
         navigationItem.rightBarButtonItem?.isEnabled = false
-        
+
+        // Stamp the device timezone so the backend delivers the daily summary
+        // at the chosen local time (the model's default is America/New_York)
+        preferences.timezone = TimeZone.current.identifier
+
         UserService.shared.updateNotificationPreferences(preferences) { [weak self] result in
             DispatchQueue.main.async {
                 self?.isLoading = false

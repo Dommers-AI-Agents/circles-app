@@ -10,20 +10,23 @@ class DailySummaryService {
     this.batchSize = 50; // Process users in batches
   }
 
-  // Send daily summaries to all eligible users
+  // Send daily summaries to all eligible users.
+  // Runs every hour: each user gets their summary at the hour of their
+  // preferred summaryTime, evaluated in their own timezone (both from
+  // notificationPreferences; defaults 12:00 America/New_York).
   async sendDailySummaries() {
     console.log('📊 Starting daily summary generation...');
-    
+
     try {
       // Implement distributed lock to prevent concurrent executions
       const lockAcquired = await this.acquireDailySummaryLock();
       if (!lockAcquired) {
-        console.log('⚠️ Daily summary already running or completed today - skipping execution');
+        console.log('⚠️ Daily summary already running for this hour - skipping execution');
         return;
       }
-      
+
       console.log('🔒 Acquired daily summary execution lock');
-      
+
       try {
         // Get all users with daily summary enabled
         const usersSnapshot = await db.collection(COLLECTIONS.USERS)
@@ -35,10 +38,13 @@ class DailySummaryService {
         return;
       }
 
-      const users = [];
-      usersSnapshot.forEach(doc => users.push({ id: doc.id, ...doc.data() }));
-      
-      console.log(`📊 Processing daily summaries for ${users.length} users`);
+      const allUsers = [];
+      usersSnapshot.forEach(doc => allUsers.push({ id: doc.id, ...doc.data() }));
+
+      // Only users whose local clock is at their chosen summary hour right now
+      const users = allUsers.filter(user => this.isUsersSummaryHour(user));
+
+      console.log(`📊 Processing daily summaries for ${users.length} of ${allUsers.length} enabled users (local-hour match)`);
 
       // Process users in batches
       for (let i = 0; i < users.length; i += this.batchSize) {
@@ -71,34 +77,28 @@ class DailySummaryService {
         console.log(`⏭️ User ${user.displayName || userId} already received today's summary`);
         return;
       }
-      
-      // Check if user should receive engagement prompt
-      const hasActivity = this.hasActivity(stats);
-      const shouldSendEngagementPrompt = await this.shouldSendEngagementPrompt(userId, stats);
-      
-      if (!hasActivity && !shouldSendEngagementPrompt) {
+
+      // Quiet days stay quiet: a summary only goes out when there is real
+      // network activity to report. (The old "engagement prompt" fallback was
+      // retired — the engagement reminder job already covers re-engagement,
+      // and stacking both trained users to mute notifications.)
+      if (!this.hasActivity(stats)) {
         console.log(`⏭️ Skipping summary for ${user.displayName || userId} - no activity`);
         return;
       }
 
-      // Build appropriate notification
-      let notification;
-      if (hasActivity) {
-        notification = this.buildSummaryNotification(stats, user);
-      } else {
-        notification = this.buildEngagementNotification(user, stats);
-      }
-      
+      const notification = this.buildSummaryNotification(stats, user);
+
       // Send push notification
       await notificationService.sendToUser(userId, notification);
-      
-      // Send email summary (always send when daily summary is triggered)
-      await this.sendSummaryEmail(user, stats, notification, hasActivity);
-      
+
+      // Send email summary
+      await this.sendSummaryEmail(user, stats, notification);
+
       // Record that we sent today's summary
       await this.recordSummarySent(userId);
-      
-      console.log(`✅ Sent ${hasActivity ? 'daily summary' : 'engagement prompt'} to ${user.displayName || userId}`);
+
+      console.log(`✅ Sent daily summary to ${user.displayName || userId}`);
     } catch (error) {
       console.error(`❌ Error sending summary to user ${user.id}:`, error);
     }
@@ -428,7 +428,36 @@ class DailySummaryService {
     }
   }
 
-  // Check if user already received summary today
+  // True when the user's local clock is currently in the hour of their chosen
+  // summaryTime. Invalid/missing timezone falls back to America/New_York,
+  // which matches the historical noon-ET behavior.
+  isUsersSummaryHour(user) {
+    const prefs = user.notificationPreferences || {};
+    const preferredHour = parseInt(String(prefs.summaryTime || '12:00').split(':')[0], 10);
+    if (isNaN(preferredHour)) return false;
+
+    let localHour;
+    try {
+      localHour = parseInt(new Intl.DateTimeFormat('en-US', {
+        timeZone: prefs.timezone || 'America/New_York',
+        hour: 'numeric',
+        hour12: false
+      }).format(new Date()), 10) % 24;
+    } catch (error) {
+      localHour = parseInt(new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        hour: 'numeric',
+        hour12: false
+      }).format(new Date()), 10) % 24;
+    }
+
+    return localHour === preferredHour;
+  }
+
+  // Check if user already received summary today. A rolling 20-hour window
+  // instead of a calendar-date compare: it is timezone-proof (the server's
+  // "today" is not the user's "today") and still allows the next day's
+  // summary at the same local hour, including across DST shifts.
   async hasReceivedTodaysSummary(userId) {
     try {
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
@@ -437,10 +466,8 @@ class DailySummaryService {
       const userData = userDoc.data();
       if (!userData.lastDailySummary) return false;
 
-      const lastSummary = new Date(userData.lastDailySummary);
-      const today = new Date();
-      
-      return lastSummary.toDateString() === today.toDateString();
+      const hoursSinceLast = (Date.now() - new Date(userData.lastDailySummary).getTime()) / (1000 * 60 * 60);
+      return hoursSinceLast < 20;
     } catch (error) {
       console.error(`Error checking summary status for ${userId}:`, error);
       return false;
@@ -448,24 +475,22 @@ class DailySummaryService {
   }
 
   // Send summary email
-  async sendSummaryEmail(user, stats, notification, hasActivity) {
+  async sendSummaryEmail(user, stats, notification) {
     try {
       if (!user.email) {
         console.log(`⚠️ No email for user ${user.displayName}`);
         return;
       }
 
-      const emailHtml = hasActivity 
-        ? this.buildSummaryEmailHtml(user, stats, notification)
-        : this.buildEngagementEmailHtml(user, stats, notification);
-      
+      const emailHtml = this.buildSummaryEmailHtml(user, stats, notification);
+
       await emailService.sendEmail({
         to: user.email,
         subject: notification.title,
         html: emailHtml
       });
 
-      console.log(`📧 Sent ${hasActivity ? 'summary' : 'engagement'} email to ${user.email}`);
+      console.log(`📧 Sent summary email to ${user.email}`);
     } catch (error) {
       console.error(`❌ Error sending summary email to ${user.email}:`, error);
       // Don't throw - email failure shouldn't stop the process
@@ -587,228 +612,13 @@ class DailySummaryService {
     `;
   }
 
-  // Check if user should receive an engagement prompt
-  async shouldSendEngagementPrompt(userId, stats) {
-    try {
-      // Always send engagement prompt to users with no connections
-      // Check using the connection count we already calculated
-      if (stats.connectionCount === 0) {
-        console.log(`👥 User has no connections - sending engagement prompt`);
-        return true;
-      }
-
-      // Check last summary date
-      const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-      if (!userDoc.exists) return false;
-      
-      const userData = userDoc.data();
-      const lastSummary = userData.lastDailySummary;
-      
-      if (!lastSummary) {
-        // Never received a summary before
-        return true;
-      }
-
-      // Send engagement prompt if no summary in last 3 days
-      const lastSummaryDate = new Date(lastSummary);
-      const daysSinceLastSummary = Math.floor((new Date() - lastSummaryDate) / (1000 * 60 * 60 * 24));
-      
-      return daysSinceLastSummary >= 3;
-    } catch (error) {
-      console.error(`Error checking engagement prompt for ${userId}:`, error);
-      return false;
-    }
-  }
-
-  // Build engagement notification for users with no activity
-  buildEngagementNotification(user, stats) {
-    const greeting = this.getGreeting(user);
-    
-    // Different messages based on user situation
-    let title, body;
-    
-    if (stats.connectionCount === 0) {
-      // User has no connections
-      title = `${greeting} Start Building Your Network`;
-      body = 'Connect with friends to discover their favorite places';
-    } else if (stats.userPlaceCount === 0) {
-      // User has connections but no places
-      title = `${greeting} Share Your Favorites`;
-      body = 'Add your first place to share with your network';
-    } else {
-      // User has connections and places but no recent activity
-      title = `${greeting} Your Network Awaits`;
-      body = 'Check out what your connections have been up to';
-    }
-
-    // Format date for subtitle
-    const today = new Date();
-    const dateFormatter = new Intl.DateTimeFormat('en-US', { 
-      month: 'long', 
-      day: 'numeric',
-      year: 'numeric'
-    });
-    const subtitle = dateFormatter.format(today);
-
-    return {
-      type: 'daily_summary',
-      title,
-      subtitle, // Add subtitle with formatted date
-      body,
-      badge: 0,
-      data: {
-        type: 'daily_summary',
-        engagementPrompt: 'true',
-        summaryDate: new Date().toISOString().split('T')[0]
-      }
-    };
-  }
-
-  // Build HTML email for engagement (no activity)
-  buildEngagementEmailHtml(user, stats, notification) {
-    const today = new Date().toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    });
-
-    // Determine the appropriate content based on user situation
-    let mainContent = '';
-    let ctaText = 'Open Circles';
-    let ctaLink = 'circles://daily-summary';
-
-    if (stats.connectionCount === 0) {
-      // User has no connections
-      mainContent = `
-        <div style="background: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 20px; text-align: center;">
-          <h2 style="margin: 0 0 15px 0; color: #333; font-size: 24px;">👥 Build Your Network</h2>
-          <p style="margin: 0 0 20px 0; color: #666; line-height: 1.6;">
-            Circles is better with friends! Connect with people you know to discover their favorite places and share yours.
-          </p>
-          <div style="margin: 20px 0;">
-            <div style="display: inline-block; background: #fff; padding: 15px 25px; border-radius: 8px; border: 1px solid #e0e0e0;">
-              <p style="margin: 0; color: #999; font-size: 14px;">Currently in your network</p>
-              <p style="margin: 5px 0 0 0; color: #333; font-size: 28px; font-weight: bold;">0 connections</p>
-            </div>
-          </div>
-        </div>
-      `;
-      ctaText = 'Find Friends';
-      ctaLink = 'circles://network/find-friends';
-      fallbackLink = 'https://api.favcircles.com/app/open?path=network/find-friends';
-    } else if (stats.userPlaceCount === 0) {
-      // User has connections but no places
-      mainContent = `
-        <div style="background: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 20px; text-align: center;">
-          <h2 style="margin: 0 0 15px 0; color: #333; font-size: 24px;">📍 Share Your First Place</h2>
-          <p style="margin: 0 0 20px 0; color: #666; line-height: 1.6;">
-            Your network is waiting to discover your favorite spots! Add your first place to start sharing.
-          </p>
-          <div style="margin: 20px 0;">
-            <div style="display: inline-block; background: #fff; padding: 15px 25px; border-radius: 8px; border: 1px solid #e0e0e0;">
-              <p style="margin: 0; color: #999; font-size: 14px;">Places you've shared</p>
-              <p style="margin: 5px 0 0 0; color: #333; font-size: 28px; font-weight: bold;">0 places</p>
-            </div>
-          </div>
-        </div>
-      `;
-      ctaText = 'Add Your First Place';
-      ctaLink = 'circles://add-place';
-      fallbackLink = 'https://api.favcircles.com/app/open?path=add-place';
-    } else {
-      // User has connections and places but no recent activity
-      mainContent = `
-        <div style="background: #f8f9fa; padding: 25px; border-radius: 8px; margin-bottom: 20px; text-align: center;">
-          <h2 style="margin: 0 0 15px 0; color: #333; font-size: 24px;">🌟 Stay Connected</h2>
-          <p style="margin: 0 0 20px 0; color: #666; line-height: 1.6;">
-            It's been quiet in your network lately. Check in to see if there's anything new!
-          </p>
-          <div style="margin: 20px 0; display: flex; justify-content: center; gap: 20px;">
-            <div style="background: #fff; padding: 15px 20px; border-radius: 8px; border: 1px solid #e0e0e0;">
-              <p style="margin: 0; color: #999; font-size: 14px;">Your network</p>
-              <p style="margin: 5px 0 0 0; color: #333; font-size: 24px; font-weight: bold;">${stats.connectionCount}</p>
-            </div>
-            <div style="background: #fff; padding: 15px 20px; border-radius: 8px; border: 1px solid #e0e0e0;">
-              <p style="margin: 0; color: #999; font-size: 14px;">Your places</p>
-              <p style="margin: 5px 0 0 0; color: #333; font-size: 24px; font-weight: bold;">${stats.userPlaceCount}</p>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${notification.title}</title>
-      </head>
-      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
-          <!-- Header -->
-          <div style="background-color: #4CAF50; padding: 30px 20px; text-align: center;">
-            <h1 style="margin: 0; color: #ffffff; font-size: 24px;">Circles</h1>
-            <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 16px;">Your Daily Update</p>
-          </div>
-          
-          <!-- Content -->
-          <div style="padding: 30px 20px;">
-            <h2 style="margin: 0 0 20px 0; color: #333; font-size: 20px;">
-              Hi ${user.displayName || 'there'} 👋
-            </h2>
-            
-            ${mainContent}
-            
-            <!-- CTA Button -->
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${ctaLink}" style="display: inline-block; background-color: #4CAF50; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 25px; font-weight: 600;">
-                ${ctaText}
-              </a>
-            </div>
-            
-            <!-- Tips Section -->
-            <div style="background: #fafafa; padding: 20px; border-radius: 8px; margin-top: 30px;">
-              <h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">💡 Quick Tips</h3>
-              <ul style="margin: 0; padding-left: 20px; color: #666; line-height: 1.8;">
-                ${stats.connectionCount === 0 ? `
-                  <li>Search for friends by name or email</li>
-                  <li>Import contacts to find people you know</li>
-                  <li>Share your profile link to connect faster</li>
-                ` : stats.userPlaceCount === 0 ? `
-                  <li>Long press on the map to add a place</li>
-                  <li>Add notes about why you love each spot</li>
-                  <li>Organize places into themed circles</li>
-                ` : `
-                  <li>Check your network feed for updates</li>
-                  <li>Send a place suggestion to a friend</li>
-                  <li>Explore new circles shared with you</li>
-                `}
-              </ul>
-            </div>
-            
-            <!-- Footer -->
-            <div style="border-top: 1px solid #eee; margin-top: 40px; padding-top: 20px; text-align: center;">
-              <p style="color: #999; font-size: 14px; margin: 0;">
-                ${today}
-              </p>
-              <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
-                You're receiving this because you have daily summaries enabled.<br>
-                <a href="https://api.favcircles.com/app/open?path=settings/notifications" style="color: #4CAF50;">Manage notification preferences</a>
-              </p>
-            </div>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-  }
-
   // Acquire distributed lock for daily summary execution
   async acquireDailySummaryLock() {
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    // Keyed by UTC date+hour: the job runs hourly (each hour serves the users
+    // whose local time matches), so the lock only guards against concurrent
+    // runs within the same hour, not against later hours the same day
+    const now = new Date();
+    const today = `${now.toISOString().split('T')[0]}-${String(now.getUTCHours()).padStart(2, '0')}`;
     const lockId = `daily-summary-${today}`;
     const lockDoc = db.collection('system_locks').doc(lockId);
     
@@ -837,7 +647,8 @@ class DailySummaryService {
 
   // Release distributed lock for daily summary execution
   async releaseDailySummaryLock() {
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    const now = new Date();
+    const today = `${now.toISOString().split('T')[0]}-${String(now.getUTCHours()).padStart(2, '0')}`;
     const lockId = `daily-summary-${today}`;
     const lockDoc = db.collection('system_locks').doc(lockId);
     

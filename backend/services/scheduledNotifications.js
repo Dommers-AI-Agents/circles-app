@@ -16,12 +16,13 @@ class ScheduledNotifications {
   initialize() {
     console.log('🕐 Initializing scheduled notifications...');
     
-    // Daily summary at noon (12:00 PM) every day
+    // Daily summary — hourly pass, delivered at each user's local summary time
     this.scheduleDailySummary();
-    
-    // Engagement reminders at 3 PM for inactive users
-    this.scheduleEngagementReminders();
-    
+
+    // Daily engagement reminders were retired (2026-08): nagging inactive
+    // users every evening drives notification opt-outs. The weekly
+    // reengagement job is the single "we miss you" channel.
+
     // Weekly summary every Monday at 9 AM
     this.scheduleWeeklySummary();
     
@@ -48,9 +49,12 @@ class ScheduledNotifications {
 
   // Schedule daily summary notifications
   scheduleDailySummary() {
-    // Run at 12:00 PM every day
-    const job = cron.schedule('0 12 * * *', async () => {
-      console.log('🌟 Running daily summary notifications...');
+    // Runs hourly on the hour; the service sends only to users whose local
+    // clock (notificationPreferences.timezone) matches their chosen
+    // summaryTime hour, so each user gets at most one summary per day at
+    // their own preferred time
+    const job = cron.schedule('0 * * * *', async () => {
+      console.log('🌟 Running daily summary notifications (hourly local-time pass)...');
       try {
         await dailySummaryService.sendDailySummaries();
         console.log('✅ Daily summaries sent successfully');
@@ -58,30 +62,10 @@ class ScheduledNotifications {
         console.error('❌ Error sending daily summaries:', error);
       }
     }, {
-      scheduled: true,
-      timezone: "America/New_York" // Default timezone, will be customized per user
+      scheduled: true
     });
 
     this.jobs.set('dailySummary', job);
-  }
-
-  // Schedule engagement reminders for inactive users
-  scheduleEngagementReminders() {
-    // Run at 3:00 PM every day
-    const job = cron.schedule('0 15 * * *', async () => {
-      console.log('📱 Running engagement reminders...');
-      try {
-        await engagementNotificationService.sendEngagementReminders();
-        console.log('✅ Engagement reminders sent successfully');
-      } catch (error) {
-        console.error('❌ Error sending engagement reminders:', error);
-      }
-    }, {
-      scheduled: true,
-      timezone: "America/New_York"
-    });
-
-    this.jobs.set('engagementReminders', job);
   }
 
   // Schedule weekly summary
@@ -124,8 +108,10 @@ class ScheduledNotifications {
 
   // Schedule morning discovery prompts
   scheduleDiscoveryPrompts() {
-    // Morning coffee spots (8:30 AM on weekdays)
-    const morningJob = cron.schedule('30 8 * * 1-5', async () => {
+    // Twice a week (Tue/Fri 8:30 AM), down from twice every weekday — ten
+    // promotional pushes a week trains people to turn notifications off.
+    // The lunch prompt was retired for the same reason.
+    const morningJob = cron.schedule('30 8 * * 2,5', async () => {
       console.log('☕ Sending morning discovery prompts...');
       try {
         await this.sendDiscoveryPrompts('morning');
@@ -137,21 +123,7 @@ class ScheduledNotifications {
       timezone: "America/New_York"
     });
 
-    // Lunch recommendations (11:45 AM on weekdays)
-    const lunchJob = cron.schedule('45 11 * * 1-5', async () => {
-      console.log('🍽️ Sending lunch discovery prompts...');
-      try {
-        await this.sendDiscoveryPrompts('lunch');
-      } catch (error) {
-        console.error('❌ Error sending lunch prompts:', error);
-      }
-    }, {
-      scheduled: true,
-      timezone: "America/New_York"
-    });
-
     this.jobs.set('morningDiscovery', morningJob);
-    this.jobs.set('lunchDiscovery', lunchJob);
   }
 
   // Schedule weekend recommendations

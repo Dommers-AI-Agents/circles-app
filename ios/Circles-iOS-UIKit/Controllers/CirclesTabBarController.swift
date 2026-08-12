@@ -348,13 +348,17 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     @objc private func navigateToDailySummary(_ notification: Notification) {
         // Navigate to Home tab (index 0)
         selectedIndex = 0
-        
-        // Tell the CirclesHomeViewController to fetch and show the daily summary
-        if let navController = viewControllers?[0] as? UINavigationController,
-           let circlesVC = navController.topViewController as? CirclesHomeViewController {
-            // Let the home view controller fetch and display the daily summary
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                circlesVC.fetchAndShowDailySummary()
+
+        // Tell the CirclesHomeViewController to fetch and show the daily summary.
+        // Pop any pushed detail first — if a place or profile is on the stack,
+        // topViewController isn't the home controller and the tap would
+        // silently do nothing beyond the tab switch.
+        if let navController = viewControllers?[0] as? UINavigationController {
+            navController.popToRootViewController(animated: false)
+            if let circlesVC = navController.viewControllers.first as? CirclesHomeViewController {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    circlesVC.fetchAndShowDailySummary()
+                }
             }
         }
     }
