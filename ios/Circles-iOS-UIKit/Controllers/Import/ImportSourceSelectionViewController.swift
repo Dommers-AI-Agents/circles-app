@@ -100,12 +100,14 @@ class ImportSourceSelectionViewController: BaseViewController {
         var types: [UTType]
         switch source {
         case .mapstr:
-            types = [.json]
+            // Mapstr emails its export as a .zip containing the GeoJSON
+            types = [.json, .zip]
             if let geojson = UTType(filenameExtension: "geojson") {
                 types.append(geojson)
             }
         case .googleMaps:
-            types = [.commaSeparatedText]
+            // Takeout delivers a .zip of per-list CSVs
+            types = [.commaSeparatedText, .zip]
         case .swarm:
             return
         }
@@ -127,15 +129,34 @@ class ImportSourceSelectionViewController: BaseViewController {
         for url in urls {
             let filename = url.lastPathComponent
             do {
-                let data = try Data(contentsOf: url)
-                switch source {
-                case .mapstr:
-                    let parsed = try ImportParsingService.shared.parseMapstrGeoJSON(data: data, filename: filename)
-                    mapstrPlaces.append(contentsOf: parsed.flatMap { $0.places })
-                case .googleMaps:
-                    lists.append(try ImportParsingService.shared.parseGoogleTakeoutCSV(data: data, filename: filename))
-                case .swarm:
-                    continue
+                let rawData = try Data(contentsOf: url)
+
+                // Both platforms deliver zipped exports — expand in place and
+                // route each contained file by its own extension
+                let files: [(name: String, data: Data)]
+                if filename.lowercased().hasSuffix(".zip") {
+                    let entries = ZipExtractor.extract(rawData)
+                    guard !entries.isEmpty else {
+                        throw ImportParsingError.unreadableFile(filename)
+                    }
+                    files = entries.map { ($0.filename, $0.data) }
+                } else {
+                    files = [(filename, rawData)]
+                }
+
+                for file in files {
+                    let lower = file.name.lowercased()
+                    switch source {
+                    case .mapstr:
+                        guard lower.hasSuffix(".json") || lower.hasSuffix(".geojson") else { continue }
+                        let parsed = try ImportParsingService.shared.parseMapstrGeoJSON(data: file.data, filename: file.name)
+                        mapstrPlaces.append(contentsOf: parsed.flatMap { $0.places })
+                    case .googleMaps:
+                        guard lower.hasSuffix(".csv") else { continue }
+                        lists.append(try ImportParsingService.shared.parseGoogleTakeoutCSV(data: file.data, filename: file.name))
+                    case .swarm:
+                        continue
+                    }
                 }
             } catch {
                 showError(error.localizedDescription)
