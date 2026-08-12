@@ -9,11 +9,11 @@ class MyNetworkViewController: BaseViewController {
     // Circles — four of which were the same endpoint sorted differently. The
     // shared-circles list was removed from here entirely: circle management
     // doesn't belong in a people space.)
-    // Discover leads: the app is young, so most people arrive with a thin
-    // network — the page's job is growing it, not admiring it. Popular is the
-    // scorecard (everyone ranked by collection size, including people you
-    // follow); it earns its own tab because a leaderboard is a different mood
-    // than a suggestion list.
+    // Popular is the DEFAULT (Wes, 2026-08-12): it ranks everyone by
+    // collection size INCLUDING your own connections, so it works for both a
+    // thin network (interesting strangers) and an established one (your
+    // people near the top) — the best single landing view. Discover remains
+    // the dedicated grow-your-network tab.
     enum NetworkTab: String, CaseIterable {
         case discover = "Discover"
         case popular = "Popular"
@@ -23,7 +23,7 @@ class MyNetworkViewController: BaseViewController {
 
     // MARK: - SSE Integration
     private var sseConnected = false
-    private var selectedTab: NetworkTab = .discover
+    private var selectedTab: NetworkTab = .popular
     
     // MARK: - UI Elements
     private let searchBar: UISearchBar = {
@@ -37,7 +37,8 @@ class MyNetworkViewController: BaseViewController {
     
     private lazy var segmentedControl: UISegmentedControl = {
         let control = UISegmentedControl(items: NetworkTab.allCases.map { $0.rawValue })
-        control.selectedSegmentIndex = 0
+        // Must match the selectedTab default above (Popular)
+        control.selectedSegmentIndex = NetworkTab.allCases.firstIndex(of: .popular) ?? 0
         control.addTarget(self, action: #selector(segmentChanged), for: .valueChanged)
         control.translatesAutoresizingMaskIntoConstraints = false
         return control
