@@ -412,6 +412,18 @@ export class Backend {
     return place;
   }
 
+  // ---- Place import API ----------------------------------------------------
+
+  async prepareImport(payload: ImportPayload): Promise<ImportPreview> {
+    const res = await this.request<{ preview: ImportPreview }>("POST", "/import/prepare", payload);
+    return res.preview;
+  }
+
+  async executeImport(payload: ImportPayload): Promise<ImportExecuteOutcome> {
+    const res = await this.request<ImportExecuteOutcome>("POST", "/import/execute", payload);
+    return res;
+  }
+
   // ---- Store-owner (rewards) API -------------------------------------------
 
   async getMyVenues(): Promise<{ venues: OwnerVenue[]; count: number }> {
@@ -522,6 +534,53 @@ export class Backend {
       "POST", `/rewards/venues/${encodeURIComponent(venueId)}/email-qr`);
     return res.data.emailedTo;
   }
+}
+
+// ---- Place import types -----------------------------------------------------
+
+export interface ImportPlaceInput {
+  name: string;
+  address?: string;
+  lat?: number;
+  lng?: number;
+  category?: string;
+  notes?: string;
+  tags?: string[];
+  sourceExternalId?: string;
+  sourceUrl?: string;
+  visitCount?: number;
+  firstVisitedAt?: string;
+  lastVisitedAt?: string;
+}
+
+export interface ImportPayload {
+  source: "mapstr" | "google_maps" | "swarm";
+  lists: {
+    name?: string;
+    circleName?: string;
+    existingCircleId?: string;
+    places: ImportPlaceInput[];
+  }[];
+}
+
+export interface ImportPreview {
+  lists: {
+    proposedCircleName: string;
+    existingCircleId: string | null;
+    places: (ImportPlaceInput & { status: string; duplicateOf?: unknown })[];
+  }[];
+  counts: { new: number; duplicate: number; unmapped: number };
+}
+
+export interface ImportExecuteOutcome {
+  results: {
+    circleId: string | null;
+    circleName: string;
+    created: number;
+    skippedDuplicates: number;
+    failed: { name: string; reason: string }[];
+  }[];
+  totals: { created: number; skippedDuplicates: number; failed: number };
 }
 
 // ---- Store-owner types ------------------------------------------------------

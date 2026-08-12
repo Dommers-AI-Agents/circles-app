@@ -197,12 +197,14 @@ Conventions:
 - Deletions are two-tier: delete_* moves items to a recoverable trash; permanently_delete_* is irreversible. Always get explicit user confirmation before any delete, and name the exact item being deleted.
 - Never fabricate places or attribute recommendations to people who didn't make them.
 
+Importing places: users can bring their saved-place history from Mapstr, Google Maps (Takeout), or Swarm/Foursquare (personal data export) by sharing the export file with you. YOU parse the file (any format), normalize it, and use prepare_place_import → user confirmation → execute_place_import. Never invent coordinates — only pass lat/lng found in the file; rows without them import unmapped, which is correct. Aggregate repeat Swarm check-ins into one place with visitCount.
+
 Store owners: users who claimed their business get store-management tools (list_my_stores first; other store tools take its venueId, optional for single-store owners). Announcements broadcast to every follower and redemption codes are worth real loyalty points — always confirm exact content/amounts with the user before posting or minting. Some store tools need the FavCircles Business tier; a 403 means the owner should upgrade in the app, not that something is broken.`;
 
 export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
   const backend = new Backend(auth, apiBase);
   const server = new McpServer(
-    { name: "favcircles", version: "0.7.0" },
+    { name: "favcircles", version: "0.8.0" },
     { instructions: SERVER_INSTRUCTIONS }
   );
 
@@ -1341,9 +1343,175 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
     }
   );
 
+  registerImportTools(server, backend);
   registerStoreOwnerTools(server, backend);
 
   return server;
+}
+
+// ---- Place-import tools -----------------------------------------------------
+// The assistant IS the parser: it reads whatever export file the user shares
+// (Mapstr GeoJSON, Google Takeout CSVs, a Swarm/Foursquare personal data
+// export) and normalizes it into these calls. The backend dedupes against the
+// user's existing places, creates one circle per list, and never bills
+// anything — coordinate-less rows import unmapped rather than being dropped.
+
+const IMPORT_PLACE_INPUT = z.object({
+  name: z.string().min(1),
+  address: z.string().optional(),
+  lat: z.number().optional().describe("ONLY if present in the source file — never from your own knowledge (a wrong pin is worse than no pin; rows without coordinates import unmapped, which is fine)"),
+  lng: z.number().optional(),
+  notes: z.string().optional().describe("The user's own note/caption from the source platform (stays private to them)"),
+  tags: z.array(z.string()).optional(),
+  sourceExternalId: z.string().optional().describe("Stable per-source id for re-import dedup, e.g. 'fsq:<venueId>', 'mapstr:<id>', 'cid:<hex>' from a Google Maps URL. Set whenever the file has any stable id."),
+  sourceUrl: z.string().optional(),
+  visitCount: z.number().int().optional().describe("Swarm: total check-ins at this venue (aggregate repeat check-ins into ONE place)"),
+  firstVisitedAt: z.string().optional().describe("ISO date of earliest check-in"),
+  lastVisitedAt: z.string().optional().describe("ISO date of latest check-in"),
+});
+
+const IMPORT_LIST_INPUT = z.object({
+  name: z.string().min(1).describe("Circle name — use the source list/file name (e.g. 'Want To Go', 'Swarm Check-ins')"),
+  places: z.array(IMPORT_PLACE_INPUT).min(1),
+});
+
+const IMPORT_COUNTS_OUT = z.object({ new: z.number(), duplicate: z.number(), unmapped: z.number() });
+
+function registerImportTools(server: McpServer, backend: Backend): void {
+  const IMPORT_CHUNK = 300; // backend MAX_PLACES_PER_REQUEST
+
+  function chunkLists<T extends { places: any[] }>(lists: T[]): { list: T; slice: any[] }[] {
+    const work: { list: T; slice: any[] }[] = [];
+    for (const list of lists) {
+      for (let i = 0; i < list.places.length; i += IMPORT_CHUNK) {
+        work.push({ list, slice: list.places.slice(i, i + IMPORT_CHUNK) });
+      }
+    }
+    return work;
+  }
+
+  server.registerTool(
+    "prepare_place_import",
+    {
+      title: "Preview a place import",
+      description:
+        "Dry-run an import of the user's saved places from another platform (Mapstr, Google Maps Takeout, or a Swarm/Foursquare personal data export). YOU parse the user's export file and normalize it into lists; this returns a dedup preview (new / already-saved / unmapped counts) WITHOUT writing anything. Workflow: parse file → call this → summarize the preview to the user → get their explicit go-ahead → execute_place_import. Only pass coordinates that appear in the file itself.",
+      inputSchema: {
+        source: z.enum(["mapstr", "google_maps", "swarm"]),
+        lists: z.array(IMPORT_LIST_INPUT).min(1),
+      },
+      outputSchema: {
+        counts: IMPORT_COUNTS_OUT,
+        lists: z.array(z.object({
+          circleName: z.string(),
+          mergesInto: z.string().nullable().describe("Existing circle id this list would merge into (matched by name), else a new circle is created"),
+          newCount: z.number(),
+          duplicateCount: z.number(),
+          unmappedCount: z.number(),
+        })),
+      },
+      annotations: { title: "Preview a place import", ...READ },
+      _meta: inv("Checking your import", "Import previewed"),
+    },
+    async ({ source, lists }: { source: "mapstr" | "google_maps" | "swarm"; lists: { name: string; places: any[] }[] }): Promise<ToolResult> => {
+      try {
+        const totals = { new: 0, duplicate: 0, unmapped: 0 };
+        const perList = new Map<string, { mergesInto: string | null; newCount: number; duplicateCount: number; unmappedCount: number }>();
+
+        for (const item of chunkLists(lists)) {
+          const preview = await backend.prepareImport({
+            source,
+            lists: [{ name: item.list.name, places: item.slice }],
+          });
+          totals.new += preview.counts.new;
+          totals.duplicate += preview.counts.duplicate;
+          totals.unmapped += preview.counts.unmapped;
+          for (const previewList of preview.lists) {
+            const entry = perList.get(previewList.proposedCircleName)
+              || { mergesInto: previewList.existingCircleId, newCount: 0, duplicateCount: 0, unmappedCount: 0 };
+            for (const place of previewList.places) {
+              if (place.status === "duplicate") entry.duplicateCount++;
+              else if (place.status === "unmapped") entry.unmappedCount++;
+              else entry.newCount++;
+            }
+            perList.set(previewList.proposedCircleName, entry);
+          }
+        }
+
+        const listSummaries = [...perList.entries()].map(([circleName, entry]) => ({ circleName, ...entry }));
+        const text = `Import preview: ${totals.new} new place(s), ${totals.duplicate} already saved, ${totals.unmapped} without coordinates (import fine, just no map pin yet).\n` +
+          listSummaries.map((l) => `- "${l.circleName}"${l.mergesInto ? " (merges into an existing circle)" : " (new circle)"}: ${l.newCount} new, ${l.duplicateCount} duplicate, ${l.unmappedCount} unmapped`).join("\n") +
+          `\n\nSummarize this for the user and get their explicit confirmation before calling execute_place_import.`;
+        return ok(text, { counts: totals, lists: listSummaries });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "execute_place_import",
+    {
+      title: "Import places",
+      description:
+        "Create the circles and places from a reviewed import — call ONLY after prepare_place_import and the user's explicit confirmation. Each list becomes a circle visible to the user's network (or merges into their existing circle of the same name). Duplicates are skipped automatically; re-running is safe. Large lists are chunked automatically.",
+      inputSchema: {
+        source: z.enum(["mapstr", "google_maps", "swarm"]),
+        lists: z.array(IMPORT_LIST_INPUT).min(1),
+      },
+      outputSchema: {
+        created: z.number(),
+        skippedDuplicates: z.number(),
+        failed: z.number(),
+        circles: z.array(z.object({ circleId: z.string().nullable(), circleName: z.string(), created: z.number() })),
+      },
+      annotations: { title: "Import places", ...CREATE },
+      _meta: inv("Importing your places", "Places imported"),
+    },
+    async ({ source, lists }: { source: "mapstr" | "google_maps" | "swarm"; lists: { name: string; places: any[] }[] }): Promise<ToolResult> => {
+      try {
+        const totals = { created: 0, skippedDuplicates: 0, failed: 0 };
+        const circles = new Map<string, { circleId: string | null; created: number }>();
+        // Track circle ids per list name so later chunks of a big list merge
+        // into the circle the first chunk created
+        const circleIdByName = new Map<string, string>();
+
+        for (const item of chunkLists(lists)) {
+          const existingCircleId = circleIdByName.get(item.list.name);
+          const outcome = await backend.executeImport({
+            source,
+            lists: [{
+              name: item.list.name,
+              ...(existingCircleId ? { existingCircleId } : {}),
+              places: item.slice,
+            }],
+          });
+          totals.created += outcome.totals.created;
+          totals.skippedDuplicates += outcome.totals.skippedDuplicates;
+          totals.failed += outcome.totals.failed;
+          for (const result of outcome.results) {
+            if (result.circleId) circleIdByName.set(item.list.name, result.circleId);
+            const entry = circles.get(result.circleName) || { circleId: result.circleId, created: 0 };
+            entry.circleId = entry.circleId || result.circleId;
+            entry.created += result.created;
+            circles.set(result.circleName, entry);
+          }
+        }
+
+        const circleSummaries = [...circles.entries()].map(([circleName, entry]) => ({
+          circleId: entry.circleId, circleName, created: entry.created,
+        }));
+        const text = `Imported ${totals.created} place(s)` +
+          (circleSummaries.length ? ` into: ${circleSummaries.map((c) => `"${c.circleName}" (${c.created})`).join(", ")}` : "") +
+          `.${totals.skippedDuplicates ? ` Skipped ${totals.skippedDuplicates} already saved.` : ""}` +
+          `${totals.failed ? ` ${totals.failed} failed.` : ""}` +
+          ` The circles are visible to the user's network. Places without coordinates imported without a map pin.`;
+        return ok(text, { ...totals, circles: circleSummaries });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
 }
 
 // ---- Store-owner tools ------------------------------------------------------
