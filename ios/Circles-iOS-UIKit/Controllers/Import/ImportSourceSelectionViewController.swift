@@ -164,6 +164,22 @@ class ImportSourceSelectionViewController: BaseViewController {
             from: self
         )
 
+        // Coordinate-less rows (Google Takeout) resolve on-device via Apple
+        // Maps first — free, and what the map pins come from
+        AppleImportResolver.resolve(
+            lists: lists,
+            progress: { message in
+                DispatchQueue.main.async {
+                    loadingAlert.message = message
+                }
+            }
+        ) { [weak self] resolvedLists in
+            guard let self = self else { return }
+            self.runPrepare(source: source, lists: resolvedLists, loadingAlert: loadingAlert)
+        }
+    }
+
+    private func runPrepare(source: ImportSource, lists: [ImportList], loadingAlert: UIAlertController) {
         ImportService.shared.prepare(
             source: source,
             lists: lists,

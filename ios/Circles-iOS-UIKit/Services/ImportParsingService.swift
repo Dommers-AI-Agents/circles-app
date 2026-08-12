@@ -29,6 +29,9 @@ struct ImportPlaceCandidate {
     var tags: [String]
     var sourceExternalId: String?
     var sourceUrl: String?
+    /// Set by AppleImportResolver when an on-device Apple Maps lookup located
+    /// the place — feeds the backend's category-derivation cascade
+    var applePoiCategory: String? = nil
 
     var asRequestBody: [String: Any] {
         var body: [String: Any] = ["name": name]
@@ -40,6 +43,7 @@ struct ImportPlaceCandidate {
         if !tags.isEmpty { body["tags"] = tags }
         if let sourceExternalId = sourceExternalId { body["sourceExternalId"] = sourceExternalId }
         if let sourceUrl = sourceUrl { body["sourceUrl"] = sourceUrl }
+        if let applePoiCategory = applePoiCategory { body["applePoiCategory"] = applePoiCategory }
         return body
     }
 }

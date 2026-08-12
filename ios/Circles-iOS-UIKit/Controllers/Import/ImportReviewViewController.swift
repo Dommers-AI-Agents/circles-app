@@ -49,8 +49,9 @@ class ImportReviewViewController: BaseViewController {
             ReviewSection(
                 circleName: list.proposedCircleName,
                 existingCircleId: list.existingCircleId,
-                // New places start selected; duplicates and unresolved don't
-                places: list.places.map { ReviewPlace(place: $0, selected: $0.isNew) }
+                // New AND unmapped places start selected (unmapped rows import
+                // without a pin — nothing is dropped); duplicates don't
+                places: list.places.map { ReviewPlace(place: $0, selected: !$0.isDuplicate) }
             )
         }
         super.init(nibName: nil, bundle: nil)
@@ -216,28 +217,21 @@ extension ImportReviewViewController: UITableViewDataSource, UITableViewDelegate
         if place.isDuplicate {
             detail = "Already in your circles" + (detail.isEmpty ? "" : " · \(detail)")
             config.secondaryTextProperties.color = .systemOrange
-        } else if place.isUnresolved {
-            detail = "Couldn't find this place on the map"
-            config.secondaryTextProperties.color = .systemRed
+        } else if place.isUnmapped {
+            detail = "Imports without a map pin"
+            config.secondaryTextProperties.color = .secondaryLabel
         }
         config.secondaryText = detail
         config.secondaryTextProperties.numberOfLines = 1
         cell.contentConfiguration = config
 
-        if place.isUnresolved {
-            cell.accessoryType = .none
-            cell.selectionStyle = .none
-        } else {
-            cell.accessoryType = reviewPlace.selected ? .checkmark : .none
-            cell.selectionStyle = .default
-        }
+        cell.accessoryType = reviewPlace.selected ? .checkmark : .none
+        cell.selectionStyle = .default
         return cell
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        let reviewPlace = sections[indexPath.section].places[indexPath.row]
-        guard !reviewPlace.place.isUnresolved else { return }
 
         sections[indexPath.section].places[indexPath.row].selected.toggle()
         tableView.reloadRows(at: [indexPath], with: .none)

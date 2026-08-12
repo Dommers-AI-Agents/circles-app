@@ -13,12 +13,15 @@ struct ImportPreviewPlace: Decodable {
     let sourceExternalId: String?
     let sourceUrl: String?
     let googlePlaceId: String?
-    let status: String // "new" | "duplicate" | "unresolved"
+    let applePoiCategory: String?
+    let status: String // "new" | "duplicate" | "unmapped"
     let duplicateOf: ImportDuplicateRef?
 
     var isNew: Bool { status == "new" }
     var isDuplicate: Bool { status == "duplicate" }
-    var isUnresolved: Bool { status == "unresolved" }
+    /// No coordinates in the source file — imports into the circle's list
+    /// without a map pin (nothing is dropped, nothing is billed)
+    var isUnmapped: Bool { status == "unmapped" }
 
     /// Body for POST /api/import/execute — echoes back the resolved place.
     var asExecuteBody: [String: Any] {
@@ -32,6 +35,7 @@ struct ImportPreviewPlace: Decodable {
         if let sourceExternalId = sourceExternalId { body["sourceExternalId"] = sourceExternalId }
         if let sourceUrl = sourceUrl { body["sourceUrl"] = sourceUrl }
         if let googlePlaceId = googlePlaceId { body["googlePlaceId"] = googlePlaceId }
+        if let applePoiCategory = applePoiCategory { body["applePoiCategory"] = applePoiCategory }
         return body
     }
 }
@@ -50,7 +54,7 @@ struct ImportPreviewList: Decodable {
 struct ImportCounts: Decodable {
     let new: Int
     let duplicate: Int
-    let unresolved: Int
+    let unmapped: Int
 }
 
 struct ImportPreview: Decodable {
@@ -131,7 +135,7 @@ final class ImportService {
         }
 
         var mergedLists: [ImportPreviewList] = []
-        var counts = (new: 0, duplicate: 0, unresolved: 0)
+        var counts = (new: 0, duplicate: 0, unmapped: 0)
 
         func processNext(_ index: Int) {
             guard index < workItems.count else {
@@ -152,7 +156,7 @@ final class ImportService {
                 }
                 let preview = ImportPreview(
                     lists: order.compactMap { byName[$0] },
-                    counts: ImportCounts(new: counts.new, duplicate: counts.duplicate, unresolved: counts.unresolved)
+                    counts: ImportCounts(new: counts.new, duplicate: counts.duplicate, unmapped: counts.unmapped)
                 )
                 completion(.success(preview))
                 return
@@ -177,7 +181,7 @@ final class ImportService {
                     mergedLists.append(contentsOf: response.preview.lists)
                     counts.new += response.preview.counts.new
                     counts.duplicate += response.preview.counts.duplicate
-                    counts.unresolved += response.preview.counts.unresolved
+                    counts.unmapped += response.preview.counts.unmapped
                     processNext(index + 1)
                 case .failure(let error):
                     completion(.failure(error))

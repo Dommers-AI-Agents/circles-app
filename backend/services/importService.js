@@ -191,7 +191,7 @@ async function prepareImport(userId, payload) {
   ]);
   const circlesByName = new Map(ownedCircles.map(c => [normalizeText(c.name), c]));
 
-  const counts = { new: 0, duplicate: 0, unresolved: 0 };
+  const counts = { new: 0, duplicate: 0, unmapped: 0 };
   const lists = [];
 
   for (const list of payload.lists) {
@@ -212,29 +212,22 @@ async function prepareImport(userId, payload) {
         sourceExternalId: place.sourceExternalId || null,
         sourceUrl: place.sourceUrl || null,
         googlePlaceId: null,
+        // From the client's on-device Apple Maps lookup — feeds the category
+        // cascade at canonical-link time
+        applePoiCategory: typeof place.applePoiCategory === 'string' ? place.applePoiCategory : null,
         status: 'new',
         duplicateOf: null
       };
 
-      // Resolve coordinates (Google Takeout rows arrive without them)
+      // Zero-cost ingest (2026-08): NO Google Find Place calls at import.
+      // Rows without source coordinates (most Google Takeout saved-list rows)
+      // import as UNMAPPED — present in their circle's list, no map pin —
+      // instead of being dropped. Resolution can happen later if/when a
+      // promote step exists; today nothing is billed.
       if (!isValidCoordinate(result.lat, result.lng)) {
-        const resolved = await resolveViaFindPlace(result.name, result.address);
-        if (resolved) {
-          result.lat = resolved.lat;
-          result.lng = resolved.lng;
-          result.googlePlaceId = resolved.googlePlaceId;
-          if (!result.address && resolved.formattedAddress) {
-            result.address = resolved.formattedAddress;
-          }
-          if (!result.category) {
-            result.category = categoryFromGoogleTypes(resolved.types);
-          }
-        }
-      }
-
-      if (!isValidCoordinate(result.lat, result.lng)) {
-        result.status = 'unresolved';
-        return result;
+        result.lat = null;
+        result.lng = null;
+        result.status = 'unmapped';
       }
 
       if (!result.category && payload.source === 'mapstr' && result.tags.length > 0) {
@@ -242,8 +235,9 @@ async function prepareImport(userId, payload) {
       }
       if (!result.category) result.category = 'other';
       if (!result.address) {
-        // validatePlace requires an address; fall back to coordinates text
-        result.address = `${result.lat.toFixed(5)}, ${result.lng.toFixed(5)}`;
+        result.address = result.lat !== null
+          ? `${result.lat.toFixed(5)}, ${result.lng.toFixed(5)}`
+          : 'Address pending';
       }
 
       // Duplicate detection: stable external id → google place id → name+address
@@ -318,7 +312,10 @@ async function executeImport(userId, payload) {
         results.push(listResult);
         continue;
       }
-      const circleData = createCircle({ name: circleName, privacy: 'private' }, userId);
+      // Imported circles are visible to the user's connections from day one
+      // (these places were largely shareable/visible on the source platform
+      // already) — the import IS the user's map seed, not a hidden archive.
+      const circleData = createCircle({ name: circleName, privacy: 'myNetwork' }, userId);
       const circleErrors = validateCircle(circleData);
       if (circleErrors.length > 0) {
         listResult.failed.push({ name: circleName, reason: circleErrors.join(', ') });
@@ -335,6 +332,7 @@ async function executeImport(userId, payload) {
     // places must not spam the network feed.
     const batch = db.batch();
     const newPlaceIds = [];
+    const linkablePlaceIds = []; // mapped rows only — canonical linking needs a location
 
     for (const place of list.places || []) {
       const sourceId = place.sourceExternalId || null;
@@ -349,15 +347,16 @@ async function executeImport(userId, payload) {
         continue;
       }
 
-      if (!isValidCoordinate(place.lat, place.lng)) {
-        listResult.failed.push({ name: place.name, reason: 'Missing coordinates' });
-        continue;
-      }
+      // Coordinate-less rows import UNMAPPED (no pin) instead of failing —
+      // zero-cost ingest never calls Google
+      const hasCoordinates = isValidCoordinate(place.lat, place.lng);
 
       const placeData = createPlace({
         name: place.name,
-        address: place.address,
-        location: { type: 'Point', coordinates: [place.lng, place.lat] },
+        address: place.address || 'Address pending',
+        location: hasCoordinates
+          ? { type: 'Point', coordinates: [place.lng, place.lat] }
+          : null,
         category: place.category || 'other',
         // Imported captions belong to the importer alone; publishing another
         // platform's private notes as venue comments would be a leak.
@@ -365,20 +364,35 @@ async function executeImport(userId, payload) {
         tags: place.tags || [],
         website: place.sourceUrl || null,
         googlePlaceId: place.googlePlaceId || null,
+        applePoiCategory: typeof place.applePoiCategory === 'string' ? place.applePoiCategory : null,
         privacy: 'followCircle',
         importSource: payload.source,
         sourceExternalId: sourceId
       }, circleRef.id, userId);
 
-      const errors = validatePlace(placeData);
-      if (errors.length > 0) {
-        listResult.failed.push({ name: place.name, reason: errors.join(', ') });
+      // createPlace drops unknown keys: stamp extras after. sourceListName
+      // feeds future favorites signals; needsResolution marks rows a future
+      // promote/resolve step would look up.
+      placeData.sourceListName = circleName || null;
+      if (!hasCoordinates) placeData.needsResolution = true;
+
+      if (hasCoordinates) {
+        const errors = validatePlace(placeData);
+        if (errors.length > 0) {
+          listResult.failed.push({ name: place.name, reason: errors.join(', ') });
+          continue;
+        }
+      } else if (!placeData.name || !placeData.name.trim()) {
+        // Unmapped rows skip validatePlace's location requirement but still
+        // need a name
+        listResult.failed.push({ name: place.name, reason: 'Place name is required' });
         continue;
       }
 
       const placeRef = db.collection(COLLECTIONS.PLACES).doc();
       batch.set(placeRef, placeData);
       newPlaceIds.push(placeRef.id);
+      if (hasCoordinates) linkablePlaceIds.push(placeRef.id);
 
       // Keep the in-memory index current so duplicates within this request
       // (and across its lists) are caught too.
@@ -397,6 +411,20 @@ async function executeImport(userId, payload) {
       });
       await batch.commit();
       listResult.created = newPlaceIds.length;
+
+      // These circles are network-visible, so imported places must behave
+      // like normal saves: link the canonical venue record now. This is FREE
+      // (text-based category + address-derived city/state lens — zero Google
+      // calls) and best-effort — a failed link never fails the import.
+      const { ensureGlobalPlaceLink } = require('./globalPlaceResolver');
+      await mapWithConcurrency(linkablePlaceIds, 4, async (placeId) => {
+        try {
+          const snap = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
+          await ensureGlobalPlaceLink(snap);
+        } catch (linkError) {
+          console.error(`⚠️ Import: global-place link failed for ${placeId} (non-fatal):`, linkError.message);
+        }
+      });
     } else if (!list.existingCircleId && listResult.circleId) {
       // Created a circle but every place was a duplicate/failure — keep the
       // empty circle only if the user explicitly asked for it; delete otherwise.
