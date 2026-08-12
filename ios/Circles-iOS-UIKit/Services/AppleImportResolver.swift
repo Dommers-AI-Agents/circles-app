@@ -33,11 +33,17 @@ enum AppleImportResolver {
         }
         // Everything past the inline cap passes through untouched — those
         // rows import unmapped and get resolved in the background
+        let totalCoordinateless = work.count
         work = Array(work.prefix(max(0, limit)))
         guard !work.isEmpty else {
             completion(lists)
             return
         }
+        // "15 of 40" reads as the whole job when 600 rows are importing —
+        // say what the 40 actually is: a preview sample, rest located later
+        let progressLabel: (Int) -> String = totalCoordinateless > work.count
+            ? { "Previewing locations for \($0) of \(work.count) places — the other \(totalCoordinateless - work.count) will be located after import" }
+            : { "Locating your places… \($0) of \(work.count)" }
 
         var workIndex = 0
         var locatedCount = 0
@@ -48,7 +54,7 @@ enum AppleImportResolver {
                 return
             }
             let item = work[workIndex]
-            progress("Locating your places… \(workIndex + 1) of \(work.count)")
+            progress(progressLabel(workIndex + 1))
 
             let candidate = resolvedLists[item.listIndex].places[item.placeIndex]
             searchVenue(name: candidate.name, address: candidate.address) { outcome in
