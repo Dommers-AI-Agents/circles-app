@@ -34,28 +34,60 @@ enum AppleImportResolver {
         var workIndex = 0
         var locatedCount = 0
 
-        func processNext() {
+        // Apple throttles bursts of MKLocalSearch requests (~50, then a
+        // cool-down). A throttled row is NOT "not found" — retry it with
+        // exponential backoff instead of importing it unmapped. A 2026-08-12
+        // 530-row import resolved exactly 48 rows then failed the rest for
+        // this reason. A small gap between successful requests keeps the
+        // throttle from triggering in the first place.
+        let interRequestDelay: TimeInterval = 0.25
+        let maxThrottleRetries = 6
+
+        func processNext(throttleRetry: Int = 0) {
             guard workIndex < work.count else {
                 completion(resolvedLists)
                 return
             }
             let item = work[workIndex]
-            workIndex += 1
-            progress("Locating your places… \(workIndex) of \(work.count)")
+            progress("Locating your places… \(workIndex + 1) of \(work.count)")
 
             let candidate = resolvedLists[item.listIndex].places[item.placeIndex]
-            search(candidate) { resolved in
-                if let resolved = resolved {
-                    resolvedLists[item.listIndex].places[item.placeIndex] = resolved
-                    locatedCount += 1
-                }
+            search(candidate) { outcome in
                 DispatchQueue.main.async {
-                    processNext()
+                    switch outcome {
+                    case .throttled where throttleRetry < maxThrottleRetries:
+                        // 5s, 10s, 20s, 40s, 60s, 60s — same row, not advanced
+                        let delay = min(60.0, 5.0 * pow(2.0, Double(throttleRetry)))
+                        progress("Apple Maps is rate-limiting — pausing \(Int(delay))s… (\(workIndex + 1) of \(work.count))")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                            processNext(throttleRetry: throttleRetry + 1)
+                        }
+                    case .resolved(let resolved):
+                        resolvedLists[item.listIndex].places[item.placeIndex] = resolved
+                        locatedCount += 1
+                        workIndex += 1
+                        DispatchQueue.main.asyncAfter(deadline: .now() + interRequestDelay) {
+                            processNext()
+                        }
+                    case .notFound, .throttled:
+                        // Genuinely not found, or throttled past the retry
+                        // budget — import unmapped rather than stall forever
+                        workIndex += 1
+                        DispatchQueue.main.asyncAfter(deadline: .now() + interRequestDelay) {
+                            processNext()
+                        }
+                    }
                 }
             }
         }
 
         processNext()
+    }
+
+    private enum SearchOutcome {
+        case resolved(ImportPlaceCandidate)
+        case notFound
+        case throttled
     }
 
     private static func hasValidCoordinates(_ place: ImportPlaceCandidate) -> Bool {
@@ -65,7 +97,7 @@ enum AppleImportResolver {
 
     private static func search(
         _ candidate: ImportPlaceCandidate,
-        completion: @escaping (ImportPlaceCandidate?) -> Void
+        completion: @escaping (SearchOutcome) -> Void
     ) {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = [candidate.name, candidate.address]
@@ -74,9 +106,18 @@ enum AppleImportResolver {
             .joined(separator: ", ")
         request.resultTypes = .pointOfInterest
 
-        MKLocalSearch(request: request).start { response, _ in
+        MKLocalSearch(request: request).start { response, error in
+            if let error = error {
+                // MKError.loadingThrottled means "slow down", not "not found";
+                // network failures get one retry pass too via the same path
+                let nsError = error as NSError
+                let isThrottle = nsError.domain == MKError.errorDomain &&
+                    nsError.code == MKError.loadingThrottled.rawValue
+                completion(isThrottle ? .throttled : .notFound)
+                return
+            }
             guard let item = response?.mapItems.first else {
-                completion(nil)
+                completion(.notFound)
                 return
             }
             var updated = candidate
@@ -87,7 +128,7 @@ enum AppleImportResolver {
                 updated.address = formattedAddress(item.placemark)
             }
             updated.applePoiCategory = item.pointOfInterestCategory?.rawValue
-            completion(updated)
+            completion(.resolved(updated))
         }
     }
 

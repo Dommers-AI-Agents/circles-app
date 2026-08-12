@@ -359,7 +359,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Circles-iOS-UIKit/Circles-iOS-Debug.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Circles-iOS-UIKit/Info.plist";
@@ -406,7 +406,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Circles-iOS-UIKit/Circles-iOS-Release.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Circles-iOS-UIKit/Info.plist";
