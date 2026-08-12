@@ -241,6 +241,72 @@ const CACHED_VENUE_FIELDS = [
 // stamp globalPlaceId on it. Best-effort: returns the global place id, or null
 // on failure — linking must never block a save (the backfill script catches
 // stragglers).
+// ---- Name + proximity matcher ----------------------------------------------
+// A manually-added or imported copy of a venue that already exists
+// canonically carries no googlePlaceId, and its deduplicationKey
+// ('manual:<name>:<address>') can never match a canonical record keyed
+// 'google:<placeId>' — so every such save minted a DUPLICATE venue (found via
+// a Mapstr import, 2026-08-12). Same normalized name within 150m is the same
+// real-world venue; both criteria are deliberately conservative so distinct
+// same-brand branches (usually far apart) never merge.
+const NAME_MATCH_RADIUS_METERS = 150;
+
+const normalizeVenueName = (name) => (name || '')
+  .toLowerCase()
+  .replace(/^the\s+/, '')
+  .replace(/[^a-z0-9\s]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const haversineMeters = (lat1, lng1, lat2, lng2) => {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+};
+
+async function findCanonicalByNameAndLocation(name, location, excludeId = null) {
+  const normalized = normalizeVenueName(name);
+  const coords = location && location.coordinates;
+  if (!normalized || !Array.isArray(coords) || coords.length !== 2) return null;
+  const [lng, lat] = coords;
+
+  // Token must match buildSearchTokens' splitting (non-alphanumerics are
+  // separators): "Nickyo's" indexes as "nickyo", never "nickyos"
+  const tokens = (name || '').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+  if (tokens.length === 0) return null;
+  const longestToken = tokens.sort((a, b) => b.length - a.length)[0].slice(0, 20);
+
+  const snapshot = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+    .where('searchTokens', 'array-contains', longestToken)
+    .limit(25)
+    .get();
+
+  let best = null;
+  let bestDistance = Infinity;
+  snapshot.forEach((doc) => {
+    if (excludeId && doc.id === excludeId) return;
+    const data = doc.data();
+    if (data.deletedAt) return;
+    const candidateName = normalizeVenueName(data.name);
+    const namesMatch = candidateName === normalized ||
+      candidateName.includes(normalized) ||
+      normalized.includes(candidateName);
+    if (!namesMatch) return;
+    const candidateCoords = data.location && data.location.coordinates;
+    if (!Array.isArray(candidateCoords) || candidateCoords.length !== 2) return;
+    const distance = haversineMeters(lat, lng, candidateCoords[1], candidateCoords[0]);
+    if (distance <= NAME_MATCH_RADIUS_METERS && distance < bestDistance) {
+      best = doc;
+      bestDistance = distance;
+    }
+  });
+  return best;
+}
+
 async function ensureGlobalPlaceLink(placeDoc) {
   try {
     const existing = placeDoc.data().globalPlaceId;
@@ -254,6 +320,22 @@ async function ensureGlobalPlaceLink(placeDoc) {
     // dropping them here left the save invisible to every query that filters on
     // the cached fields (city browse, circle summaries, the map's region chips).
     let resolvedData = globalPlaceDoc ? globalPlaceDoc.data() : null;
+
+    // Before minting a new canonical venue, check whether one already exists
+    // under a different key namespace (same name, within 150m)
+    if (!globalPlaceId) {
+      const matched = await findCanonicalByNameAndLocation(
+        placeDoc.data().name, placeDoc.data().location);
+      if (matched) {
+        await matched.ref.update({
+          legacyPlaceIds: admin.firestore.FieldValue.arrayUnion(placeDoc.id),
+          updatedAt: new Date().toISOString()
+        });
+        globalPlaceId = matched.id;
+        resolvedData = matched.data();
+        console.log(`🔗 [GlobalPlace] Matched "${placeDoc.data().name}" to existing venue ${matched.id} by name+proximity`);
+      }
+    }
 
     if (!globalPlaceId) {
       const created = await createGlobalPlaceFromLegacy(placeDoc);
@@ -313,4 +395,4 @@ async function flagForCategoryReview(globalPlaceId, venueData) {
   }
 }
 
-module.exports = { resolveGlobalPlace, createGlobalPlaceFromLegacy, ensureGlobalPlaceLink };
+module.exports = { resolveGlobalPlace, createGlobalPlaceFromLegacy, ensureGlobalPlaceLink, findCanonicalByNameAndLocation };

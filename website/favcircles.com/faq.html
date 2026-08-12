@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAQ - FavCircles</title>
+    <meta name="description" content="FavCircles FAQ: connect ChatGPT or Claude to your account, import your places from Mapstr, Google Maps, and Swarm, privacy basics, and store owner tools.">
+    <link rel="canonical" href="https://favcircles.com/faq.html">
+    <link rel="icon" href="/favicon.ico">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container { max-width: 900px; margin: 0 auto; padding: 0 20px; }
+        header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 1rem 0;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+        }
+        header .container { max-width: 1200px; }
+        nav { display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-size: 1.8rem; font-weight: bold; color: white; text-decoration: none; }
+        .nav-links { display: flex; list-style: none; gap: 1.6rem; }
+        .nav-links a { color: white; text-decoration: none; font-weight: 500; transition: opacity 0.3s; }
+        .nav-links a:hover { opacity: 0.8; }
+        main { margin-top: 90px; padding-bottom: 2rem; }
+        .page-title { color: white; text-align: center; margin: 2rem 0 0.5rem; font-size: 2.4rem; }
+        .page-subtitle { color: rgba(255,255,255,0.9); text-align: center; margin-bottom: 2rem; font-size: 1.1rem; }
+        .faq-group {
+            background: white;
+            margin: 1.5rem 0;
+            padding: 2rem 2.5rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+        .faq-group > h2 { color: #667eea; margin-bottom: 0.5rem; }
+        .faq-group > p.lead { color: #555; margin-bottom: 1rem; }
+        details {
+            border-bottom: 1px solid #eee;
+            padding: 0.9rem 0;
+        }
+        details:last-child { border-bottom: none; }
+        summary {
+            font-weight: 600;
+            font-size: 1.05rem;
+            cursor: pointer;
+            color: #333;
+            list-style-position: outside;
+        }
+        summary:hover { color: #667eea; }
+        details[open] summary { color: #667eea; margin-bottom: 0.6rem; }
+        details p, details li { margin-bottom: 0.7rem; color: #444; }
+        details ol, details ul { margin-left: 1.6rem; margin-bottom: 0.7rem; }
+        details code {
+            background: #f4f4f8;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.95em;
+            word-break: break-all;
+        }
+        .try-box {
+            background: #f6f5ff;
+            border-left: 4px solid #667eea;
+            border-radius: 8px;
+            padding: 0.9rem 1.1rem;
+            margin: 0.7rem 0;
+            font-style: italic;
+            color: #444;
+        }
+        .cta-band {
+            text-align: center;
+            padding: 1rem 0 0;
+        }
+        .cta-band a {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 0.8rem 2rem;
+            border-radius: 999px;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        footer {
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+            text-align: center;
+            padding: 2rem 0;
+            margin-top: 3rem;
+        }
+        footer a { color: white; }
+    </style>
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <a href="/" class="logo">FavCircles</a>
+            <ul class="nav-links">
+                <li><a href="/">Home</a></li>
+                <li><a href="/faq.html">FAQ</a></li>
+                <li><a href="/store-owners.html">Store&nbsp;Owners</a></li>
+                <li><a href="/support.html">Support</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="container">
+        <h1 class="page-title">Frequently Asked Questions</h1>
+        <p class="page-subtitle">The short version of everything — including how to run FavCircles from ChatGPT or Claude.</p>
+
+        <section class="faq-group">
+            <h2>The basics</h2>
+            <details open>
+                <summary>What is FavCircles?</summary>
+                <p>FavCircles is where your favorite places live — organized into <strong>circles</strong> (collections like "Date Night Spots" or "Best Coffee") and shared with people you actually know. When you're looking for somewhere to eat, a place your friend loves beats a stranger's star rating every time.</p>
+            </details>
+            <details>
+                <summary>Who sees my places?</summary>
+                <p>You decide, per circle: <strong>Public</strong> (anyone), <strong>My Network</strong> (only your connections), or <strong>Private</strong> (just you). You can also mark an individual place private inside any circle. Nothing is shared beyond the level you choose.</p>
+            </details>
+        </section>
+
+        <section class="faq-group">
+            <h2>Using AI with FavCircles ✨</h2>
+            <p class="lead">Connect your account to ChatGPT or Claude once, and your assistant can manage your places by conversation — this is one of FavCircles' best features.</p>
+            <details open>
+                <summary>What can my AI assistant actually do?</summary>
+                <ul>
+                    <li><strong>Answer from your real favorites:</strong> "Where do my friends like to eat near downtown?"</li>
+                    <li><strong>Save and organize:</strong> "Add Carbone to my Date Night circle."</li>
+                    <li><strong>Import your history:</strong> hand it your Mapstr, Google Maps, or Swarm export and say "move these into FavCircles" — it reads the file, shows you what's new vs. already saved, and imports on your OK.</li>
+                    <li><strong>Run your store</strong> (owners): "How's my store doing this month? Post a happy-hour special for Friday. Set my hours to 7–7 weekdays."</li>
+                </ul>
+            </details>
+            <details>
+                <summary>How do I connect ChatGPT?</summary>
+                <ol>
+                    <li>Open <strong>ChatGPT → Settings → Apps &amp; Connectors</strong> (turn on <em>Developer&nbsp;mode</em> under Advanced if you don't see an option to add one).</li>
+                    <li>Choose <strong>Create / Add connector</strong>, name it <strong>FavCircles</strong>, and paste: <code>https://mcp.favcircles.com/mcp</code></li>
+                    <li>Sign in with your FavCircles email and password when asked.</li>
+                </ol>
+                <p>That's it — about two minutes, once.</p>
+            </details>
+            <details>
+                <summary>How do I connect Claude?</summary>
+                <ol>
+                    <li>Open <strong>claude.ai → Settings → Connectors</strong>.</li>
+                    <li>Click <strong>Add custom connector</strong> and paste: <code>https://mcp.favcircles.com/mcp</code></li>
+                    <li>Sign in with your FavCircles email and password when asked.</li>
+                </ol>
+                <p>Full walkthrough with screenshots: <a href="/connect-claude.html">Connect FavCircles to Claude</a>.</p>
+            </details>
+            <details>
+                <summary>I sign in with Apple or Google — can I still connect?</summary>
+                <p>The connector sign-in needs a FavCircles password. Set one first in the app under <strong>Profile → Settings</strong>, then connect with your email and that password.</p>
+            </details>
+            <details>
+                <summary>Is it safe to let an AI touch my account?</summary>
+                <p>Your assistant only gets the access you grant, acts as you and only you, and asks before anything that writes or shares. You can disconnect at any time from the assistant's settings, which immediately revokes access.</p>
+            </details>
+        </section>
+
+        <section class="faq-group">
+            <h2>Bringing your places with you 📍</h2>
+            <p class="lead">Watch how a Mapstr, Google Maps, or Swarm export becomes your circles — with ChatGPT doing the work (1:47):</p>
+            <video controls preload="metadata" poster="/import-tutorial-poster.jpg" style="width:100%; border-radius:12px; margin:0.3rem 0 1.2rem; display:block;">
+                <source src="/import-tutorial.mp4" type="video/mp4">
+            </video>
+            <details open>
+                <summary>Can I import places I've saved in other apps?</summary>
+                <p>Yes — from <strong>Mapstr</strong>, <strong>Google Maps</strong>, and <strong>Swarm/Foursquare</strong>. Years of saved spots become circles your friends can actually use, in a couple of minutes.</p>
+                <p>Two ways to do it:</p>
+                <ul>
+                    <li><strong>With your AI assistant:</strong> drop your export file into ChatGPT or Claude and say <em>"import these into FavCircles."</em> It previews what's new vs. already saved and imports when you confirm.</li>
+                    <li><strong>In the app:</strong> Settings → Data → <strong>Import Places</strong>, then pick your export file (zips work as-is).</li>
+                </ul>
+            </details>
+            <details>
+                <summary>How do I get my export file?</summary>
+                <ul>
+                    <li><strong>Mapstr:</strong> in the Mapstr app, Settings → Export my places — they email you the file.</li>
+                    <li><strong>Google Maps:</strong> go to <a href="https://takeout.google.com" rel="noopener">takeout.google.com</a>, deselect all, choose <strong>Saved</strong>, export — the zip has one file per saved list.</li>
+                    <li><strong>Swarm/Foursquare:</strong> request your personal data export from your Foursquare account settings — they email a download link.</li>
+                </ul>
+            </details>
+            <details>
+                <summary>What happens to imported places?</summary>
+                <p>Each imported list becomes its own circle, visible to your network, with your notes kept private to you. Duplicates of places you already saved are skipped automatically, so re-importing is always safe.</p>
+            </details>
+        </section>
+
+        <section class="faq-group">
+            <h2>For store owners 🏪</h2>
+            <details>
+                <summary>I own a business on FavCircles — what can I do?</summary>
+                <p>Claim your store from its place page ("Is this your store?") and you get a free dashboard and a window QR that turns passers-by into followers. <strong>FavCircles Business</strong> adds the full toolkit: a loyalty program with your own points and rewards, announcements that reach your followers' feeds, offers, and detailed stats — all manageable from the app <em>or by asking your AI assistant</em>.</p>
+                <p>More at <a href="/store-owners.html">FavCircles for Store Owners</a>, or <a href="/store-owner-tutorial.html">watch the tutorial</a>.</p>
+            </details>
+        </section>
+
+        <section class="faq-group">
+            <h2>Everything else</h2>
+            <details>
+                <summary>What are FavCoins?</summary>
+                <p>🌵 FavCoins are rewards you earn for making FavCircles better — adding places, sharing moments, checking in. They live in your piggy bank and can be claimed to a wallet on the Cactus blockchain. <a href="/cactus.html">How the Cactus blockchain works</a>.</p>
+            </details>
+            <details>
+                <summary>Does FavCircles cost anything?</summary>
+                <p>FavCircles is free. Premium adds power features (like unlimited circles), and FavCircles Business is the subscription for store owners. You can go a long way on free.</p>
+            </details>
+            <details>
+                <summary>How do I get help or delete my data?</summary>
+                <p>Reach us any time via the <a href="/support.html">support page</a>. You can request account or data deletion at <a href="/delete-data.html">favcircles.com/delete-data</a>. Our <a href="/privacy.html">privacy policy</a> covers exactly what we collect and share — in plain language.</p>
+            </details>
+        </section>
+
+        <div class="cta-band">
+            <a href="/">Get FavCircles</a>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 FavCircles ·
+                <a href="/privacy.html">Privacy</a> ·
+                <a href="/terms.html">Terms</a> ·
+                <a href="/support.html">Support</a>
+            </p>
+        </div>
+    </footer>
+</body>
+</html>

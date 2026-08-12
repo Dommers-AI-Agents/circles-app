@@ -1,0 +1,1 @@
+First, grab your export. In Mapstr, tap Export my places in settings. For Google Maps, go to takeout dot google dot com and export your Saved lists. For Swarm, request your personal data export from Foursquare. Each one sends you a file — you don't even need to open it.

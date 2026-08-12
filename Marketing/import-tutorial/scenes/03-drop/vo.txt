@@ -1,0 +1,1 @@
+Now open Chat G P T with your FaveCircles connection, drop the file into the chat, and just say: import my Mapstr places into FaveCircles. The assistant reads the file itself — any format, zipped or not.

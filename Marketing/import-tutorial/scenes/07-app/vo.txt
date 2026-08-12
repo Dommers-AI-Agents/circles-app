@@ -1,0 +1,1 @@
+Prefer doing it yourself? The same import lives in the app, under Settings, Data, Import Places. Pick your export file — zips work as-is — review, and import.

@@ -1,0 +1,1 @@
+Before anything is written, you get a preview: how many places are new, and how many you already have — duplicates are skipped automatically, so importing twice never makes a mess. Say the word, and it runs.
