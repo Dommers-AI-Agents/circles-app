@@ -205,6 +205,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         NetworkManager.shared.processPendingConnectionInvite()
         redeemPendingStickerCodeIfNeeded()
 
+        // Quietly locate any imported places still waiting on a coordinate
+        // (rows past the import flow's inline-resolution cap)
+        ImportResolutionQueue.shared.kick()
+
         if UserDefaults.standard.bool(forKey: "pendingWelcomeCarousel") {
             // Brand-new signup: welcome carousel first, which chains into the
             // notification prompt. (Contacts onboarding was intentionally cut

@@ -161,6 +161,10 @@ class ImportReviewViewController: BaseViewController {
         // Refresh circles home when we land back there
         NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
 
+        // Rows past the inline-resolution cap imported unmapped — start
+        // locating them quietly now
+        ImportResolutionQueue.shared.kick()
+
         showSuccess(message) { [weak self] in
             self?.dismiss(animated: true)
         }
@@ -187,7 +191,7 @@ extension ImportReviewViewController: UITableViewDataSource, UITableViewDelegate
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
         section == sections.count - 1
-            ? "Tap a place to include or exclude it. Everything imports into your \"\(targetCircleName)\" circle, kept off the home map until you turn it on from that circle's settings."
+            ? "Tap a place to include or exclude it. Everything imports into your \"\(targetCircleName)\" circle, kept off the home map until you turn it on from that circle's settings. Places without a pin yet will be located automatically after import."
             : nil
     }
 
@@ -204,7 +208,7 @@ extension ImportReviewViewController: UITableViewDataSource, UITableViewDelegate
             detail = "Already in your circles" + (detail.isEmpty ? "" : " · \(detail)")
             config.secondaryTextProperties.color = .systemOrange
         } else if place.isUnmapped {
-            detail = "Imports without a map pin"
+            detail = "Location will be found in the background"
             config.secondaryTextProperties.color = .secondaryLabel
         }
         config.secondaryText = detail

@@ -9,13 +9,18 @@ import MapKit
 ///
 /// Lookups run sequentially: MKLocalSearch throttles aggressive callers, and
 /// a polite one-at-a-time queue stays reliable for multi-hundred-row imports.
-/// Rows Apple can't find keep lat/lng nil and import unmapped — the review
-/// screen shows every resolved address, so a wrong match (name-only queries
-/// are ambiguous) is visible and deselectable before anything is written.
+/// Only the first `limit` coordinate-less rows resolve inline (large imports
+/// used to stall the user behind 10+ minutes of throttle backoff) — the rest
+/// import unmapped and are located quietly after import by
+/// `ImportResolutionQueue`. Rows Apple can't find keep lat/lng nil and import
+/// unmapped — the review screen shows every resolved address, so a wrong
+/// match (name-only queries are ambiguous) is visible and deselectable
+/// before anything is written.
 enum AppleImportResolver {
 
     static func resolve(
         lists: [ImportList],
+        limit: Int = 40,
         progress: @escaping (String) -> Void,
         completion: @escaping ([ImportList]) -> Void
     ) {
@@ -26,6 +31,9 @@ enum AppleImportResolver {
                 work.append((listIndex, placeIndex))
             }
         }
+        // Everything past the inline cap passes through untouched — those
+        // rows import unmapped and get resolved in the background
+        work = Array(work.prefix(max(0, limit)))
         guard !work.isEmpty else {
             completion(lists)
             return
@@ -33,15 +41,6 @@ enum AppleImportResolver {
 
         var workIndex = 0
         var locatedCount = 0
-
-        // Apple throttles bursts of MKLocalSearch requests (~50, then a
-        // cool-down). A throttled row is NOT "not found" — retry it with
-        // exponential backoff instead of importing it unmapped. A 2026-08-12
-        // 530-row import resolved exactly 48 rows then failed the rest for
-        // this reason. A small gap between successful requests keeps the
-        // throttle from triggering in the first place.
-        let interRequestDelay: TimeInterval = 0.25
-        let maxThrottleRetries = 6
 
         func processNext(throttleRetry: Int = 0) {
             guard workIndex < work.count else {
@@ -52,18 +51,25 @@ enum AppleImportResolver {
             progress("Locating your places… \(workIndex + 1) of \(work.count)")
 
             let candidate = resolvedLists[item.listIndex].places[item.placeIndex]
-            search(candidate) { outcome in
+            searchVenue(name: candidate.name, address: candidate.address) { outcome in
                 DispatchQueue.main.async {
                     switch outcome {
                     case .throttled where throttleRetry < maxThrottleRetries:
-                        // 5s, 10s, 20s, 40s, 60s, 60s — same row, not advanced
-                        let delay = min(60.0, 5.0 * pow(2.0, Double(throttleRetry)))
+                        // Same row, not advanced
+                        let delay = throttleDelay(retry: throttleRetry)
                         progress("Apple Maps is rate-limiting — pausing \(Int(delay))s… (\(workIndex + 1) of \(work.count))")
                         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                             processNext(throttleRetry: throttleRetry + 1)
                         }
-                    case .resolved(let resolved):
-                        resolvedLists[item.listIndex].places[item.placeIndex] = resolved
+                    case .resolved(let match):
+                        var updated = candidate
+                        updated.lat = match.latitude
+                        updated.lng = match.longitude
+                        if (updated.address ?? "").isEmpty {
+                            updated.address = match.formattedAddress
+                        }
+                        updated.applePoiCategory = match.applePoiCategory
+                        resolvedLists[item.listIndex].places[item.placeIndex] = updated
                         locatedCount += 1
                         workIndex += 1
                         DispatchQueue.main.asyncAfter(deadline: .now() + interRequestDelay) {
@@ -84,23 +90,44 @@ enum AppleImportResolver {
         processNext()
     }
 
-    private enum SearchOutcome {
-        case resolved(ImportPlaceCandidate)
+    // MARK: - Shared search + pacing (also used by ImportResolutionQueue)
+
+    /// What a successful Apple Maps lookup yields for one venue.
+    struct VenueMatch {
+        let latitude: Double
+        let longitude: Double
+        let formattedAddress: String?
+        let applePoiCategory: String?
+    }
+
+    enum VenueSearchOutcome {
+        case resolved(VenueMatch)
         case notFound
         case throttled
     }
 
-    private static func hasValidCoordinates(_ place: ImportPlaceCandidate) -> Bool {
-        guard let lat = place.lat, let lng = place.lng else { return false }
-        return !(lat == 0 && lng == 0)
+    /// Gap between successful requests — keeps the throttle from triggering
+    /// in the first place.
+    static let interRequestDelay: TimeInterval = 0.25
+
+    /// Apple throttles bursts of MKLocalSearch requests (~50, then a
+    /// cool-down). A throttled row is NOT "not found" — retry it with
+    /// exponential backoff instead of giving up. A 2026-08-12 530-row import
+    /// resolved exactly 48 rows then failed the rest for this reason.
+    static let maxThrottleRetries = 6
+
+    /// 5s, 10s, 20s, 40s, 60s, 60s
+    static func throttleDelay(retry: Int) -> TimeInterval {
+        return min(60.0, 5.0 * pow(2.0, Double(retry)))
     }
 
-    private static func search(
-        _ candidate: ImportPlaceCandidate,
-        completion: @escaping (SearchOutcome) -> Void
+    static func searchVenue(
+        name: String,
+        address: String?,
+        completion: @escaping (VenueSearchOutcome) -> Void
     ) {
         let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = [candidate.name, candidate.address]
+        request.naturalLanguageQuery = [name, address]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
@@ -120,16 +147,21 @@ enum AppleImportResolver {
                 completion(.notFound)
                 return
             }
-            var updated = candidate
             let coordinate = item.placemark.coordinate
-            updated.lat = coordinate.latitude
-            updated.lng = coordinate.longitude
-            if (updated.address ?? "").isEmpty {
-                updated.address = formattedAddress(item.placemark)
-            }
-            updated.applePoiCategory = item.pointOfInterestCategory?.rawValue
-            completion(.resolved(updated))
+            completion(.resolved(VenueMatch(
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude,
+                formattedAddress: formattedAddress(item.placemark),
+                applePoiCategory: item.pointOfInterestCategory?.rawValue
+            )))
         }
+    }
+
+    // MARK: - Private
+
+    private static func hasValidCoordinates(_ place: ImportPlaceCandidate) -> Bool {
+        guard let lat = place.lat, let lng = place.lng else { return false }
+        return !(lat == 0 && lng == 0)
     }
 
     private static func formattedAddress(_ placemark: MKPlacemark) -> String? {

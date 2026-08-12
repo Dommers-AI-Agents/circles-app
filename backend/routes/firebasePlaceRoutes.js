@@ -9,6 +9,8 @@ const {
   searchPlaces,
   refreshPlaceFromGoogle,
   updatePlaceAddress,
+  getUnresolvedPlaces,
+  resolveImportedPlace,
   flagPlaceInfo,
   likePlace,
   getPlaceLikes,
@@ -50,6 +52,10 @@ router.route('/batch')
 router.route('/my-places')
   .get(getMyPlacesForCheckIn);
 
+// Own places awaiting on-device location resolution (background import queue)
+router.route('/unresolved')
+  .get(getUnresolvedPlaces);
+
 // Migration endpoint for Google API photos
 router.route('/migrate-photos')
   .post(migrateGooglePhotosToFirebase);
@@ -63,6 +69,10 @@ router.route('/:id/refresh-google')
 
 router.route('/:id/update-address')
   .put(updatePlaceAddress);
+
+// Stamp on-device Apple resolution onto an unmapped import
+router.route('/:id/resolve')
+  .put(resolveImportedPlace);
 
 router.route('/:id/flag')
   .post(flagPlaceInfo);

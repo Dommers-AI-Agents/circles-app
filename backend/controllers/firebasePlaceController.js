@@ -2257,6 +2257,145 @@ exports.flagPlaceInfo = async (req, res) => {
   }
 };
 
+// @desc    The caller's own places still awaiting on-device location
+//          resolution (imported unmapped: needsResolution=true). Feeds the
+//          iOS background resolution queue.
+// @route   GET /api/places/unresolved
+// @access  Private
+exports.getUnresolvedPlaces = async (req, res) => {
+  try {
+    // Single-equality query + in-memory filter — no composite index needed,
+    // and a user's own places are a small set
+    const snapshot = await db.collection(COLLECTIONS.PLACES)
+      .where('addedBy', '==', req.user.uid)
+      .get();
+    const places = [];
+    snapshot.forEach(doc => {
+      const p = doc.data();
+      if (p.deletedAt || !p.needsResolution) return;
+      places.push({ id: doc.id, name: p.name, address: p.address || null, circleId: p.circleId });
+    });
+    res.json({ success: true, data: { places, count: places.length } });
+  } catch (error) {
+    console.error('❌ getUnresolvedPlaces failed:', error);
+    res.status(500).json({ success: false, message: 'Failed to load unresolved places' });
+  }
+};
+
+// @desc    Stamp an on-device Apple Maps resolution onto an unmapped import:
+//          location + geohash, address when the save has none, canonical
+//          venue link, and a venue-level duplicate check against the caller's
+//          other saves (the import couldn't dedup coordinate-less rows — now
+//          that this one has coordinates, report what it collides with; the
+//          client offers a mass-delete review, nothing is deleted here).
+// @route   PUT /api/places/:id/resolve
+//          body: { latitude, longitude, address?, applePoiCategory? }
+// @access  Private (place owner)
+exports.resolveImportedPlace = async (req, res) => {
+  try {
+    const { latitude, longitude, address, applePoiCategory } = req.body || {};
+    if (typeof latitude !== 'number' || typeof longitude !== 'number' ||
+        Math.abs(latitude) > 90 || Math.abs(longitude) > 180 ||
+        (latitude === 0 && longitude === 0)) {
+      return res.status(400).json({ success: false, message: 'Valid coordinates are required' });
+    }
+
+    const placeRef = db.collection(COLLECTIONS.PLACES).doc(req.params.id);
+    const placeDoc = await placeRef.get();
+    if (!placeDoc.exists || placeDoc.data().deletedAt) {
+      return res.status(404).json({ success: false, message: 'Place not found' });
+    }
+    const place = placeDoc.data();
+    if (place.addedBy !== req.user.uid) {
+      return res.status(403).json({ success: false, message: 'Not your place' });
+    }
+
+    const { FieldValue } = require('firebase-admin').firestore;
+    const updateData = {
+      location: { type: 'Point', coordinates: [longitude, latitude] },
+      // geofire expects [lat, lng]
+      geohash: geofire.geohashForLocation([latitude, longitude]),
+      needsResolution: FieldValue.delete(),
+      updatedAt: new Date().toISOString()
+    };
+    if (address && typeof address === 'string' && address.trim() &&
+        (!place.address || place.address === 'Address pending')) {
+      updateData.address = address.trim();
+    }
+    if (typeof applePoiCategory === 'string' && applePoiCategory) {
+      updateData.applePoiCategory = applePoiCategory;
+    }
+    await placeRef.update(updateData);
+
+    // Now that it has a location, link the canonical venue (fills the cached
+    // category/city fields too). Best-effort.
+    let globalPlaceId = place.globalPlaceId || null;
+    try {
+      const { ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
+      globalPlaceId = await ensureGlobalPlaceLink(await placeRef.get()) || globalPlaceId;
+    } catch (linkError) {
+      console.error(`⚠️ resolve: global link failed for ${req.params.id}:`, linkError.message);
+    }
+
+    // Keep the browse location tree fresh (best-effort)
+    try {
+      const { indexSavedPlace } = require('../services/circleLocationSummary');
+      indexSavedPlace(place.circleId, { ...place, ...updateData });
+    } catch (e) { /* non-fatal */ }
+
+    // Venue-level duplicate check against the caller's other live saves
+    const normName = s => (s || '').toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+    const distanceMeters = (lat1, lng1, lat2, lng2) => {
+      const R = 6371000;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const s = Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(s));
+    };
+
+    let duplicateOf = null;
+    const othersSnapshot = await db.collection(COLLECTIONS.PLACES)
+      .where('addedBy', '==', req.user.uid)
+      .get();
+    othersSnapshot.forEach(doc => {
+      if (duplicateOf || doc.id === req.params.id) return;
+      const other = doc.data();
+      if (other.deletedAt || other.needsResolution) return;
+      const sameVenue = (globalPlaceId && other.globalPlaceId === globalPlaceId);
+      let sameByProximity = false;
+      if (!sameVenue && normName(other.name) === normName(place.name)) {
+        const c = other.location && other.location.coordinates;
+        if (Array.isArray(c) && c.length === 2) {
+          sameByProximity = distanceMeters(latitude, longitude, c[1], c[0]) < 250;
+        }
+      }
+      if (sameVenue || sameByProximity) {
+        duplicateOf = { placeId: doc.id, name: other.name, circleId: other.circleId };
+      }
+    });
+    if (duplicateOf) {
+      try {
+        const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(duplicateOf.circleId).get();
+        if (circleDoc.exists) duplicateOf.circleName = circleDoc.data().name || null;
+      } catch (e) { /* display-only */ }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        placeId: req.params.id,
+        globalPlaceId,
+        address: updateData.address || place.address || null,
+        duplicateOf
+      }
+    });
+  } catch (error) {
+    console.error('❌ resolveImportedPlace failed:', error);
+    res.status(500).json({ success: false, message: 'Failed to resolve place' });
+  }
+};
+
 exports.updatePlaceAddress = async (req, res, next) => {
   try {
     const { address, location } = req.body;
