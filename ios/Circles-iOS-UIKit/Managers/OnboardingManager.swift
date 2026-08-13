@@ -30,7 +30,7 @@ enum TutorialStep: String, CaseIterable {
     var description: String {
         switch self {
         case .welcome:
-            return "Start building your collection of favorite places. Tap the + button to create your first circle"
+            return "Save your first favorite spot — tap Add Place and we'll walk you through it"
         case .createCircle:
             return "Give your circle a unique name like 'Best Coffee Shops' or 'Date Night Spots' and choose a category"
         case .addPlace:

@@ -1750,16 +1750,32 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 DispatchQueue.main.async {
                     // Show tutorial after a brief delay for UI to settle
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        OnboardingManager.shared.showTutorialStep(
-                            .welcome,
-                            targetView: self.quickAddPlaceButton,
-                            in: self,
-                            arrowDirection: .bottom
-                        )
+                        self.showWelcomeTutorialWhenSettled()
                     }
                 }
             }
         }
+    }
+
+    /// The welcome bubble must not fight the system location dialog (both
+    /// appear in the first seconds of a fresh install) — wait until the user
+    /// has answered it, then point BELOW the Add Place button (arrow .top:
+    /// the button sits at the screen top, so a bubble above it has nowhere
+    /// to go and used to clamp over the status bar, unreadable).
+    private func showWelcomeTutorialWhenSettled(attempt: Int = 0) {
+        guard !OnboardingManager.shared.hasCompletedStep(.welcome) else { return }
+        if CLLocationManager().authorizationStatus == .notDetermined && attempt < 30 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.showWelcomeTutorialWhenSettled(attempt: attempt + 1)
+            }
+            return
+        }
+        OnboardingManager.shared.showTutorialStep(
+            .welcome,
+            targetView: quickAddPlaceButton,
+            in: self,
+            arrowDirection: .top
+        )
     }
     
     func checkAndShowSuggestedUsers() {

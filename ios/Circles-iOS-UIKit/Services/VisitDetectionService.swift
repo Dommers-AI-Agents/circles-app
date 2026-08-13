@@ -41,11 +41,15 @@ class VisitDetectionService: NSObject {
         locationManager.allowsBackgroundLocationUpdates = true
         locationManager.pausesLocationUpdatesAutomatically = false
         
-        // Request always authorization for visit detection
+        // Only ask for location here when the user has actually enabled
+        // visit tracking — an unconditional request fired a system dialog at
+        // every fresh launch, colliding with onboarding screens and the
+        // tutorial. requestLocationPermissions() handles the ask when the
+        // user turns the feature on.
         let status = locationManager.authorizationStatus
         Logger.info("📍 Current location authorization status: \(status.rawValue)")
-        if status == .notDetermined {
-            Logger.info("📍 Requesting always authorization")
+        if status == .notDetermined && isTrackingEnabled {
+            Logger.info("📍 Requesting always authorization (visit tracking enabled)")
             locationManager.requestAlwaysAuthorization()
         }
     }
@@ -97,9 +101,16 @@ class VisitDetectionService: NSObject {
                 startTracking()
             }
         case .authorizedWhenInUse:
-            // Request always authorization for visit detection
-            Logger.warning("📍 Only 'When In Use' authorization - requesting 'Always'")
-            locationManager.requestAlwaysAuthorization()
+            // Escalate to Always ONLY when visit tracking is on — the
+            // unconditional upgrade prompt ("also use your location when
+            // you're not using the app?") fired at launch right after the
+            // user's first when-in-use grant, stacking over onboarding.
+            if isTrackingEnabled {
+                Logger.warning("📍 Only 'When In Use' — visit tracking is on, requesting 'Always'")
+                locationManager.requestAlwaysAuthorization()
+            } else {
+                Logger.info("📍 When-In-Use granted; Always deferred until visit tracking is enabled")
+            }
         case .notDetermined:
             // Will request when user enables the feature
             Logger.info("📍 Location authorization not determined yet")

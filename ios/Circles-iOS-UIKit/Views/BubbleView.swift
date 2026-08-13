@@ -98,7 +98,11 @@ class BubbleView: UIView {
     
     // MARK: - Setup
     private func setupView() {
-        translatesAutoresizingMaskIntoConstraints = false
+        // The bubble is positioned by FRAME (pointTo/centerInView compute and
+        // clamp it manually). translatesAutoresizingMaskIntoConstraints must
+        // stay true: with it false, Auto Layout discarded the set frame on
+        // the next layout pass and resolved the view to origin (0,0) — every
+        // coach bubble rendered over the status bar in the top-left corner.
         alpha = 0
         
         // Add shadow
@@ -188,16 +192,16 @@ class BubbleView: UIView {
         
         // Get target frame in parent coordinates
         let targetFrame = targetView.convert(targetView.bounds, to: parentView)
-        
+
         // Calculate bubble position based on arrow direction
         var bubbleX: CGFloat = 0
         var bubbleY: CGFloat = 0
         var arrowX: CGFloat = 0
         var arrowY: CGFloat = 0
-        
-        // First, layout to get actual size
-        layoutIfNeeded()
-        let bubbleSize = containerView.bounds.size
+
+        // Measure the content-driven size (the view is frame-positioned, so
+        // layoutIfNeeded at a zero frame would measure zero)
+        let bubbleSize = measuredSize(in: parentView)
         
         switch arrowDirection {
         case .top:
@@ -299,16 +303,27 @@ class BubbleView: UIView {
     private func centerInView(_ parentView: UIView) {
         // Hide arrow when centered
         arrowView.isHidden = true
-        
-        // Layout to get size
-        layoutIfNeeded()
-        let bubbleSize = containerView.bounds.size
-        
+
+        let bubbleSize = measuredSize(in: parentView)
+
         // Center in parent view
         let centerX = (parentView.bounds.width - bubbleSize.width) / 2
         let centerY = (parentView.bounds.height - bubbleSize.height) / 2
-        
+
         frame = CGRect(origin: CGPoint(x: centerX, y: centerY), size: bubbleSize)
+    }
+
+    /// Content-driven size at the width the parent allows. The bubble is
+    /// frame-positioned, so sizing must come from the constraint system
+    /// directly rather than from a layout pass at whatever frame it has.
+    private func measuredSize(in parentView: UIView) -> CGSize {
+        let fittingWidth = min(maxWidth, parentView.bounds.width - 32)
+        let size = systemLayoutSizeFitting(
+            CGSize(width: fittingWidth, height: UIView.layoutFittingCompressedSize.height),
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel
+        )
+        return CGSize(width: fittingWidth, height: size.height)
     }
     
     // MARK: - Animations
