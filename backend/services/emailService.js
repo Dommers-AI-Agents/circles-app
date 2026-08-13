@@ -379,11 +379,39 @@ A good first move: import your saved places from another app — a full map on d
 
   // Sent once on the FavCircles Business signup transition — a store owner
   // just paid; walk them through turning that into foot traffic.
-  async sendBusinessWelcomeEmail(toEmail, name = null, venueName = null) {
+  async sendBusinessWelcomeEmail(toEmail, name = null, venueName = null, venue = null) {
     try {
       const greeting = name ? `Hi ${name},` : 'Hi there,';
       const forVenue = venueName ? ` for ${venueName}` : '';
       const subject = `Welcome to FavCircles Business${forVenue} 🏪`;
+
+      // Ready-to-print loyalty assets (register card + table tent) ride along
+      // when we know the venue — the loyalty program just activated, so the
+      // thing customers scan should be one print away. Best-effort.
+      const attachments = [];
+      let printedNote = '';
+      if (venue && venue.registerCode) {
+        try {
+          const printAssetService = require('./printAssetService');
+          const [card, tent] = await Promise.all([
+            printAssetService.registerCardPDF(venue),
+            printAssetService.tableTentPDF(venue)
+          ]);
+          const safeName = (venue.venueName || 'venue').replace(/[^\w -]/g, '');
+          attachments.push(
+            { filename: `${safeName} - register card 4x6.pdf`, content: card },
+            { filename: `${safeName} - table tent.pdf`, content: tent }
+          );
+          printedNote = `
+          <p style="font-size: 15px; line-height: 1.6;">
+            <strong>Attached and ready to print:</strong> your register card (4×6 — fits a standard
+            photo stand) and a fold-in-half table tent, each with your store's unique rewards QR.
+            Put one by the register today and customers start earning points on their next visit.
+          </p>`;
+        } catch (pdfError) {
+          console.error('⚠️ Business welcome print PDFs failed (sending without):', pdfError.message);
+        }
+      }
 
       const htmlContent = `
         <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a202c;">
@@ -399,6 +427,7 @@ A good first move: import your saved places from another app — a full map on d
             <li><strong>Stats &amp; Insights</strong> — saves, followers, visits, scans, and redemptions, live on your dashboard, plus a monthly report by email.</li>
             <li><strong>Redemption codes</strong> — single-use codes to pack into orders or hand out at events; each one pays points when redeemed.</li>
           </ul>
+          ${printedNote}
           <p style="font-size: 15px; line-height: 1.6;">
             A good first move: post one offer worth walking in for, and put the window sticker where people can see it. Reply to this email if you need stickers or help getting set up — happy to help personally.
           </p>
@@ -421,8 +450,8 @@ A good first move: post one offer worth walking in for, and put the window stick
 
 — Wesley & the FavCircles team`;
 
-      await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent });
-      console.log(`✅ Business welcome email sent to ${toEmail}`);
+      await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent, attachments });
+      console.log(`✅ Business welcome email sent to ${toEmail}${attachments.length ? ' (with print PDFs)' : ''}`);
       return { success: true };
     } catch (error) {
       console.error('❌ Error sending business welcome email:', error);
@@ -734,7 +763,10 @@ FavCircles · Save the places you love`;
     const html = `
       <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto">
         <h2 style="color:#3182CE">QR codes for ${venue.venueName}</h2>
-        <p>Both codes are attached at print resolution (1200px ≈ 4in at 300dpi).</p>
+        <p><strong>Easiest path:</strong> print the attached <strong>register card (4×6)</strong> or the
+        <strong>table tent</strong> (print, fold in half, stands on its own) on plain paper — they're
+        ready to go by the register, where customers scan to earn points every visit.</p>
+        <p>The raw QR codes are also attached at print resolution (1200px ≈ 4in at 300dpi):</p>
         <table style="border-collapse:collapse;width:100%;background:#fafafa;border-radius:8px">
           <tr>
             <td style="padding:10px 16px;border-bottom:1px solid #eee"><strong>Window sticker</strong><br>
@@ -747,18 +779,36 @@ FavCircles · Save the places you love`;
         </table>
         <p style="margin-top:16px"><strong>Print tips:</strong> keep the white margin around each QR,
         print at least 1.5×1.5 in, use weatherproof vinyl for the window (front-adhesive for
-        inside-glass mounting) and a laminated card for the register.</p>
+        inside-glass mounting). The register card fits a standard 4×6 photo frame or acrylic stand.</p>
         <p style="color:#888;font-size:13px">Verify on-site before leaving: scan the window QR with the
         iPhone Camera, and the register QR from a logged-in account.</p>
       </div>`;
+
+    // Ready-to-print register assets — best-effort so a PDF glitch never
+    // blocks the raw QR delivery
+    const printAttachments = [];
+    try {
+      const printAssetService = require('./printAssetService');
+      const [card, tent] = await Promise.all([
+        printAssetService.registerCardPDF(venue),
+        printAssetService.tableTentPDF(venue)
+      ]);
+      printAttachments.push(
+        { filename: `${venue.venueName.replace(/[^\w -]/g, '')} - register card 4x6.pdf`, content: card },
+        { filename: `${venue.venueName.replace(/[^\w -]/g, '')} - table tent.pdf`, content: tent }
+      );
+    } catch (pdfError) {
+      console.error('⚠️ Print PDF generation failed (sending raw QRs only):', pdfError.message);
+    }
 
     const mailOptions = {
       from: `"${this.fromName}" <${this.fromAddress}>`,
       to: toEmail,
       subject,
       html,
-      text: `QR codes for ${venue.venueName}. Window code: ${venue.windowCode}. Register code: ${venue.registerCode}. Print-resolution PNGs attached.`,
+      text: `QR codes for ${venue.venueName}. Window code: ${venue.windowCode}. Register code: ${venue.registerCode}. Ready-to-print register card + table tent PDFs and print-resolution PNGs attached.`,
       attachments: [
+        ...printAttachments,
         { filename: `window-${venue.windowCode}.png`, content: windowQRBuffer },
         { filename: `register-${venue.registerCode}.png`, content: registerQRBuffer }
       ]
@@ -815,7 +865,7 @@ Rewards redeemed: ${safeStats.redemptions}`;
   }
 
   // Generic email sending method
-  async sendEmail({ to, subject, html, text }) {
+  async sendEmail({ to, subject, html, text, attachments }) {
     try {
       // Check if transporter is configured
       if (!this.transporter || !this.transporter.sendMail) {
@@ -828,7 +878,8 @@ Rewards redeemed: ${safeStats.redemptions}`;
         to: to,
         subject: subject,
         html: html,
-        text: text || subject // Fallback text if not provided
+        text: text || subject, // Fallback text if not provided
+        ...(attachments && attachments.length ? { attachments } : {})
       };
 
       console.log(`📧 Attempting to send email to ${to} with subject: ${subject}`);

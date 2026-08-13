@@ -330,17 +330,23 @@ exports.verifySubscription = async (req, res) => {
                     venueId: venueBinding
                 }).catch((e) => console.error('⚠️ Business signup admin alert failed:', e.message));
 
-                // Benefits walkthrough to the new subscriber — fire-and-forget
+                // Benefits walkthrough to the new subscriber — fire-and-forget.
+                // Passing the venue attaches ready-to-print register card +
+                // table tent PDFs (unique rewards QR) to the welcome email.
                 if (existing.email) {
                     (async () => {
                         let venueName = null;
+                        let venueData = null;
                         if (venueBinding) {
                             const vDoc = await admin.firestore()
                                 .collection('stickerVenues').doc(venueBinding).get();
-                            if (vDoc.exists) venueName = vDoc.data().venueName || null;
+                            if (vDoc.exists) {
+                                venueData = { venueId: vDoc.id, ...vDoc.data() };
+                                venueName = venueData.venueName || null;
+                            }
                         }
                         await require('../services/emailService')
-                            .sendBusinessWelcomeEmail(existing.email, existing.displayName || null, venueName);
+                            .sendBusinessWelcomeEmail(existing.email, existing.displayName || null, venueName, venueData);
                     })().catch((e) => console.error('⚠️ Business welcome email failed:', e.message));
                 }
             }
