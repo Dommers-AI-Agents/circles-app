@@ -763,25 +763,22 @@ FavCircles · Save the places you love`;
     const html = `
       <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto">
         <h2 style="color:#3182CE">QR codes for ${venue.venueName}</h2>
-        <p><strong>Easiest path:</strong> print the attached <strong>register card (4×6)</strong> or the
-        <strong>table tent</strong> (print, fold in half, stands on its own) on plain paper — they're
-        ready to go by the register, where customers scan to earn points every visit.</p>
-        <p>The raw QR codes are also attached at print resolution (1200px ≈ 4in at 300dpi):</p>
+        <p><strong>Print either attachment on plain paper — that's it:</strong></p>
         <table style="border-collapse:collapse;width:100%;background:#fafafa;border-radius:8px">
           <tr>
-            <td style="padding:10px 16px;border-bottom:1px solid #eee"><strong>Window sticker</strong><br>
-            Goes in the front window. Code: <code>${venue.windowCode}</code></td>
+            <td style="padding:10px 16px;border-bottom:1px solid #eee"><strong>Register card (4×6)</strong><br>
+            Fits a standard photo frame or acrylic stand by the register.</td>
           </tr>
           <tr>
-            <td style="padding:10px 16px"><strong>Register card</strong><br>
-            Stays behind the counter, shown with a purchase. Code: <code>${venue.registerCode}</code></td>
+            <td style="padding:10px 16px"><strong>Table tent</strong><br>
+            Print, fold in half along the dashed line — it stands on its own.</td>
           </tr>
         </table>
-        <p style="margin-top:16px"><strong>Print tips:</strong> keep the white margin around each QR,
-        print at least 1.5×1.5 in, use weatherproof vinyl for the window (front-adhesive for
-        inside-glass mounting). The register card fits a standard 4×6 photo frame or acrylic stand.</p>
-        <p style="color:#888;font-size:13px">Verify on-site before leaving: scan the window QR with the
-        iPhone Camera, and the register QR from a logged-in account.</p>
+        <p style="margin-top:16px">Customers scan it to earn points on every visit
+        (code: <code>${venue.registerCode}</code>).</p>
+        <p style="color:#888;font-size:13px">Verify before you're done: scan the printed QR from a
+        logged-in FavCircles account and check the points land. Reply to this email if you'd like
+        the raw QR image for custom artwork.</p>
       </div>`;
 
     // Ready-to-print register assets — best-effort so a PDF glitch never
@@ -806,12 +803,15 @@ FavCircles · Save the places you love`;
       to: toEmail,
       subject,
       html,
-      text: `QR codes for ${venue.venueName}. Window code: ${venue.windowCode}. Register code: ${venue.registerCode}. Ready-to-print register card + table tent PDFs and print-resolution PNGs attached.`,
-      attachments: [
-        ...printAttachments,
-        { filename: `window-${venue.windowCode}.png`, content: windowQRBuffer },
-        { filename: `register-${venue.registerCode}.png`, content: registerQRBuffer }
-      ]
+      text: `Rewards QR for ${venue.venueName} (register code: ${venue.registerCode}). Ready-to-print register card + table tent PDFs attached — print either on plain paper and put it by the register.`,
+      // The raw QR PNGs used to ride along too, but mail apps render them
+      // inline as two giant bare QR codes (confusing next to the finished
+      // PDFs). The PDFs carry the register QR; raw assets on request. If PDF
+      // generation failed, fall back to the raw register PNG so the owner is
+      // never left with nothing.
+      attachments: printAttachments.length > 0
+        ? printAttachments
+        : [{ filename: `register-${venue.registerCode}.png`, content: registerQRBuffer }]
     };
 
     const result = await this.transporter.sendMail(mailOptions);
