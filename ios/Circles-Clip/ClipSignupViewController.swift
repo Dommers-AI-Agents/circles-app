@@ -67,7 +67,7 @@ final class ClipSignupViewController: UIViewController {
         submitButton.setTitle("Create account", for: .normal)
         submitButton.setTitleColor(.white, for: .normal)
         submitButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        submitButton.backgroundColor = ClipTheme.primary
+        submitButton.backgroundColor = ClipTheme.brandBlue
         submitButton.layer.cornerRadius = 8
         submitButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
         submitButton.addTarget(self, action: #selector(submitTapped), for: .touchUpInside)
