@@ -1,0 +1,260 @@
+<meta charset="utf-8">
+<title>Founding Store Brochure</title>
+<style>
+  @page { size: 11in 8.5in; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root{
+    --indigo:#667eea; --violet:#764ba2; --ink:#15171C; --gunmetal:#3A3F47;
+    --paper:#FCFBFD; --panel:#F3F1F9; --line:#E2DEEC;
+    --gold:#F0A93B; --gold-deep:#C77F14;
+    --body:#3C3A45; --muted:#736F80;
+  }
+
+  body{
+    font-family:"Helvetica Neue", Helvetica, Arial, sans-serif;
+    color:var(--body);
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    background:#E9E6EF;
+  }
+  .serif{ font-family:Georgia, "Times New Roman", serif; }
+  .eyebrow{ font-size:8.5px; font-weight:700; letter-spacing:.17em; text-transform:uppercase; }
+
+  .sheet{
+    width:11in; height:8.5in; background:var(--paper);
+    display:flex; position:relative; overflow:hidden;
+    page-break-after:always;
+  }
+  /* Roll-fold widths: the tuck-in flap is 1/16" narrower.
+     Side 1 (outside): [flap 3.625 | back 3.6875 | front 3.6875]
+     Side 2 (inside):  [left 3.6875 | middle 3.6875 | right 3.625] */
+  .p-flap   { width:3.625in; }
+  .p-std    { width:3.6875in; }
+  .panel{ height:100%; padding:0.42in 0.34in; display:flex; flex-direction:column; }
+
+  /* Fold tick marks (top + bottom, outside safe area) */
+  .fold{ position:absolute; width:0; border-left:0.6px dashed #B9B3C9; height:0.16in; }
+  .fold.top{ top:0; } .fold.bottom{ bottom:0; }
+
+  h2.sec{ font-size:15px; color:var(--ink); margin-bottom:8px; }
+  p.small{ font-size:9.6px; line-height:1.5; }
+
+  /* ---------- FRONT COVER ---------- */
+  .front{
+    background:linear-gradient(150deg, var(--indigo) 0%, var(--violet) 100%);
+    color:#fff; align-items:flex-start; justify-content:space-between;
+  }
+  .front .brand{ display:flex; align-items:center; gap:9px; }
+  .front .brand img{ width:34px; height:34px; border-radius:8px; box-shadow:0 3px 9px rgba(0,0,0,.28); }
+  .front .brand span{ font-size:19px; font-weight:700; }
+  .front h1{ font-size:28px; line-height:1.16; margin:16px 0 12px; }
+  .front p.lead{ font-size:11.2px; line-height:1.6; color:rgba(255,255,255,.92); }
+  .front .badge{
+    display:inline-block; background:var(--gold); color:#241A05;
+    font-size:10px; font-weight:700; padding:6px 12px; border-radius:999px; margin-top:12px;
+  }
+  .front .foot{ font-size:9px; color:rgba(255,255,255,.75); }
+
+  /* ---------- BACK COVER ---------- */
+  .back{
+    background:linear-gradient(160deg, var(--gunmetal) 0%, var(--ink) 100%);
+    color:#fff; align-items:center; text-align:center; justify-content:center; gap:14px;
+  }
+  .back .qr{ background:#fff; border-radius:10px; padding:8px; width:1.55in; height:1.55in; }
+  .back .qr svg{ display:block; width:100%; height:100%; }
+  .back h2{ font-size:17px; }
+  .back p{ font-size:10.3px; line-height:1.6; color:rgba(255,255,255,.82); }
+  .back a{ color:var(--gold); text-decoration:none; font-weight:700; }
+  .back .rule{ width:0.5in; height:2px; background:var(--gold); border-radius:2px; }
+  .back .tiny{ font-size:8.5px; color:rgba(255,255,255,.6); }
+
+  /* ---------- FLAP (program at a glance) ---------- */
+  .flap{ background:var(--panel); }
+  .glance{ border:1.5px solid var(--violet); border-radius:10px; padding:14px 15px; background:#fff; }
+  .mrow{ display:flex; justify-content:space-between; gap:8px; font-size:10.2px; line-height:1.4; margin-bottom:9px; }
+  .mrow .cost{ font-weight:700; color:var(--muted); white-space:nowrap; }
+  .mrow.fav{ border-top:1px solid var(--line); padding-top:8px; }
+  .mrow.fav .who{ color:var(--ink); font-weight:700; }
+  .mrow.fav .cost{ color:var(--violet); font-size:11.5px; }
+  .free-line{ font-size:9.8px; color:var(--gold-deep); font-weight:700; }
+  .steps{ margin-top:20px; }
+  .steps li{
+    list-style:none; display:flex; gap:9px; font-size:10.4px; line-height:1.5; margin-bottom:11px;
+  }
+  .steps .n{
+    flex:0 0 15px; height:15px; border-radius:50%; background:var(--violet); color:#fff;
+    font-size:8.5px; font-weight:700; display:flex; align-items:center; justify-content:center; margin-top:1px;
+  }
+  .steps b{ color:var(--ink); }
+
+  /* ---------- INSIDE PANELS ---------- */
+  .inside{ background:var(--paper); }
+  /* distribute each panel blocks down the full height */
+  .flap > *:not(:last-child), .inside > *:not(:last-child){ margin-bottom:auto; }
+  .inside + .inside{ border-left:0; }
+  .benefit{ margin-bottom:20px; }
+  .benefit h3{ font-size:13.5px; color:var(--ink); margin-bottom:5px; }
+  .benefit p{ font-size:10.4px; line-height:1.55; }
+  .tick{
+    display:inline-flex; width:19px; height:19px; border-radius:50%;
+    background:var(--panel); color:var(--violet); font-size:9px; font-weight:700;
+    align-items:center; justify-content:center; margin-bottom:5px; border:1px solid var(--line);
+  }
+  .pts{ color:var(--gold-deep); font-weight:700; }
+  .counter-step{ margin-bottom:18px; }
+  .counter-step b{ display:block; font-size:12px; color:var(--ink); margin-bottom:4px; }
+  .counter-step span{ font-size:10.3px; line-height:1.55; display:block; }
+  .earn-table{
+    background:var(--panel); border:1px solid var(--line); border-radius:9px;
+    padding:13px 14px;
+  }
+  .earn-table .row{ display:flex; justify-content:space-between; gap:8px; font-size:10px; line-height:1.45; margin-bottom:7px; }
+  .earn-table .row:last-child{ margin-bottom:0; }
+  .earn-table .val{ font-weight:700; color:var(--gold-deep); white-space:nowrap; }
+  .tiers{ margin-top:2px; }
+  .tier{ border:1px solid var(--line); border-radius:9px; padding:13px 14px; margin-bottom:13px; background:#fff; }
+  .tier.biz{ border-color:var(--violet); }
+  .tier h4{ font-size:11.5px; color:var(--ink); margin-bottom:5px; }
+  .tier.biz h4{ color:var(--violet); }
+  .tier ul{ margin-left:12px; }
+  .tier li{ font-size:10px; line-height:1.5; margin-bottom:3px; }
+  .quote{
+    background:var(--panel); border-left:3px solid var(--gold); border-radius:6px;
+    padding:11px 13px; font-size:10.2px; line-height:1.5; font-style:italic; color:var(--body);
+  }
+</style>
+
+<!-- ============ SIDE 1 : OUTSIDE (flap | back | front) ============ -->
+<div class="sheet">
+  <div class="fold top" style="left:3.625in"></div><div class="fold bottom" style="left:3.625in"></div>
+  <div class="fold top" style="left:7.3125in"></div><div class="fold bottom" style="left:7.3125in"></div>
+
+  <!-- Fold-in flap -->
+  <div class="panel p-flap flap">
+    <div class="eyebrow" style="color:var(--violet); margin-bottom:8px;">The program at a glance</div>
+    <div class="glance">
+      <div class="mrow"><span class="who">Standalone loyalty platforms</span><span class="cost">$199–$299/mo + hardware</span></div>
+      <div class="mrow"><span class="who">Local ads to reach nearby customers</span><span class="cost">$300+/mo, no loyalty</span></div>
+      <div class="mrow fav"><span class="who">FavCircles — loyalty + promotion + discovery</span><span class="cost">$49.99/mo</span></div>
+      <div class="free-line">First 3 months free — a limited-time offer for early adopters.</div>
+    </div>
+    <ul class="steps">
+      <li><span class="n">1</span><span><b>Download FavCircles</b> and find your store — not on the map yet? Add it in seconds.</span></li>
+      <li><span class="n">2</span><span>Tap <b>"Is this your store?"</b> and claim it with your contact info.</span></li>
+      <li><span class="n">3</span><span>We verify you and <b>mail your two stickers</b>.</span></li>
+      <li><span class="n">4</span><span><b>Set your rewards</b> and post your first special.</span></li>
+    </ul>
+    <div class="quote">"Ten minutes from scan to your first reward posted. No hardware, no POS integration, no contracts."</div>
+  </div>
+
+  <!-- Back cover -->
+  <div class="panel p-std back">
+    <div class="qr">
+      <svg viewBox="210 332 130 130" role="img" aria-label="QR code linking to FavCircles on the App Store">
+        <rect x="210" y="332" width="130" height="130" fill="#ffffff"/>
+        <path d="__QR_PATH__" fill="#1B1E24"/>
+      </svg>
+    </div>
+    <h2 class="serif">Scan to download.<br>Then claim your store.</h2>
+    <div class="rule"></div>
+    <p>Questions, or want us to set you up directly?<br>Email <a href="mailto:wesley@favcircles.com">wesley@favcircles.com</a> — a founder answers.</p>
+    <p style="font-weight:700; color:#fff;">FavCircles.com</p>
+    <p class="tiny">No contracts · No hardware · Cancel anytime</p>
+  </div>
+
+  <!-- Front cover -->
+  <div class="panel p-std front">
+    <div>
+      <div class="brand">
+        <img src="data:image/png;base64,__ICON_B64__" alt="FavCircles app icon">
+        <span class="serif">FavCircles</span>
+      </div>
+      <div class="eyebrow" style="color:rgba(255,255,255,.85); margin-top:16px;">Founding Store Program</div>
+      <h1 class="serif">Turn your regulars into your best marketing.</h1>
+      <p class="lead">FavCircles is where people save and share the places they love — so a recommendation for your store comes from a friend, not an ad. Claim your store and every loyal customer becomes a walking referral.</p>
+      <span class="badge">First 3 months free</span>
+    </div>
+    <div class="foot">FavCircles.com · A loyalty program for local businesses</div>
+  </div>
+</div>
+
+<!-- ============ SIDE 2 : INSIDE (left | middle | right) ============ -->
+<div class="sheet">
+  <div class="fold top" style="left:3.6875in"></div><div class="fold bottom" style="left:3.6875in"></div>
+  <div class="fold top" style="left:7.375in"></div><div class="fold bottom" style="left:7.375in"></div>
+
+  <!-- Inside left: what's in it for you -->
+  <div class="panel p-std inside">
+    <div class="eyebrow" style="color:var(--violet); margin-bottom:10px;">What's in it for you</div>
+    <div class="benefit">
+      <span class="tick">✓</span>
+      <h3 class="serif">New faces find you — free</h3>
+      <p>Your offers and announcements appear in the app's <b>Specials feed</b>, shown to people right around your neighborhood. Post happy hour, live music, a seasonal menu — no ad spend, no algorithm to fight.</p>
+    </div>
+    <div class="benefit">
+      <span class="tick">✓</span>
+      <h3 class="serif">Word of mouth you can see</h3>
+      <p>When a customer saves your store, their whole circle of friends sees it — and they earn points when a friend saves it too. Sharing you isn't a favor, it's part of the deal.</p>
+    </div>
+    <div class="benefit">
+      <span class="tick">✓</span>
+      <h3 class="serif">Loyalty with zero overhead</h3>
+      <p>Two stickers replace punch cards and pricey platforms. No hardware, no POS integration, nothing to install. You set the points and the rewards — and change them anytime, right from your phone.</p>
+    </div>
+    <div class="quote">Your customers keep their favorite spots in "circles" and share them with friends and family — a recommendation from someone they trust, not an ad.</div>
+  </div>
+
+  <!-- Inside middle: at the counter -->
+  <div class="panel p-std inside">
+    <div class="eyebrow" style="color:var(--violet); margin-bottom:10px;">At the counter, it's this simple</div>
+    <div class="counter-step">
+      <b>1 · They scan your window sticker</b>
+      <span>New customers join FavCircles and save your store — earning points before they've even ordered.</span>
+    </div>
+    <div class="counter-step">
+      <b>2 · They scan the register sticker</b>
+      <span>Every purchase earns points on their own phone. <span class="pts">You choose how many</span> — up to 500 per visit.</span>
+    </div>
+    <div class="counter-step">
+      <b>3 · They redeem, you honor it</b>
+      <span>They tap Redeem on an offer you posted — "Free coffee, 300 pts" — and a single-use voucher appears on their screen, valid 5 minutes. They show it, you honor it. Nothing to install, nothing to reconcile.</span>
+    </div>
+    <div class="earn-table">
+      <div class="eyebrow" style="color:var(--violet); margin-bottom:7px;">How customers earn points</div>
+      <div class="row"><span>Join by scanning your window sticker</span><span class="val">100 pts</span></div>
+      <div class="row"><span>Save your store to one of their circles</span><span class="val">+50 pts</span></div>
+      <div class="row"><span>Scan the register sticker with a purchase</span><span class="val">+25–500 / visit</span></div>
+      <div class="row"><span>A friend saves your store from their share</span><span class="val">+50 pts</span></div>
+    </div>
+  </div>
+
+  <!-- Inside right: free vs Business + economics -->
+  <div class="panel p-flap inside">
+    <div class="eyebrow" style="color:var(--violet); margin-bottom:10px;">Start free, grow when you're ready</div>
+    <div class="tiers">
+      <div class="tier">
+        <h4>Free for every store</h4>
+        <ul>
+          <li>Claim your page and keep details accurate</li>
+          <li>Stats dashboard headline — saves, followers, visits, scans</li>
+          <li>The scan-to-save window QR</li>
+        </ul>
+      </div>
+      <div class="tier biz">
+        <h4>FavCircles Business</h4>
+        <ul>
+          <li>Offers customers redeem with points</li>
+          <li>Announcements to followers + the Specials feed</li>
+          <li>Your own points-per-purchase earn rate</li>
+          <li>Register QR card and single-use loyalty codes</li>
+          <li>Full monthly stats history</li>
+        </ul>
+      </div>
+    </div>
+    <div class="benefit" style="margin-top:6px;">
+      <h3 class="serif">You set the economics</h3>
+      <p>You fund your own offers — an offer is your discount, honored at your counter. FavCircles never charges per point or per redemption. Your earn rate, your rewards, your prices — adjust anytime.</p>
+    </div>
+    <div class="quote">One Business subscription covers your physical store and your online store together.</div>
+  </div>
+</div>
