@@ -118,6 +118,7 @@
         .band p { margin-bottom: 1rem; color: #444; }
         .band ul, .band ol { margin: 0 0 1rem 1.4rem; color: #444; }
         .band li { margin-bottom: 0.6rem; }
+        .band[id] { scroll-margin-top: 96px; }
         .grid3 {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -225,7 +226,13 @@
                 <li>Pick your Takeout file.</li>
                 <li>Done. Everything lands in one circle on your map, and your Google lists — "Want to go," "Favorites" — become filterable tags.</li>
             </ol>
-            <p style="margin-bottom: 0;">Places you've already saved are skipped automatically, so re-importing is safe. Places without coordinates in the export are located automatically after import — their pins appear as you use the app.</p>
+            <p style="margin-bottom: 0.4rem;">Places you've already saved are skipped automatically, so re-importing is safe. Places without coordinates in the export are located automatically after import — their pins appear as you use the app.</p>
+            <div class="video-actions" style="margin: 1rem 0 0;">
+                <button class="share-btn" type="button"
+                        data-share-title="Move your Google Maps saved places to FavCircles"
+                        data-share-text="Step-by-step: export your saved places from Google Takeout and import them into FavCircles — free, duplicates skipped automatically."
+                        data-share-url="https://favcircles.com/switch-from-google-maps.html#how-to">↗&nbsp; Share this guide</button>
+            </div>
         </div>
 
 

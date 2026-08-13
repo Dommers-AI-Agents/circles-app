@@ -118,6 +118,7 @@
         .band p { margin-bottom: 1rem; color: #444; }
         .band ul, .band ol { margin: 0 0 1rem 1.4rem; color: #444; }
         .band li { margin-bottom: 0.6rem; }
+        .band[id] { scroll-margin-top: 96px; }
         .grid3 {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -211,11 +212,17 @@
             </div>
         </section>
 
-        <div class="band">
+        <div class="band" id="how-to">
             <h2>Start your next chapter of check-ins here</h2>
             <p>FavCircles gives your check-in habit a home: check in at places you visit, earn streak-style badges and points as your saved-place count grows, and build a real map of everywhere you go. Your finds aren't shouted into a void — friends and connections see them, follow your places, and recommend theirs back.</p>
             <p><strong>About your Swarm history:</strong> direct Swarm import isn't available in FavCircles yet — it's on our roadmap, and we won't pretend otherwise. What you can do today: request your data export from your Swarm account settings so your check-in history is safely in your hands and ready the moment import lands. In the meantime, start your new check-ins here so there's no gap in the story.</p>
             <p style="margin-bottom: 0;">FavCircles does import places from Mapstr and Google Maps today — see <a href="/switch-from-mapstr.html" style="color:#667eea;">switching from Mapstr</a> or <a href="/switch-from-google-maps.html" style="color:#667eea;">importing Google Maps places</a>.</p>
+            <div class="video-actions" style="margin: 1rem 0 0;">
+                <button class="share-btn" type="button"
+                        data-share-title="A new home for your check-ins — FavCircles"
+                        data-share-text="Keep the check-in streak going on FavCircles — badges, points, and a real map of everywhere you go, shared with friends you actually know."
+                        data-share-url="https://favcircles.com/switch-from-swarm.html#how-to">↗&nbsp; Share this guide</button>
+            </div>
         </div>
 
         <div class="band" id="tour">
