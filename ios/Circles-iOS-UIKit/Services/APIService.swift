@@ -248,7 +248,9 @@ class APIService {
     private init() {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 30
+        // Resource timeout is the TOTAL ceiling per transfer — 30s capped even
+        // requests that set a longer per-request timeoutInterval (import)
+        configuration.timeoutIntervalForResource = 180
         session = URLSession(configuration: configuration)
         
         // Setup date decoding strategy for ISO8601 with fractional seconds
@@ -514,6 +516,14 @@ class APIService {
         // Create the request
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
+
+        // Import prepare/execute process hundreds of places server-side —
+        // the default 30s guillotines a big batch mid-flight (the server
+        // finishes anyway; the client shows a spurious timeout and the user
+        // retries into a sea of "already imported")
+        if endpoint.hasPrefix("import/") {
+            request.timeoutInterval = 120
+        }
         
         // Disable caching for GET requests to ensure fresh data
         if method == .get {

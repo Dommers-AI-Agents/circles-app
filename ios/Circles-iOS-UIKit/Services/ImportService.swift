@@ -258,7 +258,11 @@ final class ImportService {
                             summary.created += listResult.created
                             summary.skippedDuplicates += listResult.skippedDuplicates
                             summary.failures.append(contentsOf: listResult.failed)
-                            if sliceIndex == 0, listResult.created > 0 || listResult.circleId != nil {
+                            // Every list lands in the same per-source circle
+                            // now — dedupe so the summary says "into Google
+                            // Imports", not "across 11 circles"
+                            if sliceIndex == 0, listResult.created > 0 || listResult.circleId != nil,
+                               !summary.circleNames.contains(listResult.circleName) {
                                 summary.circleNames.append(listResult.circleName)
                             }
                             // Later slices of this list must append to the

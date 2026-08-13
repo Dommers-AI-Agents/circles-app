@@ -31,7 +31,7 @@ class ImportSourceSelectionViewController: BaseViewController {
             source: .googleMaps,
             icon: "globe",
             subtitle: "Import from Google Takeout",
-            instructions: "In Google Takeout (takeout.google.com):\n\n1. Deselect all, then select only \"Saved\"\n2. Export and download the ZIP\n3. In the Files app, long-press the ZIP → Uncompress\n4. Pick the CSV files inside (one per list) here\n\nEach list becomes its own circle.",
+            instructions: "In Google Takeout (takeout.google.com):\n\n1. Deselect all, then select only \"Saved\"\n2. Export and download the ZIP\n3. In the Files app, long-press the ZIP → Uncompress\n4. Pick the CSV files inside (one per list) here\n\nEverything lands in one import circle, with each list as a filterable tag.",
             actionTitle: "Choose Files"
         ),
         SourceOption(
@@ -259,7 +259,7 @@ extension ImportSourceSelectionViewController: UITableViewDataSource, UITableVie
     }
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        "Your lists are recreated as circles. You'll review everything before anything is imported."
+        "Your lists become filterable tags in one import circle. You'll review everything before anything is imported."
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
