@@ -174,7 +174,11 @@ enum AppleImportResolver {
         let street: String? = placemark.thoroughfare.map { thoroughfare in
             placemark.subThoroughfare.map { "\($0) \(thoroughfare)" } ?? thoroughfare
         }
-        let parts = [street, placemark.locality, placemark.administrativeArea, placemark.postalCode]
+        // The COUNTRY must be the final component: the backend's location
+        // lens (placeLocationDerivation) reads it from the address tail —
+        // omitting it left foreign imports countryless, invisible to the
+        // country filter chips.
+        let parts = [street, placemark.locality, placemark.administrativeArea, placemark.postalCode, placemark.country]
             .compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
