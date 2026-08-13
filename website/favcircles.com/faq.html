@@ -188,7 +188,7 @@
         </section>
 
         <section class="faq-group" id="import-video">
-            <h2>Bringing your places with you 📍</h2>
+            <h2>Bringing your places with you 📍 <span style="font-size: 0.72em; font-weight: 600; color: #764ba2;">Mapstr · Google Maps · Swarm</span></h2>
             <p class="lead">Watch how a Mapstr, Google Maps, or Swarm export becomes your circles — with ChatGPT doing the work (1:47):</p>
             <video controls preload="metadata" poster="/import-tutorial-poster.jpg" style="width:100%; border-radius:12px; margin:0.3rem 0 0.8rem; display:block;">
                 <source src="/import-tutorial.mp4" type="video/mp4">
@@ -226,6 +226,9 @@
                     <li><a href="/switch-from-swarm.html">Switching from <strong>Swarm / Foursquare</strong></a></li>
                 </ul>
             </details>
+            <div class="video-actions" style="margin: 1rem 0 0;">
+                <button class="share-btn" type="button" id="share-import-section">↗&nbsp; Share this</button>
+            </div>
         </section>
 
         <section class="faq-group">
@@ -268,6 +271,24 @@
         </div>
     </footer>
     <script>
+    document.getElementById('share-import-section').addEventListener('click', function () {
+        var btn = this;
+        var data = {
+            title: 'Bring your places to FavCircles — Mapstr, Google Maps, Swarm',
+            text: 'Move your saved places into FavCircles free — step-by-step guides for Mapstr, Google Maps, and Swarm, plus a 2-minute video.',
+            url: 'https://favcircles.com/faq.html#import-video'
+        };
+        if (navigator.share) {
+            navigator.share(data).catch(function () {});
+        } else if (navigator.clipboard) {
+            navigator.clipboard.writeText(data.url).then(function () {
+                var original = btn.textContent;
+                btn.textContent = '✓ Link copied!';
+                setTimeout(function () { btn.textContent = original; }, 2000);
+            });
+        }
+    });
+
     document.getElementById('share-import-video').addEventListener('click', function () {
         var btn = this;
         var data = {
