@@ -862,7 +862,11 @@ exports.getVenueDashboard = async (req, res) => {
       scans: stats.scans || 0,
       signups: stats.signups || 0,
       redemptions: stats.redemptions || 0,
-      codeRedemptions: stats.codeRedemptions || 0
+      codeRedemptions: stats.codeRedemptions || 0,
+      // App Clip funnel (scan → in-clip signup → full-app install)
+      clipScans: stats.clipScans || 0,
+      clipSignups: stats.clipSignups || 0,
+      clipInstalls: stats.clipInstalls || 0
     };
 
     let detail = null;

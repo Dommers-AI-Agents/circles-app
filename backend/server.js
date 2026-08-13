@@ -369,6 +369,7 @@ app.get('/share/video/:videoId', (req, res) => {
 });
 app.use('/api/users/referral', require('./routes/referralRoutes'));
 app.use('/api/rewards', require('./routes/rewardRoutes'));
+app.use('/api/clip', require('./routes/clipRoutes')); // iOS App Clip (public venue preview + install conversion)
 app.use('/api/piggy-bank', require('./routes/piggyBankRoutes')); // FavCoin piggy bank (separate from store-loyalty rewards)
 app.use('/api/home', require('./routes/dashboardRoutes'));
 

@@ -75,6 +75,17 @@ exports.validateUserRegistration = [
     .withMessage('Display name must be between 2 and 50 characters')
     .matches(/^[a-zA-Z0-9\s._-]+$/)
     .withMessage('Display name can only contain letters, numbers, spaces, dots, underscores, and hyphens'),
+  // App Clip signup attribution (optional; analytics only — points are awarded
+  // separately through the authenticated /api/rewards/scan call)
+  body('signupSource')
+    .optional()
+    .isIn(['app_clip'])
+    .withMessage('Invalid signup source'),
+  body('stickerCode')
+    .optional()
+    .trim()
+    .matches(/^[A-Za-z0-9]{6}$/)
+    .withMessage('Invalid sticker code'),
   handleValidationErrors
 ];
 

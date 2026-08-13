@@ -678,18 +678,37 @@ exports.firebaseAuth = async (req, res, next) => {
       
       if (result.isNew) {
         console.log(`✅ New user created successfully with ID: ${simpleUid} (original: ${uid})`);
-        
-        // Complete onboarding for new user (synchronously)
+
+        // App Clip signups: stamp acquisition fields (analytics only — points
+        // still flow through the authenticated /api/rewards/scan call). This
+        // route has no validator chain, so validate the code shape inline.
+        const isClipSignup = req.body.signupSource === 'app_clip'
+          && /^[A-Za-z0-9]{6}$/.test(String(req.body.stickerCode || ''));
+        if (isClipSignup) {
+          await require('../services/rewardService')
+            .attributeClipSignup(simpleUid, req.body.stickerCode);
+        }
+
+        // Complete onboarding for new user. Clip signups defer it (fire-and-
+        // forget) so the in-store first impression isn't blocked on the
+        // sample-place lookup; the clip renders nothing onboarding produces.
         try {
           console.log(`🎯 Starting onboarding for new user ${simpleUid}...`);
           // Social signups usually have no zipcode, but pass the city when we
           // have one so the sample place is local to the user
           const userCity = (user.location || '').split(',')[0].trim();
-          await OnboardingService.completeUserOnboarding(
-            simpleUid,
-            userCity ? { city: userCity } : null
-          );
-          console.log(`✅ Onboarding completed for user ${simpleUid}${userCity ? ` (city: ${userCity})` : ''}`);
+          if (isClipSignup) {
+            OnboardingService.completeUserOnboarding(
+              simpleUid,
+              userCity ? { city: userCity } : null
+            ).catch(err => console.error(`❌ Deferred clip onboarding failed for ${simpleUid}:`, err));
+          } else {
+            await OnboardingService.completeUserOnboarding(
+              simpleUid,
+              userCity ? { city: userCity } : null
+            );
+            console.log(`✅ Onboarding completed for user ${simpleUid}${userCity ? ` (city: ${userCity})` : ''}`);
+          }
 
           // Welcome email (fire-and-forget; never blocks signup)
           if (user.email) {
@@ -960,22 +979,42 @@ exports.register = async (req, res, next) => {
     let user;
     if (result.isNew) {
       user = result.userData;
-      
-      // Complete onboarding for new user (synchronously)
+
+      // Complete onboarding for new user (synchronously). App Clip signups
+      // defer onboarding (fire-and-forget) so the in-store first impression
+      // isn't blocked on the sample-place lookup; the clip never renders
+      // circlesCount/placesCount, so returning 0 there is fine.
       const userId = normalizeUserId(user.id || user.uid);
       let circlesCount = 0;
       let placesCount = 0;
-      
+
+      const isClipSignup = req.body.signupSource === 'app_clip'
+        && /^[A-Za-z0-9]{6}$/.test(String(req.body.stickerCode || ''));
+      if (isClipSignup) {
+        // Analytics only — points still flow through /api/rewards/scan
+        await require('../services/rewardService')
+          .attributeClipSignup(userId, req.body.stickerCode);
+      }
+
       try {
         console.log(`🎯 Starting onboarding for new user ${userId}...`);
         // Pass the user's city (from geocoded zipcode) so the onboarding
         // sample place is local to them instead of the generic fallback
         const userCity = (user.location || '').split(',')[0].trim();
-        const onboardingResult = await OnboardingService.completeUserOnboarding(
-          userId,
-          userCity ? { city: userCity } : null
-        );
-        console.log(`✅ Onboarding completed for user ${userId}${userCity ? ` (city: ${userCity})` : ''}`);
+        const onboardingResult = isClipSignup
+          ? { success: false }
+          : await OnboardingService.completeUserOnboarding(
+              userId,
+              userCity ? { city: userCity } : null
+            );
+        if (isClipSignup) {
+          OnboardingService.completeUserOnboarding(
+            userId,
+            userCity ? { city: userCity } : null
+          ).catch(err => console.error(`❌ Deferred clip onboarding failed for ${userId}:`, err));
+        } else {
+          console.log(`✅ Onboarding completed for user ${userId}${userCity ? ` (city: ${userCity})` : ''}`);
+        }
 
         // Welcome email (fire-and-forget; never blocks signup)
         if (user.email) {
@@ -983,7 +1022,7 @@ exports.register = async (req, res, next) => {
           emailService.sendWelcomeEmail(user.email, user.displayName)
             .catch(err => console.error('Welcome email failed:', err.message));
         }
-        
+
         // After onboarding, fetch the created circles to get accurate counts
         if (onboardingResult.success) {
           const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)

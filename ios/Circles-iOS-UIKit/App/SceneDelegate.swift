@@ -52,6 +52,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             }
         }
         
+        // App Clip handoff: if the clip left credentials in the shared keychain
+        // mailbox, adopt them BEFORE any auth-state read so first launch lands
+        // logged in. isLoggedIn reads the keychain live, so ordering is all
+        // that matters here.
+        adoptAppClipSessionIfPresent()
+
         // Note: the root view controller is installed by the auth state listener below.
         // addAuthStateListener invokes its listener SYNCHRONOUSLY with the current state
         // (AuthService.addAuthStateListener), so updateRootViewController runs before
@@ -1543,10 +1549,69 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
     
+    // MARK: - App Clip Handoff
+
+    private static let clipHandledStickerCodeKey = "clipHandledStickerCode"
+
+    /// Adopts credentials the App Clip left in the shared keychain mailbox
+    /// (see ClipKeychain.swift in the Circles-Clip target and
+    /// KeychainService.adoptClipCredentialsIfPresent).
+    private func adoptAppClipSessionIfPresent() {
+        guard let result = KeychainService.shared.adoptClipCredentialsIfPresent() else { return }
+
+        // Clip users never saw the Safari landing page, so the one-shot
+        // pasteboard check would just be a pointless paste-permission prompt
+        UserDefaults.standard.set(true, forKey: "hasCheckedPasteboardForStickerCode")
+
+        if let handledCode = result.handledStickerCode {
+            // The clip already redeemed this code — remember it so the
+            // invocation URL replay on first launch doesn't re-run the reward UX
+            UserDefaults.standard.set(handledCode, forKey: Self.clipHandledStickerCodeKey)
+        }
+        if let pendingCode = result.pendingStickerCode {
+            // The clip's scan call failed — the normal pending-code flow
+            // (redeemPendingStickerCodeIfNeeded) completes the award
+            RewardsService.shared.savePendingStickerCode(pendingCode)
+        }
+
+        if AuthService.shared.isLoggedIn {
+            notifyClipInstallConverted()
+        }
+        Logger.info("📎 App Clip session adoption: adopted=\(result.adopted)")
+    }
+
+    /// Tells the backend this user converted from clip to full app (funnel
+    /// analytics). Idempotent server-side and a no-op for non-clip accounts —
+    /// safe to fire-and-forget.
+    private func notifyClipInstallConverted() {
+        APIService.shared.request(
+            endpoint: "clip/install-converted",
+            method: .post,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<SimpleResponse, APIError>) in
+            switch result {
+            case .success:
+                Logger.debug("📎 Clip install conversion recorded")
+            case .failure(let error):
+                Logger.warning("📎 Clip install conversion failed: \(error)")
+            }
+        }
+    }
+
     // MARK: - Sticker Code Handling
 
     private func handleStickerCode(_ code: String) {
         Logger.debug("📱 SceneDelegate: handleStickerCode called with code: \(code)")
+
+        // First launch after a clip install re-delivers the invocation URL as a
+        // user activity; the clip already redeemed this code (backend award is
+        // idempotent regardless — this guard is just to skip the duplicate UX)
+        if code == UserDefaults.standard.string(forKey: Self.clipHandledStickerCodeKey) {
+            UserDefaults.standard.removeObject(forKey: Self.clipHandledStickerCodeKey)
+            Logger.debug("📱 SceneDelegate: code \(code) already redeemed in App Clip — skipping")
+            return
+        }
 
         // If the user is not logged in, save the code — it's redeemed right
         // after signup/login via runPostLaunchSideEffects (all auth routes)
@@ -1615,6 +1680,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
               let code = RewardsService.shared.getPendingStickerCode() else { return }
 
         RewardsService.shared.clearPendingStickerCode()
+
+        // Already redeemed inside the App Clip — nothing left to do
+        if code == UserDefaults.standard.string(forKey: Self.clipHandledStickerCodeKey) {
+            UserDefaults.standard.removeObject(forKey: Self.clipHandledStickerCodeKey)
+            Logger.debug("📱 SceneDelegate: pending code \(code) already redeemed in App Clip — skipping")
+            return
+        }
         Logger.debug("📱 SceneDelegate: Redeeming pending sticker code: \(code)")
 
         // Give the main interface (and any onboarding modals) a moment to settle

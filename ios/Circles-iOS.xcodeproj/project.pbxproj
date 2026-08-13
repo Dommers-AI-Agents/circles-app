@@ -20,6 +20,7 @@
 		6FD782342DDB603400443471 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 6FD782332DDB603400443471 /* GoogleSignInSwift */; };
 		6FE8F0B72DF7C276007CB88E /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE8F0B62DF7C276007CB88E /* FirebaseAnalytics */; };
 		6FE8F0B92DF7C291007CB88E /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE8F0B82DF7C291007CB88E /* FirebaseAuth */; };
+		AC10C11B000000000000000B /* Circles-Clip.app in Embed App Clips */ = {isa = PBXBuildFile; fileRef = AC10C11B0000000000000002 /* Circles-Clip.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -37,6 +38,13 @@
 			remoteGlobalIDString = 6F9360962DD9725A0065A440;
 			remoteInfo = "Circles-iOS-UIKit";
 		};
+		AC10C11B000000000000000C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6F93608F2DD9725A0065A440 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AC10C11B0000000000000003;
+			remoteInfo = "Circles-Clip";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +52,7 @@
 		6F9360AD2DD9725C0065A440 /* Circles-iOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Circles-iOSTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F9360B72DD9725C0065A440 /* Circles-iOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Circles-iOSUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6FB901EE2E33966C0043EAA1 /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
+		AC10C11B0000000000000002 /* Circles-Clip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Circles-Clip.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -73,6 +82,11 @@
 		6F9360BA2DD9725C0065A440 /* Circles-iOS-UIKitUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Circles-iOS-UIKitUITests";
+			sourceTree = "<group>";
+		};
+		AC10C11B0000000000000001 /* Circles-Clip */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Circles-Clip";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -112,13 +126,35 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AC10C11B0000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		AC10C11B000000000000000A /* Embed App Clips */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/AppClips";
+			dstSubfolderSpec = 16;
+			files = (
+				AC10C11B000000000000000B /* Circles-Clip.app in Embed App Clips */,
+			);
+			name = "Embed App Clips";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXGroup section */
 		6F93608E2DD9725A0065A440 = {
 			isa = PBXGroup;
 			children = (
 				6F9360992DD9725A0065A440 /* Circles-iOS-UIKit */,
+				AC10C11B0000000000000001 /* Circles-Clip */,
 				6F9360B02DD9725C0065A440 /* Circles-iOS-UIKitTests */,
 				6F9360BA2DD9725C0065A440 /* Circles-iOS-UIKitUITests */,
 				6FE8F0B52DF7C276007CB88E /* Frameworks */,
@@ -130,6 +166,7 @@
 			isa = PBXGroup;
 			children = (
 				6F9360972DD9725A0065A440 /* Circles-iOS.app */,
+				AC10C11B0000000000000002 /* Circles-Clip.app */,
 				6F9360AD2DD9725C0065A440 /* Circles-iOSTests.xctest */,
 				6F9360B72DD9725C0065A440 /* Circles-iOSUITests.xctest */,
 			);
@@ -154,10 +191,12 @@
 				6F9360932DD9725A0065A440 /* Sources */,
 				6F9360942DD9725A0065A440 /* Frameworks */,
 				6F9360952DD9725A0065A440 /* Resources */,
+				AC10C11B000000000000000A /* Embed App Clips */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				AC10C11B000000000000000D /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				6F9360992DD9725A0065A440 /* Circles-iOS-UIKit */,
@@ -227,6 +266,28 @@
 			productReference = 6F9360B72DD9725C0065A440 /* Circles-iOSUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		AC10C11B0000000000000003 /* Circles-Clip */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC10C11B0000000000000007 /* Build configuration list for PBXNativeTarget "Circles-Clip" */;
+			buildPhases = (
+				AC10C11B0000000000000004 /* Sources */,
+				AC10C11B0000000000000005 /* Frameworks */,
+				AC10C11B0000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AC10C11B0000000000000001 /* Circles-Clip */,
+			);
+			name = "Circles-Clip";
+			packageProductDependencies = (
+			);
+			productName = "Circles-Clip";
+			productReference = AC10C11B0000000000000002 /* Circles-Clip.app */;
+			productType = "com.apple.product-type.application.on-demand-install-capable";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -259,6 +320,9 @@
 						CreatedOnToolsVersion = 16.3;
 						TestTargetID = 6F9360962DD9725A0065A440;
 					};
+					AC10C11B0000000000000003 = {
+						CreatedOnToolsVersion = 16.3;
+					};
 				};
 			};
 			buildConfigurationList = 6F9360922DD9725A0065A440 /* Build configuration list for PBXProject "Circles-iOS" */;
@@ -282,6 +346,7 @@
 			projectRoot = "";
 			targets = (
 				6F9360962DD9725A0065A440 /* Circles-iOS */,
+				AC10C11B0000000000000003 /* Circles-Clip */,
 				6F9360AC2DD9725C0065A440 /* Circles-iOSTests */,
 				6F9360B62DD9725C0065A440 /* Circles-iOSUITests */,
 			);
@@ -304,6 +369,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		6F9360B52DD9725C0065A440 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC10C11B0000000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -334,6 +406,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AC10C11B0000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -346,6 +425,11 @@
 			isa = PBXTargetDependency;
 			target = 6F9360962DD9725A0065A440 /* Circles-iOS */;
 			targetProxy = 6F9360B82DD9725C0065A440 /* PBXContainerItemProxy */;
+		};
+		AC10C11B000000000000000D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AC10C11B0000000000000003 /* Circles-Clip */;
+			targetProxy = AC10C11B000000000000000C /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -637,6 +721,66 @@
 			};
 			name = Release;
 		};
+		AC10C11B0000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Circles-Clip/Circles-Clip.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 22;
+				DEVELOPMENT_TEAM = 67E8B4E8HV;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
+				INFOPLIST_KEY_NSAppClipRequestEphemeralUserNotification = NO;
+				INFOPLIST_KEY_NSAppClipRequestLocationConfirmation = NO;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.2.4;
+				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Clip;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AC10C11B0000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Circles-Clip/Circles-Clip.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 22;
+				DEVELOPMENT_TEAM = 67E8B4E8HV;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
+				INFOPLIST_KEY_NSAppClipRequestEphemeralUserNotification = NO;
+				INFOPLIST_KEY_NSAppClipRequestLocationConfirmation = NO;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.2.4;
+				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Clip;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -672,6 +816,15 @@
 			buildConfigurations = (
 				6F9360C92DD9725C0065A440 /* Debug */,
 				6F9360CA2DD9725C0065A440 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AC10C11B0000000000000007 /* Build configuration list for PBXNativeTarget "Circles-Clip" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AC10C11B0000000000000008 /* Debug */,
+				AC10C11B0000000000000009 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

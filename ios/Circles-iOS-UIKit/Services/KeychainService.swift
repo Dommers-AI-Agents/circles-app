@@ -118,8 +118,87 @@ class KeychainService {
         Logger.debug("🔐 KeychainService: Cleared saved credentials")
     }
 
+    // MARK: - App Clip Credential Adoption
+
+    // The App Clip writes auth tokens into a shared keychain access group as a
+    // one-shot "mailbox" (ClipKeychain.swift in the Circles-Clip target). We copy
+    // them into our normal default-group storage and clear the mailbox — regular
+    // storage never moves, so existing users are untouched.
+    private let sharedAccessGroup = "67E8B4E8HV.com.favcircles.circles.shared"
+    private let clipHandledStickerCodeAccount = "clipHandledStickerCode"
+    private let clipPendingStickerCodeAccount = "clipPendingStickerCode"
+
+    struct ClipAdoptionResult {
+        let adopted: Bool
+        let handledStickerCode: String?  // clip already redeemed this code — don't redeem again
+        let pendingStickerCode: String?  // clip failed to redeem — run the pending-code flow
+    }
+
+    /// Call once early in launch, before auth state is read.
+    func adoptClipCredentialsIfPresent() -> ClipAdoptionResult? {
+        guard let clipToken = retrieveShared(account: authTokenAccount) else { return nil }
+
+        let handledCode = retrieveShared(account: clipHandledStickerCodeAccount)
+        let pendingCode = retrieveShared(account: clipPendingStickerCodeAccount)
+
+        defer { clearSharedGroup() }
+
+        // Never clobber an existing session — the mailbox only serves fresh installs
+        if getAuthToken() != nil {
+            Logger.debug("🔐 KeychainService: clip mailbox found but a session exists — clearing mailbox")
+            return ClipAdoptionResult(adopted: false, handledStickerCode: nil, pendingStickerCode: pendingCode)
+        }
+
+        save(clipToken, account: authTokenAccount)
+        if let refreshToken = retrieveShared(account: refreshTokenAccount) {
+            save(refreshToken, account: refreshTokenAccount)
+        }
+        if let expiration = retrieveShared(account: tokenExpirationAccount) {
+            save(expiration, account: tokenExpirationAccount)
+        }
+        if let userId = retrieveShared(account: userIdAccount) {
+            save(userId, account: userIdAccount)
+        }
+        if let provider = retrieveShared(account: authProviderAccount) {
+            save(provider, account: authProviderAccount)
+        }
+
+        Logger.debug("🔐 KeychainService: adopted App Clip credentials")
+        return ClipAdoptionResult(adopted: true, handledStickerCode: handledCode, pendingStickerCode: pendingCode)
+    }
+
+    private func retrieveShared(account: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecAttrAccessGroup as String: sharedAccessGroup,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func clearSharedGroup() {
+        let accounts = [authTokenAccount, refreshTokenAccount, tokenExpirationAccount,
+                        userIdAccount, authProviderAccount,
+                        clipHandledStickerCodeAccount, clipPendingStickerCodeAccount]
+        for account in accounts {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: account,
+                kSecAttrAccessGroup as String: sharedAccessGroup
+            ]
+            SecItemDelete(query as CFDictionary)
+        }
+    }
+
     // MARK: - Private Helper Methods
-    
+
     private func save(_ value: String, account: String) {
         guard let data = value.data(using: .utf8) else { return }
         

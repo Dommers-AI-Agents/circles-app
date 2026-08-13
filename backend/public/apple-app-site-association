@@ -26,6 +26,9 @@
       }
     ]
   },
+  "appclips": {
+    "apps": ["67E8B4E8HV.com.favcircles.circles.Clip"]
+  },
   "webcredentials": {
     "apps": [
       "67E8B4E8HV.com.favcircles.circles",

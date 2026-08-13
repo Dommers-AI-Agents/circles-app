@@ -394,6 +394,59 @@ class RewardService {
     return result;
   }
 
+  // ---------- App Clip funnel ----------
+
+  // Stamps acquisition fields on a freshly created user and counts the clip
+  // signup for the venue. Attribution must never fail a signup — log and move on.
+  // Points are NOT awarded here; the clip's authenticated POST /api/rewards/scan
+  // goes through awardStickerSignup like any other scan.
+  async attributeClipSignup(userId, stickerCode) {
+    try {
+      const venue = await this.findVenueByCode(stickerCode);
+      const update = {
+        acquisitionSource: 'app_clip',
+        acquisitionStickerCode: String(stickerCode || '').trim().toUpperCase(),
+        acquisitionAt: new Date().toISOString()
+      };
+      if (venue && venue.active !== false) {
+        update.acquisitionVenueId = venue.venueId;
+        update.acquisitionVenueName = venue.venueName;
+      }
+      await this.db.collection(COLLECTIONS.USERS).doc(userId).update(update);
+      if (update.acquisitionVenueId) {
+        await this.incrementVenueStats(update.acquisitionVenueId, 'clipSignups');
+      }
+      return { attributed: true, venueId: update.acquisitionVenueId || null };
+    } catch (error) {
+      console.error(`⚠️ Clip signup attribution failed for ${userId}:`, error.message);
+      return { attributed: false };
+    }
+  }
+
+  // Called by the full app once on first launch after a clip handoff. The
+  // transaction makes the conversion count exactly once per user; organic
+  // users (no acquisitionSource) resolve to a successful no-op.
+  async markClipInstallConverted(userId) {
+    const userRef = this.db.collection(COLLECTIONS.USERS).doc(userId);
+    const outcome = await this.db.runTransaction(async (tx) => {
+      const doc = await tx.get(userRef);
+      if (!doc.exists) return { converted: false, reason: 'user_not_found' };
+      const data = doc.data();
+      if (data.acquisitionSource !== 'app_clip') {
+        return { converted: false, reason: 'not_clip_user' };
+      }
+      if (data.clipInstallConvertedAt) {
+        return { converted: false, alreadyConverted: true, venueId: data.acquisitionVenueId || null };
+      }
+      tx.update(userRef, { clipInstallConvertedAt: new Date().toISOString() });
+      return { converted: true, venueId: data.acquisitionVenueId || null };
+    });
+    if (outcome.converted && outcome.venueId) {
+      await this.incrementVenueStats(outcome.venueId, 'clipInstalls');
+    }
+    return outcome;
+  }
+
   // Points per register-code (purchase) scan; legacy venues have no earnRate
   effectiveEarnRate(venue) {
     return Number.isInteger(venue.earnRate) && venue.earnRate > 0

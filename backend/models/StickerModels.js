@@ -39,7 +39,11 @@ const compDefaultUntil = (nowIso) => {
 
 const createStickerVenue = (data, windowCode, registerCode) => {
   const now = new Date().toISOString();
-  const emptyStats = { scans: 0, signups: 0, saves: 0, visits: 0, redemptions: 0 };
+  const emptyStats = {
+    scans: 0, signups: 0, saves: 0, visits: 0, redemptions: 0,
+    // App Clip funnel: clip opened → account created in clip → full app installed
+    clipScans: 0, clipSignups: 0, clipInstalls: 0
+  };
 
   return {
     venueName: data.venueName,
