@@ -84,7 +84,9 @@ class MyNetworkViewController: BaseViewController {
         setupView()
         setupNavigationBar()
         setupChildViewControllers()
-        selectTab(.discover)
+        // Default segment is Popular (Wes: surfaces your own connections too).
+        // This must match the selectedTab/segmentedControl defaults above.
+        selectTab(.popular)
         setupSSE()
         
         // Check if user needs notification prompt for connections
@@ -172,11 +174,13 @@ class MyNetworkViewController: BaseViewController {
                 // Find the add connection button in the navigation bar
                 if let addButton = self.navigationItem.rightBarButtonItem {
                     if let buttonView = addButton.value(forKey: "view") as? UIView {
+                        // .top = bubble below the target; the invite button is
+                        // in the nav bar, so above it there's no room.
                         OnboardingManager.shared.showTutorialStep(
                             .exploreNetwork,
                             targetView: buttonView,
                             in: self,
-                            arrowDirection: .bottom
+                            arrowDirection: .top
                         )
                     }
                 }
@@ -352,6 +356,26 @@ class MyNetworkViewController: BaseViewController {
 
     @objc private func shareInviteTapped() {
         shareConnectionInvite()
+    }
+
+    /// Tutorial follow-through for the "Find Your People" step: instead of
+    /// narrating and moving on, offer the two concrete ways to act on it.
+    /// Cancel just defers — the privacy step appears the next time the user
+    /// visits their profile (ProfileViewController.viewDidAppear).
+    func showOnboardingConnectPrompt() {
+        AlertPresenter.showActionSheet(
+            title: "Connect with someone you know",
+            message: "Circles comes alive when you swap favorite spots with people you trust.",
+            actions: [
+                ("Invite My Best Friend", .default, { [weak self] in
+                    self?.shareConnectionInvite()
+                }),
+                ("Search People I Know", .default, { [weak self] in
+                    self?.searchBar.becomeFirstResponder()
+                })
+            ],
+            from: self
+        )
     }
 
     private func shareConnectionInvite() {

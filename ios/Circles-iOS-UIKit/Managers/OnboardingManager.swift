@@ -21,7 +21,7 @@ enum TutorialStep: String, CaseIterable {
         case .addPlace:
             return "Add Places"
         case .exploreNetwork:
-            return "Connect with Others"
+            return "Find Your People"
         case .privacySettings:
             return "Privacy Controls"
         }
@@ -36,7 +36,7 @@ enum TutorialStep: String, CaseIterable {
         case .addPlace:
             return "Add your favorite places to any circle. Tap a place on the map or use the search bar"
         case .exploreNetwork:
-            return "Connect with friends to discover their favorite places and share yours"
+            return "Favorites are better shared. Search for people you know, or invite your best friend — you both get a month free"
         case .privacySettings:
             return "Control who can see your circles - keep them private, share with connections, or make them public"
         }
@@ -115,18 +115,20 @@ class OnboardingManager {
         }
     }
     
-    /// Start the onboarding tutorial
+    /// Start (or resume) the onboarding tutorial. Callers hit this on every
+    /// launch where the backend says the tutorial isn't finished — it must NOT
+    /// wipe local progress, or a mid-tutorial relaunch dumps the user back at
+    /// Welcome and they never see the connect/privacy steps. Explicit wipes
+    /// live in resetTutorial()/resetForNewUser().
     func startTutorial() {
-        // Reset completed steps
-        completedSteps.removeAll()
-        
-        // Set tutorial start date
-        UserDefaults.standard.set(Date(), forKey: tutorialStartDateKey)
-        
+        if completedSteps.isEmpty {
+            UserDefaults.standard.set(Date(), forKey: tutorialStartDateKey)
+        }
+
         // Mark tutorial as active
         shouldShowTutorial = true
-        
-        Logger.info("Onboarding tutorial started")
+
+        Logger.info("Onboarding tutorial started/resumed (\(completedSteps.count) steps already done)")
     }
     
     /// Complete the entire onboarding
@@ -248,16 +250,20 @@ class OnboardingManager {
             }
             
         case .exploreNetwork:
-            // After network exploration, show privacy settings in profile
-            if let tabBar = viewController.tabBarController {
-                // Switch to Me tab (tab order: 0 Home, 1 My Network, 2 Messages, 3 Me)
+            // The point of this step is action, not narration: offer the two
+            // concrete ways to build a network (invite a best friend / search
+            // people they know) right where they happen. The privacy step is
+            // not lost — ProfileViewController shows it on appear once this
+            // step is complete.
+            if let networkVC = viewController as? MyNetworkViewController {
+                networkVC.showOnboardingConnectPrompt()
+            } else if let tabBar = viewController.tabBarController {
+                // Fallback (bubble shown from an unexpected screen): keep the
+                // old behavior of moving straight to the privacy step.
                 tabBar.selectedIndex = 3
-                
-                // Show privacy tutorial after tab switch
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                     if let profileNav = tabBar.selectedViewController as? UINavigationController,
                        let profileVC = profileNav.viewControllers.first as? ProfileViewController {
-                        // Show privacy settings tutorial pointing to settings button
                         self?.showTutorialStep(
                             .privacySettings,
                             targetView: nil, // Will be centered
