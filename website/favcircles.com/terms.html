@@ -29,12 +29,15 @@
         header {
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
+            transition: background 0.25s ease;
             padding: 1rem 0;
             position: fixed;
             width: 100%;
             top: 0;
             z-index: 1000;
         }
+
+        header.scrolled { background: rgba(103, 124, 230, 0.94); }
 
         nav {
             display: flex;
@@ -266,5 +269,14 @@
                <a href="/delete-data.html" style="color: white; text-decoration: underline;">Delete Your Data</a></p>
         </div>
     </footer>
+    <script>
+        (function () {
+            var header = document.querySelector('header');
+            if (!header) return;
+            function onScroll() { header.classList.toggle('scrolled', window.scrollY > 10); }
+            window.addEventListener('scroll', onScroll, { passive: true });
+            onScroll();
+        })();
+    </script>
 </body>
 </html>
