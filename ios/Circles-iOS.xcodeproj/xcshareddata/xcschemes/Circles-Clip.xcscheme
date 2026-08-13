@@ -52,7 +52,7 @@
       <EnvironmentVariables>
          <EnvironmentVariable
             key = "_XCAppClipURL"
-            value = "https://api.favcircles.com/s/TESTCODE"
+            value = "https://api.favcircles.com/s/5IRJ9M"
             isEnabled = "YES">
          </EnvironmentVariable>
       </EnvironmentVariables>
