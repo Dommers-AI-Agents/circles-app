@@ -30,6 +30,13 @@ struct ClipUser: Decodable {
     let id: String
     let displayName: String?
     let email: String?
+
+    // The auth endpoints serialize the user with Mongo-style "_id"
+    enum CodingKeys: String, CodingKey {
+        case id = "_id"
+        case displayName
+        case email
+    }
 }
 
 struct ScanResponse: Decodable {

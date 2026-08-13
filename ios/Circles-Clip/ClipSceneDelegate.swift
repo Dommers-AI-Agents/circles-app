@@ -14,9 +14,19 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         // The invocation URL rides in on an NSUserActivity — from the camera /
         // App Clip code at launch (connectionOptions) or later via continueUserActivity.
-        let code = connectionOptions.userActivities
+        var code = connectionOptions.userActivities
             .compactMap { Self.stickerCode(from: $0) }
             .first
+
+        #if DEBUG
+        // Xcode injects _XCAppClipURL as a user activity, but `simctl launch`
+        // only sets the raw env var — honor it directly so CLI testing works.
+        if code == nil,
+           let testURLString = ProcessInfo.processInfo.environment["_XCAppClipURL"],
+           let testURL = URL(string: testURLString) {
+            code = Self.stickerCode(fromPath: testURL.path)
+        }
+        #endif
         window.rootViewController = Self.rootViewController(for: code)
         window.makeKeyAndVisible()
     }
@@ -43,7 +53,11 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
     static func stickerCode(from activity: NSUserActivity) -> String? {
         guard activity.activityType == NSUserActivityTypeBrowsingWeb,
               let url = activity.webpageURL else { return nil }
-        let parts = url.path.split(separator: "/").map(String.init)
+        return stickerCode(fromPath: url.path)
+    }
+
+    static func stickerCode(fromPath path: String) -> String? {
+        let parts = path.split(separator: "/").map(String.init)
         guard parts.count >= 2, parts[0] == "s" else { return nil }
         let code = parts[1].uppercased()
         guard code.range(of: "^[A-Z0-9]{4,16}$", options: .regularExpression) != nil else { return nil }

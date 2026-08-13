@@ -35,7 +35,7 @@ final class ClipSuccessViewController: UIViewController {
 
         // Hand the session to the full app FIRST — even if the scan call fails,
         // the install lands logged in.
-        ClipKeychain.storeAuthHandoff(response: authResponse, provider: provider)
+        ClipHandoff.storeAuthHandoff(response: authResponse, provider: provider)
         redeem()
     }
 
@@ -74,11 +74,11 @@ final class ClipSuccessViewController: UIViewController {
             do {
                 let result = try await ClipAPIClient.shared.redeemSticker(code: code, token: authResponse.token)
                 // Scan handled in-clip — tell the full app not to redeem it again
-                ClipKeychain.save(code, account: .clipHandledStickerCode)
+                ClipHandoff.markStickerHandled(code)
                 showAwarded(result)
             } catch {
                 // Let the full app's existing pending-sticker flow finish the award
-                ClipKeychain.save(code, account: .clipPendingStickerCode)
+                ClipHandoff.markStickerPending(code)
                 showPending()
             }
             presentInstallOverlay()

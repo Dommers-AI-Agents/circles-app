@@ -120,13 +120,24 @@ class KeychainService {
 
     // MARK: - App Clip Credential Adoption
 
-    // The App Clip writes auth tokens into a shared keychain access group as a
-    // one-shot "mailbox" (ClipKeychain.swift in the Circles-Clip target). We copy
-    // them into our normal default-group storage and clear the mailbox — regular
-    // storage never moves, so existing users are untouched.
-    private let sharedAccessGroup = "67E8B4E8HV.com.favcircles.circles.shared"
-    private let clipHandledStickerCodeAccount = "clipHandledStickerCode"
-    private let clipPendingStickerCodeAccount = "clipPendingStickerCode"
+    // The App Clip hands its session to the full app through a one-shot JSON
+    // "mailbox" in the shared App Group container (ClipHandoff.swift in the
+    // Circles-Clip target — clips may not hold keychain-access-groups, so the
+    // App Group is the documented channel). We move the tokens into normal
+    // keychain storage and delete the file; keychain storage never changes
+    // shape, so existing users are untouched.
+    private static let clipAppGroupId = "group.com.favcircles.circles"
+    private static let clipHandoffFileName = "clip-auth-handoff.json"
+
+    private struct ClipHandoffPayload: Codable {
+        var authToken: String
+        var refreshToken: String?
+        var tokenExpiration: String? // ISO8601
+        var userId: String
+        var authProvider: String
+        var handledStickerCode: String?
+        var pendingStickerCode: String?
+    }
 
     struct ClipAdoptionResult {
         let adopted: Bool
@@ -136,65 +147,38 @@ class KeychainService {
 
     /// Call once early in launch, before auth state is read.
     func adoptClipCredentialsIfPresent() -> ClipAdoptionResult? {
-        guard let clipToken = retrieveShared(account: authTokenAccount) else { return nil }
+        guard let url = FileManager.default
+                .containerURL(forSecurityApplicationGroupIdentifier: Self.clipAppGroupId)?
+                .appendingPathComponent(Self.clipHandoffFileName),
+              let data = try? Data(contentsOf: url),
+              let payload = try? JSONDecoder().decode(ClipHandoffPayload.self, from: data) else {
+            return nil
+        }
 
-        let handledCode = retrieveShared(account: clipHandledStickerCodeAccount)
-        let pendingCode = retrieveShared(account: clipPendingStickerCodeAccount)
-
-        defer { clearSharedGroup() }
+        defer { try? FileManager.default.removeItem(at: url) }
 
         // Never clobber an existing session — the mailbox only serves fresh installs
         if getAuthToken() != nil {
-            Logger.debug("🔐 KeychainService: clip mailbox found but a session exists — clearing mailbox")
-            return ClipAdoptionResult(adopted: false, handledStickerCode: nil, pendingStickerCode: pendingCode)
+            Logger.debug("🔐 KeychainService: clip mailbox found but a session exists — discarding mailbox")
+            return ClipAdoptionResult(adopted: false,
+                                      handledStickerCode: nil,
+                                      pendingStickerCode: payload.pendingStickerCode)
         }
 
-        save(clipToken, account: authTokenAccount)
-        if let refreshToken = retrieveShared(account: refreshTokenAccount) {
+        save(payload.authToken, account: authTokenAccount)
+        if let refreshToken = payload.refreshToken {
             save(refreshToken, account: refreshTokenAccount)
         }
-        if let expiration = retrieveShared(account: tokenExpirationAccount) {
+        if let expiration = payload.tokenExpiration {
             save(expiration, account: tokenExpirationAccount)
         }
-        if let userId = retrieveShared(account: userIdAccount) {
-            save(userId, account: userIdAccount)
-        }
-        if let provider = retrieveShared(account: authProviderAccount) {
-            save(provider, account: authProviderAccount)
-        }
+        save(payload.userId, account: userIdAccount)
+        save(payload.authProvider, account: authProviderAccount)
 
         Logger.debug("🔐 KeychainService: adopted App Clip credentials")
-        return ClipAdoptionResult(adopted: true, handledStickerCode: handledCode, pendingStickerCode: pendingCode)
-    }
-
-    private func retrieveShared(account: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: sharedAccessGroup,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    private func clearSharedGroup() {
-        let accounts = [authTokenAccount, refreshTokenAccount, tokenExpirationAccount,
-                        userIdAccount, authProviderAccount,
-                        clipHandledStickerCodeAccount, clipPendingStickerCodeAccount]
-        for account in accounts {
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: account,
-                kSecAttrAccessGroup as String: sharedAccessGroup
-            ]
-            SecItemDelete(query as CFDictionary)
-        }
+        return ClipAdoptionResult(adopted: true,
+                                  handledStickerCode: payload.handledStickerCode,
+                                  pendingStickerCode: payload.pendingStickerCode)
     }
 
     // MARK: - Private Helper Methods
