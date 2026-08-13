@@ -122,6 +122,15 @@
     background:var(--panel); border-left:3px solid var(--gold); border-radius:6px;
     padding:11px 13px; font-size:10.2px; line-height:1.5; font-style:italic; color:var(--body);
   }
+  .shot{
+    display:block; margin:0 auto; width:1.5in; border-radius:11px;
+    border:2.5px solid #fff; box-shadow:0 6px 18px rgba(21,23,28,.22);
+  }
+  .shot.sm{ width:1.32in; }
+  .bene-row{ display:flex; gap:9px; align-items:flex-start; }
+  .bene-row .tick{ margin-top:1px; flex:0 0 auto; }
+  .bene-row h3{ font-size:12px; color:var(--ink); margin-bottom:2px; }
+  .bene-row p{ font-size:9.8px; line-height:1.45; }
 </style>
 
 <!-- ============ SIDE 1 : OUTSIDE (flap | back | front) ============ -->
@@ -183,78 +192,75 @@
   <div class="fold top" style="left:3.6875in"></div><div class="fold bottom" style="left:3.6875in"></div>
   <div class="fold top" style="left:7.375in"></div><div class="fold bottom" style="left:7.375in"></div>
 
-  <!-- Inside left: what's in it for you -->
+  <!-- Inside left: why owners join -->
   <div class="panel p-std inside">
-    <div class="eyebrow" style="color:var(--violet); margin-bottom:10px;">What's in it for you</div>
-    <div class="benefit">
+    <div class="eyebrow" style="color:var(--violet);">Why owners join</div>
+    <img class="shot" src="_source/screen-specials-tab.jpg" alt="The Specials feed: nearby offers and announcements from local stores">
+    <div class="bene-row">
       <span class="tick">✓</span>
-      <h3 class="serif">New faces find you — free</h3>
-      <p>Your offers and announcements appear in the app's <b>Specials feed</b>, shown to people right around your neighborhood. Post happy hour, live music, a seasonal menu — no ad spend, no algorithm to fight.</p>
+      <div><h3 class="serif">Get discovered, free</h3>
+      <p>Your specials reach people nearby in the app's Specials feed.</p></div>
     </div>
-    <div class="benefit">
+    <div class="bene-row">
       <span class="tick">✓</span>
-      <h3 class="serif">Word of mouth you can see</h3>
-      <p>When a customer saves your store, their whole circle of friends sees it — and they earn points when a friend saves it too. Sharing you isn't a favor, it's part of the deal.</p>
+      <div><h3 class="serif">Word of mouth you can see</h3>
+      <p>Every save shows your store to a whole circle of friends.</p></div>
     </div>
-    <div class="benefit">
+    <div class="bene-row">
       <span class="tick">✓</span>
-      <h3 class="serif">Loyalty with zero overhead</h3>
-      <p>Two stickers replace punch cards and pricey platforms. No hardware, no POS integration, nothing to install. You set the points and the rewards — and change them anytime, right from your phone.</p>
+      <div><h3 class="serif">Loyalty with zero overhead</h3>
+      <p>Two stickers. No hardware, no POS, no contracts.</p></div>
     </div>
-    <div class="quote">Your customers keep their favorite spots in "circles" and share them with friends and family — a recommendation from someone they trust, not an ad.</div>
   </div>
 
   <!-- Inside middle: at the counter -->
   <div class="panel p-std inside">
-    <div class="eyebrow" style="color:var(--violet); margin-bottom:10px;">At the counter, it's this simple</div>
+    <div class="eyebrow" style="color:var(--violet);">At the counter</div>
     <div class="counter-step">
       <b>1 · They scan your window sticker</b>
-      <span>New customers join FavCircles and save your store — earning points before they've even ordered.</span>
+      <span>They join and save your store.</span>
     </div>
     <div class="counter-step">
       <b>2 · They scan the register sticker</b>
-      <span>Every purchase earns points on their own phone. <span class="pts">You choose how many</span> — up to 500 per visit.</span>
+      <span><span class="pts">You set the rate</span> — 25 to 500 points per purchase.</span>
     </div>
     <div class="counter-step">
       <b>3 · They redeem, you honor it</b>
-      <span>They tap Redeem on an offer you posted — "Free coffee, 300 pts" — and a single-use voucher appears on their screen, valid 5 minutes. They show it, you honor it. Nothing to install, nothing to reconcile.</span>
+      <span>A 5-minute voucher on their phone. Nothing to reconcile.</span>
     </div>
+    <img class="shot" src="_source/screen-store-points.jpg" alt="A customer's store points balance and rewards at a local shop">
     <div class="earn-table">
-      <div class="eyebrow" style="color:var(--violet); margin-bottom:7px;">How customers earn points</div>
-      <div class="row"><span>Join by scanning your window sticker</span><span class="val">100 pts</span></div>
-      <div class="row"><span>Save your store to one of their circles</span><span class="val">+50 pts</span></div>
-      <div class="row"><span>Scan the register sticker with a purchase</span><span class="val">+25–500 / visit</span></div>
-      <div class="row"><span>A friend saves your store from their share</span><span class="val">+50 pts</span></div>
+      <div class="eyebrow" style="color:var(--violet); margin-bottom:7px;">Customers earn</div>
+      <div class="row"><span>Join from your window sticker</span><span class="val">100 pts</span></div>
+      <div class="row"><span>Save your store</span><span class="val">+50</span></div>
+      <div class="row"><span>Purchase + register scan</span><span class="val">+25–500</span></div>
+      <div class="row"><span>A friend saves from their share</span><span class="val">+50</span></div>
     </div>
   </div>
 
-  <!-- Inside right: free vs Business + economics -->
+  <!-- Inside right: free vs Business -->
   <div class="panel p-flap inside">
-    <div class="eyebrow" style="color:var(--violet); margin-bottom:10px;">Start free, grow when you're ready</div>
+    <div class="eyebrow" style="color:var(--violet);">Start free, grow when you're ready</div>
+    <img class="shot sm" src="_source/screen-place-tommys.jpg" alt="A claimed venue page: photos, saves, follows, and contact chips">
     <div class="tiers">
       <div class="tier">
         <h4>Free for every store</h4>
         <ul>
-          <li>Claim your page and keep details accurate</li>
-          <li>Stats dashboard headline — saves, followers, visits, scans</li>
-          <li>The scan-to-save window QR</li>
+          <li>Claim and manage your page</li>
+          <li>Saves, followers, visits, scans</li>
+          <li>Scan-to-save window QR</li>
         </ul>
       </div>
       <div class="tier biz">
         <h4>FavCircles Business</h4>
         <ul>
-          <li>Offers customers redeem with points</li>
-          <li>Announcements to followers + the Specials feed</li>
-          <li>Your own points-per-purchase earn rate</li>
-          <li>Register QR card and single-use loyalty codes</li>
-          <li>Full monthly stats history</li>
+          <li>Offers redeemed with points</li>
+          <li>Announcements + Specials feed</li>
+          <li>Your earn rate + register QR</li>
+          <li>Loyalty codes + full stats</li>
         </ul>
       </div>
     </div>
-    <div class="benefit" style="margin-top:6px;">
-      <h3 class="serif">You set the economics</h3>
-      <p>You fund your own offers — an offer is your discount, honored at your counter. FavCircles never charges per point or per redemption. Your earn rate, your rewards, your prices — adjust anytime.</p>
-    </div>
-    <div class="quote">One Business subscription covers your physical store and your online store together.</div>
+    <p style="font-size:9.8px; line-height:1.5;"><b style="color:var(--ink);">You set the economics.</b> You fund your own offers; FavCircles never charges per point or redemption.</p>
   </div>
 </div>
