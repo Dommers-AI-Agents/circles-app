@@ -195,10 +195,25 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
                         PiggyBankDepositView.play(credit: response.piggyBank)
                     }
                 case .failure(let error):
-                    self?.showError("Failed to update reaction: \(error.localizedDescription)")
+                    // 404 means the activity was deleted after our feed loaded
+                    // it (actor removed the place or swiped the row away) —
+                    // the row is stale, so drop it instead of surfacing an error
+                    if case .httpError(404, _) = error {
+                        self?.removeStaleActivity(id: activity.id)
+                    } else {
+                        self?.showError("Failed to update reaction: \(error.localizedDescription)")
+                    }
                 }
             }
         }
+    }
+
+    /// Drops a feed row whose backing activity no longer exists server-side
+    func removeStaleActivity(id: String) {
+        guard activities.contains(where: { $0.id == id }) else { return }
+        activities.removeAll { $0.id == id }
+        regroupActivities()
+        activityTableView.reloadData()
     }
 
     /// Applies a reaction toggle to the in-memory feed and reloads the table

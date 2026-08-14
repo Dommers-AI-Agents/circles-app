@@ -501,16 +501,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     var searchResultsHeightConstraint: NSLayoutConstraint?
     
-    let locationStatusLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 12, weight: .medium)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.isHidden = true
-        return label
-    }()
-    
     let loadingIndicator: UIActivityIndicatorView = {
         let indicator = UIActivityIndicatorView(style: .large)
         indicator.color = Constants.Colors.primary
@@ -1990,7 +1980,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Add small loading indicator directly to map container for better UX
         mapContainerView.addSubview(mapLoadingIndicator)
-        contentView.addSubview(locationStatusLabel)
         // Avatar first so "who is being mapped" reads before the controls
         // The hamburger and Me chips are gone for good — the dropdown header
         // covers everything they did (connection switching, category
@@ -2198,9 +2187,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             placesListTableView.bottomAnchor.constraint(equalTo: mapContainerView.bottomAnchor),
 
             // Location status label
-            locationStatusLabel.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: 16),
-            locationStatusLabel.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor, constant: -16),
-            locationStatusLabel.heightAnchor.constraint(equalToConstant: 28),
             
             // Activity feed section
             activityFeedSection.topAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: Constants.Spacing.xsmall),
@@ -4209,15 +4195,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     placesWithLocation += 1
                 }
             }
+            // Unlocated places (unresolved imports) are deliberately NOT
+            // surfaced on the map — the import resolver works through them in
+            // the background and floating text over the map read as a glitch.
             let placesWithoutLocation = mapFilteredPlaces.count - placesWithLocation
-            
-            if placesWithoutLocation > 0 {
-                self.locationStatusLabel.text = "\(placesWithoutLocation) place\(placesWithoutLocation == 1 ? "" : "s") couldn't be located on the map"
-                self.locationStatusLabel.isHidden = false
-            } else {
-                self.locationStatusLabel.isHidden = true
-            }
-            
+
             Logger.debug("📍 Map Update Summary:")
             Logger.debug("   Total filtered places: \(mapFilteredPlaces.count)")
             Logger.debug("   Places with location: \(placesWithLocation)")

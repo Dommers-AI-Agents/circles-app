@@ -199,7 +199,7 @@ extension CirclesHomeViewController {
                 switch result {
                 case .success(let response):
                     let newActivities = response.activities
-                    
+
                     // Find activities that aren't already in our list
                     var addedActivities: [Activity] = []
                     for activity in newActivities {
@@ -207,15 +207,29 @@ extension CirclesHomeViewController {
                             addedActivities.append(activity)
                         }
                     }
-                    
-                    if !addedActivities.isEmpty {
+
+                    // Prune rows deleted server-side: anything we hold that's
+                    // newer than the oldest fetched activity should have been
+                    // in this newest-first fetch — if it wasn't, it's gone
+                    // (e.g. the actor swiped their activity away).
+                    var removedCount = 0
+                    if let oldestFetched = newActivities.last?.timestamp {
+                        let fetchedIds = Set(newActivities.map { $0.id })
+                        let before = self.activities.count
+                        self.activities.removeAll {
+                            $0.timestamp > oldestFetched && !fetchedIds.contains($0.id)
+                        }
+                        removedCount = before - self.activities.count
+                    }
+
+                    if !addedActivities.isEmpty || removedCount > 0 {
                         // Insert new activities at the beginning, then go
                         // through the grouped-feed pipeline — a direct
                         // insertRows would desync rows from feedItems
                         self.activities.insert(contentsOf: addedActivities, at: 0)
                         self.updateActivityFeed()
 
-                        Logger.info("Added \(addedActivities.count) new activities to feed via SSE")
+                        Logger.info("SSE feed refresh: +\(addedActivities.count) new, -\(removedCount) stale")
                     }
                     
                 case .failure(let error):

@@ -131,6 +131,10 @@ struct Place: Codable, Identifiable {
     var neighborhood: String? = nil   // e.g. Apple subLocality, often nil
     var country: String? = nil        // "Canada" — country-level region chips
     var countryCode: String? = nil    // ISO2, "CA"
+    /// Where this save came from: "google_maps" / "mapstr" / "swarm" for
+    /// imported rows, nil for places added in the app. Stamped at import time
+    /// by the backend; drives the origin flag and the My Places sub-filter.
+    var importSource: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -140,6 +144,19 @@ struct Place: Codable, Identifiable {
         case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew, circleName
         case followersCount, isFollowing
         case city, state, stateCode, neighborhood, country, countryCode
+        case importSource
+    }
+
+    /// Human-readable origin for imported saves ("Google import"), nil for
+    /// places added in the app.
+    var importOriginLabel: String? {
+        switch importSource {
+        case "google_maps": return "Google import"
+        case "mapstr": return "Mapstr import"
+        case "swarm": return "Swarm import"
+        case .some(let other): return "\(other) import"
+        case nil: return nil
+        }
     }
     
     init(from decoder: Decoder) throws {
@@ -248,6 +265,7 @@ struct Place: Codable, Identifiable {
         self.neighborhood = try container.decodeIfPresent(String.self, forKey: .neighborhood)
         self.country = try container.decodeIfPresent(String.self, forKey: .country)
         self.countryCode = try container.decodeIfPresent(String.self, forKey: .countryCode)
+        self.importSource = try container.decodeIfPresent(String.self, forKey: .importSource)
     }
     
     // Manual initializer for creating Place instances in code

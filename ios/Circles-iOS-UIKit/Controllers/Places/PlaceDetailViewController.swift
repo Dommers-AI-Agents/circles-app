@@ -1815,6 +1815,16 @@ class PlaceDetailViewController: BaseViewController {
             attributedString.append(text)
         }
         
+        // Origin flag for imported saves: "Added by you · Google import" —
+        // tells you whether this pin came from an import or an in-app add
+        if let origin = place.importOriginLabel {
+            let originText = NSAttributedString(string: " · \(origin)", attributes: [
+                .font: UIFont.italicSystemFont(ofSize: Constants.FontSize.small),
+                .foregroundColor: Constants.Colors.secondaryLabel
+            ])
+            attributedString.append(originText)
+        }
+
         // Merge the saver count into the same row: "Added by X · saved by N people"
         if savedByCount > 1 {
             let saverText = NSAttributedString(string: " · saved by \(savedByCount) people", attributes: [
@@ -3526,7 +3536,14 @@ extension PlaceDetailViewController: MediaCarouselViewDelegate {
             photoId: photoId,
             liked: liked
         ) { [weak self] result in
-            if case .failure(let error) = result {
+            switch result {
+            case .success(let response):
+                // First like on someone else's photo earns a nickel — the
+                // fractional deposit plays the leprechaun (no-op otherwise)
+                if liked {
+                    PiggyBankDepositView.play(credit: response.piggyBank)
+                }
+            case .failure(let error):
                 Logger.debug("❌ [PlaceDetailViewController] Photo like failed, re-syncing: \(error)")
                 DispatchQueue.main.async {
                     self?.loadGlobalPlaceData()

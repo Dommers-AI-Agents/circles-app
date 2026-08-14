@@ -28,11 +28,10 @@ enum RegionGrouper {
     /// right now" — within an outing, not within a road trip.
     static let nearMeRadiusMeters: CLLocationDistance = 50_000
 
-    /// A country needs this many places for its own chip; below it, places
-    /// fold into one "Other countries" chip. (The seam where a smarter —
-    /// possibly AI-chosen — grouping scheme can slot in later: this function
-    /// is pure places → groups.)
-    static let countryChipMinPlaces = 3
+    /// Countries follow the same rule as states: every country with places
+    /// gets its own chip (flag + count). "Other countries" only exists as a
+    /// safety net if this is ever raised above 1 again.
+    static let countryChipMinPlaces = 1
 
     static func groups(for places: [Place], origin: CLLocation?) -> [RegionGroup] {
         var byState: [String: [Place]] = [:]     // stateCode -> places (US only)

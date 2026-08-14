@@ -565,7 +565,7 @@ extension GlobalPlaceService {
         placeId: String,
         photoId: String,
         liked: Bool,
-        completion: @escaping (Result<Int?, Error>) -> Void
+        completion: @escaping (Result<PhotoLikeResponse, Error>) -> Void
     ) {
         let endpoint = "places/global/\(placeId)/media/\(photoId)/like"
 
@@ -580,7 +580,7 @@ extension GlobalPlaceService {
             switch result {
             case .success(let response):
                 if response.success {
-                    completion(.success(response.likesCount))
+                    completion(.success(response))
                 } else {
                     completion(.failure(APIError.serverError))
                 }
@@ -596,6 +596,9 @@ extension GlobalPlaceService {
 struct PhotoLikeResponse: Codable {
     let success: Bool
     let likesCount: Int?
+    // First like on someone else's photo earns a nickel — rides the response
+    // so the deposit animation can play (nil on unlike/relike)
+    let piggyBank: PiggyBankCredit?
 }
 
 // MARK: - Standard Response Model
