@@ -113,7 +113,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// through the exact same filter the pins use — the chips live in this
     /// controller, and a list that ignores them contradicts the map beside it.
     func applyChipFilters(_ list: [Place]) -> [Place] {
-        var result = list
+        var result = applyOriginFilter(list)
         if selectedChipGroup != .all {
             result = result.filter { selectedChipGroup.matches($0.category.rawValue) }
         }
@@ -137,6 +137,31 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private var selectedChipGroup: PlaceCategoryGroup = .all
     private var chipRegionGroups: [RegionGroup] = []
     private var selectedChipRegionId: String?
+
+    /// Origin sub-filter under My Places: nil = all my places, "in_app" =
+    /// added in the app, otherwise an importSource value ("google_maps").
+    /// Only meaningful while the connection scope is My Places — any other
+    /// scope clears it. Users who never imported never see the option.
+    private var selectedImportOrigin: String?
+
+    /// Applies the My Places origin sub-filter (no-op when none selected).
+    private func applyOriginFilter(_ list: [Place]) -> [Place] {
+        guard let origin = selectedImportOrigin else { return list }
+        return list.filter { origin == "in_app" ? $0.importSource == nil : $0.importSource == origin }
+    }
+
+    /// Display name for an origin row: the source itself ("FavCircles",
+    /// "Google Places") — the menu marks these as sub-rows of My Places, so
+    /// the label doesn't restate it.
+    private static func originTitle(_ origin: String) -> String {
+        switch origin {
+        case "in_app": return "FavCircles"
+        case "google_maps": return "Google Places"
+        case "mapstr": return "Mapstr"
+        case "swarm": return "Swarm"
+        default: return origin.capitalized
+        }
+    }
 
     /// Zooms to enclose exactly the filtered places (tap NJ → the camera frames
     /// New Jersey). Computed from the places themselves rather than the
@@ -249,7 +274,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         let connectionTitle: String
         switch selectedConnectionId {
         case nil: connectionTitle = "All Connections"
-        case "my_places_only": connectionTitle = "My Places"
+        case "my_places_only":
+            if let origin = selectedImportOrigin {
+                connectionTitle = "My Places › \(Self.originTitle(origin))"
+            } else {
+                connectionTitle = "My Places"
+            }
         default: connectionTitle = selectedConnectionUser?.displayName ?? "Connection"
         }
         setDropdownTitle(connectionFilterButton, connectionTitle)
@@ -294,15 +324,53 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         var actions: [UIAction] = [
             UIAction(title: "My Places",
                      image: myAvatar,
-                     state: selectedConnectionId == "my_places_only" ? .on : .off) { [weak self] _ in
+                     state: selectedConnectionId == "my_places_only" && selectedImportOrigin == nil ? .on : .off) { [weak self] _ in
+                self?.selectedImportOrigin = nil
                 self?.selectConnectionFromHeader(id: "my_places_only", user: nil)
-            },
+            }
+        ]
+
+        // Origin sub-rows under My Places — only for users whose own places
+        // include imports. Splits your pins into in-app adds vs each import
+        // source ("was this from Google or added on FavCircles?").
+        let currentUserIdForOrigins = AuthService.shared.getUserId() ?? ""
+        let mySources = Set(places
+            .filter { IDNormalizer.isSameUser($0.addedBy, currentUserIdForOrigins) }
+            .compactMap { $0.importSource })
+        if !mySources.isEmpty {
+            var origins = ["in_app"] + mySources.sorted()
+            // Keep the active selection pickable even if its places vanished
+            if let active = selectedImportOrigin, !origins.contains(active) { origins.append(active) }
+            for origin in origins {
+                let icon = UIImage(systemName: origin == "in_app" ? "plus.app" : "square.and.arrow.down")?
+                    .withTintColor(Constants.Colors.secondaryLabel, renderingMode: .alwaysOriginal)
+                actions.append(UIAction(
+                    title: "›  \(Self.originTitle(origin))",
+                    image: icon,
+                    state: selectedConnectionId == "my_places_only" && selectedImportOrigin == origin ? .on : .off
+                ) { [weak self] _ in
+                    guard let self = self else { return }
+                    self.selectedImportOrigin = origin
+                    if self.selectedConnectionId == "my_places_only" {
+                        self.chipFiltersChanged()
+                    } else {
+                        self.selectConnectionFromHeader(id: "my_places_only", user: nil)
+                        // Embedded: the scope change round-trips through the
+                        // home controller; re-run the chip pipeline so the
+                        // origin cut applies to whatever it hands back
+                        self.chipFiltersChanged()
+                    }
+                })
+            }
+        }
+
+        actions.append(
             UIAction(title: "All Connections",
                      image: allConnectionsIcon,
                      state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
                 self?.selectConnectionFromHeader(id: nil, user: nil)
             }
-        ]
+        )
         let currentUserId = AuthService.shared.getUserId() ?? ""
         for connection in HorizontalUserListView.rankedConnections(connections) {
             guard let user = connection.connectedUser else { continue }
@@ -375,7 +443,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Faceted: the options come from the set filtered by the OTHER active
         // filters (connection + region), so "Dan · Rhode Island" offers only
         // the categories Dan actually has in Rhode Island.
-        var facetBase = connectionScopedPlaces()
+        var facetBase = applyOriginFilter(connectionScopedPlaces())
         if let regionId = selectedChipRegionId,
            let region = chipRegionGroups.first(where: { $0.id == regionId }) {
             facetBase = facetBase.filter { region.contains($0) }
@@ -427,7 +495,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // shows "Rhode Island (2)" and no Arizona row at all. Selecting a
         // region still stores the id, which applyFilter resolves against the
         // full chipRegionGroups (same ids — same grouper).
-        var facetBase = connectionScopedPlaces()
+        var facetBase = applyOriginFilter(connectionScopedPlaces())
         if selectedChipGroup != .all {
             facetBase = facetBase.filter { selectedChipGroup.matches($0.category.rawValue) }
         }
@@ -537,6 +605,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     func setConnectionSelection(id: String?, user: User?) {
         selectedConnectionId = id
         selectedConnectionUser = user
+        // The origin sub-filter only makes sense under My Places
+        if id != "my_places_only" { selectedImportOrigin = nil }
         updateFilterHeaderTitles()
     }
 
@@ -2049,6 +2119,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         if connectionId == nil || connectionId == "my_places_only" {
             selectedConnectionUser = nil
         }
+        // The origin sub-filter only makes sense under My Places
+        if connectionId != "my_places_only" { selectedImportOrigin = nil }
         updateConnectionAvatarChip()
         updateMyPlacesChipAppearance()
         // The dropdown header narrates this selection too — every path that
