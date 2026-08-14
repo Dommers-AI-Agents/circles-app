@@ -37,6 +37,14 @@ router.get('/connect/:userId', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/app-redirect.html'));
 });
 
+// Place import share link (Help → Importing Your Places). Universal Link
+// opens the app's import screen when installed; everyone else lands on the
+// website's import how-to.
+router.get('/import', (req, res) => {
+  console.log('📱 App redirect: Import link accessed (no app) — sending to web guide');
+  res.redirect('https://favcircles.com/faq.html#import-video');
+});
+
 // Health check for app redirect routes
 router.get('/health', (req, res) => {
   res.json({

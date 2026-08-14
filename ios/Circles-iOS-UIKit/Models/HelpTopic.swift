@@ -17,6 +17,10 @@ struct HelpTopic {
     // Store owners' AI-assistant topic: shows an "Email me the setup guide"
     // button (setup happens on their computer, so a durable email wins)
     var showsAiSetupEmail: Bool = false
+    // When set, the topic screen shows a nav-bar share button that shares
+    // this link (universal link: opens the app when installed, web otherwise)
+    var shareURL: String? = nil
+    var shareText: String? = nil
     
     enum HelpCategory: String, CaseIterable {
         case gettingStarted = "Getting Started"
@@ -273,6 +277,50 @@ class HelpContentProvider {
                 category: .places,
                 relatedTopics: ["search-places", "place-notes", "map-discovery"],
                 videoTimestamp: 240
+            ),
+            HelpTopic(
+                id: "import-places",
+                title: "Importing Your Places",
+                subtitle: "Bring your saves from Google, Mapstr & Swarm",
+                content: """
+                Years of saved places in another app? Bring them all to FavCircles in a couple of minutes. Each import lands in its own circle, visible to your network, and afterward you can filter your home map by source (My Places › Google Places, etc.).
+
+                **Where to find it:**
+                Me tab → Settings → Import Places
+
+                **Google Maps:**
+                1. Go to **takeout.google.com** in your browser and sign in
+                2. Tap "Deselect all", then check **Saved** (your lists like Favorites and Want to go)
+                3. Tap "Next step" → "Create export" and wait for Google's email
+                4. Download the export on your phone
+                5. In Circles: Settings → Import Places → **Google Maps**, then pick the downloaded file
+
+                **Mapstr:**
+                1. In Mapstr: Profile → Settings → **Export my places**
+                2. Mapstr emails you an export file
+                3. Open that email on your phone and share the attachment to Circles — or pick it from Settings → Import Places → **Mapstr**
+
+                **Swarm:**
+                1. Settings → Import Places → **Swarm**
+                2. Sign in with your Foursquare account when prompted
+                3. If the connection isn't available yet, check back soon — Swarm import is still rolling out
+
+                **Good to know:**
+                • You can review and uncheck places before anything is saved
+                • Places with map pins appear on your map right away; the rest finish resolving in the background
+                • Imports match up with places already on FavCircles, so likes and comments carry over
+                • Use the map's My Places filter to see each import source on its own
+
+                **Know someone drowning in saved places?**
+                Tap the share button at the top right — your friend gets a link that opens the import screen if they have the app, or the web guide if they don't.
+                """,
+                category: .places,
+                relatedTopics: ["add-place", "create-circle"],
+                videoTimestamp: nil,
+                externalURL: "https://favcircles.com/faq.html#import-video",
+                externalURLTitle: "▶ Watch the import tutorial",
+                shareURL: "https://api.favcircles.com/app/import",
+                shareText: "Bring all your saved places into FavCircles — Google Maps, Mapstr, or Swarm. This link opens the importer (or the how-to guide):"
             ),
             HelpTopic(
                 id: "search-places",

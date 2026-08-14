@@ -141,6 +141,32 @@ class HelpTopicViewController: BaseViewController {
         super.viewDidLoad()
         setupUI()
         configureContent()
+
+        // Topics with a shareable link get a nav-bar share button
+        if topic.shareURL != nil {
+            navigationItem.rightBarButtonItem = UIBarButtonItem(
+                barButtonSystemItem: .action,
+                target: self,
+                action: #selector(shareTopicTapped)
+            )
+        }
+    }
+
+    /// Shares the topic's universal link (opens the app when the receiver has
+    /// it, the website guide when they don't). The URL rides as its own item
+    /// so Messages renders a tappable rich-link preview.
+    @objc private func shareTopicTapped() {
+        guard let urlString = topic.shareURL, let url = URL(string: urlString) else { return }
+        var items: [Any] = []
+        if let text = topic.shareText {
+            items.append(text)
+        }
+        items.append(url)
+        let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let popover = activityVC.popoverPresentationController {
+            popover.barButtonItem = navigationItem.rightBarButtonItem
+        }
+        present(activityVC, animated: true)
     }
     
     // MARK: - Setup

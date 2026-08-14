@@ -275,6 +275,27 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
 
+    /// Universal link https://api.favcircles.com/app/import — opens the place
+    /// import flow directly (same gate and presentation as opening an export
+    /// file with the app).
+    private func presentImportFlow() {
+        guard let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
+        var presenter: UIViewController = tabBarController
+        while let presented = presenter.presentedViewController {
+            presenter = presented
+        }
+
+        if !SubscriptionManager.shared.isSubscribed {
+            SubscriptionManager.shared.showPaywall(from: presenter, reason: .importFeature)
+            return
+        }
+
+        let importVC = ImportSourceSelectionViewController()
+        let navController = UINavigationController(rootViewController: importVC)
+        navController.modalPresentationStyle = .fullScreen
+        presenter.present(navController, animated: true)
+    }
+
     /// Shows the five-page welcome carousel once right after signup, then
     /// continues the onboarding chain (notifications → tutorial).
     private func showWelcomeCarousel() {
@@ -550,6 +571,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     stashInviteReferralCode(from: url)
                     handleConnectionInvite(from: userId)
                 }
+            case "import":
+                // Shared from Help → Importing Your Places; receivers without
+                // the app get the website guide via the backend redirect
+                presentImportFlow()
             default:
                 Logger.debug("📱 SceneDelegate: Unknown app path: \(appPath)")
             }
