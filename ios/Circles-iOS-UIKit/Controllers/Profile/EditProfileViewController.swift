@@ -139,10 +139,15 @@ class EditProfileViewController: BaseViewController {
         return label
     }()
     
+    // Read-only: the city/state is derived from the zipcode on save, so the
+    // two can never disagree (typing one thing here and another zip below was
+    // how profiles ended up impossible, like a NJ zip with a NC city)
     private let locationTextField: UITextField = {
         let textField = UITextField()
-        textField.placeholder = "e.g. New York, NY"
+        textField.placeholder = "Set automatically from your zipcode"
         textField.borderStyle = .roundedRect
+        textField.isEnabled = false
+        textField.textColor = Constants.Colors.secondaryLabel
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
@@ -167,12 +172,33 @@ class EditProfileViewController: BaseViewController {
     
     private let zipcodeHelpLabel: UILabel = {
         let label = UILabel()
-        label.text = "Your zipcode helps us show relevant places nearby"
+        label.text = "Your zipcode sets your location above and helps us show relevant places nearby"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
         label.textColor = Constants.Colors.secondaryLabel
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
+    }()
+
+    // Privacy: whether other people see this user's city on their profile and
+    // on people cards. Saved immediately on toggle (it's a preference, not a
+    // form field).
+    private let showLocationLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Show my city to others"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .medium)
+        label.textColor = Constants.Colors.label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private lazy var showLocationSwitch: UISwitch = {
+        let toggle = UISwitch()
+        toggle.isOn = true
+        toggle.onTintColor = Constants.Colors.primary
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        toggle.addTarget(self, action: #selector(showLocationToggled), for: .valueChanged)
+        return toggle
     }()
     
     private let bioLabel: UILabel = {
@@ -247,6 +273,8 @@ class EditProfileViewController: BaseViewController {
         contentView.addSubview(zipcodeLabel)
         contentView.addSubview(zipcodeTextField)
         contentView.addSubview(zipcodeHelpLabel)
+        contentView.addSubview(showLocationLabel)
+        contentView.addSubview(showLocationSwitch)
         contentView.addSubview(bioLabel)
         contentView.addSubview(bioTextView)
         contentView.addSubview(saveButton)
@@ -354,8 +382,15 @@ class EditProfileViewController: BaseViewController {
             zipcodeHelpLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             zipcodeHelpLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
+            // Show-my-city preference row
+            showLocationSwitch.centerYAnchor.constraint(equalTo: showLocationLabel.centerYAnchor),
+            showLocationSwitch.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            showLocationLabel.topAnchor.constraint(equalTo: zipcodeHelpLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            showLocationLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            showLocationLabel.trailingAnchor.constraint(lessThanOrEqualTo: showLocationSwitch.leadingAnchor, constant: -Constants.Spacing.small),
+
             // Bio label
-            bioLabel.topAnchor.constraint(equalTo: zipcodeHelpLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            bioLabel.topAnchor.constraint(equalTo: showLocationLabel.bottomAnchor, constant: Constants.Spacing.medium),
             bioLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Bio text view
@@ -419,6 +454,25 @@ class EditProfileViewController: BaseViewController {
         locationTextField.text = user.location ?? ""
         zipcodeTextField.text = user.zipcode ?? ""
         bioTextView.text = user.bio ?? ""
+        showLocationSwitch.isOn = user.preferences?.showLocation ?? true
+    }
+
+    /// Saved immediately — flipping it back on restores visibility without
+    /// touching the rest of the form
+    @objc private func showLocationToggled() {
+        let isOn = showLocationSwitch.isOn
+        UserService.shared.updateUserPreferences(showLocation: isOn) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    Logger.debug("✅ showLocation preference saved: \(isOn)")
+                case .failure(let error):
+                    // Revert the switch so the UI never lies about what's saved
+                    self?.showLocationSwitch.setOn(!isOn, animated: true)
+                    self?.showError(error)
+                }
+            }
+        }
     }
     
     // MARK: - Actions
@@ -456,10 +510,9 @@ class EditProfileViewController: BaseViewController {
         updates["lastName"] = lastNameTextField.text ?? ""
         updates["phoneNumber"] = phoneNumberTextField.text ?? ""
         
-        if let location = locationTextField.text, !location.isEmpty {
-            updates["location"] = location
-        }
-        
+        // location is deliberately NOT sent: the server derives it from the
+        // zipcode, which is the single source of truth
+
         // Validate and include zipcode
         if let zipcode = zipcodeTextField.text, !zipcode.isEmpty {
             // Validate US zipcode format (5 digits)

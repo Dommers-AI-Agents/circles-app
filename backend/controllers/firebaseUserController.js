@@ -83,13 +83,18 @@ exports.getUser = async (req, res, next) => {
 
     // If requesting another user's profile, limit returned data
     const isOwnProfile = userId === req.user.uid;
-    
+
+    // "Show my city" preference: hide the location from everyone but the
+    // owner when switched off (default is shown)
+    const locationHidden = !isOwnProfile
+      && user.preferences && user.preferences.showLocation === false;
+
     const profileData = {
       _id: normalizeUserId(user.id), // Always return normalized ID
       displayName: user.displayName,
       profilePicture: user.profilePicture,
       bio: user.bio,
-      location: user.location,
+      location: locationHidden ? null : user.location,
       createdAt: user.createdAt,
       followersCount: user.followersCount || 0,
       followingCount: user.followingCount || 0
@@ -233,11 +238,36 @@ exports.updateUser = async (req, res, next) => {
     if (location !== undefined) updateData.location = location;
     if (zipcode !== undefined) updateData.zipcode = zipcode;
 
+    // The zipcode is the source of truth for the profile location: whenever a
+    // valid one is saved, derive "City, ST" and write it — overriding any
+    // free-text location in the same request. Registration already did this;
+    // profile edits and the silent zipcode capture didn't, which is how
+    // profiles ended up with a zipcode and no city, or a zipcode from one
+    // state and a city from another.
+    const zipTrimmed = typeof zipcode === 'string' ? zipcode.trim() : '';
+    if (/^\d{5}$/.test(zipTrimmed)) {
+      try {
+        const { geocodeZipcode } = require('../services/zipcodeService');
+        const derived = await geocodeZipcode(zipTrimmed);
+        if (derived && derived.city && derived.state) {
+          updateData.location = `${derived.city}, ${derived.state}`;
+          console.log(`📍 Derived location from zipcode ${zipTrimmed}: ${updateData.location}`);
+        }
+      } catch (zipError) {
+        console.warn('⚠️ Zipcode→location derivation failed:', zipError.message);
+      }
+    }
+
     // App preferences: allowlisted keys only, written as dot-path updates so a
     // partial preference write never clobbers sibling preference keys
     if (preferences && typeof preferences === 'object' && !Array.isArray(preferences)) {
       if (preferences.defaultHomeView !== undefined && typeof preferences.defaultHomeView === 'string') {
         updateData['preferences.defaultHomeView'] = preferences.defaultHomeView;
+      }
+      // Privacy: whether other people see this user's city on their profile
+      // and on people cards (default true when absent)
+      if (typeof preferences.showLocation === 'boolean') {
+        updateData['preferences.showLocation'] = preferences.showLocation;
       }
     }
     if (profilePicture !== undefined) {
@@ -1907,7 +1937,9 @@ exports.getUserFollowing = async (req, res, next) => {
             circlesCount: counts.circlesCount,
             // Carried so decorateUserCards can use the cached assumption
             // without re-reading the user doc
-            assumedLocation: followingUser.assumedLocation || null
+            assumedLocation: followingUser.assumedLocation || null,
+            // Carried so decorateUserCards can honor the show-my-city pref
+            preferences: followingUser.preferences || null
           });
         });
       }

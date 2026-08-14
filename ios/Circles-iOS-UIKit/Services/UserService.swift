@@ -196,12 +196,15 @@ class UserService {
         }
     }
     
-    func updateUserPreferences(defaultHomeView: String?, completion: @escaping (Result<User, Error>) -> Void) {
-        var body: [String: Any] = ["preferences": [:]]
-        
+    func updateUserPreferences(defaultHomeView: String? = nil, showLocation: Bool? = nil, completion: @escaping (Result<User, Error>) -> Void) {
+        var prefs: [String: Any] = [:]
         if let defaultHomeView = defaultHomeView {
-            body["preferences"] = ["defaultHomeView": defaultHomeView]
+            prefs["defaultHomeView"] = defaultHomeView
         }
+        if let showLocation = showLocation {
+            prefs["showLocation"] = showLocation
+        }
+        let body: [String: Any] = ["preferences": prefs]
         
         APIService.shared.request(
             endpoint: "users/me",

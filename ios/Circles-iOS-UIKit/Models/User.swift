@@ -2,6 +2,12 @@ import Foundation
 
 struct UserPreferences: Codable {
     let defaultHomeView: String? // "list" or "map"
+    let showLocation: Bool?      // others see my city on profile/cards (default true)
+
+    init(defaultHomeView: String? = nil, showLocation: Bool? = nil) {
+        self.defaultHomeView = defaultHomeView
+        self.showLocation = showLocation
+    }
 }
 
 struct NotificationPreferences: Codable {

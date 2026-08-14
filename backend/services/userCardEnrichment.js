@@ -113,6 +113,12 @@ const decorateUserCards = async (users, { activityReason = true } = {}) => {
         && new Date(u.lastActive).getTime() > weekAgo) {
       u.suggestionReason = '⚡ Active this week';
     }
+    // "Show my city" preference: strip the location line entirely — no
+    // profile location, no places-derived assumption
+    if (u.preferences && u.preferences.showLocation === false) {
+      u.location = null;
+      return;
+    }
     if (u.location) return;
     const assumed = await getAssumedLocation(u.id, u);
     if (assumed && assumed.city) u.location = assumed.city;
