@@ -35,6 +35,7 @@ module.exports = {
     MOMENT_POSTED: 2,
     PROFILE_COMPLETED: 5,
     PLACE_LIKED: 0.05,          // a nickel
+    PHOTO_LIKED: 0.05,          // a nickel — hearting a photo in the carousel
     PLACE_COMMENT: 1,           // real feedback — full coin, capped below
     USER_FOLLOWED: 0.10,        // a dime
     ACTIVITY_REACTION: 0.05,
@@ -57,6 +58,7 @@ module.exports = {
     // Fractional actions: generous counts, tiny value — 40 likes/day is
     // still only 2 coins
     PLACE_LIKED: 40,
+    PHOTO_LIKED: 40,
     PLACE_COMMENT: 10,
     USER_FOLLOWED: 20,
     ACTIVITY_REACTION: 40,

@@ -287,6 +287,19 @@ class PiggyBankService {
             ? { valid: true }
             : { valid: false, reason: 'like_removed' };
         }
+        case 'photo_liked': {
+          // Like lives inside the photo's entry in photos[] on the canonical
+          // globalPlaces record; an unlike (or photo removal) inside the
+          // window reverses the earn.
+          if (!ref.globalPlaceId || !ref.photoId) return { valid: false, reason: 'missing_photo_ref' };
+          const doc = await this.db.collection('globalPlaces').doc(ref.globalPlaceId).get();
+          if (!doc.exists) return { valid: false, reason: 'place_deleted' };
+          const photo = (doc.data().photos || []).find(p => p.id === ref.photoId);
+          if (!photo) return { valid: false, reason: 'photo_removed' };
+          return (photo.likes || []).includes(entry.userId)
+            ? { valid: true }
+            : { valid: false, reason: 'like_removed' };
+        }
         case 'place_comment': {
           if (!ref.commentId) return { valid: false, reason: 'missing_comment_ref' };
           const doc = await this.db.collection(COLLECTIONS.PLACE_COMMENTS).doc(ref.commentId).get();

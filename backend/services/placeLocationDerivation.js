@@ -79,6 +79,36 @@ function parseCountry(address) {
   return code ? { country: COUNTRIES[code], countryCode: code } : null;
 }
 
+// Offline coordinate → country (point-in-polygon over world borders — no
+// geocoding API). Imported addresses often end at a postal code ("…, Madrid,
+// 28004") with no country name for parseCountry to find; the pin itself still
+// knows. Accepts the GeoJSON {coordinates:[lng,lat]} shape place docs use and
+// a {latitude, longitude} object. Null (ocean pins, missing coords) just
+// means unstamped, same as before.
+function countryFromCoordinates(location) {
+  let lng = null, lat = null;
+  if (location && Array.isArray(location.coordinates) && location.coordinates.length >= 2) {
+    [lng, lat] = location.coordinates;
+  } else if (location && typeof location.latitude === 'number' && typeof location.longitude === 'number') {
+    lng = location.longitude;
+    lat = location.latitude;
+  }
+  if (typeof lng !== 'number' || typeof lat !== 'number') return null;
+  if (lng === 0 && lat === 0) return null; // unresolved imports park at null island
+  try {
+    const alpha3 = require('which-country')([lng, lat]);
+    if (!alpha3) return null;
+    const rec = require('iso-3166-1').whereAlpha3(alpha3);
+    if (!rec) return null;
+    // Prefer our display names ("United Kingdom") over the ISO registry's
+    // official long forms ("United Kingdom of Great Britain and…").
+    return { country: COUNTRIES[rec.alpha2] || rec.country, countryCode: rec.alpha2 };
+  } catch (error) {
+    console.warn('countryFromCoordinates failed:', error.message);
+    return null;
+  }
+}
+
 const UNPLACED = Object.freeze({
   state: null, stateCode: null, city: null, cityKey: null,
   neighborhood: null, source: null, placed: false,
@@ -142,14 +172,15 @@ function titleCaseCity(city) {
 // signals: { address, location?, neighborhood? }
 // Returns { state, stateCode, city, cityKey, neighborhood, source, placed }.
 function deriveLocation(signals = {}) {
-  const { address, neighborhood } = signals;
+  const { address, location, neighborhood } = signals;
   const { stateCode, city: rawCity } = parseStateAndCity(address);
 
   if (!stateCode) {
     // Couldn't resolve a US state. Still worth naming the country ("…, SK
     // S7K 2C7, Canada") — the country lens groups these; marked Unplaced only
-    // for the US-state lens.
-    const abroad = parseCountry(address);
+    // for the US-state lens. Address tail first (free and exact), then the
+    // pin's coordinates (offline borders lookup).
+    const abroad = parseCountry(address) || countryFromCoordinates(location);
     return {
       ...UNPLACED,
       neighborhood: neighborhood || null,
@@ -175,4 +206,4 @@ function deriveLocation(signals = {}) {
   };
 }
 
-module.exports = { deriveLocation, US_STATES, COUNTRIES, cleanAddress, parseStateAndCity, parseCountry };
+module.exports = { deriveLocation, US_STATES, COUNTRIES, cleanAddress, parseStateAndCity, parseCountry, countryFromCoordinates };

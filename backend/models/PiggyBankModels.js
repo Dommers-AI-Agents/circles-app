@@ -32,7 +32,9 @@ const PIGGY_EVENT_TYPES = [
   'moment_liked',
   'moment_like_received',
   // 2026.08-c: brand redemption codes
-  'brand_code_redeemed'
+  'brand_code_redeemed',
+  // 2026.08-d: carousel photo hearts
+  'photo_liked'
 ];
 
 // Earn statuses and claim statuses are disjoint vocabularies on the same
@@ -129,6 +131,12 @@ function derivePiggyDedupKey(eventType, parts = {}) {
       const venue = parts.globalPlaceId || parts.placeId;
       if (!parts.userId || !venue) return null;
       return `place_liked:${s(parts.userId)}:${s(venue)}`;
+    }
+    case 'photo_liked': {
+      // One per photo ever — unlike/relike can't re-mint. Photo ids are only
+      // unique within their venue, so the venue leads the key.
+      if (!parts.userId || !parts.globalPlaceId || !parts.photoId) return null;
+      return `photo_liked:${s(parts.userId)}:${s(parts.globalPlaceId)}:${s(parts.photoId)}`;
     }
     case 'place_comment': {
       // First comment per venue — thread-padding pays nothing.

@@ -1035,13 +1035,27 @@ exports.likeGlobalPlaceUpload = async (req, res, next) => {
         photo.uploadedBy
       );
     }
-    
+
+    // Piggy bank: a nickel for hearting a photo — not your own uploads, one
+    // per photo ever (dedup key), unlike/relike can't re-mint. Awaited so the
+    // response can carry the credit and the app can play the leprechaun —
+    // credit() never throws.
+    let piggyBank = null;
+    if (photo.uploadedBy !== userId) {
+      piggyBank = await require('../services/piggyBankService').credit({
+        userId,
+        eventType: 'photo_liked',
+        sourceRef: { globalPlaceId: resolvedId, photoId }
+      });
+    }
+
     console.log(`✅ [GlobalPlace API] Successfully liked photo ${photoId}`);
-    
+
     res.status(200).json({
       success: true,
       message: 'Photo liked successfully',
-      likesCount: updatedLikes.length
+      likesCount: updatedLikes.length,
+      piggyBank
     });
     
   } catch (error) {
