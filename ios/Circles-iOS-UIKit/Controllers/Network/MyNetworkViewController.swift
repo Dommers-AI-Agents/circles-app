@@ -61,6 +61,42 @@ class MyNetworkViewController: BaseViewController {
     }()
 
     
+    // Incoming-request banner: pending requests used to be visible ONLY on the
+    // Requests segment, so a new user landing on Popular never saw that Wes and
+    // Brittany were already waiting for them. This strip shows on every
+    // segment except Requests, with a one-tap Accept.
+    private let incomingRequestBanner: UIControl = {
+        let view = UIControl()
+        view.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.12)
+        view.layer.cornerRadius = 12
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+    private let incomingRequestLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 14, weight: .semibold)
+        label.textColor = Constants.Colors.primary
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.8
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    private lazy var incomingRequestAcceptButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Accept", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .bold)
+        button.backgroundColor = Constants.Colors.primary
+        button.layer.cornerRadius = 14
+        button.contentEdgeInsets = UIEdgeInsets(top: 5, left: 14, bottom: 5, right: 14)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(acceptBannerRequestTapped), for: .touchUpInside)
+        return button
+    }()
+    private var bannerHeightConstraint: NSLayoutConstraint?
+    private var containerTopConstraint: NSLayoutConstraint?
+
     private let containerView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -208,13 +244,48 @@ class MyNetworkViewController: BaseViewController {
             action: #selector(shareInviteTapped)
         )
         addConnectionButton.accessibilityLabel = "Invite people"
-        
-        navigationItem.rightBarButtonItem = addConnectionButton
+
+        // In-person connect: your QR is one tap away — the other person scans
+        // it with their camera and the connect link does the rest. (It existed
+        // only inside Share Profile before, where nobody standing next to you
+        // could find it.)
+        let qrButton = UIBarButtonItem(
+            image: UIImage(systemName: "qrcode"),
+            style: .plain,
+            target: self,
+            action: #selector(showMyQRCodeTapped)
+        )
+        qrButton.accessibilityLabel = "Show my connect QR code"
+
+        navigationItem.rightBarButtonItems = [addConnectionButton, qrButton]
         
         view.addSubview(searchBar)
         view.addSubview(segmentedControl)
+        view.addSubview(incomingRequestBanner)
+        incomingRequestBanner.addSubview(incomingRequestLabel)
+        incomingRequestBanner.addSubview(incomingRequestAcceptButton)
+        incomingRequestBanner.addTarget(self, action: #selector(showRequestsSegment), for: .touchUpInside)
         view.addSubview(containerView)
         view.addSubview(requestsBadgeLabel)
+
+        let bannerHeight = incomingRequestBanner.heightAnchor.constraint(equalToConstant: 0)
+        bannerHeightConstraint = bannerHeight
+        let containerTop = containerView.topAnchor.constraint(equalTo: incomingRequestBanner.bottomAnchor, constant: 16)
+        containerTopConstraint = containerTop
+
+        NSLayoutConstraint.activate([
+            incomingRequestBanner.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 10),
+            incomingRequestBanner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            incomingRequestBanner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            bannerHeight,
+
+            incomingRequestLabel.leadingAnchor.constraint(equalTo: incomingRequestBanner.leadingAnchor, constant: 14),
+            incomingRequestLabel.centerYAnchor.constraint(equalTo: incomingRequestBanner.centerYAnchor),
+            incomingRequestLabel.trailingAnchor.constraint(lessThanOrEqualTo: incomingRequestAcceptButton.leadingAnchor, constant: -10),
+
+            incomingRequestAcceptButton.trailingAnchor.constraint(equalTo: incomingRequestBanner.trailingAnchor, constant: -10),
+            incomingRequestAcceptButton.centerYAnchor.constraint(equalTo: incomingRequestBanner.centerYAnchor),
+        ])
 
         NSLayoutConstraint.activate([
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -232,7 +303,7 @@ class MyNetworkViewController: BaseViewController {
             requestsBadgeLabel.heightAnchor.constraint(equalToConstant: 18),
             requestsBadgeLabel.widthAnchor.constraint(greaterThanOrEqualTo: requestsBadgeLabel.heightAnchor),
 
-            containerView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
+            containerTop,
             containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
@@ -279,6 +350,9 @@ class MyNetworkViewController: BaseViewController {
         // field is shared across segments. (With a live query this re-routes
         // straight back to the global results list.)
         filterUsers(with: searchBar.text ?? "")
+
+        // The banner hides on the Requests segment (redundant there)
+        updateIncomingRequestBanner()
     }
 
     @objc private func showDiscoverSegment() {
@@ -287,6 +361,14 @@ class MyNetworkViewController: BaseViewController {
 
     @objc private func showRequestsSegment() {
         selectTab(.requests)
+    }
+
+    @objc private func showMyQRCodeTapped() {
+        guard let me = AuthService.shared.currentUser else { return }
+        let shareProfileVC = ShareProfileViewController(user: me)
+        shareProfileVC.modalPresentationStyle = .overFullScreen
+        shareProfileVC.modalTransitionStyle = .crossDissolve
+        present(shareProfileVC, animated: true)
     }
 
     // MARK: - Requests badge
@@ -302,6 +384,58 @@ class MyNetworkViewController: BaseViewController {
                 self.requestsBadgeLabel.isHidden = count == 0
                 self.requestsBadgeLabel.text = count > 9 ? "9+" : "\(count)"
                 self.requestsBadgeLabel.accessibilityLabel = "\(count) pending connection requests"
+                self.updateIncomingRequestBanner()
+            }
+        }
+    }
+
+    // MARK: - Incoming-request banner
+
+    /// The newest incoming pending request, or nil.
+    private var firstIncomingRequest: Connection? {
+        let currentUserId = AuthService.shared.getUserId()
+        return NetworkManager.shared.pendingConnections.first {
+            $0.status == .pending && $0.connectedUserId == currentUserId
+        }
+    }
+
+    private func updateIncomingRequestBanner() {
+        let currentUserId = AuthService.shared.getUserId()
+        let incoming = NetworkManager.shared.pendingConnections.filter {
+            $0.status == .pending && $0.connectedUserId == currentUserId
+        }
+        // The Requests segment already lists them in full
+        let show = !incoming.isEmpty && selectedTab != .requests
+        incomingRequestBanner.isHidden = !show
+        bannerHeightConstraint?.constant = show ? 44 : 0
+        containerTopConstraint?.constant = show ? 16 : 6
+        guard show else { return }
+
+        let name = incoming.first?.connectedUser?.displayName ?? "Someone"
+        incomingRequestLabel.text = incoming.count == 1
+            ? "🤝 \(name) wants to connect"
+            : "🤝 \(name) and \(incoming.count - 1) other\(incoming.count == 2 ? "" : "s") want to connect"
+        incomingRequestAcceptButton.isHidden = incoming.count != 1
+    }
+
+    @objc private func acceptBannerRequestTapped() {
+        guard let request = firstIncomingRequest else { return }
+        incomingRequestAcceptButton.isEnabled = false
+        NetworkManager.shared.acceptConnection(request.id) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.incomingRequestAcceptButton.isEnabled = true
+                switch result {
+                case .success:
+                    let name = request.connectedUser?.displayName ?? "your new connection"
+                    self.showSuccess("You're now connected with \(name)!")
+                    self.updateIncomingRequestBanner()
+                    // The lists below hold relationship state too — refresh them
+                    self.allUsersListVC?.loadPeople()
+                    self.requestsListVC?.loadPeople()
+                case .failure(let error):
+                    self.showError(error)
+                }
             }
         }
     }
@@ -369,6 +503,9 @@ class MyNetworkViewController: BaseViewController {
             actions: [
                 ("Invite My Best Friend", .default, { [weak self] in
                     self?.shareConnectionInvite()
+                }),
+                ("Show My QR Code", .default, { [weak self] in
+                    self?.showMyQRCodeTapped()
                 }),
                 ("Search People I Know", .default, { [weak self] in
                     self?.searchBar.becomeFirstResponder()

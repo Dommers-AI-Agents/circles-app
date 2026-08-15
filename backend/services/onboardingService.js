@@ -18,10 +18,11 @@ const DEFAULT_FOLLOW_EMAILS = [
 
 // New users also receive a pending CONNECTION request from these accounts
 // (a two-way relationship they can accept). Following is passive/one-way and
-// needs no acceptance; a connection request is the active social nudge, so we
-// keep it to just Wes to avoid greeting a brand-new user with a pile of them.
+// needs no acceptance; a connection request is the active social nudge — kept
+// to the two founder accounts so a brand-new user isn't greeted with a pile.
 const DEFAULT_CONNECT_EMAILS = [
-  'sgroiwes@gmail.com'       // Wes only
+  'sgroiwes@gmail.com',      // Wes
+  'brittanyvans@gmail.com'   // Brittany
 ];
 
 class OnboardingService {

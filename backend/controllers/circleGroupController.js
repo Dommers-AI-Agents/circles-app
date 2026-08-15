@@ -7,7 +7,7 @@ const { queryInChunks } = require('../utils/firestoreChunks');
 // Get all circle groups for the current user
 exports.getGroups = async (req, res) => {
   try {
-    const userId = req.userId;
+    const userId = req.user.uid;
     
     // Fetch all groups owned by the user
     const groupsSnapshot = await db.collection('circleGroups')
@@ -59,7 +59,7 @@ exports.getGroups = async (req, res) => {
 exports.getGroup = async (req, res) => {
   try {
     const { groupId } = req.params;
-    const userId = req.userId;
+    const userId = req.user.uid;
     
     const groupDoc = await db.collection('circleGroups').doc(groupId).get();
     
@@ -117,7 +117,7 @@ exports.getGroup = async (req, res) => {
 exports.createGroup = async (req, res) => {
   try {
     const { name, circleIds } = req.body;
-    const userId = req.userId;
+    const userId = req.user.uid;
     
     if (!name || !circleIds || circleIds.length < 2) {
       return res.status(400).json({
@@ -201,7 +201,7 @@ exports.updateGroup = async (req, res) => {
   try {
     const { groupId } = req.params;
     const { name, circleIds } = req.body;
-    const userId = req.userId;
+    const userId = req.user.uid;
     
     const groupRef = db.collection('circleGroups').doc(groupId);
     const groupDoc = await groupRef.get();
@@ -314,7 +314,7 @@ exports.updateGroup = async (req, res) => {
 exports.deleteGroup = async (req, res) => {
   try {
     const { groupId } = req.params;
-    const userId = req.userId;
+    const userId = req.user.uid;
     
     const groupRef = db.collection('circleGroups').doc(groupId);
     const groupDoc = await groupRef.get();
@@ -372,7 +372,7 @@ exports.addCircleToGroup = async (req, res) => {
   try {
     const { id: circleId } = req.params;
     const { groupId } = req.body;
-    const userId = req.userId;
+    const userId = req.user.uid;
     
     if (!groupId) {
       return res.status(400).json({
@@ -465,7 +465,7 @@ exports.addCircleToGroup = async (req, res) => {
 exports.removeCircleFromGroup = async (req, res) => {
   try {
     const { id: circleId } = req.params;
-    const userId = req.userId;
+    const userId = req.user.uid;
     
     // Get the circle
     const circleRef = db.collection('circles').doc(circleId);

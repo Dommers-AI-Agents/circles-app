@@ -821,11 +821,13 @@ exports.searchUsers = async (req, res, next) => {
         if (currentUserParts.length >= 2 && user.id === currentUserParts[1]) continue;
       }
       
-      // Check if query matches email, name, or phone (using startsWith for better UX)
-      const emailMatch = user.email && user.email.toLowerCase().startsWith(searchTerm);
-      const displayNameMatch = user.displayName && user.displayName.toLowerCase().startsWith(searchTerm);
-      const firstNameMatch = user.firstName && user.firstName.toLowerCase().startsWith(searchTerm);
-      const lastNameMatch = user.lastName && user.lastName.toLowerCase().startsWith(searchTerm);
+      // Substring match on email/name — prefix-only made "mith" miss "Smith"
+      // and half-remembered names unfindable (relevance ranking below still
+      // puts prefix matches first)
+      const emailMatch = user.email && user.email.toLowerCase().includes(searchTerm);
+      const displayNameMatch = user.displayName && user.displayName.toLowerCase().includes(searchTerm);
+      const firstNameMatch = user.firstName && user.firstName.toLowerCase().includes(searchTerm);
+      const lastNameMatch = user.lastName && user.lastName.toLowerCase().includes(searchTerm);
       // Phone match ONLY when the query actually contains digits. Previously
       // a text query (e.g. "william") stripped to "" and every phone number
       // ".startsWith('')" → true, so everyone with a phone matched.

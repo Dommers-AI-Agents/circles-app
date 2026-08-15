@@ -27,7 +27,7 @@ const isCodeUnique = async (code) => {
 // @access  Private
 exports.generateReferralCode = async (req, res) => {
     try {
-        const userId = req.userId;
+        const userId = req.user.uid;
         const userRef = admin.firestore().collection('users').doc(userId);
         const userDoc = await userRef.get();
         
@@ -96,7 +96,7 @@ exports.generateReferralCode = async (req, res) => {
 exports.applyReferralCode = async (req, res) => {
     try {
         const { referralCode } = req.body;
-        const userId = req.userId;
+        const userId = req.user.uid;
         
         if (!referralCode) {
             return res.status(400).json({
@@ -232,7 +232,7 @@ exports.applyReferralCode = async (req, res) => {
 // @access  Private
 exports.getReferralStatus = async (req, res) => {
     try {
-        const userId = req.userId;
+        const userId = req.user.uid;
         const userDoc = await admin.firestore().collection('users').doc(userId).get();
         
         if (!userDoc.exists) {
@@ -281,7 +281,7 @@ exports.getReferralStatus = async (req, res) => {
 // @access  Private
 exports.claimReferralRewards = async (req, res) => {
     try {
-        const userId = req.userId;
+        const userId = req.user.uid;
         const userRef = admin.firestore().collection('users').doc(userId);
         const userDoc = await userRef.get();
         
