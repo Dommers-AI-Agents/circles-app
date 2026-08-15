@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FAQ - FavCircles</title>
-    <meta name="description" content="FavCircles FAQ: connect ChatGPT or Claude to your account, import your places from Mapstr, Google Maps, and Swarm, privacy basics, and store owner tools.">
+    <meta name="description" content="FavCircles FAQ: connect ChatGPT or Claude to your account, import your places from Mapstr, Google Maps, and Swarm, become a Brand Ambassador, privacy basics, and store owner tools.">
     <link rel="canonical" href="https://favcircles.com/faq.html">
     <link rel="icon" href="/favicon.ico">
     <style>
@@ -246,6 +246,31 @@
             </details>
         </section>
 
+        <section class="faq-group" id="ambassador">
+            <h2>Become a Brand Ambassador 📣</h2>
+            <p class="lead">Love showing people around the city like Dylan and Bill do? Make it official. FavCircles Brand Ambassadors get the full kit and a direct line to the team.</p>
+            <details open>
+                <summary>What do ambassadors actually get?</summary>
+                <ul>
+                    <li><strong>Your own ambassador kit:</strong> personalized business cards with your name and your own <strong>@favcircles.com</strong> email, plus "Every great place has a story" coasters and stickers to leave at your favorite spots.</li>
+                    <li><strong>Early access:</strong> new features land on your phone before anyone else's.</li>
+                    <li><strong>A direct line to the founder:</strong> your feedback goes straight to the top of the list.</li>
+                    <li><strong>Bragging rights:</strong> when your city's map is good, everyone knows whose fault that is.</li>
+                </ul>
+            </details>
+            <details>
+                <summary>Who makes a good ambassador?</summary>
+                <p>No follower counts, no resume. Ambassadors are just people who like hanging out in their area and having fun — trying the new taco spot, happy hours that turn into whole evenings, live music on a random Tuesday. If that sounds like your week, you already qualify.</p>
+            </details>
+            <details>
+                <summary>How do I apply?</summary>
+                <p>Email <a href="mailto:wesley@favcircles.com?subject=Brand%20Ambassador%20application">wesley@favcircles.com</a> with a line about your city and your favorite hidden gem. That's the whole application.</p>
+            </details>
+            <div class="video-actions" style="margin: 1rem 0 0;">
+                <button class="share-btn" type="button" id="share-ambassador">↗&nbsp; Share this</button>
+            </div>
+        </section>
+
         <section class="faq-group">
             <h2>Everything else</h2>
             <details>
@@ -283,6 +308,24 @@
             title: 'Bring your places to FavCircles — Mapstr, Google Maps, Swarm',
             text: 'Move your saved places into FavCircles free — step-by-step guides for Mapstr, Google Maps, and Swarm, plus a 2-minute video.',
             url: 'https://favcircles.com/faq.html#import-video'
+        };
+        if (navigator.share) {
+            navigator.share(data).catch(function () {});
+        } else if (navigator.clipboard) {
+            navigator.clipboard.writeText(data.url).then(function () {
+                var original = btn.textContent;
+                btn.textContent = '✓ Link copied!';
+                setTimeout(function () { btn.textContent = original; }, 2000);
+            });
+        }
+    });
+
+    document.getElementById('share-ambassador').addEventListener('click', function () {
+        var btn = this;
+        var data = {
+            title: 'Become a FavCircles Brand Ambassador',
+            text: 'Personalized cards, your own @favcircles.com email, early access — if your friends already ask you where to go, make it official.',
+            url: 'https://favcircles.com/faq.html#ambassador'
         };
         if (navigator.share) {
             navigator.share(data).catch(function () {});
