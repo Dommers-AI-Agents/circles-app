@@ -2481,7 +2481,7 @@ exports.recordAppOpen = async (req, res, next) => {
   try {
     const userId = normalizeUserId(req.user.uid);
     const now = new Date().toISOString();
-    const { appVersion, build, platform } = req.body || {};
+    const { appVersion, build, platform, latitude, longitude } = req.body || {};
 
     const updates = {
       lastActive: now,
@@ -2493,8 +2493,25 @@ exports.recordAppOpen = async (req, res, next) => {
     if (build) updates.appBuild = String(build).slice(0, 32);
     if (platform) updates.appPlatform = String(platform).slice(0, 16);
 
+    // The app shares a location fix once permission is granted — the signal
+    // signup never has
+    const hasCoords = typeof latitude === 'number' && typeof longitude === 'number' &&
+      Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 && !(latitude === 0 && longitude === 0);
+    if (hasCoords) {
+      updates.lastKnownLocation = { latitude, longitude };
+    }
+
     await db.collection(COLLECTIONS.USERS).doc(userId).update(updates);
     res.status(200).json({ success: true });
+
+    // Deferred starter place: users who signed up without location got three
+    // empty circles — seed the sample now that we know where they are.
+    // Fire-and-forget after the response.
+    if (hasCoords) {
+      require('../services/onboardingService')
+        .seedSamplePlaceIfMissing(userId, { latitude, longitude })
+        .catch(() => {});
+    }
   } catch (error) {
     console.error('Error recording app open:', error);
     next(error);

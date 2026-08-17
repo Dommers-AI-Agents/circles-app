@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 
 enum UserError: Error, LocalizedError {
     case notFound
@@ -239,11 +240,21 @@ class UserService {
         UserDefaults.standard.set(now, forKey: Self.lastAppOpenReportKey)
 
         let info = Bundle.main.infoDictionary
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "appVersion": info?["CFBundleShortVersionString"] as? String ?? "unknown",
             "build": info?["CFBundleVersion"] as? String ?? "unknown",
             "platform": "ios"
         ]
+
+        // Share a cached location fix when permission was already granted —
+        // never prompts. The backend uses it to seed the starter place for
+        // users who signed up before granting location (signup never has it).
+        let authStatus = CLLocationManager.authorizationStatus()
+        if authStatus == .authorizedWhenInUse || authStatus == .authorizedAlways,
+           let fix = CLLocationManager().location {
+            body["latitude"] = fix.coordinate.latitude
+            body["longitude"] = fix.coordinate.longitude
+        }
 
         APIService.shared.request(
             endpoint: "users/me/app-open",

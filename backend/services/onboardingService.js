@@ -183,13 +183,83 @@ class OnboardingService {
       
     } catch (error) {
       console.error(`❌ Onboarding failed for user ${userId}:`, error);
-      
+
       // Don't throw error - onboarding failure shouldn't break registration
       // Just log the error and continue
       return {
         success: false,
         error: error.message
       };
+    }
+  }
+
+  /**
+   * Deferred starter-place seeding. At signup nobody has granted location
+   * yet, so the sample place usually can't resolve and users land in three
+   * empty circles (all of the 2026-08-15 signups did). Called from app-open
+   * once the app can share a location fix: if the default Favorite Local
+   * Spots circle is still empty, resolve and seed the sample now. Bounded
+   * attempts so users with no resolvable city don't retry forever.
+   */
+  static async seedSamplePlaceIfMissing(userId, coordinates = null) {
+    try {
+      const { FieldValue } = require('firebase-admin').firestore;
+
+      // Single-equality query + memory filter (owner+isDefaultCircle would
+      // need a composite index)
+      const circles = await db.collection(COLLECTIONS.CIRCLES)
+        .where('owner', '==', userId).get();
+      const fav = circles.docs.find(c =>
+        c.data().isDefaultCircle && c.data().name === 'Favorite Local Spots');
+      if (!fav || (fav.data().places || []).length > 0) return { seeded: false };
+
+      const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
+      const userDoc = await userRef.get();
+      if (!userDoc.exists) return { seeded: false };
+      const u = userDoc.data();
+      if ((u.sampleSeedAttempts || 0) >= 5) return { seeded: false };
+      await userRef.update({ sampleSeedAttempts: FieldValue.increment(1) });
+
+      const userCity = (u.location || '').split(',')[0].trim() || null;
+      let sample = await PlaceDiscoveryService.findNearbyPlace({
+        zipcode: u.zipcode,
+        coordinates: coordinates || u.lastKnownLocation,
+        city: userCity
+      });
+      if (!sample) sample = getRandomLocalPlace(userCity ? { city: userCity } : null);
+      if (!sample || !sample.coordinates) return { seeded: false };
+
+      const placeRef = db.collection(COLLECTIONS.PLACES).doc();
+      const placeData = createPlace({
+        name: sample.name,
+        description: sample.description,
+        address: sample.address,
+        location: { coordinates: sample.coordinates },
+        category: sample.category || 'restaurant',
+        website: sample.website || null,
+        rating: sample.rating || null,
+        googlePlaceId: sample.googlePlaceId || null,
+        notes: 'Added during onboarding - feel free to edit or remove!'
+      }, fav.id, userId);
+      placeData.isSamplePlace = true;
+      await placeRef.set(placeData);
+      await fav.ref.update({
+        places: FieldValue.arrayUnion(placeRef.id),
+        placesCount: FieldValue.increment(1),
+        updatedAt: new Date().toISOString()
+      });
+
+      // Canonical venue link (fills cached category/city) — best-effort
+      try {
+        const { ensureGlobalPlaceLink } = require('./globalPlaceResolver');
+        await ensureGlobalPlaceLink(await placeRef.get());
+      } catch (e) { /* non-fatal */ }
+
+      console.log(`🌱 Deferred sample place seeded for ${userId}: ${sample.name}`);
+      return { seeded: true, name: sample.name };
+    } catch (error) {
+      console.error(`⚠️ Deferred sample seeding failed for ${userId}:`, error.message);
+      return { seeded: false };
     }
   }
   
