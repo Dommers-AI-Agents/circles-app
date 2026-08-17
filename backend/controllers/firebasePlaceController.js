@@ -1363,6 +1363,10 @@ exports.createPlace = async (req, res, next) => {
       const { generatePlaceKey } = require('../models/GlobalPlace');
       piggyVenueKey = generatePlaceKey(place);
     } catch (keyError) { /* malformed name/address — placeId last resort */ }
+
+    // Funnel: first place they added themselves (fire-and-forget)
+    require('../services/funnelService').stampFunnelMilestone(req.user.uid, 'firstPlaceAt');
+
     const piggyBank = await piggyBankService.credit({
       userId: req.user.uid,
       eventType: 'add_place',

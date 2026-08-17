@@ -85,6 +85,9 @@ exports.addReaction = async (req, res) => {
         updatedAt: new Date().toISOString()
       });
 
+      // Funnel: first time they reacted to anything (fire-and-forget)
+      require('../services/funnelService').stampFunnelMilestone(userId, 'firstReactionAt');
+
       // FavCoins: a nickel for reacting — but not to your own activity, and
       // only on first reaction (emoji swaps hit the update branch above).
       // Awaited so the response can carry the credit and the app can play

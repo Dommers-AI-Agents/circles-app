@@ -666,6 +666,13 @@ const acceptConnection = async (req, res) => {
       data: updatedConnection
     });
 
+    // Funnel: first accepted connection, stamped on both sides (fire-and-forget)
+    {
+      const { stampFunnelMilestone } = require('../services/funnelService');
+      stampFunnelMilestone(connection.userId, 'firstConnectionAt');
+      stampFunnelMilestone(connection.connectedUserId, 'firstConnectionAt');
+    }
+
     // Piggy bank: FavCoins for the new connection — BOTH users earn (one
     // ledger row each; the pair-half of the key is order-independent so a
     // future request/accept cycle for the same pair can never pay again).
