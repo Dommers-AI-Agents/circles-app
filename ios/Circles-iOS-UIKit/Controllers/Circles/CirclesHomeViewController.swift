@@ -1585,6 +1585,17 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
         // Surface the sign-in-time duplicate-account hint (once per login)
         promptForDuplicateAccountsIfNeeded()
+
+        // New accounts: make accepting the welcome connection requests a
+        // first-class onboarding moment instead of a buried list. No-ops for
+        // established accounts; waits its turn if another modal (welcome
+        // carousel, tutorial sheet) is up and retries on the next appearance.
+        if presentedViewController == nil {
+            if !WelcomeConnectionsViewController.presentIfNeeded(from: self) {
+                // Old accounts instead get the one-time legacy-privacy nudge
+                promptLegacyCirclePrivacyIfNeeded()
+            }
+        }
         
         // Listen for connections to be loaded before checking tutorial/overlay.
         // Remove-before-add: this runs on every appearance but the handler only
@@ -5154,6 +5165,49 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
 
         return (userPlaces, connectionPlacesMap)
+    }
+
+    /// One-time nudge for accounts created before the all-public default
+    /// (Jul 2026): their starter circles are myNetwork/private, which makes
+    /// their places invisible to non-connections — owners read that as "the
+    /// app lost my places" (launch-night confusion, 2026-08-15). Offers to
+    /// open the starter circles up; never changes anything silently.
+    func promptLegacyCirclePrivacyIfNeeded() {
+        guard let userId = AuthService.shared.getUserId() else { return }
+        let seenKey = "legacyPrivacyNudgeShown_\(userId)"
+        guard !UserDefaults.standard.bool(forKey: seenKey) else { return }
+
+        let defaultNames: Set<String> = ["Favorite Local Spots", "Want to Try", "Vacation"]
+        let nonPublicDefaults = circles.filter {
+            IDNormalizer.isSameUser($0.owner, userId) &&
+            defaultNames.contains($0.name) &&
+            $0.privacy != .public
+        }
+        // Only nudge accounts from the pre-public era — someone who chose
+        // privacy recently chose it on purpose
+        guard !nonPublicDefaults.isEmpty,
+              let created = AuthService.shared.currentUser?.createdAt,
+              created < ISO8601DateFormatter().date(from: "2026-07-23T00:00:00Z") ?? .distantPast else { return }
+
+        UserDefaults.standard.set(true, forKey: seenKey)
+        AlertPresenter.showConfirmation(
+            title: "Let friends see your places?",
+            message: "Your starter circles (\(nonPublicDefaults.map { $0.name }.joined(separator: ", "))) are currently visible only to your network. Newer accounts start public — want yours public too, so friends can find your places?",
+            confirmTitle: "Make Public",
+            cancelTitle: "Keep As Is",
+            from: self,
+            onConfirm: { [weak self] in
+                let group = DispatchGroup()
+                for circle in nonPublicDefaults {
+                    group.enter()
+                    CircleService.shared.updateCircle(id: circle.id, privacy: .public) { _ in group.leave() }
+                }
+                group.notify(queue: .main) {
+                    self?.showSuccess("Your circles are now public")
+                    self?.loadData()
+                }
+            }
+        )
     }
 
     /// If the backend flagged a possible second account at sign-in, offer the

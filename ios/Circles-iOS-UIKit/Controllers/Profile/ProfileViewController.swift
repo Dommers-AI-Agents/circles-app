@@ -2178,13 +2178,35 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 
         if mapDistanceSortedPlaces.isEmpty {
             let emptyLabel = UILabel()
-            emptyLabel.text = "No places to show"
+            emptyLabel.text = emptyPlacesExplanation()
             emptyLabel.font = UIFont.systemFont(ofSize: 15, weight: .medium)
             emptyLabel.textColor = Constants.Colors.secondaryLabel
             emptyLabel.textAlignment = .center
+            emptyLabel.numberOfLines = 0
             mapPlacesListTableView.backgroundView = emptyLabel
         } else {
             mapPlacesListTableView.backgroundView = nil
+        }
+    }
+
+    /// A bare "No places to show" on an unconnected profile reads as "this
+    /// person has nothing" when the truth is "their places are hidden until
+    /// you connect" — say the true thing (2026-08-15 launch-night confusion:
+    /// bianchifit's places existed but looked like zero to everyone).
+    private func emptyPlacesExplanation() -> String {
+        guard let user = user, user.id != AuthService.shared.getUserId() else {
+            return "No places to show"
+        }
+        let name = user.displayName.components(separatedBy: " ").first ?? user.displayName
+        switch RelationshipTier(user: user) {
+        case .requestReceived:
+            return "\(name) wants to connect!\nAccept their request to see the places they share with their network."
+        case .requestSent:
+            return "You'll see \(name)'s network-only places\nonce they accept your request."
+        case .connected:
+            return "No places to show"
+        default:
+            return "Connect with \(name)\nto see the places they share with their network."
         }
     }
     
