@@ -44,7 +44,9 @@ final class ClipSignupViewController: UIViewController {
         scrollView.addSubview(stack)
 
         let headerLabel = UILabel()
-        headerLabel.text = "Get \(preview.signupBonusPoints) points at \(preview.venueName)"
+        headerLabel.text = preview.isGeneric
+            ? "Join FavCircles"
+            : "Get \(preview.signupBonusPoints) points at \(preview.venueName)"
         headerLabel.font = .systemFont(ofSize: 20, weight: .semibold)
         headerLabel.numberOfLines = 0
 

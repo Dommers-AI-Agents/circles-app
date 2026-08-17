@@ -26,6 +26,25 @@ exports.getVenuePreview = async (req, res) => {
 
     rewardService.incrementVenueStats(venue.venueId, 'clipScans');
 
+    // Generic "Join FavCircles" code (window-sticker QR with no store attached):
+    // the clip shows a welcome signup instead of a store offer, and no store
+    // points are promised — the welcome gifts are the first-place FavCoin bonus
+    // and the standard first-partner-store signup bonus.
+    if (venue.genericJoin) {
+      return res.json({
+        success: true,
+        data: {
+          venueName: 'FavCircles',
+          placeName: null,
+          placeAddress: null,
+          category: null,
+          kind: 'window',
+          generic: true,
+          signupBonusPoints: 0
+        }
+      });
+    }
+
     return res.json({
       success: true,
       data: {

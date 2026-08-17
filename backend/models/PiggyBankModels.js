@@ -34,7 +34,9 @@ const PIGGY_EVENT_TYPES = [
   // 2026.08-c: brand redemption codes
   'brand_code_redeemed',
   // 2026.08-d: carousel photo hearts
-  'photo_liked'
+  'photo_liked',
+  // 2026.08-e: welcome gift — first place a user ever adds
+  'first_place_added'
 ];
 
 // Earn statuses and claim statuses are disjoint vocabularies on the same
@@ -100,6 +102,10 @@ function derivePiggyDedupKey(eventType, parts = {}) {
     case 'suggestion_posted':
       if (!parts.userId || !parts.suggestionId) return null;
       return `suggestion:${s(parts.userId)}:${s(parts.suggestionId)}`;
+    case 'first_place_added':
+      // Welcome gift: once per user, ever (mirrors the sticker signup:{uid} rule)
+      if (!parts.userId) return null;
+      return `first_place:${s(parts.userId)}`;
     case 'brand_code_redeemed':
       // Keyed on the code alone: codes are single-use, so one payout ever
       // per code no matter who races the redemption.

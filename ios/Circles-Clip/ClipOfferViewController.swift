@@ -182,9 +182,18 @@ final class ClipOfferViewController: UIViewController {
     private func showOffer(_ preview: VenuePreview) {
         spinner.stopAnimating()
         contentStack.isHidden = false
-        titleLabel.text = preview.venueName
-        pointsPill.text = "  🎁  \(preview.signupBonusPoints) free points  "
-        subtitleLabel.text = "Join FavCircles right here and your points are waiting at the counter."
+        if preview.isGeneric {
+            // Generic "Join FavCircles" sticker — no store attached, welcome
+            // gifts instead of a store bonus
+            titleLabel.text = "Join FavCircles"
+            pointsPill.text = "  🎁  Welcome gifts inside  "
+            subtitleLabel.text = "Save your favorite places and earn rewards at partner stores."
+            statusLabel.text = "Free to join · 25 FavCoins + 100 store points waiting"
+        } else {
+            titleLabel.text = preview.venueName
+            pointsPill.text = "  🎁  \(preview.signupBonusPoints) free points  "
+            subtitleLabel.text = "Join FavCircles right here and your points are waiting at the counter."
+        }
         ClipTheme.animateIn([brandMark, titleLabel, pointsPill, subtitleLabel, appleButton, emailButton, statusLabel])
     }
 

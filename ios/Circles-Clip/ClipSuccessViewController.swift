@@ -41,7 +41,16 @@ final class ClipSuccessViewController: UIViewController {
         // Hand the session to the full app FIRST — even if the scan call fails,
         // the install lands logged in.
         ClipHandoff.storeAuthHandoff(response: authResponse, provider: provider)
-        redeem()
+
+        if preview.isGeneric {
+            // Generic join: nothing to redeem — the welcome gifts are claimed in
+            // the full app. Mark the code handled so the full app's first launch
+            // doesn't re-run the sticker flow on it.
+            ClipHandoff.markStickerHandled(code)
+            showGenericWelcome()
+        } else {
+            redeem()
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -119,6 +128,18 @@ final class ClipSuccessViewController: UIViewController {
             popEmoji()
             presentInstallOverlay(afterDelay: 1.2)
         }
+    }
+
+    private func showGenericWelcome() {
+        spinner.stopAnimating()
+        spinner.isHidden = true
+        emojiLabel.isHidden = false
+        emojiLabel.text = "🎉"
+        titleLabel.text = "Welcome to FavCircles!"
+        detailLabel.text = "Your welcome gifts: 25 FavCoins when you add your first place · 100 points at the first partner store you scan. Get the full app to claim them."
+        popEmoji()
+        rainConfetti()
+        presentInstallOverlay(afterDelay: 1.6)
     }
 
     private func showPending() {

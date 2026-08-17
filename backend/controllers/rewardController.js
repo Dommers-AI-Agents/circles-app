@@ -124,7 +124,12 @@ exports.scan = async (req, res) => {
 
     if (venue.kind === 'window') {
       rewardService.incrementVenueStats(venue.venueId, 'scans');
-      const signupResult = await rewardService.awardStickerSignup(userId, venue);
+      // Generic "Join FavCircles" code: no venue to reward — never award the
+      // signup bonus against the virtual doc (that stays reserved for the
+      // first REAL partner store the user scans).
+      const signupResult = venue.genericJoin
+        ? { awarded: false, reason: 'generic_join' }
+        : await rewardService.awardStickerSignup(userId, venue);
       const alreadySaved = await userHasSavedVenuePlace(userId, venue);
       const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
 

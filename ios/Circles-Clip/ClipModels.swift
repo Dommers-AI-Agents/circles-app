@@ -16,6 +16,9 @@ struct VenuePreview: Decodable {
     let category: String?
     let kind: String? // "window" | "register"
     let signupBonusPoints: Int
+    let generic: Bool? // true = "Join FavCircles" code, no store attached
+
+    var isGeneric: Bool { generic == true }
 }
 
 struct ClipAuthResponse: Decodable {

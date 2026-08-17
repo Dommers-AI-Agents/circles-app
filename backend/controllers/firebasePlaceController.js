@@ -1378,6 +1378,18 @@ exports.createPlace = async (req, res, next) => {
       }
     });
 
+    // Welcome gift: 25 FavCoins the first time a user ever adds a place
+    // (promised by the App Clip's generic signup). Fire-and-forget; the
+    // first_place:{uid} dedup key makes it once-ever even if totalPlaces
+    // ever miscounts.
+    if (totalPlaces === 1) {
+      piggyBankService.credit({
+        userId: req.user.uid,
+        eventType: 'first_place_added',
+        sourceRef: { placeId: placeRef.id }
+      }).catch(() => {});
+    }
+
     // Add commentsCount to the response (new places have 0 comments)
     res.status(201).json({
       success: true,
