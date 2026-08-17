@@ -64,7 +64,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     var loadDebounceTimer: Timer? // Debounce timer to prevent rapid successive loads
     var preloadedData: PreloadedData? // Store preloaded data from splash screen
     var preloadedConnections: [Connection]? // Store preloaded connections for userListView
-    var notificationBadgeLabel: UILabel? // Badge label for notification count
+    var notificationBadgeLabel: UIView? // Unseen-notifications red dot on the bell
     var notificationBarButton: UIBarButtonItem? // Store reference to notification button
     var rewardsBadgeLabel: UILabel? // Badge label showing reward points balance
     var rewardsBarButton: UIBarButtonItem? // Store reference to rewards ($) button
@@ -1954,9 +1954,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         navigationItem.largeTitleDisplayMode = .never
         // Removed redundant title - tab bar already shows "My Circles"
         
-        // Create custom view for notification button with badge
-        setupNotificationBadge()
-        
+        // The notification bell's badge is attached in makeRightBarButtons(),
+        // once notificationBarButton actually exists.
+
         // Setup empty state view
         emptyStateView.addSubview(emptyStateImageView)
         emptyStateView.addSubview(emptyStateLabel)
@@ -4343,6 +4343,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             action: #selector(notificationButtonTapped)
         )
         self.notificationBarButton = notificationButton
+        // Attach the unseen-dot custom view now that the bar button exists, then
+        // refresh its visibility from the server count.
+        setupNotificationBadge()
+        updateNotificationBadge()
 
         var rightBarButtons = [checkInButton, rewardsButton, notificationButton]
 
@@ -4376,6 +4380,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self,
             selector: #selector(handleRewardBalanceChanged),
             name: .rewardBalanceChanged,
+            object: nil
+        )
+
+        // Clear the bell's unseen dot as soon as the Notifications screen marks
+        // everything read (see .notificationsMarkedRead)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleNotificationsMarkedRead),
+            name: .notificationsMarkedRead,
             object: nil
         )
 
@@ -6049,38 +6062,56 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     func setupNotificationBadge() {
-        // Create a custom button with badge capability
-        let button = UIButton(type: .custom)
-        button.setImage(UIImage(systemName: "bell"), for: .normal)
-        button.addTarget(self, action: #selector(notificationButtonTapped), for: .touchUpInside)
-        button.frame = CGRect(x: 0, y: 0, width: 30, height: 30)
-        
-        // Create badge label
-        let badgeLabel = UILabel()
-        badgeLabel.backgroundColor = .systemRed
-        badgeLabel.textColor = .white
-        badgeLabel.font = .systemFont(ofSize: 10, weight: .medium)
-        badgeLabel.textAlignment = .center
-        badgeLabel.layer.cornerRadius = 8
-        badgeLabel.layer.masksToBounds = true
-        badgeLabel.isHidden = true
-        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Add badge to button
-        button.addSubview(badgeLabel)
-        
-        // Constraints for badge
-        NSLayoutConstraint.activate([
-            badgeLabel.topAnchor.constraint(equalTo: button.topAnchor, constant: -4),
-            badgeLabel.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: 8),
-            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 16),
-            badgeLabel.heightAnchor.constraint(equalToConstant: 16)
-        ])
-        
-        self.notificationBadgeLabel = badgeLabel
-        
-        // Update the bar button item with custom view
-        notificationBarButton?.customView = button
+        // Attach the badge to the ACTUAL bell bar button. This must run after
+        // notificationBarButton exists (it's created in makeRightBarButtons) —
+        // otherwise the custom view is assigned to nil and the badge is orphaned,
+        // which is why the bell never showed an unseen indicator before.
+        guard let barButton = notificationBarButton else { return }
+
+        // Reuse the custom button across rebuilds so we don't stack subviews
+        let button: UIButton
+        if let existing = barButton.customView as? UIButton {
+            button = existing
+        } else {
+            button = UIButton(type: .custom)
+            button.setImage(UIImage(systemName: "bell"), for: .normal)
+            // Match the sibling bar buttons (which render in the label color),
+            // otherwise the custom-view bell picks up the blue app tint.
+            button.tintColor = Constants.Colors.label
+            button.addTarget(self, action: #selector(notificationButtonTapped), for: .touchUpInside)
+            button.frame = CGRect(x: 0, y: 0, width: 30, height: 30)
+            barButton.customView = button
+        }
+
+        // Build the dot once and keep it
+        if notificationBadgeLabel?.superview !== button {
+            notificationBadgeLabel?.removeFromSuperview()
+            button.clipsToBounds = false // don't clip the dot at the button edge
+
+            // Unseen indicator: a small red dot (not a count). It only needs to
+            // say "something's waiting" — presence, not precision — and clears
+            // when the Notifications screen marks everything read. A plain UIView
+            // with an explicit red renders reliably (a UILabel background did not).
+            let dot = UIView()
+            dot.backgroundColor = UIColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1.0) // system red
+            dot.layer.cornerRadius = 5
+            dot.layer.masksToBounds = true
+            dot.isHidden = true
+            dot.isUserInteractionEnabled = false
+            dot.translatesAutoresizingMaskIntoConstraints = false
+            button.addSubview(dot)
+
+            // Sit on the bell's top-right, fully inside the 30pt button so the
+            // bar doesn't clip it.
+            NSLayoutConstraint.activate([
+                dot.topAnchor.constraint(equalTo: button.topAnchor, constant: 3),
+                dot.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -1),
+                dot.widthAnchor.constraint(equalToConstant: 10),
+                dot.heightAnchor.constraint(equalToConstant: 10)
+            ])
+
+            self.notificationBadgeLabel = dot
+        }
     }
     
     func updateNotificationBadge() {
@@ -6096,21 +6127,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             DispatchQueue.main.async {
                 switch result {
                 case .success(let count):
-                    if count > 0 {
-                        self.notificationBadgeLabel?.text = count > 99 ? "99+" : "\(count)"
-                        self.notificationBadgeLabel?.isHidden = false
-
-                        // Adjust width constraint if needed
-                        if count > 9 {
-                            self.notificationBadgeLabel?.constraints.forEach { constraint in
-                                if constraint.firstAttribute == .width {
-                                    constraint.constant = 20
-                                }
-                            }
-                        }
-                    } else {
-                        self.notificationBadgeLabel?.isHidden = true
-                    }
+                    // Red dot = presence only; any unread shows it, zero hides it.
+                    self.notificationBadgeLabel?.isHidden = count <= 0
                 case .failure(let error):
                     Logger.debug("❌ [updateNotificationBadge] Failed to get unread count: \(error)")
                     self.notificationBadgeLabel?.isHidden = true
@@ -6127,6 +6145,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     @objc func handleRewardBalanceChanged() {
         updateRewardsBadge()
+    }
+
+    @objc func handleNotificationsMarkedRead() {
+        // Optimistically hide the dot, then reconcile with the server count
+        notificationBadgeLabel?.isHidden = true
+        updateNotificationBadge()
     }
 
     @objc func handleSubscriptionStatusChanged() {

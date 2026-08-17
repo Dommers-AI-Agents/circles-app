@@ -15,6 +15,11 @@ extension Notification.Name {
     // Message notifications
     static let unreadMessagesCountChanged = Notification.Name("UnreadMessagesCountChanged")
 
+    /// Notifications were all marked read (user opened the Notifications screen)
+    /// — the home bell's unseen dot should refresh/clear immediately rather than
+    /// wait for the next viewWillAppear and possibly race the read-all write.
+    static let notificationsMarkedRead = Notification.Name("NotificationsMarkedRead")
+
     // Store-owner notifications
     /// Pending ownership claims were reviewed (approved/denied) — refresh the
     /// Me-tab badge and any storefront claim dots.

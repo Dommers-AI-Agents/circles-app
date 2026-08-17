@@ -245,7 +245,12 @@ class NotificationsViewController: BaseViewController {
     
     private func markAllNotificationsAsRead() {
         NotificationService.shared.markAllNotificationsAsRead { _ in
-            // Silent update - we don't need to handle the response
+            // Tell the home bell to clear its unseen dot once the server has
+            // actually cleared unread — avoids racing the home screen's own
+            // viewWillAppear refresh.
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .notificationsMarkedRead, object: nil)
+            }
         }
     }
     
@@ -540,8 +545,11 @@ extension NotificationsViewController: NotificationCellDelegate {
                 guard let self = self else { return }
                 switch result {
                 case .success:
-                    self.showSuccess("Connection accepted")
-                    self.removeActionedNotification(notification)
+                    // The cell already shows the green "✓ Connected" confirmation
+                    // (no modal needed). Let it read for a beat, then drop the row.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                        self.removeActionedNotification(notification)
+                    }
                 case .failure(let error):
                     self.showError(error)
                     self.tableView.reloadData() // re-enable the row's buttons
@@ -560,7 +568,10 @@ extension NotificationsViewController: NotificationCellDelegate {
                 guard let self = self else { return }
                 switch result {
                 case .success:
-                    self.removeActionedNotification(notification)
+                    // Cell shows the gray "Declined" state; hold briefly, then remove.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.removeActionedNotification(notification)
+                    }
                 case .failure(let error):
                     self.showError(error)
                     self.tableView.reloadData()
@@ -802,6 +813,10 @@ class NotificationCell: UITableViewCell {
     func configure(with notification: AppNotification) {
         self.notification = notification
         followedBack = false
+        // Cells are reused: restore the action buttons to their canonical look
+        // in case a previous row left one in a success state (green "Connected",
+        // gray "Following", etc.).
+        resetActionButtonStyles()
         titleLabel.text = notification.title
         bodyLabel.text = notification.body
         timeLabel.text = formatTime(notification.createdAt)
@@ -887,21 +902,88 @@ class NotificationCell: UITableViewCell {
     @objc private func followBackTapped() {
         guard let notification = notification else { return }
         followedBack = true
-        followBackButton.isEnabled = false
-        followBackButton.setTitle("Following", for: .normal)
+        // Instant, reversible action — confirm optimistically. Blue "Follow
+        // back" becomes a settled gray "✓ Following" so the tap clearly landed.
+        applyFollowingStyle(followBackButton)
+        Self.successHaptic()
         delegate?.notificationCell(self, didTapFollowBackFor: notification)
     }
 
     @objc private func acceptTapped() {
         guard let notification = notification else { return }
         setActionsEnabled(false) // prevent double-taps; row is removed on success
+        // Collapse the two buttons into a single green "✓ Connected" so the
+        // accept visibly succeeds before the row animates away.
+        declineButton.isHidden = true
+        applyConfirmedStyle(acceptButton, title: "✓ Connected", color: .systemGreen)
+        Self.successHaptic()
         delegate?.notificationCell(self, didTapAcceptFor: notification)
     }
 
     @objc private func declineTapped() {
         guard let notification = notification else { return }
         setActionsEnabled(false)
+        acceptButton.isHidden = true
+        applyConfirmedStyle(declineButton, title: "Declined", color: .systemGray)
+        Self.lightHaptic()
         delegate?.notificationCell(self, didTapDeclineFor: notification)
+    }
+
+    // MARK: - Action-button styling (success morphs + reuse reset)
+
+    /// Restores the three action buttons to their factory look. Called from
+    /// configure() because cells are reused and a success morph must not bleed
+    /// into the next row.
+    private func resetActionButtonStyles() {
+        applyPrimaryStyle(acceptButton, title: "Accept")
+        applySecondaryStyle(declineButton, title: "Decline")
+        applyPrimaryStyle(followBackButton, title: "Follow back")
+        [acceptButton, declineButton, followBackButton].forEach {
+            $0.isEnabled = true
+            $0.alpha = 1.0
+        }
+    }
+
+    private func applyPrimaryStyle(_ button: UIButton, title: String) {
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = Constants.Colors.primary
+        button.layer.borderWidth = 0
+    }
+
+    private func applySecondaryStyle(_ button: UIButton, title: String) {
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.backgroundColor = .clear
+        button.layer.borderWidth = 1
+        button.layer.borderColor = Constants.Colors.primary.cgColor
+    }
+
+    private func applyFollowingStyle(_ button: UIButton) {
+        button.isEnabled = false
+        button.setTitle("✓ Following", for: .normal)
+        button.setTitleColor(.systemGray, for: .normal)
+        button.backgroundColor = .systemGray5
+        button.layer.borderWidth = 0
+    }
+
+    private func applyConfirmedStyle(_ button: UIButton, title: String, color: UIColor) {
+        button.isEnabled = false
+        button.isHidden = false
+        button.alpha = 1.0
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = color
+        button.layer.borderWidth = 0
+    }
+
+    private static func successHaptic() {
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+    }
+
+    private static func lightHaptic() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
     private func formatTime(_ dateString: String) -> String {
