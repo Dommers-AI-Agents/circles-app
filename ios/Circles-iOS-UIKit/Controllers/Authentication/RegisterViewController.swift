@@ -500,12 +500,42 @@ class RegisterViewController: BaseViewController {
                     // self?.showEmailVerificationMessage(email: email)
                     
                 case .failure(let error):
-                    self?.showError(error.localizedDescription)
+                    if case AuthError.accountExists = error {
+                        self?.showWelcomeBack(email: email)
+                    } else {
+                        self?.showError(error.localizedDescription)
+                    }
                 }
             }
         }
     }
-    
+
+    /// The email already has an account — don't dead-end, walk them home.
+    private func showWelcomeBack(email: String) {
+        let alert = UIAlertController(
+            title: "Welcome back! 👋",
+            message: "You already have a FavCircles account with \(email). Sign in to pick up right where you left off.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Sign In", style: .default) { [weak self] _ in
+            guard let self = self else { return }
+            if let loginVC = self.navigationController?.viewControllers
+                .compactMap({ $0 as? LoginViewController }).last {
+                loginVC.prefill(email: email)
+                self.navigationController?.popToViewController(loginVC, animated: true)
+            } else {
+                let loginVC = LoginViewController()
+                loginVC.prefill(email: email)
+                self.navigationController?.setViewControllers([loginVC], animated: true)
+            }
+        })
+        alert.addAction(UIAlertAction(title: "Forgot Password", style: .default) { [weak self] _ in
+            self?.navigationController?.pushViewController(PasswordResetViewController(), animated: true)
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+
     @objc private func appleSignInButtonTapped() {
         Logger.debug("🍎 Apple Sign-In button tapped in RegisterViewController - Action triggered successfully!")
         

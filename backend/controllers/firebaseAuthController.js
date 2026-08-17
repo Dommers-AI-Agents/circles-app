@@ -710,85 +710,16 @@ exports.register = async (req, res, next) => {
       );
       
       if (!existingUsersQuery.empty) {
-        // User with this email exists - link the manual registration
-        const existingUserDoc = existingUsersQuery.docs[0];
-        const existingUserId = existingUserDoc.id;
-        const userRef = existingUserDoc.ref;
-        
-        console.log(`Linking manual registration to existing user with email ${normalizedEmail}. Existing ID: ${existingUserId}`);
-        
-        // For existing users, we need to handle this differently
-        // Since Firebase Auth likely already has this email, we can't create a new auth user
-        // Instead, we should update the existing user's record to support password login
-        
-        let authHandled = false;
-        try {
-          // Try to get the existing Firebase Auth user
-          const existingAuthUser = await auth.getUserByEmail(normalizedEmail);
-          
-          // Update the password for the existing auth user
-          await auth.updateUser(existingAuthUser.uid, {
-            password: password,
-            displayName: displayName || existingUserDoc.data().displayName || normalizedEmail.split('@')[0]
-          });
-          
-          console.log(`Updated password for existing Firebase Auth user: ${existingAuthUser.uid}`);
-          authHandled = true;
-        } catch (error) {
-          if (error.code === 'auth/user-not-found') {
-            // No Firebase Auth user exists yet (e.g., they only used social login before)
-            // Create auth user with the existing Firestore user's ID
-            try {
-              await auth.createUser({
-                uid: existingUserId,
-                email: normalizedEmail,
-                password,
-                displayName: displayName || existingUserDoc.data().displayName || normalizedEmail.split('@')[0]
-              });
-              authHandled = true;
-            } catch (createError) {
-              console.error('Error creating Firebase Auth user:', createError);
-              throw new Error('Failed to enable password login for this account');
-            }
-          } else {
-            console.error('Error handling existing user registration:', error);
-            throw new Error('This email is already registered. Please use the login page instead.');
-          }
-        }
-        
-        if (!authHandled) {
-          throw new Error('Failed to handle authentication for existing user');
-        }
-        
-        // Update existing user with manual registration info
-        const updateData = {
-          updatedAt: new Date().toISOString()
-        };
-        
-        const existingUser = serializeDoc(existingUserDoc);
-        const linkedProviders = existingUser.linkedProviders || {};
-        linkedProviders.manual = existingUserId;
-        updateData.linkedProviders = linkedProviders;
-        
-        // Update display name if provided and better than current
-        if (displayName && (!existingUser.displayName || existingUser.displayName === 'Apple User')) {
-          updateData.displayName = displayName;
-        }
-        
-        // Update zipcode if provided and geocode it
-        if (zipcode && !existingUser.zipcode) {
-          updateData.zipcode = zipcode;
-          const locationData = await geocodeZipcode(zipcode);
-          if (locationData.city && locationData.state) {
-            updateData.location = `${locationData.city}, ${locationData.state}`;
-          }
-          if (locationData.coordinates) {
-            updateData.lastKnownLocation = locationData.coordinates;
-          }
-        }
-        
-        transaction.update(userRef, updateData);
-        return { userRef, isNew: false };
+        // SECURITY: registering on an existing email must NEVER grant access
+        // to that account. The old behavior here silently overwrote the
+        // account's password and returned a session — anyone who knew an
+        // email could take the account over (and real users who "signed up
+        // again" hijacked themselves, losing their old password). The app
+        // shows "Welcome back — sign in" on this code. Social-login users
+        // who want a password set one in-app: Profile → Settings.
+        const err = new Error('An account with this email already exists. Please sign in instead.');
+        err.accountExists = true;
+        throw err;
       } else {
         // No existing user - create new account
         let userRecord;
@@ -800,15 +731,13 @@ exports.register = async (req, res, next) => {
           });
         } catch (error) {
           if (error.code === 'auth/email-already-exists') {
-            // This might happen if auth user exists but Firestore doesn't
-            // Try to get the auth user and create Firestore doc
-            try {
-              const existingAuthUser = await auth.getUserByEmail(normalizedEmail);
-              userRecord = existingAuthUser;
-              console.log('Found existing auth user without Firestore doc, creating doc...');
-            } catch (getError) {
-              throw new Error('Email already in use');
-            }
+            // Auth record exists without a Firestore doc (half-created
+            // account). Adopting it here would grant a session without
+            // proving ownership — same takeover class as above. Send them
+            // to sign-in, which validates the password they actually set.
+            const err = new Error('An account with this email already exists. Please sign in instead.');
+            err.accountExists = true;
+            throw err;
           } else {
             throw error;
           }
@@ -839,6 +768,16 @@ exports.register = async (req, res, next) => {
     });
     } catch (transactionError) {
       console.error('Transaction error during registration:', transactionError);
+      if (transactionError.accountExists) {
+        // Distinct code so the app can offer "Welcome back — sign in"
+        // with the email prefilled instead of a dead-end error
+        return res.status(409).json({
+          success: false,
+          message: transactionError.message,
+          code: 'ACCOUNT_EXISTS',
+          email: normalizedEmail
+        });
+      }
       if (transactionError.message) {
         return res.status(400).json({
           success: false,

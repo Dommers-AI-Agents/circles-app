@@ -406,6 +406,14 @@ class LoginViewController: BaseViewController {
         navigationController?.pushViewController(registerVC, animated: true)
     }
 
+    /// Prefills the email field — used by the register screen's
+    /// "Welcome back — sign in" path when the email already has an account.
+    func prefill(email: String) {
+        loadViewIfNeeded()
+        emailTextField.text = email
+        passwordTextField.text = ""
+    }
+
     @objc private func togglePasswordVisibility() {
         passwordTextField.isSecureTextEntry.toggle()
         let imageName = passwordTextField.isSecureTextEntry ? "eye.slash.fill" : "eye.fill"

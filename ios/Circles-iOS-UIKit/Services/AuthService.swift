@@ -77,6 +77,51 @@ class AuthService {
         pendingDuplicateSuggestion = nil
         return suggestion
     }
+
+    // MARK: - Device-local duplicate-account guard
+
+    private static let lastAccountKey = "lastAccountOnDevice"
+
+    /// Remembers which account this device last authenticated as, so a
+    /// different sign-in method creating a SECOND account can be caught.
+    private func rememberAccountOnDevice(_ user: User) {
+        UserDefaults.standard.set([
+            "id": user.id,
+            "email": user.email ?? "",
+            "displayName": user.displayName,
+            "at": Date().timeIntervalSince1970
+        ], forKey: Self.lastAccountKey)
+    }
+
+    /// A brand-new account, on a phone that authenticated as a DIFFERENT
+    /// account within the last two weeks, is almost certainly the same human
+    /// twice (email signup then Apple sign-in). Returns a merge suggestion
+    /// mirroring the server's shape so the existing home-screen prompt and
+    /// AccountMergeViewController handle it unchanged.
+    private func deviceLocalDuplicateHint(for user: User) -> DuplicateSuggestion? {
+        guard let stored = UserDefaults.standard.dictionary(forKey: Self.lastAccountKey),
+              let storedId = stored["id"] as? String,
+              storedId != user.id,
+              let at = stored["at"] as? TimeInterval,
+              Date().timeIntervalSince1970 - at < 14 * 24 * 3600 else { return nil }
+
+        // Only fire when THIS auth minted a fresh account — signing into a
+        // long-standing second account is a choice, not an accident
+        guard let created = user.createdAt, Date().timeIntervalSince(created) < 15 * 60 else { return nil }
+
+        let email = (stored["email"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return DuplicateSuggestion(
+            message: "This phone was signed into another FavCircles account recently.",
+            suggestedAction: "merge",
+            duplicateAccounts: [DuplicateAccountHint(
+                id: storedId,
+                email: email,
+                displayName: stored["displayName"] as? String,
+                matchType: "sameDevice",
+                reason: "An account was created on this phone recently"
+            )]
+        )
+    }
     
     private let keychainService = KeychainService.shared
     private let userDefaults = UserDefaults.standard
@@ -513,7 +558,14 @@ class AuthService {
             // once after login (an alert here would be lost in the root swap)
             if let suggestion = response.duplicateSuggestion, !suggestion.duplicateAccounts.isEmpty {
                 pendingDuplicateSuggestion = suggestion
+            } else if let local = deviceLocalDuplicateHint(for: response.user) {
+                // Server-side detection can't see the strongest signal we
+                // have: THIS phone signed into a different account minutes
+                // ago. Catches the email-signup-then-Apple-sign-in double
+                // account (relay emails defeat every server-side heuristic).
+                pendingDuplicateSuggestion = local
             }
+            rememberAccountOnDevice(response.user)
 
             // Check if this is a different user than the last one
             let previousUserId = getUserId()
@@ -727,6 +779,14 @@ class AuthService {
             // the body decodes, so isDefinitiveAuthFailure classifies it correctly
             if context == .refreshToken && (400...404).contains(statusCode) {
                 return .tokenExpired
+            }
+
+            // Registering on an email that already has an account: the server
+            // answers 409 ACCOUNT_EXISTS (it no longer silently takes the
+            // account over). Distinct case so the register screen can offer
+            // "Welcome back — sign in" instead of a dead-end error.
+            if context == .register && statusCode == 409 {
+                return .accountExists
             }
 
             // Parse error message from response data if available — via
