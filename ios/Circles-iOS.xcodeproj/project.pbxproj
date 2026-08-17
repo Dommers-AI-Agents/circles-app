@@ -19,6 +19,7 @@
 		6FD782322DDB603400443471 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 6FD782312DDB603400443471 /* GoogleSignIn */; };
 		6FD782342DDB603400443471 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 6FD782332DDB603400443471 /* GoogleSignInSwift */; };
 		6FE8F0B72DF7C276007CB88E /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE8F0B62DF7C276007CB88E /* FirebaseAnalytics */; };
+		CF10CRA50000000000000001 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = CF10CRA50000000000000002 /* FirebaseCrashlytics */; };
 		6FE8F0B92DF7C291007CB88E /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE8F0B82DF7C291007CB88E /* FirebaseAuth */; };
 		AC10C11B000000000000000B /* Circles-Clip.app in Embed App Clips */ = {isa = PBXBuildFile; fileRef = AC10C11B0000000000000002 /* Circles-Clip.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
@@ -115,6 +116,7 @@
 				6F545FB72DE6021A00EC377D /* FacebookBasics in Frameworks */,
 				6F2DD4FB2E302B9E0051A043 /* FirebaseFirestore in Frameworks */,
 				6FE8F0B72DF7C276007CB88E /* FirebaseAnalytics in Frameworks */,
+				CF10CRA50000000000000001 /* FirebaseCrashlytics in Frameworks */,
 				6F2DD4FF2E302B9E0051A043 /* FirebaseStorage in Frameworks */,
 				6FD782322DDB603400443471 /* GoogleSignIn in Frameworks */,
 				6FD75B822DF917F60047CD9E /* GooglePlacesSwift in Frameworks */,
@@ -192,6 +194,7 @@
 				6F9360942DD9725A0065A440 /* Frameworks */,
 				6F9360952DD9725A0065A440 /* Resources */,
 				AC10C11B000000000000000A /* Embed App Clips */,
+				CF10CRA50000000000000003 /* Upload dSYMs to Crashlytics */,
 			);
 			buildRules = (
 			);
@@ -209,6 +212,7 @@
 				6F545FB82DE6021A00EC377D /* FacebookCore */,
 				6F545FBA2DE6021A00EC377D /* FacebookLogin */,
 				6FE8F0B62DF7C276007CB88E /* FirebaseAnalytics */,
+				CF10CRA50000000000000002 /* FirebaseCrashlytics */,
 				6FE8F0B82DF7C291007CB88E /* FirebaseAuth */,
 				6FD75B7F2DF917F60047CD9E /* GooglePlaces */,
 				6FD75B812DF917F60047CD9E /* GooglePlacesSwift */,
@@ -383,6 +387,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		CF10CRA50000000000000003 /* Upload dSYMs to Crashlytics */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist",
+				"$(TARGET_BUILD_DIR)/$(EXECUTABLE_PATH)",
+			);
+			name = "Upload dSYMs to Crashlytics";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+			shellPath = /bin/sh;
+			shellScript = "${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		6F9360932DD9725A0065A440 /* Sources */ = {
@@ -923,6 +948,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 6FE8F0B42DF7BFA7007CB88E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAnalytics;
+		};
+		CF10CRA50000000000000002 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6FE8F0B42DF7BFA7007CB88E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
 		};
 		6FE8F0B82DF7C291007CB88E /* FirebaseAuth */ = {
 			isa = XCSwiftPackageProductDependency;

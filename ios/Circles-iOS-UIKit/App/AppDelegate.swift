@@ -10,6 +10,10 @@ import AuthenticationServices
 import GoogleSignIn
 import FacebookCore
 import GooglePlaces
+// Crash reporting: activates automatically inside FirebaseApp.configure().
+// Added 2026-08-17 after launch-night "the app kept crashing" reports were
+// undiagnosable — from this build on, crashes have stack traces.
+import FirebaseCrashlytics
 import Firebase
 import FirebaseMessaging
 import UserNotifications
