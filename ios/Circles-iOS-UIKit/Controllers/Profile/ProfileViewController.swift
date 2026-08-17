@@ -1039,7 +1039,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Add right bar button items
         let settingsButton = UIBarButtonItem(image: UIImage(systemName: "gear"), style: .plain, target: self, action: #selector(settingsButtonTapped))
         let videoButton = UIBarButtonItem(image: UIImage(systemName: "video.fill"), style: .plain, target: self, action: #selector(videoButtonTapped))
-        let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
+        let checkInButton = UIBarButtonItem(image: .checkInIcon, style: .plain, target: self, action: #selector(checkInButtonTapped))
+        checkInButton.accessibilityLabel = "Check in"
         let rewardsButton = UIBarButtonItem(image: UIImage(systemName: "dollarsign.circle"), style: .plain, target: self, action: #selector(rewardsButtonTapped))
         navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton, rewardsButton]
         addStorefrontButtonIfEligible()
@@ -3422,7 +3423,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             // Current user - show settings and video buttons
             let settingsButton = UIBarButtonItem(image: UIImage(systemName: "gear"), style: .plain, target: self, action: #selector(settingsButtonTapped))
             let videoButton = UIBarButtonItem(image: UIImage(systemName: "video.fill"), style: .plain, target: self, action: #selector(videoButtonTapped))
-            let checkInButton = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), style: .plain, target: self, action: #selector(checkInButtonTapped))
+            let checkInButton = UIBarButtonItem(image: .checkInIcon, style: .plain, target: self, action: #selector(checkInButtonTapped))
+            checkInButton.accessibilityLabel = "Check in"
             let rewardsButton = UIBarButtonItem(image: UIImage(systemName: "dollarsign.circle"), style: .plain, target: self, action: #selector(rewardsButtonTapped))
             navigationItem.rightBarButtonItems = [settingsButton, videoButton, checkInButton, rewardsButton]
             addStorefrontButtonIfEligible()

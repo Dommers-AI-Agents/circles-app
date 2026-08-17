@@ -4309,11 +4309,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     @MainActor
     func makeRightBarButtons() -> [UIBarButtonItem] {
         let checkInButton = UIBarButtonItem(
-            image: UIImage(systemName: "checkmark.circle"),
+            image: .checkInIcon,
             style: .plain,
             target: self,
             action: #selector(checkInButtonTapped)
         )
+        checkInButton.accessibilityLabel = "Check in"
 
         let rewardsButton = self.rewardsBarButton ?? UIBarButtonItem(
             image: UIImage(systemName: "dollarsign.circle"),
