@@ -967,8 +967,13 @@ class NotificationService {
 
       const toUser = toUserDoc.data();
 
-      // Check if user wants follower notifications
-      if (toUser.notificationPreferences && !toUser.notificationPreferences.newFollowers) {
+      // Check if user wants follower notifications. Block ONLY on an explicit
+      // opt-out — a missing newFollowers key must default to ON, matching the
+      // `!== false` convention isNotificationEnabled uses for every other type.
+      // (Legacy accounts have a sparse notificationPreferences like
+      // {dailySummary:true}; the old `&& !newFollowers` test silently blocked
+      // every one of them.)
+      if (toUser.notificationPreferences && toUser.notificationPreferences.newFollowers === false) {
         console.log('🔔 User has disabled follower notifications');
         return { success: false, message: 'User has disabled follower notifications' };
       }
