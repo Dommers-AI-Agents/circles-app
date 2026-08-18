@@ -275,6 +275,70 @@ class EmailService {
     }
   }
 
+  // Website email-capture flow: visitor left their email on favcircles.com
+  // with the FavCoins promise. Walks them from download → signup (SAME email)
+  // → first place = 25 FavCoins → piggy bank → Cactus wallet claim.
+  async sendWebsiteLeadEmail(toEmail) {
+    try {
+      const subject = 'Your FavCoins are waiting 🌵';
+      const htmlContent = `
+        <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a202c;">
+          <h1 style="font-size: 22px;">Your FavCoins are waiting 🌵</h1>
+          <p style="font-size: 15px; line-height: 1.6;">Hi there,</p>
+          <p style="font-size: 15px; line-height: 1.6;">
+            Thanks for your interest in FavCircles! FavCoins are rewards you earn for
+            sharing the places you love — and they're real coins on the
+            <strong>Cactus blockchain</strong> 🌵 that you can claim to your own wallet.
+            Here's how to get your first ones:
+          </p>
+          <ol style="font-size: 15px; line-height: 1.8; padding-left: 20px;">
+            <li><a href="https://apps.apple.com/us/app/favcircles/id6746807095" style="color: #667eea; font-weight: 600;">Download FavCircles</a> from the App Store.</li>
+            <li>Create your account with <strong>this email address</strong> (${toEmail}).</li>
+            <li>Add your first favorite place — <strong>25 FavCoins</strong> drop straight into your piggy bank. 🐷</li>
+          </ol>
+          <h2 style="font-size: 17px; margin-top: 24px;">Where your FavCoins live</h2>
+          <p style="font-size: 15px; line-height: 1.6;">
+            Tap the <strong>$</strong> button on the home screen to open your piggy bank.
+            You'll watch coins drop in as you add places, connect with friends,
+            share moments, and check in around town.
+          </p>
+          <h2 style="font-size: 17px; margin-top: 24px;">Make them yours on the blockchain</h2>
+          <p style="font-size: 15px; line-height: 1.6;">
+            In your piggy bank, tap the wallet row and FavCircles creates a
+            <strong>Cactus blockchain wallet</strong> 🌵 for you in one tap (or link one you
+            already have). Once your coins clear, claim them to your wallet —
+            they land on-chain, verifiably yours.
+            <a href="https://favcircles.com/cactus.html" style="color: #667eea;">How the Cactus blockchain works</a>.
+          </p>
+          <p style="font-size: 15px; line-height: 1.6; margin-top: 24px;">
+            See you on the map!<br>— Wesley &amp; the FavCircles team
+          </p>
+        </div>`;
+
+      const textContent = `Your FavCoins are waiting!
+
+Thanks for your interest in FavCircles. FavCoins are rewards you earn for sharing the places you love — real coins on the Cactus blockchain that you can claim to your own wallet.
+
+1. Download FavCircles: https://apps.apple.com/us/app/favcircles/id6746807095
+2. Create your account with this email address (${toEmail}).
+3. Add your first favorite place — 25 FavCoins drop straight into your piggy bank.
+
+Where your FavCoins live: tap the $ button on the home screen to open your piggy bank. Coins drop in as you add places, connect with friends, share moments, and check in.
+
+Make them yours: in your piggy bank, tap the wallet row and FavCircles creates a Cactus blockchain wallet for you in one tap (or link one you already have). Once your coins clear, claim them to your wallet — they're on-chain, verifiably yours. More: https://favcircles.com/cactus.html
+
+See you on the map!
+— Wesley & the FavCircles team`;
+
+      await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent });
+      console.log(`✅ Website lead email sent to ${toEmail}`);
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Error sending website lead email:', error);
+      throw error;
+    }
+  }
+
   async sendWelcomeEmail(toEmail, name = null) {
     try {
       const greeting = name ? `Hi ${name},` : 'Hi there,';

@@ -275,6 +275,28 @@
             box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
         }
 
+        .coin-signup {
+            margin-top: 1.6rem;
+            padding: 1.2rem 1.4rem;
+            background: #f6f5ff;
+            border-radius: 14px;
+        }
+        .coin-signup-lead { margin-bottom: 0.8rem; color: #444; }
+        #coin-signup-form { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+        #coin-signup-email {
+            flex: 1 1 220px;
+            padding: 0.8rem 1.1rem;
+            border: 2px solid #dcd9f2;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-family: inherit;
+            outline: none;
+        }
+        #coin-signup-email:focus { border-color: #667eea; }
+        #coin-signup-form .cta { border: none; cursor: pointer; font-size: 1rem; font-family: inherit; }
+        .coin-signup-status { margin-top: 0.7rem; font-weight: 600; color: #2f855a; min-height: 1.2em; }
+        .coin-signup-status.error { color: #c53030; }
+
         .steps {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -510,6 +532,15 @@
                 <li>Claim your balance to a real blockchain wallet whenever you want</li>
             </ul>
             <a class="cta" href="/cactus.html">Explore FavCoins &amp; the Cactus blockchain →</a>
+
+            <div class="coin-signup" id="coin-signup">
+                <p class="coin-signup-lead"><strong>Want in?</strong> Drop your email and we'll send you the 2-minute guide — your first <strong>25 FavCoins</strong> are waiting when you add your first place.</p>
+                <form id="coin-signup-form" novalidate>
+                    <input type="email" id="coin-signup-email" placeholder="you@email.com" autocomplete="email" required>
+                    <button type="submit" class="cta" id="coin-signup-btn">Send my FavCoins guide 🌵</button>
+                </form>
+                <p class="coin-signup-status" id="coin-signup-status" role="status"></p>
+            </div>
         </div>
 
         <div class="band">
@@ -576,6 +607,50 @@
             function onScroll() { header.classList.toggle('scrolled', window.scrollY > 10); }
             window.addEventListener('scroll', onScroll, { passive: true });
             onScroll();
+        })();
+    </script>
+    <script>
+        // FavCoins email capture → backend stores the lead and emails the guide
+        (function () {
+            var form = document.getElementById('coin-signup-form');
+            if (!form) return;
+            var emailInput = document.getElementById('coin-signup-email');
+            var button = document.getElementById('coin-signup-btn');
+            var status = document.getElementById('coin-signup-status');
+
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                var email = (emailInput.value || '').trim();
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+                    status.textContent = 'Please enter a valid email address.';
+                    status.className = 'coin-signup-status error';
+                    return;
+                }
+                button.disabled = true;
+                button.textContent = 'Sending…';
+                status.textContent = '';
+                status.className = 'coin-signup-status';
+
+                fetch('https://api.favcircles.com/api/leads/website', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                }).then(function (r) { return r.json(); }).then(function (data) {
+                    if (data.success) {
+                        status.textContent = '📬 ' + (data.message || 'Check your inbox!');
+                        form.style.display = 'none';
+                    } else {
+                        status.textContent = data.message || 'Something went wrong — please try again.';
+                        status.className = 'coin-signup-status error';
+                    }
+                }).catch(function () {
+                    status.textContent = 'Something went wrong — please try again.';
+                    status.className = 'coin-signup-status error';
+                }).finally(function () {
+                    button.disabled = false;
+                    button.textContent = 'Send my FavCoins guide 🌵';
+                });
+            });
         })();
     </script>
 </body>
