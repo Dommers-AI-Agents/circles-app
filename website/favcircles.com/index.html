@@ -275,6 +275,56 @@
             box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
         }
 
+        .coin-popup-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(20, 16, 40, 0.55);
+            backdrop-filter: blur(3px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 20px;
+        }
+        .coin-popup-overlay.visible { display: flex; }
+        .coin-popup {
+            background: white;
+            border-radius: 20px;
+            max-width: 420px;
+            width: 100%;
+            padding: 2rem 1.8rem 1.6rem;
+            position: relative;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+            text-align: center;
+        }
+        .coin-popup h3 { font-size: 1.4rem; margin-bottom: 0.5rem; color: #333; }
+        .coin-popup p { color: #555; margin-bottom: 1rem; line-height: 1.5; }
+        .coin-popup .coin-popup-close {
+            position: absolute;
+            top: 10px;
+            right: 14px;
+            background: none;
+            border: none;
+            font-size: 1.6rem;
+            color: #999;
+            cursor: pointer;
+            line-height: 1;
+            padding: 6px;
+        }
+        .coin-popup form { display: flex; flex-direction: column; gap: 0.6rem; }
+        .coin-popup input[type="email"] {
+            padding: 0.8rem 1.1rem;
+            border: 2px solid #dcd9f2;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-family: inherit;
+            outline: none;
+            text-align: center;
+        }
+        .coin-popup input[type="email"]:focus { border-color: #667eea; }
+        .coin-popup .cta { border: none; cursor: pointer; font-size: 1rem; font-family: inherit; }
+        .coin-popup .coin-signup-status { text-align: center; }
+
         .coin-signup {
             margin-top: 1.6rem;
             padding: 1.2rem 1.4rem;
@@ -609,48 +659,110 @@
             onScroll();
         })();
     </script>
+    <div class="coin-popup-overlay" id="coin-popup-overlay" role="dialog" aria-modal="true" aria-labelledby="coin-popup-title">
+        <div class="coin-popup">
+            <button type="button" class="coin-popup-close" id="coin-popup-close" aria-label="Close">×</button>
+            <h3 id="coin-popup-title">🌵 Get your first 25 FavCoins</h3>
+            <p>FavCoins are real crypto rewards for sharing places you love. Drop your email and we'll send the 2-minute guide.</p>
+            <form id="coin-popup-form" novalidate>
+                <input type="email" id="coin-popup-email" placeholder="you@email.com" autocomplete="email" required>
+                <button type="submit" class="cta" id="coin-popup-btn">Send my FavCoins guide 🌵</button>
+            </form>
+            <p class="coin-signup-status" id="coin-popup-status" role="status"></p>
+        </div>
+    </div>
+
     <script>
-        // FavCoins email capture → backend stores the lead and emails the guide
+        // FavCoins email capture → backend stores the lead and emails the guide.
+        // One submit handler wired to both the inline band form and the popup.
         (function () {
-            var form = document.getElementById('coin-signup-form');
-            if (!form) return;
-            var emailInput = document.getElementById('coin-signup-email');
-            var button = document.getElementById('coin-signup-btn');
-            var status = document.getElementById('coin-signup-status');
+            var SUBMITTED_KEY = 'favcoinsLeadSubmitted';
+            var POPUP_SEEN_KEY = 'favcoinsPopupSeen';
 
-            form.addEventListener('submit', function (e) {
-                e.preventDefault();
-                var email = (emailInput.value || '').trim();
-                if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-                    status.textContent = 'Please enter a valid email address.';
-                    status.className = 'coin-signup-status error';
-                    return;
-                }
-                button.disabled = true;
-                button.textContent = 'Sending…';
-                status.textContent = '';
-                status.className = 'coin-signup-status';
+            function wire(formId, emailId, btnId, statusId, onSuccess) {
+                var form = document.getElementById(formId);
+                if (!form) return;
+                var emailInput = document.getElementById(emailId);
+                var button = document.getElementById(btnId);
+                var status = document.getElementById(statusId);
 
-                fetch('https://api.favcircles.com/api/leads/website', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email })
-                }).then(function (r) { return r.json(); }).then(function (data) {
-                    if (data.success) {
-                        status.textContent = '📬 ' + (data.message || 'Check your inbox!');
-                        form.style.display = 'none';
-                    } else {
-                        status.textContent = data.message || 'Something went wrong — please try again.';
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    var email = (emailInput.value || '').trim();
+                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+                        status.textContent = 'Please enter a valid email address.';
                         status.className = 'coin-signup-status error';
+                        return;
                     }
-                }).catch(function () {
-                    status.textContent = 'Something went wrong — please try again.';
-                    status.className = 'coin-signup-status error';
-                }).finally(function () {
-                    button.disabled = false;
-                    button.textContent = 'Send my FavCoins guide 🌵';
+                    button.disabled = true;
+                    button.textContent = 'Sending…';
+                    status.textContent = '';
+                    status.className = 'coin-signup-status';
+
+                    fetch('https://api.favcircles.com/api/leads/website', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: email })
+                    }).then(function (r) { return r.json(); }).then(function (data) {
+                        if (data.success) {
+                            status.textContent = '📬 ' + (data.message || 'Check your inbox!');
+                            form.style.display = 'none';
+                            try { localStorage.setItem(SUBMITTED_KEY, '1'); } catch (err) {}
+                            if (onSuccess) onSuccess();
+                        } else {
+                            status.textContent = data.message || 'Something went wrong — please try again.';
+                            status.className = 'coin-signup-status error';
+                        }
+                    }).catch(function () {
+                        status.textContent = 'Something went wrong — please try again.';
+                        status.className = 'coin-signup-status error';
+                    }).finally(function () {
+                        button.disabled = false;
+                        button.textContent = 'Send my FavCoins guide 🌵';
+                    });
                 });
-            });
+            }
+
+            wire('coin-signup-form', 'coin-signup-email', 'coin-signup-btn', 'coin-signup-status', null);
+
+            // Popup: once per visitor — 6s after landing or at 35% scroll,
+            // whichever comes first. Never again after dismiss or submit.
+            var overlay = document.getElementById('coin-popup-overlay');
+            var alreadySeen = false;
+            try {
+                alreadySeen = localStorage.getItem(POPUP_SEEN_KEY) === '1' ||
+                              localStorage.getItem(SUBMITTED_KEY) === '1';
+            } catch (err) {}
+
+            function closePopup() {
+                overlay.classList.remove('visible');
+                try { localStorage.setItem(POPUP_SEEN_KEY, '1'); } catch (err) {}
+            }
+
+            function showPopup() {
+                if (alreadySeen || overlay.classList.contains('visible')) return;
+                alreadySeen = true;
+                overlay.classList.add('visible');
+                try { localStorage.setItem(POPUP_SEEN_KEY, '1'); } catch (err) {}
+            }
+
+            if (overlay && !alreadySeen) {
+                wire('coin-popup-form', 'coin-popup-email', 'coin-popup-btn', 'coin-popup-status', function () {
+                    setTimeout(closePopup, 2500);
+                });
+                document.getElementById('coin-popup-close').addEventListener('click', closePopup);
+                overlay.addEventListener('click', function (e) { if (e.target === overlay) closePopup(); });
+                document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePopup(); });
+
+                setTimeout(showPopup, 6000);
+                window.addEventListener('scroll', function onScrollDepth() {
+                    var depth = (window.scrollY + window.innerHeight) / document.body.scrollHeight;
+                    if (depth > 0.35) {
+                        window.removeEventListener('scroll', onScrollDepth);
+                        showPopup();
+                    }
+                }, { passive: true });
+            }
         })();
     </script>
 </body>
