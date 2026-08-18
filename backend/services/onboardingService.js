@@ -287,21 +287,38 @@ class OnboardingService {
       );
       if (targets.length === 0) return;
 
+      // Wes follows every new user BACK (his call, 2026-08-18): a brand-new
+      // user opening Wes's profile — or Wes opening theirs — should read as a
+      // two-way relationship from the first second. Brittany stays follow-only.
+      const followBackDocs = targets.filter(doc => doc.data().email === 'sgroiwes@gmail.com');
+
       const batch = db.batch();
-      batch.update(userRef, {
+      const newUserUpdate = {
         following: FieldValue.arrayUnion(...targets.map(doc => doc.id)),
         followingCount: FieldValue.increment(targets.length),
         updatedAt: new Date().toISOString()
-      });
+      };
+      if (followBackDocs.length > 0) {
+        // arrayUnion() with zero args throws — only add when Wes is in play
+        newUserUpdate.followers = FieldValue.arrayUnion(...followBackDocs.map(doc => doc.id));
+        newUserUpdate.followersCount = FieldValue.increment(followBackDocs.length);
+      }
+      batch.update(userRef, newUserUpdate);
       targets.forEach(doc => {
-        batch.update(doc.ref, {
+        const followsBack = followBackDocs.includes(doc);
+        const update = {
           followers: FieldValue.arrayUnion(userId),
           followersCount: FieldValue.increment(1),
           updatedAt: new Date().toISOString()
-        });
+        };
+        if (followsBack) {
+          update.following = FieldValue.arrayUnion(userId);
+          update.followingCount = FieldValue.increment(1);
+        }
+        batch.update(doc.ref, update);
       });
       await batch.commit();
-      console.log(`🤝 New user ${userId} auto-follows: ${targets.map(d => d.data().email).join(', ')}`);
+      console.log(`🤝 New user ${userId} auto-follows: ${targets.map(d => d.data().email).join(', ')}${followBackDocs.length ? ' (Wes follows back)' : ''}`);
 
       const notificationService = require('./notificationService');
       const newUserName = userData.displayName || userData.email || 'A new user';
