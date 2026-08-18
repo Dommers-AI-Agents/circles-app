@@ -324,6 +324,17 @@
         .coin-popup input[type="email"]:focus { border-color: #667eea; }
         .coin-popup .cta { border: none; cursor: pointer; font-size: 1rem; font-family: inherit; }
         .coin-popup .coin-signup-status { text-align: center; }
+        .coin-popup-decline {
+            background: none;
+            border: none;
+            color: #999;
+            font-size: 0.9rem;
+            font-family: inherit;
+            cursor: pointer;
+            margin-top: 0.8rem;
+            text-decoration: underline;
+        }
+        .coin-popup-decline:hover { color: #666; }
 
         .coin-signup {
             margin-top: 1.6rem;
@@ -668,6 +679,7 @@
                 <input type="email" id="coin-popup-email" placeholder="you@email.com" autocomplete="email" required>
                 <button type="submit" class="cta" id="coin-popup-btn">Send my FavCoins guide 🌵</button>
             </form>
+            <button type="button" class="coin-popup-decline" id="coin-popup-decline">No thanks</button>
             <p class="coin-signup-status" id="coin-popup-status" role="status"></p>
         </div>
     </div>
@@ -751,6 +763,7 @@
                     setTimeout(closePopup, 2500);
                 });
                 document.getElementById('coin-popup-close').addEventListener('click', closePopup);
+                document.getElementById('coin-popup-decline').addEventListener('click', closePopup);
                 overlay.addEventListener('click', function (e) { if (e.target === overlay) closePopup(); });
                 document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePopup(); });
 
