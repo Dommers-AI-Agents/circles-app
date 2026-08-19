@@ -99,7 +99,7 @@ class RegisterViewController: BaseViewController {
     }()
 
     private let zipcodeTextField: UITextField = {
-        let textField = pillField(placeholder: "Zipcode")
+        let textField = pillField(placeholder: "Your Zipcode")
         textField.keyboardType = .numberPad
         textField.returnKeyType = .next
         return textField
@@ -397,7 +397,7 @@ class RegisterViewController: BaseViewController {
         [emailTextField,
          nextButton,
          passkeyInfoLabel, passkeyButton, usePasswordButton,
-         passwordTextField, confirmPasswordTextField, passwordRequirementLabel,
+         passwordTextField, passwordRequirementLabel,
          zipcodeTextField, zipcodeLabel, registerButton,
          orContainerView, socialStackView].forEach { formStack.addArrangedSubview($0) }
 
@@ -406,7 +406,7 @@ class RegisterViewController: BaseViewController {
         formStack.setCustomSpacing(Constants.Spacing.large, after: orContainerView)
         formStack.setCustomSpacing(Constants.Spacing.large, after: passkeyInfoLabel)
         formStack.setCustomSpacing(Constants.Spacing.small, after: passkeyButton)
-        formStack.setCustomSpacing(Constants.Spacing.small, after: confirmPasswordTextField)
+        formStack.setCustomSpacing(Constants.Spacing.small, after: passwordTextField)
         formStack.setCustomSpacing(Constants.Spacing.small, after: zipcodeTextField)
         formStack.setCustomSpacing(Constants.Spacing.large, after: zipcodeLabel)
 
@@ -552,7 +552,6 @@ class RegisterViewController: BaseViewController {
         setHidden(usePasswordButton, !offerStep)
 
         setHidden(passwordTextField, !formStep)
-        setHidden(confirmPasswordTextField, !formStep)
         setHidden(passwordRequirementLabel, !formStep)
         setHidden(zipcodeTextField, !formStep)
         setHidden(zipcodeLabel, !formStep)
@@ -687,12 +686,9 @@ class RegisterViewController: BaseViewController {
             return
         }
         
-        guard let confirmPassword = confirmPasswordTextField.text, confirmPassword == password else {
-            showError("Passwords do not match")
-            return
-        }
-        
-        guard let zipcode = zipcodeTextField.text, !zipcode.isEmpty, isValidZipcode(zipcode) else {
+        // Zipcode is optional — only validate the format if one was entered.
+        let zipcode = (zipcodeTextField.text ?? "").trimmingCharacters(in: .whitespaces)
+        if !zipcode.isEmpty && !isValidZipcode(zipcode) {
             showError("Please enter a valid 5-digit zipcode")
             return
         }
@@ -945,8 +941,6 @@ extension RegisterViewController: UITextFieldDelegate {
                 passwordTextField.becomeFirstResponder()
             }
         case passwordTextField:
-            confirmPasswordTextField.becomeFirstResponder()
-        case confirmPasswordTextField:
             zipcodeTextField.becomeFirstResponder()
         case zipcodeTextField:
             textField.resignFirstResponder()
