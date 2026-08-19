@@ -24,7 +24,11 @@ module.exports = {
   // adds a place, promised by the App Clip's generic "Join FavCircles" signup
   // (Wesley). Universal (all users, not just clip signups) so the promise is
   // true wherever it appears; stacks on the normal ADD_PLACE credit.
-  RULE_VERSION: '2026.08-e',
+  // 2026.08-f: generic App Clip signup grants 50 FavCoins (Wesley). Store
+  // reward points stay exclusive to scanning a specific enrolled store; a
+  // generic "Join FavCircles" signup (no store) is rewarded in FavCoins, the
+  // app-wide currency, instead. Once per user via clip_signup:<userId>.
+  RULE_VERSION: '2026.08-f',
   CLEARING_WINDOW_HOURS: 24,
   COINS: {
     ADD_PLACE: 3,
@@ -46,7 +50,8 @@ module.exports = {
     MOMENT_LIKED: 0.05,
     MOMENT_LIKE_RECEIVED: 0.05, // paid to the moment's OWNER
     BRAND_CODE_REDEEMED: 2,     // scanning the card that shipped in an order
-    FIRST_PLACE_ADDED: 25       // welcome gift — first place ever, once per user
+    FIRST_PLACE_ADDED: 25,      // welcome gift — first place ever, once per user
+    CLIP_SIGNUP: 50             // generic App Clip signup (no store), once per user
   },
   DAILY_CAPS: {              // earns past the cap: action still succeeds, pays 0
     ADD_PLACE: 20,
@@ -70,7 +75,8 @@ module.exports = {
     MOMENT_LIKED: 40,
     MOMENT_LIKE_RECEIVED: 100,  // passive — capped loosely
     BRAND_CODE_REDEEMED: 5,
-    FIRST_PLACE_ADDED: 1        // structurally once-ever via first_place:{uid}
+    FIRST_PLACE_ADDED: 1,       // structurally once-ever via first_place:{uid}
+    CLIP_SIGNUP: 1              // structurally once-ever via clip_signup:{uid}
   },
   CREATE_CIRCLE_MIN_PLACES: 3,   // enforced at CLEARING time, not earn time
   CLAIM: {

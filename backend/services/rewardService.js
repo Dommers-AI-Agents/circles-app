@@ -398,8 +398,12 @@ class RewardService {
 
   // Stamps acquisition fields on a freshly created user and counts the clip
   // signup for the venue. Attribution must never fail a signup — log and move on.
-  // Points are NOT awarded here; the clip's authenticated POST /api/rewards/scan
-  // goes through awardStickerSignup like any other scan.
+  //
+  // Reward split by entry point:
+  //   - generic "Join FavCircles" code (genericJoin): 50 FavCoins here, because
+  //     no store was scanned — store points would be meaningless.
+  //   - a real enrolled store code: NO FavCoins here; they earn 100 store points
+  //     via the authenticated POST /api/rewards/scan (awardStickerSignup).
   async attributeClipSignup(userId, stickerCode) {
     try {
       const venue = await this.findVenueByCode(stickerCode);
@@ -416,6 +420,16 @@ class RewardService {
       if (update.acquisitionVenueId) {
         await this.incrementVenueStats(update.acquisitionVenueId, 'clipSignups');
       }
+
+      // Generic signup FavCoin bonus (fire-and-forget; dedup'd once per user)
+      if (venue && venue.active !== false && venue.genericJoin) {
+        require('./piggyBankService').credit({
+          userId,
+          eventType: 'clip_signup',
+          sourceRef: {}
+        }).catch(() => {});
+      }
+
       return { attributed: true, venueId: update.acquisitionVenueId || null };
     } catch (error) {
       console.error(`⚠️ Clip signup attribution failed for ${userId}:`, error.message);

@@ -16,9 +16,11 @@ struct VenuePreview: Decodable {
     let category: String?
     let kind: String? // "window" | "register"
     let signupBonusPoints: Int
+    let signupBonusCoins: Int? // generic joins reward FavCoins instead of store points
     let generic: Bool? // true = "Join FavCircles" code, no store attached
 
     var isGeneric: Bool { generic == true }
+    var favCoinBonus: Int { signupBonusCoins ?? 50 }
 }
 
 struct ClipAuthResponse: Decodable {

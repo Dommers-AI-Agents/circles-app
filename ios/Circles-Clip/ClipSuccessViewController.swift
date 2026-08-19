@@ -135,8 +135,8 @@ final class ClipSuccessViewController: UIViewController {
         spinner.isHidden = true
         emojiLabel.isHidden = false
         emojiLabel.text = "🎉"
-        titleLabel.text = "Welcome to FavCircles!"
-        detailLabel.text = "Your welcome gifts: 25 FavCoins when you add your first place · 100 points at the first partner store you scan. Get the full app to claim them."
+        titleLabel.text = "You earned \(preview.favCoinBonus) FavCoins!"
+        detailLabel.text = "Add your first place for 25 more. Get the full FavCircles app to claim them and start earning at partner stores."
         popEmoji()
         rainConfetti()
         presentInstallOverlay(afterDelay: 1.6)

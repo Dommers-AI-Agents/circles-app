@@ -31,6 +31,7 @@ exports.getVenuePreview = async (req, res) => {
     // points are promised — the welcome gifts are the first-place FavCoin bonus
     // and the standard first-partner-store signup bonus.
     if (venue.genericJoin) {
+      const piggyConfig = require('../config/piggyBankConfig');
       return res.json({
         success: true,
         data: {
@@ -40,7 +41,8 @@ exports.getVenuePreview = async (req, res) => {
           category: null,
           kind: 'window',
           generic: true,
-          signupBonusPoints: 0
+          signupBonusPoints: 0,          // no store points for a generic join
+          signupBonusCoins: piggyConfig.COINS.CLIP_SIGNUP // FavCoins instead
         }
       });
     }

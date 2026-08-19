@@ -36,7 +36,9 @@ const PIGGY_EVENT_TYPES = [
   // 2026.08-d: carousel photo hearts
   'photo_liked',
   // 2026.08-e: welcome gift — first place a user ever adds
-  'first_place_added'
+  'first_place_added',
+  // 2026.08-f: generic App Clip signup (no store scanned)
+  'clip_signup'
 ];
 
 // Earn statuses and claim statuses are disjoint vocabularies on the same
@@ -106,6 +108,10 @@ function derivePiggyDedupKey(eventType, parts = {}) {
       // Welcome gift: once per user, ever (mirrors the sticker signup:{uid} rule)
       if (!parts.userId) return null;
       return `first_place:${s(parts.userId)}`;
+    case 'clip_signup':
+      // Generic App Clip signup FavCoin bonus: once per user, ever
+      if (!parts.userId) return null;
+      return `clip_signup:${s(parts.userId)}`;
     case 'brand_code_redeemed':
       // Keyed on the code alone: codes are single-use, so one payout ever
       // per code no matter who races the redemption.

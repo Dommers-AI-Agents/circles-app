@@ -183,12 +183,13 @@ final class ClipOfferViewController: UIViewController {
         spinner.stopAnimating()
         contentStack.isHidden = false
         if preview.isGeneric {
-            // Generic "Join FavCircles" sticker — no store attached, welcome
-            // gifts instead of a store bonus
+            // Generic "Join FavCircles" sticker — no store attached. Reward is
+            // FavCoins (app-wide currency); store points come only from scanning
+            // a specific store.
             titleLabel.text = "Join FavCircles"
-            pointsPill.text = "  🎁  Welcome gifts inside  "
+            pointsPill.text = "  🎁  \(preview.favCoinBonus) FavCoins inside  "
             subtitleLabel.text = "Save your favorite places and earn rewards at partner stores."
-            statusLabel.text = "Free to join · 25 FavCoins + 100 store points waiting"
+            statusLabel.text = "Free to join · \(preview.favCoinBonus) FavCoins to get you started"
         } else {
             titleLabel.text = preview.venueName
             pointsPill.text = "  🎁  \(preview.signupBonusPoints) free points  "
