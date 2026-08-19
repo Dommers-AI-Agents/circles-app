@@ -601,6 +601,11 @@ extension NotificationsViewController: NotificationCellDelegate {
                     // First-ever follow of this person earns a dime
                     PiggyBankDepositView.play(credit: response.piggyBank)
                 } else if case .failure(let error) = result {
+                    // "Already following" is the state the user wanted — the
+                    // cell's "✓ Following" is correct, so stay quiet. (The
+                    // server is idempotent now; this guards older responses.)
+                    let message = (error.serverMessage ?? "").lowercased()
+                    if message.contains("already following") { return }
                     self.showError(error)
                     self.tableView.reloadData()
                 }
@@ -878,11 +883,26 @@ class NotificationCell: UITableViewCell {
             actionStack.isHidden = true
         }
 
-        // Load user image if available
+        // A follow you've already made is settled state, not an action —
+        // show the gray "✓ Following" instead of an inviting blue button
+        // that can only no-op.
+        if showFollowBack,
+           let fromId = notification.data?.fromUserId,
+           AuthService.shared.currentUser?.following?.contains(fromId) == true {
+            applyFollowingStyle(followBackButton)
+            followBackButton.isUserInteractionEnabled = false
+        }
+
+        // Reused cells must never keep the previous row's face: reset to the
+        // placeholder unconditionally, then load only if this notification
+        // carries a photo — and drop late responses that belong to a row this
+        // cell no longer shows.
+        userImageView.image = UIImage(systemName: "person.circle.fill")
         if let photoUrl = notification.data?.fromUserPhoto, !photoUrl.isEmpty {
             ImageService.shared.loadImage(from: photoUrl) { [weak self] image in
                 DispatchQueue.main.async {
-                    self?.userImageView.image = image ?? UIImage(systemName: "person.circle.fill")
+                    guard let self = self, self.notification?.id == notification.id else { return }
+                    self.userImageView.image = image ?? UIImage(systemName: "person.circle.fill")
                 }
             }
         }
@@ -941,6 +961,7 @@ class NotificationCell: UITableViewCell {
         [acceptButton, declineButton, followBackButton].forEach {
             $0.isEnabled = true
             $0.alpha = 1.0
+            $0.isUserInteractionEnabled = true
         }
     }
 

@@ -1227,16 +1227,16 @@ exports.followUser = async (req, res, next) => {
       rawFollowersData: JSON.stringify(targetUser.followers || [])
     });
     
-    // Check if already following
+    // Already following: succeed idempotently. Follow is a state, not an
+    // event — surfaces like the notification "Follow back" button can't
+    // always know the current state, and erroring on a no-op tap taught
+    // users they'd done something wrong ("Error: you are already
+    // following this user" on a legitimate tap).
     if (currentUser.following && currentUser.following.includes(targetUserId)) {
-      console.log('⚠️ User already following target:', {
-        currentUserId,
-        targetUserId,
-        followingArray: currentUser.following
-      });
-      return res.status(400).json({
-        success: false,
-        message: 'You are already following this user'
+      return res.json({
+        success: true,
+        alreadyFollowing: true,
+        message: 'Already following this user'
       });
     }
     

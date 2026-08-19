@@ -982,6 +982,15 @@ class NotificationService {
       const notificationTitle = 'New Follower';
       const notificationBody = `${fromUserName} started following you`;
 
+      // The follower's avatar rides along so the notification row shows the
+      // right face — without it, iOS cells had nothing to load and reused
+      // cells kept the previous row's photo. Best-effort.
+      let fromUserPhoto = null;
+      try {
+        const fromUserDoc = await this.db.collection(COLLECTIONS.USERS).doc(fromUserId).get();
+        if (fromUserDoc.exists) fromUserPhoto = fromUserDoc.data().profilePicture || null;
+      } catch (e) { /* photo is cosmetic */ }
+
       // Save notification to Firestore
       const notificationData = createNotification({
         userId: toUserId,
@@ -990,7 +999,8 @@ class NotificationService {
         body: notificationBody,
         data: {
           fromUserId: fromUserId,
-          fromUserName: fromUserName
+          fromUserName: fromUserName,
+          ...(fromUserPhoto ? { fromUserPhoto } : {})
         }
       });
 
