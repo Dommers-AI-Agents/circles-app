@@ -57,12 +57,14 @@ class SettingsViewController: BaseTableViewController {
     private enum AccountRow: Int, CaseIterable {
         case email
         case changePassword
+        case passkey
         case manageAccounts
-        
+
         var title: String {
             switch self {
             case .email: return "Email"
             case .changePassword: return "Change Password"
+            case .passkey: return "Set Up Passkey"
             case .manageAccounts: return "Manage Accounts"
             }
         }
@@ -193,6 +195,27 @@ class SettingsViewController: BaseTableViewController {
         let accountMergeVC = AccountMergeViewController()
         let navController = UINavigationController(rootViewController: accountMergeVC)
         present(navController, animated: true)
+    }
+
+    /// Enroll a passkey on the current account so the user can sign in with
+    /// Face ID / passcode next time (no QR / other-device flow).
+    private func setUpPasskey() {
+        let accountName = AuthService.shared.currentUser?.email
+            ?? AuthService.shared.currentUser?.displayName
+            ?? "FavCircles"
+        PasskeyAuthService.shared.addPasskeyForCurrentUser(accountName: accountName, presentationAnchor: view.window) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success:
+                    AlertPresenter.showSuccess("Passkey set up. Next time you can sign in with Face ID.", from: self)
+                case .failure(let error):
+                    // Silent on cancel; the system sheet already communicated it
+                    if case PasskeyAuthService.PasskeyError.canceled = error { return }
+                    AlertPresenter.showError(error, from: self)
+                }
+            }
+        }
     }
     
     private func showEmailDetails() {
@@ -640,6 +663,14 @@ extension SettingsViewController {
                 case .changePassword:
                     cell.textLabel?.text = row.title
                     cell.accessoryType = .disclosureIndicator
+                case .passkey:
+                    var config = cell.defaultContentConfiguration()
+                    config.text = row.title
+                    config.secondaryText = "Sign in with Face ID or your passcode"
+                    config.secondaryTextProperties.color = .secondaryLabel
+                    config.image = UIImage(systemName: "faceid")
+                    cell.contentConfiguration = config
+                    cell.accessoryType = .disclosureIndicator
                 case .manageAccounts:
                     cell.textLabel?.text = row.title
                     cell.accessoryType = .disclosureIndicator
@@ -774,6 +805,8 @@ extension SettingsViewController {
                     showEmailDetails()
                 case .changePassword:
                     showChangePassword()
+                case .passkey:
+                    setUpPasskey()
                 case .manageAccounts:
                     showAccountMerge()
                 }

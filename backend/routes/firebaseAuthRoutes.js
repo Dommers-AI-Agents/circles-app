@@ -22,6 +22,18 @@ const router = express.Router();
 router.post('/register', validateUserRegistration, register);
 router.post('/login', validateUserLogin, login);
 router.post('/firebase', firebaseAuth);
+
+// Passkeys (WebAuthn) — same authLimiter as everything in this router
+const passkey = require('../controllers/passkeyController');
+const { validateEmailCheck, validatePasskeyRegisterVerify, validatePasskeyLoginVerify } = require('../middleware/validation');
+router.post('/email-check', validateEmailCheck, passkey.emailCheck);
+router.post('/passkey/register-options', validateEmailCheck, passkey.passkeyRegisterOptions);
+router.post('/passkey/register-verify', validatePasskeyRegisterVerify, passkey.passkeyRegisterVerify);
+router.post('/passkey/login-options', passkey.passkeyLoginOptions);
+router.post('/passkey/login-verify', validatePasskeyLoginVerify, passkey.passkeyLoginVerify);
+// Add a passkey to the CURRENT signed-in account (Settings enrollment flow)
+router.post('/passkey/add-options', protect, passkey.passkeyAddOptions);
+router.post('/passkey/add-verify', protect, passkey.passkeyAddVerify);
 router.post('/refresh-token', refreshToken);
 router.post('/forgot-password', forgotPassword);
 router.post('/facebook-deauthorize', facebookDataDeletion);

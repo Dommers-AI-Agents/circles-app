@@ -57,7 +57,10 @@ class LoginViewController: BaseViewController {
 
     private let emailTextField: UITextField = {
         let textField = UITextField()
-        textField.placeholder = "Email"
+        // Fixed placeholder color: dynamic .placeholderText goes light in dark
+        // mode and vanishes on the forced-white field
+        textField.attributedPlaceholder = NSAttributedString(
+            string: "Email", attributes: [.foregroundColor: UIColor(white: 0.55, alpha: 1.0)])
         textField.borderStyle = .roundedRect
         textField.backgroundColor = .white
         textField.textColor = .black
@@ -73,7 +76,8 @@ class LoginViewController: BaseViewController {
 
     private let passwordTextField: UITextField = {
         let textField = UITextField()
-        textField.placeholder = "Password"
+        textField.attributedPlaceholder = NSAttributedString(
+            string: "Password", attributes: [.foregroundColor: UIColor(white: 0.55, alpha: 1.0)])
         textField.borderStyle = .roundedRect
         textField.backgroundColor = .white
         textField.textColor = .black
@@ -99,6 +103,26 @@ class LoginViewController: BaseViewController {
         button.backgroundColor = .white
         button.layer.cornerRadius = 8
         button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        return button
+    }()
+
+    // Quiet sibling to Log In: passkey sign-in for accounts created with
+    // Face ID (outline style so the white-filled Log In stays primary)
+    private lazy var passkeyLoginButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Sign in with a passkey", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        button.setImage(UIImage(systemName: "faceid", withConfiguration:
+            UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)), for: .normal)
+        button.tintColor = .white
+        button.titleEdgeInsets = UIEdgeInsets(top: 0, left: 8, bottom: 0, right: -8)
+        button.backgroundColor = .clear
+        button.layer.borderColor = UIColor.white.withAlphaComponent(0.6).cgColor
+        button.layer.borderWidth = 1
+        button.layer.cornerRadius = 8
+        button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
 
@@ -227,6 +251,7 @@ class LoginViewController: BaseViewController {
         buttonsStackView.addArrangedSubview(emailTextField)
         buttonsStackView.addArrangedSubview(passwordTextField)
         buttonsStackView.addArrangedSubview(loginButton)
+        buttonsStackView.addArrangedSubview(passkeyLoginButton)
         buttonsStackView.addArrangedSubview(forgotPasswordButton)
         buttonsStackView.addArrangedSubview(signUpLinkButton)
 
@@ -323,6 +348,7 @@ class LoginViewController: BaseViewController {
     private func setupActions() {
         // Email/password login
         loginButton.addTarget(self, action: #selector(loginButtonTapped), for: .touchUpInside)
+        passkeyLoginButton.addTarget(self, action: #selector(passkeyLoginTapped), for: .touchUpInside)
         forgotPasswordButton.addTarget(self, action: #selector(forgotPasswordTapped), for: .touchUpInside)
         signUpLinkButton.addTarget(self, action: #selector(registerButtonTapped), for: .touchUpInside)
         togglePasswordButton.addTarget(self, action: #selector(togglePasswordVisibility), for: .touchUpInside)
@@ -343,7 +369,7 @@ class LoginViewController: BaseViewController {
 
     private func updateButtonStates() {
         let controls: [UIControl] = [
-            loginButton, emailTextField, passwordTextField, forgotPasswordButton,
+            loginButton, passkeyLoginButton, emailTextField, passwordTextField, forgotPasswordButton,
             signUpLinkButton, appleSignInButton, googleSignInButton, facebookSignInButton
         ]
         controls.forEach { $0.isEnabled = !isLoggingIn }
@@ -393,6 +419,61 @@ class LoginViewController: BaseViewController {
                     }
                 }
             }
+        }
+    }
+
+    @objc private func passkeyLoginTapped() {
+        dismissKeyboard()
+        // preferImmediate: a device with no local passkey fails fast instead of
+        // showing the confusing "Scan this QR Code" cross-device sheet. A user
+        // enrolls a passkey in Settings (Set Up Passkey) after signing in;
+        // this button then does Face ID.
+        performPasskeySignIn(preferImmediate: true)
+    }
+
+    /// Shared passkey assertion path. preferImmediate makes a device with no
+    /// local credential fail fast (silent .canceled) instead of showing the
+    /// scan-QR/other-device sheet.
+    private func performPasskeySignIn(preferImmediate: Bool) {
+        isLoggingIn = true
+        PasskeyAuthService.shared.signInWithPasskey(presentationAnchor: view.window, preferImmediate: preferImmediate) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isLoggingIn = false
+
+                switch result {
+                case .success(let user):
+                    Logger.debug("🔑 Passkey sign-in: \(user.displayName)")
+                    AnalyticsService.shared.trackLogin(method: "passkey")
+                    if let email = user.email, !email.isEmpty {
+                        UserDefaults.standard.set(email, forKey: self.savedEmailKey)
+                    }
+                    // Auth state listener in SceneDelegate swaps the root
+                case .failure(let error):
+                    if case PasskeyAuthService.PasskeyError.canceled = error {
+                        return // dismissed / no local credential — no toast
+                    }
+                    self.showError(error)
+                }
+            }
+        }
+    }
+
+    // MARK: - Register-screen handoff
+
+    private var pendingAutoPasskeySignIn = false
+
+    /// Set by RegisterViewController when the typed email already has a
+    /// passkey: after the pop lands, kick off the assertion automatically.
+    func signInWithPasskeyOnNextAppear() {
+        pendingAutoPasskeySignIn = true
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if pendingAutoPasskeySignIn {
+            pendingAutoPasskeySignIn = false
+            performPasskeySignIn(preferImmediate: true)
         }
     }
 
