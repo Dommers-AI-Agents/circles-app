@@ -256,9 +256,11 @@ class RegisterViewController: BaseViewController {
         // Configure Apple sign-in container
         appleSignInContainerView.addSubview(appleSignInButton)
         
-        // Configure social stack view - match LoginViewController order
+        // Configure social stack view - match LoginViewController order.
+        // Facebook Sign-In is intentionally omitted (same as the login screen);
+        // re-add by uncommenting if we enable Facebook later.
         socialStackView.addArrangedSubview(googleSignInButton)
-        socialStackView.addArrangedSubview(facebookSignInButton)
+        // socialStackView.addArrangedSubview(facebookSignInButton)
         socialStackView.addArrangedSubview(appleSignInContainerView)
         
         // Setup password field right views
