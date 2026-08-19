@@ -134,3 +134,7 @@ LOCATION_TRACKING_PLAN.md
 PERFORMANCE_OPTIMIZATION_SUMMARY.md
 .gitignored-backup/
 mcp-server/dist/
+
+# Raw video editing sources — exceed GitHub 100MB limit (published mp4s stay tracked)
+Marketing/user-tour/real/tour-raw.mov
+Marketing/user-tour/real/tour-final.mov
