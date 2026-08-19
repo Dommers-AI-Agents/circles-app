@@ -4119,7 +4119,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                     switch result {
                     case .success(let globalPlaceResponse):
                         // Convert GlobalPlace to Place for PlaceDetailViewController
-                        let legacyPlace = globalPlaceResponse.globalPlace.toLegacyPlace(withRelation: globalPlaceResponse.userRelation)
+                        let legacyPlace = globalPlaceResponse.bestDetailPlace()
                         
                         let placeDetailVC = PlaceDetailViewController(place: legacyPlace)
                         self.navigationController?.pushViewController(placeDetailVC, animated: true)

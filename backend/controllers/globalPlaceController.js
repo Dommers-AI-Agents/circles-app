@@ -232,12 +232,43 @@ exports.getGlobalPlace = async (req, res, next) => {
     if (placeData.photos && placeData.photos.length > 0) {
       console.log(`📸 [GlobalPlace API] Sample attribution: "${placeData.photos[0].uploadedByName || 'Unknown'}"`);
     }
-    
+
+    // Representative SAVE record: the venue doc carries no addedBy, so a
+    // client landing here from offers/rewards showed "Added by a connection"
+    // with no saver info, while the same venue opened from search (a real
+    // save doc) showed "Added by Wesley · saved by 2". Return the viewer's
+    // own save if they have one, else the oldest viewer-visible save (the
+    // original adder), shaped like the list endpoints shape places
+    // (venue overlay + addedByUser). Best-effort — never fails the request.
+    let representativeSave = null;
+    try {
+      const savesSnap = await db.collection('places')
+        .where('globalPlaceId', '==', placeDoc.id)
+        .get();
+      const viewerId = req.user?.uid || req.user?.id || null;
+      // Conservative visibility: own saves always; others only when public
+      // (myNetwork would need a connection check — not worth it here)
+      const visible = savesSnap.docs.map(serializeDoc).filter(p =>
+        !p.deletedAt && (p.addedBy === viewerId || p.privacy === 'public' || !p.privacy)
+      );
+      if (visible.length > 0) {
+        visible.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+        const chosen = visible.find(p => p.addedBy === viewerId) || visible[0];
+        const { overlayVenueFields, buildAddedByUserMap } = require('./firebasePlaceController');
+        representativeSave = overlayVenueFields(chosen, placeData);
+        const userMap = await buildAddedByUserMap([chosen]);
+        representativeSave.addedByUser = userMap.get(chosen.addedBy) || null;
+      }
+    } catch (e) {
+      console.error('⚠️ [GlobalPlace API] representativeSave lookup failed:', e.message);
+    }
+
     res.status(200).json({
       success: true,
       data: {
         globalPlace: placeData,
-        userRelation: userRelation
+        userRelation: userRelation,
+        representativeSave: representativeSave
       }
     });
   } catch (error) {

@@ -416,11 +416,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return button
     }()
 
-    // Default "Me": the map header opens as Me · All Categories · All Places,
-    // and because the connection filter is shared with the rest of the home
-    // page, every section starts scoped to your own places. (nil = All
-    // Connections remains one tap away in the map's Connection dropdown.)
-    var selectedConnectionId: String? = "my_places_only"
+    // Default "Everyone" (nil): the map opens scoped to your network —
+    // yourself, your accepted connections, and everyone you follow — so a brand
+    // new user still lands on a map with pins (they auto-follow from day one).
+    // "My Places" / "My Connections" / a specific person are all one tap away in
+    // the Connection dropdown.
+    var selectedConnectionId: String? = nil
     var selectedConnectionUser: User? = nil // Set only when a specific connection is filtered
 
     /// Whose places are on the map: the selected connection's avatar shown as
@@ -2599,12 +2600,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self.filterContainer.isHidden = false
             self.mapExpandButton.isHidden = false
             
-            // Default filter: My Places — matches the property default and the
-            // dropdown header; the expanded map inherits whatever is set here,
-            // so home and modal always open on the same scope.
-            self.selectedConnectionId = "my_places_only"
+            // Default filter: Everyone (nil) — matches the property default and
+            // the dropdown header; the expanded map inherits whatever is set
+            // here, so home and modal always open on the same scope.
+            self.selectedConnectionId = nil
             self.selectedConnectionUser = nil
-            self.mapViewController?.setConnectionSelection(id: "my_places_only", user: nil)
+            self.mapViewController?.setConnectionSelection(id: nil, user: nil)
 
             // Don't mark as ready - we need to fetch places
             self.isMapDataReady = false
@@ -2821,7 +2822,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     guard let self = self else { return }
                     switch result {
                     case .success(let response):
-                        let place = response.globalPlace.toLegacyPlace(withRelation: response.userRelation)
+                        let place = response.bestDetailPlace()
                         let detailVC = PlaceDetailViewController(place: place)
                         self.navigationController?.pushViewController(detailVC, animated: true)
                     case .failure:
@@ -3428,7 +3429,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Ensure connections are loaded in NetworkManager
         NetworkManager.shared.loadConnections()
         // ...and the followed-users roster, which feeds the map's people filter
-        NetworkManager.shared.loadFollowingUsers()
+        // AND the default "Everyone" scope. Refresh the map once it lands so
+        // followed users' pins aren't dropped on the first paint.
+        NetworkManager.shared.loadFollowingUsers { [weak self] in
+            guard let self = self, self.selectedConnectionId == nil else { return }
+            self.refreshMapDisplay(adjustRegion: false)
+        }
         
         // Show loading state once if not already showing and no cached data
         if !isCacheValid() {
@@ -5207,9 +5213,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 Logger.debug("   Filtered to connection '\(connectionId)': \(mapFilteredPlaces.count) places")
             }
         } else {
-            // "All Connections" selected - show all places (user's + connections')
-            mapFilteredPlaces = places
-            Logger.debug("   Showing all connections' places: \(mapFilteredPlaces.count) places")
+            // "Everyone" (nil) — the default map scope: your own places, your
+            // accepted connections', and everyone you follow. Scoped to your
+            // network rather than the whole world, but non-empty from day one
+            // because new users auto-follow, so pins show immediately.
+            let authorIds = everyoneAuthorIds
+            mapFilteredPlaces = places.filter { place in
+                if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
+                    return authorIds.contains { IDNormalizer.isSameUser(circle.owner, $0) }
+                }
+                return authorIds.contains { IDNormalizer.isSameUser(place.addedBy, $0) }
+            }
+            Logger.debug("   Everyone filter → \(mapFilteredPlaces.count) places from \(authorIds.count) authors")
         }
         
         // Apply category filter
@@ -5644,7 +5659,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Connection filter submenu
         let currentUserId = AuthService.shared.getUserId() ?? ""
         var connectionActions: [UIAction] = [
-            UIAction(title: "Following", state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
+            UIAction(title: "Everyone", state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
                 self?.selectConnection(id: nil, user: nil)
             },
             UIAction(title: "My Connections", state: selectedConnectionId == "my_connections_only" ? .on : .off) { [weak self] _ in
@@ -5681,7 +5696,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
         let connectionSubtitle = selectedConnectionUser?.displayName
             ?? (selectedConnectionId == "my_places_only" ? "My Places Only"
-                : selectedConnectionId == "my_connections_only" ? "My Connections" : "Following")
+                : selectedConnectionId == "my_connections_only" ? "My Connections" : "Everyone")
         elements.append(UIMenu(
             title: "Connections",
             subtitle: connectionSubtitle,
@@ -5816,6 +5831,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return NetworkManager.shared.connections
             .map { $0.otherUserId(currentUserId: currentUserId) }
             .filter { !$0.isEmpty }
+    }
+
+    /// Author ids for the default "Everyone" map scope: yourself + accepted
+    /// connections + everyone you follow. (Following is loaded lazily, so this
+    /// grows once `loadFollowingUsers` completes — the map refreshes then.)
+    var everyoneAuthorIds: Set<String> {
+        var ids = Set(acceptedConnectionUserIds)
+        if let me = AuthService.shared.getUserId(), !me.isEmpty { ids.insert(me) }
+        ids.formUnion(NetworkManager.shared.followingUsers.map { $0.id }.filter { !$0.isEmpty })
+        return ids
     }
     
     func openProfileFromMapMenu() {

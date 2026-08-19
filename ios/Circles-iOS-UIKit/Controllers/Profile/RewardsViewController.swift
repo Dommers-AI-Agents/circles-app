@@ -734,7 +734,7 @@ class RewardsViewController: BaseViewController {
                     guard let self = self else { return }
                     switch result {
                     case .success(let response):
-                        let place = response.globalPlace.toLegacyPlace(withRelation: response.userRelation)
+                        let place = response.bestDetailPlace()
                         let detailVC = PlaceDetailViewController(place: place)
                         self.navigationController?.pushViewController(detailVC, animated: true)
                     case .failure:

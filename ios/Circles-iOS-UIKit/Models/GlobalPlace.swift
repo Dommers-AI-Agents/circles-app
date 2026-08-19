@@ -237,6 +237,17 @@ struct UserPlaceRelation: Codable, Identifiable {
 struct GlobalPlaceResponse: Codable {
     let globalPlace: GlobalPlace
     let userRelation: UserPlaceRelation?
+    /// A real SAVE record for this venue (viewer's own, else the original
+    /// adder's) with addedByUser populated — prefer it over toLegacyPlace()
+    /// so the detail screen shows "Added by X · saved by N" instead of the
+    /// anonymous venue shape. Optional: absent when nobody visible saved it.
+    let representativeSave: Place?
+
+    /// The best Place to hand PlaceDetailViewController: the save record when
+    /// one exists, else the venue converted to the legacy shape.
+    func bestDetailPlace() -> Place {
+        return representativeSave ?? globalPlace.toLegacyPlace(withRelation: userRelation)
+    }
 }
 
 // MARK: - API Response Models

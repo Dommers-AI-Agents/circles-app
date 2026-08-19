@@ -333,12 +333,11 @@ extension CirclesHomeViewController {
         // Chip filters (category group + region) live inside the embedded map.
         mapViewController?.resetChipFilters()
 
-        // Original load state is "Me" (my_places_only), not All Connections —
-        // the map header opens as Me · All Categories · All Places.
-        let defaultConnectionId = "my_places_only"
-        if selectedConnectionId != defaultConnectionId || selectedCategory != nil {
+        // Original load state is "Everyone" (nil) — the map header opens on your
+        // network scope, All Categories · All Places.
+        if selectedConnectionId != nil || selectedCategory != nil {
             selectedCategory = nil
-            selectConnection(id: defaultConnectionId, user: nil)
+            selectConnection(id: nil, user: nil)
         } else {
             // Nothing filtered - just re-frame the default region (the user
             // may have panned or zoomed away)
@@ -358,7 +357,7 @@ extension CirclesHomeViewController {
                     guard let self = self else { return }
                     switch result {
                     case .success(let response):
-                        let place = response.globalPlace.toLegacyPlace(withRelation: response.userRelation)
+                        let place = response.bestDetailPlace()
                         let detailVC = PlaceDetailViewController(place: place)
                         self.navigationController?.pushViewController(detailVC, animated: true)
                     case .failure(let error):
