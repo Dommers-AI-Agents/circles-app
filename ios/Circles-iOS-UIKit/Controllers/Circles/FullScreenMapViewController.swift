@@ -89,8 +89,25 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// places saved under a connection's legacy account id (circle owner and
     /// place adder can be different ids for the same person).
     private func connectionScopedPlaces() -> [Place] {
-        guard viewMode == .allPlaces, isPresentedModally,
-              let connectionId = selectedConnectionId else { return places }
+        guard viewMode == .allPlaces, isPresentedModally else { return places }
+
+        let currentUserIdForScope = AuthService.shared.getUserId() ?? ""
+        guard let connectionId = selectedConnectionId else {
+            // "Everyone" (nil) — yourself + accepted connections + everyone you
+            // follow. Union of the pre-bucketed connection lists and an addedBy
+            // sweep (covers viewport-fetched places that were never bucketed).
+            var authorIds = Set(connections.map { $0.otherUserId(currentUserId: currentUserIdForScope) })
+            authorIds.formUnion(NetworkManager.shared.followingUsers.map { $0.id })
+            authorIds.insert(currentUserIdForScope)
+            authorIds = authorIds.filter { !$0.isEmpty }
+            var scoped = authorIds.flatMap { connectionPlaces[$0] ?? [] }
+            let scopedIds = Set(scoped.map { $0.id })
+            scoped += places.filter { place in
+                !scopedIds.contains(place.id) &&
+                authorIds.contains { IDNormalizer.isSameUser(place.addedBy, $0) }
+            }
+            return scoped
+        }
 
         if connectionId == "my_places_only" {
             let currentUserId = AuthService.shared.getUserId() ?? ""
@@ -287,7 +304,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private func updateFilterHeaderTitles() {
         let connectionTitle: String
         switch selectedConnectionId {
-        case nil: connectionTitle = "Following"
+        case nil: connectionTitle = "Everyone"
         case "my_connections_only": connectionTitle = "My Connections"
         case "my_places_only":
             if let origin = selectedImportOrigin {
@@ -306,9 +323,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
     // MARK: Dropdown menus
 
-    /// Me / All Connections / everyone, in the home connections row's order —
-    /// the same ranking, so the list reads identically everywhere. Each person
-    /// shows their avatar, so the list scans by face rather than by name.
+    /// Everyone / My Connections / My Places, then each person in the home
+    /// connections row's order — the same ranking, so the list reads identically
+    /// everywhere. Each person shows their avatar, so it scans by face not name.
     private func connectionMenuElements() -> [UIMenuElement] {
         // "My Places" wears YOUR face — same circular treatment as everyone
         // below it, so the row reads as you rather than a generic glyph.
@@ -320,7 +337,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
         }
 
-        // "Following" gets a two-tone palette symbol — one figure in the
+        // "Everyone" gets a two-tone palette symbol — one figure in the
         // brand color, one in a warm accent — so it reads as "everyone", not
         // another flat glyph. Rasterized to pixels: withRenderingMode after
         // applyingSymbolConfiguration silently DROPS the palette, and menus
@@ -336,14 +353,39 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             }.withRenderingMode(.alwaysOriginal)
         }()
 
+        // "Everyone" (nil) leads the list — the default scope: you + your
+        // accepted connections + everyone you follow.
         var actions: [UIAction] = [
+            UIAction(title: "Everyone",
+                     image: followingIcon,
+                     state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
+                self?.selectConnectionFromHeader(id: nil, user: nil)
+            }
+        ]
+
+        // "My Connections" = accepted connections only (the narrower cut).
+        let myConnectionsIcon = UIImage(
+            systemName: "person.2.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
+        )?.withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
+        actions.append(
+            UIAction(title: "My Connections",
+                     image: myConnectionsIcon,
+                     state: selectedConnectionId == "my_connections_only" ? .on : .off) { [weak self] _ in
+                self?.selectConnectionFromHeader(id: "my_connections_only", user: nil)
+            }
+        )
+
+        // "My Places" wears YOUR face — same circular treatment as everyone
+        // below it, so the row reads as you rather than a generic glyph.
+        actions.append(
             UIAction(title: "My Places",
                      image: myAvatar,
                      state: selectedConnectionId == "my_places_only" && selectedImportOrigin == nil ? .on : .off) { [weak self] _ in
                 self?.selectedImportOrigin = nil
                 self?.selectConnectionFromHeader(id: "my_places_only", user: nil)
             }
-        ]
+        )
 
         // Origin sub-rows under My Places — only for users whose own places
         // include imports. Splits your pins into in-app adds vs each import
@@ -357,8 +399,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             // Keep the active selection pickable even if its places vanished
             if let active = selectedImportOrigin, !origins.contains(active) { origins.append(active) }
             for origin in origins {
-                let icon = UIImage(systemName: origin == "in_app" ? "plus.app" : "square.and.arrow.down")?
-                    .withTintColor(Constants.Colors.secondaryLabel, renderingMode: .alwaysOriginal)
+                let icon = UIImage(systemName: origin == "in_app" ? "plus.app.fill" : "square.and.arrow.down.fill")?
+                    .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
                 actions.append(UIAction(
                     title: "›  \(Self.originTitle(origin))",
                     image: icon,
@@ -378,29 +420,6 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 })
             }
         }
-
-        // "My Connections" = accepted connections only; "Following" = everyone
-        // you follow (connections auto-follow, so it's the wider net and the
-        // default view). Renamed from "All Connections" per Wes, 2026-08-19.
-        let myConnectionsIcon = UIImage(
-            systemName: "person.2.fill",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
-        )?.withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
-
-        actions.append(
-            UIAction(title: "My Connections",
-                     image: myConnectionsIcon,
-                     state: selectedConnectionId == "my_connections_only" ? .on : .off) { [weak self] _ in
-                self?.selectConnectionFromHeader(id: "my_connections_only", user: nil)
-            }
-        )
-        actions.append(
-            UIAction(title: "Following",
-                     image: followingIcon,
-                     state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
-                self?.selectConnectionFromHeader(id: nil, user: nil)
-            }
-        )
 
         // Person rows: ranked connections first (same order as the home row),
         // then everyone else you follow — the map can scope to any of them.
@@ -473,8 +492,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
 
     private func menuAvatar(for user: User) -> UIImage? {
-        let placeholder = UIImage(systemName: "person.crop.circle")?
-            .withTintColor(Constants.Colors.secondaryLabel, renderingMode: .alwaysOriginal)
+        // No photo → a colored, filled avatar (never the flat grey glyph). The
+        // hue is derived from the user id so a person keeps one color across
+        // launches and the list reads as a row of distinct faces.
+        let placeholder = Self.coloredAvatarPlaceholder(for: user)
         guard let urlString = user.profilePicture, !urlString.isEmpty else { return placeholder }
 
         let cacheKey = "profile_\(user.id)_\(urlString.hashValue)"
@@ -484,6 +505,23 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Warm the cache for the next open; menus can't be mutated in place.
         ImageService.shared.loadProfileImage(for: user.id, from: urlString) { _ in }
         return placeholder
+    }
+
+    /// A colored, filled person glyph for menu rows without a profile photo.
+    /// Hue is picked deterministically from the user id so the same person keeps
+    /// one color across launches (String.hashValue is per-process seeded, so we
+    /// sum unicode scalars instead of hashing).
+    static func coloredAvatarPlaceholder(for user: User) -> UIImage? {
+        let palette: [UIColor] = [
+            Constants.Colors.primary, .systemOrange, .systemPink, .systemPurple,
+            .systemTeal, .systemGreen, .systemIndigo, .systemRed
+        ]
+        let seed = user.id.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        let color = palette[seed % palette.count]
+        return UIImage(
+            systemName: "person.crop.circle.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 24, weight: .regular)
+        )?.withTintColor(color, renderingMode: .alwaysOriginal)
     }
 
     /// Aspect-fill crops an image into a small circle for use as a menu icon.
@@ -1906,7 +1944,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Connection filter submenu (allPlaces mode only; not on profile maps)
         if viewMode == .allPlaces && showsConnectionFilter {
             var connectionActions: [UIAction] = [
-                UIAction(title: "Following", state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
+                UIAction(title: "Everyone", state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
                     self?.selectConnection(nil)
                 },
                 UIAction(title: "My Connections", state: selectedConnectionId == "my_connections_only" ? .on : .off) { [weak self] _ in
@@ -1957,7 +1995,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                         ?? "Connection"
                 }
             } else {
-                connectionSubtitle = "Following"
+                connectionSubtitle = "Everyone"
             }
             elements.append(UIMenu(
                 title: "Connections",
