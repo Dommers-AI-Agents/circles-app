@@ -175,6 +175,39 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     private var tagChipBarHeightConstraint: NSLayoutConstraint?
     private var tagChipBarTopConstraint: NSLayoutConstraint?
 
+    /// Soft warning row shown when imported places in this circle couldn't be
+    /// located on Apple Maps (`needsResolution == true`). Tapping it opens the
+    /// UnlocatedPlacesViewController review screen. Styled locally (like the
+    /// category filter button) — no factory covers a warning banner.
+    private let unlocatedBanner: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "exclamationmark.triangle.fill",
+                                withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .medium)),
+                        for: .normal)
+        button.tintColor = .systemOrange
+        button.setTitleColor(Constants.Colors.label, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium)
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.8
+        button.backgroundColor = UIColor.systemOrange.withAlphaComponent(0.12)
+        button.layer.cornerRadius = 10
+        button.contentHorizontalAlignment = .leading
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        button.titleEdgeInsets = UIEdgeInsets(top: 0, left: 6, bottom: 0, right: -6)
+        button.isHidden = true // Shown only when unlocated imports exist
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
+    // Collapse the banner to zero height (same pattern as the tag chip bar)
+    // when no place needs resolution
+    private var unlocatedBannerHeightConstraint: NSLayoutConstraint?
+    private var unlocatedBannerTopConstraint: NSLayoutConstraint?
+
+    /// Places in this circle the import resolver gave up on — feeds the banner
+    /// and the review screen; re-derived on every fetch
+    private var unlocatedPlaces: [Place] = []
+
     private let mapView: MKMapView = {
         let mapView = MKMapView()
         mapView.layer.cornerRadius = 12
@@ -365,6 +398,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         
         contentView.addSubview(placesLabel)
         contentView.addSubview(categoryFilterButton)
+        contentView.addSubview(unlocatedBanner)
         contentView.addSubview(tagChipBar)
         contentView.addSubview(mapView)
         contentView.addSubview(expandMapButton)
@@ -467,6 +501,10 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             categoryFilterButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             categoryFilterButton.heightAnchor.constraint(equalToConstant: 32),
             
+            // Unlocated-imports banner (zero height + zero top spacing when hidden)
+            unlocatedBanner.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            unlocatedBanner.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+
             // Tag chip bar (zero height + zero top spacing when hidden)
             tagChipBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             tagChipBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
@@ -512,9 +550,18 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         // Initially activate the editors constraint (will be switched in configureEditors)
         circleInfoViewBottomToEditorsConstraint?.isActive = true
 
+        // Unlocated-imports banner sits between the Places header and the tag
+        // chip bar; collapses to zero height (and zero top spacing) when every
+        // place resolved, so the layout is unchanged without it
+        unlocatedBannerTopConstraint = unlocatedBanner.topAnchor.constraint(equalTo: placesLabel.bottomAnchor, constant: 0)
+        unlocatedBannerTopConstraint?.isActive = true
+        unlocatedBannerHeightConstraint = unlocatedBanner.heightAnchor.constraint(equalToConstant: 0)
+        unlocatedBannerHeightConstraint?.isActive = true
+        unlocatedBanner.addTarget(self, action: #selector(unlocatedBannerTapped), for: .touchUpInside)
+
         // Tag chip bar collapses to zero height (and zero top spacing) when the
         // circle's places have no tags, so the layout is unchanged without it
-        tagChipBarTopConstraint = tagChipBar.topAnchor.constraint(equalTo: placesLabel.bottomAnchor, constant: 0)
+        tagChipBarTopConstraint = tagChipBar.topAnchor.constraint(equalTo: unlocatedBanner.bottomAnchor, constant: 0)
         tagChipBarTopConstraint?.isActive = true
         tagChipBarHeightConstraint = tagChipBar.heightAnchor.constraint(equalToConstant: 0)
         tagChipBarHeightConstraint?.isActive = true
@@ -1849,6 +1896,10 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     /// row is hidden entirely when no place has tags; the current selection is
     /// preserved if its tag still exists, otherwise it resets to All.
     private func updateTagChips() {
+        // The unlocated-imports banner re-derives on the same places-loaded
+        // hook as the chips — every fetchPlaces path lands here
+        updateUnlocatedBanner()
+
         // Count tags case-insensitively, keeping the first-seen raw spelling
         var counts: [String: Int] = [:] // lowercased -> count
         var rawSpelling: [String: String] = [:] // lowercased -> raw value
@@ -1883,6 +1934,33 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             selectedTag = nil
         }
         tagChipBar.setTags(orderedTags, selected: selectedTag)
+    }
+
+    /// Shows the "N places couldn't be located — Review" warning row when any
+    /// fetched place still carries `needsResolution == true` (an import the
+    /// background resolver gave up on); collapses it to zero height otherwise.
+    private func updateUnlocatedBanner() {
+        unlocatedPlaces = places.filter { $0.needsResolution == true }
+
+        let count = unlocatedPlaces.count
+        let hasUnlocated = count > 0
+        unlocatedBanner.isHidden = !hasUnlocated
+        unlocatedBannerHeightConstraint?.constant = hasUnlocated ? 36 : 0
+        unlocatedBannerTopConstraint?.constant = hasUnlocated ? Constants.Spacing.medium : 0
+
+        if hasUnlocated {
+            unlocatedBanner.setTitle(
+                "\(count) place\(count == 1 ? "" : "s") couldn't be located — Review",
+                for: .normal
+            )
+        }
+    }
+
+    @objc private func unlocatedBannerTapped() {
+        guard !unlocatedPlaces.isEmpty else { return }
+        let reviewVC = UnlocatedPlacesViewController(places: unlocatedPlaces)
+        let navController = UINavigationController(rootViewController: reviewVC)
+        present(navController, animated: true)
     }
 
     private func applyFilter() {

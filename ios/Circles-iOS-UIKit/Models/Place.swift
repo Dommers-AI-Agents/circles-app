@@ -135,6 +135,10 @@ struct Place: Codable, Identifiable {
     /// imported rows, nil for places added in the app. Stamped at import time
     /// by the backend; drives the origin flag and the My Places sub-filter.
     var importSource: String? = nil
+    /// True on imported rows the background resolver couldn't locate on Apple
+    /// Maps (still "Address pending"). Drives the circle-detail review banner;
+    /// nil/false for normal places.
+    var needsResolution: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -145,6 +149,7 @@ struct Place: Codable, Identifiable {
         case followersCount, isFollowing
         case city, state, stateCode, neighborhood, country, countryCode
         case importSource
+        case needsResolution
     }
 
     /// Human-readable origin for imported saves ("Google import"), nil for
@@ -266,6 +271,7 @@ struct Place: Codable, Identifiable {
         self.country = try container.decodeIfPresent(String.self, forKey: .country)
         self.countryCode = try container.decodeIfPresent(String.self, forKey: .countryCode)
         self.importSource = try container.decodeIfPresent(String.self, forKey: .importSource)
+        self.needsResolution = try container.decodeIfPresent(Bool.self, forKey: .needsResolution)
     }
     
     // Manual initializer for creating Place instances in code

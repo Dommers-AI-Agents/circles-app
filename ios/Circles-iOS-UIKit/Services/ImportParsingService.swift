@@ -179,6 +179,16 @@ final class ImportParsingService {
             guard !name.isEmpty else { continue }
 
             let url = urlIndex.flatMap { $0 < row.count ? row[$0] : nil }
+
+            // Takeout's "Saved" export mixes in saved web content — articles,
+            // product pages, image results ("66 Outdoor Bathroom Designs…").
+            // A row whose URL isn't a Google Maps link isn't a place, and
+            // importing it creates a permanently unlocatable "Address
+            // pending" save. Rows with no URL at all are kept.
+            if let url = url, !url.isEmpty, !ImportParsingService.isGoogleMapsURL(url) {
+                continue
+            }
+
             let address = addressIndex.flatMap { $0 < row.count ? emptyToNil(row[$0]) : nil }
             var notes = noteIndex.flatMap { $0 < row.count ? emptyToNil(row[$0]) : nil }
             if notes == nil, let commentIndex = commentIndex, commentIndex < row.count {
@@ -214,6 +224,16 @@ final class ImportParsingService {
 
         let listName = (filename as NSString).deletingPathExtension
         return ImportList(name: listName.isEmpty ? "Google Maps" : listName, places: places)
+    }
+
+    /// True when the URL points at Google Maps (a place), as opposed to a
+    /// saved article/product/image result that Takeout exports alongside.
+    static func isGoogleMapsURL(_ url: String) -> Bool {
+        let lower = url.lowercased()
+        return lower.contains("google.com/maps")
+            || lower.contains("maps.google.")
+            || lower.contains("maps.app.goo.gl")
+            || lower.contains("goo.gl/maps")
     }
 
     // MARK: Google Maps URL extraction

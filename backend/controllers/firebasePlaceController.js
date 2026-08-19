@@ -2318,6 +2318,10 @@ exports.getUnresolvedPlaces = async (req, res) => {
     snapshot.forEach(doc => {
       const p = doc.data();
       if (p.deletedAt || !p.needsResolution) return;
+      // Three failed passes = stop retrying (saved articles/products from
+      // Takeout will never locate); they stay needsResolution for the
+      // "couldn't be located" review UI, just out of the queue's feed.
+      if ((p.resolutionAttempts || 0) >= 3) return;
       places.push({ id: doc.id, name: p.name, address: p.address || null, circleId: p.circleId });
     });
     res.json({ success: true, data: { places, count: places.length } });
@@ -2338,7 +2342,28 @@ exports.getUnresolvedPlaces = async (req, res) => {
 // @access  Private (place owner)
 exports.resolveImportedPlace = async (req, res) => {
   try {
-    const { latitude, longitude, address, applePoiCategory } = req.body || {};
+    const { latitude, longitude, address, applePoiCategory, notFound } = req.body || {};
+
+    // Failure report from the on-device resolver: count the strike so the
+    // unresolved feed can retire rows that fail three full passes. Owner
+    // check happens below the fetch, same as the success path.
+    if (notFound === true) {
+      const failRef = db.collection(COLLECTIONS.PLACES).doc(req.params.id);
+      const failDoc = await failRef.get();
+      if (!failDoc.exists || failDoc.data().deletedAt) {
+        return res.status(404).json({ success: false, message: 'Place not found' });
+      }
+      if (failDoc.data().addedBy !== req.user.uid) {
+        return res.status(403).json({ success: false, message: 'Not your place' });
+      }
+      const { FieldValue } = require('firebase-admin').firestore;
+      await failRef.update({
+        resolutionAttempts: FieldValue.increment(1),
+        updatedAt: new Date().toISOString()
+      });
+      return res.json({ success: true, data: { placeId: req.params.id, recorded: true } });
+    }
+
     if (typeof latitude !== 'number' || typeof longitude !== 'number' ||
         Math.abs(latitude) > 90 || Math.abs(longitude) > 180 ||
         (latitude === 0 && longitude === 0)) {
@@ -2361,6 +2386,7 @@ exports.resolveImportedPlace = async (req, res) => {
       // geofire expects [lat, lng]
       geohash: geofire.geohashForLocation([latitude, longitude]),
       needsResolution: FieldValue.delete(),
+      resolutionAttempts: FieldValue.delete(),
       updatedAt: new Date().toISOString()
     };
     if (address && typeof address === 'string' && address.trim() &&

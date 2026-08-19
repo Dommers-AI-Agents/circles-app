@@ -178,9 +178,19 @@ final class ImportResolutionQueue {
                                 processNext()
                             }
                         }
-                    case .notFound, .throttled:
-                        // Genuinely not found, or throttled past the retry
-                        // budget — leave unmapped for a future pass
+                    case .notFound:
+                        // Genuinely not found — record the strike so the
+                        // backend retires rows after three failed passes
+                        // (saved Takeout articles never resolve). Best-effort;
+                        // the pass moves on regardless.
+                        self.reportNotFound(placeId: place.id)
+                        index += 1
+                        DispatchQueue.main.asyncAfter(deadline: .now() + AppleImportResolver.interRequestDelay) {
+                            processNext()
+                        }
+                    case .throttled:
+                        // Throttled past the retry budget — NOT a strike;
+                        // leave unmapped for a future pass
                         index += 1
                         DispatchQueue.main.asyncAfter(deadline: .now() + AppleImportResolver.interRequestDelay) {
                             processNext()
@@ -240,6 +250,17 @@ final class ImportResolutionQueue {
                 }
             }
         }
+    }
+
+    /// Tells the backend an Apple search came up empty for this place, so
+    /// three-strike rows leave the retry feed. Fire-and-forget.
+    private func reportNotFound(placeId: String) {
+        APIService.shared.request(
+            endpoint: "places/\(placeId)/resolve",
+            method: .put,
+            body: ["notFound": true],
+            requiresAuth: true
+        ) { (_: Result<SimpleAPIResponse, APIError>) in }
     }
 
     // MARK: - Duplicate review

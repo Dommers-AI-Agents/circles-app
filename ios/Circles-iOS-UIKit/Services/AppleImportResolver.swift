@@ -132,12 +132,33 @@ enum AppleImportResolver {
         address: String?,
         completion: @escaping (VenueSearchOutcome) -> Void
     ) {
+        performSearch(name: name, address: address) { outcome in
+            // Decorated names ("O ARTISTA - Bar à Cocktails - … - Ixelles")
+            // overwhelm the search — one retry with the prefix before the
+            // first separator rescues most of them. Throttles pass through
+            // untouched so callers' backoff semantics hold.
+            if case .notFound = outcome,
+               let trimmed = prefixBeforeSeparator(of: name) {
+                performSearch(name: trimmed, address: address, completion: completion)
+            } else {
+                completion(outcome)
+            }
+        }
+    }
+
+    private static func performSearch(
+        name: String,
+        address: String?,
+        completion: @escaping (VenueSearchOutcome) -> Void
+    ) {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = [name, address]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
-        request.resultTypes = .pointOfInterest
+        // .address matters: many Takeout saves are bare street addresses
+        // ("1025 Starview Ave") that a POI-only search can never return
+        request.resultTypes = [.pointOfInterest, .address]
 
         MKLocalSearch(request: request).start { response, error in
             if let error = error {
@@ -161,6 +182,18 @@ enum AppleImportResolver {
                 applePoiCategory: item.pointOfInterestCategory?.rawValue
             )))
         }
+    }
+
+    /// "O ARTISTA - Bar à Cocktails - …" → "O ARTISTA". Returns nil when
+    /// there's no separator or the prefix is too short to be a useful query.
+    private static func prefixBeforeSeparator(of name: String) -> String? {
+        for separator in [" - ", " | ", " / ", " – "] {
+            if let range = name.range(of: separator) {
+                let prefix = String(name[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+                return prefix.count >= 3 ? prefix : nil
+            }
+        }
+        return nil
     }
 
     // MARK: - Private
