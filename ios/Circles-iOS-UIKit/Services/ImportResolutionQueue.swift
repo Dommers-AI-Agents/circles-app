@@ -27,6 +27,9 @@ final class ImportResolutionQueue {
         let name: String
         let address: String?
         let circleId: String?
+        /// The original import source URL — Google URLs encode the venue's
+        /// true location, which seeds the Apple search in the right city
+        let website: String?
     }
 
     private struct UnresolvedResponse: Decodable {
@@ -157,7 +160,8 @@ final class ImportResolutionQueue {
 
             // A backend-stamped placeholder address adds nothing to the query
             let address = place.address == "Address pending" ? nil : place.address
-            AppleImportResolver.searchVenue(name: place.name, address: address) { outcome in
+            let hint = place.website.flatMap { ImportParsingService.featureCoordinate(fromGoogleURL: $0) }
+            AppleImportResolver.searchVenue(name: place.name, address: address, hint: hint) { outcome in
                 DispatchQueue.main.async {
                     switch outcome {
                     case .throttled where throttleRetry < AppleImportResolver.maxThrottleRetries:

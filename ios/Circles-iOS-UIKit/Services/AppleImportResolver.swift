@@ -56,7 +56,11 @@ enum AppleImportResolver {
             progress(progressMessage)
 
             let candidate = resolvedLists[item.listIndex].places[item.placeIndex]
-            searchVenue(name: candidate.name, address: candidate.address) { outcome in
+            // Google URLs encode the venue's true location (S2 feature id) —
+            // without this hint, name-only searches resolve to the same-name
+            // venue nearest the USER (a Scottsdale save pinned in Charlotte)
+            let hint = candidate.sourceUrl.flatMap { ImportParsingService.featureCoordinate(fromGoogleURL: $0) }
+            searchVenue(name: candidate.name, address: candidate.address, hint: hint) { outcome in
                 DispatchQueue.main.async {
                     switch outcome {
                     case .throttled where throttleRetry < maxThrottleRetries:
@@ -127,19 +131,24 @@ enum AppleImportResolver {
         return min(60.0, 5.0 * pow(2.0, Double(retry)))
     }
 
+    /// A match farther than this from the URL's own location hint is the
+    /// wrong same-name venue — reject it rather than pin the wrong city.
+    static let maxHintDistanceMeters: CLLocationDistance = 100_000
+
     static func searchVenue(
         name: String,
         address: String?,
+        hint: (lat: Double, lng: Double)? = nil,
         completion: @escaping (VenueSearchOutcome) -> Void
     ) {
-        performSearch(name: name, address: address) { outcome in
+        performSearch(name: name, address: address, hint: hint) { outcome in
             // Decorated names ("O ARTISTA - Bar à Cocktails - … - Ixelles")
             // overwhelm the search — one retry with the prefix before the
             // first separator rescues most of them. Throttles pass through
             // untouched so callers' backoff semantics hold.
             if case .notFound = outcome,
                let trimmed = prefixBeforeSeparator(of: name) {
-                performSearch(name: trimmed, address: address, completion: completion)
+                performSearch(name: trimmed, address: address, hint: hint, completion: completion)
             } else {
                 completion(outcome)
             }
@@ -149,6 +158,7 @@ enum AppleImportResolver {
     private static func performSearch(
         name: String,
         address: String?,
+        hint: (lat: Double, lng: Double)?,
         completion: @escaping (VenueSearchOutcome) -> Void
     ) {
         let request = MKLocalSearch.Request()
@@ -159,6 +169,15 @@ enum AppleImportResolver {
         // .address matters: many Takeout saves are bare street addresses
         // ("1025 Starview Ave") that a POI-only search can never return
         request.resultTypes = [.pointOfInterest, .address]
+        // Bias the search to where the source URL says the venue actually is
+        // — otherwise MapKit searches near the user and same-name venues in
+        // their city win
+        if let hint = hint {
+            request.region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: hint.lat, longitude: hint.lng),
+                latitudinalMeters: 40_000, longitudinalMeters: 40_000
+            )
+        }
 
         MKLocalSearch(request: request).start { response, error in
             if let error = error {
@@ -170,18 +189,54 @@ enum AppleImportResolver {
                 completion(isThrottle ? .throttled : .notFound)
                 return
             }
-            guard let item = response?.mapItems.first else {
+            guard let items = response?.mapItems, !items.isEmpty else {
                 completion(.notFound)
                 return
             }
-            let coordinate = item.placemark.coordinate
-            completion(.resolved(VenueMatch(
-                latitude: coordinate.latitude,
-                longitude: coordinate.longitude,
-                formattedAddress: formattedAddress(item.placemark),
-                applePoiCategory: item.pointOfInterestCategory?.rawValue
-            )))
+
+            guard let hint = hint else {
+                // No location hint — trust Apple's first result (old behavior)
+                completion(.resolved(match(from: items[0])))
+                return
+            }
+
+            // With a hint, take the closest of Apple's results — and if even
+            // that is in the wrong part of the world, pin the URL's own
+            // coordinate instead of the wrong venue. The address stays
+            // pending, but the pin is in the right city.
+            let hintLocation = CLLocation(latitude: hint.lat, longitude: hint.lng)
+            let nearest = items.prefix(10).min(by: { a, b in
+                hintLocation.distance(from: CLLocation(
+                    latitude: a.placemark.coordinate.latitude,
+                    longitude: a.placemark.coordinate.longitude)) <
+                hintLocation.distance(from: CLLocation(
+                    latitude: b.placemark.coordinate.latitude,
+                    longitude: b.placemark.coordinate.longitude))
+            })
+            if let nearest = nearest,
+               hintLocation.distance(from: CLLocation(
+                   latitude: nearest.placemark.coordinate.latitude,
+                   longitude: nearest.placemark.coordinate.longitude)) <= maxHintDistanceMeters {
+                completion(.resolved(match(from: nearest)))
+            } else {
+                completion(.resolved(VenueMatch(
+                    latitude: hint.lat,
+                    longitude: hint.lng,
+                    formattedAddress: nil,
+                    applePoiCategory: nil
+                )))
+            }
         }
+    }
+
+    private static func match(from item: MKMapItem) -> VenueMatch {
+        let coordinate = item.placemark.coordinate
+        return VenueMatch(
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+            formattedAddress: formattedAddress(item.placemark),
+            applePoiCategory: item.pointOfInterestCategory?.rawValue
+        )
     }
 
     /// "O ARTISTA - Bar à Cocktails - …" → "O ARTISTA". Returns nil when

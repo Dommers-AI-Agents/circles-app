@@ -2322,7 +2322,10 @@ exports.getUnresolvedPlaces = async (req, res) => {
       // Takeout will never locate); they stay needsResolution for the
       // "couldn't be located" review UI, just out of the queue's feed.
       if ((p.resolutionAttempts || 0) >= 3) return;
-      places.push({ id: doc.id, name: p.name, address: p.address || null, circleId: p.circleId });
+      // website carries the original import source URL — the client decodes
+      // the venue's true location from it (S2 feature id) so same-name
+      // venues near the user can't win the Apple Maps lookup
+      places.push({ id: doc.id, name: p.name, address: p.address || null, circleId: p.circleId, website: p.website || null });
     });
     res.json({ success: true, data: { places, count: places.length } });
   } catch (error) {

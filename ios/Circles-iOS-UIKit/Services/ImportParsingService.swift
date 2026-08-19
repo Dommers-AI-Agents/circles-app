@@ -265,6 +265,68 @@ final class ImportParsingService {
         return String(url[cidRange]).lowercased()
     }
 
+    /// The FIRST hex of the feature id is an S2 cell id encoding the venue's
+    /// actual location — decodable offline. This is what keeps "The Tile
+    /// Shop" saved in Scottsdale from resolving to the Charlotte store: a
+    /// name-only Apple search near the user picks the wrong same-name venue,
+    /// but the URL always knew where the real one is.
+    static func featureCoordinate(fromGoogleURL url: String) -> (lat: Double, lng: Double)? {
+        let pattern = #"!1s0x([0-9a-fA-F]+):0x[0-9a-fA-F]+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: url, range: NSRange(url.startIndex..., in: url)),
+              let hexRange = Range(match.range(at: 1), in: url) else {
+            return nil
+        }
+        return s2CellCenter(hex: String(url[hexRange]))
+    }
+
+    /// Decodes an S2 cell id to the lat/lng of its center (standard S2 math:
+    /// Hilbert-curve position → face i/j → quadratic ST→UV → unit sphere).
+    /// Verified against known venues to well under 100m — plenty for a
+    /// search-region hint.
+    static func s2CellCenter(hex: String) -> (lat: Double, lng: Double)? {
+        guard let id = UInt64(hex, radix: 16), id != 0 else { return nil }
+        let face = Int(id >> 61)
+        guard face < 6 else { return nil }
+
+        let kPosToIJ: [[Int]] = [[0, 1, 3, 2], [0, 2, 3, 1], [3, 2, 0, 1], [3, 1, 0, 2]]
+        let kPosToOrientation = [1, 0, 0, 3] // swap, none, none, invert|swap
+
+        var i = 0
+        var j = 0
+        var orientation = face & 1 // kSwapMask when the face is odd
+        for k in stride(from: 29, through: 0, by: -1) {
+            let pos = Int((id >> UInt64(2 * k + 1)) & 3)
+            let ij = kPosToIJ[orientation][pos]
+            i = (i << 1) | (ij >> 1)
+            j = (j << 1) | (ij & 1)
+            orientation ^= kPosToOrientation[pos]
+        }
+
+        let maxSize = Double(1 << 30)
+        func stToUV(_ s: Double) -> Double {
+            if s >= 0.5 { return (1.0 / 3.0) * (4.0 * s * s - 1.0) }
+            return (1.0 / 3.0) * (1.0 - 4.0 * (1.0 - s) * (1.0 - s))
+        }
+        let u = stToUV((Double(i) + 0.5) / maxSize)
+        let v = stToUV((Double(j) + 0.5) / maxSize)
+
+        let x: Double, y: Double, z: Double
+        switch face {
+        case 0: (x, y, z) = (1, u, v)
+        case 1: (x, y, z) = (-u, 1, v)
+        case 2: (x, y, z) = (-u, -v, 1)
+        case 3: (x, y, z) = (-1, -v, -u)
+        case 4: (x, y, z) = (v, -1, -u)
+        default: (x, y, z) = (v, u, -1)
+        }
+
+        let lat = atan2(z, (x * x + y * y).squareRoot()) * 180.0 / .pi
+        let lng = atan2(y, x) * 180.0 / .pi
+        guard abs(lat) <= 90, abs(lng) <= 180 else { return nil }
+        return (lat, lng)
+    }
+
     // MARK: CSV (RFC 4180: quoted fields may contain commas, quotes, newlines)
 
     static func parseCSV(_ text: String) -> [[String]] {
