@@ -12,6 +12,8 @@
 	<array>
 		<string>applinks:circles-backend-196924649787.us-central1.run.app</string>
 		<string>applinks:api.favcircles.com</string>
+		<string>webcredentials:favcircles.com</string>
+		<string>webcredentials:favcircles.com?mode=developer</string>
 	</array>
 	<key>com.apple.security.application-groups</key>
 	<array>

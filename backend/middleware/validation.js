@@ -253,6 +253,40 @@ exports.validateVideoUrl = [
   handleValidationErrors
 ];
 
+// Passkeys (WebAuthn): base64url fields only — rejects padded/standard base64
+// (and anything the sanitizer would have wanted to touch) before the
+// controller sees it
+const base64url = (field) => body(field)
+  .isString().notEmpty().matches(/^[A-Za-z0-9_-]+$/)
+  .withMessage(`${field} must be base64url`);
+
+exports.validateEmailCheck = [
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  handleValidationErrors
+];
+
+exports.validatePasskeyRegisterVerify = [
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  base64url('credential.id'),
+  base64url('credential.rawId'),
+  body('credential.type').equals('public-key'),
+  base64url('credential.response.clientDataJSON'),
+  base64url('credential.response.attestationObject'),
+  handleValidationErrors
+];
+
+exports.validatePasskeyLoginVerify = [
+  base64url('credential.id'),
+  base64url('credential.rawId'),
+  body('credential.type').equals('public-key'),
+  base64url('credential.response.clientDataJSON'),
+  base64url('credential.response.authenticatorData'),
+  base64url('credential.response.signature'),
+  body('credential.response.userHandle').optional({ nullable: true })
+    .matches(/^[A-Za-z0-9_-]+$/),
+  handleValidationErrors
+];
+
 module.exports = {
   handleValidationErrors,
   ...exports

@@ -24,6 +24,12 @@ extension CirclesHomeViewController: HorizontalUserListViewDelegate {
         }
     }
 
+    func didSelectSuggestedUser(_ user: User) {
+        // Suggested people aren't followed yet, so there's nothing to filter
+        // the map to — their profile (with its Follow button) is the destination
+        pushProfile(for: user)
+    }
+
     func didLongPressUser(_ user: User, connectionId: String) {
         // Long-press an avatar opens a quick-actions menu for that connection.
         let displayName = user.displayName.isEmpty ? "this person" : user.displayName

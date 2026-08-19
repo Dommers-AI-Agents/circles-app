@@ -80,18 +80,23 @@ final class PasskeyAuthService: NSObject {
         }
     }
 
-    /// Signs in with an existing passkey (discoverable credential). With
-    /// preferImmediate, a device holding no credential fails fast with
-    /// .canceled instead of showing a qr/other-device sheet — used by the
-    /// automatic paths so password fallback appears without friction.
-    func signInWithPasskey(presentationAnchor: ASPresentationAnchor?, preferImmediate: Bool = false, completion: @escaping (Result<User, Error>) -> Void) {
+    /// Signs in with an existing passkey. Pass `email` to scope the ceremony to
+    /// ONE account — the server returns that email's allowCredentials, so iOS
+    /// shows exactly that passkey (Face ID, no account picker) instead of a
+    /// discoverable list of every passkey on the device. With preferImmediate, a
+    /// device holding no matching credential fails fast with .canceled instead
+    /// of the qr/other-device sheet.
+    func signInWithPasskey(email: String? = nil, presentationAnchor: ASPresentationAnchor?, preferImmediate: Bool = false, completion: @escaping (Result<User, Error>) -> Void) {
         self.presentationAnchor = presentationAnchor
         self.completionHandler = completion
+
+        var body: [String: Any] = [:]
+        if let email = email, !email.isEmpty { body["email"] = email }
 
         APIService.shared.request(
             endpoint: "auth/passkey/login-options",
             method: .post,
-            body: [:],
+            body: body,
             requiresAuth: false
         ) { [weak self] (result: Result<PasskeyOptionsResponse, APIError>) in
             DispatchQueue.main.async {
@@ -105,6 +110,14 @@ final class PasskeyAuthService: NSObject {
                     let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(
                         relyingPartyIdentifier: Self.relyingPartyIdentifier)
                     let request = provider.createCredentialAssertionRequest(challenge: challenge)
+                    // Narrow the sheet to the scoped account's credential(s)
+                    let allowed = (response.options.allowCredentials ?? []).compactMap { desc -> ASAuthorizationPlatformPublicKeyCredentialDescriptor? in
+                        guard let idData = Data(base64URLEncoded: desc.id) else { return nil }
+                        return ASAuthorizationPlatformPublicKeyCredentialDescriptor(credentialID: idData)
+                    }
+                    if !allowed.isEmpty {
+                        request.allowedCredentials = allowed
+                    }
                     self.pending = .assertion
                     self.perform(requests: [request], preferImmediate: preferImmediate)
                 case .failure(let error):
@@ -323,8 +336,13 @@ struct PasskeyOptionsResponse: Decodable {
         struct PasskeyUser: Decodable {
             let id: String
         }
+        struct AllowCredential: Decodable {
+            let id: String   // base64url credentialID
+            let type: String
+        }
         let challenge: String
         let user: PasskeyUser? // present on registration options only
+        let allowCredentials: [AllowCredential]? // present when login is email-scoped
     }
     let success: Bool
     let options: Options

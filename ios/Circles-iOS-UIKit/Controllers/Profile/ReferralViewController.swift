@@ -48,7 +48,7 @@ class ReferralViewController: BaseViewController {
     private let descriptionLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Share your referral code and both you and your friend get a month free!"
+        label.text = "Share your referral code — rewards apply automatically when friends sign up!"
         label.font = UIFont.systemFont(ofSize: 16)
         label.textColor = .white.withAlphaComponent(0.9)
         label.textAlignment = .center
@@ -130,12 +130,13 @@ class ReferralViewController: BaseViewController {
         label.font = UIFont.systemFont(ofSize: 14)
         label.textColor = .secondaryLabel
         
+        // Benefit specifics live server-side and can change — don't promise
+        // amounts in app copy
         let steps = """
         1. Share your unique referral code with friends
         2. They sign up using your code
-        3. They get 1 month free
-        4. You get 1 month free when they sign up
-        5. Maximum 12 referrals per year
+        3. You both earn rewards automatically
+        4. Maximum 12 referrals per year
         """
         
         label.text = steps

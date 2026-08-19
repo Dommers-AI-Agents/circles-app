@@ -11,41 +11,30 @@ class OnboardingViewController: UIViewController {
     var onCompletion: (() -> Void)?
 
     private var currentPage = 0
+    // Three slides, one story: save places → share with people → get rewarded.
+    // ("Your personal recommendation platform" is retired — Wes: it's a place
+    // to save your favorite places.)
     private let pages: [OnboardingPage] = [
         OnboardingPage(
-            title: "Welcome to Circles",
-            subtitle: "Your personal recommendation platform",
-            description: "Share and discover favorite places with your network",
-            imageName: "circle.grid.2x2.fill",
+            title: "Welcome to FavCircles",
+            subtitle: "Save your favorite places",
+            description: "Every spot you love, on your own map — organized into circles like 'Date Nights' or 'Best Coffee'",
+            imageName: "mappin.circle.fill",
             color: Constants.Colors.primary
         ),
         OnboardingPage(
-            title: "Create Circles",
-            subtitle: "Organize your favorite places",
-            description: "Group places by theme like 'Best Coffee Shops' or 'Date Night Spots'",
-            imageName: "plus.circle.fill",
-            color: .systemBlue
-        ),
-        OnboardingPage(
-            title: "Add Places",
-            subtitle: "Build your recommendations",
-            description: "Search for places, add from the map, or discover nearby locations",
-            imageName: "mappin.circle.fill",
-            color: .systemGreen
-        ),
-        OnboardingPage(
-            title: "Connect & Share",
-            subtitle: "Build your network",
-            description: "Connect with friends to share recommendations and discover new places",
+            title: "Share with Friends",
+            subtitle: "Your people, your recommendations",
+            description: "Connect and follow to see each other's favorite places. A friend's pick beats a stranger's stars",
             imageName: "person.2.fill",
             color: .systemPurple
         ),
         OnboardingPage(
-            title: "Privacy First",
-            subtitle: "You're in control",
-            description: "Choose who sees your circles - keep them private, share with connections, or make them public",
-            imageName: "lock.fill",
-            color: .systemOrange
+            title: "Earn FavCoins 🌵",
+            subtitle: "Get rewarded for it",
+            description: "Adding places, connecting, and reacting fill your piggy bank — real coins on the Cactus blockchain",
+            imageName: "dollarsign.circle.fill",
+            color: .systemGreen
         )
     ]
     

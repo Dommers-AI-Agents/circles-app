@@ -593,6 +593,28 @@ const sendConnectionRequest = async (req, res) => {
 // @desc    Accept connection request
 // @route   POST /api/connections/:id/accept
 // @access  Private
+// Once a connection request is accepted or declined, its bell notification
+// must stop offering Accept/Decline (users who accepted via the welcome sheet
+// were still being asked in the notifications list). Archiving flips the row
+// to read-only history on every client surface. Fire-and-forget.
+const archiveConnectionRequestNotifications = async (connectionId) => {
+  try {
+    // Two equality filters — no composite index needed (zig-zag merge)
+    const snap = await db.collection(COLLECTIONS.NOTIFICATIONS)
+      .where('type', '==', 'connection_request')
+      .where('data.connectionId', '==', connectionId)
+      .get();
+    if (snap.empty) return;
+    const now = new Date().toISOString();
+    await Promise.all(snap.docs.map(doc =>
+      doc.ref.update({ archived: true, archivedAt: now, read: true })
+    ));
+    console.log(`🔔 Archived ${snap.size} connection_request notification(s) for ${connectionId}`);
+  } catch (error) {
+    console.error('⚠️ Failed to archive connection_request notifications:', error.message);
+  }
+};
+
 const acceptConnection = async (req, res) => {
   try {
     const userId = req.user.firebaseDocId || req.user.uid;
@@ -661,9 +683,27 @@ const acceptConnection = async (req, res) => {
       updatedConnection.connectedUser = serializeDoc(userDoc);
     }
 
+    // Piggy bank: FavCoins for the new connection — BOTH users earn (one
+    // ledger row each; the pair-half of the key is order-independent so a
+    // future request/accept cycle for the same pair can never pay again).
+    // The ACCEPTING user's credit is awaited and rides the response so the
+    // app can play the deposit animation; the requester's is fire-and-forget.
+    const piggyBankService = require('../services/piggyBankService');
+    const piggyBank = await piggyBankService.credit({
+      userId,
+      eventType: 'connection_accepted',
+      sourceRef: { otherUserId: connection.userId, connectionId }
+    });
+    piggyBankService.credit({
+      userId: connection.userId,
+      eventType: 'connection_accepted',
+      sourceRef: { otherUserId: userId, connectionId }
+    }).catch(() => {});
+
     res.status(200).json({
       success: true,
-      data: updatedConnection
+      data: updatedConnection,
+      piggyBank
     });
 
     // Funnel: first accepted connection, stamped on both sides (fire-and-forget)
@@ -673,22 +713,9 @@ const acceptConnection = async (req, res) => {
       stampFunnelMilestone(connection.connectedUserId, 'firstConnectionAt');
     }
 
-    // Piggy bank: FavCoins for the new connection — BOTH users earn (one
-    // ledger row each; the pair-half of the key is order-independent so a
-    // future request/accept cycle for the same pair can never pay again).
-    {
-      const piggyBankService = require('../services/piggyBankService');
-      piggyBankService.credit({
-        userId,
-        eventType: 'connection_accepted',
-        sourceRef: { otherUserId: connection.userId, connectionId }
-      }).catch(() => {});
-      piggyBankService.credit({
-        userId: connection.userId,
-        eventType: 'connection_accepted',
-        sourceRef: { otherUserId: userId, connectionId }
-      }).catch(() => {});
-    }
+    // The bell notification for this request is now history — stop offering
+    // Accept/Decline (fire-and-forget)
+    archiveConnectionRequestNotifications(connectionId);
 
     // Auto-follow: When connection is accepted, both users automatically follow each other.
     // Idempotent — the requester usually already follows (connect implies
@@ -821,6 +848,9 @@ const declineConnection = async (req, res) => {
       connectionId: connectionId,
       declinedBy: userId
     });
+
+    // Declined requests are history too — retire the Accept/Decline row
+    archiveConnectionRequestNotifications(connectionId);
 
   } catch (error) {
     console.error('Error declining connection:', error);

@@ -193,6 +193,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     let userListView: HorizontalUserListView = {
         let view = HorizontalUserListView()
+        // Home row tops itself up with suggested people + a "Find People +"
+        // cell when sparse (the modal map's copy of this row stays filter-only)
+        view.showsDiscoverySuffix = true
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -1251,7 +1254,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // For now, trigger a refresh of the user list view to show the most recent data
         // The HorizontalUserListView will load its own connection data
         userListView.refresh()
-        userListView.isHidden = userList.isEmpty
+        // Never hide the row for zero relationships — that's exactly when the
+        // discovery suffix (suggested people + Find People) matters most
+        userListView.isHidden = false
         
         // Trigger progressive loading update
         updateProgressiveLoading(stage: .userListLoaded)
@@ -1586,11 +1591,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Surface the sign-in-time duplicate-account hint (once per login)
         promptForDuplicateAccountsIfNeeded()
 
-        // New accounts: make accepting the welcome connection requests a
-        // first-class onboarding moment instead of a buried list. No-ops for
-        // established accounts; waits its turn if another modal (welcome
-        // carousel, tutorial sheet) is up and retries on the next appearance.
-        if presentedViewController == nil {
+        // New accounts: the first-session chain (SceneDelegate) normally
+        // presents the first-people sheet; this is the fallback for launches
+        // where the chain isn't running (e.g. killed the app between the
+        // carousel and the sheet — account still <48h, sheet not yet seen).
+        if presentedViewController == nil && !OnboardingManager.shared.isFirstSessionFlowActive {
             if !WelcomeConnectionsViewController.presentIfNeeded(from: self) {
                 // Old accounts instead get the one-time legacy-privacy nudge
                 promptLegacyCirclePrivacyIfNeeded()
@@ -1661,6 +1666,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     func checkTutorialAndOverlay() {
+        // While the first-session chain's modals are up, defer — the chain
+        // calls this as its terminal step. Returning WITHOUT burning the
+        // once-per-session flag is the point.
+        guard !OnboardingManager.shared.isFirstSessionFlowActive else {
+            Logger.debug("⏸ First-session chain active — tutorial check deferred to chain end")
+            return
+        }
+
         // Only check once per session
         guard !hasCheckedTutorialAndOverlay else {
             Logger.debug("⚠️ Already checked tutorial and overlay")
@@ -3316,6 +3329,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Ensure connections are loaded in NetworkManager
         NetworkManager.shared.loadConnections()
+        // ...and the followed-users roster, which feeds the map's people filter
+        NetworkManager.shared.loadFollowingUsers()
         
         // Show loading state once if not already showing and no cached data
         if !isCacheValid() {
@@ -5055,6 +5070,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     Logger.debug("📍 Found \(networkCircleUserPlaces) user places that were in network circles")
                     Logger.debug("📍 User should have 124 places total according to user")
                 }
+            } else if connectionId == "my_connections_only" {
+                // Accepted connections' places only — the narrower cut of the
+                // default "Following" view (which also includes followed
+                // non-connections)
+                let connectedIds = acceptedConnectionUserIds
+                mapFilteredPlaces = places.filter { place in
+                    if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
+                        return connectedIds.contains { IDNormalizer.isSameUser(circle.owner, $0) }
+                    }
+                    return connectedIds.contains { IDNormalizer.isSameUser(place.addedBy, $0) }
+                }
+                Logger.debug("📍 FILTER: my_connections_only → \(mapFilteredPlaces.count) places from \(connectedIds.count) connections")
             } else {
                 // Show only places from the selected connection
                 // Get all places from circles owned by this connection
@@ -5521,15 +5548,20 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Connection filter submenu
         let currentUserId = AuthService.shared.getUserId() ?? ""
         var connectionActions: [UIAction] = [
-            UIAction(title: "All Connections", state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
+            UIAction(title: "Following", state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
                 self?.selectConnection(id: nil, user: nil)
+            },
+            UIAction(title: "My Connections", state: selectedConnectionId == "my_connections_only" ? .on : .off) { [weak self] _ in
+                self?.selectConnection(id: "my_connections_only", user: nil)
             },
             UIAction(title: "My Places Only", state: selectedConnectionId == "my_places_only" ? .on : .off) { [weak self] _ in
                 self?.selectConnection(id: "my_places_only", user: nil)
             }
         ]
+        var listedIds = Set<String>()
         for connection in NetworkManager.shared.connections {
             let otherUserId = connection.otherUserId(currentUserId: currentUserId)
+            listedIds.insert(otherUserId)
             connectionActions.append(
                 UIAction(
                     title: connection.connectedUser?.displayName ?? "Unknown",
@@ -5539,8 +5571,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 }
             )
         }
+        // Followed non-connections round out the roster — the map can scope
+        // to anyone you follow, not just mutual connections
+        for user in NetworkManager.shared.followingUsers {
+            guard !user.id.isEmpty, !listedIds.contains(user.id),
+                  !IDNormalizer.isSameUser(user.id, currentUserId) else { continue }
+            listedIds.insert(user.id)
+            connectionActions.append(
+                UIAction(title: user.displayName, state: selectedConnectionId == user.id ? .on : .off) { [weak self] _ in
+                    self?.selectConnection(id: user.id, user: user)
+                }
+            )
+        }
         let connectionSubtitle = selectedConnectionUser?.displayName
-            ?? (selectedConnectionId == "my_places_only" ? "My Places Only" : "All Connections")
+            ?? (selectedConnectionId == "my_places_only" ? "My Places Only"
+                : selectedConnectionId == "my_connections_only" ? "My Connections" : "Following")
         elements.append(UIMenu(
             title: "Connections",
             subtitle: connectionSubtitle,
@@ -5640,10 +5685,19 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     
                     filteredPlaces = userPlaces
                 }
+            } else if connectionId == "my_connections_only" {
+                // Accepted connections' places only
+                let connectedIds = acceptedConnectionUserIds
+                filteredPlaces = places.filter { place in
+                    if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
+                        return connectedIds.contains { IDNormalizer.isSameUser(circle.owner, $0) }
+                    }
+                    return connectedIds.contains { IDNormalizer.isSameUser(place.addedBy, $0) }
+                }
             } else {
                 // Show only places from the selected connection
                 var connectionPlaces: [Place] = []
-                
+
                 for place in places {
                     if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
                         if IDNormalizer.isSameUser(circle.owner, connectionId) {
@@ -5651,13 +5705,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                         }
                     }
                 }
-                
+
                 filteredPlaces = connectionPlaces
             }
         }
         // If no connection filter, return all places
-        
+
         return filteredPlaces
+    }
+
+    /// User ids of all accepted connections (the "My Connections" map scope)
+    var acceptedConnectionUserIds: [String] {
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        return NetworkManager.shared.connections
+            .map { $0.otherUserId(currentUserId: currentUserId) }
+            .filter { !$0.isEmpty }
     }
     
     func openProfileFromMapMenu() {
@@ -5844,7 +5906,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         presentedFullScreenMap?.selectedConnectionUser = user
 
         // Highlight the selected connection's avatar (nil clears the highlight)
-        userListView.selectedUserId = (id == nil || id == "my_places_only") ? nil : id
+        userListView.selectedUserId = (id == nil || id == "my_places_only" || id == "my_connections_only") ? nil : id
 
         Logger.debug("📍 Connection filter changed to: \(selectedConnectionId ?? "All Connections")")
 
@@ -5856,7 +5918,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Update available categories based on new connection filter
         updateAvailableCategories()
 
-        if let connectionId = id, connectionId != "my_places_only" {
+        if let connectionId = id, connectionId != "my_places_only", connectionId != "my_connections_only" {
             // Re-scope pins with what's already loaded BEFORE any async fetch —
             // otherwise other connections' pins linger until this connection's
             // places arrive. But DEFER the zoom when we're about to fetch this
@@ -5882,11 +5944,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 fetchAllPlacesForConnection(connectionId)
             }
         } else {
-            // All Connections / My Places Only: refresh with what's loaded
+            // Following / My Connections / My Places Only: refresh with what's loaded
             refreshMapDisplay()
-            // "All Connections" must mean ALL places, not just the viewport-
-            // loaded subset — pull every connection's full set in the background
-            if id == nil && useViewportNetworkLoading {
+            // "Following" and "My Connections" must mean ALL of those places,
+            // not just the viewport-loaded subset — pull every connection's
+            // full set in the background
+            if (id == nil || id == "my_connections_only") && useViewportNetworkLoading {
                 prefetchAllConnectionPlaces()
             }
         }

@@ -1,5 +1,6 @@
 import UIKit
 import AuthenticationServices
+import LocalAuthentication
 
 class LoginViewController: BaseViewController {
 
@@ -106,6 +107,17 @@ class LoginViewController: BaseViewController {
         return button
     }()
 
+    // Email-first entry: enter email → Continue → the app decides (Face ID if
+    // that account has a passkey, else reveal the password field).
+    private lazy var continueButton: UIButton = {
+        let button = UIButton.primaryButton(title: "Continue →")
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 8
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        return button
+    }()
+
     // Quiet sibling to Log In: passkey sign-in for accounts created with
     // Face ID (outline style so the white-filled Log In stays primary)
     private lazy var passkeyLoginButton: UIButton = {
@@ -135,19 +147,40 @@ class LoginViewController: BaseViewController {
         return button
     }()
 
-    private let signUpLinkButton: UIButton = {
+    // Signup is the screen's TOP action (Wes, 2026-08-19: make it easy for
+    // new users) — a full-width primary CTA above the returning-user section,
+    // not a small footer link.
+    private lazy var createAccountButton: UIButton = {
         let button = UIButton(type: .system)
-        let attributedString = NSMutableAttributedString(string: "New to Circles? ", attributes: [
-            .foregroundColor: UIColor.white.withAlphaComponent(0.8)
-        ])
-        attributedString.append(NSAttributedString(string: "Create an account", attributes: [
-            .underlineStyle: NSUnderlineStyle.single.rawValue,
-            .foregroundColor: UIColor.white
-        ]))
-        button.setAttributedTitle(attributedString, for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 15)
+        button.setTitle("Create an Account", for: .normal)
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 8
+        button.heightAnchor.constraint(equalToConstant: 50).isActive = true
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
+    }()
+
+    private let createAccountCaptionLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Because your Favorite Places are worth Saving"
+        label.font = UIFont.systemFont(ofSize: 13)
+        label.textColor = UIColor.white.withAlphaComponent(0.85)
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    // Section divider that hands returning users off to the login form below
+    private let alreadyHaveAccountLabel: UILabel = {
+        let label = UILabel()
+        label.text = "— already have an account? —"
+        label.font = UIFont.systemFont(ofSize: 14, weight: .regular)
+        label.textColor = UIColor.white.withAlphaComponent(0.7)
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     private let buttonsStackView: UIStackView = {
@@ -203,6 +236,12 @@ class LoginViewController: BaseViewController {
         }
     }
 
+    // Returning-user flow is email-first: .email shows the email field + Continue;
+    // .password reveals the password field + Log In once we know the account has
+    // no passkey (or the passkey ceremony was dismissed).
+    private enum Step { case email, password }
+    private var step: Step = .email { didSet { applyStep() } }
+
     // MARK: - BaseViewController Configuration
     override var showsLoadingIndicator: Bool { false } // Custom loading state
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -247,13 +286,30 @@ class LoginViewController: BaseViewController {
         // Configure Apple sign-in container
         appleSignInContainerView.addSubview(appleSignInButton)
 
-        // Email/password login first - this is the primary way to sign in
+        // NEW USERS FIRST: the create-account CTA leads, then a labeled
+        // divider hands returning users to the login form below it
+        buttonsStackView.addArrangedSubview(createAccountButton)
+        buttonsStackView.addArrangedSubview(createAccountCaptionLabel)
+        buttonsStackView.setCustomSpacing(6, after: createAccountButton)
+
+        let signInSpacer = UIView()
+        signInSpacer.translatesAutoresizingMaskIntoConstraints = false
+        signInSpacer.heightAnchor.constraint(equalToConstant: 10).isActive = true
+        buttonsStackView.addArrangedSubview(signInSpacer)
+        buttonsStackView.addArrangedSubview(alreadyHaveAccountLabel)
+        let signInSpacer2 = UIView()
+        signInSpacer2.translatesAutoresizingMaskIntoConstraints = false
+        signInSpacer2.heightAnchor.constraint(equalToConstant: 2).isActive = true
+        buttonsStackView.addArrangedSubview(signInSpacer2)
+
         buttonsStackView.addArrangedSubview(emailTextField)
-        buttonsStackView.addArrangedSubview(passwordTextField)
-        buttonsStackView.addArrangedSubview(loginButton)
-        buttonsStackView.addArrangedSubview(passkeyLoginButton)
-        buttonsStackView.addArrangedSubview(forgotPasswordButton)
-        buttonsStackView.addArrangedSubview(signUpLinkButton)
+        buttonsStackView.addArrangedSubview(continueButton)   // .email step
+        buttonsStackView.addArrangedSubview(passwordTextField) // .password step
+        buttonsStackView.addArrangedSubview(loginButton)       // .password step
+        buttonsStackView.addArrangedSubview(forgotPasswordButton) // .password step
+        // The standalone "Sign in with a passkey" button is gone — passkey now
+        // happens automatically after Continue when the account has one.
+        applyStep()
 
         // Spacer before "or" divider
         let spacerView1 = UIView()
@@ -348,9 +404,12 @@ class LoginViewController: BaseViewController {
     private func setupActions() {
         // Email/password login
         loginButton.addTarget(self, action: #selector(loginButtonTapped), for: .touchUpInside)
-        passkeyLoginButton.addTarget(self, action: #selector(passkeyLoginTapped), for: .touchUpInside)
+        continueButton.addTarget(self, action: #selector(continueTapped), for: .touchUpInside)
+        // Editing the email after we've advanced returns to the email step so
+        // Continue re-runs the passkey/password decision for the new address.
+        emailTextField.addTarget(self, action: #selector(emailEditingChanged), for: .editingChanged)
         forgotPasswordButton.addTarget(self, action: #selector(forgotPasswordTapped), for: .touchUpInside)
-        signUpLinkButton.addTarget(self, action: #selector(registerButtonTapped), for: .touchUpInside)
+        createAccountButton.addTarget(self, action: #selector(registerButtonTapped), for: .touchUpInside)
         togglePasswordButton.addTarget(self, action: #selector(togglePasswordVisibility), for: .touchUpInside)
 
         emailTextField.delegate = self
@@ -369,8 +428,8 @@ class LoginViewController: BaseViewController {
 
     private func updateButtonStates() {
         let controls: [UIControl] = [
-            loginButton, passkeyLoginButton, emailTextField, passwordTextField, forgotPasswordButton,
-            signUpLinkButton, appleSignInButton, googleSignInButton, facebookSignInButton
+            loginButton, continueButton, emailTextField, passwordTextField, forgotPasswordButton,
+            createAccountButton, appleSignInButton, googleSignInButton, facebookSignInButton
         ]
         controls.forEach { $0.isEnabled = !isLoggingIn }
 
@@ -382,6 +441,71 @@ class LoginViewController: BaseViewController {
             loginButton.setTitle("Log In", for: .normal)
             hideLoadingState()
         }
+    }
+
+    // MARK: - Email-first step machine
+
+    private func applyStep() {
+        let isEmail = (step == .email)
+        continueButton.isHidden = !isEmail
+        passwordTextField.isHidden = isEmail
+        loginButton.isHidden = isEmail
+        forgotPasswordButton.isHidden = isEmail
+    }
+
+    @objc private func emailEditingChanged() {
+        if step == .password { step = .email }
+    }
+
+    @objc private func continueTapped() {
+        dismissKeyboard()
+        let email = (emailTextField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard Self.isValidEmail(email) else {
+            showError("Please enter a valid email address")
+            return
+        }
+
+        isLoggingIn = true
+        AuthService.shared.checkEmail(email) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isLoggingIn = false
+                switch result {
+                case .success(let check):
+                    if check.exists && check.hasPasskey {
+                        // Scoped Face ID for exactly this account (no picker)
+                        self.performPasskeySignIn(email: email, preferImmediate: true, fallbackToPassword: true)
+                    } else if check.exists {
+                        self.step = .password
+                        self.passwordTextField.becomeFirstResponder()
+                    } else {
+                        self.offerCreateAccount(email: email)
+                    }
+                case .failure:
+                    // Couldn't check (offline etc.) — let them try their password
+                    self.step = .password
+                    self.passwordTextField.becomeFirstResponder()
+                }
+            }
+        }
+    }
+
+    private func offerCreateAccount(email: String) {
+        let alert = UIAlertController(
+            title: "No account yet",
+            message: "We couldn't find an account for \(email). Want to create one?",
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Create Account", style: .default) { [weak self] _ in
+            let registerVC = RegisterViewController()
+            registerVC.prefillEmail = email
+            self?.navigationController?.pushViewController(registerVC, animated: true)
+        })
+        alert.addAction(UIAlertAction(title: "Try Another Email", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private static func isValidEmail(_ email: String) -> Bool {
+        return email.range(of: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", options: .regularExpression) != nil
     }
 
     // MARK: - Actions
@@ -409,6 +533,11 @@ class LoginViewController: BaseViewController {
                     // restored later and the user stays logged in
                     KeychainManager.shared.saveCredentials(email: email, password: password)
 
+                    // They just signed in with a password — flag a one-time
+                    // "set up a passkey?" offer, presented after the home screen
+                    // settles (SceneDelegate.runPostLaunchSideEffects).
+                    UserDefaults.standard.set(email, forKey: "pendingPasskeyOfferEmail")
+
                     // Authentication state listener in SceneDelegate will handle UI update
 
                 case .failure(let error):
@@ -422,21 +551,14 @@ class LoginViewController: BaseViewController {
         }
     }
 
-    @objc private func passkeyLoginTapped() {
-        dismissKeyboard()
-        // preferImmediate: a device with no local passkey fails fast instead of
-        // showing the confusing "Scan this QR Code" cross-device sheet. A user
-        // enrolls a passkey in Settings (Set Up Passkey) after signing in;
-        // this button then does Face ID.
-        performPasskeySignIn(preferImmediate: true)
-    }
-
-    /// Shared passkey assertion path. preferImmediate makes a device with no
-    /// local credential fail fast (silent .canceled) instead of showing the
-    /// scan-QR/other-device sheet.
-    private func performPasskeySignIn(preferImmediate: Bool) {
+    /// Shared passkey assertion path, scoped to `email` so only that account's
+    /// passkey is offered (Face ID, no picker). preferImmediate makes a device
+    /// with no matching credential fail fast (silent .canceled) instead of the
+    /// scan-QR/other-device sheet. On failure, fallbackToPassword reveals the
+    /// password field so the user can still get in.
+    private func performPasskeySignIn(email: String?, preferImmediate: Bool, fallbackToPassword: Bool = false) {
         isLoggingIn = true
-        PasskeyAuthService.shared.signInWithPasskey(presentationAnchor: view.window, preferImmediate: preferImmediate) { [weak self] result in
+        PasskeyAuthService.shared.signInWithPasskey(email: email, presentationAnchor: view.window, preferImmediate: preferImmediate) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.isLoggingIn = false
@@ -451,9 +573,14 @@ class LoginViewController: BaseViewController {
                     // Auth state listener in SceneDelegate swaps the root
                 case .failure(let error):
                     if case PasskeyAuthService.PasskeyError.canceled = error {
+                        if fallbackToPassword { self.step = .password }
                         return // dismissed / no local credential — no toast
                     }
-                    self.showError(error)
+                    if fallbackToPassword {
+                        self.step = .password
+                    } else {
+                        self.showError(error)
+                    }
                 }
             }
         }
@@ -473,7 +600,11 @@ class LoginViewController: BaseViewController {
         super.viewDidAppear(animated)
         if pendingAutoPasskeySignIn {
             pendingAutoPasskeySignIn = false
-            performPasskeySignIn(preferImmediate: true)
+            // Scope to the prefilled email (set via prefill() before the handoff)
+            // so the register-side "this email has a passkey" lands on the right
+            // account; on cancel, drop to the password field.
+            let email = (emailTextField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            performPasskeySignIn(email: email.isEmpty ? nil : email, preferImmediate: true, fallbackToPassword: true)
         }
     }
 

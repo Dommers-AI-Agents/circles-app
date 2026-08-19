@@ -422,7 +422,7 @@ class FindContactsViewController: BaseViewController {
             ?? "https://apps.apple.com/us/app/favcircles/id6746807095"
         var body = "\(userName) invited you to join Circles - the app for sharing your favorite places! Join and connect with me: \(inviteLink)"
         if let code = ReferralService.shared.myReferralCode {
-            body += " Sign up with referral code \(code) to get 1 month free."
+            body += " Sign up with my referral code \(code)."
         }
         messageVC.body = body
 
@@ -561,7 +561,7 @@ class FindContactsViewController: BaseViewController {
             ?? "https://apps.apple.com/us/app/favcircles/id6746807095"
         var body = "\(userName) invited you to join Circles - the app for sharing your favorite places!\n\nJoin using this link and we'll connect: \(inviteLink)"
         if let code = ReferralService.shared.myReferralCode {
-            body += "\n\nSign up with referral code \(code) to get 1 month free."
+            body += "\n\nSign up with my referral code \(code)."
         }
         messageVC.body = body
 

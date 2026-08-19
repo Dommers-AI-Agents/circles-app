@@ -21,6 +21,15 @@ function getTokenExpiresInSeconds() {
   return amount * unitSeconds;
 }
 
+// THE session-token mint — every auth path (social, register, login, refresh,
+// passkey) signs the same {uid, email} payload the same way. Exported for
+// passkeyController.
+function mintSessionToken(uid, email) {
+  return jwt.sign({ uid, email }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE });
+}
+exports.mintSessionToken = mintSessionToken;
+exports.getTokenExpiresInSeconds = getTokenExpiresInSeconds;
+
 // Zipcode → city/state resolution lives in services/zipcodeService (shared
 // with profile updates so zipcode and location can never disagree)
 const { geocodeZipcode } = require('../services/zipcodeService');
@@ -654,7 +663,10 @@ exports.firebaseAuth = async (req, res, next) => {
         followingCount: user.followingCount || 0,
         createdAt: user.createdAt || new Date().toISOString()
       },
-      duplicateSuggestion: duplicateSuggestion // Include duplicate suggestion if found
+      duplicateSuggestion: duplicateSuggestion, // Include duplicate suggestion if found
+      // Social signups need this to run the same first-session onboarding
+      // (welcome carousel → first-people sheet) that email signups get
+      isNewUser: !!(result && result.isNew)
     };
 
     console.log('📤 Sending auth response with normalized ID:', {
@@ -1557,11 +1569,12 @@ exports.changePassword = async (req, res, next) => {
     const { currentPassword, newPassword } = req.body;
     const userId = req.user.uid;
 
-    // Validate input
-    if (!currentPassword || !newPassword) {
+    // Validate input (currentPassword is checked below — passkey/social
+    // accounts have no password yet, so it can't be required unconditionally)
+    if (!newPassword) {
       return res.status(400).json({
         success: false,
-        message: 'Current password and new password are required'
+        message: 'New password is required'
       });
     }
 
@@ -1589,6 +1602,63 @@ exports.changePassword = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         message: 'User email not found'
+      });
+    }
+
+    // Passkey and social accounts are Firestore-only — no Firebase Auth
+    // record, therefore no password to verify. For them this endpoint SETS
+    // the first password, creating the Auth record on demand so email+password
+    // login starts working. The caller is already authenticated as this uid,
+    // which is a stronger proof of ownership than a current password.
+    let authUser = null;
+    try {
+      authUser = await auth.getUser(userId);
+    } catch (e) {
+      if (e.code !== 'auth/user-not-found') throw e;
+    }
+    const hasPassword = !!authUser &&
+      (authUser.providerData || []).some(p => p.providerId === 'password');
+
+    if (!hasPassword) {
+      try {
+        if (!authUser) {
+          await auth.createUser({
+            uid: userId,
+            email: userEmail,
+            password: newPassword,
+            emailVerified: false,
+            displayName: userData.displayName || undefined
+          });
+          console.log(`🔑 Created Firebase Auth record on demand for ${userId} (set-password)`);
+        } else {
+          await auth.updateUser(userId, { password: newPassword });
+          console.log(`🔑 Added password to existing Auth record for ${userId}`);
+        }
+      } catch (e) {
+        if (e.code === 'auth/email-already-exists') {
+          // An ORPHANED auth record holds this email under a different uid —
+          // the account-fragmentation vector. Don't touch it silently.
+          console.error(`⚠️ set-password blocked: orphaned Auth record holds ${userEmail} (firestore uid ${userId})`);
+          return res.status(409).json({
+            success: false,
+            message: 'This email is attached to an older sign-in record. Please contact support to finish setting a password.'
+          });
+        }
+        throw e;
+      }
+
+      await userDoc.ref.update({ updatedAt: new Date().toISOString() });
+      return res.status(200).json({
+        success: true,
+        message: 'Password set successfully'
+      });
+    }
+
+    // Password accounts: current password is required and verified
+    if (!currentPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password and new password are required'
       });
     }
 

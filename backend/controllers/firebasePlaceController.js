@@ -1379,22 +1379,51 @@ exports.createPlace = async (req, res, next) => {
     });
 
     // Welcome gift: 25 FavCoins the first time a user ever adds a place
-    // (promised by the App Clip's generic signup). Fire-and-forget; the
-    // first_place:{uid} dedup key makes it once-ever even if totalPlaces
-    // ever miscounts.
-    if (totalPlaces === 1) {
-      piggyBankService.credit({
-        userId: req.user.uid,
-        eventType: 'first_place_added',
-        sourceRef: { placeId: placeRef.id }
-      }).catch(() => {});
+    // (promised by the App Clip's generic signup). The onboarding SAMPLE
+    // place counts toward totalPlaces, which used to make the gate
+    // (totalPlaces === 1) unreachable for anyone who got a seeded sample —
+    // their real first add arrived as place #2 and the gift never fired.
+    // Exclude sample places from the gate count; the first_place:{uid}
+    // dedup key keeps the looser gate once-ever. Awaited and merged into
+    // the response so the client animates the full 25+3 drop together.
+    let welcomeGift = null;
+    if (totalPlaces !== null && totalPlaces <= 2) {
+      try {
+        // deletedAt filter keeps this consistent with the totalPlaces count
+        // (a deleted sample must not subtract from live places)
+        const sampleSnap = await db.collection(COLLECTIONS.PLACES)
+          .where('addedBy', '==', req.user.uid)
+          .where('isSamplePlace', '==', true)
+          .where('deletedAt', '==', null)
+          .count()
+          .get();
+        const realPlaces = totalPlaces - sampleSnap.data().count;
+        if (realPlaces === 1) {
+          welcomeGift = await piggyBankService.credit({
+            userId: req.user.uid,
+            eventType: 'first_place_added',
+            sourceRef: { placeId: placeRef.id }
+          });
+        }
+      } catch (giftError) {
+        console.error('⚠️ Welcome gift check failed (non-fatal):', giftError.message);
+      }
     }
+
+    // One combined deposit for the animation: add_place + the welcome gift
+    const combinedPiggyBank = (welcomeGift && welcomeGift.credited)
+      ? {
+          credited: true,
+          coins: (piggyBank && piggyBank.credited ? piggyBank.coins : 0) + welcomeGift.coins,
+          eventType: 'first_place_added'
+        }
+      : piggyBank;
 
     // Add commentsCount to the response (new places have 0 comments)
     res.status(201).json({
       success: true,
       totalPlaces,
-      piggyBank,
+      piggyBank: combinedPiggyBank,
       place: {
         ...place,
         commentsCount: 0

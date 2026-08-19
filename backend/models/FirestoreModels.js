@@ -34,7 +34,11 @@ const COLLECTIONS = {
   VIDEO_VIEWS: 'videoViews',
   CIRCLE_GROUPS: 'circleGroups',
   STICKER_VENUES: 'stickerVenues',
-  REWARD_EVENTS: 'rewardEvents'
+  REWARD_EVENTS: 'rewardEvents',
+  // Passkeys (WebAuthn): credentials keyed by credentialId; challenges keyed
+  // by the challenge itself (single-use, 5-min TTL)
+  WEBAUTHN_CREDENTIALS: 'webauthnCredentials',
+  WEBAUTHN_CHALLENGES: 'webauthnChallenges'
 };
 
 // User model structure

@@ -5,6 +5,9 @@ class UserActivityCell: UICollectionViewCell {
     // MARK: - Properties
     static let reuseIdentifier = "UserActivityCell"
     private var connection: Connection?
+    /// Identity for async avatar loads on SUGGESTION cells (no Connection to
+    /// check against) — cleared on reuse so a late image can't hit a recycled cell
+    private var displayedUserId: String?
     
     // MARK: - UI Elements
     private let containerView: UIView = {
@@ -56,6 +59,39 @@ class UserActivityCell: UICollectionViewCell {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
+
+    // Dashed gray ring marking SUGGESTED people (not yet followed). A plain
+    // border can't dash, so this is a CAShapeLayer with a fixed 64pt path —
+    // same no-layout-time-radius rule as the rings above.
+    private let suggestionRingView: UIView = {
+        let view = UIView()
+        view.backgroundColor = .clear
+        let ring = CAShapeLayer()
+        ring.path = UIBezierPath(ovalIn: CGRect(x: 1.25, y: 1.25, width: 61.5, height: 61.5)).cgPath
+        ring.strokeColor = Constants.Colors.secondaryLabel.withAlphaComponent(0.6).cgColor
+        ring.fillColor = UIColor.clear.cgColor
+        ring.lineWidth = 2
+        ring.lineDashPattern = [4, 4]
+        view.layer.addSublayer(ring)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        return view
+    }()
+
+    // Small blue plus at the avatar's bottom-trailing — "you can add this person"
+    private let suggestionBadgeView: UIImageView = {
+        let imageView = UIImageView(image: UIImage(
+            systemName: "plus.circle.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)))
+        imageView.tintColor = Constants.Colors.primary
+        // White disc behind the plus so it reads over any avatar photo
+        imageView.backgroundColor = .white
+        imageView.layer.cornerRadius = 9
+        imageView.clipsToBounds = true
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.isHidden = true
+        return imageView
+    }()
     
     // MARK: - Init
     override init(frame: CGRect) {
@@ -73,8 +109,10 @@ class UserActivityCell: UICollectionViewCell {
         containerView.addSubview(profileImageView)
         containerView.addSubview(activityRingView)
         containerView.addSubview(selectionRingView)
+        containerView.addSubview(suggestionRingView)
+        containerView.addSubview(suggestionBadgeView)
         contentView.addSubview(nameLabel)
-        
+
         NSLayoutConstraint.activate([
             // Container view
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -99,7 +137,19 @@ class UserActivityCell: UICollectionViewCell {
             selectionRingView.centerYAnchor.constraint(equalTo: profileImageView.centerYAnchor),
             selectionRingView.widthAnchor.constraint(equalTo: profileImageView.widthAnchor, constant: 8),
             selectionRingView.heightAnchor.constraint(equalTo: profileImageView.heightAnchor, constant: 8),
-            
+
+            // Suggestion ring (same footprint as the other rings)
+            suggestionRingView.centerXAnchor.constraint(equalTo: profileImageView.centerXAnchor),
+            suggestionRingView.centerYAnchor.constraint(equalTo: profileImageView.centerYAnchor),
+            suggestionRingView.widthAnchor.constraint(equalTo: profileImageView.widthAnchor, constant: 8),
+            suggestionRingView.heightAnchor.constraint(equalTo: profileImageView.heightAnchor, constant: 8),
+
+            // Plus badge at the avatar's bottom-trailing corner
+            suggestionBadgeView.trailingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 2),
+            suggestionBadgeView.bottomAnchor.constraint(equalTo: profileImageView.bottomAnchor, constant: 2),
+            suggestionBadgeView.widthAnchor.constraint(equalToConstant: 18),
+            suggestionBadgeView.heightAnchor.constraint(equalToConstant: 18),
+
             // Name label
             nameLabel.topAnchor.constraint(equalTo: containerView.bottomAnchor, constant: 4),
             nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
@@ -232,37 +282,96 @@ class UserActivityCell: UICollectionViewCell {
         activityRingView.layer.add(fade, forKey: "fade")
     }
     
+    // MARK: - Suggested user
+
+    /// Renders a SUGGESTED person (someone the user doesn't follow yet):
+    /// same avatar treatment as a connection, plus a dashed ring and a small
+    /// blue plus badge so it can't be mistaken for an existing relationship.
+    func configure(withSuggestion user: User) {
+        connection = nil
+        displayedUserId = user.id
+
+        let displayName = user.displayName.isEmpty
+            ? ((user.email ?? "").components(separatedBy: "@").first ?? "User")
+            : user.displayName
+        nameLabel.text = displayName
+
+        if let profilePicture = user.profilePicture, !profilePicture.isEmpty {
+            let cacheKey = "profile_\(user.id)_\(profilePicture)"
+            if let cached = ImageService.shared.cachedImage(forKey: cacheKey) {
+                profileImageView.image = cached
+            } else {
+                profileImageView.image = createInitialsImage(for: displayName)
+                let expectedId = user.id
+                ImageService.shared.loadImageWithKey(from: profilePicture, cacheKey: cacheKey) { [weak self] image in
+                    DispatchQueue.main.async {
+                        guard let self = self, self.displayedUserId == expectedId,
+                              let image = image else { return }
+                        self.profileImageView.image = image
+                    }
+                }
+            }
+        } else {
+            profileImageView.image = createInitialsImage(for: displayName)
+        }
+
+        activityRingView.isHidden = true
+        activityRingView.layer.removeAllAnimations()
+        selectionRingView.isHidden = true
+        suggestionRingView.isHidden = false
+        suggestionBadgeView.isHidden = false
+    }
+
     // MARK: - Reuse
     override func prepareForReuse() {
         super.prepareForReuse()
-        
-        // Cancel any pending image loads by clearing the connection first
+
+        // Cancel any pending image loads by clearing the identities first
         connection = nil
-        
+        displayedUserId = nil
+
         // Clear UI elements
         profileImageView.image = nil
         activityRingView.isHidden = true
         activityRingView.layer.removeAllAnimations()
         selectionRingView.isHidden = true
+        suggestionRingView.isHidden = true
+        suggestionBadgeView.isHidden = true
         nameLabel.text = nil
+
+        // configureAsButton and configure(withSuggestion:) restyle the avatar
+        // and label — reset EVERYTHING they touch or the styling bleeds into
+        // recycled connection cells
+        profileImageView.tintColor = nil
+        profileImageView.contentMode = .scaleAspectFill
+        profileImageView.backgroundColor = Constants.Colors.tertiaryBackground
+        profileImageView.layer.borderColor = Constants.Colors.lightGray.cgColor
+        profileImageView.layer.borderWidth = 2
+        nameLabel.textColor = Constants.Colors.label
+        nameLabel.font = UIFont.systemFont(ofSize: 12, weight: .medium)
     }
-    
+
     // MARK: - Configure as Button
     func configureAsButton(title: String, icon: String) {
         // Reset normal configuration
-        profileImageView.image = nil
+        connection = nil
+        displayedUserId = nil
         activityRingView.isHidden = true
-        
-        // Set up button appearance
-        profileImageView.image = UIImage(systemName: icon)
+        selectionRingView.isHidden = true
+        suggestionRingView.isHidden = true
+        suggestionBadgeView.isHidden = true
+
+        // Set up button appearance (glyph sized so it doesn't fill the circle)
+        profileImageView.image = UIImage(systemName: icon, withConfiguration:
+            UIImage.SymbolConfiguration(pointSize: 22, weight: .semibold))
         profileImageView.tintColor = Constants.Colors.primary
-        profileImageView.contentMode = .scaleAspectFit
+        profileImageView.contentMode = .center
         profileImageView.backgroundColor = Constants.Colors.tertiaryBackground
-        
+
         // Add button-like border
         profileImageView.layer.borderColor = Constants.Colors.primary.cgColor
         profileImageView.layer.borderWidth = 2
-        
+
         // Set label
         nameLabel.text = title
         nameLabel.textColor = Constants.Colors.primary

@@ -29,9 +29,34 @@ class NetworkManager {
     private(set) var editableCirclesFromOthers: [Circle] = []
     private(set) var isLoading = false
     private(set) var error: String?
-    
+
+    /// Everyone the current user FOLLOWS (superset of connections in practice
+    /// — accepting a connection auto-follows both ways). Feeds the map's
+    /// people filter so followed non-connections are pickable too.
+    private(set) var followingUsers: [User] = []
+    private var isLoadingFollowing = false
+
     private let apiService = APIService.shared
     private var authObserverId = "NetworkManager"
+
+    /// Refreshes the followed-users cache. Completion always fires on main;
+    /// on failure the previous cache is kept.
+    func loadFollowingUsers(completion: (() -> Void)? = nil) {
+        guard !isLoadingFollowing else {
+            DispatchQueue.main.async { completion?() }
+            return
+        }
+        isLoadingFollowing = true
+        UserService.shared.getFollowing { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoadingFollowing = false
+                if case .success(let users) = result {
+                    self?.followingUsers = users
+                }
+                completion?()
+            }
+        }
+    }
     
     // MARK: - Helper Methods
     
@@ -157,9 +182,12 @@ class NetworkManager {
         )
     }
     
-    func loadConnections() {
+    /// completion fires on the main queue after connections state is updated,
+    /// on BOTH outcomes — the first-session onboarding chain uses it to know
+    /// when pendingConnections is trustworthy.
+    func loadConnections(completion: (() -> Void)? = nil) {
         isLoading = true
-        
+
         apiService.request(
             endpoint: "connections",
             method: .get,
@@ -220,6 +248,7 @@ class NetworkManager {
                             object: nil
                         )
                     }
+                    completion?()
                 }
             }
         )
@@ -352,7 +381,8 @@ class NetworkManager {
         // survive the App Store install round-trip, but a code the recipient can
         // read and type into the Register screen does.
         if let code = ReferralService.shared.myReferralCode {
-            shareText += " New to Circles? Sign up with referral code \(code) to get 1 month free."
+            // No hardcoded benefit promise — what codes grant is backend-controlled
+            shareText += " New to Circles? Sign up with my referral code \(code)."
         }
 
         return [shareText, inviteURL]
@@ -455,6 +485,14 @@ class NetworkManager {
     }
     
     func acceptConnection(_ connectionId: String, completion: @escaping (Result<Connection, Error>) -> Void) {
+        acceptConnectionWithCredit(connectionId) { result in
+            completion(result.map { $0.0 })
+        }
+    }
+
+    /// Accept variant that surfaces the FavCoin credit riding the response,
+    /// for surfaces that play the deposit animation.
+    func acceptConnectionWithCredit(_ connectionId: String, completion: @escaping (Result<(Connection, PiggyBankCredit?), Error>) -> Void) {
         apiService.request(
             endpoint: "connections/\(connectionId)/accept",
             method: .post,
@@ -476,8 +514,8 @@ class NetworkManager {
                                 name: NSNotification.Name("ConnectionsChanged"),
                                 object: nil
                             )
-                            
-                            completion(.success(connection))
+
+                            completion(.success((connection, response.piggyBank)))
                         } else {
                             completion(.failure(APIError.invalidResponse))
                         }
@@ -965,6 +1003,7 @@ class NetworkManager {
         connections = []
         pendingConnections = []
         sharedCircles = []
+        followingUsers = []
     }
     
     // Public method to clear cache on logout
@@ -1129,6 +1168,9 @@ struct ConnectionResponse: Codable {
     let success: Bool
     let data: Connection?
     let message: String?
+    // Accepting a connection earns FavCoins — rides the accept response so
+    // the deposit animation can play (nil on other connection endpoints)
+    let piggyBank: PiggyBankCredit?
 }
 
 struct CircleSharesResponse: Codable {

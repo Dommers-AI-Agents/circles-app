@@ -70,7 +70,12 @@ exports.securityHeaders = helmet({
 // Opaque payload fields the XSS regexes must never touch: base64 receipts and
 // signed JWS blobs are not HTML, and stripping "on…=" runs from them corrupts
 // the payload (Apple then rejects the receipt as malformed, error 21002).
-const SANITIZE_EXEMPT_KEYS = new Set(['receipt', 'receiptData', 'signedPayload', 'signedTransaction']);
+const SANITIZE_EXEMPT_KEYS = new Set([
+  'receipt', 'receiptData', 'signedPayload', 'signedTransaction',
+  // WebAuthn payloads are unpadded base64url (regex-safe today, but exempting
+  // binary blobs from XSS munging is correctness, not convenience)
+  'clientDataJSON', 'attestationObject', 'authenticatorData', 'signature', 'userHandle', 'rawId'
+]);
 
 // Input sanitization middleware
 exports.sanitizeInput = (req, res, next) => {

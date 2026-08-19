@@ -330,7 +330,11 @@ extension FollowersListViewController: FollowerUserCellDelegate {
                 guard let self = self else { return }
                 
                 switch result {
-                case .success:
+                case .success(let response):
+                    // First follow of this person earns a dime — play it
+                    if !isFollowing {
+                        PiggyBankDepositView.play(credit: response.piggyBank)
+                    }
                     // Update will happen via SSE
                     // Update the user in our local array
                     if let index = self.users.firstIndex(where: { $0.id == user.id }) {

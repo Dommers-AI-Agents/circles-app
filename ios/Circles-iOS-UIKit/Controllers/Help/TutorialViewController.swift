@@ -333,7 +333,7 @@ class TutorialTextViewController: BaseViewController {
         
         ## Getting Started
         
-        Circles is your personal recommendation platform for sharing favorite places with your network.
+        FavCircles is where you save your favorite places and share them with the people you trust.
         
         ### Creating Your First Circle
         1. Tap the + button on the home screen

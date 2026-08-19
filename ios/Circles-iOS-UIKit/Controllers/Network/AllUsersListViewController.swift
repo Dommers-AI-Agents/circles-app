@@ -949,6 +949,11 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                 guard let self = self else { return }
                 switch result {
                 case .success(let response):
+                    // First follow of this person earns a dime — play the
+                    // deposit like every other follow surface does
+                    if shouldFollow {
+                        PiggyBankDepositView.play(credit: response.piggyBank)
+                    }
                     // Prefer the server's version of the user when it sends one,
                     // but keep followsYou: the follow endpoint doesn't compute it
                     // and losing it would silently demote a mutual follow.
@@ -1007,11 +1012,13 @@ extension AllUsersListViewController: AllUsersCellDelegate {
 
         applyLocalUpdate(userId: user.id) { $0.copy(connectionStatus: "accepted") }
 
-        NetworkManager.shared.acceptConnection(connectionId) { [weak self] result in
+        NetworkManager.shared.acceptConnectionWithCredit(connectionId) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 switch result {
-                case .success:
+                case .success(let (_, credit)):
+                    // Accepting a connection earns coins — play the deposit
+                    PiggyBankDepositView.play(credit: credit)
                     NetworkManager.shared.refreshBadgeCount()
                     self.loadPeople()
                 case .failure(let error):

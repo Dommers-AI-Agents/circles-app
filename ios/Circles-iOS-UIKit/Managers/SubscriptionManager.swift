@@ -22,16 +22,22 @@ class SubscriptionManager {
     // MARK: - Initialization
 
     func initialize() async {
-        // Load products
+        // Load products — but a StoreKit failure here must never block the
+        // status checks below. The old single do/catch meant one flaky
+        // sandbox product-load killed the backend sync, so a premium user
+        // wore the upgrade crown for the whole session (Wes, fresh Debug
+        // install, 2026-08-19). The backend is the authority on premium for
+        // accounts without a local StoreKit entitlement; always ask it.
         do {
             try await service.loadProducts()
-            await service.updateSubscriptionStatus()
-
-            // Sync with backend on app launch to ensure subscription status is up-to-date
-            await service.syncCurrentSubscriptionWithBackend()
         } catch {
-            Logger.debug("❌ Failed to initialize subscription service: \(error)")
+            Logger.debug("❌ Failed to load subscription products (continuing to status check): \(error)")
         }
+
+        await service.updateSubscriptionStatus()
+
+        // Sync with backend on app launch to ensure subscription status is up-to-date
+        await service.syncCurrentSubscriptionWithBackend()
     }
     
     // MARK: - Status Checks

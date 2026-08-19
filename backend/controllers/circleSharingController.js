@@ -555,35 +555,50 @@ const getMyNetworkCircles = async (req, res) => {
 
     console.log('👥 Connected user IDs:', Array.from(connectedUserIds));
 
-    if (connectedUserIds.size === 0) {
-      console.log('⚠️ No connections found for user:', userId);
+    // FOLLOWED users' circles are part of "my network" too — following is
+    // one-way, so it earns the PUBLIC tier only (myNetwork stays
+    // connections-only). This is what puts a followed person's places on the
+    // home map without requiring a mutual connection.
+    const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    const followedOnlyIds = ((currentUserDoc.exists && currentUserDoc.data().following) || [])
+      .filter(id => id && id !== userId && !connectedUserIds.has(id));
+
+    if (connectedUserIds.size === 0 && followedOnlyIds.length === 0) {
+      console.log('⚠️ No connections or follows found for user:', userId);
       return res.status(200).json({
         success: true,
         data: []
       });
     }
 
-    // Get circles from connected users with non-private privacy (public or myNetwork)
-    // Firestore 'in' operator has a limit of 30 disjunctions total
-    // With 2 privacy values, we can safely query 10 owners at a time (10 * 2 = 20 disjunctions)
+    // Firestore 'in' operator has a limit of 30 disjunctions total.
+    // With 2 privacy values, we can safely query 10 owners at a time.
+    const batchOwners = (ids) => {
+      const batches = [];
+      for (let i = 0; i < ids.length; i += 10) batches.push(ids.slice(i, i + 10));
+      return batches;
+    };
     const connectedUserIdsArray = Array.from(connectedUserIds);
-    const circleOwnerBatches = [];
-    for (let i = 0; i < connectedUserIdsArray.length; i += 10) {
-      circleOwnerBatches.push(connectedUserIdsArray.slice(i, i + 10));
-    }
-    
-    console.log(`📦 Batching ${connectedUserIdsArray.length} owners into ${circleOwnerBatches.length} batches for circles query`);
-    
-    // Fetch circles from all batches in parallel
-    const circleResults = await Promise.all(
-      circleOwnerBatches.map(batch => 
+
+    console.log(`📦 Querying circles for ${connectedUserIdsArray.length} connections + ${followedOnlyIds.length} followed users`);
+
+    // Fetch circles from all batches in parallel — connections get
+    // public+myNetwork, followed-only users get public
+    const circleResults = await Promise.all([
+      ...batchOwners(connectedUserIdsArray).map(batch =>
         db.collection(COLLECTIONS.CIRCLES)
           .where('owner', 'in', batch)
           .where('privacy', 'in', ['public', 'myNetwork'])
           .get()
+      ),
+      ...batchOwners(followedOnlyIds).map(batch =>
+        db.collection(COLLECTIONS.CIRCLES)
+          .where('owner', 'in', batch)
+          .where('privacy', '==', 'public')
+          .get()
       )
-    );
-    
+    ]);
+
     // Combine all circle results
     let circles = [];
     circleResults.forEach(snapshot => {
@@ -591,8 +606,8 @@ const getMyNetworkCircles = async (req, res) => {
         circles.push(serializeDoc(doc));
       });
     });
-    
-    console.log('🔵 Found circles from connections:', circles.length);
+
+    console.log('🔵 Found circles from connections + follows:', circles.length);
     
     // OPTIMIZATION: Batch fetch all unique owner IDs
     const uniqueOwnerIds = [...new Set(circles.map(circle => circle.owner))];

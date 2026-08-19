@@ -5,15 +5,76 @@ protocol HorizontalUserListViewDelegate: AnyObject {
     /// Long-press on an avatar — the delegate decides the action (the home
     /// screen shows a quick-actions menu; other screens may open the profile).
     func didLongPressUser(_ user: User, connectionId: String)
+    /// A SUGGESTED person (not yet followed) was tapped — open their profile.
+    func didSelectSuggestedUser(_ user: User)
+}
+
+// Default no-op so conformers that never show suggestions (the modal map's
+// filter row) compile untouched
+extension HorizontalUserListViewDelegate {
+    func didSelectSuggestedUser(_ user: User) {}
 }
 
 class HorizontalUserListView: UIView {
-    
+
     // MARK: - Properties
     weak var delegate: HorizontalUserListViewDelegate?
     private var connections: [Connection] = []
     private var loadRetryCount = 0
     private let maxRetries = 3
+
+    // MARK: - Discovery suffix (home embed only)
+
+    /// When true, the row appends SUGGESTED people (when sparse) and a
+    /// trailing "Find People +" cell. Off by default — the modal map's avatar
+    /// row is a pure filter surface and must stay relationships-only.
+    var showsDiscoverySuffix = false
+
+    private var suggestions: [User] = []
+    private var isFetchingSuggestions = false
+    private var hasFetchedSuggestions = false
+
+    /// What the collection view actually renders. Connections ALWAYS occupy
+    /// indices 0..<connections.count — the selection pinning, SSE insert-at-0,
+    /// and clearActivityForConnection index math all rely on that invariant.
+    private enum RowItem {
+        case connection(Connection)
+        case suggestion(User)
+        case findPeople
+    }
+
+    private var rowItems: [RowItem] {
+        var items: [RowItem] = connections.map { RowItem.connection($0) }
+        if showsDiscoverySuffix {
+            // A suggestion the user has since followed shows up in connections —
+            // drop it from the suffix immediately (refetch catches up later)
+            let visibleSuggestions = suggestions.filter { user in
+                !connections.contains { connection in
+                    guard let id = connection.connectedUser?.id else { return false }
+                    return IDNormalizer.isSameUser(id, user.id)
+                }
+            }
+            items += visibleSuggestions.map { RowItem.suggestion($0) }
+            // The "+" trails any content; a fully empty row keeps the
+            // text empty state instead of a lone plus
+            if !items.isEmpty { items.append(.findPeople) }
+        }
+        return items
+    }
+
+    /// Snapshot the collection view actually renders. Rebuilt inside
+    /// numberOfItemsInSection — the one place UIKit is guaranteed to call
+    /// before configuring cells (reloadData AND performBatchUpdates) — so the
+    /// count UIKit holds and the array cellForItemAt indexes can never drift
+    /// (a live computed property raced connection mutations and left blank
+    /// guard-cells at the tail).
+    private var displayedRowItems: [RowItem] = []
+
+    // NOTE (2026-08-19, Wes): no relationship filter here on purpose. This
+    // row's one job is "the most relevant people to you right now" — the
+    // connectionScore ranking already blends connections and follows, and a
+    // Connections/Following toggle was tried and removed same-day: splitting
+    // by mechanism hid whoever mattered most at the moment.
 
     /// User id of the currently selected connection (map filter); the matching
     /// avatar shows a blue selection ring and is pinned to the front of the
@@ -35,9 +96,13 @@ class HorizontalUserListView: UIView {
     private func refreshSelectionHighlights() {
         for cell in collectionView.visibleCells {
             guard let userCell = cell as? UserActivityCell,
-                  let indexPath = collectionView.indexPath(for: cell),
-                  indexPath.item < connections.count,
-                  let userId = connections[indexPath.item].connectedUser?.id else { continue }
+                  let indexPath = collectionView.indexPath(for: cell) else { continue }
+            // Suffix cells (suggestions, "+") never carry a selection ring
+            guard indexPath.item < connections.count,
+                  let userId = connections[indexPath.item].connectedUser?.id else {
+                userCell.setSelectedHighlight(false)
+                continue
+            }
             let isSelected = selectedUserId.map { IDNormalizer.isSameUser($0, userId) } ?? false
             userCell.setSelectedHighlight(isSelected)
         }
@@ -123,22 +188,23 @@ class HorizontalUserListView: UIView {
     
     private let emptyStateLabel: UILabel = {
         let label = UILabel()
-        label.text = "Make connections"
+        label.text = "Follow people to fill your map"
         label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
         label.textColor = Constants.Colors.label
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private let goToNetworkButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Go to My Network →", for: .normal)
+        button.setTitle("Find People to Follow →", for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 14)
         button.tintColor = Constants.Colors.primary
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
+
     
     private var hasLoadedConnections = false
     private var hasCompletedInitialLoad = false
@@ -159,7 +225,17 @@ class HorizontalUserListView: UIView {
             name: NSNotification.Name("ConnectionsChanged"),
             object: nil
         )
-        
+
+        // When NetworkManager finishes a connections load and this row is
+        // still showing its empty state, refresh — covers the first-launch
+        // window where the row's own fetch beat the relationship writes
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleConnectionsLoaded),
+            name: .connectionsLoaded,
+            object: nil
+        )
+
         // Don't automatically load connections - wait for either:
         // 1. Initial connections to be set via setInitialConnections()
         // 2. Manual refresh() call
@@ -223,14 +299,14 @@ class HorizontalUserListView: UIView {
         addSubview(collectionView)
         addSubview(loadingIndicator)
         addSubview(emptyStateView)
-        
+
         // Add empty state subviews
         emptyStateView.addSubview(emptyStateLabel)
         emptyStateView.addSubview(goToNetworkButton)
-        
+
         // Add button target
         goToNetworkButton.addTarget(self, action: #selector(goToNetworkTapped), for: .touchUpInside)
-        
+
         NSLayoutConstraint.activate([
             // Collection view
             collectionView.topAnchor.constraint(equalTo: topAnchor, constant: 12),
@@ -282,14 +358,22 @@ class HorizontalUserListView: UIView {
         guard gesture.state == .began else { return }
 
         let location = gesture.location(in: collectionView)
+        let items = displayedRowItems
         guard let indexPath = collectionView.indexPathForItem(at: location),
-              indexPath.item < connections.count else { return }
+              indexPath.item < items.count else { return }
 
-        let connection = connections[indexPath.item]
-        guard let user = connection.connectedUser else { return }
-
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        delegate?.didLongPressUser(user, connectionId: connection.id)
+        switch items[indexPath.item] {
+        case .connection(let connection):
+            guard let user = connection.connectedUser else { return }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            delegate?.didLongPressUser(user, connectionId: connection.id)
+        case .suggestion(let user):
+            // Same destination as a tap — their profile
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            delegate?.didSelectSuggestedUser(user)
+        case .findPeople:
+            break
+        }
     }
     
     @objc private func handlePullToRefresh() {
@@ -310,6 +394,57 @@ class HorizontalUserListView: UIView {
         } else {
             // Post notification to navigate to My Network tab
             NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+        }
+    }
+
+    // MARK: - Discovery suffix
+
+    /// The "+" cell's destination: My Network tab, Discover segment. The
+    /// segment post is delayed because MyNetworkViewController registers its
+    /// observer in viewDidLoad, which runs on the tab switch itself.
+    private func navigateToDiscover() {
+        NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            NotificationCenter.default.post(name: .showDiscoverSegment, object: nil)
+        }
+    }
+
+    /// Fills the row's tail with people worth following when it's sparse.
+    /// Only runs once per load cycle, and only when every relationship is
+    /// already loaded (so the suffix can't interleave with scroll paging).
+    private func fetchSuggestionsIfNeeded() {
+        guard showsDiscoverySuffix, !hasMoreConnections, connections.count < 8 else { return }
+        fetchSuggestions { [weak self] in
+            guard let self = self, !self.suggestions.isEmpty else { return }
+            self.collectionView.reloadData()
+        }
+    }
+
+    private func fetchSuggestions(completion: (() -> Void)? = nil) {
+        guard !isFetchingSuggestions, !hasFetchedSuggestions else { completion?(); return }
+        isFetchingSuggestions = true
+        // Backend already excludes self, dismissed, blocked, and everyone the
+        // user follows; the client just dedups against what the row shows
+        APIService.shared.request(
+            endpoint: "users/contacts/discover?type=all&limit=15",
+            method: .get
+        ) { [weak self] (result: Result<DiscoveryUsersResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isFetchingSuggestions = false
+                self.hasFetchedSuggestions = true
+                if case .success(let response) = result {
+                    let myId = AuthService.shared.getUserId()
+                    let shownIds = self.connections.compactMap { $0.connectedUser?.id }
+                    let fillCount = max(3, 10 - self.connections.count)
+                    self.suggestions = response.users
+                        .filter { user in myId.map { !IDNormalizer.isSameUser($0, user.id) } ?? true }
+                        .filter { user in !shownIds.contains { IDNormalizer.isSameUser($0, user.id) } }
+                        .prefix(fillCount).map { $0 }
+                    Logger.debug("🌱 HorizontalUserListView: \(self.suggestions.count) suggested people appended")
+                }
+                completion?()
+            }
         }
     }
     
@@ -469,6 +604,14 @@ class HorizontalUserListView: UIView {
         Logger.debug("🔄 HorizontalUserListView: Connections changed notification received, refreshing")
         refresh()
     }
+
+    @objc private func handleConnectionsLoaded() {
+        // Only worth a refetch when the row is visibly empty — an occupied
+        // row already refreshes through its own paths
+        guard !emptyStateView.isHidden || connections.isEmpty else { return }
+        Logger.debug("🔄 HorizontalUserListView: Connections loaded while row empty — refreshing")
+        refresh()
+    }
     
     // MARK: - Public Methods
     func refresh() {
@@ -500,6 +643,9 @@ class HorizontalUserListView: UIView {
         hasMoreConnections = true
         isLoadingMore = false
         allLoadedConnections.removeAll()
+        // Suggestions refetch after the reload lands (existing ones stay
+        // visible meanwhile — rowItems drops any that became connections)
+        hasFetchedSuggestions = false
     }
     
     func setInitialConnections(_ connections: [Connection]) {
@@ -747,6 +893,9 @@ class HorizontalUserListView: UIView {
                         self?.collectionView.isHidden = false
                         self?.emptyStateView.isHidden = true
                     }
+
+                    // Sparse row → top it up with people worth following
+                    self.fetchSuggestionsIfNeeded()
                 }
             } else {
                 // No connections - show empty state only if allowed
@@ -761,15 +910,40 @@ class HorizontalUserListView: UIView {
                         self.hasCompletedInitialLoad = true
                     }
                     
+                    // Launch-night race (2026-08-15): a brand-new account has
+                    // auto-follows of Wes+Brittany server-side, but the very
+                    // first active-relationships call can land before those
+                    // writes settle — retry before declaring the row empty.
+                    if allowEmptyState, self.loadRetryCount < self.maxRetries,
+                       let created = AuthService.shared.currentUser?.createdAt,
+                       Date().timeIntervalSince(created) < 48 * 3600 {
+                        self.loadRetryCount += 1
+                        Logger.debug("🔄 HorizontalUserListView: Young account with empty row — retry \(self.loadRetryCount)")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                            self?.loadActiveConnections()
+                        }
+                        return
+                    }
+
                     if allowEmptyState && self.hasCompletedInitialLoad {
-                        // Show empty state only after we've completed at least one load attempt
-                        Logger.debug("🔍 HorizontalUserListView: Showing empty state - no connections available")
-                        self.loadingIndicator.stopAnimating()
-                        self.collectionView.isHidden = true
-                        // Reset to default text when showing empty state due to no connections
-                        self.emptyStateLabel.text = "Make connections"
-                        self.goToNetworkButton.setTitle("Go to My Network →", for: .normal)
-                        self.emptyStateView.isHidden = false
+                        if self.showsDiscoverySuffix {
+                            // A row of suggested faces beats a text plea —
+                            // fall back to the empty state only if suggestions
+                            // also come back empty
+                            self.fetchSuggestions { [weak self] in
+                                guard let self = self else { return }
+                                if self.suggestions.isEmpty && self.connections.isEmpty {
+                                    self.showEmptyStateUI()
+                                } else {
+                                    self.loadingIndicator.stopAnimating()
+                                    self.collectionView.reloadData()
+                                    self.collectionView.isHidden = false
+                                    self.emptyStateView.isHidden = true
+                                }
+                            }
+                        } else {
+                            self.showEmptyStateUI()
+                        }
                     } else {
                         // Keep loading state - either initial load hasn't completed or empty state not allowed
                         if !self.hasCompletedInitialLoad {
@@ -784,6 +958,18 @@ class HorizontalUserListView: UIView {
         }
     }
     
+    /// The zero-relationships text plea (extracted so the discovery-suffix
+    /// path can try suggestions first and use this only as the last resort)
+    private func showEmptyStateUI() {
+        Logger.debug("🔍 HorizontalUserListView: Showing empty state - no connections available")
+        loadingIndicator.stopAnimating()
+        collectionView.isHidden = true
+        // Reset to default text when showing empty state due to no connections
+        emptyStateLabel.text = "Follow people to fill your map"
+        goToNetworkButton.setTitle("Find People to Follow →", for: .normal)
+        emptyStateView.isHidden = false
+    }
+
     private func useInitialConnections(_ initialConnections: [Connection]) {
         hasLoadedConnections = true
         
@@ -830,21 +1016,31 @@ class HorizontalUserListView: UIView {
 // MARK: - UICollectionViewDataSource
 extension HorizontalUserListView: UICollectionViewDataSource {
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        return connections.count
+        displayedRowItems = rowItems
+        return displayedRowItems.count
     }
-    
+
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: UserActivityCell.reuseIdentifier, for: indexPath) as! UserActivityCell
-        let connection = connections[indexPath.item]
-        cell.configure(with: connection)
-
-        let isSelected: Bool
-        if let selectedUserId = selectedUserId, let userId = connection.connectedUser?.id {
-            isSelected = IDNormalizer.isSameUser(selectedUserId, userId)
-        } else {
-            isSelected = false
+        let items = displayedRowItems
+        guard indexPath.item < items.count else { return cell }
+        switch items[indexPath.item] {
+        case .connection(let connection):
+            cell.configure(with: connection)
+            let isSelected: Bool
+            if let selectedUserId = selectedUserId, let userId = connection.connectedUser?.id {
+                isSelected = IDNormalizer.isSameUser(selectedUserId, userId)
+            } else {
+                isSelected = false
+            }
+            cell.setSelectedHighlight(isSelected)
+        case .suggestion(let user):
+            cell.configure(withSuggestion: user)
+            cell.setSelectedHighlight(false)
+        case .findPeople:
+            cell.configureAsButton(title: "Find People", icon: "plus")
+            cell.setSelectedHighlight(false)
         }
-        cell.setSelectedHighlight(isSelected)
         return cell
     }
 }
@@ -852,24 +1048,32 @@ extension HorizontalUserListView: UICollectionViewDataSource {
 // MARK: - UICollectionViewDelegate
 extension HorizontalUserListView: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        let connection = connections[indexPath.item]
-        if let user = connection.connectedUser {
-            // Track the view
-            NetworkManager.shared.trackConnectionView(connectionId: connection.id) { error in
-                if let error = error {
-                    Logger.debug("Error tracking view: \(error)")
+        let items = displayedRowItems
+        guard indexPath.item < items.count else { return }
+        switch items[indexPath.item] {
+        case .connection(let connection):
+            if let user = connection.connectedUser {
+                // Track the view
+                NetworkManager.shared.trackConnectionView(connectionId: connection.id) { error in
+                    if let error = error {
+                        Logger.debug("Error tracking view: \(error)")
+                    }
+                }
+
+                delegate?.didSelectUser(user, connectionId: connection.id)
+
+                // Clear activity notification after viewing if they had new activity
+                // or recent place. clearActivityForConnection already refreshes the
+                // list after the server clears — a second refresh() here just
+                // double-reloaded the row (extra avatar re-flash ~0.5s after the tap).
+                if connection.hasNewActivity ?? false || connection.hasRecentPlace ?? false {
+                    clearActivityForConnection(connection.id)
                 }
             }
-            
-            delegate?.didSelectUser(user, connectionId: connection.id)
-            
-            // Clear activity notification after viewing if they had new activity
-            // or recent place. clearActivityForConnection already refreshes the
-            // list after the server clears — a second refresh() here just
-            // double-reloaded the row (extra avatar re-flash ~0.5s after the tap).
-            if connection.hasNewActivity ?? false || connection.hasRecentPlace ?? false {
-                clearActivityForConnection(connection.id)
-            }
+        case .suggestion(let user):
+            delegate?.didSelectSuggestedUser(user)
+        case .findPeople:
+            navigateToDiscover()
         }
     }
     

@@ -210,16 +210,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         handlePendingDeepLink()
         NetworkManager.shared.processPendingConnectionInvite()
         redeemPendingStickerCodeIfNeeded()
+        offerPasskeySetupIfPending()
 
         // Quietly locate any imported places still waiting on a coordinate
         // (rows past the import flow's inline-resolution cap)
         ImportResolutionQueue.shared.kick()
 
-        if UserDefaults.standard.bool(forKey: "pendingWelcomeCarousel") {
-            // Brand-new signup: welcome carousel first, which chains into the
-            // notification prompt. (Contacts onboarding was intentionally cut
+        if OnboardingManager.shared.isFirstSessionFlowActive {
+            // Brand-new signup: the carousel already ran over the splash;
+            // continue the chain — first-people sheet → notifications →
+            // tutorial decision. (Contacts onboarding was intentionally cut
             // from first-run — Find Contacts lives in the My Network tab.)
-            showWelcomeCarousel()
+            continueFirstSessionAfterCarousel()
         } else if shouldShowNotificationOnboarding() {
             showNotificationOnboarding()
         } else {
@@ -229,6 +231,47 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     Logger.info("New user detected - starting onboarding tutorial")
                 }
             }
+        }
+    }
+
+    /// After a password login (LoginViewController sets pendingPasskeyOfferEmail),
+    /// offer to enroll a passkey once per account so they can go passwordless.
+    private func offerPasskeySetupIfPending() {
+        guard AuthService.shared.isLoggedIn,
+              let email = UserDefaults.standard.string(forKey: "pendingPasskeyOfferEmail"),
+              !email.isEmpty else { return }
+        // Consume the pending flag regardless of outcome
+        UserDefaults.standard.removeObject(forKey: "pendingPasskeyOfferEmail")
+
+        // Only nudge once per account
+        var offered = UserDefaults.standard.stringArray(forKey: "passkeyOfferedEmails") ?? []
+        guard !offered.contains(email) else { return }
+        offered.append(email)
+        UserDefaults.standard.set(offered, forKey: "passkeyOfferedEmails")
+
+        // Let the home screen settle before presenting
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self = self,
+                  let top = self.topViewController(),
+                  top.presentedViewController == nil else { return }
+            let alert = UIAlertController(
+                title: "Set up Face ID sign-in?",
+                message: "Skip the password next time — sign in with Face ID or your passcode.",
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "Set Up", style: .default) { [weak self] _ in
+                PasskeyAuthService.shared.addPasskeyForCurrentUser(accountName: email, presentationAnchor: self?.window) { result in
+                    if case .success = result {
+                        DispatchQueue.main.async {
+                            if let top = self?.topViewController() {
+                                AlertPresenter.showSuccess("You're all set — Face ID next time.", from: top)
+                            }
+                        }
+                    }
+                    // Failure/cancel: silent; the row in Settings remains available
+                }
+            })
+            alert.addAction(UIAlertAction(title: "Not Now", style: .cancel))
+            top.present(alert, animated: true)
         }
     }
 
@@ -296,19 +339,160 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         presenter.present(navController, animated: true)
     }
 
-    /// Shows the five-page welcome carousel once right after signup, then
-    /// continues the onboarding chain (notifications → tutorial).
-    private func showWelcomeCarousel() {
-        guard let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
-        UserDefaults.standard.set(false, forKey: "pendingWelcomeCarousel")
+    /// Presents the welcome carousel over the SPLASH root — home is never
+    /// visible behind it (the old flow swapped to the tab bar first, so the
+    /// map flashed before the carousel covered it). Preload keeps running
+    /// underneath; whichever finishes second applies the outcome.
+    private func presentFirstSessionCarousel(over presenter: UIViewController) {
+        isWelcomeCarouselActive = true
+        OnboardingManager.shared.isFirstSessionFlowActive = true
 
         let welcomeVC = OnboardingViewController()
         welcomeVC.modalPresentationStyle = .fullScreen
         welcomeVC.onCompletion = { [weak self] in
-            self?.continueOnboardingAfterContacts()
+            self?.carouselDidFinish()
         }
-        tabBarController.present(welcomeVC, animated: true)
-        Logger.info("Showing welcome carousel for new user")
+        presenter.present(welcomeVC, animated: false)
+        Logger.info("First-session carousel presented over splash")
+    }
+
+    private func carouselDidFinish() {
+        isWelcomeCarouselActive = false
+        // Cleared only on completion, so a mid-carousel force-quit replays it
+        UserDefaults.standard.set(false, forKey: "pendingWelcomeCarousel")
+
+        if let outcome = stashedPreloadOutcome {
+            // Preload beat the reader — apply the held outcome now
+            stashedPreloadOutcome = nil
+            handlePreloadOutcome(outcome, splashVC: firstSessionSplashVC)
+        }
+        // Else: preload is still running; the splash (progress ring) is now
+        // visible and the live completion path installs home when it's done.
+    }
+
+    /// The preload result → root-swap/error handling, shared by the live
+    /// completion and the stashed-outcome path.
+    private func handlePreloadOutcome(_ result: Result<PreloadedData, Error>, splashVC: SplashScreenViewController?) {
+        switch result {
+        case .success(let preloadedData):
+            Logger.debug("🚦 Success - showing main interface")
+            // Dismiss any watchdog alert still showing so the transition
+            // never happens underneath a live modal
+            splashVC?.presentedViewController?.dismiss(animated: false)
+            if let splashVC = splashVC {
+                splashVC.completeLoading {
+                    self.installMainInterface(with: preloadedData, transitionDuration: 0.5)
+                }
+            } else {
+                installMainInterface(with: preloadedData, transitionDuration: 0.5)
+            }
+
+        case .failure(let error):
+            Logger.debug("Failed to preload data: \(error)")
+
+            let isTokenExpired = (error is AuthError && (error as! AuthError) == .tokenExpired)
+            let isUserNotFound = (error is AuthError && (error as! AuthError) == .userNotFound)
+            var isSessionExpired = false
+            if let nsError = error as? NSError, nsError.domain == "PreloadManager" {
+                if nsError.code == -2 || nsError.code == -3 {
+                    isSessionExpired = true
+                }
+            }
+
+            if isTokenExpired || isUserNotFound || isSessionExpired {
+                Logger.debug("🚪 SceneDelegate: Token/session expired - auto-logging out and attempting re-auth")
+                handleAutoLogoutAndReauth()
+            } else {
+                // For other errors, show an alert with retry option.
+                // Network/timeout failures are never auth failures, so
+                // Retry stays available indefinitely - no auto-logout.
+                var message = "Unable to load your data. Please try again."
+                if let nsError = error as? NSError {
+                    if nsError.domain == "PreloadManager" {
+                        switch nsError.code {
+                        case -1:
+                            message = "Loading is taking longer than expected. This may be due to a slow network connection."
+                        default:
+                            message = nsError.localizedDescription
+                        }
+                    } else if nsError.domain == NSURLErrorDomain {
+                        message = "Network connection error. Please check your internet connection and try again."
+                    }
+                }
+
+                let alert = UIAlertController(
+                    title: "Loading Error",
+                    message: message,
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "Retry", style: .default) { _ in
+                    Logger.debug("🔄 User chose to retry from preload error")
+                    self.updateRootViewController(isLoggedIn: true)
+                })
+                alert.addAction(UIAlertAction(title: "Logout", style: .destructive) { _ in
+                    AuthService.shared.logout()
+                })
+                (splashVC ?? window?.rootViewController)?.present(alert, animated: true)
+            }
+        }
+    }
+
+    // MARK: - First-session chain (after home installs)
+
+    /// Waits until pendingConnections is trustworthy — the welcome requests
+    /// exist server-side before signup even returns, so this is one fetch at
+    /// most. A 5s timeout keeps a dead network from stalling onboarding.
+    private func ensurePendingConnectionsLoaded(completion: @escaping () -> Void) {
+        if !NetworkManager.shared.pendingConnections.isEmpty {
+            completion()
+            return
+        }
+        var finished = false
+        let finish = { if !finished { finished = true; completion() } }
+        NetworkManager.shared.loadConnections { finish() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { finish() }
+    }
+
+    /// carousel → first-people sheet → notification onboarding → tutorial
+    /// decision. Runs from runPostLaunchSideEffects when the first-session
+    /// flow is active.
+    private func continueFirstSessionAfterCarousel() {
+        guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+            finishFirstSessionChain()
+            return
+        }
+        ensurePendingConnectionsLoaded { [weak self] in
+            guard let self = self else { return }
+            var presenter: UIViewController = tabBarController
+            while let presented = presenter.presentedViewController { presenter = presented }
+            let presented = WelcomeConnectionsViewController.presentIfNeeded(from: presenter) { [weak self] in
+                self?.continueOnboardingAfterContacts()
+            }
+            if !presented {
+                self.continueOnboardingAfterContacts()
+            }
+        }
+    }
+
+    /// Terminal step of the first-session chain: one decision function —
+    /// home's checkTutorialAndOverlay — picks tutorial vs. suggested-users
+    /// overlay, now that the chain's modals are done.
+    private func finishFirstSessionChain() {
+        let wasActive = OnboardingManager.shared.isFirstSessionFlowActive
+        OnboardingManager.shared.isFirstSessionFlowActive = false
+        guard wasActive,
+              let tabBarController = window?.rootViewController as? CirclesTabBarController,
+              let navController = tabBarController.viewControllers?.first as? UINavigationController,
+              let homeVC = navController.viewControllers.first as? CirclesHomeViewController else {
+            // Home unreachable — fall back to the legacy direct check
+            if wasActive {
+                OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
+                    if needsTutorial { OnboardingManager.shared.startTutorial() }
+                }
+            }
+            return
+        }
+        homeVC.checkTutorialAndOverlay()
     }
 
     /// Builds the tab bar, injects preloaded data into the home screen, installs it
@@ -354,13 +538,28 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
 
+    // MARK: - First-session orchestration state
+    //
+    // A fresh signup runs a deterministic chain owned by this class:
+    // carousel over the splash (home is never visible behind it) → home
+    // installs → "Your first people" sheet → notification onboarding →
+    // tutorial decision. The carousel and the preload race each other;
+    // whichever finishes second applies the stashed outcome.
+    private var isWelcomeCarouselActive = false
+    private var stashedPreloadOutcome: Result<PreloadedData, Error>?
+    private weak var firstSessionSplashVC: SplashScreenViewController?
+
     private func updateRootViewController(isLoggedIn: Bool) {
         if isLoggedIn {
+            // Brand-new signup: force the splash path even if a cache exists,
+            // so the welcome carousel can present before home is ever visible
+            let isFreshSignup = UserDefaults.standard.bool(forKey: "pendingWelcomeCarousel")
+
             // Cache-first fast path: if we have cached data (even stale, up to 7 days),
             // install the home screen immediately and refresh silently in the background.
             // The home screen refetches places/connections on appear, so stale content
             // is visible for roughly one network round trip.
-            if let cached = PreloadManager.shared.getCachedData(allowStale: true) {
+            if !isFreshSignup, let cached = PreloadManager.shared.getCachedData(allowStale: true) {
                 Logger.info("Cache-first launch: installing home immediately")
                 installMainInterface(with: cached, transitionDuration: window?.rootViewController == nil ? 0 : 0.3)
                 // The home screen refetches its own content on appear. Rewrite the
@@ -377,14 +576,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
             // No usable cache: show splash screen with preloading
             let splashVC = SplashScreenViewController()
-            
+            firstSessionSplashVC = splashVC
+
             // Animate transition if there's an existing view controller
             if window?.rootViewController != nil {
                 UIView.transition(with: window!, duration: 0.3, options: .transitionCrossDissolve, animations: {
                     self.window?.rootViewController = splashVC
-                }, completion: nil)
+                }, completion: { _ in
+                    if isFreshSignup { self.presentFirstSessionCarousel(over: splashVC) }
+                })
             } else {
                 window?.rootViewController = splashVC
+                if isFreshSignup {
+                    DispatchQueue.main.async { self.presentFirstSessionCarousel(over: splashVC) }
+                }
             }
             
             // Failsafe watchdog: only fires if the preload completion never runs at all.
@@ -415,7 +620,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     AuthService.shared.logout()
                 })
 
-                splashVC.present(alert, animated: true)
+                // The carousel may be presented over the splash — alert on top
+                (splashVC.presentedViewController ?? splashVC).present(alert, animated: true)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: timeoutWorkItem)
 
@@ -429,87 +635,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     hasCompleted = true // Mark as completed to prevent timeout handler
                     timeoutWorkItem.cancel()
                     Logger.debug("🚦 PreloadManager completion called")
-                    switch result {
-                    case .success(let preloadedData):
-                        // Data loaded successfully, show main interface
-                        Logger.debug("🚦 Success - showing main interface")
-                        DispatchQueue.main.async {
-                            guard let self = self else {
-                                Logger.debug("❌ Self is nil in completion")
-                                return
-                            }
-
-                            // Dismiss any watchdog alert still showing so the transition
-                            // never happens underneath a live modal
-                            splashVC.presentedViewController?.dismiss(animated: false)
-
-                            // Complete splash animation and transition
-                            splashVC.completeLoading {
-                                self.installMainInterface(with: preloadedData, transitionDuration: 0.5)
-                            }
+                    DispatchQueue.main.async {
+                        guard let self = self else {
+                            Logger.debug("❌ Self is nil in completion")
+                            return
                         }
-                        
-                    case .failure(let error):
-                        // Failed to load data, show error and logout
-                        Logger.debug("Failed to preload data: \(error)")
-
-                        guard let self = self else { return }
-
-                        // Check if it's a token expiration error or user not found error
-                        let isTokenExpired = (error is AuthError && (error as! AuthError) == .tokenExpired)
-                        let isUserNotFound = (error is AuthError && (error as! AuthError) == .userNotFound)
-
-                        // Check for session expired errors from PreloadManager
-                        var isSessionExpired = false
-                        if let nsError = error as? NSError, nsError.domain == "PreloadManager" {
-                            if nsError.code == -2 || nsError.code == -3 {
-                                isSessionExpired = true
-                            }
-                        }
-
-                        // If token expired or session expired, auto-logout and attempt re-auth
-                        if isTokenExpired || isUserNotFound || isSessionExpired {
-                            Logger.debug("🚪 SceneDelegate: Token/session expired - auto-logging out and attempting re-auth")
-                            self.handleAutoLogoutAndReauth()
+                        if self.isWelcomeCarouselActive {
+                            // The user is still reading the carousel — hold the
+                            // outcome; carouselDidFinish() applies it
+                            Logger.debug("🚦 Carousel still up — stashing preload outcome")
+                            self.stashedPreloadOutcome = result
                         } else {
-                            // For other errors, show an alert with retry option.
-                            // Network/timeout failures are never auth failures, so
-                            // Retry stays available indefinitely - no auto-logout.
-                            DispatchQueue.main.async {
-
-                                // Provide more specific error messages
-                                var message = "Unable to load your data. Please try again."
-
-                                if let nsError = error as? NSError {
-                                    if nsError.domain == "PreloadManager" {
-                                        switch nsError.code {
-                                        case -1:
-                                            message = "Loading is taking longer than expected. This may be due to a slow network connection."
-                                        default:
-                                            message = nsError.localizedDescription
-                                        }
-                                    } else if nsError.domain == NSURLErrorDomain {
-                                        message = "Network connection error. Please check your internet connection and try again."
-                                    }
-                                }
-
-                                let alert = UIAlertController(
-                                    title: "Loading Error",
-                                    message: message,
-                                    preferredStyle: .alert
-                                )
-
-                                alert.addAction(UIAlertAction(title: "Retry", style: .default) { _ in
-                                    Logger.debug("🔄 User chose to retry from preload error")
-                                    self.updateRootViewController(isLoggedIn: true)
-                                })
-
-                                alert.addAction(UIAlertAction(title: "Logout", style: .destructive) { _ in
-                                    AuthService.shared.logout()
-                                })
-
-                                splashVC.present(alert, animated: true)
-                            }
+                            self.handlePreloadOutcome(result, splashVC: splashVC)
                         }
                     }
                 }
@@ -1386,8 +1523,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             guard let self = self else { return }
             if self.shouldShowNotificationOnboarding() {
-                // Its onCompletion callback chains into the tutorial
+                // Its onCompletion callback ends the chain
                 self.showNotificationOnboarding()
+            } else if OnboardingManager.shared.isFirstSessionFlowActive {
+                self.finishFirstSessionChain()
             } else {
                 OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
                     if needsTutorial {
@@ -1431,11 +1570,17 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         
         // Configure completion callback
         notificationVC.onCompletion = { [weak self] in
-            // Check if user needs tutorial after notification onboarding
-            OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
-                if needsTutorial {
-                    OnboardingManager.shared.startTutorial()
-                    Logger.info("Starting tutorial after notification onboarding")
+            if OnboardingManager.shared.isFirstSessionFlowActive {
+                // First-session chain: one terminal decision (tutorial vs
+                // suggested-users overlay) via home's checkTutorialAndOverlay
+                self?.finishFirstSessionChain()
+            } else {
+                // Check if user needs tutorial after notification onboarding
+                OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
+                    if needsTutorial {
+                        OnboardingManager.shared.startTutorial()
+                        Logger.info("Starting tutorial after notification onboarding")
+                    }
                 }
             }
         }
@@ -1504,7 +1649,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // Show alert prompting user to sign up
             let alert = UIAlertController(
                 title: "Referral Code Saved",
-                message: "Sign up to get an extra month free with referral code: \(code)",
+                message: "Your referral code \(code) will apply automatically when you sign up.",
                 preferredStyle: .alert
             )
             alert.addAction(UIAlertAction(title: "Sign Up", style: .default) { _ in

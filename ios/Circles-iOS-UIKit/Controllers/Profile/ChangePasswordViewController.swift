@@ -100,7 +100,15 @@ class ChangePasswordViewController: BaseViewController {
     
     // MARK: - Properties
     private var isLoading = false
-    
+
+    /// Passkey and social accounts have no password yet — this screen SETS
+    /// their first one (no "current password" to ask for; the backend creates
+    /// the Firebase Auth record on demand).
+    private var isSettingFirstPassword: Bool {
+        guard let provider = AuthService.shared.getAuthProvider() else { return false }
+        return !["email", "firebase"].contains(provider)
+    }
+
     // MARK: - Lifecycle
     // MARK: - BaseViewController Configuration
     override var showsLoadingIndicator: Bool { false }
@@ -115,8 +123,8 @@ class ChangePasswordViewController: BaseViewController {
     
     // MARK: - UI Setup
     private func setupUI() {
-        setupNavigationBar(title: "Change Password", largeTitleMode: .never)
-        
+        setupNavigationBar(title: isSettingFirstPassword ? "Set Password" : "Change Password", largeTitleMode: .never)
+
         // Add subviews
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
@@ -165,18 +173,17 @@ class ChangePasswordViewController: BaseViewController {
             // Current password label
             currentPasswordLabel.topAnchor.constraint(equalTo: instructionLabel.bottomAnchor, constant: Constants.Spacing.xlarge),
             currentPasswordLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
+
             // Current password text field
             currentPasswordTextField.topAnchor.constraint(equalTo: currentPasswordLabel.bottomAnchor, constant: Constants.Spacing.small),
             currentPasswordTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             currentPasswordTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            currentPasswordTextField.heightAnchor.constraint(equalToConstant: 44),
-            
+
             // Toggle buttons
             toggleCurrentPasswordButton.widthAnchor.constraint(equalToConstant: 44),
             toggleNewPasswordButton.widthAnchor.constraint(equalToConstant: 44),
             toggleConfirmPasswordButton.widthAnchor.constraint(equalToConstant: 44),
-            
+
             // New password label
             newPasswordLabel.topAnchor.constraint(equalTo: currentPasswordTextField.bottomAnchor, constant: Constants.Spacing.large),
             newPasswordLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
@@ -209,7 +216,19 @@ class ChangePasswordViewController: BaseViewController {
             changePasswordButton.heightAnchor.constraint(equalToConstant: 50),
             changePasswordButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
-        
+
+        // Passkey/social accounts are SETTING a first password — there is no
+        // current password to ask for, so that section collapses to nothing
+        currentPasswordTextField.heightAnchor.constraint(
+            equalToConstant: isSettingFirstPassword ? 0 : 44).isActive = true
+        if isSettingFirstPassword {
+            currentPasswordLabel.heightAnchor.constraint(equalToConstant: 0).isActive = true
+            currentPasswordLabel.isHidden = true
+            currentPasswordTextField.isHidden = true
+            instructionLabel.text = "Create a password for your account. You can keep signing in the way you do now — this just adds another way in."
+            changePasswordButton.setTitle("Set Password", for: .normal)
+        }
+
         // Add tap gesture to dismiss keyboard
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         view.addGestureRecognizer(tapGesture)
@@ -224,39 +243,40 @@ class ChangePasswordViewController: BaseViewController {
     
     // MARK: - Actions
     @objc private func changePasswordButtonTapped() {
-        // Validate inputs
-        guard let currentPassword = currentPasswordTextField.text, !currentPassword.isEmpty else {
+        // Validate inputs (no current password exists when setting a first one)
+        let currentPassword = currentPasswordTextField.text ?? ""
+        if !isSettingFirstPassword && currentPassword.isEmpty {
             showError("Please enter your current password")
             return
         }
-        
+
         guard let newPassword = newPasswordTextField.text, !newPassword.isEmpty else {
             showError("Please enter a new password")
             return
         }
-        
+
         guard newPassword.count >= 8 else {
             showError("Password must be at least 8 characters long")
             return
         }
-        
+
         guard let confirmPassword = confirmPasswordTextField.text, !confirmPassword.isEmpty else {
             showError("Please confirm your new password")
             return
         }
-        
+
         guard newPassword == confirmPassword else {
             showError("New passwords do not match")
             return
         }
-        
-        guard currentPassword != newPassword else {
+
+        if !isSettingFirstPassword && currentPassword == newPassword {
             showError("New password must be different from current password")
             return
         }
-        
+
         // Change password
-        changePassword(currentPassword: currentPassword, newPassword: newPassword)
+        changePassword(currentPassword: isSettingFirstPassword ? nil : currentPassword, newPassword: newPassword)
     }
     
     @objc private func toggleCurrentPasswordVisibility() {
@@ -282,25 +302,29 @@ class ChangePasswordViewController: BaseViewController {
     }
     
     // MARK: - API Call
-    private func changePassword(currentPassword: String, newPassword: String) {
+    private func changePassword(currentPassword: String?, newPassword: String) {
         guard !isLoading else { return }
-        
+
         isLoading = true
         changePasswordButton.setLoading(true)
-        
+
         UserService.shared.changePassword(currentPassword: currentPassword, newPassword: newPassword) { [weak self] result in
             DispatchQueue.main.async {
-                self?.isLoading = false
-                self?.changePasswordButton.setLoading(false)
-                self?.changePasswordButton.setTitle("Change Password", for: .normal)
-                
+                guard let self = self else { return }
+                self.isLoading = false
+                self.changePasswordButton.setLoading(false)
+                self.changePasswordButton.setTitle(self.isSettingFirstPassword ? "Set Password" : "Change Password", for: .normal)
+
                 switch result {
                 case .success:
-                    self?.presentAlert(title: "Success", message: "Your password has been changed successfully") {
-                        self?.navigationController?.popViewController(animated: true)
+                    let message = self.isSettingFirstPassword
+                        ? "Your password is set — you can now also sign in with your email and password."
+                        : "Your password has been changed successfully"
+                    self.presentAlert(title: "Success", message: message) {
+                        self.navigationController?.popViewController(animated: true)
                     }
                 case .failure(let error):
-                    self?.showError(error.localizedDescription)
+                    self.showError(error.localizedDescription)
                 }
             }
         }

@@ -96,6 +96,20 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             let currentUserId = AuthService.shared.getUserId() ?? ""
             return places.filter { IDNormalizer.isSameUser($0.addedBy, currentUserId) }
         }
+        if connectionId == "my_connections_only" {
+            // Accepted connections only (the narrower cut of the default
+            // "Following" view): union of every connection's bucket plus an
+            // addedBy sweep for viewport places that were never bucketed
+            let currentUserId = AuthService.shared.getUserId() ?? ""
+            let connectedIds = connections.map { $0.otherUserId(currentUserId: currentUserId) }
+            var scoped = connectedIds.flatMap { connectionPlaces[$0] ?? [] }
+            let scopedIds = Set(scoped.map { $0.id })
+            scoped += places.filter { place in
+                !scopedIds.contains(place.id) &&
+                connectedIds.contains { IDNormalizer.isSameUser(place.addedBy, $0) }
+            }
+            return scoped
+        }
         // Union of the pre-bucketed list (covers circle-owner semantics) and an
         // added-by match over the CURRENT places (covers viewport-fetched
         // places that were never bucketed, and missing buckets). Never fall
@@ -273,7 +287,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private func updateFilterHeaderTitles() {
         let connectionTitle: String
         switch selectedConnectionId {
-        case nil: connectionTitle = "All Connections"
+        case nil: connectionTitle = "Following"
+        case "my_connections_only": connectionTitle = "My Connections"
         case "my_places_only":
             if let origin = selectedImportOrigin {
                 connectionTitle = "My Places › \(Self.originTitle(origin))"
@@ -305,12 +320,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
         }
 
-        // "All Connections" gets a two-tone palette symbol — one figure in the
+        // "Following" gets a two-tone palette symbol — one figure in the
         // brand color, one in a warm accent — so it reads as "everyone", not
         // another flat glyph. Rasterized to pixels: withRenderingMode after
         // applyingSymbolConfiguration silently DROPS the palette, and menus
         // re-tint template images — baking the bitmap sidesteps both.
-        let allConnectionsIcon: UIImage? = {
+        let followingIcon: UIImage? = {
             guard let symbol = UIImage(
                 systemName: "person.2.fill",
                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
@@ -364,21 +379,52 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             }
         }
 
+        // "My Connections" = accepted connections only; "Following" = everyone
+        // you follow (connections auto-follow, so it's the wider net and the
+        // default view). Renamed from "All Connections" per Wes, 2026-08-19.
+        let myConnectionsIcon = UIImage(
+            systemName: "person.2.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
+        )?.withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
+
         actions.append(
-            UIAction(title: "All Connections",
-                     image: allConnectionsIcon,
+            UIAction(title: "My Connections",
+                     image: myConnectionsIcon,
+                     state: selectedConnectionId == "my_connections_only" ? .on : .off) { [weak self] _ in
+                self?.selectConnectionFromHeader(id: "my_connections_only", user: nil)
+            }
+        )
+        actions.append(
+            UIAction(title: "Following",
+                     image: followingIcon,
                      state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
                 self?.selectConnectionFromHeader(id: nil, user: nil)
             }
         )
+
+        // Person rows: ranked connections first (same order as the home row),
+        // then everyone else you follow — the map can scope to any of them.
         let currentUserId = AuthService.shared.getUserId() ?? ""
+        var listedIds = Set<String>()
         for connection in HorizontalUserListView.rankedConnections(connections) {
             guard let user = connection.connectedUser else { continue }
             let otherId = connection.otherUserId(currentUserId: currentUserId)
+            listedIds.insert(otherId)
             actions.append(UIAction(title: user.displayName,
                                     image: menuAvatar(for: user),
                                     state: selectedConnectionId == otherId ? .on : .off) { [weak self] _ in
                 self?.selectConnectionFromHeader(id: otherId, user: user)
+            })
+        }
+        for user in NetworkManager.shared.followingUsers {
+            guard !user.id.isEmpty,
+                  !listedIds.contains(user.id),
+                  !IDNormalizer.isSameUser(user.id, currentUserId) else { continue }
+            listedIds.insert(user.id)
+            actions.append(UIAction(title: user.displayName,
+                                    image: menuAvatar(for: user),
+                                    state: selectedConnectionId == user.id ? .on : .off) { [weak self] _ in
+                self?.selectConnectionFromHeader(id: user.id, user: user)
             })
         }
         return actions
@@ -391,7 +437,20 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// `completion` (on main). Capped so a dead network can't hold the menu
     /// hostage — anything still missing falls back to the placeholder.
     private func withConnectionAvatarsWarmed(timeout: TimeInterval = 0.6, _ completion: @escaping () -> Void) {
+        // The people list includes everyone followed — make sure that roster
+        // is loaded before the menu builds (first open of the session)
+        if NetworkManager.shared.followingUsers.isEmpty {
+            NetworkManager.shared.loadFollowingUsers { [weak self] in
+                self?.warmAvatars(timeout: timeout, completion)
+            }
+        } else {
+            warmAvatars(timeout: timeout, completion)
+        }
+    }
+
+    private func warmAvatars(timeout: TimeInterval, _ completion: @escaping () -> Void) {
         var users = connections.compactMap { $0.connectedUser }
+        users.append(contentsOf: NetworkManager.shared.followingUsers)
         if let me = AuthService.shared.currentUser { users.append(me) }
 
         let pending: [(id: String, url: String)] = users.compactMap { user in
@@ -861,7 +920,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     func setConnectionFilterContext(_ connectionId: String?) {
         let changed = selectedConnectionId != connectionId
         selectedConnectionId = connectionId
-        if connectionId == nil || connectionId == "my_places_only" {
+        if connectionId == nil || connectionId == "my_places_only" || connectionId == "my_connections_only" {
             selectedConnectionUser = nil
         }
         updateConnectionAvatarChip()
@@ -1847,15 +1906,20 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Connection filter submenu (allPlaces mode only; not on profile maps)
         if viewMode == .allPlaces && showsConnectionFilter {
             var connectionActions: [UIAction] = [
-                UIAction(title: "All Connections", state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
+                UIAction(title: "Following", state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
                     self?.selectConnection(nil)
+                },
+                UIAction(title: "My Connections", state: selectedConnectionId == "my_connections_only" ? .on : .off) { [weak self] _ in
+                    self?.selectConnection("my_connections_only")
                 },
                 UIAction(title: "My Places Only", state: selectedConnectionId == "my_places_only" ? .on : .off) { [weak self] _ in
                     self?.selectConnection("my_places_only")
                 }
             ]
+            var listedIds = Set<String>()
             for connection in connections {
                 let otherUserId = connection.otherUserId(currentUserId: currentUserId)
+                listedIds.insert(otherUserId)
                 connectionActions.append(
                     UIAction(
                         title: connection.connectedUser?.displayName ?? "Unknown",
@@ -1865,18 +1929,35 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                     }
                 )
             }
+            // Followed non-connections are pickable too (following grants
+            // public-tier visibility)
+            for user in NetworkManager.shared.followingUsers {
+                guard !user.id.isEmpty, !listedIds.contains(user.id),
+                      !IDNormalizer.isSameUser(user.id, currentUserId) else { continue }
+                listedIds.insert(user.id)
+                connectionActions.append(
+                    UIAction(title: user.displayName,
+                             state: selectedConnectionId == user.id ? .on : .off) { [weak self] _ in
+                        self?.selectConnection(user.id)
+                    }
+                )
+            }
 
             let connectionSubtitle: String
             if let connectionId = selectedConnectionId {
                 if connectionId == "my_places_only" {
                     connectionSubtitle = "My Places Only"
+                } else if connectionId == "my_connections_only" {
+                    connectionSubtitle = "My Connections"
                 } else {
                     connectionSubtitle = connections
                         .first(where: { $0.otherUserId(currentUserId: currentUserId) == connectionId })?
-                        .connectedUser?.displayName ?? "Connection"
+                        .connectedUser?.displayName
+                        ?? NetworkManager.shared.followingUsers.first(where: { $0.id == connectionId })?.displayName
+                        ?? "Connection"
                 }
             } else {
-                connectionSubtitle = "All Connections"
+                connectionSubtitle = "Following"
             }
             elements.append(UIMenu(
                 title: "Connections",
@@ -2116,7 +2197,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private func selectConnection(_ connectionId: String?) {
         Logger.debug("🔍 FullScreenMap: selectConnection called with: \(connectionId ?? "nil")")
         selectedConnectionId = connectionId
-        if connectionId == nil || connectionId == "my_places_only" {
+        if connectionId == nil || connectionId == "my_places_only" || connectionId == "my_connections_only" {
             selectedConnectionUser = nil
         }
         // The origin sub-filter only makes sense under My Places
@@ -2129,7 +2210,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         updateFilterHeaderTitles()
         // Keep the avatar row's highlight ring in sync (also covers changes
         // made through the hamburger menu)
-        userListView?.selectedUserId = (connectionId == nil || connectionId == "my_places_only") ? nil : connectionId
+        userListView?.selectedUserId = (connectionId == nil || connectionId == "my_places_only" || connectionId == "my_connections_only") ? nil : connectionId
         // Let the presenter mirror the selection so it survives dismissal
         delegate?.mapViewController(self, didChangeConnectionFilter: connectionId)
         // A filter change is explicit user intent — allow zooming to results

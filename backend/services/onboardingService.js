@@ -18,11 +18,10 @@ const DEFAULT_FOLLOW_EMAILS = [
 
 // New users also receive a pending CONNECTION request from these accounts
 // (a two-way relationship they can accept). Following is passive/one-way and
-// needs no acceptance; a connection request is the active social nudge — kept
-// to the two founder accounts so a brand-new user isn't greeted with a pile.
+// needs no acceptance; a connection request is the active social nudge — Wes
+// ONLY (his call, 2026-08-19): Brittany follows new users but doesn't request.
 const DEFAULT_CONNECT_EMAILS = [
-  'sgroiwes@gmail.com',      // Wes
-  'brittanyvans@gmail.com'   // Brittany
+  'sgroiwes@gmail.com'       // Wes
 ];
 
 class OnboardingService {
@@ -287,10 +286,10 @@ class OnboardingService {
       );
       if (targets.length === 0) return;
 
-      // Wes follows every new user BACK (his call, 2026-08-18): a brand-new
-      // user opening Wes's profile — or Wes opening theirs — should read as a
-      // two-way relationship from the first second. Brittany stays follow-only.
-      const followBackDocs = targets.filter(doc => doc.data().email === 'sgroiwes@gmail.com');
+      // Wes AND Brittany follow every new user BACK (Wes's call, 2026-08-19):
+      // both founder accounts follow new users; only Wes additionally sends a
+      // connection request (see DEFAULT_CONNECT_EMAILS).
+      const followBackDocs = targets;
 
       const batch = db.batch();
       const newUserUpdate = {

@@ -36,7 +36,7 @@ enum TutorialStep: String, CaseIterable {
         case .addPlace:
             return "Add your favorite places to any circle. Tap a place on the map or use the search bar"
         case .exploreNetwork:
-            return "Favorites are better shared. Search for people you know, or invite your best friend — you both get a month free"
+            return "Favorites are better shared. Search for people you know, or invite your best friend"
         case .privacySettings:
             return "Control who can see your circles - keep them private, share with connections, or make them public"
         }
@@ -46,6 +46,12 @@ enum TutorialStep: String, CaseIterable {
 // MARK: - Onboarding Manager
 class OnboardingManager {
     static let shared = OnboardingManager()
+
+    /// True while SceneDelegate is driving the deterministic first-session
+    /// chain (carousel → first-people sheet → notification onboarding →
+    /// tutorial decision). Home-screen one-time prompts and the tutorial
+    /// check defer to the chain while it's active instead of racing it.
+    var isFirstSessionFlowActive = false
     
     // UserDefaults keys
     private let hasCompletedOnboardingKey = "hasCompletedOnboarding"

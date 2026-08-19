@@ -67,11 +67,17 @@ extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
         // (setConnectionSelection) updates the label without re-firing this.
 
         let user: User? = {
-            guard let id = connectionId, id != "my_places_only" else { return nil }
+            guard let id = connectionId, id != "my_places_only", id != "my_connections_only" else { return nil }
             let currentUserId = AuthService.shared.getUserId() ?? ""
-            return NetworkManager.shared.connections.first(where: {
+            if let connected = NetworkManager.shared.connections.first(where: {
                 IDNormalizer.isSameUser($0.otherUserId(currentUserId: currentUserId), id)
-            })?.connectedUser
+            })?.connectedUser {
+                return connected
+            }
+            // Followed non-connections are selectable from the map dropdown too
+            return NetworkManager.shared.followingUsers.first(where: {
+                IDNormalizer.isSameUser($0.id, id)
+            })
         }()
 
         Logger.debug("🗺️ Mirroring full-screen map connection filter: \(connectionId ?? "All Connections")")

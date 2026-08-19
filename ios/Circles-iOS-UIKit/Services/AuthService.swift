@@ -334,6 +334,14 @@ class AuthService {
             switch result {
             case .success(let response):
                 Logger.debug("🔐 Social login successful, handling auth response")
+                // Brand-new account via Apple/Google: run the same first-
+                // session onboarding (carousel → first-people sheet) that
+                // email signups get. Server flag first; createdAt-age
+                // fallback covers a backend that predates isNewUser.
+                let createdSecondsAgo = response.user.createdAt.map { Date().timeIntervalSince($0) }
+                if response.isNewUser ?? (createdSecondsAgo.map { $0 < 120 } ?? false) {
+                    UserDefaults.standard.set(true, forKey: "pendingWelcomeCarousel")
+                }
                 // Save the auth provider for session restoration
                 self?.saveAuthProvider(provider)
                 self?.handleAuthResponse(response, completion: completion)
@@ -345,6 +353,102 @@ class AuthService {
         }
     }
     
+    // MARK: - Passkeys
+
+    struct EmailCheckResult: Decodable {
+        let success: Bool
+        let exists: Bool
+        let hasPasskey: Bool
+    }
+
+    /// Pre-signup routing: does this email already have an account?
+    func checkEmail(_ email: String, completion: @escaping (Result<EmailCheckResult, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "auth/email-check",
+            method: .post,
+            body: ["email": email],
+            requiresAuth: false
+        ) { (result: Result<EmailCheckResult, APIError>) in
+            DispatchQueue.main.async {
+                completion(result.mapError { $0 as Error })
+            }
+        }
+    }
+
+    /// Finishes passkey signup by sending the attestation. Bad-signal ladder:
+    /// if the create call fails on a network-class error AFTER the passkey
+    /// exists on-device, quietly re-check the email — a lost response means
+    /// the account WAS created, and the fresh credential can just sign in.
+    func completePasskeyRegistration(email: String, body: [String: Any], completion: @escaping (Result<User, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "auth/passkey/register-verify",
+            method: .post,
+            body: body,
+            requiresAuth: false
+        ) { [weak self] (result: Result<AuthResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success(let response):
+                    UserDefaults.standard.set(true, forKey: "pendingWelcomeCarousel")
+                    self.saveAuthProvider("passkey")
+                    self.handleAuthResponse(response, completion: completion)
+                case .failure(let error):
+                    if self.isNetworkClassError(error) {
+                        // Lost-response recovery: did the server actually create it?
+                        self.checkEmail(email) { checkResult in
+                            if case .success(let check) = checkResult, check.exists, check.hasPasskey {
+                                Logger.info("🔑 Passkey signup response was lost but account exists — signing in")
+                                UserDefaults.standard.set(true, forKey: "pendingWelcomeCarousel")
+                                PasskeyAuthService.shared.signInWithPasskey(presentationAnchor: nil, completion: completion)
+                            } else {
+                                completion(.failure(error))
+                            }
+                        }
+                    } else {
+                        completion(.failure(self.mapPasskeyAPIError(error)))
+                    }
+                }
+            }
+        }
+    }
+
+    /// Finishes passkey sign-in by sending the assertion.
+    func completePasskeyLogin(body: [String: Any], completion: @escaping (Result<User, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "auth/passkey/login-verify",
+            method: .post,
+            body: body,
+            requiresAuth: false
+        ) { [weak self] (result: Result<AuthResponse, APIError>) in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    self?.saveAuthProvider("passkey")
+                    self?.handleAuthResponse(response, completion: completion)
+                case .failure(let error):
+                    completion(.failure(self?.mapPasskeyAPIError(error) ?? error))
+                }
+            }
+        }
+    }
+
+    /// 409 on passkey endpoints = account exists (same code the register
+    /// screen already knows how to show as "Welcome back")
+    func mapPasskeyAPIError(_ error: APIError) -> Error {
+        if case .httpError(409, _) = error { return AuthError.accountExists }
+        return error
+    }
+
+    private func isNetworkClassError(_ error: APIError) -> Bool {
+        switch error {
+        case .noInternet, .requestFailed, .invalidResponse:
+            return true
+        default:
+            return false
+        }
+    }
+
     func refreshToken(completion: @escaping (Result<Void, Error>) -> Void) {
         guard let refreshToken = keychainService.getRefreshToken() else {
             completion(.failure(AuthError.tokenExpired))
@@ -750,7 +854,7 @@ class AuthService {
         Logger.debug("🧹 AuthService: Cleared app-specific UserDefaults")
     }
     
-    private func saveAuthProvider(_ provider: String) {
+    func saveAuthProvider(_ provider: String) {
         keychainService.saveAuthProvider(provider)
     }
     
@@ -863,6 +967,7 @@ struct AuthResponse: Decodable {
     let user: User
     let expiresIn: Int? // Token expiration in seconds
     let duplicateSuggestion: DuplicateSuggestion? // Possible other account of this user
+    let isNewUser: Bool? // Social auth: this sign-in CREATED the account
 }
 
 // The backend's sign-in-time hint that this person may have another account

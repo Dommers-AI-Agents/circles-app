@@ -152,9 +152,18 @@ const getDiscoverUsers = async (req, res) => {
             : null;
         }))).filter(Boolean);
 
-        // Distance in bands, places-weighted inside each band: "near" keeps
-        // meaning near, but among similarly-near people the big collections
-        // lead. Anyone beyond 160 km isn't "near you" at all.
+        // Distance in bands, activity-weighted inside each band: "near" keeps
+        // meaning near, but among similarly-near people the big AND active
+        // collections lead — a 10-place user who was here this week outranks
+        // a 12-place account dormant since last year. Anyone beyond 160 km
+        // isn't "near you" at all.
+        const activityScore = (doc) => {
+          const placesCount = (placeCounts.get(doc.id) || {}).placesCount || 0;
+          const lastActive = doc.data().lastActive ? new Date(doc.data().lastActive) : null;
+          const daysSince = lastActive ? (Date.now() - lastActive.getTime()) / 86400000 : Infinity;
+          const recencyBoost = daysSince <= 7 ? 30 : daysSince <= 30 ? 10 : 0;
+          return placesCount + recencyBoost;
+        };
         users = located
           .map((x) => {
             const distance = geofire.distanceBetween(
@@ -163,19 +172,25 @@ const getDiscoverUsers = async (req, res) => {
             return { ...x, distance, band };
           })
           .filter((x) => x.band < 4)
-          .sort((a, b) => (a.band - b.band) ||
-            (((placeCounts.get(b.doc.id) || {}).placesCount || 0) -
-             ((placeCounts.get(a.doc.id) || {}).placesCount || 0)))
+          .sort((a, b) => (a.band - b.band) || (activityScore(b.doc) - activityScore(a.doc)))
           .map((x) => shape(x.doc, 'nearby', { distance: Math.round(x.distance * 10) / 10 }));
       } else {
         // No coordinates at all for the caller — fall back to the zipcode
-        // prefix, which at least groups a metro area together.
+        // prefix, which at least groups a metro area together. Same
+        // activity-weighted order as the located path (was unsorted).
         const myZip = String(req.query.zipcode || currentUserData.zipcode || '').slice(0, 5);
         const myPrefix = myZip.slice(0, 3);
         if (myPrefix.length === 3) {
+          const zipScore = (d) => {
+            const placesCount = (placeCounts.get(d.id) || {}).placesCount || 0;
+            const lastActive = d.data().lastActive ? new Date(d.data().lastActive) : null;
+            const daysSince = lastActive ? (Date.now() - lastActive.getTime()) / 86400000 : Infinity;
+            return placesCount + (daysSince <= 7 ? 30 : daysSince <= 30 ? 10 : 0);
+          };
           users = snap.docs
             .filter((d) => isSuggestable(d.id))
             .filter((d) => String(d.data().zipcode || '').slice(0, 3) === myPrefix)
+            .sort((a, b) => zipScore(b) - zipScore(a))
             .map((d) => shape(d, 'nearby'));
         }
       }

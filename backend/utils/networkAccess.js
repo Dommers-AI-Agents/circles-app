@@ -1,34 +1,16 @@
 // Network access helpers
 // Resolves which circles a user is allowed to see places from:
-// their own circles, circles shared with them, and their accepted
-// connections' public/myNetwork circles.
+// their own circles, circles shared with them, their accepted connections'
+// public/myNetwork circles, and FOLLOWED users' public circles (following is
+// one-way, so it earns the public tier only — myNetwork stays connections-only).
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 
 const db = getFirestore();
 
-/**
- * Get all circle IDs whose places the user is allowed to see.
- *
- * @param {string} userId - Firebase UID of the requesting user
- * @param {object} [options]
- * @param {string|null} [options.connectionId] - If set, restrict to circles
- *   owned by this user. Must be an accepted connection of userId (otherwise
- *   an empty result is returned).
- * @param {boolean} [options.mapOnly] - If true, drop circles whose owner set
- *   showOnMap === false (their map-clutter opt-out, e.g. bulk-import circles).
- *   Missing showOnMap counts as visible.
- * @returns {Promise<{circleIds: string[]}>}
- */
-async function getAllowedCircleIds(userId, { connectionId = null, mapOnly = false } = {}) {
-  const circleIds = new Set();
-  const addCircle = (doc) => {
-    if (mapOnly && doc.data().showOnMap === false) return;
-    circleIds.add(doc.id);
-  };
-
-  // Accepted connections in both directions
+/** Accepted-connection user ids, both directions. */
+async function getConnectedUserIds(userId) {
   const [connectionsQuery1, connectionsQuery2] = await Promise.all([
     db.collection(COLLECTIONS.CONNECTIONS)
       .where('userId', '==', userId)
@@ -43,18 +25,70 @@ async function getAllowedCircleIds(userId, { connectionId = null, mapOnly = fals
   const connectedUserIds = new Set();
   connectionsQuery1.docs.forEach(doc => connectedUserIds.add(doc.data().connectedUserId));
   connectionsQuery2.docs.forEach(doc => connectedUserIds.add(doc.data().userId));
+  return connectedUserIds;
+}
+
+/** Ids the user follows (from their user doc), excluding any in `exclude`. */
+async function getFollowedOnlyUserIds(userId, exclude = new Set()) {
+  const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+  const following = (userDoc.exists && userDoc.data().following) || [];
+  return following.filter(id => id && id !== userId && !exclude.has(id));
+}
+
+/** Batched owner-in + privacy-in circle query (10 owners per batch keeps the
+ *  disjunction count under Firestore's 30 limit). */
+async function circlesByOwners(ownerIds, privacies) {
+  if (ownerIds.length === 0) return [];
+  const batches = [];
+  for (let i = 0; i < ownerIds.length; i += 10) {
+    batches.push(ownerIds.slice(i, i + 10));
+  }
+  const results = await Promise.all(
+    batches.map(batch =>
+      db.collection(COLLECTIONS.CIRCLES)
+        .where('owner', 'in', batch)
+        .where('privacy', 'in', privacies)
+        .get()
+    )
+  );
+  return results.flatMap(snapshot => snapshot.docs);
+}
+
+/**
+ * Get all circle IDs whose places the user is allowed to see.
+ *
+ * @param {string} userId - Firebase UID of the requesting user
+ * @param {object} [options]
+ * @param {string|null} [options.connectionId] - If set, restrict to circles
+ *   owned by this user. Must be an accepted connection (public + myNetwork
+ *   tiers) or a followed user (public tier only) — otherwise empty.
+ * @param {boolean} [options.mapOnly] - If true, drop circles whose owner set
+ *   showOnMap === false (their map-clutter opt-out, e.g. bulk-import circles).
+ *   Missing showOnMap counts as visible.
+ * @returns {Promise<{circleIds: string[]}>}
+ */
+async function getAllowedCircleIds(userId, { connectionId = null, mapOnly = false } = {}) {
+  const circleIds = new Set();
+  const addCircle = (doc) => {
+    if (mapOnly && doc.data().showOnMap === false) return;
+    circleIds.add(doc.id);
+  };
+
+  const connectedUserIds = await getConnectedUserIds(userId);
 
   if (connectionId) {
-    // Restrict to a single connection; verify it actually is one
-    if (!connectedUserIds.has(connectionId)) {
-      return { circleIds: [] };
+    // Restrict to a single person; tier depends on the relationship
+    let privacies = null;
+    if (connectedUserIds.has(connectionId)) {
+      privacies = ['public', 'myNetwork'];
+    } else {
+      const followedIds = await getFollowedOnlyUserIds(userId, connectedUserIds);
+      if (followedIds.includes(connectionId)) privacies = ['public'];
     }
+    if (!privacies) return { circleIds: [] };
 
-    const connectionCircles = await db.collection(COLLECTIONS.CIRCLES)
-      .where('owner', '==', connectionId)
-      .where('privacy', 'in', ['public', 'myNetwork'])
-      .get();
-    connectionCircles.docs.forEach(addCircle);
+    const docs = await circlesByOwners([connectionId], privacies);
+    docs.forEach(addCircle);
     return { circleIds: Array.from(circleIds) };
   }
 
@@ -66,27 +100,16 @@ async function getAllowedCircleIds(userId, { connectionId = null, mapOnly = fals
   ownCircles.docs.forEach(addCircle);
   sharedCircles.docs.forEach(addCircle);
 
-  // Connections' public/myNetwork circles, batched by 10 owners
-  // (10 owners * 2 privacy values = 20 disjunctions, under Firestore's 30 limit)
-  if (connectedUserIds.size > 0) {
-    const ownerArray = Array.from(connectedUserIds);
-    const batches = [];
-    for (let i = 0; i < ownerArray.length; i += 10) {
-      batches.push(ownerArray.slice(i, i + 10));
-    }
-
-    const results = await Promise.all(
-      batches.map(batch =>
-        db.collection(COLLECTIONS.CIRCLES)
-          .where('owner', 'in', batch)
-          .where('privacy', 'in', ['public', 'myNetwork'])
-          .get()
-      )
-    );
-    results.forEach(snapshot => snapshot.docs.forEach(addCircle));
-  }
+  // Connections' public/myNetwork circles + followed users' public circles
+  const followedOnlyIds = await getFollowedOnlyUserIds(userId, connectedUserIds);
+  const [connectionDocs, followedDocs] = await Promise.all([
+    circlesByOwners(Array.from(connectedUserIds), ['public', 'myNetwork']),
+    circlesByOwners(followedOnlyIds, ['public'])
+  ]);
+  connectionDocs.forEach(addCircle);
+  followedDocs.forEach(addCircle);
 
   return { circleIds: Array.from(circleIds) };
 }
 
-module.exports = { getAllowedCircleIds };
+module.exports = { getAllowedCircleIds, getConnectedUserIds, getFollowedOnlyUserIds };

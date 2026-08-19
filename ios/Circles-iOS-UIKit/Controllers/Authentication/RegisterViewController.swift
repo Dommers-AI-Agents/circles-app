@@ -1,9 +1,47 @@
 import UIKit
 import AuthenticationServices
+import LocalAuthentication
 
 class RegisterViewController: BaseViewController {
-    
+
     // MARK: - UI Elements
+
+    // Brand-blue full bleed, matching LoginViewController — the two auth
+    // screens read as siblings now (register used to inherit the plain
+    // systemBackground and looked like a different app)
+    private let backgroundView: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.primary
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
+    private lazy var backButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "chevron.left", withConfiguration:
+            UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)), for: .normal)
+        button.tintColor = .white
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+        return button
+    }()
+
+    // Login-style white pill field. Placeholder color is FIXED — the dynamic
+    // .placeholderText color goes light in dark mode, which on our forced-
+    // white field rendered the placeholders invisible (Wes, 2026-08-19).
+    private static func pillField(placeholder: String) -> UITextField {
+        let textField = UITextField()
+        textField.attributedPlaceholder = NSAttributedString(
+            string: placeholder,
+            attributes: [.foregroundColor: UIColor(white: 0.55, alpha: 1.0)]
+        )
+        textField.borderStyle = .roundedRect
+        textField.backgroundColor = .white
+        textField.textColor = .black
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        return textField
+    }
+
     private let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -20,96 +58,143 @@ class RegisterViewController: BaseViewController {
         let label = UILabel()
         label.text = "Create an Account"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.xxlarge, weight: .bold)
-        label.textColor = Constants.Colors.label
+        label.textColor = .white
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private let subtitleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Enter your email to get started"
+        label.text = "Save your favorite places — free"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.secondaryLabel
+        label.textColor = UIColor.white.withAlphaComponent(0.9)
         label.textAlignment = .center
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private let emailTextField: UITextField = {
-        let textField = UITextField()
-        textField.placeholder = "Email"
-        textField.borderStyle = .roundedRect
+        let textField = pillField(placeholder: "Enter your Email 🎉")
         textField.autocapitalizationType = .none
         textField.autocorrectionType = .no
         textField.keyboardType = .emailAddress
         textField.returnKeyType = .next
-        textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     private let passwordTextField: UITextField = {
-        let textField = UITextField()
-        textField.placeholder = "Password"
-        textField.borderStyle = .roundedRect
+        let textField = pillField(placeholder: "Password")
         textField.isSecureTextEntry = true
         textField.returnKeyType = .next
-        textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     private let confirmPasswordTextField: UITextField = {
-        let textField = UITextField()
-        textField.placeholder = "Confirm Password"
-        textField.borderStyle = .roundedRect
+        let textField = pillField(placeholder: "Confirm Password")
         textField.isSecureTextEntry = true
         textField.returnKeyType = .next
-        textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     private let zipcodeTextField: UITextField = {
-        let textField = UITextField()
-        textField.placeholder = "Zipcode"
-        textField.borderStyle = .roundedRect
+        let textField = pillField(placeholder: "Zipcode")
         textField.keyboardType = .numberPad
         textField.returnKeyType = .next
-        textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     private let zipcodeLabel: UILabel = {
         let label = UILabel()
-        label.text = "Your zipcode helps us show you great places nearby and connect you with local members"
+        label.text = "Used to show you great places nearby"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.secondaryLabel
+        label.textColor = UIColor.white.withAlphaComponent(0.85)
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
-    private let referralCodeTextField: UITextField = {
-        let textField = UITextField()
-        textField.placeholder = "Referral Code (Optional)"
-        textField.borderStyle = .roundedRect
-        textField.autocapitalizationType = .allCharacters
-        textField.autocorrectionType = .no
-        textField.returnKeyType = .done
-        textField.translatesAutoresizingMaskIntoConstraints = false
-        return textField
+
+    // NOTE: no referral-code UI on signup (Wes, 2026-08-19 — keep signup as
+    // simple as possible; referral benefits are controlled server-side).
+    // Deep-linked codes still apply silently: ReferralService stores the
+    // pending code and applyPendingReferralCodeIfNeeded runs post-signup.
+
+    // MARK: Step machine views (passkey-first signup)
+
+    private lazy var nextButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Continue →", for: .normal)
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 8
+        button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }()
-    
-    private let referralCodeLabel: UILabel = {
+
+    private let passkeyInfoLabel: UILabel = {
         let label = UILabel()
-        label.text = "Have a referral code? Get 1 month free!"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.primary
+        label.text = "No password needed when you use your phone security"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
+        label.textColor = UIColor.white.withAlphaComponent(0.9)
+        label.textAlignment = .center
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
+    private lazy var passkeyButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle(Self.passkeyButtonTitle(), for: .normal)
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        button.setImage(UIImage(systemName: "faceid", withConfiguration:
+            UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)), for: .normal)
+        button.tintColor = Constants.Colors.primary
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 8
+        button.titleEdgeInsets = UIEdgeInsets(top: 0, left: 8, bottom: 0, right: -8)
+        button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
+    private lazy var usePasswordButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Use a password instead", for: .normal)
+        button.setTitleColor(UIColor.white.withAlphaComponent(0.9), for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        button.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
+    // All the mutable middle content lives in one vertical stack — arranged
+    // subviews collapse when hidden, so each step just toggles isHidden
+    private let formStack: UIStackView = {
+        let stackView = UIStackView()
+        stackView.axis = .vertical
+        stackView.distribution = .fill
+        stackView.spacing = Constants.Spacing.medium
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+
+    /// "Face ID" only when the device actually has it — a Touch ID phone
+    /// promising Face ID reads as broken.
+    private static func passkeyButtonTitle() -> String {
+        let context = LAContext()
+        _ = context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil)
+        switch context.biometryType {
+        case .faceID: return "Continue with Face ID"
+        case .touchID: return "Continue with Touch ID"
+        default: return "Continue with Passcode"
+        }
+    }
+
+
     private lazy var togglePasswordButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "eye.slash.fill"), for: .normal)
@@ -128,15 +213,26 @@ class RegisterViewController: BaseViewController {
     
     private let passwordRequirementLabel: UILabel = {
         let label = UILabel()
-        label.text = "Password must be at least 8 characters with uppercase, lowercase, and number"
+        label.text = "8+ characters with uppercase, lowercase & number"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.secondaryLabel
+        label.textColor = UIColor.white.withAlphaComponent(0.85)
         label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
-    private lazy var registerButton = UIButton.primaryButton(title: "Create Account")
+
+    // Login-style inverted CTA: white fill, brand-colored title
+    private lazy var registerButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Create Account", for: .normal)
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        button.backgroundColor = .white
+        button.layer.cornerRadius = 8
+        button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
     
     private let orContainerView: UIView = {
         let view = UIView()
@@ -146,25 +242,24 @@ class RegisterViewController: BaseViewController {
     
     private let orLabel: UILabel = {
         let label = UILabel()
-        label.text = "OR"
+        label.text = "or sign up with"
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium)
-        label.textColor = Constants.Colors.secondaryLabel
+        label.textColor = UIColor.white.withAlphaComponent(0.9)
         label.textAlignment = .center
-        label.backgroundColor = Constants.Colors.background
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private let leftDivider: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.separator
+        view.backgroundColor = UIColor.white.withAlphaComponent(0.5)
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
-    
+
     private let rightDivider: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.separator
+        view.backgroundColor = UIColor.white.withAlphaComponent(0.5)
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -186,17 +281,7 @@ class RegisterViewController: BaseViewController {
     }()
     
     private lazy var appleSignInButton = UIButton.appleSignInButton()
-    
-    private let appleSignInSubtitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "For the best experience, we recommend sharing your email"
-        label.font = UIFont.systemFont(ofSize: 10)
-        label.textColor = UIColor.white.withAlphaComponent(0.6)
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
+
     private lazy var googleSignInButton: UIButton = {
         let button = UIButton.googleSignInButton()
         button.setTitle("Google", for: .normal)
@@ -211,19 +296,41 @@ class RegisterViewController: BaseViewController {
     
     
     // MARK: - Properties
+
+    /// Passkey-first signup: email → passkey offer (Face ID) → optional
+    /// password fallback. The password form is the OLD flow, unchanged.
+    private enum Step {
+        case email
+        case passkeyOffer
+        case passwordForm
+    }
+
+    private var step: Step = .email {
+        didSet { applyStep() }
+    }
+
+    private var primaryButtonForStep: UIButton {
+        switch step {
+        case .email: return nextButton
+        case .passkeyOffer: return passkeyButton
+        case .passwordForm: return registerButton
+        }
+    }
+
     private var isRegistering = false {
         didSet {
-            let buttons = [registerButton, appleSignInButton, googleSignInButton, facebookSignInButton]
+            let buttons = [registerButton, nextButton, passkeyButton, usePasswordButton,
+                           appleSignInButton, googleSignInButton, facebookSignInButton]
             buttons.forEach { $0.isEnabled = !isRegistering }
-            
-            let textFields = [emailTextField, passwordTextField, confirmPasswordTextField, referralCodeTextField]
+
+            let textFields = [emailTextField, passwordTextField, confirmPasswordTextField, zipcodeTextField]
             textFields.forEach { $0.isEnabled = !isRegistering }
-            
+
             if isRegistering {
-                registerButton.setLoading(true)
+                primaryButtonForStep.setLoading(true)
             } else {
-                registerButton.setLoading(false)
-                registerButton.setTitle("Create Account", for: .normal)
+                // setLoading restores each button's own captured title
+                [registerButton, nextButton, passkeyButton].forEach { $0.setLoading(false) }
             }
         }
     }
@@ -233,22 +340,24 @@ class RegisterViewController: BaseViewController {
     override var loadsDataOnViewDidLoad: Bool { false }
     
     // MARK: - Lifecycle
+    /// Set by the login screen's "no account — create one?" path so the email
+    /// carries over instead of making the user retype it.
+    var prefillEmail: String?
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         setupActions()
+        if let prefillEmail = prefillEmail, !prefillEmail.isEmpty {
+            emailTextField.text = prefillEmail
+        }
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        setupNavigationBar(title: "Register", largeTitleMode: .automatic)
-        
-        // Check if we have a pending referral code from deep link
-        if let pendingCode = ReferralService.shared.getPendingReferralCode() {
-            referralCodeTextField.text = pendingCode
-            referralCodeLabel.text = "✅ Referral code applied! You'll get 1 month free."
-            referralCodeLabel.textColor = Constants.Colors.success
-        }
+        // Full-bleed brand screen like Login — the bar's "Register" title
+        // duplicated the "Create an Account" heading; the chevron replaces it
+        navigationController?.setNavigationBarHidden(true, animated: animated)
     }
     
     // MARK: - UI Setup
@@ -269,32 +378,61 @@ class RegisterViewController: BaseViewController {
         confirmPasswordTextField.rightView = toggleConfirmPasswordButton
         confirmPasswordTextField.rightViewMode = .always
         
-        // Add subviews
+        // Add subviews — blue ground first, chevron floats above the scroll
+        view.addSubview(backgroundView)
         view.addSubview(scrollView)
+        view.addSubview(backButton)
         scrollView.addSubview(contentView)
-        
+
         // Add dividers to OR container
         orContainerView.addSubview(leftDivider)
         orContainerView.addSubview(orLabel)
         orContainerView.addSubview(rightDivider)
-        
-        let subviews = [titleLabel, subtitleLabel, emailTextField, passwordTextField, 
-                       confirmPasswordTextField, passwordRequirementLabel, zipcodeTextField,
-                       zipcodeLabel, referralCodeTextField, referralCodeLabel, registerButton, 
-                       orContainerView, socialStackView]
-        subviews.forEach { contentView.addSubview($0) }
-        
+
+        contentView.addSubview(titleLabel)
+        contentView.addSubview(subtitleLabel)
+        contentView.addSubview(formStack)
+
+        // One stack holds every step's views; applyStep() toggles visibility
+        [emailTextField,
+         nextButton,
+         passkeyInfoLabel, passkeyButton, usePasswordButton,
+         passwordTextField, confirmPasswordTextField, passwordRequirementLabel,
+         zipcodeTextField, zipcodeLabel, registerButton,
+         orContainerView, socialStackView].forEach { formStack.addArrangedSubview($0) }
+
+        // Breathing room where the old anchor chain had larger gaps
+        formStack.setCustomSpacing(Constants.Spacing.large, after: nextButton)
+        formStack.setCustomSpacing(Constants.Spacing.large, after: orContainerView)
+        formStack.setCustomSpacing(Constants.Spacing.large, after: passkeyInfoLabel)
+        formStack.setCustomSpacing(Constants.Spacing.small, after: passkeyButton)
+        formStack.setCustomSpacing(Constants.Spacing.small, after: confirmPasswordTextField)
+        formStack.setCustomSpacing(Constants.Spacing.small, after: zipcodeTextField)
+        formStack.setCustomSpacing(Constants.Spacing.large, after: zipcodeLabel)
+
         setupConstraints()
         setupTextFieldDelegates()
+        applyStep()
     }
     
     private func setupConstraints() {
         NSLayoutConstraint.activate([
-            // Scroll view
+            // Blue ground fills everything, ignoring safe areas (like Login)
+            backgroundView.topAnchor.constraint(equalTo: view.topAnchor),
+            backgroundView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backgroundView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backgroundView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            backButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            backButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            backButton.widthAnchor.constraint(equalToConstant: 44),
+            backButton.heightAnchor.constraint(equalToConstant: 44),
+
+            // Scroll view — bottom rides the keyboard like Login does
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
             
             // Content view
             contentView.topAnchor.constraint(equalTo: scrollView.topAnchor),
@@ -313,90 +451,40 @@ class RegisterViewController: BaseViewController {
             subtitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             subtitleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
-            // Email field
-            emailTextField.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: Constants.Spacing.xlarge),
-            emailTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            emailTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            // Form stack — every step's content lives here
+            formStack.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: Constants.Spacing.xlarge),
+            formStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            formStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            formStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
+
+            // Field heights (widths come from the stack)
             emailTextField.heightAnchor.constraint(equalToConstant: 50),
-            
-            // Password field
-            passwordTextField.topAnchor.constraint(equalTo: emailTextField.bottomAnchor, constant: Constants.Spacing.medium),
-            passwordTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            passwordTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             passwordTextField.heightAnchor.constraint(equalToConstant: 50),
-            
-            // Toggle password button
-            togglePasswordButton.widthAnchor.constraint(equalToConstant: 44),
-            
-            // Confirm password field
-            confirmPasswordTextField.topAnchor.constraint(equalTo: passwordTextField.bottomAnchor, constant: Constants.Spacing.medium),
-            confirmPasswordTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            confirmPasswordTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             confirmPasswordTextField.heightAnchor.constraint(equalToConstant: 50),
-            
-            // Toggle confirm password button
-            toggleConfirmPasswordButton.widthAnchor.constraint(equalToConstant: 44),
-            
-            // Password requirement
-            passwordRequirementLabel.topAnchor.constraint(equalTo: confirmPasswordTextField.bottomAnchor, constant: Constants.Spacing.small),
-            passwordRequirementLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            passwordRequirementLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            
-            // Zipcode field
-            zipcodeTextField.topAnchor.constraint(equalTo: passwordRequirementLabel.bottomAnchor, constant: Constants.Spacing.medium),
-            zipcodeTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            zipcodeTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             zipcodeTextField.heightAnchor.constraint(equalToConstant: 50),
-            
-            // Zipcode label
-            zipcodeLabel.topAnchor.constraint(equalTo: zipcodeTextField.bottomAnchor, constant: Constants.Spacing.small),
-            zipcodeLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            zipcodeLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            
-            // Referral code field
-            referralCodeTextField.topAnchor.constraint(equalTo: zipcodeLabel.bottomAnchor, constant: Constants.Spacing.medium),
-            referralCodeTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            referralCodeTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            referralCodeTextField.heightAnchor.constraint(equalToConstant: 50),
-            
-            // Referral code label
-            referralCodeLabel.topAnchor.constraint(equalTo: referralCodeTextField.bottomAnchor, constant: Constants.Spacing.small),
-            referralCodeLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            referralCodeLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            
-            // Register button
-            registerButton.topAnchor.constraint(equalTo: referralCodeLabel.bottomAnchor, constant: Constants.Spacing.large),
-            registerButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            registerButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            
+
+            // Password-field eye toggles
+            togglePasswordButton.widthAnchor.constraint(equalToConstant: 44),
+            toggleConfirmPasswordButton.widthAnchor.constraint(equalToConstant: 44),
+
             // OR container with dividers
-            orContainerView.topAnchor.constraint(equalTo: registerButton.bottomAnchor, constant: Constants.Spacing.large),
-            orContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            orContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             orContainerView.heightAnchor.constraint(equalToConstant: 20),
-            
+
             // Left divider
             leftDivider.leadingAnchor.constraint(equalTo: orContainerView.leadingAnchor),
             leftDivider.centerYAnchor.constraint(equalTo: orContainerView.centerYAnchor),
             leftDivider.heightAnchor.constraint(equalToConstant: 1),
             leftDivider.trailingAnchor.constraint(equalTo: orLabel.leadingAnchor, constant: -Constants.Spacing.medium),
             
-            // OR label
+            // OR label — intrinsic width ("or sign up with" is longer than "OR")
             orLabel.centerXAnchor.constraint(equalTo: orContainerView.centerXAnchor),
             orLabel.centerYAnchor.constraint(equalTo: orContainerView.centerYAnchor),
-            orLabel.widthAnchor.constraint(equalToConstant: 40),
             
             // Right divider
             rightDivider.leadingAnchor.constraint(equalTo: orLabel.trailingAnchor, constant: Constants.Spacing.medium),
             rightDivider.centerYAnchor.constraint(equalTo: orContainerView.centerYAnchor),
             rightDivider.heightAnchor.constraint(equalToConstant: 1),
             rightDivider.trailingAnchor.constraint(equalTo: orContainerView.trailingAnchor),
-            
-            // Social stack view (vertical now, so remove height constraint)
-            socialStackView.topAnchor.constraint(equalTo: orContainerView.bottomAnchor, constant: Constants.Spacing.large),
-            socialStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            socialStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            socialStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
             
             // Apple sign-in container constraints
             appleSignInContainerView.heightAnchor.constraint(equalToConstant: 50),
@@ -410,12 +498,15 @@ class RegisterViewController: BaseViewController {
     }
     
     private func setupTextFieldDelegates() {
-        [emailTextField, passwordTextField, confirmPasswordTextField, zipcodeTextField, referralCodeTextField].forEach {
+        [emailTextField, passwordTextField, confirmPasswordTextField, zipcodeTextField].forEach {
             $0.delegate = self
         }
     }
     
     private func setupActions() {
+        nextButton.addTarget(self, action: #selector(nextButtonTapped), for: .touchUpInside)
+        passkeyButton.addTarget(self, action: #selector(passkeyButtonTapped), for: .touchUpInside)
+        usePasswordButton.addTarget(self, action: #selector(usePasswordTapped), for: .touchUpInside)
         registerButton.addTarget(self, action: #selector(registerButtonTapped), for: .touchUpInside)
         appleSignInButton.addTarget(self, action: #selector(appleSignInButtonTapped), for: .touchUpInside)
         googleSignInButton.addTarget(self, action: #selector(googleSignInButtonTapped), for: .touchUpInside)
@@ -426,17 +517,160 @@ class RegisterViewController: BaseViewController {
         // Add real-time password validation
         passwordTextField.addTarget(self, action: #selector(passwordTextFieldDidChange), for: .editingChanged)
         
-        // Keyboard handling
+        // Keyboard handling: scrollView bottom is pinned to keyboardLayoutGuide
+        // (same mechanism as Login) — no manual inset juggling needed
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+        tapGesture.cancelsTouchesInView = false
         view.addGestureRecognizer(tapGesture)
-        
-        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow), name: UIResponder.keyboardWillShowNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide), name: UIResponder.keyboardWillHideNotification, object: nil)
     }
-    
+
+    @objc private func backTapped() {
+        // Chevron walks the step machine backward before leaving the screen
+        if step != .email {
+            advance(to: .email)
+        } else {
+            navigationController?.popViewController(animated: true)
+        }
+    }
+
+    // MARK: - Step machine
+
+    private func applyStep() {
+        let emailStep = step == .email
+        let offerStep = step == .passkeyOffer
+        let formStep = step == .passwordForm
+
+        // Only write isHidden when it actually changes. Re-asserting the same
+        // value on a UIStackView arranged subview can leave it stuck partially
+        // visible — the source of the multi-step-bleed / torn-button rendering.
+        setHidden(nextButton, !emailStep)
+        setHidden(orContainerView, !emailStep)
+        setHidden(socialStackView, !emailStep)
+
+        setHidden(passkeyInfoLabel, !offerStep)
+        setHidden(passkeyButton, !offerStep)
+        setHidden(usePasswordButton, !offerStep)
+
+        setHidden(passwordTextField, !formStep)
+        setHidden(confirmPasswordTextField, !formStep)
+        setHidden(passwordRequirementLabel, !formStep)
+        setHidden(zipcodeTextField, !formStep)
+        setHidden(zipcodeLabel, !formStep)
+        setHidden(registerButton, !formStep)
+
+        subtitleLabel.text = offerStep
+            ? "One tap and you're in — no password needed"
+            : "Save your favorite places — free"
+    }
+
+    private func setHidden(_ view: UIView, _ hidden: Bool) {
+        if view.isHidden != hidden { view.isHidden = hidden }
+    }
+
+    private func advance(to newStep: Step) {
+        view.endEditing(true)
+        // Settle visibility SYNCHRONOUSLY (outside any animation) — toggling
+        // arranged-subview isHidden inside a UIView.animate block is what made
+        // hidden steps linger/fade and overlap. Animate only the resulting layout.
+        step = newStep
+        UIView.animate(withDuration: 0.2) {
+            self.view.layoutIfNeeded()
+        }
+    }
+
     // MARK: - Actions
+
+    @objc private func nextButtonTapped() {
+        guard let email = emailTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !email.isEmpty, isValidEmail(email) else {
+            showError("Please enter a valid email address")
+            return
+        }
+
+        isRegistering = true
+        AuthService.shared.checkEmail(email) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isRegistering = false
+
+                switch result {
+                case .success(let check) where check.exists && check.hasPasskey:
+                    // They already have a passkey — take them straight home
+                    self.popToLoginAndSignInWithPasskey(email: email)
+                case .success(let check) where check.exists:
+                    self.showWelcomeBack(email: email)
+                default:
+                    // New email — or the check failed (bad signal). Advance
+                    // either way: register-options re-checks server-side and
+                    // 409s on an existing account, so this is always safe.
+                    self.advance(to: .passkeyOffer)
+                }
+            }
+        }
+    }
+
+    @objc private func passkeyButtonTapped() {
+        guard let email = emailTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !email.isEmpty, isValidEmail(email) else {
+            showError("Please enter a valid email address")
+            return
+        }
+        view.endEditing(true)
+
+        isRegistering = true
+        PasskeyAuthService.shared.registerPasskey(email: email, presentationAnchor: view.window) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isRegistering = false
+
+                switch result {
+                case .success(let user):
+                    Logger.debug("🔑 Passkey signup complete: \(user.displayName)")
+                    AnalyticsService.shared.trackSignUp(method: "passkey")
+                    // Deep-linked referral codes stashed pre-signup apply here too
+                    ReferralService.shared.applyPendingReferralCodeIfNeeded { _ in }
+                    // Auth state change swaps the root; the first-session
+                    // carousel takes it from here
+                case .failure(let error):
+                    if case PasskeyAuthService.PasskeyError.canceled = error {
+                        return // user dismissed the sheet — stay put, no toast
+                    }
+                    if case AuthError.accountExists = error {
+                        self.showWelcomeBack(email: email)
+                        return
+                    }
+                    // Stay on this step: a fresh tap mints a fresh challenge
+                    self.showError(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    @objc private func usePasswordTapped() {
+        advance(to: .passwordForm)
+        passwordTextField.becomeFirstResponder()
+    }
+
+    /// The email already holds a passkey — land on Login prefilled and kick
+    /// off the assertion immediately (preferImmediate: a device without the
+    /// credential falls back silently instead of showing the QR sheet).
+    private func popToLoginAndSignInWithPasskey(email: String) {
+        if let loginVC = navigationController?.viewControllers
+            .compactMap({ $0 as? LoginViewController }).last {
+            loginVC.prefill(email: email)
+            loginVC.signInWithPasskeyOnNextAppear()
+            navigationController?.popToViewController(loginVC, animated: true)
+        } else {
+            let loginVC = LoginViewController()
+            loginVC.prefill(email: email)
+            loginVC.signInWithPasskeyOnNextAppear()
+            navigationController?.setViewControllers([loginVC], animated: true)
+        }
+    }
+
     @objc private func registerButtonTapped() {
-        guard let email = emailTextField.text, !email.isEmpty, isValidEmail(email) else {
+        guard let email = emailTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !email.isEmpty, isValidEmail(email) else {
             showError("Please enter a valid email address")
             return
         }
@@ -463,14 +697,9 @@ class RegisterViewController: BaseViewController {
             return
         }
         
-        // Get referral code if provided
-        let referralCode = referralCodeTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Save referral code if provided (to apply after registration)
-        if let code = referralCode, !code.isEmpty {
-            ReferralService.shared.savePendingReferralCode(code)
-        }
-        
+        // (Deep-linked referral codes were already stashed by ReferralService;
+        // applyPendingReferralCodeIfNeeded picks them up after signup)
+
         // Start registration
         isRegistering = true
         
@@ -487,12 +716,10 @@ class RegisterViewController: BaseViewController {
                     Logger.debug("Successfully registered user: \(user.displayName)")
                     AnalyticsService.shared.trackSignUp(method: "email")
                     
-                    // Apply referral code if we have one
-                    if let _ = referralCode, !referralCode!.isEmpty {
-                        ReferralService.shared.applyPendingReferralCodeIfNeeded { success in
-                            if success {
-                                Logger.debug("Successfully applied referral code")
-                            }
+                    // Apply any deep-linked referral code stashed pre-signup
+                    ReferralService.shared.applyPendingReferralCodeIfNeeded { success in
+                        if success {
+                            Logger.debug("Successfully applied referral code")
                         }
                     }
                     
@@ -567,11 +794,13 @@ class RegisterViewController: BaseViewController {
                 
                 switch result {
                 case .success(let user):
+                    // No alert: they're already logged in — the auth state
+                    // change swaps the root; new accounts land in the
+                    // first-session carousel
                     Logger.debug("🍎 Successfully registered with Apple: \(user.displayName)")
-                    self?.showSuccessMessage()
                 case .failure(let error):
                     Logger.debug("🍎 Apple Sign-In Failed with error: \(error.localizedDescription)")
-                    
+
                     self?.showError("Apple Sign-In Failed: \(error.localizedDescription)")
                 }
             }
@@ -607,20 +836,22 @@ class RegisterViewController: BaseViewController {
     }
     
     @objc private func passwordTextFieldDidChange() {
+        // Colors picked for the blue ground: neutral = soft white,
+        // success = solid white ✓, error = yellow (red vanishes on blue)
         guard let password = passwordTextField.text, !password.isEmpty else {
-            passwordRequirementLabel.text = "Password must be at least 8 characters with uppercase, lowercase, and number"
-            passwordRequirementLabel.textColor = Constants.Colors.secondaryLabel
+            passwordRequirementLabel.text = "8+ characters with uppercase, lowercase & number"
+            passwordRequirementLabel.textColor = UIColor.white.withAlphaComponent(0.85)
             return
         }
-        
+
         let validation = validatePassword(password)
-        
+
         if validation.isValid {
             passwordRequirementLabel.text = "✓ Password meets all requirements"
-            passwordRequirementLabel.textColor = Constants.Colors.success
+            passwordRequirementLabel.textColor = .white
         } else {
             passwordRequirementLabel.text = validation.errors.joined(separator: "\n")
-            passwordRequirementLabel.textColor = Constants.Colors.danger
+            passwordRequirementLabel.textColor = .systemYellow
         }
     }
     
@@ -634,8 +865,9 @@ class RegisterViewController: BaseViewController {
                 
                 switch result {
                 case .success(let user):
+                    // No alert — the root swap takes it from here (misleading
+                    // "you can now log in" copy removed; they ARE logged in)
                     Logger.debug("Successfully registered with social auth: \(user.displayName)")
-                    self?.showSuccessMessage()
                 case .failure(let error):
                     self?.showError(error)
                 }
@@ -647,16 +879,6 @@ class RegisterViewController: BaseViewController {
         AlertPresenter.showSuccess(
             title: "Verify Your Email",
             message: "A verification email has been sent to \(email). Please check your inbox and follow the link to verify your account before logging in.",
-            from: self
-        ) { [weak self] in
-            self?.navigationController?.popViewController(animated: true)
-        }
-    }
-    
-    private func showSuccessMessage() {
-        AlertPresenter.showSuccess(
-            title: "Registration Successful",
-            message: "Welcome to Circles! You can now log in with your account.",
             from: self
         ) { [weak self] in
             self?.navigationController?.popViewController(animated: true)
@@ -698,7 +920,7 @@ class RegisterViewController: BaseViewController {
     }
     
     private func findFirstResponder() -> UIView? {
-        let responders: [UIView] = [emailTextField, passwordTextField, confirmPasswordTextField, zipcodeTextField, referralCodeTextField]
+        let responders: [UIView] = [emailTextField, passwordTextField, confirmPasswordTextField, zipcodeTextField]
         return responders.first { $0.isFirstResponder }
     }
     
@@ -706,29 +928,6 @@ class RegisterViewController: BaseViewController {
     // 2026-08-06 — favcircles.com is registered with Apple for relay email
     // forwarding, and the backend no longer rejects relay addresses.
 
-    // MARK: - Keyboard Handling
-    @objc private func keyboardWillShow(notification: NSNotification) {
-        guard let keyboardSize = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
-        let contentInsets = UIEdgeInsets(top: 0, left: 0, bottom: keyboardSize.height, right: 0)
-        scrollView.contentInset = contentInsets
-        scrollView.scrollIndicatorInsets = contentInsets
-        
-        // Scroll to active field if hidden
-        if let activeField = findFirstResponder(),
-           let activeFieldFrame = activeField.superview?.convert(activeField.frame, to: scrollView) {
-            var aRect = view.frame
-            aRect.size.height -= keyboardSize.height
-            if !aRect.contains(activeFieldFrame.origin) {
-                scrollView.scrollRectToVisible(activeFieldFrame, animated: true)
-            }
-        }
-    }
-    
-    @objc private func keyboardWillHide(notification: NSNotification) {
-        scrollView.contentInset = .zero
-        scrollView.scrollIndicatorInsets = .zero
-    }
-    
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
@@ -739,14 +938,17 @@ extension RegisterViewController: UITextFieldDelegate {
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         switch textField {
         case emailTextField:
-            passwordTextField.becomeFirstResponder()
+            if step == .email {
+                textField.resignFirstResponder()
+                nextButtonTapped()
+            } else {
+                passwordTextField.becomeFirstResponder()
+            }
         case passwordTextField:
             confirmPasswordTextField.becomeFirstResponder()
         case confirmPasswordTextField:
             zipcodeTextField.becomeFirstResponder()
         case zipcodeTextField:
-            referralCodeTextField.becomeFirstResponder()
-        case referralCodeTextField:
             textField.resignFirstResponder()
             registerButtonTapped()
         default:

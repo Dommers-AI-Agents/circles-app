@@ -125,7 +125,7 @@ class ReferralService {
         let message = """
         Join me on Circles! 🌟
 
-        Use my code \(code) to get 1 month free when you sign up.
+        Use my code \(code) when you sign up.
         """
 
         // App Store link as its own item so messengers render a tappable

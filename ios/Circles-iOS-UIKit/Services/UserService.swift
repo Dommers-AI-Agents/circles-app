@@ -635,11 +635,13 @@ class UserService {
         }
     }
     
-    func changePassword(currentPassword: String, newPassword: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        let body: [String: Any] = [
-            "currentPassword": currentPassword,
-            "newPassword": newPassword
-        ]
+    func changePassword(currentPassword: String?, newPassword: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        // currentPassword is nil for passkey/social accounts setting their
+        // FIRST password — the backend creates the Auth record on demand
+        var body: [String: Any] = ["newPassword": newPassword]
+        if let currentPassword = currentPassword, !currentPassword.isEmpty {
+            body["currentPassword"] = currentPassword
+        }
         
         APIService.shared.request(
             endpoint: "users/change-password",

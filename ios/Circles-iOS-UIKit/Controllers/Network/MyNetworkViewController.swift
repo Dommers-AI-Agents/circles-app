@@ -421,12 +421,14 @@ class MyNetworkViewController: BaseViewController {
     @objc private func acceptBannerRequestTapped() {
         guard let request = firstIncomingRequest else { return }
         incomingRequestAcceptButton.isEnabled = false
-        NetworkManager.shared.acceptConnection(request.id) { [weak self] result in
+        NetworkManager.shared.acceptConnectionWithCredit(request.id) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.incomingRequestAcceptButton.isEnabled = true
                 switch result {
-                case .success:
+                case .success(let (_, credit)):
+                    // Accepting a connection earns coins — play the deposit
+                    PiggyBankDepositView.play(credit: credit)
                     let name = request.connectedUser?.displayName ?? "your new connection"
                     self.showSuccess("You're now connected with \(name)!")
                     self.updateIncomingRequestBanner()
