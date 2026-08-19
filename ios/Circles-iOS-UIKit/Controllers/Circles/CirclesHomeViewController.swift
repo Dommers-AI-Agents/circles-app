@@ -1758,43 +1758,135 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             
             // User needs tutorial - start it
             OnboardingManager.shared.startTutorial()
-            
-            // Show tutorial for new users who haven't completed the welcome step
-            if !OnboardingManager.shared.hasCompletedStep(.welcome) {
-                DispatchQueue.main.async {
-                    // Show tutorial after a brief delay for UI to settle
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        self.showWelcomeTutorialWhenSettled()
-                    }
-                }
+
+            // Kick off the 4-step home tour after a brief delay for UI to settle
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                self.runHomeTourWhenSettled()
             }
         }
     }
 
-    /// The welcome bubble must not fight the system location dialog (both
-    /// appear in the first seconds of a fresh install) — wait until the user
-    /// has answered it, then point BELOW the Add Place button (arrow .top:
-    /// the button sits at the screen top, so a bubble above it has nowhere
-    /// to go and used to clamp over the status bar, unreadable).
-    private func showWelcomeTutorialWhenSettled(attempt: Int = 0) {
-        guard !OnboardingManager.shared.hasCompletedStep(.welcome) else { return }
-        if CLLocationManager().authorizationStatus == .notDetermined && attempt < 30 {
+    /// The first bubble must not fight the system location dialog or a chain
+    /// modal still animating out — wait until both are gone, then start.
+    private func runHomeTourWhenSettled(attempt: Int = 0) {
+        guard OnboardingManager.shared.shouldShowTutorial,
+              TutorialStep.allCases.contains(where: { !OnboardingManager.shared.hasCompletedStep($0) }) else { return }
+        let blockedByLocation = CLLocationManager().authorizationStatus == .notDetermined
+        let blockedByModal = presentedViewController != nil
+        if (blockedByLocation || blockedByModal) && attempt < 30 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.showWelcomeTutorialWhenSettled(attempt: attempt + 1)
+                self?.runHomeTourWhenSettled(attempt: attempt + 1)
             }
             return
         }
-        OnboardingManager.shared.showTutorialStep(
-            .welcome,
-            targetView: quickAddPlaceButton,
-            in: self,
-            arrowDirection: .top
-        )
+        runHomeTour()
+    }
+
+    /// The home tour: shows the first incomplete step; each Next completes the
+    /// step and calls back here, so the four bubbles chain until done (the
+    /// last completeStep fires completeOnboarding automatically). Skip on any
+    /// bubble ends the whole tour.
+    func runHomeTour() {
+        guard OnboardingManager.shared.shouldShowTutorial else { return }
+        guard let step = TutorialStep.allCases.first(where: { !OnboardingManager.shared.hasCompletedStep($0) }) else { return }
+
+        let advance: () -> Void = { [weak self] in
+            // Small beat between bubbles so the dismiss/present don't overlap
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                self?.runHomeTour()
+            }
+        }
+
+        switch step {
+        case .addPlaces:
+            // Button sits at the screen top — bubble goes BELOW it (arrow .top);
+            // above it would clamp over the status bar, unreadable
+            scrollView.setContentOffset(CGPoint(x: 0, y: -scrollView.adjustedContentInset.top), animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self = self else { return }
+                // A modal may have appeared during the settle delay — never
+                // show a bubble underneath one (stray taps hit its buttons)
+                guard self.presentedViewController == nil else {
+                    self.runHomeTourWhenSettled()
+                    return
+                }
+                OnboardingManager.shared.showTutorialStep(
+                    .addPlaces, targetView: self.quickAddPlaceButton, in: self,
+                    arrowDirection: .top, onAdvance: advance)
+            }
+        case .followUsers:
+            scrollView.setContentOffset(CGPoint(x: 0, y: -scrollView.adjustedContentInset.top), animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self = self else { return }
+                // A modal may have appeared during the settle delay — never
+                // show a bubble underneath one (stray taps hit its buttons)
+                guard self.presentedViewController == nil else {
+                    self.runHomeTourWhenSettled()
+                    return
+                }
+                OnboardingManager.shared.showTutorialStep(
+                    .followUsers, targetView: self.userListView, in: self,
+                    arrowDirection: .top, onAdvance: advance)
+            }
+        case .viewActivity:
+            // The activity segment can sit below the fold on small phones —
+            // reveal it first, then point (bubble above it, arrow .bottom)
+            let target = contentSegmentedControl.convert(contentSegmentedControl.bounds, to: scrollView)
+                .insetBy(dx: 0, dy: -80)
+            scrollView.scrollRectToVisible(target, animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                guard let self = self else { return }
+                // A modal may have appeared during the settle delay — never
+                // show a bubble underneath one (stray taps hit its buttons)
+                guard self.presentedViewController == nil else {
+                    self.runHomeTourWhenSettled()
+                    return
+                }
+                OnboardingManager.shared.showTutorialStep(
+                    .viewActivity, targetView: self.contentSegmentedControl, in: self,
+                    arrowDirection: .bottom, onAdvance: advance)
+            }
+        case .seeRewards:
+            // Nav-bar $ button — scroll position is irrelevant, but return to
+            // the top so the tour ends where the session starts
+            scrollView.setContentOffset(CGPoint(x: 0, y: -scrollView.adjustedContentInset.top), animated: true)
+            let rewardsView = rewardsBarButton?.customView
+                ?? (rewardsBarButton?.value(forKey: "view") as? UIView)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self = self else { return }
+                // A modal may have appeared during the settle delay — never
+                // show a bubble underneath one (stray taps hit its buttons)
+                guard self.presentedViewController == nil else {
+                    self.runHomeTourWhenSettled()
+                    return
+                }
+                OnboardingManager.shared.showTutorialStep(
+                    .seeRewards, targetView: rewardsView, in: self,
+                    arrowDirection: .top, onAdvance: advance)
+            }
+        }
     }
     
+    /// Hand-off from the suggested-users overlay: the tutorial check's
+    /// once-per-session latch is already burned by the time the overlay
+    /// dismisses, so the tour must be started explicitly here.
+    func startHomeTourIfNeededAfterOverlay() {
+        OnboardingManager.shared.checkIfUserNeedsTutorial { [weak self] needsTutorial in
+            guard let self = self else { return }
+            if needsTutorial {
+                OnboardingManager.shared.startTutorial()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.runHomeTourWhenSettled()
+                }
+            } else {
+                self.showAddPlaceTutorialIfNeeded()
+            }
+        }
+    }
+
     func checkAndShowSuggestedUsers() {
         // Only check once per session
-        guard !hasCheckedForSuggestedUsers else { 
+        guard !hasCheckedForSuggestedUsers else {
             Logger.debug("⚠️ checkAndShowSuggestedUsers - Already checked this session")
             return 
         }
@@ -1858,6 +1950,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     func showAddPlaceTutorialIfNeeded() {
+        // The home tour's first bubble already teaches Add Place — don't
+        // double-teach while the tour still has steps to show
+        let tourPending = OnboardingManager.shared.shouldShowTutorial &&
+            TutorialStep.allCases.contains { !OnboardingManager.shared.hasCompletedStep($0) }
+        guard !tourPending else { return }
+
         // Check if should show add place tutorial
         // (Visit-tracking card intentionally removed from first-run onboarding)
         guard OnboardingManager.shared.shouldShowAddPlaceTutorial() else {
@@ -4582,23 +4680,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     @objc func handleShowOnboardingTour(_ notification: Notification) {
-        // Called when user taps "Show Welcome Tour" from Help view
+        // Called when user taps "Show Welcome Tour" from Help view — replays
+        // the 4-bubble home tour (local reset only; the server's
+        // hasCompletedTutorial stays true so fresh launches don't re-run it)
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            
-            // Set tour mode flag
-            self.isShowingWelcomeTour = true
-            
+
             // Make sure we're on the Home tab
             if let tabBar = self.tabBarController {
                 tabBar.selectedIndex = 0
             }
-            
-            // Force show the suggested users overlay (bypassing all checks)
-            self.forceShowSuggestedUsersOverlay()
-            
-            // The add place tutorial will be shown after suggested users is dismissed
-            // through the normal flow in didTapNext/didTapSkip
+
+            OnboardingManager.shared.resetTutorial()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                self.runHomeTour()
+            }
         }
     }
     

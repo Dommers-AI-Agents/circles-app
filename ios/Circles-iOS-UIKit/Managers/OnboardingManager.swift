@@ -5,40 +5,45 @@ import UIKit
 struct EmptyBody: Codable {}
 
 // MARK: - Tutorial Steps
+//
+// A 4-step HOME-PAGE tour (Wes, 2026-08-19) — every bubble points at a real
+// control on the home screen and Next advances to the next one. The old
+// cross-screen chain (welcome → create circle → add place → network →
+// privacy) is gone; teaching happens where the user already is.
+//
+// Raw values are deliberately NEW ("tour_*", not the old "tutorial_*"):
+// completedTutorialSteps persists raw strings in UserDefaults, and devices
+// that ran the old tutorial hold the old strings — fresh values mean the new
+// tour runs everywhere without depending on a reset.
 enum TutorialStep: String, CaseIterable {
-    case welcome = "tutorial_welcome"
-    case createCircle = "tutorial_create_circle"
-    case addPlace = "tutorial_add_place"
-    case exploreNetwork = "tutorial_explore_network"
-    case privacySettings = "tutorial_privacy_settings"
-    
+    case addPlaces = "tour_add_places"
+    case followUsers = "tour_follow_users"
+    case viewActivity = "tour_view_activity"
+    case seeRewards = "tour_see_rewards"
+
     var title: String {
         switch self {
-        case .welcome:
-            return "Welcome to Circles!"
-        case .createCircle:
-            return "Create Your First Circle"
-        case .addPlace:
-            return "Add Places"
-        case .exploreNetwork:
-            return "Find Your People"
-        case .privacySettings:
-            return "Privacy Controls"
+        case .addPlaces:
+            return "Add Your Favorite Places"
+        case .followUsers:
+            return "Follow New Users"
+        case .viewActivity:
+            return "View Recent Activity"
+        case .seeRewards:
+            return "See Your Rewards"
         }
     }
-    
+
     var description: String {
         switch self {
-        case .welcome:
-            return "Save your first favorite spot — tap Add Place and we'll walk you through it"
-        case .createCircle:
-            return "Give your circle a unique name like 'Best Coffee Shops' or 'Date Night Spots' and choose a category"
-        case .addPlace:
-            return "Add your favorite places to any circle. Tap a place on the map or use the search bar"
-        case .exploreNetwork:
-            return "Favorites are better shared. Search for people you know, or invite your best friend"
-        case .privacySettings:
-            return "Control who can see your circles - keep them private, share with connections, or make them public"
+        case .addPlaces:
+            return "Tap Add Place to save any spot you love — it lands on your map"
+        case .followUsers:
+            return "Tap a face to see their places; suggested people are one tap away"
+        case .viewActivity:
+            return "See what your people are saving, checking into, and loving"
+        case .seeRewards:
+            return "Adding places and connecting earns FavCoins 🌵 — check your piggy bank here"
         }
     }
 }
@@ -173,14 +178,16 @@ class OnboardingManager {
         }
     }
     
-    /// Show tutorial bubble for a specific step
-    func showTutorialStep(_ step: TutorialStep, targetView: UIView? = nil, in viewController: UIViewController, arrowDirection: BubbleView.ArrowDirection = .bottom) {
+    /// Show tutorial bubble for a specific step. `onAdvance` runs after Next
+    /// completes the step — the home tour passes `{ runHomeTour() }` so each
+    /// dismissal chains straight into the next bubble.
+    func showTutorialStep(_ step: TutorialStep, targetView: UIView? = nil, in viewController: UIViewController, arrowDirection: BubbleView.ArrowDirection = .bottom, onAdvance: (() -> Void)? = nil) {
         // Don't show if tutorial is not active or step already completed
         guard shouldShowTutorial, !hasCompletedStep(step) else { return }
-        
+
         // Dismiss any existing bubble
         dismissCurrentBubble()
-        
+
         // Create new bubble
         let bubble = BubbleView()
         bubble.configure(
@@ -188,25 +195,25 @@ class OnboardingManager {
             description: step.description,
             arrowDirection: arrowDirection
         )
-        
+
         // Set up actions
         bubble.onNext = { [weak self] in
             self?.completeStep(step)
             self?.dismissCurrentBubble()
-            self?.handleNextStep(after: step, from: viewController)
+            onAdvance?()
         }
-        
+
         bubble.onSkip = { [weak self] in
             self?.completeOnboarding()
         }
-        
+
         // Add to view hierarchy
         viewController.view.addSubview(bubble)
         bubble.pointTo(targetView, in: viewController.view)
-        
+
         // Animate in
         bubble.show()
-        
+
         // Store reference
         currentBubbleView = bubble
     }
@@ -216,91 +223,6 @@ class OnboardingManager {
         currentBubbleView?.dismiss { [weak self] in
             self?.currentBubbleView?.removeFromSuperview()
             self?.currentBubbleView = nil
-        }
-    }
-    
-    // MARK: - Private Methods
-    
-    private func handleNextStep(after step: TutorialStep, from viewController: UIViewController) {
-        // Handle navigation to next tutorial step if needed
-        switch step {
-        case .welcome:
-            // After welcome, the user can use the Add Place button
-            // No specific action needed here
-            break
-            
-        case .createCircle:
-            // After creating circle, guide user to add places
-            // The AddPlaceViewController will show the next tutorial step when it appears
-            // Just dismiss the current view to let the user proceed
-            if let navController = viewController.navigationController {
-                navController.dismiss(animated: true) {
-                    // The add place tutorial will be shown when AddPlaceViewController appears
-                }
-            }
-            
-        case .addPlace:
-            // After adding place, navigate to network tab to show connections
-            if let tabBar = viewController.tabBarController {
-                // Switch to My Network tab (tab order: 0 Home, 1 My Network, 2 Messages, 3 Me)
-                tabBar.selectedIndex = 1
-                
-                // Show network tutorial after tab switch
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    if let networkNav = tabBar.selectedViewController as? UINavigationController,
-                       let myNetworkVC = networkNav.viewControllers.first as? MyNetworkViewController {
-                        // The MyNetworkViewController will show its tutorial in viewDidAppear
-                        // Just ensure the step is not marked as completed
-                    }
-                }
-            }
-            
-        case .exploreNetwork:
-            // The point of this step is action, not narration: offer the two
-            // concrete ways to build a network (invite a best friend / search
-            // people they know) right where they happen. The privacy step is
-            // not lost — ProfileViewController shows it on appear once this
-            // step is complete.
-            if let networkVC = viewController as? MyNetworkViewController {
-                networkVC.showOnboardingConnectPrompt()
-            } else if let tabBar = viewController.tabBarController {
-                // Fallback (bubble shown from an unexpected screen): keep the
-                // old behavior of moving straight to the privacy step.
-                tabBar.selectedIndex = 3
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                    if let profileNav = tabBar.selectedViewController as? UINavigationController,
-                       let profileVC = profileNav.viewControllers.first as? ProfileViewController {
-                        self?.showTutorialStep(
-                            .privacySettings,
-                            targetView: nil, // Will be centered
-                            in: profileVC,
-                            arrowDirection: .bottom
-                        )
-                    }
-                }
-            }
-            
-        case .privacySettings:
-            // Tutorial complete!
-            completeOnboarding()
-            
-            // Show a success message
-            if let window = UIApplication.shared.windows.first,
-               let rootVC = window.rootViewController {
-                let alert = UIAlertController(
-                    title: "Welcome to Circles! 🎉",
-                    message: "You're all set! Start exploring and sharing your favorite places.",
-                    preferredStyle: .alert
-                )
-                alert.addAction(UIAlertAction(title: "Let's Go!", style: .default))
-                
-                // Present from the topmost view controller
-                var topVC = rootVC
-                while let presented = topVC.presentedViewController {
-                    topVC = presented
-                }
-                topVC.present(alert, animated: true)
-            }
         }
     }
     

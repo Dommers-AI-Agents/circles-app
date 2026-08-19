@@ -950,23 +950,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // built — re-check now that it's had time to.
         updateOrganizeButtonVisibility()
 
-        // Check if we should show the privacy settings tutorial step
+        // (The old privacy-settings tutorial bubble was removed 2026-08-19 —
+        // the tour now lives entirely on the home page.)
         let isCurrentUser = user?.id == AuthService.shared.getUserId()
-        if isCurrentUser && 
-           OnboardingManager.shared.shouldShowTutorial && 
-           OnboardingManager.shared.hasCompletedStep(.exploreNetwork) &&
-           !OnboardingManager.shared.hasCompletedStep(.privacySettings) {
-            // Show tutorial pointing to settings button
-            if let settingsButton = navigationItem.rightBarButtonItems?.first(where: { $0.image == UIImage(systemName: "gear") }) {
-                OnboardingManager.shared.showTutorialStep(
-                    .privacySettings,
-                    targetView: settingsButton.value(forKey: "view") as? UIView,
-                    in: self,
-                    arrowDirection: .top
-                )
-            }
-            return // one prompt at a time — the tutorial owns this appearance
-        }
 
         // Occasional nudge to add a real photo (at most weekly; the reminder
         // owns its own gating). Only on your own profile, and never while the

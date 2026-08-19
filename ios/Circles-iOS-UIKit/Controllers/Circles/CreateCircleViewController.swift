@@ -248,27 +248,9 @@ class CreateCircleViewController: UIViewController {
         setupNavigation()
     }
     
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        
-        // Show create circle tutorial if needed (but only if actually in tutorial mode)
-        if OnboardingManager.shared.shouldShowTutorial && 
-           OnboardingManager.shared.hasCompletedStep(.welcome) && 
-           !OnboardingManager.shared.hasCompletedStep(.createCircle) {
-            // Give a slight delay for the UI to settle
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                guard let self = self else { return }
-                
-                OnboardingManager.shared.showTutorialStep(
-                    .createCircle,
-                    targetView: self.nameTextField,
-                    in: self,
-                    arrowDirection: .top
-                )
-            }
-        }
-    }
-    
+    // (The old create-circle tutorial bubble was removed 2026-08-19 — the
+    // tour now lives entirely on the home page.)
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         removeKeyboardObservers()

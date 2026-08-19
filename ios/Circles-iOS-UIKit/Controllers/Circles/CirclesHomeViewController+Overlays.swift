@@ -284,43 +284,43 @@ extension CirclesHomeViewController: SuggestedUsersOverlayViewDelegate {
     func didDismissOverlay() {
         // Clean up overlay reference
         suggestedUsersOverlay = nil
-        
+
         if isShowingWelcomeTour {
             // If in tour mode, reset the flag
             isShowingWelcomeTour = false
         } else {
             // Mark that user has dismissed the overlay in normal flow
             OnboardingManager.shared.disableSuggestedUsersOverlay()
-            
-            // Now check and show tutorial
-            checkTutorialAndOverlay()
+
+            // The overlay used to hard-exit the tutorial for the session
+            // (checkTutorialAndOverlay's once-per-session latch was already
+            // burned) — hand off to the home tour explicitly instead
+            startHomeTourIfNeededAfterOverlay()
         }
     }
-    
+
     func didTapNext(selectedUsers: [User]) {
         // Clean up overlay reference
         suggestedUsersOverlay = nil
-        
+
         if isShowingWelcomeTour {
             // In tour mode, force show the add place tutorial
             forceShowAddPlaceTutorial()
         } else {
-            // Normal flow - check if should show add place tutorial
-            showAddPlaceTutorialIfNeeded()
+            startHomeTourIfNeededAfterOverlay()
         }
     }
-    
+
     func didTapSkip() {
         // Clean up overlay reference
         suggestedUsersOverlay = nil
         hasCheckedForSuggestedUsers = true  // Set the flag to prevent showing again
-        
+
         if isShowingWelcomeTour {
             // In tour mode, force show the add place tutorial
             forceShowAddPlaceTutorial()
         } else {
-            // Normal flow - check if should show add place tutorial
-            showAddPlaceTutorialIfNeeded()
+            startHomeTourIfNeededAfterOverlay()
         }
     }
 }

@@ -234,6 +234,11 @@ class AuthService {
             case .success(let response):
                 // Brand-new account: queue the welcome carousel for first launch
                 UserDefaults.standard.set(true, forKey: "pendingWelcomeCarousel")
+                // A NEW account on this device must never inherit the previous
+                // account's tour progress — the old reset was gated on a
+                // previousUserId that is always nil after logout, which
+                // permanently suppressed the tour on any reused device
+                OnboardingManager.shared.resetForNewUser()
                 self?.handleAuthResponse(response, completion: completion)
             case .failure(let error):
                 let authError = self?.mapAPIErrorToAuthError(error, context: .register)
@@ -341,6 +346,11 @@ class AuthService {
                 let createdSecondsAgo = response.user.createdAt.map { Date().timeIntervalSince($0) }
                 if response.isNewUser ?? (createdSecondsAgo.map { $0 < 120 } ?? false) {
                     UserDefaults.standard.set(true, forKey: "pendingWelcomeCarousel")
+                // A NEW account on this device must never inherit the previous
+                // account's tour progress — the old reset was gated on a
+                // previousUserId that is always nil after logout, which
+                // permanently suppressed the tour on any reused device
+                OnboardingManager.shared.resetForNewUser()
                 }
                 // Save the auth provider for session restoration
                 self?.saveAuthProvider(provider)
@@ -391,6 +401,11 @@ class AuthService {
                 switch result {
                 case .success(let response):
                     UserDefaults.standard.set(true, forKey: "pendingWelcomeCarousel")
+                // A NEW account on this device must never inherit the previous
+                // account's tour progress — the old reset was gated on a
+                // previousUserId that is always nil after logout, which
+                // permanently suppressed the tour on any reused device
+                OnboardingManager.shared.resetForNewUser()
                     self.saveAuthProvider("passkey")
                     self.handleAuthResponse(response, completion: completion)
                 case .failure(let error):
@@ -400,6 +415,11 @@ class AuthService {
                             if case .success(let check) = checkResult, check.exists, check.hasPasskey {
                                 Logger.info("🔑 Passkey signup response was lost but account exists — signing in")
                                 UserDefaults.standard.set(true, forKey: "pendingWelcomeCarousel")
+                // A NEW account on this device must never inherit the previous
+                // account's tour progress — the old reset was gated on a
+                // previousUserId that is always nil after logout, which
+                // permanently suppressed the tour on any reused device
+                OnboardingManager.shared.resetForNewUser()
                                 PasskeyAuthService.shared.signInWithPasskey(presentationAnchor: nil, completion: completion)
                             } else {
                                 completion(.failure(error))
@@ -850,7 +870,12 @@ class AuthService {
 
         // Clear NetworkManager's pending connection invite
         NetworkManager.clearPendingConnectionInvite()
-        
+
+        // Tour/onboarding progress is per-account, not per-device — clearing
+        // here (logout) plus the reset at signup covers both directions of
+        // account switching on one phone
+        OnboardingManager.shared.resetForNewUser()
+
         Logger.debug("🧹 AuthService: Cleared app-specific UserDefaults")
     }
     

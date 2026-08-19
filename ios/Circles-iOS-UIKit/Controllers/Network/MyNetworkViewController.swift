@@ -199,29 +199,8 @@ class MyNetworkViewController: BaseViewController {
             }
         }
         
-        // Show network tutorial if needed (only if progressing through tutorial)
-        if OnboardingManager.shared.shouldShowTutorial && 
-           OnboardingManager.shared.hasCompletedStep(.addPlace) &&
-           !OnboardingManager.shared.hasCompletedStep(.exploreNetwork) {
-            // Give a slight delay for the UI to settle
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                guard let self = self else { return }
-                
-                // Find the add connection button in the navigation bar
-                if let addButton = self.navigationItem.rightBarButtonItem {
-                    if let buttonView = addButton.value(forKey: "view") as? UIView {
-                        // .top = bubble below the target; the invite button is
-                        // in the nav bar, so above it there's no room.
-                        OnboardingManager.shared.showTutorialStep(
-                            .exploreNetwork,
-                            targetView: buttonView,
-                            in: self,
-                            arrowDirection: .top
-                        )
-                    }
-                }
-            }
-        }
+        // (The old find-your-people tutorial bubble was removed 2026-08-19 —
+        // the tour now lives entirely on the home page.)
     }
     
     override func viewWillDisappear(_ animated: Bool) {

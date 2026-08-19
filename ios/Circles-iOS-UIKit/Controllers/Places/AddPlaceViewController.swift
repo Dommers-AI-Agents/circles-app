@@ -614,23 +614,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Force map to render properly
         mapView.setNeedsDisplay()
         
-        // Show add place tutorial if needed (only if progressing through tutorial)
-        if OnboardingManager.shared.shouldShowTutorial &&
-           OnboardingManager.shared.hasCompletedStep(.createCircle) &&
-           !OnboardingManager.shared.hasCompletedStep(.addPlace) {
-            // Give a slight delay for the UI to settle
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                guard let self = self else { return }
-
-                OnboardingManager.shared.showTutorialStep(
-                    .addPlace,
-                    targetView: self.searchBar,
-                    in: self,
-                    arrowDirection: .top
-                )
-            }
-        } else if OnboardingManager.shared.shouldShowAddPlaceMapHint() {
-            // One-time hint bubble for new users explaining how to add a place
+        // One-time hint bubble for new users explaining how to add a place
+        // (the old cross-screen tutorial step was removed 2026-08-19 — the
+        // tour now lives on the home page)
+        if OnboardingManager.shared.shouldShowAddPlaceMapHint() {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.showAddPlaceMapHintBubble()
             }

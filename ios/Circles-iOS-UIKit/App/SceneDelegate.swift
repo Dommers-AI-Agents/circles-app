@@ -217,10 +217,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         ImportResolutionQueue.shared.kick()
 
         if OnboardingManager.shared.isFirstSessionFlowActive {
-            // Brand-new signup: the carousel already ran over the splash;
-            // continue the chain — first-people sheet → notifications →
-            // tutorial decision. (Contacts onboarding was intentionally cut
-            // from first-run — Find Contacts lives in the My Network tab.)
+            // Brand-new signup: no carousel (cut 2026-08-19) — go straight to
+            // the chain: first-people sheet → notifications → home tour.
+            // (Contacts onboarding was intentionally cut from first-run —
+            // Find Contacts lives in the My Network tab.)
             continueFirstSessionAfterCarousel()
         } else if shouldShowNotificationOnboarding() {
             showNotificationOnboarding()
@@ -339,35 +339,38 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         presenter.present(navController, animated: true)
     }
 
-    /// Presents the welcome carousel over the SPLASH root — home is never
-    /// visible behind it (the old flow swapped to the tab bar first, so the
-    /// map flashed before the carousel covered it). Preload keeps running
-    /// underneath; whichever finishes second applies the outcome.
-    private func presentFirstSessionCarousel(over presenter: UIViewController) {
-        isWelcomeCarouselActive = true
+    /// Arms the first-session chain for a fresh signup. The welcome carousel
+    /// was CUT (Wes, 2026-08-19: "a terrible waste of space") — new users go
+    /// straight into the app, and the home-page bubble tour does the teaching.
+    /// Chain: home installs → "Your first people" sheet → notification
+    /// onboarding → home tour (finishFirstSessionChain).
+    private func armFirstSessionChain() {
         OnboardingManager.shared.isFirstSessionFlowActive = true
+        UserDefaults.standard.set(false, forKey: "pendingWelcomeCarousel")
+        Logger.info("First-session chain armed (no carousel)")
 
-        let welcomeVC = OnboardingViewController()
-        welcomeVC.modalPresentationStyle = .fullScreen
-        welcomeVC.onCompletion = { [weak self] in
-            self?.carouselDidFinish()
+        // Failsafe: if any link's completion never fires, isFirstSessionFlowActive
+        // sticks and silently suppresses the tour for the whole session. Force
+        // the terminal step after 25s; reschedule once if a chain modal is
+        // legitimately holding the screen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 25) { [weak self] in
+            self?.firstSessionFailsafeFired()
         }
-        presenter.present(welcomeVC, animated: false)
-        Logger.info("First-session carousel presented over splash")
     }
 
-    private func carouselDidFinish() {
-        isWelcomeCarouselActive = false
-        // Cleared only on completion, so a mid-carousel force-quit replays it
-        UserDefaults.standard.set(false, forKey: "pendingWelcomeCarousel")
-
-        if let outcome = stashedPreloadOutcome {
-            // Preload beat the reader — apply the held outcome now
-            stashedPreloadOutcome = nil
-            handlePreloadOutcome(outcome, splashVC: firstSessionSplashVC)
+    private var didRescheduleFirstSessionFailsafe = false
+    private func firstSessionFailsafeFired() {
+        guard OnboardingManager.shared.isFirstSessionFlowActive else { return }
+        if window?.rootViewController?.presentedViewController != nil,
+           !didRescheduleFirstSessionFailsafe {
+            didRescheduleFirstSessionFailsafe = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 25) { [weak self] in
+                self?.firstSessionFailsafeFired()
+            }
+            return
         }
-        // Else: preload is still running; the splash (progress ring) is now
-        // visible and the live completion path installs home when it's done.
+        Logger.warning("⏰ First-session chain stalled — failsafe finishing it")
+        finishFirstSessionChain()
     }
 
     /// The preload result → root-swap/error handling, shared by the live
@@ -453,9 +456,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { finish() }
     }
 
-    /// carousel → first-people sheet → notification onboarding → tutorial
-    /// decision. Runs from runPostLaunchSideEffects when the first-session
-    /// flow is active.
+    /// first-people sheet → notification onboarding → home tour decision.
+    /// Runs from runPostLaunchSideEffects when the first-session flow is active.
     private func continueFirstSessionAfterCarousel() {
         guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
             finishFirstSessionChain()
@@ -538,21 +540,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
 
-    // MARK: - First-session orchestration state
-    //
-    // A fresh signup runs a deterministic chain owned by this class:
-    // carousel over the splash (home is never visible behind it) → home
-    // installs → "Your first people" sheet → notification onboarding →
-    // tutorial decision. The carousel and the preload race each other;
-    // whichever finishes second applies the stashed outcome.
-    private var isWelcomeCarouselActive = false
-    private var stashedPreloadOutcome: Result<PreloadedData, Error>?
-    private weak var firstSessionSplashVC: SplashScreenViewController?
-
     private func updateRootViewController(isLoggedIn: Bool) {
         if isLoggedIn {
             // Brand-new signup: force the splash path even if a cache exists,
-            // so the welcome carousel can present before home is ever visible
+            // so the first-session chain arms before home is ever visible
             let isFreshSignup = UserDefaults.standard.bool(forKey: "pendingWelcomeCarousel")
 
             // Cache-first fast path: if we have cached data (even stale, up to 7 days),
@@ -576,20 +567,17 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
             // No usable cache: show splash screen with preloading
             let splashVC = SplashScreenViewController()
-            firstSessionSplashVC = splashVC
 
             // Animate transition if there's an existing view controller
             if window?.rootViewController != nil {
                 UIView.transition(with: window!, duration: 0.3, options: .transitionCrossDissolve, animations: {
                     self.window?.rootViewController = splashVC
                 }, completion: { _ in
-                    if isFreshSignup { self.presentFirstSessionCarousel(over: splashVC) }
+                    if isFreshSignup { self.armFirstSessionChain() }
                 })
             } else {
                 window?.rootViewController = splashVC
-                if isFreshSignup {
-                    DispatchQueue.main.async { self.presentFirstSessionCarousel(over: splashVC) }
-                }
+                if isFreshSignup { self.armFirstSessionChain() }
             }
             
             // Failsafe watchdog: only fires if the preload completion never runs at all.
@@ -620,7 +608,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     AuthService.shared.logout()
                 })
 
-                // The carousel may be presented over the splash — alert on top
                 (splashVC.presentedViewController ?? splashVC).present(alert, animated: true)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: timeoutWorkItem)
@@ -640,14 +627,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                             Logger.debug("❌ Self is nil in completion")
                             return
                         }
-                        if self.isWelcomeCarouselActive {
-                            // The user is still reading the carousel — hold the
-                            // outcome; carouselDidFinish() applies it
-                            Logger.debug("🚦 Carousel still up — stashing preload outcome")
-                            self.stashedPreloadOutcome = result
-                        } else {
-                            self.handlePreloadOutcome(result, splashVC: splashVC)
-                        }
+                        self.handlePreloadOutcome(result, splashVC: splashVC)
                     }
                 }
             )
