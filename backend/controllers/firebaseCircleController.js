@@ -38,20 +38,22 @@ exports.getMyCircles = async (req, res, next) => {
     }
     
     const circlesRef = db.collection(COLLECTIONS.CIRCLES);
-    // Simplified query - just filter by owner, no ordering for now
-    const snapshot = await circlesRef
-      .where('owner', '==', req.user.uid)
-      .get();
+    // The three reads below are independent — run them in parallel.
+    const [snapshot, connectionsSnapshot, userDoc] = await Promise.all([
+      // Simplified query - just filter by owner, no ordering for now
+      circlesRef.where('owner', '==', req.user.uid).get(),
+      // For the current user's own circles, check if any connections have added
+      // new places to shared circles
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('status', '==', 'accepted')
+        .where('userId', '==', req.user.uid)
+        .get(),
+      // User's circle order preference (used further down)
+      db.collection(COLLECTIONS.USERS).doc(req.user.uid).get()
+    ]);
 
     let circles = serializeQuerySnapshot(snapshot);
-    
-    // For the current user's own circles, check if any connections have added new places
-    // This helps the user see if their connections have contributed new places to shared circles
-    const connectionsSnapshot = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('status', '==', 'accepted')
-      .where('userId', '==', req.user.uid)
-      .get();
-    
+
     const connections = serializeQuerySnapshot(connectionsSnapshot);
     
     // Collect all recent activities from connections
@@ -100,8 +102,7 @@ exports.getMyCircles = async (req, res, next) => {
       console.log('🔍 DEBUG - No circles found, this might be the issue!');
     }
     
-    // Get user's circle order preference
-    const userDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
+    // Get user's circle order preference (doc fetched in the parallel batch above)
     const userData = userDoc.exists ? serializeDoc(userDoc) : null;
     const circleOrder = userData?.circleOrder || [];
     

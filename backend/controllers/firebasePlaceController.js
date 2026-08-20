@@ -353,14 +353,6 @@ exports.isPlaceVisibleToViewer = isPlaceVisibleToViewer;
 // @access  Private
 exports.getPlacesByCircleId = async (req, res, next) => {
   try {
-    console.log('🔍 getPlacesByCircleId - START - Request details:', {
-      circleId: req.params.circleId,
-      userUid: req.user?.uid,
-      userEmail: req.user?.email,
-      method: req.method,
-      url: req.url
-    });
-
     const { circleId } = req.params;
 
     // First verify user has access to this circle
@@ -375,56 +367,37 @@ exports.getPlacesByCircleId = async (req, res, next) => {
     }
 
     const circle = serializeDoc(circleDoc);
-    
-    console.log('🔍 getPlacesByCircleId - Circle access check:', {
-      circleId: circleId,
-      circleName: circle.name,
-      circleOwner: circle.owner,
-      circlePrivacy: circle.privacy,
-      requestingUser: req.user.uid,
-      sharedWith: circle.sharedWith || [],
-      placesArray: circle.places || []
-    });
-    
+
     // Check permissions
     const isOwner = circle.owner === req.user.uid;
     const isSharedWith = circle.sharedWith && circle.sharedWith.includes(req.user.uid);
     const isPublic = circle.privacy === 'public';
-    
-    // For myNetwork privacy, check if users are connected
-    let isConnected = false;
-    if (circle.privacy === 'myNetwork' && !isOwner) {
-      // Check if the current user is connected to the circle owner
-      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
+
+    // Both-direction connection docs between viewer and owner. Fetched once
+    // here (when needed for the myNetwork permission check) and reused by the
+    // activity/isNew pass below instead of re-querying the same pair.
+    const fetchOwnerConnectionDocs = () => Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
         .where('userId', '==', req.user.uid)
         .where('connectedUserId', '==', circle.owner)
         .where('status', '==', 'accepted')
-        .get();
-        
-      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
         .where('userId', '==', circle.owner)
         .where('connectedUserId', '==', req.user.uid)
         .where('status', '==', 'accepted')
-        .get();
-        
-      isConnected = !connection1.empty || !connection2.empty;
-      
-      console.log('🔍 Connection check results:', {
-        connection1Count: connection1.size,
-        connection2Count: connection2.size,
-        isConnected: isConnected
-      });
+        .get()
+    ]).then(([c1, c2]) => [...c1.docs, ...c2.docs]);
+
+    let ownerConnectionDocs = null;
+
+    // For myNetwork privacy, check if users are connected
+    let isConnected = false;
+    if (circle.privacy === 'myNetwork' && !isOwner) {
+      ownerConnectionDocs = await fetchOwnerConnectionDocs();
+      isConnected = ownerConnectionDocs.length > 0;
     }
-    
-    console.log('🔍 Permission check results:', {
-      isOwner,
-      isSharedWith,
-      isPublic,
-      isConnected,
-      circlePrivacy: circle.privacy,
-      willAllowAccess: isOwner || isSharedWith || isPublic || (circle.privacy === 'myNetwork' && isConnected)
-    });
-    
+
     if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
       return res.status(403).json({
         success: false,
@@ -434,13 +407,7 @@ exports.getPlacesByCircleId = async (req, res, next) => {
 
     // Get places for this circle, ordered by creation date (newest first)
     // Filter out soft-deleted places - need to handle both null and undefined values
-    console.log('🔍 About to query places with:', {
-      collection: COLLECTIONS.PLACES,
-      circleId: circleId,
-      note: 'Getting all places, will filter deletedAt != null in code since Firestore treats null and undefined differently'
-    });
-    
-    // First get all places for this circle, then filter in code since Firestore 
+    // First get all places for this circle, then filter in code since Firestore
     // treats null and undefined differently and we need to exclude only non-null values
     const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
       .where('circleId', '==', circleId)
@@ -509,30 +476,14 @@ exports.getPlacesByCircleId = async (req, res, next) => {
     if (circle.owner !== req.user.uid) {
       // User is not the owner, check for activity records
       // Check BOTH directions of the connection to ensure we find all activities
-      const [connection1, connection2] = await Promise.all([
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', req.user.uid)
-          .where('connectedUserId', '==', circle.owner)
-          .where('status', '==', 'accepted')
-          .get(),
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', circle.owner)
-          .where('connectedUserId', '==', req.user.uid)
-          .where('status', '==', 'accepted')
-          .get()
-      ]);
-      
-      // Combine activities from both connection documents
-      const connections = [...connection1.docs, ...connection2.docs];
-      
-      console.log(`🔍 Checking ${connections.length} connection document(s) for activities`);
-      
+      // (reuses the docs already fetched for the myNetwork permission check)
+      const connections = ownerConnectionDocs ?? await fetchOwnerConnectionDocs();
+
       connections.forEach(doc => {
         const connectionData = doc.data();
         if (connectionData.recentActivity && connectionData.recentActivity.length > 0) {
           // Add all activities from this connection
           activityRecords.push(...connectionData.recentActivity);
-          console.log(`🔍 Found ${connectionData.recentActivity.length} activities in connection ${doc.id}`);
         }
       });
       
@@ -546,16 +497,6 @@ exports.getPlacesByCircleId = async (req, res, next) => {
         }
       });
       activityRecords = uniqueActivities;
-      
-      console.log(`🔍 Total unique activity records found: ${activityRecords.length}`);
-      if (activityRecords.length > 0) {
-        console.log(`🔍 Activity types and IDs:`, activityRecords.map(a => ({
-          type: a.type,
-          entityId: a.entityId,
-          entityName: a.entityName,
-          viewedBy: a.viewedBy || []
-        })));
-      }
     }
     
     // Add user information and comment count to each place
@@ -575,24 +516,9 @@ exports.getPlacesByCircleId = async (req, res, next) => {
           // Check if user has viewed this place
           const viewedBy = placeActivity.viewedBy || [];
           isNew = !viewedBy.includes(req.user.uid);
-          
-          console.log(`🔍 Place "${place.name}" (${place.id}):`);
-          console.log(`   - Has activity record: YES`);
-          console.log(`   - ViewedBy: [${viewedBy.join(', ')}]`);
-          console.log(`   - Current user (${req.user.uid}) has viewed: ${viewedBy.includes(req.user.uid)}`);
-          console.log(`   - IsNew: ${isNew}`);
-          
-          if (isNew) {
-            console.log(`🆕 Place "${place.name}" is NEW for user ${req.user.uid}`);
-          }
-        } else {
-          // No activity record found for this place
-          // This could mean it was added before activity tracking was implemented
-          // or it's a place in a private circle
-          console.log(`🔍 Place "${place.name}" (${place.id}): No activity record found`);
         }
-      } else {
-        console.log(`🔍 Place "${place.name}" (${place.id}): Skipped - user is the one who added it`);
+        // No activity record could mean the place predates activity tracking
+        // or sits in a private circle — treated as not-new either way.
       }
       
       // Only include privateNotes if the current user added this place
@@ -633,24 +559,6 @@ exports.getPlacesByCircleId = async (req, res, next) => {
       orderedPlaces = placesWithUsers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     }
     
-    console.log('🔍 Circle places order:', circle.places || []);
-    console.log('🔍 Total places found from query:', places.length);
-    console.log('🔍 Returning places in order:', orderedPlaces.map(p => ({ 
-      id: p.id, 
-      name: p.name,
-      addedBy: p.addedBy,
-      addedByUser: p.addedByUser ? p.addedByUser.displayName : 'No user info',
-      hasNotes: p.notes ? 'yes' : 'no',
-      hasPublicNotes: p.publicNotes ? 'yes' : 'no',
-      hasPrivateNotes: p.privateNotes ? 'yes' : 'no'
-    })));
-
-    console.log('🔍 getPlacesByCircleId - FINAL RESPONSE:', {
-      success: true,
-      count: orderedPlaces.length,
-      placesReturnedToClient: orderedPlaces.length
-    });
-
     res.status(200).json({
       success: true,
       count: orderedPlaces.length,
@@ -1881,21 +1789,28 @@ exports.searchPlaces = async (req, res, next) => {
 
     const places = serializeQuerySnapshot(snapshot).filter(place => !place.deletedAt);
 
-    // Filter results to only include places from circles the user can access
-    const accessiblePlaces = [];
-    for (const place of places) {
-      const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(place.circleId).get();
-      if (circleDoc.exists) {
-        const circle = serializeDoc(circleDoc);
-        const isOwner = circle.owner === req.user.uid;
-        const isSharedWith = circle.sharedWith.includes(req.user.uid);
-        const isPublic = circle.privacy === 'public';
-
-        if (isOwner || isSharedWith || isPublic) {
-          accessiblePlaces.push(place);
-        }
-      }
+    // Filter results to only include places from circles the user can access.
+    // One batched getAll over the unique circle ids instead of a serial
+    // per-place round trip.
+    const circleIds = [...new Set(places.map(p => p.circleId).filter(Boolean))];
+    const circleMap = new Map();
+    if (circleIds.length > 0) {
+      const circleDocs = await db.getAll(
+        ...circleIds.map(id => db.collection(COLLECTIONS.CIRCLES).doc(id))
+      );
+      circleDocs.forEach(doc => {
+        if (doc.exists) circleMap.set(doc.id, serializeDoc(doc));
+      });
     }
+
+    const accessiblePlaces = places.filter(place => {
+      const circle = circleMap.get(place.circleId);
+      if (!circle) return false;
+      const isOwner = circle.owner === req.user.uid;
+      const isSharedWith = (circle.sharedWith || []).includes(req.user.uid);
+      const isPublic = circle.privacy === 'public';
+      return isOwner || isSharedWith || isPublic;
+    });
 
     // Sort results by name
     accessiblePlaces.sort((a, b) => a.name.localeCompare(b.name));

@@ -8,28 +8,29 @@ const db = getFirestore();
 // @route   GET /api/notifications
 // @access  Private
 exports.getNotifications = async (req, res, next) => {
-  console.log('🚀 NOTIFICATION CONTROLLER: getNotifications called');
-  console.log('🚀 NOTIFICATION CONTROLLER: User ID:', req.user.uid);
-  console.log('🚀 NOTIFICATION CONTROLLER: Query params:', req.query);
-  
   try {
     const userId = req.user.uid;
     const { limit = 50, offset = 0, archived = 'false' } = req.query;
     const isArchived = archived === 'true';
-    
-    console.log('🔍 NOTIFICATION CONTROLLER: Fetching notifications');
-    console.log('🔍 NOTIFICATION CONTROLLER: Limit:', limit, 'Offset:', offset, 'Archived:', isArchived);
-    
-    // Build query - fetch all notifications for user first
-    // We'll filter archived status manually because Firestore's 'in' operator
-    // doesn't match undefined values
+
+    const limitNum = parseInt(limit);
+    const startIndex = parseInt(offset);
+    const endIndex = startIndex + limitNum;
+
+    // Archived status is filtered in memory (Firestore's 'in' operator doesn't
+    // match undefined values), so over-fetch a bounded window of the newest
+    // notifications instead of reading the user's entire history. 3× the page
+    // gives filtering headroom; hasMore stays true whenever the window filled,
+    // so pagination still reaches older items.
+    const fetchWindow = Math.min(Math.max(endIndex * 3, 100), 500);
+
     let query = db.collection(COLLECTIONS.NOTIFICATIONS)
       .where('userId', '==', userId)
-      .orderBy('createdAt', 'desc');
-    
-    // Get all notifications first (we'll filter after)
+      .orderBy('createdAt', 'desc')
+      .limit(fetchWindow);
+
     const allNotificationsSnapshot = await query.get();
-    
+
     // Filter by archived status manually
     const filteredNotifications = [];
     allNotificationsSnapshot.forEach(doc => {
@@ -48,20 +49,13 @@ exports.getNotifications = async (req, res, next) => {
     });
     
     // Apply pagination manually
-    const startIndex = parseInt(offset);
-    const endIndex = startIndex + parseInt(limit);
     const paginatedNotifications = filteredNotifications.slice(startIndex, endIndex);
-    
-    console.log('✅ NOTIFICATION CONTROLLER: Notifications query executed');
-    console.log('✅ NOTIFICATION CONTROLLER: Total notifications:', allNotificationsSnapshot.size);
-    console.log('✅ NOTIFICATION CONTROLLER: Filtered notifications:', filteredNotifications.length);
-    console.log('✅ NOTIFICATION CONTROLLER: Paginated notifications:', paginatedNotifications.length);
-    
-    // Check if there are more notifications
-    const hasMore = filteredNotifications.length > endIndex;
-    
-    console.log('✅ NOTIFICATION CONTROLLER: Sending response with', paginatedNotifications.length, 'notifications');
-    
+
+    // More available if the filtered set extends past this page, or the fetch
+    // window filled (older notifications exist beyond the window).
+    const hasMore = filteredNotifications.length > endIndex ||
+      allNotificationsSnapshot.size >= fetchWindow;
+
     res.status(200).json({
       success: true,
       notifications: paginatedNotifications,

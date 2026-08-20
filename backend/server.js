@@ -119,11 +119,32 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// gzip responses. The SSE stream must be excluded: compression buffers the
+// response body, which would hold events in the gzip buffer indefinitely.
+const compression = require('compression');
+app.use(compression({
+  filter: (req, res) => req.path.startsWith('/api/sse')
+    ? false
+    : compression.filter(req, res)
+}));
+
+// Force revalidation on API GETs: Express emits weak ETags but no
+// Cache-Control, and without one URLSession applies heuristic freshness and
+// may serve stale responses without contacting the server. no-cache =
+// "revalidate every time" (304 when unchanged), never "don't cache".
+app.use('/api', (req, res, next) => {
+  if (req.method === 'GET') {
+    res.set('Cache-Control', 'no-cache');
+  }
+  next();
+});
+
 app.use(express.json({ limit: '50mb' })); // Increased limit for image uploads
 // Mirror message<->error keys on all error responses (see middleware file)
 app.use(require('./middleware/responseNormalizer'));
 app.use(express.urlencoded({ limit: '50mb', extended: true })); // Also handle URL encoded data
-app.use(morgan('combined'));
+app.use(morgan('tiny'));
 
 // Security middleware
 app.use(securityHeaders);
@@ -420,11 +441,15 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🗄️ Firebase Project ID: ${process.env.FIREBASE_PROJECT_ID || 'Not set'}`);
   console.log(`🗄️ Firebase Storage Bucket: ${process.env.FIREBASE_STORAGE_BUCKET || 'Not set'}`);
   
-  // Start background aggregation job for performance optimization
+  // Start background aggregation job for performance optimization.
+  // Delayed 60s so its Firestore load doesn't compete with the first user
+  // requests hitting a freshly started (cold) instance.
   if (firebaseInitialized) {
-    const dataAggregationJob = require('./jobs/dataAggregationJob');
-    dataAggregationJob.start();
-    console.log(`⚡ Background data aggregation started for enhanced performance`);
+    setTimeout(() => {
+      const dataAggregationJob = require('./jobs/dataAggregationJob');
+      dataAggregationJob.start();
+      console.log(`⚡ Background data aggregation started for enhanced performance`);
+    }, 60000);
   }
   
   if (!firebaseInitialized) {
