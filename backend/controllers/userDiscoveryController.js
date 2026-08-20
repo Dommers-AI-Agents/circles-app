@@ -14,23 +14,6 @@ const {
 
 const db = getFirestore();
 
-// Helper function to calculate place counts from circles
-const calculateUserPlaceCounts = async (userId) => {
-  const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
-    .where('owner', '==', userId)
-    .get();
-  
-  let totalPlaces = 0;
-  let circlesCount = circlesSnapshot.size;
-  
-  circlesSnapshot.forEach(circleDoc => {
-    const circle = circleDoc.data();
-    totalPlaces += (circle.placesCount || 0);
-  });
-  
-  return { placesCount: totalPlaces, circlesCount };
-};
-
 // Get user discovery suggestions for the network tabs:
 //   popular          - scorecard of ALL users, ranked by places (connections/follows included)
 //   discover / all   - only people you are NOT connected to and do NOT follow, ranked by places
@@ -39,8 +22,9 @@ const calculateUserPlaceCounts = async (userId) => {
 const getDiscoverUsers = async (req, res) => {
   try {
     const userId = req.user.uid;
-    const { type = 'all', limit = 20 } = req.query;
+    const { type = 'all', limit = 20, offset = 0 } = req.query;
     const limitNum = parseInt(limit) || 20;
+    const offsetNum = Math.max(parseInt(offset) || 0, 0);
 
     // Current user, BOTH connection directions, and the bulk place-count map,
     // all in parallel.
@@ -96,6 +80,27 @@ const getDiscoverUsers = async (req, res) => {
     const isSuggestable = (id) =>
       id !== userId && !dismissed.has(id) && !following.has(id) && !blockedSet.has(id);
 
+    // Candidate ranking is derived from the place-count map (already in
+    // memory, 15-min cache) instead of a 500-doc users collection scan per
+    // request: every ranked surface here orders by placesCount, and every
+    // exclusion filter (self/dismissed/following/blocked/connection) is
+    // id-based — so ids are ranked and filtered BEFORE any user doc is read,
+    // and only the docs for one page are fetched. Users with zero circles
+    // aren't in the map; they ranked at the very bottom of these lists before
+    // and never surfaced within a page anyway.
+    const rankedIds = [...placeCounts.entries()]
+      .sort((a, b) => (b[1].placesCount || 0) - (a[1].placesCount || 0))
+      .map(([id]) => id);
+    // Small buffer past the page so the followersCount tiebreak (needs the
+    // docs) can still reorder around the page boundary.
+    const pageWindow = offsetNum + limitNum + 10;
+
+    const fetchDocsByIds = async (ids) => {
+      if (ids.length === 0) return [];
+      const docs = await db.getAll(...ids.map((id) => db.collection(COLLECTIONS.USERS).doc(id)));
+      return docs.filter((d) => d.exists);
+    };
+
     let users = [];
 
     if (type === 'popular') {
@@ -105,9 +110,10 @@ const getDiscoverUsers = async (req, res) => {
       // rank. Seeing yourself among the most active is the progress readout,
       // and the client turns your row's action into "share your profile"
       // instead of a follow button.
-      const snap = await db.collection(COLLECTIONS.USERS).limit(500).get();
-      users = snap.docs
-        .filter((d) => d.id === userId || isSuggestable(d.id))
+      const pageIds = rankedIds
+        .filter((id) => id === userId || isSuggestable(id))
+        .slice(0, pageWindow);
+      users = (await fetchDocsByIds(pageIds))
         .map((d) => shape(d, 'popular'))
         .sort((a, b) => (b.placesCount - a.placesCount) || ((b.followersCount || 0) - (a.followersCount || 0)));
     } else if (type === 'nearby') {
@@ -118,19 +124,27 @@ const getDiscoverUsers = async (req, res) => {
       // hadn't shared location. Now everyone's coordinates fall back to the
       // median of the places they save (cached on the user doc), which is
       // where they actually spend time.
-      const snap = await db.collection(COLLECTIONS.USERS).limit(500).get();
-      const origin = await effectiveCoords(userId, currentUserData);
+      // Candidate pool: the 150 biggest suggestable collections (already
+      // ranked by placesCount). Location has to be read per candidate, so the
+      // pool is bounded here instead of scanning 500 user docs — and a person
+      // with zero saved places has no assumed location and nothing to show on
+      // a discovery card anyway.
+      const NEARBY_POOL = 150;
+      const poolIds = rankedIds.filter((id) => isSuggestable(id)).slice(0, NEARBY_POOL);
+      const [poolDocs, origin] = await Promise.all([
+        fetchDocsByIds(poolIds),
+        effectiveCoords(userId, currentUserData)
+      ]);
 
       if (origin) {
         // Locate candidates: GPS ping → fresh cached assumption → compute
-        // fresh (budgeted, biggest collections first, so one request can't
-        // fan out into hundreds of place queries).
-        const candidates = snap.docs
-          .filter((d) => isSuggestable(d.id))
-          .sort((a, b) =>
-            ((placeCounts.get(b.id) || {}).placesCount || 0) -
-            ((placeCounts.get(a.id) || {}).placesCount || 0));
-        let computeBudget = 40;
+        // fresh. The compute budget is small on purpose: each compute is a
+        // 40-doc places query + a write-back, but the result is CACHED on the
+        // user doc for 7 days — so successive requests work through the tail
+        // a few users at a time instead of one request fanning out into
+        // hundreds of queries.
+        const candidates = poolDocs;
+        let computeBudget = 5;
 
         const located = (await Promise.all(candidates.map(async (d) => {
           const data = d.data();
@@ -187,8 +201,7 @@ const getDiscoverUsers = async (req, res) => {
             const daysSince = lastActive ? (Date.now() - lastActive.getTime()) / 86400000 : Infinity;
             return placesCount + (daysSince <= 7 ? 30 : daysSince <= 30 ? 10 : 0);
           };
-          users = snap.docs
-            .filter((d) => isSuggestable(d.id))
+          users = poolDocs
             .filter((d) => String(d.data().zipcode || '').slice(0, 3) === myPrefix)
             .sort((a, b) => zipScore(b) - zipScore(a))
             .map((d) => shape(d, 'nearby'));
@@ -198,18 +211,20 @@ const getDiscoverUsers = async (req, res) => {
       // The Popular tab: a scorecard, not a suggestion list. Everyone —
       // including people you follow or are connected to — ranked by the size
       // of their collection. Watching people you know climb is the fun.
-      const snap = await db.collection(COLLECTIONS.USERS).limit(500).get();
-      users = snap.docs
-        .filter((d) => d.id !== userId && !dismissed.has(d.id) && !blockedSet.has(d.id))
+      const pageIds = rankedIds
+        .filter((id) => id !== userId && !dismissed.has(id) && !blockedSet.has(id))
+        .filter((id) => ((placeCounts.get(id) || {}).placesCount || 0) > 0)
+        .slice(0, pageWindow);
+      users = (await fetchDocsByIds(pageIds))
         .map((d) => shape(d, 'leaderboard'))
-        .filter((u) => u.placesCount > 0)
         .sort((a, b) => (b.placesCount - a.placesCount) || ((b.followersCount || 0) - (a.followersCount || 0)));
     } else if (type === 'followsYou') {
       // People already following the caller who the caller does not follow
       // back. Highest-intent suggestion there is — the other person has
       // already opted in, so following back is a single tap with no approval
       // step and no chance of rejection.
-      const pending = [...myFollowers].filter((id) => isSuggestable(id)).slice(0, limitNum);
+      // +1 so the final page slice can tell whether more remain (hasMore)
+      const pending = [...myFollowers].filter((id) => isSuggestable(id)).slice(0, offsetNum + limitNum + 1);
       if (pending.length > 0) {
         const docs = await db.getAll(...pending.map((id) => db.collection(COLLECTIONS.USERS).doc(id)));
         users = docs.filter((d) => d.exists).map((d) => shape(d, 'followsYou'));
@@ -226,7 +241,7 @@ const getDiscoverUsers = async (req, res) => {
 
       if (precomputed && precomputed.length > 0) {
         const fresh = precomputed.filter((s) => isSuggestable(s.userId) && !hasActiveConnection(s.userId));
-        users = fresh.slice(0, limitNum).map((s) => ({
+        users = fresh.slice(0, offsetNum + limitNum + 1).map((s) => ({
           id: s.userId,
           _id: s.userId,
           displayName: s.displayName,
@@ -261,7 +276,7 @@ const getDiscoverUsers = async (req, res) => {
           });
         }
 
-        const sorted = [...viaMap.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, limitNum);
+        const sorted = [...viaMap.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, offsetNum + limitNum + 1);
         if (sorted.length > 0) {
           const docs = await db.getAll(...sorted.map(([id]) => db.collection(COLLECTIONS.USERS).doc(id)));
           const byId = new Map(docs.filter((d) => d.exists).map((d) => [d.id, d]));
@@ -279,18 +294,26 @@ const getDiscoverUsers = async (req, res) => {
     } else {
       // 'discover' / 'all': people you have NO active connection with and do
       // not follow, ranked by places (new people worth discovering).
-      const snap = await db.collection(COLLECTIONS.USERS).limit(500).get();
-      users = snap.docs
-        .filter((d) => isSuggestable(d.id) && !hasActiveConnection(d.id))
+      const pageIds = rankedIds
+        .filter((id) => isSuggestable(id) && !hasActiveConnection(id))
+        .filter((id) => ((placeCounts.get(id) || {}).placesCount || 0) > 0)
+        .slice(0, pageWindow);
+      users = (await fetchDocsByIds(pageIds))
         .map((d) => shape(d, 'discover'))
-        .filter((u) => u.placesCount > 0)
         .sort((a, b) => b.placesCount - a.placesCount);
     }
 
-    const finalUsers = users.slice(0, limitNum);
+    // Page the ordered result. `offset` is optional — existing clients that
+    // send only `limit` get the same first page as before.
+    const finalUsers = users.slice(offsetNum, offsetNum + limitNum);
     await decorateUserCards(finalUsers);
-    console.log(`✅ Discovery (${type}): ${finalUsers.length} users`);
-    res.json({ success: true, users: finalUsers, count: finalUsers.length });
+    console.log(`✅ Discovery (${type}): ${finalUsers.length} users (offset ${offsetNum})`);
+    res.json({
+      success: true,
+      users: finalUsers,
+      count: finalUsers.length,
+      hasMore: users.length > offsetNum + limitNum
+    });
   } catch (error) {
     console.error('Error getting discovery users:', error);
     res.status(500).json({ success: false, message: 'Failed to get discovery users', error: error.message });
@@ -360,12 +383,13 @@ const searchUsersAdvanced = async (req, res) => {
       }
     });
     
-    // Get connection status and calculate place counts
-    const [connectionsSnapshot, currentUserDoc] = await Promise.all([
+    // Get connection status and the bulk place-count map
+    const [connectionsSnapshot, currentUserDoc, placeCounts] = await Promise.all([
       db.collection(COLLECTIONS.CONNECTIONS)
         .where('userId', '==', userId)
         .get(),
-      db.collection(COLLECTIONS.USERS).doc(userId).get()
+      db.collection(COLLECTIONS.USERS).doc(userId).get(),
+      getPlaceCountMap()
     ]);
     
     const connections = new Map();
@@ -377,11 +401,13 @@ const searchUsersAdvanced = async (req, res) => {
     const currentUserData = currentUserDoc.data();
     const userFollowing = new Set(currentUserData.following || []);
     
-    // Enrich search results with additional data
+    // Enrich search results with additional data. Counts come from the bulk
+    // map (15-min cache) — the old per-result circles query ran SERIALLY, up
+    // to ~52 sequential Firestore round trips per search keystroke.
     const enrichedResults = [];
     for (const user of searchResults) {
-      const { placesCount, circlesCount } = await calculateUserPlaceCounts(user.id);
-      
+      const { placesCount, circlesCount } = placeCounts.get(user.id) || { placesCount: 0, circlesCount: 0 };
+
       enrichedResults.push({
         id: user.id,
         email: user.email,

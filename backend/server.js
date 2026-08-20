@@ -444,16 +444,13 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🗄️ Firebase Project ID: ${process.env.FIREBASE_PROJECT_ID || 'Not set'}`);
   console.log(`🗄️ Firebase Storage Bucket: ${process.env.FIREBASE_STORAGE_BUCKET || 'Not set'}`);
   
-  // Start background aggregation job for performance optimization.
-  // Delayed 60s so its Firestore load doesn't compete with the first user
-  // requests hitting a freshly started (cold) instance.
-  if (firebaseInitialized) {
-    setTimeout(() => {
-      const dataAggregationJob = require('./jobs/dataAggregationJob');
-      dataAggregationJob.start();
-      console.log(`⚡ Background data aggregation started for enhanced performance`);
-    }, 60000);
-  }
+  // dataAggregationJob deliberately NOT started (2026-08-20): it fed a
+  // per-instance in-memory warm cache consumed only by /home/homescreen's
+  // fast path, whose hit rate across Cloud Run instances was ~zero — every
+  // instance paid recurring Firestore reads every 10 minutes for a cache
+  // nobody hit. The endpoint's live path (which effectively always ran) is
+  // untouched; delete the endpoint + backgroundAggregationService once the
+  // App Store build that stops calling it has rolled out.
   
   if (!firebaseInitialized) {
     console.log('\n📝 To enable real Firebase:');
