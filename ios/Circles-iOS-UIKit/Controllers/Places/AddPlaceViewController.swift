@@ -2779,9 +2779,103 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                 // Reset the flag after form is filled and scrolled
                 self.isFillingForm = false
             }
+
+            // A picked ADDRESS entity (no POI category, name = the street
+            // address) usually means the user wanted the business AT that
+            // address — "300 East Blvd" saved when they meant the restaurant
+            // "300 East". Look for a matching business and offer it by name.
+            self.offerBusinessSuggestionIfBareAddress(for: mapItem)
         }
     }
-    
+
+    // MARK: - Bare-address → business suggestion
+
+    /// True when a map item is a street-address entity rather than a business:
+    /// no POI category, and its name is just the address line MapKit builds
+    /// ("300 East Blvd" / "121 W Trade St").
+    private static func isBareAddressItem(_ mapItem: MKMapItem) -> Bool {
+        guard mapItem.pointOfInterestCategory == nil,
+              let name = mapItem.name, !name.isEmpty else { return false }
+        let placemark = mapItem.placemark
+        let streetLine = [placemark.subThoroughfare, placemark.thoroughfare]
+            .compactMap { $0 }.joined(separator: " ")
+        let normalize = { (s: String) in
+            s.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { !$0.isEmpty }.joined(separator: " ")
+        }
+        let normName = normalize(name)
+        guard !normName.isEmpty else { return false }
+        return normName == normalize(streetLine)
+            || normName == normalize(placemark.thoroughfare ?? "")
+    }
+
+    /// Business/address name kinship: the business name's tokens are contained
+    /// in the address line ("300 East" ⊂ "300 East Blvd") or vice versa —
+    /// Wes's rule: only suggest a business with the same or almost-same name.
+    private static func namesRelated(business: String, address: String) -> Bool {
+        let tokens = { (s: String) -> [String] in
+            s.lowercased()
+                .folding(options: .diacriticInsensitive, locale: nil)
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { !$0.isEmpty }
+        }
+        let b = tokens(business)
+        let a = tokens(address)
+        guard !b.isEmpty, !a.isEmpty else { return false }
+        let bSet = Set(b), aSet = Set(a)
+        if bSet.isSubset(of: aSet) || aSet.isSubset(of: bSet) { return true }
+        // Prefix kinship covers abbreviation drift ("W Trade" vs "West Trade")
+        let overlap = bSet.intersection(aSet).count
+        return overlap >= 2 && overlap >= b.count - 1
+    }
+
+    private func offerBusinessSuggestionIfBareAddress(for addressItem: MKMapItem) {
+        guard Self.isBareAddressItem(addressItem), let addressName = addressItem.name else { return }
+
+        let coordinate = addressItem.placemark.coordinate
+        let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 120)
+        MKLocalSearch(request: request).start { [weak self] response, _ in
+            guard let self = self, let items = response?.mapItems else { return }
+
+            let origin = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            let candidates = items
+                .filter { item in
+                    guard item.pointOfInterestCategory != nil,
+                          let name = item.name, !name.isEmpty else { return false }
+                    let distance = origin.distance(from: CLLocation(
+                        latitude: item.placemark.coordinate.latitude,
+                        longitude: item.placemark.coordinate.longitude))
+                    return distance <= 120 && Self.namesRelated(business: name, address: addressName)
+                }
+                .sorted { a, b in
+                    origin.distance(from: CLLocation(latitude: a.placemark.coordinate.latitude,
+                                                     longitude: a.placemark.coordinate.longitude)) <
+                    origin.distance(from: CLLocation(latitude: b.placemark.coordinate.latitude,
+                                                     longitude: b.placemark.coordinate.longitude))
+                }
+                .prefix(3)
+
+            guard !candidates.isEmpty else { return }
+
+            DispatchQueue.main.async {
+                // Don't fight a modal (photo picker, category sheet…)
+                guard self.presentedViewController == nil else { return }
+                AlertPresenter.showActionSheet(
+                    title: "Did you mean this place?",
+                    message: "\"\(addressName)\" is an address — there's a business here:",
+                    actions: candidates.map { item in
+                        (title: item.name ?? "", style: .default, handler: { [weak self] in
+                            // Refill the whole form from the business POI —
+                            // name, category, photos, description all follow
+                            self?.fillFormWithMapItem(item)
+                        })
+                    },
+                    from: self
+                )
+            }
+        }
+    }
+
     // MARK: - Save failure handling
 
     /// Failed place creation: subscription-limit refusals get an Upgrade path
