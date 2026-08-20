@@ -962,7 +962,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         Logger.debug("📦 [SafeCache] Preloading \(uniqueUrls.count) images in background")
         
-        CacheService.shared.preloadImages(from: uniqueUrls) { loadedCount in
+        ImageService.shared.preloadImages(from: uniqueUrls) { loadedCount in
             Logger.debug("📦 [SafeCache] Preloaded \(loadedCount)/\(uniqueUrls.count) images")
         }
     }
@@ -992,7 +992,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         Logger.debug("🖼️ [BackgroundPreload] Starting preload of \(uniqueUrls.count) place images")
         
-        CacheService.shared.preloadImages(from: uniqueUrls) { loadedCount in
+        ImageService.shared.preloadImages(from: uniqueUrls) { loadedCount in
             Logger.debug("🖼️ [BackgroundPreload] Completed: \(loadedCount)/\(uniqueUrls.count) place images cached")
         }
     }
@@ -1373,7 +1373,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Preload images in background
         DispatchQueue.global(qos: .background).async {
-            CacheService.shared.preloadImages(from: uniqueUrls) { loadedCount in
+            ImageService.shared.preloadImages(from: uniqueUrls) { loadedCount in
                 Logger.debug("📷 [Preload] Completed: \(loadedCount)/\(uniqueUrls.count) images cached")
             }
         }

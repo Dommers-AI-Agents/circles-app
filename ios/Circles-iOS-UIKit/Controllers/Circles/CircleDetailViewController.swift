@@ -3185,10 +3185,11 @@ class PlaceTableViewCell: UITableViewCell {
         
         // Show/hide directions button based on location availability
         directionsButton.isHidden = (place.location == nil)
-        
-        // Force layout update
+
+        // Let UIKit coalesce the layout pass with the table's own — a forced
+        // synchronous layoutIfNeeded per configure ran layout once per cell
+        // per scroll frame.
         self.setNeedsLayout()
-        self.layoutIfNeeded()
     }
     
     // MARK: - Photo Loading
@@ -3209,10 +3210,16 @@ class PlaceTableViewCell: UITableViewCell {
     
     private func loadPhotoFromURL(_ urlString: String) {
         imageLoadingIndicator.startAnimating()
-        
+
+        // Capture which place this load was for — the cell may be recycled to
+        // a different place before the image arrives, and painting the stale
+        // result put the WRONG photo on fast scrolls.
+        let requestedPlaceId = place?.id
+
         ImageService.shared.loadImage(from: urlString) { [weak self] image in
             guard let self = self else { return }
-            
+            guard self.place?.id == requestedPlaceId else { return }
+
             if let image = image {
                 self.placeImageView.image = image
                 self.categoryIconView.isHidden = true

@@ -1652,6 +1652,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         if let markerView = annotationView {
             markerView.markerTintColor = placeAnnotation.place.category.color
             markerView.glyphImage = UIImage(systemName: placeAnnotation.place.category.systemIconName)
+            // Cluster dense areas: with hundreds of individual markers, MapKit
+            // spends most of a pan/zoom frame laying out overlapping views.
+            // MKClusterAnnotations render MapKit's default numbered bubble and
+            // split apart on zoom; taps on them fall through the PlaceAnnotation
+            // guards in the tap handlers.
+            markerView.clusteringIdentifier = "place"
         }
 
         return annotationView

@@ -6,6 +6,11 @@ class ImageService {
     private let cache = NSCache<NSString, UIImage>()
     private let mediaCacheService = MediaCacheService.shared
 
+    // In-flight download registry: N cells asking for the same URL share ONE
+    // network request instead of firing N parallel downloads of it.
+    private let inFlightLock = NSLock()
+    private var inFlightCompletions: [String: [(UIImage?) -> Void]] = [:]
+
     // Source images larger than this on their longest side are downsampled
     // before caching — feed thumbnails/avatars never need more, and full-res
     // decode was the main-thread scroll cost.
@@ -70,8 +75,12 @@ class ImageService {
         // If not in cache with custom key, download normally
         downloadImage(from: urlString) { [weak self] image in
             if let image = image, let self = self {
-                // Store with custom cache key
-                self.cache.setObject(image, forKey: key, cost: self.cost(of: image))
+                // Alias entry under the custom key for the sync lookups that
+                // use it. Cost 0 on purpose: the URL-key entry (stored by the
+                // download path) already carries this image's real cost, and
+                // both keys hold the SAME UIImage instance — double-costing
+                // was halving the cache's effective capacity.
+                self.cache.setObject(image, forKey: key)
             }
             completion(image)
         }
@@ -153,10 +162,10 @@ class ImageService {
         
         // Check if image is in disk cache
         mediaCacheService.retrieveImage(for: urlString) { [weak self] image in
-            if let image = image {
+            if let image = image, let self = self {
                 Logger.debug("ImageService: Found image in disk cache for \(urlString)")
-                // Add to memory cache
-                self?.cache.setObject(image, forKey: cacheKey)
+                // Add to memory cache (with cost, so eviction accounting works)
+                self.cache.setObject(image, forKey: cacheKey, cost: self.cost(of: image))
                 completion(image)
                 return
             }
@@ -166,9 +175,30 @@ class ImageService {
         }
     }
     
+    /// Delivers a finished download to every waiter registered for this URL.
+    private func finishDownload(_ urlString: String, with image: UIImage?) {
+        inFlightLock.lock()
+        let completions = inFlightCompletions.removeValue(forKey: urlString) ?? []
+        inFlightLock.unlock()
+        DispatchQueue.main.async {
+            completions.forEach { $0(image) }
+        }
+    }
+
     private func downloadFromNetwork(urlString: String, completion: @escaping (UIImage?) -> Void) {
         let cacheKey = NSString(string: urlString)
-        
+
+        // Deduplicate concurrent requests: if this URL is already downloading,
+        // just wait for that download's result.
+        inFlightLock.lock()
+        if inFlightCompletions[urlString] != nil {
+            inFlightCompletions[urlString]?.append(completion)
+            inFlightLock.unlock()
+            return
+        }
+        inFlightCompletions[urlString] = [completion]
+        inFlightLock.unlock()
+
         // Check if URL needs base URL prepended (for relative URLs)
         var finalURLString = urlString
         if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
@@ -179,76 +209,67 @@ class ImageService {
         }
         
         // Validate URL
-        guard let url = URL(string: finalURLString), 
-              let host = url.host, 
+        guard let url = URL(string: finalURLString),
+              let host = url.host,
               !host.isEmpty else {
             Logger.error("ImageService: Invalid URL or missing hostname: \(finalURLString)")
-            completion(nil)
+            finishDownload(urlString, with: nil)
             return
         }
-        
+
         // Additional validation for obviously invalid hostnames
         if host.contains("..") || host.hasPrefix(".") || host.hasSuffix(".") {
             Logger.error("ImageService: Invalid hostname format: \(host)")
-            completion(nil)
+            finishDownload(urlString, with: nil)
             return
         }
-        
+
         URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+            guard let self = self else { return }
+
             if let error = error {
                 Logger.error("ImageService: Download error: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    completion(nil)
-                }
+                self.finishDownload(urlString, with: nil)
                 return
             }
-            
+
             if let httpResponse = response as? HTTPURLResponse {
                 if httpResponse.statusCode == 403 {
                     Logger.warning("ImageService: HTTP 403 Forbidden - This image may be from an old Firebase project")
                     Logger.debug("ImageService: URL attempted: \(url)")
-                    
+
                     // Check if this is an old Firebase project URL
                     if finalURLString.contains("circles-app-4902d") {
                         Logger.warning("ImageService: This is an image from the old Firebase project. It needs to be re-uploaded.")
                     }
-                    
-                    DispatchQueue.main.async {
-                        completion(nil)
-                    }
+
+                    self.finishDownload(urlString, with: nil)
                     return
                 } else if httpResponse.statusCode != 200 {
                     Logger.error("ImageService: HTTP Error - Status \(httpResponse.statusCode)")
                     if let data = data, let errorString = String(data: data, encoding: .utf8) {
                         Logger.debug("ImageService: Error response: \(errorString)")
                     }
-                    DispatchQueue.main.async {
-                        completion(nil)
-                    }
+                    self.finishDownload(urlString, with: nil)
                     return
                 }
             }
-            
-            guard let self = self else { return }
+
             guard let data = data, let image = self.decodedImage(from: data) else {
                 Logger.error("ImageService: Failed to create image from data")
-                DispatchQueue.main.async {
-                    completion(nil)
-                }
+                self.finishDownload(urlString, with: nil)
                 return
             }
 
             // Cache the image in memory
             self.cache.setObject(image, forKey: cacheKey, cost: self.cost(of: image))
-            
+
             // Cache the image to disk
             // Determine if this is user's own content based on URL patterns
             let isUserContent = self.isUserOwnContent(urlString: finalURLString)
             self.mediaCacheService.cacheImage(image, for: urlString, userId: AuthService.shared.getUserId(), isPermanent: isUserContent)
-            
-            DispatchQueue.main.async {
-                completion(image)
-            }
+
+            self.finishDownload(urlString, with: image)
         }.resume()
     }
     
@@ -299,22 +320,22 @@ class ImageService {
                 }
             }
             
-            guard let data = data, let image = UIImage(data: data) else {
+            guard let self = self, let data = data, let image = self.decodedImage(from: data) else {
                 Logger.error("ImageService: Failed to create image from Google API data")
                 DispatchQueue.main.async {
                     completion(nil)
                 }
                 return
             }
-            
+
             // Successfully downloaded from Google API
             Logger.info("ImageService: Successfully downloaded image from Google API (temporary)")
             Logger.warning("ImageService: ⚠️ This place should be migrated to Firebase Storage")
-            
+
             // Cache temporarily but don't save to permanent cache
             // since this URL will expire
             let cacheKey = NSString(string: urlString)
-            self?.cache.setObject(image, forKey: cacheKey)
+            self.cache.setObject(image, forKey: cacheKey, cost: self.cost(of: image))
             
             DispatchQueue.main.async {
                 completion(image)
@@ -322,6 +343,37 @@ class ImageService {
         }.resume()
     }
     
+    /// Warm the REAL display caches (memory NSCache + MediaCacheService disk)
+    /// for a set of URLs. Replaces CacheService.preloadImages, which
+    /// downloaded every avatar into a store the display path never read —
+    /// and whose per-launch-seeded hash filenames guaranteed misses across
+    /// launches — so each preloaded image was downloaded twice per session.
+    /// The in-flight dedup above means a cell requesting the same URL moments
+    /// later shares the preload's download instead of firing its own.
+    func preloadImages(from urls: [String], completion: ((Int) -> Void)? = nil) {
+        guard !urls.isEmpty else {
+            completion?(0)
+            return
+        }
+        let counterLock = NSLock()
+        var loaded = 0
+        let group = DispatchGroup()
+        for url in urls {
+            group.enter()
+            loadImage(from: url) { image in
+                if image != nil {
+                    counterLock.lock()
+                    loaded += 1
+                    counterLock.unlock()
+                }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) {
+            completion?(loaded)
+        }
+    }
+
     // Clear cache on logout
     func clearCache() {
         cache.removeAllObjects()
@@ -362,13 +414,30 @@ class ImageService {
     
     // MARK: - Photo Migration
     
+    // A feed full of expired Google photos must not fire one GLOBAL migration
+    // per image — one at a time is plenty (it migrates everything anyway).
+    private var isMigrationInFlight = false
+
     /// Attempts to automatically migrate Google API photos to Firebase Storage
     private func attemptPhotoMigration(for originalUrl: String, completion: @escaping (UIImage?) -> Void) {
+        inFlightLock.lock()
+        if isMigrationInFlight {
+            inFlightLock.unlock()
+            Logger.debug("ImageService: Photo migration already running — skipping duplicate trigger")
+            completion(nil)
+            return
+        }
+        isMigrationInFlight = true
+        inFlightLock.unlock()
+
         Logger.info("ImageService: Starting automatic photo migration for URL: \(originalUrl)")
-        
+
         // Extract place ID from the URL if possible
         // For now, trigger global migration and retry the image
         PlaceService.shared.migrateGooglePhotosToFirebase { [weak self] result in
+            self?.inFlightLock.lock()
+            self?.isMigrationInFlight = false
+            self?.inFlightLock.unlock()
             switch result {
             case .success:
                 Logger.info("ImageService: Photo migration completed successfully")
@@ -395,18 +464,18 @@ class ImageService {
         
         URLSession.shared.dataTask(with: url) { data, response, error in
             guard let data = data,
-                  let image = UIImage(data: data),
+                  let image = self.decodedImage(from: data),
                   error == nil else {
                 Logger.info("ImageService: Migration retry failed, image still not available")
                 DispatchQueue.main.async { completion(nil) }
                 return
             }
-            
+
             Logger.info("ImageService: Successfully loaded image after migration")
-            
+
             // Cache the image
             let cacheKey = NSString(string: urlString)
-            self.cache.setObject(image, forKey: cacheKey)
+            self.cache.setObject(image, forKey: cacheKey, cost: self.cost(of: image))
             
             DispatchQueue.main.async { completion(image) }
         }.resume()

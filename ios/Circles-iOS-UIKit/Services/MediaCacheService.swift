@@ -211,10 +211,19 @@ class MediaCacheService {
     
     func retrieveImage(for url: String, completion: @escaping (UIImage?) -> Void) {
         retrieveMedia(for: url) { data in
-            if let data = data, let image = UIImage(data: data) {
-                completion(image)
-            } else {
+            guard let data = data else {
                 completion(nil)
+                return
+            }
+            // Decode + rasterize OFF the main thread. retrieveMedia completes
+            // on main, so the old UIImage(data:) here was decoding a JPEG on
+            // the main thread for every disk-cache hit — i.e. during scroll.
+            DispatchQueue.global(qos: .userInitiated).async {
+                let image = UIImage(data: data)
+                let prepared = image?.preparingForDisplay() ?? image
+                DispatchQueue.main.async {
+                    completion(prepared)
+                }
             }
         }
     }

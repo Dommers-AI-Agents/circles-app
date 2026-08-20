@@ -27,9 +27,16 @@ class GooglePlacesService {
     // MARK: - Photo Loading (ONLY ALLOWED GOOGLE PLACES USAGE)
     
     /// Load a place photo from Google Places API
-    /// This is the ONLY acceptable use of Google Places API in this app
+    /// This is the ONLY acceptable use of Google Places API in this app.
+    /// maxSize is honored via the constrained variant — the unconstrained
+    /// loadPlacePhoto fetched MAX resolution regardless of the parameter,
+    /// which downloaded multi-MB originals to fill small cells.
     func loadPhoto(from metadata: GMSPlacePhotoMetadata, maxSize: CGSize = CGSize(width: 800, height: 600), completion: @escaping (Result<UIImage, Error>) -> Void) {
-        placesClient.loadPlacePhoto(metadata) { photo, error in
+        placesClient.loadPlacePhoto(
+            metadata,
+            constrainedTo: maxSize,
+            scale: UIScreen.main.scale
+        ) { photo, error in
             if let error = error {
                 completion(.failure(error))
             } else if let photo = photo {
