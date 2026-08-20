@@ -251,6 +251,16 @@ class APIService {
         // Resource timeout is the TOTAL ceiling per transfer — 30s capped even
         // requests that set a longer per-request timeoutInterval (import)
         configuration.timeoutIntervalForResource = 180
+        // HTTP cache for ETag revalidation: the backend stamps API GETs with
+        // Cache-Control: no-cache + a weak ETag, so cached entries are ALWAYS
+        // revalidated with the server (never served stale) — an unchanged
+        // response costs a ~0-byte 304 instead of a full body. Huge on weak
+        // cell signal.
+        configuration.urlCache = URLCache(
+            memoryCapacity: 20 * 1024 * 1024,
+            diskCapacity: 100 * 1024 * 1024
+        )
+        configuration.requestCachePolicy = .useProtocolCachePolicy
         session = URLSession(configuration: configuration)
         
         // Setup date decoding strategy for ISO8601 with fractional seconds
@@ -377,8 +387,15 @@ class APIService {
         if method == .get {
             let requestKey = createRequestKey(endpoint: endpoint, method: method, body: body)
             
-            // Only prevent duplicates for specific endpoints that are problematic
-            let shouldPreventDuplicates = endpoint.contains("/users/") || 
+            // NOTE: endpoints arrive WITHOUT a leading slash ("circles/me"),
+            // so these patterns only match nested paths (e.g. "users/x/y").
+            // That mismatch has been live forever, which means this rejection
+            // path effectively never fires on the launch endpoints — callers
+            // don't handle .duplicateRequest, so widening the patterns now
+            // would surface failures instead of saving requests. Rapid
+            // duplicates are already smoothed by the 500ms throttle below;
+            // redundant launch calls were removed at their call sites instead.
+            let shouldPreventDuplicates = endpoint.contains("/users/") ||
                                          endpoint.contains("/circles/") ||
                                          endpoint.contains("/places/")
             
@@ -525,10 +542,11 @@ class APIService {
             request.timeoutInterval = 120
         }
         
-        // Disable caching for GET requests to ensure fresh data
-        if method == .get {
-            request.cachePolicy = .reloadIgnoringLocalCacheData
-        }
+        // GETs use protocol caching: the server's Cache-Control: no-cache +
+        // ETag mean every request revalidates (fresh data guaranteed) but an
+        // unchanged response is a 304 with no body. Do NOT restore
+        // .reloadIgnoringLocalCacheData here — it made every repeat request
+        // re-download the full payload.
         
         // Add auth token if required and available
         if requiresAuth {
@@ -637,7 +655,30 @@ class APIService {
                         Logger.debug("❌ ERROR APIService: Error code: \((error as NSError).code)")
                     }
                 }
-                
+
+                // Transient network drop on an idempotent GET: retry once
+                // after 1s instead of failing the caller outright — on flaky
+                // cell signal a single dropped socket otherwise costs the
+                // whole UI element its data.
+                if method == .get, retryCount < 1,
+                   let urlError = error as? URLError,
+                   urlError.code == .networkConnectionLost || urlError.code == .timedOut {
+                    Logger.debug("🔄 APIService: Transient \(urlError.code) on GET \(endpoint) — retrying once in 1s")
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) {
+                        self.performRequest(
+                            endpoint: endpoint,
+                            method: method,
+                            queryParams: queryParams,
+                            body: body,
+                            headers: headers,
+                            requiresAuth: requiresAuth,
+                            retryCount: retryCount + 1,
+                            completion: completion
+                        )
+                    }
+                    return
+                }
+
                 let apiError: APIError
                 
                 if let urlError = error as? URLError {

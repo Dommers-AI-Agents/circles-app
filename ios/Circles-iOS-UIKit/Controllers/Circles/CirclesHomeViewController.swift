@@ -84,6 +84,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     // When true, network places load on demand for the visible map region
     // instead of the per-circle fan-out. Flip to false to restore old behavior.
     let useViewportNetworkLoading = true
+
+    // MARK: - Batched Place Loading
+    // When true, own-circle places load via ONE POST places/batch call instead
+    // of one GET per circle. Flip to false to restore the per-circle fan-out
+    // (kept for one release as a fallback).
+    let useBatchPlacesFetch = true
+    // Guards the disk-cache paint so it happens at most once per instance
+    var hasPaintedPlacesFromDiskCache = false
     var fetchedViewportCircles: [(center: CLLocationCoordinate2D, radiusM: Double)] = []
     var isFetchingViewport = false
     // Connections whose FULL place set has been loaded (not viewport-bounded),
@@ -1496,13 +1504,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
         // Step 1: Safe cache optimization - check if we have cached data to speed up loading
         tryLoadFromCache()
-        
+
+        // Step 2: Instant pins — paint the last session's complete place set
+        // from disk while the network refresh (below) is in flight
+        paintPlacesFromDiskCacheIfEmpty()
+
         // Step 3: Optional skeleton loading - only for slow connections
         scheduleOptionalSkeletonLoading()
-        
-        // Step 4: Try fast API as alternative data source
-        tryFastAPIAsAlternative()
-        
+
+        // (Removed: tryFastAPIAsAlternative — it fetched home/homescreen on
+        // every appearance and discarded the result on the normal launch
+        // paths; the endpoints below load the same data.)
+
         // IMMEDIATE MAP LOADING FEEDBACK: Show loading state immediately
         // This prevents users from seeing an empty confusing map
         showMapLoadingStateImmediate()
@@ -1569,16 +1582,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Mark that this instance has started loading
         hasStartedLoading = true
-        
-        // NOW create the debounce timer (only if we didn't have preloaded data)
-        loadDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-            guard let self = self else { return }
-            Logger.debug("🟢 Starting initial data load (after debounce)")
-            // Start data load without refreshing user list yet
-            // User list will be refreshed after all data is loaded
-            self.performInitialDataLoad()
-        }
-        
+
+        // Start immediately — the old 0.3s debounce timer added flat latency
+        // to every no-preload launch (viewWillAppear runs once on this path;
+        // hasStartedLoading above already guards re-entry).
+        Logger.debug("🟢 Starting initial data load")
+        performInitialDataLoad()
+
         // Don't show filter stack here - let hideMapLoadingState handle it
         // This prevents the filter from showing then hiding again
     }
@@ -2579,12 +2589,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // The connections will be properly loaded with all data in viewWillAppear via refresh()
         Logger.debug("✅ usePreloadedData: Skipping initial connections - will load with proper data via refresh()")
         
-        // Don't use preloaded places - they're incomplete!
-        // Instead, trigger a full fetch of all places
-        self.allPlaces = [] // Clear places
-        self.cachedPlaces = [] // Clear cache
-        self.userOwnPlaces = [] // Clear user places
-        
+        // Preloaded places are incomplete (the splash deliberately skips them),
+        // so a full fetch below still REPLACES everything. But instead of
+        // clearing to an empty map while that runs, paint the last session's
+        // complete set from disk (stale-while-revalidate).
+        paintPlacesFromDiskCacheIfEmpty()
+
         CirclesHomeViewController.hasLoadedInitialData = false // Force a proper load
         
         // Mark that we've loaded circles but need to fetch places
@@ -3546,18 +3556,42 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 return
             }
             
-            // Phase 2: Fetch places in parallel with concurrency limit
+            // Phase 2: Fetch places — one batch call, or the legacy per-circle
+            // fan-out when the fallback flag is off
             let placeGroup = DispatchGroup()
-            let placeSemaphore = DispatchSemaphore(value: 5) // Max 5 concurrent requests
+            let placeSemaphore = DispatchSemaphore(value: 5) // Max 5 concurrent requests (legacy path)
             var placesArray = [[Place]]()
             let placesLock = NSLock()
-            
+            var placesFetchComplete = true
+
+            if self.useBatchPlacesFetch {
+                let circleIdsToFetch = allCircles.map { $0.id }
+                var chunkStart = 0
+                while chunkStart < circleIdsToFetch.count {
+                    let chunk = Array(circleIdsToFetch[chunkStart..<min(chunkStart + 50, circleIdsToFetch.count)])
+                    chunkStart += 50
+                    placeGroup.enter()
+                    PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: chunk) { result in
+                        switch result {
+                        case .success(let places):
+                            placesLock.lock()
+                            placesArray.append(places)
+                            placesLock.unlock()
+                            Logger.debug("✅ Batch fetched \(places.count) places from \(chunk.count) circles")
+                        case .failure(let error):
+                            Logger.debug("❌ Batch place fetch failed: \(error)")
+                            placesFetchComplete = false
+                        }
+                        placeGroup.leave()
+                    }
+                }
+            } else {
             for circle in allCircles {
                 placeGroup.enter()
-                
+
                 DispatchQueue.global(qos: .userInitiated).async {
                     placeSemaphore.wait()
-                    
+
                     PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
                         switch result {
                         case .success(let places):
@@ -3619,14 +3653,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                             
                         case .failure(let error):
                             Logger.debug("❌ Failed to fetch places for circle '\(circle.name)': \(error)")
+                            placesFetchComplete = false
                         }
-                        
+
                         placeSemaphore.signal()
                         placeGroup.leave()
                     }
                 }
             }
-            
+            } // end legacy per-circle fallback
+
             placeGroup.notify(queue: .main) { [weak self] in
                 guard let self = self else { return }
                 
@@ -3663,6 +3699,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 // Cache the final places data
                 self.cachedPlaces = uniquePlaces
                 self.placesCacheExpiry = Date().addingTimeInterval(5 * 60) // 5 minutes
+
+                // Persist own places for the next cold start's instant paint —
+                // only from a COMPLETE fetch (partial sets must never hit disk)
+                if placesFetchComplete, !self.userOwnPlaces.isEmpty,
+                   let cacheUserId = AuthService.shared.getUserId() {
+                    PlacesDiskCache.shared.save(places: self.userOwnPlaces, userId: cacheUserId)
+                }
                 
                 // Final map update with complete data (progressive loading already showed most places)
                 self.isMapDataReady = true
@@ -4111,6 +4154,40 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         updateEmptyState()
     }
     
+    /// Instant pins: paint the last session's complete place set from disk
+    /// while the network refresh runs. Strictly stale-while-revalidate — the
+    /// in-flight fetch REPLACES this set wholesale when it lands, so deleted
+    /// or edited places disappear after one refresh. Never blocks, never
+    /// merges, and only paints when nothing fresher is already on screen.
+    func paintPlacesFromDiskCacheIfEmpty() {
+        guard !hasPaintedPlacesFromDiskCache, allPlaces.isEmpty,
+              let userId = AuthService.shared.getUserId() else { return }
+        hasPaintedPlacesFromDiskCache = true
+
+        PlacesDiskCache.shared.load(userId: userId) { [weak self] cached in
+            guard let self = self, let cached = cached, !cached.isEmpty else { return }
+            // A network result may have landed while the disk read ran — it wins.
+            guard self.allPlaces.isEmpty else { return }
+
+            Logger.debug("💾 Painting \(cached.count) cached places while refresh is in flight")
+            self.allPlaces = cached
+            let userCircleIds = Set(self.circles.map { $0.id })
+            if !userCircleIds.isEmpty {
+                self.userOwnPlaces = cached.filter { place in
+                    guard let circleId = place.circleId else { return false }
+                    return userCircleIds.contains(circleId)
+                }
+            }
+            self.isMapDataReady = true
+            let filtered = self.applyFiltersToPlaces(cached)
+            self.filteredPlaces = filtered
+            self.mapViewController?.updatePlaces(filtered)
+            self.updatePlaceCountLabel(count: filtered.count)
+            self.updateAvailableCategories()
+            self.hideMapLoadingState()
+        }
+    }
+
     func fetchAllPlacesFromCircles() {
         // Reset map data ready flag at the start of any fetch
         isMapDataReady = false
@@ -4169,23 +4246,52 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Fetch user's own places
         var userPlacesCount = 0
-        Logger.debug("📍 Starting to fetch places from \(circles.count) user circles:")
-        for (index, circle) in circles.enumerated() {
-            Logger.debug("   Circle \(index + 1)/\(circles.count): '\(circle.name)' (ID: \(circle.id), Expected places: \(circle.placesCount ?? 0))")
-            group.enter()
-            PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
-                switch result {
-                case .success(let places):
-                    Logger.debug("✅ Fetched \(places.count) places from USER circle '\(circle.name)' (expected: \(circle.placesCount ?? 0))")
-                    userPlacesCount += places.count
-                    allFetchedPlaces.append(contentsOf: places)
-                case .failure(let error):
-                    Logger.debug("❌ Failed to fetch places for USER circle '\(circle.name)' (id: \(circle.id)): \(error)")
+        // Tracks whether every own-place request succeeded — the disk cache is
+        // only written from a COMPLETE set (a partial one served stale-missing
+        // places when the old cache was enabled; that's why it was disabled).
+        var ownPlacesFetchComplete = true
+
+        if useBatchPlacesFetch {
+            // One POST places/batch instead of one GET per circle (server caps
+            // a request at 50 circle ids; typically this is a single request)
+            let ownCircleIds = circles.map { $0.id }
+            Logger.debug("📍 Batch-fetching places from \(ownCircleIds.count) user circles")
+            var index = 0
+            while index < ownCircleIds.count {
+                let chunk = Array(ownCircleIds[index..<min(index + 50, ownCircleIds.count)])
+                index += 50
+                group.enter()
+                PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: chunk) { result in
+                    switch result {
+                    case .success(let places):
+                        Logger.debug("✅ Batch fetched \(places.count) places from \(chunk.count) circles")
+                        userPlacesCount += places.count
+                        allFetchedPlaces.append(contentsOf: places)
+                    case .failure(let error):
+                        Logger.debug("❌ Batch place fetch failed: \(error)")
+                        ownPlacesFetchComplete = false
+                    }
+                    group.leave()
                 }
-                group.leave()
+            }
+        } else {
+            Logger.debug("📍 Starting to fetch places from \(circles.count) user circles:")
+            for circle in circles {
+                group.enter()
+                PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
+                    switch result {
+                    case .success(let places):
+                        userPlacesCount += places.count
+                        allFetchedPlaces.append(contentsOf: places)
+                    case .failure(let error):
+                        Logger.debug("❌ Failed to fetch places for USER circle '\(circle.name)' (id: \(circle.id)): \(error)")
+                        ownPlacesFetchComplete = false
+                    }
+                    group.leave()
+                }
             }
         }
-        
+
         // Always fetch network circles for map view (need to show connection places)
         // First, fetch network circles if we don't have them
         if networkCircles.isEmpty && !circles.isEmpty {
@@ -4314,6 +4420,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // Cache the deduplicated places with expiry time
             self.cachedPlaces = deduplicatedPlaces
             self.placesCacheExpiry = Date().addingTimeInterval(self.cacheExpiryMinutes * 60)
+
+            // Persist the user's own places for the next cold start's instant
+            // paint — ONLY when every own-place request succeeded (a partial
+            // set on disk is exactly the bug that got the old cache disabled)
+            if ownPlacesFetchComplete, !userPlacesAfterDedup.isEmpty,
+               let cacheUserId = AuthService.shared.getUserId() {
+                PlacesDiskCache.shared.save(places: userPlacesAfterDedup, userId: cacheUserId)
+            }
             
             // Apply filtering to fetched places
             let mapFilteredPlaces = self.applyFiltersToPlaces(deduplicatedPlaces)

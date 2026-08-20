@@ -236,24 +236,27 @@ class HorizontalUserListView: UIView {
             object: nil
         )
 
-        // Don't automatically load connections - wait for either:
-        // 1. Initial connections to be set via setInitialConnections()
-        // 2. Manual refresh() call
-        // This prevents showing fake users during app startup
-        
         // Show loading state initially
         loadingIndicator.startAnimating()
         collectionView.isHidden = true
-        
-        // Set a timer to load connections if initial connections aren't provided quickly
-        // This prevents the view from staying in loading state indefinitely
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self = self else { return }
-            if !self.hasLoadedConnections {
-                Logger.debug("⏰ HorizontalUserListView: No initial connections received after 0.5 seconds, loading from network")
-                self.loadActiveConnections()
-            }
+
+        // Paint whatever NetworkManager already holds (preload/previous
+        // session) so the row is never a spinner when data exists, then load
+        // fresh immediately. Painted directly (not via displayConnections) so
+        // pagination state stays untouched; the in-flight first-page load
+        // REPLACES this set when it lands. The old 0.5s arm timer added half
+        // a second of guaranteed spinner to every launch on this init path.
+        let cachedConnections = NetworkManager.shared.connections
+        if !cachedConnections.isEmpty {
+            Logger.debug("💾 HorizontalUserListView: Painting \(cachedConnections.count) cached connections while refreshing")
+            connections = cachedConnections
+            allLoadedConnections = cachedConnections
+            loadingIndicator.stopAnimating()
+            collectionView.reloadData()
+            collectionView.isHidden = false
+            emptyStateView.isHidden = true
         }
+        loadActiveConnections()
     }
     
     // Initializer with preloaded connections to prevent race condition
@@ -459,25 +462,72 @@ class HorizontalUserListView: UIView {
             emptyStateView.isHidden = true
         }
         
-        // First, check if user has ANY connections at all (only on first page)
+        // First page: the sorted active-relationships call is what the row
+        // actually renders; the full connections list is only its fallback.
+        // The two are independent, so they run IN PARALLEL — the old serial
+        // chain (connections → active-relationships) put two full round trips
+        // between launch and the spinner stopping.
         if currentPage == 0 {
-            NetworkManager.shared.fetchConnections { [weak self] allConnections, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                Logger.debug("❌ HorizontalUserListView: Error checking connections: \(error)")
-                
-                // Implement retry logic with exponential backoff
-                if self.loadRetryCount < self.maxRetries {
+            let offset = currentPage * pageSize
+            var acceptedConnections = NetworkManager.shared.connections
+            var connectionsError: Error?
+            var activeRelationships: [Connection]?
+            var activeError: Error?
+
+            let group = DispatchGroup()
+
+            // Reuse NetworkManager's in-memory copy when it has one — the
+            // launch paths already load it once; no need for this row to
+            // issue its own GET connections on top.
+            if acceptedConnections.isEmpty {
+                group.enter()
+                NetworkManager.shared.fetchConnections { allConnections, error in
+                    connectionsError = error
+                    acceptedConnections = allConnections?.filter { $0.status == .accepted } ?? []
+                    group.leave()
+                }
+            }
+
+            group.enter()
+            NetworkManager.shared.fetchActiveRelationships(limit: pageSize, offset: offset) { relationships, error in
+                activeRelationships = relationships
+                activeError = error
+                group.leave()
+            }
+
+            group.notify(queue: .main) { [weak self] in
+                guard let self = self else { return }
+
+                // Preferred: backend-sorted active relationships (connections
+                // + followed users)
+                if let active = activeRelationships, !active.isEmpty {
+                    self.hasLoadedConnections = true
+                    self.displayConnections(active, alreadySorted: true, allowEmptyState: true)
+                    return
+                }
+
+                // Fallback: plain accepted connections, client-side sorted
+                if !acceptedConnections.isEmpty {
+                    self.hasLoadedConnections = true
+                    Logger.debug("🔄 HorizontalUserListView: Active relationships empty/failed — falling back to accepted connections")
+                    self.displayConnections(acceptedConnections, alreadySorted: false, allowEmptyState: true)
+                    return
+                }
+
+                // Nothing displayable and at least one call failed → retry
+                // the load with exponential backoff (1s, 2s, 4s)
+                if (activeError != nil || connectionsError != nil), self.loadRetryCount < self.maxRetries {
                     self.loadRetryCount += 1
-                    let retryDelay = pow(2.0, Double(self.loadRetryCount - 1)) // 1s, 2s, 4s
+                    let retryDelay = pow(2.0, Double(self.loadRetryCount - 1))
                     Logger.debug("🔄 HorizontalUserListView: Retrying load attempt \(self.loadRetryCount) of \(self.maxRetries) after \(retryDelay)s delay")
-                    
                     DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) { [weak self] in
                         self?.loadActiveConnections()
                     }
-                } else {
-                    // Max retries reached, stop loading and show empty state
+                    return
+                }
+
+                // Hard failure after max retries → error state with retry button
+                if activeError != nil && connectionsError != nil {
                     Logger.debug("❌ HorizontalUserListView: Max retries reached, stopping load attempts")
                     self.hasLoadedConnections = true
                     self.loadingIndicator.stopAnimating()
@@ -485,96 +535,14 @@ class HorizontalUserListView: UIView {
                     self.emptyStateLabel.text = "Unable to load connections"
                     self.goToNetworkButton.setTitle("Try again", for: .normal)
                     self.emptyStateView.isHidden = false
+                    return
                 }
-                return
+
+                // Genuinely empty (calls succeeded, no relationships) — the
+                // empty path also handles the young-account race retry
+                self.hasLoadedConnections = true
+                self.displayConnections([], alreadySorted: false, allowEmptyState: true)
             }
-            
-            let acceptedConnections = allConnections?.filter { $0.status == .accepted } ?? []
-            Logger.debug("🔍 HorizontalUserListView: User has \(acceptedConnections.count) accepted connections total")
-            
-            if acceptedConnections.isEmpty {
-                // User truly has no connections - but still try active connections endpoint
-                Logger.debug("🔍 HorizontalUserListView: No accepted connections found, checking active connections endpoint")
-                
-                let offset = self.currentPage * self.pageSize
-                NetworkManager.shared.fetchActiveRelationships(limit: self.pageSize, offset: offset) { [weak self] activeRelationships, error in
-                    guard let self = self else { return }
-                    
-                    if let error = error {
-                        Logger.debug("❌ HorizontalUserListView: Error loading active relationships for user with no accepted connections: \(error)")
-                        
-                        // Apply same retry logic here
-                        if self.loadRetryCount < self.maxRetries {
-                            self.loadRetryCount += 1
-                            let retryDelay = pow(2.0, Double(self.loadRetryCount - 1))
-                            Logger.debug("🔄 HorizontalUserListView: Retrying load attempt \(self.loadRetryCount) of \(self.maxRetries) after \(retryDelay)s delay")
-                            
-                            DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay) { [weak self] in
-                                self?.loadActiveConnections()
-                            }
-                            return
-                        }
-                    }
-                    
-                    self.hasLoadedConnections = true
-                    
-                    // Display the fetched relationships (could be following relationships even with no connections)
-                    if let activeRelationships = activeRelationships, !activeRelationships.isEmpty {
-                        Logger.debug("🔍 HorizontalUserListView: Found \(activeRelationships.count) relationships for user with no connections")
-                        self.displayConnections(activeRelationships, alreadySorted: true, allowEmptyState: true)
-                    } else {
-                        Logger.debug("🔍 HorizontalUserListView: No relationships found - showing empty state")
-                        self.displayConnections([], alreadySorted: false, allowEmptyState: true)
-                    }
-                }
-            } else {
-                // User has connections - try to get active ones including followed users
-                let offset = self.currentPage * self.pageSize
-                NetworkManager.shared.fetchActiveRelationships(limit: self.pageSize, offset: offset) { [weak self] activeRelationships, error in
-                    guard let self = self else { return }
-                    
-                    self.hasLoadedConnections = true
-                    
-                    Logger.debug("🔍 HorizontalUserListView: Received \(activeRelationships?.count ?? 0) active relationships")
-                    if let error = error {
-                        Logger.debug("❌ HorizontalUserListView: Error loading active relationships: \(error)")
-                        
-                        // If we fail to get active connections but we know the user has connections,
-                        // we should still use the accepted connections we already have
-                        if !acceptedConnections.isEmpty {
-                            Logger.debug("🔄 HorizontalUserListView: Falling back to accepted connections after active connections error")
-                            self.displayConnections(acceptedConnections, alreadySorted: false, allowEmptyState: true)
-                            return
-                        }
-                    }
-                    
-                    // Debug: Log all active relationships received from backend
-                    if let activeRelationships = activeRelationships {
-                        Logger.debug("🔍 HorizontalUserListView: Raw active relationships from backend:")
-                        for (index, relationship) in activeRelationships.enumerated() {
-                            let name = relationship.connectedUser?.displayName ?? "Unknown"
-                            let type = relationship.relationshipType ?? "connection"
-                            let score = relationship.connectionScore != nil ? String(format: "%.2f", relationship.connectionScore!) : "NO SCORE"
-                            let hasMessages = relationship.lastMessageAt != nil ? "✓" : "✗"
-                            let hasActivity = (relationship.hasRecentPlace ?? false) ? "✓" : "✗"
-                            Logger.debug("   \(index + 1). \(name) | Type: \(type) | Score: \(score) | Messages: \(hasMessages) | Activity: \(hasActivity)")
-                        }
-                    }
-                    
-                    if let activeRelationships = activeRelationships, !activeRelationships.isEmpty {
-                        // Use active relationships (already sorted by backend)
-                        Logger.debug("🔍 HorizontalUserListView: ✅ USING BACKEND-SORTED ACTIVE RELATIONSHIPS")
-                        Logger.debug("🔍 HorizontalUserListView: Including both connections and followed users")
-                        self.displayConnections(activeRelationships, alreadySorted: true, allowEmptyState: true)
-                    } else {
-                        // Fall back to all connections if active endpoint returns empty
-                        Logger.debug("🔍 HorizontalUserListView: ❌ FALLING BACK TO CLIENT-SIDE SORTING")
-                        Logger.debug("🔍 HorizontalUserListView: This means active endpoint failed or returned empty")
-                        self.displayConnections(acceptedConnections, alreadySorted: false, allowEmptyState: true)
-                    }
-                }
-            }
-            } // End of fetchConnections closure
         } else {
             // For subsequent pages, directly load more relationships
             let offset = currentPage * pageSize
@@ -884,15 +852,13 @@ class HorizontalUserListView: UIView {
                     // Reset retry count on successful load
                     self.loadRetryCount = 0
                     
-                    // Stop loading and show the sorted connections
+                    // Stop loading and show the sorted connections immediately
+                    // (a 0.1s "smooth transition" delay here just held the row
+                    // hostage for another frame batch)
                     self.loadingIndicator.stopAnimating()
-                    
-                    // Small delay ensures smooth transition from loading to content
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                        self?.collectionView.reloadData()
-                        self?.collectionView.isHidden = false
-                        self?.emptyStateView.isHidden = true
-                    }
+                    self.collectionView.reloadData()
+                    self.collectionView.isHidden = false
+                    self.emptyStateView.isHidden = true
 
                     // Sparse row → top it up with people worth following
                     self.fetchSuggestionsIfNeeded()
