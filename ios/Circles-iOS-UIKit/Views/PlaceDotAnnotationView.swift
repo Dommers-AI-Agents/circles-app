@@ -26,6 +26,9 @@ class PlaceDotAnnotationView: MKAnnotationView {
         // We do our own decluttering — MapKit must never hide a dot on top of it
         displayPriority = .required
         collisionMode = .circle
+        // Dots always layer BENEATH full pins (pins keep default zPriority) —
+        // part of the Google look: minor places never draw over major ones
+        zPriority = .min
 
         layer.cornerRadius = Self.dotSize / 2
         layer.borderWidth = 1.5
