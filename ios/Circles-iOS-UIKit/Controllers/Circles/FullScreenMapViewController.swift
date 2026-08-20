@@ -48,6 +48,15 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private var hasInitiallyZoomed = false // Track if we've done the initial zoom
     private var hasExplicitInitialRegion = false // Caller provided a region to open at
     private var viewportFetchTimer: Timer? // Debounce for viewport (region-change) notifications
+
+    // MARK: - Google-style pin decluttering (full pins vs. dots)
+    // Every place renders at its true location; the places nearest the user
+    // (or map center) hold full category pins until pins would overlap, and
+    // the rest render as small category-colored dots that promote to full
+    // pins on zoom-in. No numbered cluster bubbles, ever.
+    private var promotedPlaceIds = Set<String>()
+    private var pinTierRecomputeTimer: Timer?
+    private let maxFullPins = 45
     
     weak var delegate: FullScreenMapViewControllerDelegate?
     var viewMode: MapViewMode = .circle
@@ -1404,6 +1413,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         } else if adjustRegion {
             // If no new places to add, just adjust region
             adjustMapRegion()
+        } else if !annotationsToRemove.isEmpty {
+            // Removal-only update (e.g. narrower filter): freed space may let
+            // remaining dots promote to full pins
+            schedulePinTierRecompute()
         }
         
         let loadTime = CFAbsoluteTimeGetCurrent() - startTime
@@ -1425,11 +1438,100 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         mapView.addAnnotations(annotations)
         Logger.debug("🗺️ [SmoothMap] Added \(annotations.count) annotations in one pass")
 
+        schedulePinTierRecompute()
+
         if adjustRegion {
             adjustMapRegion()
         }
     }
-    
+
+    // MARK: - Pin Tiering (full pins near the user, dots elsewhere)
+
+    /// Debounced recompute — region changes and annotation churn both land here.
+    func schedulePinTierRecompute(delay: TimeInterval = 0.25) {
+        pinTierRecomputeTimer?.invalidate()
+        pinTierRecomputeTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            self?.recomputePinTiers()
+        }
+    }
+
+    /// Decide which places get full category pins vs. small dots.
+    ///
+    /// Greedy pass in priority order (distance from the user's location when
+    /// it's on screen, else from the map center): a place keeps its full pin
+    /// if the pin's screen rect doesn't collide with an already-accepted pin,
+    /// up to `maxFullPins`. Everything else renders as a dot at its true
+    /// coordinate. Zooming in frees space, so dots promote automatically on
+    /// the next region-change recompute.
+    private func recomputePinTiers() {
+        let placeAnnotations = mapView.annotations.compactMap { $0 as? PlaceAnnotation }
+        guard !placeAnnotations.isEmpty else {
+            promotedPlaceIds.removeAll()
+            return
+        }
+
+        // Anchor: pins should bloom around YOU when you're on screen
+        let anchor: CLLocationCoordinate2D
+        if let userCoord = mapView.userLocation.location?.coordinate,
+           mapView.visibleMapRect.contains(MKMapPoint(userCoord)) {
+            anchor = userCoord
+        } else {
+            anchor = mapView.centerCoordinate
+        }
+        let anchorLocation = CLLocation(latitude: anchor.latitude, longitude: anchor.longitude)
+
+        let byDistance = placeAnnotations
+            .map { annotation -> (PlaceAnnotation, CLLocationDistance) in
+                let c = annotation.coordinate
+                let distance = anchorLocation.distance(from: CLLocation(latitude: c.latitude, longitude: c.longitude))
+                return (annotation, distance)
+            }
+            .sorted { $0.1 < $1.1 }
+
+        // Approximate on-screen footprint of a full MKMarkerAnnotationView
+        // (marker balloon is bottom-anchored at the coordinate)
+        let pinSize = CGSize(width: 34, height: 42)
+        let visibleBounds = mapView.bounds.insetBy(dx: -40, dy: -50)
+        var acceptedRects: [CGRect] = []
+        var newPromoted = Set<String>()
+
+        // The selected annotation keeps its full pin no matter what —
+        // demoting it would yank the callout out from under the user
+        let selectedIds = Set(mapView.selectedAnnotations.compactMap { ($0 as? PlaceAnnotation)?.place.id })
+
+        for (annotation, _) in byDistance {
+            if newPromoted.count >= maxFullPins { break }
+            let point = mapView.convert(annotation.coordinate, toPointTo: mapView)
+            guard visibleBounds.contains(point) else { continue }
+            let rect = CGRect(
+                x: point.x - pinSize.width / 2,
+                y: point.y - pinSize.height,
+                width: pinSize.width,
+                height: pinSize.height
+            )
+            if acceptedRects.contains(where: { $0.intersects(rect) }) { continue }
+            acceptedRects.append(rect)
+            newPromoted.insert(annotation.place.id)
+        }
+        newPromoted.formUnion(selectedIds)
+
+        guard newPromoted != promotedPlaceIds else { return }
+        let changedIds = newPromoted.symmetricDifference(promotedPlaceIds)
+        promotedPlaceIds = newPromoted
+
+        // Changed annotations must re-dequeue for their new tier; remove+add
+        // is the reliable way to force that. Skip the selected annotation so
+        // its open callout survives.
+        let changed = placeAnnotations.filter {
+            changedIds.contains($0.place.id) && !selectedIds.contains($0.place.id)
+        }
+        if !changed.isEmpty {
+            mapView.removeAnnotations(changed)
+            mapView.addAnnotations(changed)
+        }
+        Logger.debug("🗺️ [PinTiers] \(newPromoted.count) full pins, \(placeAnnotations.count - newPromoted.count) dots (\(changed.count) retiered)")
+    }
+
     // MARK: - Helper Extensions
     
     func adjustMapRegion() {
@@ -1596,6 +1698,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     // MARK: - MKMapViewDelegate
 
     func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+        // Every zoom/pan changes which pins have room to be full-size —
+        // re-tier regardless of view mode
+        schedulePinTierRecompute()
+
         // Notify the delegate (debounced) so it can load places for the new viewport.
         // Fires for programmatic zooms too — that's how the initial viewport load happens.
         guard viewMode == .allPlaces else { return }
@@ -1619,6 +1725,16 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
         guard let placeAnnotation = annotation as? PlaceAnnotation else {
             return nil
+        }
+
+        // Demoted tier: small category-colored dot at the true location
+        // (promotes to a full pin when decluttering frees up space on zoom)
+        if !promotedPlaceIds.contains(placeAnnotation.place.id) {
+            let dotView = (mapView.dequeueReusableAnnotationView(withIdentifier: PlaceDotAnnotationView.reuseIdentifier) as? PlaceDotAnnotationView)
+                ?? PlaceDotAnnotationView(annotation: annotation, reuseIdentifier: PlaceDotAnnotationView.reuseIdentifier)
+            dotView.annotation = annotation
+            dotView.setCategoryColor(placeAnnotation.place.category.color)
+            return dotView
         }
 
         let identifier = "PlaceAnnotation"
@@ -1652,12 +1768,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         if let markerView = annotationView {
             markerView.markerTintColor = placeAnnotation.place.category.color
             markerView.glyphImage = UIImage(systemName: placeAnnotation.place.category.systemIconName)
-            // Cluster dense areas: with hundreds of individual markers, MapKit
-            // spends most of a pan/zoom frame laying out overlapping views.
-            // MKClusterAnnotations render MapKit's default numbered bubble and
-            // split apart on zoom; taps on them fall through the PlaceAnnotation
-            // guards in the tap handlers.
-            markerView.clusteringIdentifier = "place"
+            // NO clusteringIdentifier: numbered cluster bubbles hide the
+            // places (rejected 2026-08-20). Density is handled by our own
+            // pin/dot tiering instead — see recomputePinTiers().
+            markerView.clusteringIdentifier = nil
+            // We declutter ourselves; MapKit must not additionally hide pins
+            markerView.displayPriority = .required
         }
 
         return annotationView
