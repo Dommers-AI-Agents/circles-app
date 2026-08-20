@@ -308,6 +308,11 @@ exports.firebaseAuth = async (req, res, next) => {
     let user;
     let userRef;
     let existingUserId = null;
+    // Function-scoped: the response builder needs this in EVERY branch. The
+    // old `result.isNew` read crashed the email-merge path with a
+    // ReferenceError (result is block-scoped to the provider-ID branch) —
+    // exactly what App Review hit signing in with Apple, 2026-08-20.
+    let isNewSocialUser = false;
     
     if (email) {
       // Query for existing user by email (primary or alternate)
@@ -559,6 +564,7 @@ exports.firebaseAuth = async (req, res, next) => {
       user = serializeDoc(finalUserDoc);
       
       if (result.isNew) {
+        isNewSocialUser = true;
         console.log(`✅ New user created successfully with ID: ${simpleUid} (original: ${uid})`);
 
         // App Clip signups: stamp acquisition fields (analytics only — points
@@ -666,7 +672,7 @@ exports.firebaseAuth = async (req, res, next) => {
       duplicateSuggestion: duplicateSuggestion, // Include duplicate suggestion if found
       // Social signups need this to run the same first-session onboarding
       // (welcome carousel → first-people sheet) that email signups get
-      isNewUser: !!(result && result.isNew)
+      isNewUser: isNewSocialUser
     };
 
     console.log('📤 Sending auth response with normalized ID:', {
