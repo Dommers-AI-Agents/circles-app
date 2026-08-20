@@ -4289,6 +4289,20 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     connSnap1.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().connectedUserId)));
     connSnap2.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().userId)));
 
+    // Place activities across ALL connections, keyed by place id — powers the
+    // same isNew flag getPlacesByCircleId computes, from docs already in hand.
+    // (Deliberately NOT paired with markCirclePlacesViewed: a bulk home load
+    // is not "entering the circle", so red dots survive until the user
+    // actually opens the circle via GET circles/:id/places.)
+    const placeActivityById = new Map();
+    [...connSnap1.docs, ...connSnap2.docs].forEach(doc => {
+      (doc.data().recentActivity || []).forEach(activity => {
+        if (activity.type === 'place' && activity.entityId && !placeActivityById.has(activity.entityId)) {
+          placeActivityById.set(activity.entityId, activity);
+        }
+      });
+    });
+
     // Fetch all requested circles in one batched read (doc-id lookups don't
     // need '__name__ in' chunk queries), then all their places in parallel
     // batched reads. The previous nested chunk-of-10 loops awaited serially —
@@ -4326,6 +4340,7 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     // Collect every accessible circle's place ids (deduped) and read them in
     // parallel batches.
     const accessibleCircleIds = new Set(accessibleCircles.map(c => c.id));
+    const accessibleCircleById = new Map(accessibleCircles.map(c => [c.id, c]));
     const seenPlaceIds = new Set();
     const placeRefs = [];
     for (const circle of accessibleCircles) {
@@ -4362,6 +4377,20 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
         if (place.addedBy !== currentUserId) {
           delete placeData.privateNotes;
         }
+
+        // isNew: same semantics as getPlacesByCircleId — only meaningful in
+        // circles the viewer doesn't own, never for places they added, and
+        // driven by the connection activity's viewedBy list.
+        let isNew = false;
+        const parentCircle = accessibleCircleById.get(place.circleId);
+        if (parentCircle && parentCircle.owner !== currentUserId && place.addedBy !== currentUserId) {
+          const activity = placeActivityById.get(place.id);
+          if (activity) {
+            isNew = !(activity.viewedBy || []).includes(currentUserId);
+          }
+        }
+        placeData.isNew = isNew;
+
         allPlaces.push(placeData);
       }
     }
@@ -4385,7 +4414,8 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
         category: p.category,
         customCategoryId: p.customCategoryId,
         globalPlaceId: p.globalPlaceId,
-        addedBy: p.addedBy
+        addedBy: p.addedBy,
+        isNew: p.isNew
       }));
       return res.status(200).json({
         success: true,
