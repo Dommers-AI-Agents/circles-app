@@ -62,6 +62,11 @@ const getNetworkPlacesInViewport = async (req, res) => {
       circleChunks.push(circleIds.slice(i, i + 10));
     }
 
+    // Each (chunk × bound) query previously carried the full response limit
+    // (200), so a dense viewport could read up to chunks × bounds × 200 docs
+    // to return 200. Cap per-query reads instead; the client re-queries with
+    // a smaller radius on zoom, so dense areas fill in as the user zooms.
+    const perQueryLimit = Math.min(limit, 60);
     const queries = [];
     for (const chunk of circleChunks) {
       for (const b of bounds) {
@@ -71,7 +76,7 @@ const getNetworkPlacesInViewport = async (req, res) => {
             .orderBy('geohash')
             .startAt(b[0])
             .endAt(b[1])
-            .limit(limit)
+            .limit(perQueryLimit)
             .get()
         );
       }
@@ -118,6 +123,31 @@ const getNetworkPlacesInViewport = async (req, res) => {
       const { _viewportDistanceM, ...rest } = place;
       return rest;
     });
+
+    // Lean pin mode (opt-in via ?lean=1): map markers draw only name/
+    // coordinates/category, so skip the adder + venue/social enrichment and
+    // return just what a pin needs. The DEFAULT response keeps the full shape
+    // — the shipped client renders these places in list/card surfaces too.
+    if (req.query.lean === '1') {
+      return res.status(200).json({
+        success: true,
+        places: places.map(p => ({
+          id: p.id,
+          name: p.name,
+          address: p.address,
+          location: p.location,
+          circleId: p.circleId,
+          category: p.category,
+          customCategoryId: p.customCategoryId,
+          globalPlaceId: p.globalPlaceId,
+          addedBy: p.addedBy
+        })),
+        total: places.length,
+        hasMore,
+        clampedRadiusM: radiusM,
+        lean: true
+      });
+    }
 
     // Enrich with the adder's user info (same shape as circles/:id/places) so
     // the app can show "Added by <name>" instead of "Unknown"

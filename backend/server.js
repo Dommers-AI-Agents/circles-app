@@ -124,7 +124,10 @@ app.use(cors(corsOptions));
 // response body, which would hold events in the gzip buffer indefinitely.
 const compression = require('compression');
 app.use(compression({
-  filter: (req, res) => req.path.startsWith('/api/sse')
+  // req.originalUrl, NOT req.path: compression evaluates this filter at
+  // header-write time, when mounted routers have already rewritten req.path
+  // (inside sseRoutes it's just '/stream', which would dodge the exclusion).
+  filter: (req, res) => req.originalUrl.startsWith('/api/sse')
     ? false
     : compression.filter(req, res)
 }));

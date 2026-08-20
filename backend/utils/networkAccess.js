@@ -74,10 +74,9 @@ async function getAllowedCircleIds(userId, { connectionId = null, mapOnly = fals
     circleIds.add(doc.id);
   };
 
-  const connectedUserIds = await getConnectedUserIds(userId);
-
   if (connectionId) {
     // Restrict to a single person; tier depends on the relationship
+    const connectedUserIds = await getConnectedUserIds(userId);
     let privacies = null;
     if (connectedUserIds.has(connectionId)) {
       privacies = ['public', 'myNetwork'];
@@ -92,16 +91,24 @@ async function getAllowedCircleIds(userId, { connectionId = null, mapOnly = fals
     return { circleIds: Array.from(circleIds) };
   }
 
-  // Own circles (all privacies) and circles explicitly shared with the user
-  const [ownCircles, sharedCircles] = await Promise.all([
+  // Phase 1 — every independent read at once: the connection pair, own
+  // circles, circles shared with the user, and the user doc (following list).
+  // These were previously four sequential await phases.
+  const [connectedUserIds, ownCircles, sharedCircles, userDoc] = await Promise.all([
+    getConnectedUserIds(userId),
     db.collection(COLLECTIONS.CIRCLES).where('owner', '==', userId).get(),
-    db.collection(COLLECTIONS.CIRCLES).where('sharedWith', 'array-contains', userId).get()
+    db.collection(COLLECTIONS.CIRCLES).where('sharedWith', 'array-contains', userId).get(),
+    db.collection(COLLECTIONS.USERS).doc(userId).get()
   ]);
   ownCircles.docs.forEach(addCircle);
   sharedCircles.docs.forEach(addCircle);
 
-  // Connections' public/myNetwork circles + followed users' public circles
-  const followedOnlyIds = await getFollowedOnlyUserIds(userId, connectedUserIds);
+  // Followed-only ids = following minus accepted connections (they already
+  // get the higher tier above)
+  const following = (userDoc.exists && userDoc.data().following) || [];
+  const followedOnlyIds = following.filter(id => id && id !== userId && !connectedUserIds.has(id));
+
+  // Phase 2 — connections' public/myNetwork circles + followed users' public circles
   const [connectionDocs, followedDocs] = await Promise.all([
     circlesByOwners(Array.from(connectedUserIds), ['public', 'myNetwork']),
     circlesByOwners(followedOnlyIds, ['public'])

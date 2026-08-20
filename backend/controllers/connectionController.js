@@ -120,27 +120,37 @@ const getConnections = async (req, res) => {
     // people follow the caller back. That distinction ("I follow them" vs "we
     // follow each other") is what gates the Connect step in the client, and it
     // costs one doc read we were going to make anyway.
-    const callerDoc = await db.collection(COLLECTIONS.USERS).doc(normalizeUserId(userId)).get();
+    // Batched read: caller doc + every connected user's doc in one getAll
+    // (was one doc.get() per connection inside the loop below).
+    const otherUserIds = [...new Set(uniqueConnections.map(doc => {
+      const data = doc.data();
+      const raw = data.userId === userId ? data.connectedUserId : data.userId;
+      return normalizeUserId(raw);
+    }).filter(Boolean))];
+    const batchedDocs = await db.getAll(
+      db.collection(COLLECTIONS.USERS).doc(normalizeUserId(userId)),
+      ...otherUserIds.map(id => db.collection(COLLECTIONS.USERS).doc(id))
+    );
+    const callerDoc = batchedDocs[0];
     const callerFollowers = new Set((callerDoc.exists ? callerDoc.data().followers : null) || []);
+    const otherUserDocMap = new Map();
+    batchedDocs.slice(1).forEach(doc => otherUserDocMap.set(doc.id, doc));
 
     // Serialize and populate user data with activity stats
     const connections = await Promise.all(
       uniqueConnections.map(async (doc) => {
         const connection = serializeDoc(doc);
-        
+
         // Determine which user is the "other" user
         const otherUserIdRaw = connection.userId === userId ? connection.connectedUserId : connection.userId;
         // Normalize the ID before looking up the user
         const otherUserId = normalizeUserId(otherUserIdRaw);
-        
-        // Fetch the other user's data
+
         try {
-          console.log(`🔍 Fetching connected user data for ID: ${otherUserId} (original: ${otherUserIdRaw})`);
-          const userDoc = await db.collection(COLLECTIONS.USERS).doc(otherUserId).get();
-          if (userDoc.exists) {
+          const userDoc = otherUserDocMap.get(otherUserId);
+          if (userDoc && userDoc.exists) {
             connection.connectedUser = serializeDoc(userDoc);
             // DO NOT overwrite connectedUserId - it should remain as stored in database
-            console.log(`✅ Found connected user: ${connection.connectedUser.displayName}`);
 
             // Does this person follow the caller back? Drives the client's
             // "Follows you" label and whether Connect is offered.

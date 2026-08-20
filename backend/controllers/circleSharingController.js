@@ -522,44 +522,34 @@ const getMyNetworkCircles = async (req, res) => {
     const userId = req.user.uid;
     console.log('🔍 Getting network circles for user:', userId);
 
-    // Get all connections for the current user (where they are either userId or connectedUserId)
-    const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', userId)
-      .where('status', '==', 'accepted')
-      .get();
-      
-    const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('connectedUserId', '==', userId)
-      .where('status', '==', 'accepted')
-      .get();
-
-    console.log('📊 Found connections as userId:', connectionsQuery1.size);
-    console.log('📊 Found connections as connectedUserId:', connectionsQuery2.size);
+    // Get all connections for the current user (both directions) plus their
+    // user doc (following list) — three independent reads, in parallel
+    // (previously three sequential awaits).
+    const [connectionsQuery1, connectionsQuery2, currentUserDoc] = await Promise.all([
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('connectedUserId', '==', userId)
+        .where('status', '==', 'accepted')
+        .get(),
+      db.collection(COLLECTIONS.USERS).doc(userId).get()
+    ]);
 
     // Get connected user IDs
     const connectedUserIds = new Set();
-    
-    // Add users from connections where current user is userId
     connectionsQuery1.docs.forEach(doc => {
-      const connection = doc.data();
-      console.log('Connection (as userId):', connection.userId, '->', connection.connectedUserId);
-      connectedUserIds.add(connection.connectedUserId);
+      connectedUserIds.add(doc.data().connectedUserId);
     });
-    
-    // Add users from connections where current user is connectedUserId
     connectionsQuery2.docs.forEach(doc => {
-      const connection = doc.data();
-      console.log('Connection (as connectedUserId):', connection.userId, '<-', connection.connectedUserId);
-      connectedUserIds.add(connection.userId);
+      connectedUserIds.add(doc.data().userId);
     });
-
-    console.log('👥 Connected user IDs:', Array.from(connectedUserIds));
 
     // FOLLOWED users' circles are part of "my network" too — following is
     // one-way, so it earns the PUBLIC tier only (myNetwork stays
     // connections-only). This is what puts a followed person's places on the
     // home map without requiring a mutual connection.
-    const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
     const followedOnlyIds = ((currentUserDoc.exists && currentUserDoc.data().following) || [])
       .filter(id => id && id !== userId && !connectedUserIds.has(id));
 

@@ -19,7 +19,9 @@ const db = getFirestore();
 
 const CACHE_TYPE = 'userPlaceCounts';
 const CACHE_KEY = 'all';
-const TTL_MS = 5 * 60 * 1000;
+// 15 min: the map is derived from a FULL circles-collection scan, so a longer
+// TTL matters more than perfectly current circle counts on people cards.
+const TTL_MS = 15 * 60 * 1000;
 
 /**
  * ownerId -> { placesCount, circlesCount } for every user who owns a circle.

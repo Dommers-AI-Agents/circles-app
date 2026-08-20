@@ -4289,74 +4289,112 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     connSnap1.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().connectedUserId)));
     connSnap2.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().userId)));
 
-    // Process circles in chunks to avoid overwhelming the database
-    const chunkSize = 10;
-    for (let i = 0; i < circleIds.length; i += chunkSize) {
-      const chunk = circleIds.slice(i, i + chunkSize);
-      
-      // Fetch circles in this chunk
-      const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
-        .where('__name__', 'in', chunk)
-        .get();
-      
-      for (const circleDoc of circlesSnapshot.docs) {
-        const circle = serializeDoc(circleDoc);
-        
-        // Skip if we've already processed this circle
-        if (processedCircles.has(circle.id)) {
-          continue;
-        }
-        processedCircles.add(circle.id);
-        
-        // Check permissions (id comparisons are normalized to tolerate
-        // mixed id formats between circles, users, and connections)
-        const isOwner = isSameUser(circle.owner, currentUserId);
-        const isSharedWith = circle.sharedWith && circle.sharedWith.includes(currentUserId);
-        const isPublic = circle.privacy === 'public';
+    // Fetch all requested circles in one batched read (doc-id lookups don't
+    // need '__name__ in' chunk queries), then all their places in parallel
+    // batched reads. The previous nested chunk-of-10 loops awaited serially —
+    // ~500 sequential round trips for a full 50-circle batch.
+    const uniqueCircleIds = [...new Set(circleIds)];
+    const circleDocs = await db.getAll(
+      ...uniqueCircleIds.map(id => db.collection(COLLECTIONS.CIRCLES).doc(id))
+    );
 
-        // For myNetwork privacy, check the pre-resolved connection set
-        let isConnected = false;
-        if (circle.privacy === 'myNetwork' && !isOwner) {
-          isConnected = connectedUserIds.has(normalizeUserId(circle.owner));
-        }
-        
-        // Skip if user doesn't have access
-        if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
-          console.log(`⚠️ User doesn't have access to circle ${circle.id}`);
-          continue;
-        }
-        
-        // Get places from this circle
-        const placeIds = circle.places || [];
-        if (placeIds.length > 0) {
-          // Fetch places in chunks
-          const placeChunkSize = 10;
-          for (let j = 0; j < placeIds.length; j += placeChunkSize) {
-            const placeChunk = placeIds.slice(j, j + placeChunkSize);
-            
-            const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
-              .where('__name__', 'in', placeChunk)
-              .where('deletedAt', '==', null)
-              .get();
-            
-            placesSnapshot.forEach(placeDoc => {
-              const place = serializeDoc(placeDoc);
-              // Ensure place belongs to the correct circle
-              if (place.circleId === circle.id) {
-                // Filter privateNotes - only visible to the user who added the place
-                const placeData = { ...place };
-                if (place.addedBy !== currentUserId) {
-                  delete placeData.privateNotes;
-                }
-                allPlaces.push(placeData);
-              }
-            });
-          }
+    const accessibleCircles = [];
+    for (const circleDoc of circleDocs) {
+      if (!circleDoc.exists) continue;
+      const circle = serializeDoc(circleDoc);
+      if (processedCircles.has(circle.id)) continue;
+      processedCircles.add(circle.id);
+
+      // Check permissions (id comparisons are normalized to tolerate
+      // mixed id formats between circles, users, and connections)
+      const isOwner = isSameUser(circle.owner, currentUserId);
+      const isSharedWith = circle.sharedWith && circle.sharedWith.includes(currentUserId);
+      const isPublic = circle.privacy === 'public';
+
+      // For myNetwork privacy, check the pre-resolved connection set
+      let isConnected = false;
+      if (circle.privacy === 'myNetwork' && !isOwner) {
+        isConnected = connectedUserIds.has(normalizeUserId(circle.owner));
+      }
+
+      if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+        continue;
+      }
+      accessibleCircles.push(circle);
+    }
+
+    // Collect every accessible circle's place ids (deduped) and read them in
+    // parallel batches.
+    const accessibleCircleIds = new Set(accessibleCircles.map(c => c.id));
+    const seenPlaceIds = new Set();
+    const placeRefs = [];
+    for (const circle of accessibleCircles) {
+      for (const placeId of (circle.places || [])) {
+        if (!seenPlaceIds.has(placeId)) {
+          seenPlaceIds.add(placeId);
+          placeRefs.push(db.collection(COLLECTIONS.PLACES).doc(placeId));
         }
       }
     }
-    
+
+    const PLACE_READ_BATCH = 300;
+    const placeBatchReads = [];
+    for (let i = 0; i < placeRefs.length; i += PLACE_READ_BATCH) {
+      placeBatchReads.push(db.getAll(...placeRefs.slice(i, i + PLACE_READ_BATCH)));
+    }
+    const placeDocGroups = await Promise.all(placeBatchReads);
+
+    for (const group of placeDocGroups) {
+      for (const placeDoc of group) {
+        if (!placeDoc.exists) continue;
+        const place = serializeDoc(placeDoc);
+        // Match getPlacesByCircleId semantics: soft-deleted places are
+        // excluded whether deletedAt is null OR missing (the old
+        // "deletedAt == null" query silently dropped legacy docs without
+        // the field), place-level privacy is enforced, and the place must
+        // still belong to one of the requested, accessible circles.
+        if (place.deletedAt !== null && place.deletedAt !== undefined) continue;
+        if (!accessibleCircleIds.has(place.circleId)) continue;
+        if (!isPlaceVisibleToViewer(place, currentUserId)) continue;
+
+        // Filter privateNotes - only visible to the user who added the place
+        const placeData = { ...place };
+        if (place.addedBy !== currentUserId) {
+          delete placeData.privateNotes;
+        }
+        allPlaces.push(placeData);
+      }
+    }
+
     console.log(`✅ Batch fetched ${allPlaces.length} places from ${processedCircles.size} accessible circles`);
+
+    // Lean pin mode (opt-in via ?lean=1 or body {lean:true}): map markers
+    // render only name/coordinates/category — no photos, no social counts —
+    // so skip the venue/social enrichment and strip the payload to what a
+    // pin draws. Surfaces that display photos or social data must use the
+    // default full mode. Old clients never send the flag, so the default
+    // response shape is untouched.
+    const lean = req.query.lean === '1' || req.body.lean === true;
+    if (lean) {
+      const leanPlaces = allPlaces.map(p => ({
+        id: p.id,
+        name: p.name,
+        address: p.address,
+        location: p.location,
+        circleId: p.circleId,
+        category: p.category,
+        customCategoryId: p.customCategoryId,
+        globalPlaceId: p.globalPlaceId,
+        addedBy: p.addedBy
+      }));
+      return res.status(200).json({
+        success: true,
+        places: leanPlaces,
+        circlesProcessed: processedCircles.size,
+        totalPlaces: leanPlaces.length,
+        lean: true
+      });
+    }
 
     // Overlay social + venue data from the canonical venue records, and
     // attach adder info so clients can show "Added by <name>"
