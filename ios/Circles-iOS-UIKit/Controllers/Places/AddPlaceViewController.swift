@@ -1542,10 +1542,18 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     @objc func addPlaceButtonTapped() {
         guard !isSaving else { return }
         guard let name = nameTextField.text, !name.isEmpty,
-              let address = addressTextView.text, !address.isEmpty else {
+              let rawAddress = addressTextView.text, !rawAddress.isEmpty else {
             presentAlert(title: "Error", message: "Please provide a name and address")
             return
         }
+        // The address box shows a "📍 X mi from current location" decoration —
+        // display-only; it was leaking into the SAVED address ("Indaco …
+        // 📍 0 mi from current location" shipped to the server verbatim)
+        let address = rawAddress
+            .components(separatedBy: "\n")
+            .filter { !$0.hasPrefix("📍") }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         
         // Check if we have location data from any source
         let hasLocation = selectedLocation != nil || selectedGooglePlaceDetails != nil || currentPOIData != nil
