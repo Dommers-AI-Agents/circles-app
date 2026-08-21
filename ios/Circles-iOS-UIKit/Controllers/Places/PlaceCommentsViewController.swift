@@ -600,7 +600,9 @@ extension PlaceCommentsViewController: CommentCellDelegate {
         PlaceService.shared.likeComment(placeId: place.id, commentId: comment.id) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
-                case .success(let (liked, likesCount)):
+                case .success(let (liked, likesCount, piggyBank)):
+                    // FavCoins for the heart (leprechaun for the fraction)
+                    PiggyBankDepositView.play(credit: piggyBank)
                     // Find the comment in our array and update it
                     if let index = self?.comments.firstIndex(where: { $0.id == comment.id }) {
                         // Update the comment in our array (we need to create a new comment with updated values)

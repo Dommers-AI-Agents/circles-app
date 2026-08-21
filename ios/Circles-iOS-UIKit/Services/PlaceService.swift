@@ -1645,7 +1645,7 @@ class PlaceService {
         )
     }
     
-    func likeComment(placeId: String, commentId: String, completion: @escaping (Result<(liked: Bool, likesCount: Int), Error>) -> Void) {
+    func likeComment(placeId: String, commentId: String, completion: @escaping (Result<(liked: Bool, likesCount: Int, piggyBank: PiggyBankCredit?), Error>) -> Void) {
         APIService.shared.request(
             endpoint: "places/\(placeId)/comments/\(commentId)/like",
             method: .post,
@@ -1653,7 +1653,7 @@ class PlaceService {
             completion: createAPICompletion { (result: Result<LikeCommentResponse, Error>) in
                 switch result {
                 case .success(let response):
-                    completion(.success((liked: response.liked, likesCount: response.likesCount)))
+                    completion(.success((liked: response.liked, likesCount: response.likesCount, piggyBank: response.piggyBank)))
                 case .failure(let error):
                     completion(.failure(error))
                 }
@@ -1801,6 +1801,8 @@ struct LikeCommentResponse: Decodable {
     let success: Bool
     let liked: Bool
     let likesCount: Int
+    /// FavCoins for hearting someone's comment (nil on unlike/own/dup)
+    let piggyBank: PiggyBankCredit?
 }
 
 struct PlaceLikesResponse: Decodable {

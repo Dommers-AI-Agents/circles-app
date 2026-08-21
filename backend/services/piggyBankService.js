@@ -306,6 +306,16 @@ class PiggyBankService {
           if (!doc.exists || doc.data().deletedAt) return { valid: false, reason: 'comment_deleted' };
           return { valid: true };
         }
+        case 'comment_liked': {
+          // Valid while the like still stands on a live comment; unliking
+          // (or the comment being deleted) inside the window reverses the earn.
+          if (!ref.commentId) return { valid: false, reason: 'missing_comment_ref' };
+          const doc = await this.db.collection(COLLECTIONS.PLACE_COMMENTS).doc(ref.commentId).get();
+          if (!doc.exists || doc.data().deletedAt) return { valid: false, reason: 'comment_deleted' };
+          return (doc.data().likes || []).includes(entry.userId)
+            ? { valid: true }
+            : { valid: false, reason: 'like_removed' };
+        }
         case 'user_followed': {
           if (!ref.followedUserId) return { valid: false, reason: 'missing_followed_ref' };
           const doc = await this.db.collection(COLLECTIONS.USERS).doc(entry.userId).get();

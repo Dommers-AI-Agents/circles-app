@@ -35,6 +35,7 @@ const PIGGY_EVENT_TYPES = [
   'brand_code_redeemed',
   // 2026.08-d: carousel photo hearts
   'photo_liked',
+  'comment_liked',
   // 2026.08-e: welcome gift — first place a user ever adds
   'first_place_added',
   // 2026.08-f: generic App Clip signup (no store scanned)
@@ -149,6 +150,11 @@ function derivePiggyDedupKey(eventType, parts = {}) {
       // unique within their venue, so the venue leads the key.
       if (!parts.userId || !parts.globalPlaceId || !parts.photoId) return null;
       return `photo_liked:${s(parts.userId)}:${s(parts.globalPlaceId)}:${s(parts.photoId)}`;
+    }
+    case 'comment_liked': {
+      // One per comment ever — unlike/relike can't re-mint.
+      if (!parts.userId || !parts.commentId) return null;
+      return `comment_liked:${s(parts.userId)}:${s(parts.commentId)}`;
     }
     case 'place_comment': {
       // First comment per venue — thread-padding pays nothing.

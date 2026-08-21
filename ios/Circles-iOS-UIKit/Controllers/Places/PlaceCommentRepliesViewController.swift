@@ -378,7 +378,9 @@ extension PlaceCommentRepliesViewController: CommentCellDelegate {
         PlaceService.shared.likeComment(placeId: place.id, commentId: comment.id) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
-                case .success(let (liked, likesCount)):
+                case .success(let (_, _, piggyBank)):
+                    // FavCoins for the heart (leprechaun for the fraction)
+                    PiggyBankDepositView.play(credit: piggyBank)
                     // Reload the cell to show updated like state
                     if let index = self?.replies.firstIndex(where: { $0.id == comment.id }) {
                         self?.tableView.reloadRows(at: [IndexPath(row: index, section: 0)], with: .none)

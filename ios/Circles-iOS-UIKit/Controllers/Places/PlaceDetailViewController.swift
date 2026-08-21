@@ -3810,8 +3810,12 @@ extension PlaceDetailViewController {
         likeButton.tag = displayedComments.firstIndex(where: { $0.id == comment.id }) ?? 0
         likeButton.addTarget(self, action: #selector(inlineCommentLikeButtonTapped(_:)), for: .touchUpInside)
         
-        // Like count label
+        // Like count label. Tagged so the like handler can find THIS label —
+        // it used to hunt by "first UILabel that isn't subviews[2]", which
+        // matched the COMMENT TEXT label and overwrote the comment with the
+        // like count (a hearted comment visibly "disappeared").
         let likeCountLabel = UILabel()
+        likeCountLabel.tag = Self.inlineCommentLikeCountTag
         likeCountLabel.text = comment.displayLikesCount > 0 ? "\(comment.displayLikesCount)" : ""
         likeCountLabel.font = UIFont.systemFont(ofSize: 12)
         likeCountLabel.textColor = Constants.Colors.secondaryLabel
@@ -3855,6 +3859,8 @@ extension PlaceDetailViewController {
         commentCountLabel.text = count > 0 ? "\(count)" : ""
     }
     
+    private static let inlineCommentLikeCountTag = 9101
+
     @objc private func inlineCommentLikeButtonTapped(_ sender: UIButton) {
         let index = sender.tag
         guard index < displayedComments.count else { return }
@@ -3874,14 +3880,18 @@ extension PlaceDetailViewController {
                 sender.isEnabled = true
                 
                 switch result {
-                case .success(let (liked, likesCount)):
+                case .success(let (liked, likesCount, piggyBank)):
                     // Update button appearance
                     sender.setImage(UIImage(systemName: liked ? "heart.fill" : "heart"), for: .normal)
                     sender.tintColor = liked ? .systemRed : Constants.Colors.secondaryLabel
+
+                    // FavCoins for the heart (leprechaun for the fraction)
+                    PiggyBankDepositView.play(credit: piggyBank)
                     
-                    // Update the like count label (find it as a sibling of the button)
-                    if let containerView = sender.superview,
-                       let likeCountLabel = containerView.subviews.first(where: { $0 is UILabel && $0 != containerView.subviews[2] }) as? UILabel {
+                    // Update the like count label (looked up by tag — the old
+                    // sibling-position heuristic matched the comment text
+                    // label and clobbered the comment body)
+                    if let likeCountLabel = sender.superview?.viewWithTag(Self.inlineCommentLikeCountTag) as? UILabel {
                         likeCountLabel.text = likesCount > 0 ? "\(likesCount)" : ""
                     }
                     

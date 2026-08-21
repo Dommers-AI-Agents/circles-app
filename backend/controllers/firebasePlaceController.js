@@ -3741,10 +3741,23 @@ exports.likeComment = async (req, res, next) => {
       );
     }
     
+    // Piggy bank: a nickel for hearting a comment — not your own, one per
+    // comment ever (dedup key), unlike/relike can't re-mint. Awaited so the
+    // response carries the credit and the app can play the deposit animation.
+    let piggyBank = null;
+    if (!alreadyLiked && comment.userId !== userId) {
+      piggyBank = await require('../services/piggyBankService').credit({
+        userId,
+        eventType: 'comment_liked',
+        sourceRef: { commentId }
+      });
+    }
+
     res.status(200).json({
       success: true,
       liked: !alreadyLiked,
-      likesCount: updatedLikesCount
+      likesCount: updatedLikesCount,
+      piggyBank
     });
     
   } catch (error) {
