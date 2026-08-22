@@ -2813,7 +2813,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             // different business than the label the user aimed at
             self.addSelectedLocationPin(at: mapItem.placemark.coordinate,
                                         title: mapItem.name ?? "Selected Location",
-                                        subtitle: mapItem.name == nil ? "Place will be added here" : "Venue selected")
+                                        subtitle: mapItem.name == nil ? "Place will be added here" : "Venue selected",
+                                        category: mapItem.name == nil ? nil : self.selectedCategory)
             
             // Scroll to show form after a delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {

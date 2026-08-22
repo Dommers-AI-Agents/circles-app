@@ -21,6 +21,10 @@ extension PlaceSearchDelegate {
 
 // Custom annotation class for place search
 class PlaceSearchAnnotation: NSObject, MKAnnotation {
+    /// Category of the selected venue — drives the marker's color and glyph
+    /// so the pin previews how the saved place will look on the map.
+    /// nil = manual location pin (green).
+    var category: PlaceCategory?
     var coordinate: CLLocationCoordinate2D = CLLocationCoordinate2D()
     var title: String?
     var subtitle: String?

@@ -195,7 +195,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
                     
                     // Add marker to map, titled with the venue (not the
                     // generic green "Selected Location" address pin)
-                    self?.addSelectedLocationPin(at: coordinate, title: poiData.name, subtitle: "Venue selected")
+                    self?.addSelectedLocationPin(at: coordinate, title: poiData.name, subtitle: "Venue selected", category: poiData.category)
                     
                     // Center map on selected location
                     let region = MKCoordinateRegion(
@@ -390,12 +390,19 @@ extension AddPlaceViewController: MKMapViewDelegate {
         
         // Customize appearance
         if let markerView = annotationView {
-            if placeAnnotation.isTemporary && placeAnnotation.title == "Selected Location" {
-                // Green = manual location pin; venue selections keep the
-                // brand color so users can tell a venue save from an address
+            if let category = placeAnnotation.category {
+                // Venue selection: preview the category color + glyph the
+                // saved place will have on the map
+                markerView.markerTintColor = category.color
+                markerView.glyphImage = UIImage(systemName: category.systemIconName)
+            } else if placeAnnotation.isTemporary && placeAnnotation.title == "Selected Location" {
+                // Green = manual location pin; venue selections carry their
+                // category so users can tell a venue save from an address
                 markerView.markerTintColor = .systemGreen
+                markerView.glyphImage = nil
             } else {
                 markerView.markerTintColor = Constants.Colors.primary
+                markerView.glyphImage = nil
             }
         }
         
