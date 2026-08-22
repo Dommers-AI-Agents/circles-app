@@ -8,6 +8,9 @@ class PlaceDetailViewController: BaseViewController {
     // MARK: - Properties
     private var place: Place
     private var globalPlace: GlobalPlace? // Global place data with attribution
+    // Our OWN save of this venue when `place` is another user's copy —
+    // private notes read from and write to this record
+    private var mySaveOfVenue: Place?
     private var circle: Circle?
     private var creatorUser: User? // Store the creator user for navigation
     private var userCircles: [Circle] = [] // Store user's circles for check-in detection
@@ -827,6 +830,10 @@ class PlaceDetailViewController: BaseViewController {
         // don't refetch) — refresh it so photos added elsewhere show up
         refreshPlaceFromServer()
 
+        // Viewing another user's copy of a venue we ALSO saved: private notes
+        // live on OUR save record, so resolve it for the notes section
+        loadMySaveOfVenueIfNeeded()
+
         setupUI()
         configureUI()
         setupMap()
@@ -1550,11 +1557,15 @@ class PlaceDetailViewController: BaseViewController {
         // The only note a place carries is the saver's private one. Anything
         // written for other people is a comment on the venue (see the comments
         // section below), so nothing here is ever shown to another user.
+        // When viewing someone else's copy of a venue we also saved, our note
+        // comes from our own save record (mySaveOfVenue).
         var notesText = ""
         if place.isAddedByCurrentUser, let privateNotes = place.privateNotes, !privateNotes.isEmpty {
             notesText = privateNotes
+        } else if let myNotes = mySaveOfVenue?.privateNotes, !myNotes.isEmpty {
+            notesText = myNotes
         }
-        
+
         if !notesText.isEmpty {
             notesLabel.text = notesText
             notesLabel.isHidden = false
@@ -2778,10 +2789,38 @@ class PlaceDetailViewController: BaseViewController {
         return attributedString
     }
     
+    /// When this screen shows ANOTHER user's copy of a venue, our private
+    /// note (if any) lives on OUR save record. Resolve it so the notes
+    /// section shows and edits the right thing.
+    func loadMySaveOfVenueIfNeeded() {
+        guard !place.isAddedByCurrentUser,
+              let globalPlaceId = place.globalPlaceId ?? place.googlePlaceId else { return }
+        PlaceService.shared.fetchMySaveOfVenue(globalPlaceId: globalPlaceId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self, case .success(let mine) = result else { return }
+                self.mySaveOfVenue = mine
+                // Refresh just the notes section with our own note
+                if let myNotes = mine.privateNotes, !myNotes.isEmpty {
+                    self.notesLabel.text = myNotes
+                    self.notesLabel.isHidden = false
+                    self.addNotesButton.isHidden = true
+                    self.notesEditButton.isHidden = false
+                }
+            }
+        }
+    }
+
+    /// The save record private notes belong to: our own save when the screen
+    /// shows someone else's copy of the venue
+    private var notesTargetPlace: Place? {
+        if place.isAddedByCurrentUser { return place }
+        return mySaveOfVenue
+    }
+
     private func showNotesEditor() {
         let notesEditorVC = NotesEditorViewController(
-            privateNotes: place.privateNotes ?? "",
-            isPrivateNotesEnabled: place.isAddedByCurrentUser
+            privateNotes: notesTargetPlace?.privateNotes ?? "",
+            isPrivateNotesEnabled: notesTargetPlace != nil
         )
 
         notesEditorVC.onSave = { [weak self] privateNotes in
@@ -2791,30 +2830,36 @@ class PlaceDetailViewController: BaseViewController {
         let navController = UINavigationController(rootViewController: notesEditorVC)
         present(navController, animated: true)
     }
-    
+
     private func updatePlaceNotes(privateNotes: String) {
+        guard let target = notesTargetPlace else { return }
+
         // Show loading indicator
         let loadingAlert = AlertPresenter.showLoading(message: "Saving Notes...", from: self)
-        
+
         // Call PlaceService to update notes on Firebase
         PlaceService.shared.updatePlace(
-            id: place.id,
-            privateNotes: place.isAddedByCurrentUser ? privateNotes : nil
+            id: target.id,
+            privateNotes: privateNotes
         ) { [weak self] result in
             guard let self = self else { return }
-            
+
             // Ensure all UI updates happen on the main thread
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
                     case .success(let updatedPlace):
                         // Keep the in-memory model in sync — the notes editor
-                        // seeds from self.place, so a stale copy would show
-                        // (and then re-save) the old text
-                        self.place = updatedPlace
+                        // seeds from the target record, so a stale copy would
+                        // show (and then re-save) the old text
+                        if updatedPlace.id == self.place.id {
+                            self.place = updatedPlace
+                        } else {
+                            self.mySaveOfVenue = updatedPlace
+                        }
 
                         // Only the saver has a note, and only they ever see it
-                        let notesText = self.place.isAddedByCurrentUser ? privateNotes : ""
+                        let notesText = privateNotes
 
                         if !notesText.isEmpty {
                             self.notesLabel.text = notesText

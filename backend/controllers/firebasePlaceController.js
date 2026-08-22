@@ -1441,6 +1441,34 @@ exports.updatePlace = async (req, res, next) => {
     if (!isCircleOwner && !isSharedWith && !isPlaceAdder) {
       isVenueOwnerEdit = await isVerifiedVenueOwner(req.user.uid, req.params.id, place.googlePlaceId);
       if (!isVenueOwnerEdit) {
+        // Private notes belong on the CALLER's save of the venue, but the app
+        // may be showing another user's copy (opened via their circle/feed).
+        // For a notes-only update, redirect the write to the caller's own
+        // save record instead of failing.
+        const otherKeys = Object.keys(req.body).filter((k) => k !== 'privateNotes');
+        if ('privateNotes' in req.body && otherKeys.length === 0 && place.globalPlaceId) {
+          const mineSnap = await db.collection(COLLECTIONS.PLACES)
+            .where('addedBy', '==', req.user.uid)
+            .where('globalPlaceId', '==', place.globalPlaceId)
+            .get();
+          const mine = mineSnap.docs.find((d) => !d.data().deletedAt);
+          if (mine) {
+            await mine.ref.update({
+              privateNotes: req.body.privateNotes,
+              updatedAt: new Date().toISOString()
+            });
+            const updatedDoc = await mine.ref.get();
+            console.log(`📝 Notes redirected to caller's own save ${mine.id} (viewed copy: ${req.params.id})`);
+            return res.status(200).json({
+              success: true,
+              place: serializeDoc(updatedDoc)
+            });
+          }
+          return res.status(403).json({
+            success: false,
+            message: 'Save this place first to add a private note'
+          });
+        }
         return res.status(403).json({
           success: false,
           message: 'Not authorized to update this place'
@@ -4493,6 +4521,43 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
 // @desc    Get all places from user's circles for check-in
 // @route   GET /api/places/my-places
 // @access  Private
+// @desc    The caller's own save of a venue, looked up by canonical venue id.
+//          Lets the app offer per-save actions (private notes, tags) while
+//          showing another user's copy of the same venue.
+// @route   GET /api/places/my-save/:globalPlaceId
+// @access  Private
+exports.getMySaveOfVenue = async (req, res, next) => {
+  try {
+    const { globalPlaceId } = req.params;
+    let snap = await db.collection(COLLECTIONS.PLACES)
+      .where('addedBy', '==', req.user.uid)
+      .where('globalPlaceId', '==', globalPlaceId)
+      .get();
+    let doc = snap.docs.find((d) => !d.data().deletedAt);
+    if (!doc) {
+      // Older saves may predate global-place linking — try the Google id
+      snap = await db.collection(COLLECTIONS.PLACES)
+        .where('addedBy', '==', req.user.uid)
+        .where('googlePlaceId', '==', globalPlaceId)
+        .get();
+      doc = snap.docs.find((d) => !d.data().deletedAt);
+    }
+    if (!doc) {
+      return res.status(404).json({
+        success: false,
+        message: 'You have not saved this place'
+      });
+    }
+    res.status(200).json({
+      success: true,
+      place: serializeDoc(doc)
+    });
+  } catch (error) {
+    console.error('Error fetching own save of venue:', error);
+    next(error);
+  }
+};
+
 exports.getMyPlacesForCheckIn = async (req, res, next) => {
   try {
     const userId = req.user.uid;

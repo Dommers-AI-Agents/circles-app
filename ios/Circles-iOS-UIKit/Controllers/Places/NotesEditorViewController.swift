@@ -48,7 +48,7 @@ class NotesEditorViewController: BaseViewController {
 
     private let privateNotesDisabledLabel: UILabel = {
         let label = UILabel()
-        label.text = "Private notes are only available for places you add"
+        label.text = "Save this place to add a private note"
         label.font = UIFont.systemFont(ofSize: 14)
         label.textColor = Constants.Colors.gray.withAlphaComponent(0.7)
         label.textAlignment = .center

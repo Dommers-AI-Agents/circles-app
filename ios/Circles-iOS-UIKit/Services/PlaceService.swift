@@ -706,6 +706,25 @@ class PlaceService {
         )
     }
 
+    /// The current user's own save of a venue, by canonical/global place id.
+    /// Used when viewing ANOTHER user's copy of the venue so per-save actions
+    /// (private notes) can target the caller's record. 404 = never saved it.
+    func fetchMySaveOfVenue(globalPlaceId: String, completion: @escaping (Result<Place, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/my-save/\(globalPlaceId)",
+            method: .get,
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
+                switch result {
+                case .success(let response):
+                    completion(.success(response.place))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        )
+    }
+
     func updatePlace(id: String, privateNotes: String? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         var body: [String: Any] = [:]
         if let privateNotes = privateNotes { body["privateNotes"] = privateNotes }

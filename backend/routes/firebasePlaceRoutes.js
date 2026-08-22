@@ -26,6 +26,7 @@ const {
   movePlace,
   getPlacesByMultipleCircles,
   getMyPlacesForCheckIn,
+  getMySaveOfVenue,
   migrateGooglePhotosToFirebase
 } = require('../controllers/firebasePlaceController');
 const {
@@ -51,6 +52,11 @@ router.route('/batch')
 // Get all user's places for check-in
 router.route('/my-places')
   .get(getMyPlacesForCheckIn);
+
+// The caller's own save of a venue (by canonical/global place id) — powers
+// per-save actions while viewing another user's copy of the venue
+router.route('/my-save/:globalPlaceId')
+  .get(getMySaveOfVenue);
 
 // Own places awaiting on-device location resolution (background import queue)
 router.route('/unresolved')
