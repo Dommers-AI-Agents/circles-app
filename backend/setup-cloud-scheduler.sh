@@ -108,6 +108,12 @@ gcloud scheduler jobs create http engagement-reminders \
 # 5b. Educational Tips - hourly tick; tipsService delivers to each user at their
 #     own local Tue/Fri noon (2×/week). Runs every hour so every timezone gets
 #     served at the right local time, exactly like the daily-summary job.
+#
+#     NOTE: the backend's verifyScheduler requires the OIDC token to be issued by
+#     circles-scheduler@ (SCHEDULER_SERVICE_ACCOUNT) with the audience set to the
+#     BASE service URL (SCHEDULER_OIDC_AUDIENCE) — NOT the per-endpoint URI. The
+#     shared $SERVICE_ACCOUNT above is stale (circles-backend@); the live jobs all
+#     use circles-scheduler@, so this block sets both explicitly.
 echo -e "${GREEN}Creating tips job...${NC}"
 gcloud scheduler jobs delete tips --location=$REGION --quiet 2>/dev/null || true
 gcloud scheduler jobs create http tips \
@@ -115,7 +121,8 @@ gcloud scheduler jobs create http tips \
   --schedule="0 * * * *" \
   --uri="${SERVICE_URL}/api/tasks/tips" \
   --http-method=POST \
-  --oidc-service-account-email=$SERVICE_ACCOUNT \
+  --oidc-service-account-email=circles-scheduler@${PROJECT_ID}.iam.gserviceaccount.com \
+  --oidc-token-audience="${SERVICE_URL}" \
   --time-zone=$TIME_ZONE \
   --description="Deliver low-cadence educational tips at each user's local Tue/Fri noon" \
   --headers="Content-Type=application/json" \
