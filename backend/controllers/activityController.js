@@ -525,6 +525,10 @@ exports.createActivity = async (type, actorId, targetType, targetId, targetName,
         placePhoto: metadata.placePhoto || null,
         placeAddress: metadata.placeAddress || null,
         placeId: metadata.placeId || null,
+        // Canonical venue id — REQUIRED for global_place_liked (photo likes):
+        // their targetId is the photo id, so without this the iOS feed row has
+        // no place to navigate to (the "tap does nothing" bug, 2026-08-22)
+        globalPlaceId: metadata.globalPlaceId || null,
         message: metadata.message || null,
         endTime: metadata.endTime || null,
         // Video/photo moment activities carry their thumbnail here — the feed

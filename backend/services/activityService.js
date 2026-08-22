@@ -1868,7 +1868,7 @@ const trackVideoLiked = async (videoId, placeId, placeName, likedByUserId, video
 };
 
 // Track when a user likes a Global Place upload
-const trackGlobalPlaceLiked = async (uploadId, globalPlaceId, placeName, likedByUserId, uploadOwnerId) => {
+const trackGlobalPlaceLiked = async (uploadId, globalPlaceId, placeName, likedByUserId, uploadOwnerId, photoUrl = null) => {
   try {
     // Don't track if user likes their own upload
     if (likedByUserId === uploadOwnerId) {
@@ -1886,7 +1886,9 @@ const trackGlobalPlaceLiked = async (uploadId, globalPlaceId, placeName, likedBy
         uploadId: uploadId,
         globalPlaceId: globalPlaceId,
         placeName: placeName,
-        likedByUserId: likedByUserId
+        likedByUserId: likedByUserId,
+        // The liked photo doubles as the feed row's thumbnail
+        placePhoto: photoUrl
       }
     );
 

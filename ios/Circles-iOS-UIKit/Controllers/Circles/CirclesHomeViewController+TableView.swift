@@ -327,6 +327,8 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 // targetId is the COMMENT id for these; the place lives in metadata
                 if let placeId = activity.metadata?.placeId {
                     navigateToPlace(withId: placeId, showComments: true)
+                } else if let globalPlaceId = activity.metadata?.globalPlaceId {
+                    navigateToGlobalPlace(withId: globalPlaceId, showComments: true)
                 }
             case .circleCreated, .circleLiked, .circleCommented:
                 // Navigate to the circle
@@ -348,7 +350,13 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 // targetId is the venue's canonical globalPlaces id — open the
                 // place page the same way the Specials tab does
                 navigateToGlobalPlace(withId: activity.targetId)
-            case .globalPlaceLiked, .suggestionSent, .suggestionAccepted,
+            case .globalPlaceLiked:
+                // A photo like: targetId is the PHOTO id — the venue is
+                // metadata.globalPlaceId (backfilled onto older activities)
+                if let globalPlaceId = activity.metadata?.globalPlaceId {
+                    navigateToGlobalPlace(withId: globalPlaceId)
+                }
+            case .suggestionSent, .suggestionAccepted,
                  .profileUpdated, .userActivity, .reactionAdded, .unknown:
                 // No reliable local destination for these
                 break

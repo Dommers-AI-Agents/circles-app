@@ -48,6 +48,14 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
             // only margin taps reached the row-level handler.
             if let placeId = activity.metadata?.placeId {
                 navigateToPlace(withId: placeId, showComments: true)
+            } else if let globalPlaceId = activity.metadata?.globalPlaceId {
+                navigateToGlobalPlace(withId: globalPlaceId, showComments: true)
+            }
+        case .globalPlaceLiked:
+            // A photo like: targetId is the PHOTO id, not a place — the venue
+            // is metadata.globalPlaceId (backfilled onto older activities)
+            if let globalPlaceId = activity.metadata?.globalPlaceId {
+                navigateToGlobalPlace(withId: globalPlaceId)
             }
         default:
             break
@@ -71,6 +79,13 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
             // targetId is the comment id, not a place — lookup would 404
             if let placeId = activity.metadata?.placeId {
                 navigateToPlace(withId: placeId, showComments: true)
+            } else if let globalPlaceId = activity.metadata?.globalPlaceId {
+                navigateToGlobalPlace(withId: globalPlaceId, showComments: true)
+            }
+        case .globalPlaceLiked:
+            // targetId is the photo id, not a place — lookup would 404
+            if let globalPlaceId = activity.metadata?.globalPlaceId {
+                navigateToGlobalPlace(withId: globalPlaceId)
             }
         default:
             navigateToPlaceFromActivity(activity)
@@ -365,7 +380,7 @@ extension CirclesHomeViewController {
     /// Venue offer/announcement activities target the canonical venue record
     /// (globalPlaceId), not a personal save doc — resolve it the same way the
     /// Specials tab does and open the place page
-    func navigateToGlobalPlace(withId globalPlaceId: String) {
+    func navigateToGlobalPlace(withId globalPlaceId: String, showComments: Bool = false) {
         let loading = AlertPresenter.showLoading(message: "Loading place...", from: self)
         GlobalPlaceService.shared.getGlobalPlace(id: globalPlaceId) { [weak self] result in
             DispatchQueue.main.async {
@@ -375,6 +390,7 @@ extension CirclesHomeViewController {
                     case .success(let response):
                         let place = response.bestDetailPlace()
                         let detailVC = PlaceDetailViewController(place: place)
+                        detailVC.showCommentsOnAppear = showComments
                         self.navigationController?.pushViewController(detailVC, animated: true)
                     case .failure(let error):
                         self.showError(error)

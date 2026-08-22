@@ -131,6 +131,7 @@ struct ActivityMetadata: Codable {
     let placePhoto: String?
     let placeAddress: String?
     let placeId: String?
+    let globalPlaceId: String?  // Canonical venue id (photo-like activities target a photo, not a place)
     let message: String?  // For check-in messages
     let endTime: String?  // For check-in end time
     let latitude: Double?  // For check-in place location
@@ -172,7 +173,9 @@ extension Activity {
         case .placeDiscovered:
             return "discovered \(targetName)"
         case .globalPlaceLiked:
-            return "liked \(targetName)"
+            // These are photo likes — targetId is the photo id, the venue
+            // lives in metadata.globalPlaceId
+            return "liked a photo at \(targetName)"
         case .videoLiked:
             return "liked \(targetName)"
         case .commentAdded:

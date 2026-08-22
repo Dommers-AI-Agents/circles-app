@@ -1063,7 +1063,8 @@ exports.likeGlobalPlaceUpload = async (req, res, next) => {
         resolvedId,
         placeData.name || 'Unknown Place',
         userId,
-        photo.uploadedBy
+        photo.uploadedBy,
+        photo.url || null
       );
     }
 
