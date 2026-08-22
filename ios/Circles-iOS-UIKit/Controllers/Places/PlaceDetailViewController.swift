@@ -996,8 +996,14 @@ class PlaceDetailViewController: BaseViewController {
         // Add subviews
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
-        
-        // Add media carousel view first
+
+        // Name row (name + category chip) sits ABOVE the photo, directly on
+        // the scroll content — the photo and the info card hang below it
+        contentView.addSubview(nameLabel)
+        contentView.addSubview(categoryLabel)
+        contentView.addSubview(categoryEditButton)
+
+        // Media carousel below the name row
         contentView.addSubview(mediaCarouselView)
         
         // Add photo control buttons on top of image view
@@ -1008,9 +1014,6 @@ class PlaceDetailViewController: BaseViewController {
         // Add info container after image view
         contentView.addSubview(infoContainerView)
         
-        infoContainerView.addSubview(nameLabel)
-        infoContainerView.addSubview(categoryLabel)
-        infoContainerView.addSubview(categoryEditButton)
         infoContainerView.addSubview(ratingView)
 
         // About card groups description + hours (hidden arranged subviews
@@ -1158,8 +1161,24 @@ class PlaceDetailViewController: BaseViewController {
             contentView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
             
-            // Image view
-            mediaCarouselView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            // Name label — leads the page, above the photo
+            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.medium),
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: categoryLabel.leadingAnchor, constant: -Constants.Spacing.small),
+
+            // Category label
+            categoryLabel.topAnchor.constraint(equalTo: nameLabel.topAnchor),
+            categoryLabel.trailingAnchor.constraint(equalTo: categoryEditButton.leadingAnchor, constant: -Constants.Spacing.small),
+            categoryLabel.heightAnchor.constraint(equalToConstant: 24),
+
+            // Category edit button
+            categoryEditButton.topAnchor.constraint(equalTo: nameLabel.topAnchor),
+            categoryEditButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            categoryEditButton.widthAnchor.constraint(equalToConstant: 24),
+            categoryEditButton.heightAnchor.constraint(equalToConstant: 24),
+
+            // Image view — hangs below the name row
+            mediaCarouselView.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.medium),
             mediaCarouselView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             mediaCarouselView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             mediaCarouselView.heightAnchor.constraint(equalToConstant: 300),
@@ -1183,24 +1202,8 @@ class PlaceDetailViewController: BaseViewController {
             infoContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             infoContainerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             
-            // Name label
-            nameLabel.topAnchor.constraint(equalTo: infoContainerView.topAnchor, constant: Constants.Spacing.large),
-            nameLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: categoryLabel.leadingAnchor, constant: -Constants.Spacing.small),
-            
-            // Category label
-            categoryLabel.topAnchor.constraint(equalTo: nameLabel.topAnchor),
-            categoryLabel.trailingAnchor.constraint(equalTo: categoryEditButton.leadingAnchor, constant: -Constants.Spacing.small),
-            categoryLabel.heightAnchor.constraint(equalToConstant: 24),
-            
-            // Category edit button
-            categoryEditButton.topAnchor.constraint(equalTo: nameLabel.topAnchor),
-            categoryEditButton.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
-            categoryEditButton.widthAnchor.constraint(equalToConstant: 24),
-            categoryEditButton.heightAnchor.constraint(equalToConstant: 24),
-            
-            // Rating view - directly under the name, hidden if no rating
-            ratingView.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.small),
+            // Rating view - under the social action row, hidden if no rating
+            ratingView.topAnchor.constraint(equalTo: actionButtonsContainer.bottomAnchor, constant: Constants.Spacing.small),
             ratingView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             ratingView.heightAnchor.constraint(equalToConstant: 26),
 
@@ -1238,8 +1241,9 @@ class PlaceDetailViewController: BaseViewController {
             savedByChevron.widthAnchor.constraint(equalToConstant: 14),
             savedByChevron.heightAnchor.constraint(equalToConstant: 14),
 
-            // Action buttons container
-            actionButtonsContainer.topAnchor.constraint(equalTo: savedByView.bottomAnchor, constant: Constants.Spacing.small),
+            // Action buttons container — leads the info card, directly below
+            // the photo (heart/comment + Add to My Circle/Follow)
+            actionButtonsContainer.topAnchor.constraint(equalTo: infoContainerView.topAnchor, constant: Constants.Spacing.small),
             actionButtonsContainer.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor),
             actionButtonsContainer.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor),
             actionButtonsContainer.heightAnchor.constraint(equalToConstant: 44),
@@ -1270,8 +1274,8 @@ class PlaceDetailViewController: BaseViewController {
             addToCircleButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
             addToCircleButton.leadingAnchor.constraint(greaterThanOrEqualTo: commentCountLabel.trailingAnchor, constant: Constants.Spacing.small),
 
-            // Practical actions row
-            practicalButtonsStackView.topAnchor.constraint(equalTo: actionButtonsContainer.bottomAnchor, constant: Constants.Spacing.medium),
+            // Practical actions row — after the social-proof row
+            practicalButtonsStackView.topAnchor.constraint(equalTo: savedByView.bottomAnchor, constant: Constants.Spacing.medium),
             practicalButtonsStackView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             practicalButtonsStackView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium),
             practicalButtonsStackView.heightAnchor.constraint(equalToConstant: 44),
