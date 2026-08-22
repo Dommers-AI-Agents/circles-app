@@ -360,6 +360,9 @@ See you on the map!
           <p style="font-size: 15px; line-height: 1.6;">
             That's it. Everything else — circles, the map, sharing — builds from there.
           </p>
+          <div style="text-align:center;margin:22px 0 6px;">
+            <a href="https://api.favcircles.com/app/open?path=add-place" style="display:inline-block;background:#3478F6;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 26px;border-radius:9px;">Add Your First Place</a>
+          </div>
           <p style="font-size: 15px; line-height: 1.6;">— Wesley &amp; the Circles team</p>
         </div>`;
 
@@ -374,6 +377,8 @@ Two quick things to do first:
 2. Find your friends — the more people you connect with, the more great places show up on your map.
 
 That's it. Everything else builds from there.
+
+Add your first place: https://api.favcircles.com/app/open?path=add-place
 
 — Wesley & the Circles team`;
 
@@ -413,6 +418,9 @@ That's it. Everything else builds from there.
           <p style="font-size: 15px; line-height: 1.6;">
             A good first move: import your saved places from another app — a full map on day one makes everything else better.
           </p>
+          <div style="text-align:center;margin:22px 0 6px;">
+            <a href="https://api.favcircles.com/app/import" style="display:inline-block;background:#3478F6;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 26px;border-radius:9px;">Import Your Places</a>
+          </div>
           <p style="font-size: 15px; line-height: 1.6;">— Wesley &amp; the FavCircles team</p>
         </div>`;
 
@@ -429,6 +437,7 @@ ${opener}
 • Circle Advisor — AI suggestions for rounding out your circles.
 
 A good first move: import your saved places from another app — a full map on day one makes everything else better.
+Import now: https://api.favcircles.com/app/import
 
 — Wesley & the FavCircles team`;
 
@@ -495,6 +504,9 @@ A good first move: import your saved places from another app — a full map on d
           <p style="font-size: 15px; line-height: 1.6;">
             A good first move: post one offer worth walking in for, and put the window sticker where people can see it. Reply to this email if you need stickers or help getting set up — happy to help personally.
           </p>
+          <div style="text-align:center;margin:22px 0 6px;">
+            <a href="https://api.favcircles.com/app/open?path=me" style="display:inline-block;background:#3478F6;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 26px;border-radius:9px;">Manage Your Venue</a>
+          </div>
           <p style="font-size: 15px; line-height: 1.6;">— Wesley &amp; the FavCircles team</p>
         </div>`;
 
@@ -511,6 +523,7 @@ Your Business subscription${forVenue} is active. Everything below is live now �
 • Redemption codes — single-use codes for orders or events.
 
 A good first move: post one offer worth walking in for, and put the window sticker where people can see it. Reply to this email if you need stickers or help getting set up.
+Manage your venue: https://api.favcircles.com/app/open?path=me
 
 — Wesley & the FavCircles team`;
 
@@ -635,6 +648,9 @@ Reply to this email if you get stuck.
           <p style="font-size: 15px; line-height: 1.6;">
             You're verified as the owner of <strong>${business}</strong> on FavCircles. Your store now appears under <strong>Profile → My Venues</strong> in the app, and its place page shows you the owner tools.
           </p>
+          <div style="text-align:center;margin:22px 0 6px;">
+            <a href="https://api.favcircles.com/app/open?path=me" style="display:inline-block;background:#3478F6;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 26px;border-radius:9px;">Open My Venues</a>
+          </div>
           <p style="font-size: 15px; line-height: 1.6;"><strong>What you can do right away (free):</strong></p>
           <ul style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
             <li>Keep your business details accurate — your edits are the ones customers see</li>

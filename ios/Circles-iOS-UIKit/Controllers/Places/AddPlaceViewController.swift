@@ -1268,7 +1268,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                 
                                 // Preload photos only if we haven't already uploaded any
                                 if self?.uploadedPhotoUrls.isEmpty == true {
-                                    self?.preloadAndUploadPhotosForPlace(googleDetails, token: token)
+                                    self?.preloadAndUploadPhotosForPlace(googleDetails)
                                 } else {
                                     Logger.debug("📸 Skipping photo preload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
                                 }

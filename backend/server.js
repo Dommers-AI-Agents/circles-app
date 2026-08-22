@@ -302,7 +302,7 @@ ${address ? `<p style="margin:0 0 16px;opacity:.85">${esc(address)}</p>` : ''}
 // Email/universal-link targets with no page of their own: installed devices
 // never reach these (iOS intercepts); browsers get the marketing site
 // instead of a 404 JSON blob.
-app.get(['/app/open', '/app/daily-summary', '/daily-summary'], (req, res) => {
+app.get(['/app/open', '/app/daily-summary', '/daily-summary', '/app/import'], (req, res) => {
   res.redirect('https://favcircles.com');
 });
 

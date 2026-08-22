@@ -762,10 +762,26 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             }
             tabBarController.selectedIndex = 1 // Network tab
         } else if path == "add-place" {
-            // Navigate to add place
-            guard let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
+            // Welcome-email CTA: open the Add Place flow directly
+            guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+                UserDefaults.standard.set("add-place", forKey: "pendingDeepLink")
+                return
+            }
             tabBarController.selectedIndex = 0 // Home tab
-            // Trigger add place action
+            if let navController = tabBarController.viewControllers?.first as? UINavigationController,
+               let homeVC = navController.viewControllers.first as? CirclesHomeViewController {
+                navController.popToRootViewController(animated: false)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    homeVC.quickAddPlaceButtonTapped()
+                }
+            }
+        } else if path == "me" {
+            // Business/claim emails: venue management lives on the Me tab
+            guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+                UserDefaults.standard.set("me", forKey: "pendingDeepLink")
+                return
+            }
+            tabBarController.selectedIndex = 3
         }
     }
     
@@ -1400,13 +1416,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Single-token links carry no colon-separated payload and would be
         // dropped by the components.count >= 2 parse below
         if pendingLink == "network" || pendingLink == "daily-summary"
-            || pendingLink == "all-places-map" || pendingLink == "create-wallet" {
+            || pendingLink == "all-places-map" || pendingLink == "create-wallet"
+            || pendingLink == "add-place" || pendingLink == "me" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 switch pendingLink {
                 case "network": self.navigateToMyNetwork()
                 case "daily-summary": self.navigateToDailySummary()
                 case "all-places-map": self.navigateToAllPlacesMap()
                 case "create-wallet": self.navigateToCreateWallet()
+                case "add-place", "me": self.handleOpenPath(pendingLink)
                 default: break
                 }
             }
