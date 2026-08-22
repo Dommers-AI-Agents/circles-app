@@ -35,9 +35,20 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
             // For moment upload/like activities, open the moment player
             // (targetId is the video id in both cases)
             navigateToVideoFromActivity(activity)
-        case .placeAdded, .placeLiked, .placeCommented, .checkIn:
+        case .placeAdded, .placeLiked, .checkIn:
             // For place-related activities, navigate to place detail
             navigateToPlaceFromActivity(activity)
+        case .placeCommented:
+            // A comment activity lands IN the comments
+            navigateToPlace(withId: activity.targetId, showComments: true)
+        case .commentLiked:
+            // targetId is the COMMENT id; the place lives in metadata. This
+            // used to fall into `default: break` — the cell's content-area
+            // gesture (which covers nearly the whole row) went nowhere and
+            // only margin taps reached the row-level handler.
+            if let placeId = activity.metadata?.placeId {
+                navigateToPlace(withId: placeId, showComments: true)
+            }
         default:
             break
         }
@@ -56,6 +67,11 @@ extension CirclesHomeViewController: ActivityFeedCellDelegate {
         switch activity.type {
         case .videoUploaded, .videoLiked:
             navigateToVideoFromActivity(activity)
+        case .commentLiked:
+            // targetId is the comment id, not a place — lookup would 404
+            if let placeId = activity.metadata?.placeId {
+                navigateToPlace(withId: placeId, showComments: true)
+            }
         default:
             navigateToPlaceFromActivity(activity)
         }

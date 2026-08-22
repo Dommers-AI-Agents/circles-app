@@ -3721,8 +3721,21 @@ exports.likeComment = async (req, res, next) => {
       updatedAt: new Date().toISOString()
     });
     
-    // Track activity if liking (not unliking)
-    if (!alreadyLiked) {
+    // Track activity if liking (not unliking). Unlike/re-like cycles used to
+    // mint a NEW activity every time (and unliking left the old one) — the
+    // feed showed "liked a comment" rows two and three deep for one comment.
+    const existingActivity = await db.collection('activities')
+      .where('type', '==', 'comment_liked')
+      .where('actorId', '==', userId)
+      .where('targetId', '==', commentId)
+      .get();
+    if (alreadyLiked) {
+      // Unliking: retire the activity row(s)
+      for (const doc of existingActivity.docs) {
+        await doc.ref.delete().catch(() => {});
+      }
+    }
+    if (!alreadyLiked && existingActivity.empty) {
       const { createActivity } = require('./activityController');
       await createActivity(
         'comment_liked',
