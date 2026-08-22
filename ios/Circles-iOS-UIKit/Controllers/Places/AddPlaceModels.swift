@@ -28,7 +28,6 @@ class PlaceSearchAnnotation: NSObject, MKAnnotation {
     var coordinate: CLLocationCoordinate2D = CLLocationCoordinate2D()
     var title: String?
     var subtitle: String?
-    var placeId: String?
     var mapItem: MKMapItem?
     var isTemporary: Bool = false
 }

@@ -22,7 +22,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     var selectedMapItem: MKMapItem?
     var annotations: [MKAnnotation] = []
     var annotationToPlaceIdMap: [ObjectIdentifier: String] = [:]
-    var placesClient: GMSPlacesClient!  // Keep only for photos
     var placeIdsByCoordinate: [String: String] = [:] // Additional storage by coordinate
     var selectedGooglePlaceDetails: GooglePlaceDetails? {
         didSet { applyVenueSourceLockIfNeeded() }
@@ -1101,7 +1100,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     func setupSearchCompleter() {
         // Keep Google Places client only for photos
-        placesClient = GMSPlacesClient.shared()
         
         // Setup MKLocalSearchCompleter
         searchCompleter.delegate = self
@@ -1263,48 +1261,33 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     func searchNearbyPlaces(at coordinate: CLLocationCoordinate2D) {
         Logger.debug("🔍 Searching for nearby places at \(coordinate.latitude), \(coordinate.longitude)")
-        
-        // Use Google Places to search for nearby businesses
-        GooglePlacesService.shared.searchPlacesByCategory(
-            category: "",  // Empty query to get all nearby places
-            center: coordinate,
-            radiusInMeters: 50  // Search within 50 meters
-        ) { [weak self] result in
-            switch result {
-            case .success(let predictions):
-                if let nearestPlace = predictions.first {
-                    Logger.debug("✅ Found nearby place: \(nearestPlace.attributedPrimaryText.string)")
-                    
-                    // Fetch details for the nearest place
-                    GooglePlacesService.shared.fetchPlaceDetails(placeID: nearestPlace.placeID) { detailsResult in
-                        switch detailsResult {
-                        case .success(let place):
-                            DispatchQueue.main.async {
-                                // If we found a place, update the form with its details
-                                let googleDetails = GooglePlaceDetails(from: place)
-                                self?.selectedGooglePlaceDetails = googleDetails
-                                
-                                // Update the name field with the found place
-                                self?.nameTextField.text = place.name ?? ""
-                                
-                                // Preload photos only if we haven't already uploaded any
-                                if self?.uploadedPhotoUrls.isEmpty == true {
-                                    self?.preloadAndUploadPhotosForPlace(googleDetails)
-                                } else {
-                                    Logger.debug("📸 Skipping photo preload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
-                                }
-                                
-                                Logger.debug("📍 Updated form with nearby place: \(place.name ?? "Unknown")")
-                            }
-                        case .failure(let error):
-                            Logger.debug("❌ Failed to fetch place details: \(error)")
-                        }
-                    }
-                } else {
+
+        // Apple's free nearby-POI lookup — this used to be a billed Google
+        // Autocomplete + Details round trip on every manual map tap
+        let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 50)
+        let search = MKLocalSearch(request: request)
+        search.start { [weak self] response, _ in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                guard let nearest = response?.mapItems.first else {
                     Logger.debug("⚠️ No nearby places found at this location")
+                    return
                 }
-            case .failure(let error):
-                Logger.debug("❌ Failed to search nearby places: \(error)")
+
+                // Same no-bulldozing rule as the address fill above
+                if (self.nameTextField.text ?? "").isEmpty {
+                    self.nameTextField.text = nearest.name ?? ""
+                }
+                self.selectedApplePoiCategory = nearest.pointOfInterestCategory?.rawValue
+
+                if let name = nearest.name, !name.isEmpty {
+                    self.fetchPlaceAssets(
+                        name: name,
+                        coordinate: nearest.placemark.coordinate,
+                        address: self.addressTextView.text
+                    )
+                }
+                Logger.debug("📍 Updated form with nearby place: \(nearest.name ?? "Unknown")")
             }
         }
     }
@@ -2493,41 +2476,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         mapView.setRegion(region, animated: true)
     }
     
-    func captureStreetViewImage(for coordinate: CLLocationCoordinate2D) {
-        // First check if street view is available at this location
-        GoogleStreetViewService.shared.checkStreetViewAvailability(at: coordinate) { [weak self] available in
-            guard available else {
-                Logger.debug("Street View not available at this location")
-                return
-            }
-            
-            // Download the street view image
-            let parameters = GoogleStreetViewService.StreetViewParameters(
-                location: coordinate,
-                size: CGSize(width: 800, height: 600),
-                pitch: 10,
-                fov: 100
-            )
-            
-            GoogleStreetViewService.shared.downloadStreetViewImage(parameters: parameters) { imageData in
-                guard let data = imageData,
-                      let image = UIImage(data: data) else {
-                    Logger.debug("Failed to download street view image")
-                    return
-                }
-                
-                DispatchQueue.main.async {
-                    self?.selectedImage = image
-                    self?.photoImageView.image = image
-                    self?.photoImageView.isHidden = false
-                    self?.removePhotoButton.isHidden = false
-                    self?.addPhotoButton.isHidden = true
-                    Logger.debug("✅ Street view image captured successfully")
-                }
-            }
-        }
-    }
-    
     func fillFormWithMapItem(_ mapItem: MKMapItem) {
         Logger.debug("📝 fillFormWithMapItem called with: \(mapItem.name ?? "Unknown")")
         Logger.debug("📝 Category search active: \(hasSearchedCategory)")
@@ -2541,48 +2489,13 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         
         // Enable form first
         enableManualEntry()
-        
-        // Capture street view image for the location
-        captureStreetViewImage(for: mapItem.placemark.coordinate)
-        
-        // Enrich with Google Photos using PlaceDetailsService
-        PlaceDetailsService.shared.getEnrichedPlaceDetails(for: mapItem) { [weak self] result in
-            guard let self = self else { return }
-            
-            switch result {
-            case .success(let enrichedDetails):
-                Logger.debug("✅ Got enriched details - Google Place ID: \(enrichedDetails.googlePlaceId ?? "none"), Photos: \(enrichedDetails.googlePhotos.count)")
-                
-                // Load the first Google photo if available
-                if let firstPhotoMetadata = enrichedDetails.googlePhotos.first {
-                    Logger.debug("📸 Loading Google photo for place...")
-                    PlaceDetailsService.shared.loadPhoto(from: firstPhotoMetadata, maxSize: CGSize(width: 800, height: 800)) { [weak self] photoResult in
-                        switch photoResult {
-                        case .success(let image):
-                            Logger.debug("📸 Successfully loaded Google photo")
-                            DispatchQueue.main.async {
-                                self?.downloadedGoogleImage = image
-                                self?.selectedImage = image
-                                self?.photoImageView.image = image
-                                self?.photoImageView.isHidden = false
-                                self?.removePhotoButton.isHidden = false
-                                self?.addPhotoButton.isHidden = true
-                                
-                                // Don't upload here - let preloadAndUploadPhotosForPlace handle it
-                                // This prevents duplicate uploads due to race conditions
-                                Logger.debug("📸 Google photo downloaded and stored for later upload")
-                            }
-                        case .failure(let error):
-                            Logger.debug("❌ Failed to load Google photo: \(error)")
-                        }
-                    }
-                }
-                
-            case .failure(let error):
-                Logger.debug("⚠️ Failed to get enriched details: \(error)")
-            }
-        }
-        
+
+        // Photo + googlePlaceId come from fetchPlaceAssets below — our own
+        // database first, Google only for venues nobody has saved yet. The
+        // Street View capture and PlaceDetailsService enrichment that used to
+        // also fire here were billed on every selection and their results
+        // were overwritten by that same pipeline.
+
         // Add a small delay to ensure the form is visible before populating
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -3063,62 +2976,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
 
-    func fillFormWithGMSPlace(_ place: GMSPlace) {
-        // Convert GMSPlace to GooglePlaceDetails
-        let placeDetails = GooglePlaceDetails(from: place)
-        fillFormWithGooglePlace(placeDetails)
-        
-        // Update map to show the selected place
-        updateMapForLocation(place.coordinate)
-        
-        // Capture street view image for the location
-        captureStreetViewImage(for: place.coordinate)
-        
-        // Calculate and show distance from current location
-        if let userLocation = locationManager.location {
-            let placeLocation = CLLocation(latitude: place.coordinate.latitude, longitude: place.coordinate.longitude)
-            let distance = userLocation.distance(from: placeLocation)
-            
-            // Convert to miles or kilometers based on locale
-            let formatter = MeasurementFormatter()
-            formatter.numberFormatter.maximumFractionDigits = 1
-            let measurement = Measurement(value: distance, unit: UnitLength.meters)
-            let distanceString = formatter.string(from: measurement)
-            
-            // Update the address text to include distance
-            if let currentAddress = addressTextView.text, !currentAddress.isEmpty {
-                addressTextView.text = "\(currentAddress)\n📍 \(distanceString) from current location"
-            }
-        }
-    }
-    
-    func loadAndFillFormWithGooglePlace(placeId: String, markerTitle: String) {
-        // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Loading Place Details", message: "Please wait...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        // Fetch full place details
-        placesClient.fetchPlace(
-            fromPlaceID: placeId,
-            placeFields: [.name, .formattedAddress, .coordinate, .types, .phoneNumber, .website, .rating, .userRatingsTotal, .priceLevel, .photos, .openingHours, .businessStatus, .editorialSummary],
-            sessionToken: nil
-        ) { [weak self] (place, error) in
-            guard let self = self else { return }
-
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    if let place = place {
-                        // Fill the form with place details
-                        self.fillFormWithGMSPlace(place)
-                    } else {
-                        Logger.debug("Failed to fetch place details: \(error?.localizedDescription ?? "unknown error")")
-                        self.presentAlert(title: "Error", message: "Failed to load place details")
-                    }
-                }
-            }
-        }
-    }
-    
     func updateMapForLocation(_ coordinate: CLLocationCoordinate2D) {
         let region = MKCoordinateRegion(
             center: coordinate,
@@ -3635,247 +3492,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         
         let region = MKCoordinateRegion(center: center, span: span)
         mapView.setRegion(region, animated: true)
-    }
-    
-    func addGooglePlace(placeId: String, markerTitle: String) {
-        // Same double-tap guard as the Save button — the callout "+" creates too
-        guard !isSaving else { return }
-        beginSaving()
-
-        // Show loading
-        let loadingAlert = UIAlertController(title: "Adding Place", message: "Please wait...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        // Fetch full place details with all available fields
-        placesClient.fetchPlace(
-            fromPlaceID: placeId,
-            placeFields: [.name, .formattedAddress, .coordinate, .types, .phoneNumber, .website, .rating, .userRatingsTotal, .priceLevel, .photos, .openingHours, .businessStatus, .editorialSummary],
-            sessionToken: nil
-        ) { [weak self] (place, error) in
-            guard let self = self else { return }
-            guard let place = place else {
-                loadingAlert.dismiss(animated: true) {
-                    self.endSaving()
-                    self.showError("Failed to get place details")
-                }
-                return
-            }
-            
-            // Determine category based on place types
-            let category = self.determinePlaceCategory(from: place.types ?? [])
-            
-            // Format opening hours if available
-            var openingHoursArray: [[String: Any]] = []
-            if let openingHours = place.openingHours {
-                // Use the GooglePlaceDetails method to properly format opening hours
-                let placeDetails = GooglePlaceDetails(from: place)
-                if let formattedHours = placeDetails.toPlaceData(circleId: self.selectedCircleId)["openingHours"] as? [[String: Any]] {
-                    openingHoursArray = formattedHours
-                }
-            }
-            
-            // Create comprehensive place data
-            var placeData: [String: Any] = [
-                "name": place.name ?? markerTitle,
-                "address": place.formattedAddress ?? "",
-                "googlePlaceId": placeId,
-                "circleId": self.selectedCircleId,
-                "category": category.rawValue,
-                "rating": place.rating,
-                "userRatingsTotal": place.userRatingsTotal,
-                "website": place.website?.absoluteString ?? "",
-                "phone": place.phoneNumber ?? "",
-                "priceLevel": place.priceLevel.rawValue,
-                "types": place.types ?? [],
-                "location": [
-                    "type": "Point",
-                    "coordinates": [place.coordinate.longitude, place.coordinate.latitude]
-                ]
-            ]
-            
-            // Add opening hours if available
-            if !openingHoursArray.isEmpty {
-                placeData["openingHours"] = openingHoursArray
-            }
-            
-            // Add business status
-            switch place.businessStatus {
-            case .operational:
-                placeData["businessStatus"] = "operational"
-            case .closedTemporarily:
-                placeData["businessStatus"] = "closed_temporarily"
-            case .closedPermanently:
-                placeData["businessStatus"] = "closed_permanently"
-            case .unknown:
-                placeData["businessStatus"] = "unknown"
-            @unknown default:
-                placeData["businessStatus"] = "unknown"
-            }
-            
-            // Add place description from types and business info
-            var descriptionParts: [String] = []
-            if let summary = place.editorialSummary, !summary.isEmpty {
-                descriptionParts.append(summary)
-            }
-            if place.rating > 0 {
-                descriptionParts.append("Rating: \(String(format: "%.1f", place.rating))/5.0 (\(place.userRatingsTotal) reviews)")
-            }
-            if place.priceLevel.rawValue > 0 {
-                let priceString = String(repeating: "$", count: Int(place.priceLevel.rawValue))
-                descriptionParts.append("Price: \(priceString)")
-            }
-            if !descriptionParts.isEmpty {
-                placeData["description"] = descriptionParts.joined(separator: " • ")
-            }
-            
-            // Handle Google Place photos
-            // NOTE: This is the ONLY acceptable use of Google Places API - fetching photos
-            // For all other operations, use Apple Maps API (see APIUsageGuidelines.md)
-            if let photos = place.photos, !photos.isEmpty {
-                // Load the first photo
-                Logger.debug("📸 Loading photo from Google Places...")
-                GooglePlacesService.shared.loadPhoto(from: photos[0], maxSize: CGSize(width: 800, height: 800)) { photoResult in
-                    switch photoResult {
-                    case .success(let image):
-                        Logger.debug("📸 Successfully loaded Google photo")
-                        // Convert to data and upload
-                        if let imageData = image.jpegData(compressionQuality: 0.8) {
-                            Logger.debug("📸 Uploading photo to backend... Size: \(imageData.count / 1024)KB")
-                            PlaceService.shared.uploadMultipleImages([imageData]) { uploadResult in
-                                switch uploadResult {
-                                case .success(let imageUrls):
-                                    Logger.debug("📸 Photo uploaded successfully: \(imageUrls)")
-                                    placeData["photos"] = imageUrls
-                                    self.createPlaceWithGoogleData(placeData, loadingAlert: loadingAlert)
-                                case .failure(let error):
-                                    Logger.debug("📸 Failed to upload photo: \(error)")
-                                    self.createPlaceWithGoogleData(placeData, loadingAlert: loadingAlert)
-                                }
-                            }
-                        } else {
-                            Logger.debug("📸 Failed to convert image to JPEG data")
-                            self.createPlaceWithGoogleData(placeData, loadingAlert: loadingAlert)
-                        }
-                    case .failure(let error):
-                        Logger.debug("📸 Failed to load Google photo: \(error)")
-                        self.createPlaceWithGoogleData(placeData, loadingAlert: loadingAlert)
-                    }
-                }
-            } else {
-                Logger.debug("📸 No photos available from Google Places")
-                self.createPlaceWithGoogleData(placeData, loadingAlert: loadingAlert)
-            }
-        }
-    }
-    
-    func createPlaceWithGoogleData(_ placeData: [String: Any], loadingAlert: UIAlertController) {
-        // Debug: Log place data being sent
-        Logger.debug("📍 Creating place with data:")
-        Logger.debug("📍 Name: \(placeData["name"] ?? "No name")")
-        Logger.debug("📍 Category: \(placeData["category"] ?? "No category")")
-        Logger.debug("📍 Photos: \(placeData["photos"] ?? "No photos")")
-        Logger.debug("📍 Rating: \(placeData["rating"] ?? "No rating")")
-        Logger.debug("📍 Description: \(placeData["description"] ?? "No description")")
-        
-        var enrichedPlaceData = placeData
-        if let userRating = userRating {
-            enrichedPlaceData["userRating"] = userRating
-        }
-
-        // Try to get Apple Look Around image if location is available
-        if let location = placeData["location"] as? [String: Any],
-           let coordinates = location["coordinates"] as? [Double],
-           coordinates.count >= 2 {
-            
-            let longitude = coordinates[0]
-            let latitude = coordinates[1]
-            let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-            
-            // Check and fetch Apple Look Around
-            if #available(iOS 16.0, *) {
-                Task {
-                    let hasLookAround = await AppleLookAroundService.shared.checkLookAroundAvailability(at: coordinate)
-                    
-                    if hasLookAround {
-                        do {
-                            // Get the Look Around snapshot
-                            let lookAroundImage = try await AppleLookAroundService.shared.getLookAroundSnapshot(at: coordinate)
-                            
-                            // Convert to JPEG data
-                            if let imageData = lookAroundImage.jpegData(compressionQuality: 0.8) {
-                                // Upload the image
-                                PlaceService.shared.uploadMultipleImages([imageData]) { uploadResult in
-                                    switch uploadResult {
-                                    case .success(let imageUrls):
-                                        // Add Apple Look Around URL to existing photos
-                                        var photos = enrichedPlaceData["photos"] as? [String] ?? []
-                                        photos.append(contentsOf: imageUrls)
-                                        enrichedPlaceData["photos"] = photos
-                                        Logger.debug("✅ Apple Look Around image uploaded successfully")
-                                        Logger.debug("📸 Total photos: \(photos.count)")
-                                        
-                                        // Now create the place with both images
-                                        self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
-                                        
-                                    case .failure(let error):
-                                        Logger.debug("Failed to upload Look Around image: \(error)")
-                                        // Continue without Look Around image
-                                        self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
-                                    }
-                                }
-                            } else {
-                                // Failed to convert image
-                                self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
-                            }
-                        } catch {
-                            Logger.debug("Failed to get Look Around snapshot: \(error)")
-                            // Continue without Look Around image
-                            self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
-                        }
-                    } else {
-                        // No Look Around available
-                        self.finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
-                    }
-                }
-            } else {
-                // iOS version too old for Look Around
-                finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
-            }
-        } else {
-            // No location available
-            finalizeCreatePlace(enrichedPlaceData, loadingAlert: loadingAlert)
-        }
-    }
-    
-    func finalizeCreatePlace(_ placeData: [String: Any], loadingAlert: UIAlertController) {
-        PlaceService.shared.createPlaceFromGoogleData(placeData) { [weak self] result in
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    guard let self = self else { return }
-                    
-                    switch result {
-                    case .success(let newPlace):
-                        // Debug: Log returned place data
-                        Logger.debug("✅ Place created successfully:")
-                        Logger.debug("✅ ID: \(newPlace.id)")
-                        Logger.debug("✅ Name: \(newPlace.name)")
-                        Logger.debug("✅ Photos: \(newPlace.photos ?? [])")
-                        Logger.debug("✅ Description: \(newPlace.description ?? "nil")")
-
-                        self.postPendingReviewIfNeeded(for: newPlace)
-
-                        // No success popup — the piggy-bank coin drop IS the
-                        // success feedback; an alert here covered it up
-                        self.navigateToCircleDetail()
-                        
-                    case .failure(let error):
-                        Logger.debug("❌ Failed to create place: \(error)")
-                        self.endSaving()
-                        self.presentPlaceCreationError(error)
-                    }
-                }
-            }
-        }
     }
     
     func formatAddress(for placemark: MKPlacemark) -> String {

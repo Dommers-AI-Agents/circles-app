@@ -4,7 +4,6 @@
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS, createCircle, createPlace } = require('../models/FirestoreModels');
 const { DEFAULT_CIRCLES, getRandomLocalPlace } = require('../data/popularPlaces');
-const PlaceDiscoveryService = require('./placeDiscoveryService');
 
 const db = getFirestore();
 
@@ -54,21 +53,15 @@ class OnboardingService {
       }
       
       // Resolve the sample place BEFORE the transaction (network calls are not
-      // allowed mid-transaction). Prefer a real place near the user's zipcode
-      // so the sample is something they recognize; fall back to curated lists.
+      // allowed mid-transaction). Curated list only — the Google Nearby
+      // Search that used to run first was the priciest SKU in the project
+      // (~$32/1k) spent on a throwaway sample place.
       const userCity = (userData.location || '').split(',')[0].trim() || userLocation?.city || null;
-      let resolvedSamplePlace = await PlaceDiscoveryService.findNearbyPlace({
-        zipcode: userData.zipcode || userLocation?.zipcode,
-        coordinates: userData.lastKnownLocation || userLocation?.coordinates,
-        city: userCity
-      });
-      if (!resolvedSamplePlace) {
-        resolvedSamplePlace = getRandomLocalPlace(userCity ? { city: userCity } : userLocation);
-        if (resolvedSamplePlace) {
-          console.log(`📍 Onboarding: Using curated fallback place "${resolvedSamplePlace.name}"`);
-        } else {
-          console.log('📍 Onboarding: No location known — skipping sample place');
-        }
+      const resolvedSamplePlace = getRandomLocalPlace(userCity ? { city: userCity } : userLocation);
+      if (resolvedSamplePlace) {
+        console.log(`📍 Onboarding: Using curated sample place "${resolvedSamplePlace.name}"`);
+      } else {
+        console.log('📍 Onboarding: No location known — skipping sample place');
       }
 
       // Create default circles and sample place in a transaction
@@ -220,12 +213,8 @@ class OnboardingService {
       await userRef.update({ sampleSeedAttempts: FieldValue.increment(1) });
 
       const userCity = (u.location || '').split(',')[0].trim() || null;
-      let sample = await PlaceDiscoveryService.findNearbyPlace({
-        zipcode: u.zipcode,
-        coordinates: coordinates || u.lastKnownLocation,
-        city: userCity
-      });
-      if (!sample) sample = getRandomLocalPlace(userCity ? { city: userCity } : null);
+      // Curated list only — see the sample-place note in completeOnboarding
+      const sample = getRandomLocalPlace(userCity ? { city: userCity } : null);
       if (!sample || !sample.coordinates) return { seeded: false };
 
       const placeRef = db.collection(COLLECTIONS.PLACES).doc();

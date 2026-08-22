@@ -337,24 +337,6 @@ extension AddPlaceViewController: MKMapViewDelegate {
                     self?.scrollToFormTop()
                 }
             }
-        }
-        // Check if we have a Google Place ID
-        else if let placeId = placeAnnotation.placeId {
-            Logger.debug("✅ Found Google place ID, loading details")
-            
-            // Enable form first
-            enableManualEntry()
-            
-            // Small delay to ensure form is ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                // Load and fill form without confirmation popup
-                self?.loadAndFillFormWithGooglePlace(placeId: placeId, markerTitle: name)
-                
-                // Scroll to show the form
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    self?.scrollToFormTop()
-                }
-            }
         } else {
             Logger.debug("⚠️ No map item or place ID found for annotation")
         }

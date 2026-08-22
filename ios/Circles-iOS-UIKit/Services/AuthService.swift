@@ -522,10 +522,7 @@ class AuthService {
         
         // Clear ImageService cache
         ImageService.shared.clearCache()
-        
-        // Clear StreetViewService cache
-        StreetViewService.shared.clearCache()
-        
+
         // Clear app-specific UserDefaults
         clearAppUserDefaults()
         

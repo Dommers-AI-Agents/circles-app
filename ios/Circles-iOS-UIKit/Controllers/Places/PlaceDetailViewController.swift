@@ -829,11 +829,12 @@ class PlaceDetailViewController: BaseViewController {
             markPlaceAsViewed()
         }
         
-        // Fetch rating if not available
-        if place.rating == nil || place.rating == 0 {
-            fetchPlaceRating()
-        }
-        
+        // Rating comes from the canonical venue overlay on the API response;
+        // places without one just don't show a rating. (This used to trigger
+        // a billed Google Autocomplete + Details lookup on every view of an
+        // unrated place.)
+
+
         // Listen for place added notification from modal AddPlaceViewController
         NotificationCenter.default.addObserver(
             self,
@@ -908,36 +909,6 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     // MARK: - Data Fetching
-    
-    private func fetchPlaceRating() {
-        // Use PlaceEnrichmentService to fetch rating from Google Places
-        PlaceEnrichmentService.shared.enrichPlaceDetails(
-            name: place.name,
-            address: place.address,
-            category: place.category,
-            coordinate: (latitude: place.location?.coordinates[1] ?? 0, longitude: place.location?.coordinates[0] ?? 0)
-        ) { [weak self] result in
-            switch result {
-            case .success(let enrichedData):
-                if let rating = enrichedData.rating, rating > 0 {
-                    DispatchQueue.main.async {
-                        self?.updateRatingDisplay(rating: rating, userRatingsTotal: enrichedData.userRatingsTotal)
-                    }
-                }
-            case .failure(let error):
-                Logger.debug("Failed to fetch rating: \(error)")
-            }
-        }
-    }
-    
-    private func updateRatingDisplay(rating: Double, userRatingsTotal: Int?) {
-        var ratingText = String(format: "%.1f", rating)
-        if let userRatingsTotal = userRatingsTotal, userRatingsTotal > 0 {
-            ratingText += " (\(userRatingsTotal) review\(userRatingsTotal == 1 ? "" : "s"))"
-        }
-        ratingLabel.text = ratingText
-        ratingView.isHidden = false
-    }
     
     private func fetchCircle() {
         guard let circleId = place.circleId, !circleId.isEmpty else { return }
@@ -3138,94 +3109,6 @@ class PlaceDetailViewController: BaseViewController {
     
     // MARK: - Actions
     
-    // Commented out - automatic photo migration now handles this
-    /*
-    @objc private func updateInfoButtonTapped() {
-        // Show loading alert
-        let loadingAlert = UIAlertController(title: "Updating Place Info", message: "Fetching latest information from Google Places...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        // Call the refresh endpoint
-        PlaceService.shared.refreshPlaceFromGoogle(id: place.id) { [weak self] result in
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success(let updatedPlace):
-                        // Update the UI with new place data
-                        self?.updateUIWithRefreshedPlace(updatedPlace)
-                        
-                        // Show success message
-                        self?.showSuccess("Place information has been updated")
-                        
-                    case .failure(let error):
-                        // Show error message
-                        var errorMessage = "Failed to update place information"
-                        
-                        if let placeError = error as? PlaceError {
-                            errorMessage = placeError.errorDescription ?? error.localizedDescription
-                        } else {
-                            errorMessage = "Failed to update place information: \(error.localizedDescription)"
-                        }
-                        
-                        AlertPresenter.showError(title: "Unable to Update", message: errorMessage, from: self!)
-                    }
-                }
-            }
-        }
-    }
-    
-    private func updateUIWithRefreshedPlace(_ updatedPlace: Place) {
-        // Update place reference
-        self.place = updatedPlace
-        
-        // Update UI elements
-        nameLabel.text = updatedPlace.name
-        addressLabel.text = updatedPlace.address
-        
-        // Update phone and website buttons if they were fetched
-        if let phone = updatedPlace.phone {
-            phoneButton.setTitle("Call", for: .normal)
-        }
-        
-        if let website = updatedPlace.website {
-            websiteButton.setTitle("Visit Website", for: .normal)
-        }
-        
-        // Update photos if new ones were fetched
-        if let photos = updatedPlace.photos, !photos.isEmpty {
-            // Load the new photos
-            placePhotos.removeAll()
-            loadPlacePhotos()
-            
-            // Hide the update info button since we now have photos
-            // updateInfoButton.isHidden = true // Commented - automatic migration
-        }
-        
-        // Update rating if available
-        if let rating = updatedPlace.rating, rating > 0 {
-            var ratingText = String(format: "%.1f", rating)
-            if let userRatingsTotal = updatedPlace.userRatingsTotal, userRatingsTotal > 0 {
-                ratingText += " (\(userRatingsTotal) review\(userRatingsTotal == 1 ? "" : "s"))"
-            }
-            
-            // Add external link indicator if Google Place ID exists
-            if updatedPlace.googlePlaceId != nil {
-                ratingText += " ↗"
-            }
-            
-            ratingLabel.text = ratingText
-            ratingView.isHidden = false
-            
-            // Add subtle highlight on tap capability
-            ratingView.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.3)
-        } else {
-            ratingView.isHidden = true
-        }
-        
-        // Post notification to refresh any lists
-        NotificationCenter.default.post(name: NSNotification.Name("PlaceUpdated"), object: nil, userInfo: ["place": updatedPlace])
-    }
-    */
     
     @objc private func updateAddressButtonTapped() {
         // Create and present the address search view controller

@@ -123,18 +123,24 @@ async function enrichPlaceWithGoogleData(placeName, location) {
     });
     
     const placeDetails = detailsResponse.data.result;
-    
-    // Format photos array
-    const photos = [];
+
+    // Re-host the photo on Firebase Storage. Persisting raw
+    // maps.googleapis.com URLs (the old behavior) billed a Places Photo
+    // request on every render of the place, forever, and embedded the server
+    // API key in client-readable documents — the create-place path rejects
+    // exactly these URLs for the same reason.
+    let photos = [];
     if (placeDetails.photos && placeDetails.photos.length > 0) {
-      // Get up to 3 photos
-      for (let i = 0; i < Math.min(3, placeDetails.photos.length); i++) {
-        const photo = placeDetails.photos[i];
-        const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photo.photo_reference}&key=${googleMapsApiKey}`;
-        photos.push(photoUrl);
+      const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${placeDetails.photos[0].photo_reference}&key=${googleMapsApiKey}`;
+      try {
+        const { downloadAndUploadMultipleImages } = require('../services/storage');
+        const { uploadedUrls } = await downloadAndUploadMultipleImages([photoUrl]);
+        photos = uploadedUrls || [];
+      } catch (photoError) {
+        console.error('⚠️ Check-in photo re-host failed, continuing without photo:', photoError.message);
       }
     }
-    
+
     // Forward Google's raw types and let the shared cascade
     // (services/placeCategoryDerivation) classify the venue. This replaced a
     // hand-rolled if-chain here that covered five categories and emitted
@@ -360,26 +366,47 @@ exports.createCheckIn = async (req, res) => {
             }
             console.log(`✅ Using existing place for check-in: ${checkIn.placeName} (ID: ${finalPlaceId})`);
           } else {
-            // Enrich place data with Google Places API
-            const googleData = await enrichPlaceWithGoogleData(
+            // Canonical venue first — if anyone on the platform has saved
+            // this place, the globalPlaces record already carries the venue
+            // data and Google isn't consulted at all. Google runs only for
+            // venues new to the whole platform (the once-per-venue purchase).
+            const { findCanonicalByNameAndLocation } = require('../services/globalPlaceResolver');
+            let canonicalData = null;
+            if (checkIn.location) {
+              try {
+                const canonicalDoc = await findCanonicalByNameAndLocation(checkIn.placeName, {
+                  coordinates: [checkIn.location.longitude, checkIn.location.latitude]
+                });
+                if (canonicalDoc) {
+                  canonicalData = canonicalDoc.data();
+                  console.log(`✅ Check-in matched canonical venue ${canonicalDoc.id} — skipping Google enrichment`);
+                }
+              } catch (canonicalError) {
+                console.error('⚠️ Canonical venue lookup failed, falling back to Google:', canonicalError.message);
+              }
+            }
+
+            const googleData = canonicalData ? {} : await enrichPlaceWithGoogleData(
               checkIn.placeName,
               checkIn.location
             );
-            
-            // Create new place in check-in circle with enriched data
+
+            // Create new place in check-in circle with enriched data. When a
+            // canonical venue matched, only identity fields are stamped here —
+            // rating/hours/etc. overlay from the venue record on every read.
             const placeData = {
-              name: googleData.name || checkIn.placeName,
-              address: googleData.address || checkIn.placeAddress,
+              name: (canonicalData && canonicalData.name) || googleData.name || checkIn.placeName,
+              address: (canonicalData && canonicalData.address) || googleData.address || checkIn.placeAddress,
               location: checkIn.location ? {
                 coordinates: [checkIn.location.longitude, checkIn.location.latitude]
               } : null,
               // Arrives as 'other' unless the client sent one; the cascade
               // derives the real category from googleTypes when the venue
               // record is created, and ensureGlobalPlaceLink stamps it back.
-              category: checkIn.placeCategory || 'other',
-              googleTypes: googleData.googleTypes || [],
+              category: checkIn.placeCategory || (canonicalData && canonicalData.category) || 'other',
+              googleTypes: googleData.googleTypes || (canonicalData && canonicalData.googleTypes) || [],
               photos: googleData.photos || [],
-              googlePlaceId: googleData.googlePlaceId || null,
+              googlePlaceId: (canonicalData && canonicalData.googlePlaceId) || googleData.googlePlaceId || null,
               rating: googleData.rating || null,
               priceLevel: googleData.priceLevel || null,
               website: googleData.website || null,
@@ -408,9 +435,15 @@ exports.createCheckIn = async (req, res) => {
               updatedAt: new Date().toISOString()
             });
             
-            // Use the first photo for activity thumbnail
+            // Use the first photo for activity thumbnail; canonical venues
+            // contribute theirs (never a raw googleapis URL — those bill per
+            // render)
             if (placeData.photos && placeData.photos.length > 0) {
               placePhoto = placeData.photos[0];
+            } else if (canonicalData && Array.isArray(canonicalData.photos)) {
+              placePhoto = canonicalData.photos.find(
+                (p) => typeof p === 'string' && !p.includes('maps.googleapis.com')
+              ) || null;
             }
             
             console.log(`✅ Created enriched place in check-in circle: ${placeData.name} (ID: ${finalPlaceId})`);

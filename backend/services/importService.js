@@ -6,7 +6,6 @@
 // placesCount) — that is the source of truth for how the app populates
 // circles. If createPlace ever starts writing globalPlaces, mirror it here.
 
-const { Client } = require('@googlemaps/google-maps-services-js');
 const { getFirestore } = require('../config/firebase');
 const {
   COLLECTIONS,
@@ -15,13 +14,9 @@ const {
   validatePlace,
   validateCircle
 } = require('../models/FirestoreModels');
-const placeCache = require('./placeCache');
-const requestDeduplicator = require('./requestDeduplicator');
 const { categoryFromGoogleTypes, categoryFromMapstrTags } = require('./importCategoryMapping');
 
 const db = getFirestore();
-const googleMapsClient = new Client({});
-const googleApiKey = () => process.env.GOOGLE_MAPS_API_KEY || process.env.PLACES_API_KEY;
 
 const VALID_SOURCES = ['mapstr', 'google_maps', 'swarm'];
 
@@ -29,8 +24,8 @@ const VALID_SOURCES = ['mapstr', 'google_maps', 'swarm'];
 // user can review/reorganize/delete the batch as a unit instead of having
 // Takeout list names scattered through their circles. The original list name
 // survives on each place as sourceListName. Import circles are created with
-// showOnMap:false — a 500-place dump shouldn't bury the home map; the owner
-// can flip it on from the circle's edit screen.
+// showOnMap:true so a new user's map lights up immediately; the owner can
+// hide the batch via the circle's showOnMap toggle if it's overwhelming.
 const IMPORT_CIRCLE_NAMES = {
   google_maps: 'Google Imports',
   mapstr: 'Mapstr Imports',
@@ -71,12 +66,6 @@ function distanceMeters(lat1, lng1, lat2, lng2) {
 const normalizedName = s => (s || '').toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
 const MAX_PLACES_PER_REQUEST = 300;
 const RESOLVER_CONCURRENCY = 3;
-
-// The Geocoding API is not enabled on this Google Cloud project (see
-// placeDiscoveryService) — Find Place from Text is the only resolver.
-// Set IMPORT_USE_FIND_PLACE=false to disable resolution entirely; rows
-// without coordinates then surface as 'unresolved' in the review screen.
-const useFindPlace = () => process.env.IMPORT_USE_FIND_PLACE !== 'false';
 
 const normalizeText = (value) =>
   (value || '').toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
@@ -159,55 +148,6 @@ async function loadOwnedCircles(userId) {
     circles.push({ id: doc.id, name: data.name, placesCount: data.placesCount || 0 });
   });
   return circles;
-}
-
-/**
- * Resolve a Google Takeout row that has no coordinates via Places
- * Find Place from Text. Returns { lat, lng, googlePlaceId, types, formattedAddress }
- * or null. Cached for a year (import retries, shared lists) and deduplicated
- * against concurrent identical requests.
- */
-async function resolveViaFindPlace(name, address) {
-  const key = googleApiKey();
-  if (!key || !useFindPlace()) return null;
-
-  const input = address ? `${name}, ${address}` : name;
-  const cacheKey = normalizeText(input);
-
-  const cached = placeCache.get('findplace', cacheKey);
-  if (cached) return cached.notFound ? null : cached;
-
-  try {
-    const result = await requestDeduplicator.execute(`findplace:${cacheKey}`, async () => {
-      const response = await googleMapsClient.findPlaceFromText({
-        params: {
-          input,
-          inputtype: 'textquery',
-          fields: ['place_id', 'geometry', 'types', 'formatted_address'],
-          key
-        }
-      });
-      const candidate = response.data.candidates && response.data.candidates[0];
-      if (!candidate || !candidate.geometry || !candidate.geometry.location) {
-        return null;
-      }
-      return {
-        lat: candidate.geometry.location.lat,
-        lng: candidate.geometry.location.lng,
-        googlePlaceId: candidate.place_id || null,
-        types: candidate.types || [],
-        formattedAddress: candidate.formatted_address || null
-      };
-    });
-
-    // Cache misses too — a venue Google can't find today won't appear tomorrow,
-    // and retried imports shouldn't re-bill for the same failures.
-    placeCache.set('findplace', cacheKey, result || { notFound: true }, 365 * 24 * 60 * 60 * 1000);
-    return result;
-  } catch (error) {
-    console.error(`❌ Import: Find Place failed for "${input}":`, error.message);
-    return null;
-  }
 }
 
 function validatePayloadShape(payload) {

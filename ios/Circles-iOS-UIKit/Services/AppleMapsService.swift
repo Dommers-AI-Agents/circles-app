@@ -260,73 +260,26 @@ class AppleMapsService {
                 let categoryDescription = self?.getCategoryDescription(for: featureAnnotation.pointOfInterestCategory) ?? ""
                 let description = featureAnnotation.subtitle ?? categoryDescription
                 
-                // Try to enrich with web data if we don't have complete information
-                if phoneNumber == nil || website == nil {
-                    PlaceEnrichmentService.shared.enrichPlaceDetails(
-                        name: detailedName,
-                        address: address,
-                        category: category,
-                        coordinate: (latitude: coordinate.latitude, longitude: coordinate.longitude)
-                    ) { enrichResult in
-                        switch enrichResult {
-                        case .success(let enrichedData):
-                            let enrichedPhone = enrichedData.phone ?? phoneNumber
-                            let enrichedWebsite = enrichedData.website ?? website
-                            let enrichedHours = enrichedData.hours
-                            let enrichedRating = enrichedData.rating
-                            let enrichedUserRatingsTotal = enrichedData.userRatingsTotal
-                            
-                            self?.createPlaceFromEnrichedData(
-                                name: detailedName,
-                                description: description,
-                                address: address,
-                                coordinate: coordinate,
-                                category: category,
-                                phoneNumber: enrichedPhone,
-                                website: enrichedWebsite,
-                                businessHoursString: enrichedHours,
-                                rating: enrichedRating,
-                                userRatingsTotal: enrichedUserRatingsTotal,
-                                circleId: circleId,
-                                notes: notes,
-                                completion: completion
-                            )
-                        case .failure:
-                            // If enrichment fails, use what we have
-                            self?.createPlaceFromEnrichedData(
-                                name: detailedName,
-                                description: description,
-                                address: address,
-                                coordinate: coordinate,
-                                category: category,
-                                phoneNumber: phoneNumber,
-                                website: website,
-                                businessHoursString: nil,
-                                rating: nil,
-                                userRatingsTotal: nil,
-                                circleId: circleId,
-                                notes: notes,
-                                completion: completion
-                            )
-                        }
-                    }
-                } else {
-                    self?.createPlaceFromEnrichedData(
-                        name: detailedName,
-                        description: description,
-                        address: address,
-                        coordinate: coordinate,
-                        category: category,
-                        phoneNumber: phoneNumber,
-                        website: website,
-                        businessHoursString: nil,
-                        rating: nil,
-                        userRatingsTotal: nil,
-                        circleId: circleId,
-                        notes: notes,
-                        completion: completion
-                    )
-                }
+                // MKLocalSearch details are all we attach here — rating and
+                // hours ride in later from the canonical venue record on the
+                // backend. (The old web/Google enrichment billed an
+                // Autocomplete + Details per POI add for data that overlay
+                // now supplies.)
+                self?.createPlaceFromEnrichedData(
+                    name: detailedName,
+                    description: description,
+                    address: address,
+                    coordinate: coordinate,
+                    category: category,
+                    phoneNumber: phoneNumber,
+                    website: website,
+                    businessHoursString: nil,
+                    rating: nil,
+                    userRatingsTotal: nil,
+                    circleId: circleId,
+                    notes: notes,
+                    completion: completion
+                )
             }
         }
     }

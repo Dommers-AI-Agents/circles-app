@@ -51,58 +51,8 @@ class GooglePlacesService {
         }
     }
     
-    /// Convenience method for photo loading with optional result
-    func loadPlacePhoto(photoReference: GMSPlacePhotoMetadata, completion: @escaping (UIImage?) -> Void) {
-        loadPhoto(from: photoReference) { result in
-            switch result {
-            case .success(let image):
-                completion(image)
-            case .failure:
-                completion(nil)
-            }
-        }
-    }
-    
-    // MARK: - Helper Methods for Photo Metadata
-    
-    /// Fetch place details ONLY to get photo metadata for an existing Google Place ID
-    /// This should only be used when you already have a Google Place ID and need to fetch photos
-    func fetchPhotoMetadata(for googlePlaceId: String, completion: @escaping (Result<[GMSPlacePhotoMetadata], Error>) -> Void) {
-        let fields: GMSPlaceField = [.photos] // ONLY fetch photos field
-        
-        placesClient.fetchPlace(
-            fromPlaceID: googlePlaceId,
-            placeFields: fields,
-            sessionToken: nil
-        ) { place, error in
-            if let error = error {
-                completion(.failure(error))
-            } else if let place = place {
-                completion(.success(place.photos ?? []))
-            } else {
-                completion(.failure(NSError(
-                    domain: "GooglePlacesService",
-                    code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: "Place not found"]
-                )))
-            }
-        }
-    }
-    
-    // MARK: - DEPRECATED METHODS (DO NOT USE)
-    
-    @available(*, deprecated, message: "Use Apple Maps MKLocalSearch instead. See APIUsageGuidelines.md")
-    func searchPlaces(query: String, location: CLLocation? = nil, completion: @escaping (Result<[GMSAutocompletePrediction], Error>) -> Void) {
-        Logger.debug("⚠️ DEPRECATED: searchPlaces called. Use Apple Maps MKLocalSearch instead.")
-        completion(.success([])) // Return empty results instead of crashing
-    }
-    
-    @available(*, deprecated, message: "Use Apple Maps MKLocalSearch instead. See APIUsageGuidelines.md")
-    func searchPlacesByCategory(category: String, center: CLLocationCoordinate2D, radiusInMeters: Double, completion: @escaping (Result<[GMSAutocompletePrediction], Error>) -> Void) {
-        Logger.debug("⚠️ DEPRECATED: searchPlacesByCategory called. Use Apple Maps MKLocalSearch instead.")
-        completion(.success([])) // Return empty results instead of crashing
-    }
-    
+    // MARK: - Place ID + photo metadata (the once-per-venue purchase)
+
     @available(*, deprecated, message: "Use Apple Maps MKMapItem for place details. This method now only fetches photos for backward compatibility.")
     func fetchPlaceDetails(placeID: String, completion: @escaping (Result<GMSPlace, Error>) -> Void) {
         Logger.debug("⚠️ DEPRECATED: fetchPlaceDetails called. Only fetching photos for backward compatibility.")
@@ -129,40 +79,6 @@ class GooglePlacesService {
                 )))
             }
         }
-    }
-    
-    @available(*, deprecated, message: "Use Apple Maps MKMapItem for reviews. This method now only fetches photos for backward compatibility.")
-    func fetchPlaceDetailsWithReviews(placeID: String, completion: @escaping (Result<GMSPlace, Error>) -> Void) {
-        Logger.debug("⚠️ DEPRECATED: fetchPlaceDetailsWithReviews called. Only fetching photos for backward compatibility.")
-        
-        // Fetch photos, coordinate, rating — plus the editorial summary, the
-        // only real venue description Google offers (rating already bills the
-        // Atmosphere SKU, so the summary adds no incremental API cost)
-        let fields: GMSPlaceField = [.photos, .placeID, .coordinate, .rating, .userRatingsTotal, .editorialSummary]
-        
-        placesClient.fetchPlace(
-            fromPlaceID: placeID,
-            placeFields: fields,
-            sessionToken: nil
-        ) { place, error in
-            if let error = error {
-                completion(.failure(error))
-            } else if let place = place {
-                completion(.success(place))
-            } else {
-                completion(.failure(NSError(
-                    domain: "GooglePlacesService",
-                    code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: "Place not found"]
-                )))
-            }
-        }
-    }
-    
-    @available(*, deprecated, message: "Use Apple Maps MKLocalSearch instead. See APIUsageGuidelines.md")
-    func findNearbyPlaces(location: CLLocation, radius: Double = 500, types: [String]? = nil, completion: @escaping (Result<[GMSPlace], Error>) -> Void) {
-        Logger.debug("⚠️ DEPRECATED: findNearbyPlaces called. Use Apple Maps MKLocalSearch instead.")
-        completion(.success([])) // Return empty results instead of crashing
     }
     
     @available(*, deprecated, message: "Use Apple Maps MKLocalSearch instead. See APIUsageGuidelines.md")
@@ -234,11 +150,5 @@ class GooglePlacesService {
             
             completion(.success(bestMatch))
         }
-    }
-    
-    @available(*, deprecated, message: "Use Apple Maps CLGeocoder instead. See APIUsageGuidelines.md")
-    func geocodeAddress(_ address: String, completion: @escaping (Result<GooglePlaceDetails, Error>) -> Void) {
-        Logger.debug("⚠️ DEPRECATED: geocodeAddress called. Use Apple Maps CLGeocoder instead.")
-        completion(.failure(NSError(domain: "GooglePlacesService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Use Apple Maps instead"])))
     }
 }

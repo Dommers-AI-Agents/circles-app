@@ -1185,21 +1185,6 @@ class PlaceService {
         )
     }
     
-    func refreshPlaceFromGoogle(id: String, completion: @escaping (Result<Place, Error>) -> Void) {
-        APIService.shared.request(
-            endpoint: "places/\(id)/refresh-google",
-            method: .post,
-            requiresAuth: true,
-            completion: createAPICompletion { (result: Result<PlaceResponse, Error>) in
-                if case .success(let response) = result {
-                    completion(.success(response.place))
-                } else if case .failure(let error) = result {
-                    completion(.failure(error))
-                }
-            }
-        )
-    }
-    
     func updatePlaceAddress(id: String, address: String, coordinate: CLLocationCoordinate2D? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         var body: [String: Any] = ["address": address]
         

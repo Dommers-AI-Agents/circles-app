@@ -3,8 +3,11 @@
 // Used at registration AND on every profile save that touches the zipcode,
 // so a user's zipcode and displayed location can never disagree.
 //
-// Resolution order: local table (instant) → Places Find Place (the Geocoding
-// API is not enabled on this GCP project) → coarse state-by-range fallback.
+// Resolution order: local table (instant) → zipGeocodes collection (a
+// write-once Firestore cache of past Google resolutions) → Places Find Place
+// (the Geocoding API is not enabled on this GCP project) → coarse
+// state-by-range fallback. Zipcodes never move, so a zip is paid for at most
+// once ever — previously every profile save re-billed a Find Place call.
 
 // Load zipcode database
 let zipcodeDatabase = null;
@@ -13,6 +16,47 @@ try {
   console.log('✅ Loaded zipcode database with', Object.keys(zipcodeDatabase).length, 'entries');
 } catch (error) {
   console.warn('⚠️ Could not load zipcode database, will use fallback');
+}
+
+const ZIP_CACHE_COLLECTION = 'zipGeocodes';
+
+function zipCacheRef(zipcode) {
+  const { getFirestore } = require('../config/firebase');
+  return getFirestore().collection(ZIP_CACHE_COLLECTION).doc(String(zipcode));
+}
+
+async function readCachedZip(zipcode) {
+  try {
+    const doc = await zipCacheRef(zipcode).get();
+    if (!doc.exists) return null;
+    const data = doc.data();
+    return {
+      city: data.city || null,
+      state: data.state || null,
+      coordinates: data.lat != null && data.lng != null ? {
+        latitude: data.lat,
+        longitude: data.lng,
+        timestamp: new Date().toISOString()
+      } : null
+    };
+  } catch (error) {
+    console.warn(`⚠️ zipGeocodes cache read failed for ${zipcode}:`, error.message);
+    return null;
+  }
+}
+
+async function writeCachedZip(zipcode, result) {
+  try {
+    await zipCacheRef(zipcode).set({
+      city: result.city || null,
+      state: result.state || null,
+      lat: result.coordinates ? result.coordinates.latitude : null,
+      lng: result.coordinates ? result.coordinates.longitude : null,
+      resolvedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.warn(`⚠️ zipGeocodes cache write failed for ${zipcode}:`, error.message);
+  }
 }
 
 async function geocodeZipcode(zipcode) {
@@ -25,6 +69,13 @@ async function geocodeZipcode(zipcode) {
         city: data.city,
         state: data.state
       };
+    }
+
+    // Second: past Google resolutions cached in Firestore
+    const cached = await readCachedZip(zipcode);
+    if (cached && (cached.city || cached.coordinates)) {
+      console.log(`📍 Found ${zipcode} in zipGeocodes cache: ${cached.city}, ${cached.state}`);
+      return cached;
     }
 
     // Fallback to Google Maps API if not in local database
@@ -55,7 +106,7 @@ async function geocodeZipcode(zipcode) {
         state = match[2];
       }
 
-      return {
+      const result = {
         city,
         state,
         coordinates: candidate.geometry ? {
@@ -64,6 +115,11 @@ async function geocodeZipcode(zipcode) {
           timestamp: new Date().toISOString()
         } : null
       };
+
+      // Remember it so this zip never bills again
+      await writeCachedZip(zipcode, result);
+
+      return result;
     }
 
     // If Google API fails, use generic fallback
