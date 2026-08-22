@@ -105,13 +105,9 @@ class VideoReelCell: UICollectionViewCell {
         return label
     }()
     
-    // Heavier, larger config so the heart / comment / send icons read as bold
-    // and prominent (Instagram-style) rather than thin hairline glyphs.
-    static let railIconConfig = UIImage.SymbolConfiguration(pointSize: 26, weight: .bold)
-
     private let likeButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "heart", withConfiguration: VideoReelCell.railIconConfig), for: .normal)
+        button.setImage(UIImage(systemName: "heart"), for: .normal)
         button.tintColor = .white
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
@@ -128,7 +124,7 @@ class VideoReelCell: UICollectionViewCell {
     
     private let commentButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "message", withConfiguration: VideoReelCell.railIconConfig), for: .normal)
+        button.setImage(UIImage(systemName: "message"), for: .normal)
         button.tintColor = .white
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
@@ -143,11 +139,9 @@ class VideoReelCell: UICollectionViewCell {
         return label
     }()
     
-    // Send-arrow: a bold, filled paper-plane (the app's "send" glyph) that fires
-    // the standard share action via videoReelCellDidTapShare.
     private let shareButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "paperplane.fill", withConfiguration: VideoReelCell.railIconConfig), for: .normal)
+        button.setImage(UIImage(systemName: "paperplane"), for: .normal)
         button.tintColor = .white
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
@@ -813,7 +807,7 @@ class VideoReelCell: UICollectionViewCell {
     
     private func updateLikeButton() {
         let imageName = isLiked ? "heart.fill" : "heart"
-        likeButton.setImage(UIImage(systemName: imageName, withConfiguration: VideoReelCell.railIconConfig), for: .normal)
+        likeButton.setImage(UIImage(systemName: imageName), for: .normal)
         likeButton.tintColor = isLiked ? .systemRed : .white
         
         // Update count
@@ -954,7 +948,7 @@ class VideoReelCell: UICollectionViewCell {
         reactionCountLabel.text = ""
         
         // Reset buttons
-        likeButton.setImage(UIImage(systemName: "heart", withConfiguration: VideoReelCell.railIconConfig), for: .normal)
+        likeButton.setImage(UIImage(systemName: "heart"), for: .normal)
         likeButton.tintColor = .white
         reactionButton.setTitle(nil, for: .normal)
         reactionButton.setImage(UIImage(systemName: "face.smiling"), for: .normal)
