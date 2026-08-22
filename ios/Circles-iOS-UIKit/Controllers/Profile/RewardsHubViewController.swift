@@ -35,6 +35,11 @@ final class RewardsHubViewController: BaseViewController {
     /// Deep-link straight to a tab (e.g. the deposit toast could open the bank).
     var initialTab: Tab = .piggyBank
 
+    /// When set (via the "your FavCoins are real crypto" engagement tip), the
+    /// Piggy Bank child shows a one-off coach-mark pointing at the wallet
+    /// create/link button once it's on screen.
+    var showWalletCoachMarkOnAppear = false
+
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Rewards"
@@ -60,6 +65,12 @@ final class RewardsHubViewController: BaseViewController {
             containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+
+        // Hand the coach-mark request to the child BEFORE it appears, so it can
+        // fire on its own viewDidAppear once the wallet button is laid out.
+        if showWalletCoachMarkOnAppear {
+            piggyBankVC.pendingWalletCoachMark = true
+        }
 
         segmentedControl.selectedSegmentIndex = initialTab.rawValue
         showTab(initialTab)

@@ -4894,7 +4894,40 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         presentedFullScreenMap = fullScreenMap
         present(fullScreenMap, animated: true)
     }
-    
+
+    /// Present the expanded map scoped to the user's OWN places, zoomed out to
+    /// fit them all — their whole "world," or just their region if they only
+    /// save locally (the fit-to-bounds math adapts automatically). Entry point
+    /// for the "see all your favorite places in one view" engagement tip.
+    /// Unlike `presentFullScreenMapWithCurrentState`, this passes NO initial
+    /// region (so auto-zoom is allowed) and forces the fit even for My Places.
+    func presentFullScreenMapShowingAllMyPlaces() {
+        isReturningFromFullScreenMap = true
+
+        let fullScreenMap = FullScreenMapViewController(
+            places: excludingHiddenCircles(allPlaces),
+            initialRegion: nil,                     // allow fit-all zoom on load
+            selectedCategory: nil,
+            selectedConnectionId: "my_places_only"
+        )
+        fullScreenMap.viewMode = .allPlaces
+        fullScreenMap.isPresentedModally = true
+        fullScreenMap.selectedConnectionUser = nil
+        fullScreenMap.delegate = self
+        fullScreenMap.showsFilterChips = true
+        fullScreenMap.fitAllPlacesOnLoad = true     // fit even for my_places_only
+
+        let buckets = buildConnectionPlaceBuckets()
+        fullScreenMap.updatePlacesWithConnections(
+            buckets.userPlaces,
+            connections: NetworkManager.shared.connections,
+            connectionPlaces: buckets.connectionPlaces
+        )
+        fullScreenMap.modalPresentationStyle = .fullScreen
+        presentedFullScreenMap = fullScreenMap
+        present(fullScreenMap, animated: true)
+    }
+
     @objc func emptyStateFindFriendsTapped() {
         // Jump to My Network — it opens on Discover, which is exactly the
         // "find friends" surface. (The phone-contacts import flow is gone.)

@@ -1388,12 +1388,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         // Single-token links carry no colon-separated payload and would be
         // dropped by the components.count >= 2 parse below
-        if pendingLink == "network" || pendingLink == "daily-summary" {
+        if pendingLink == "network" || pendingLink == "daily-summary"
+            || pendingLink == "all-places-map" || pendingLink == "create-wallet" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                if pendingLink == "network" {
-                    self.navigateToMyNetwork()
-                } else {
-                    self.navigateToDailySummary()
+                switch pendingLink {
+                case "network": self.navigateToMyNetwork()
+                case "daily-summary": self.navigateToDailySummary()
+                case "all-places-map": self.navigateToAllPlacesMap()
+                case "create-wallet": self.navigateToCreateWallet()
+                default: break
                 }
             }
             return
@@ -1955,7 +1958,29 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         tabBarController.selectedIndex = 1
         Logger.debug("📱 SceneDelegate: Switched to My Network tab from network deep link")
     }
-    
+
+    /// Engagement-tip deep link: show all of the user's places on the expanded
+    /// map. The tab bar observer does the actual presentation; here we just hand
+    /// off (or re-stash if the interface isn't up yet, e.g. pre-login).
+    private func navigateToAllPlacesMap() {
+        guard AuthService.shared.isLoggedIn,
+              window?.rootViewController is CirclesTabBarController else {
+            UserDefaults.standard.set("all-places-map", forKey: "pendingDeepLink")
+            return
+        }
+        NotificationCenter.default.post(name: Notification.Name("NavigateToAllPlacesMap"), object: nil)
+    }
+
+    /// Engagement-tip deep link: open the Piggy Bank wallet-create coach-mark.
+    private func navigateToCreateWallet() {
+        guard AuthService.shared.isLoggedIn,
+              window?.rootViewController is CirclesTabBarController else {
+            UserDefaults.standard.set("create-wallet", forKey: "pendingDeepLink")
+            return
+        }
+        NotificationCenter.default.post(name: Notification.Name("NavigateToCreateWallet"), object: nil)
+    }
+
     // MARK: - Notification Settings Navigation
     
     private func navigateToNotificationSettings() {

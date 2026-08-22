@@ -192,6 +192,12 @@ final class PiggyBankViewController: BaseViewController {
 
     // MARK: - Lifecycle
 
+    /// Set by the "your FavCoins are real crypto" engagement tip (via
+    /// RewardsHubViewController). Shows a one-off coach-mark pointing at the
+    /// wallet create/link button once the view is on screen and laid out.
+    var pendingWalletCoachMark = false
+    private weak var walletCoachMark: BubbleView?
+
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "My Piggy Bank"
@@ -200,6 +206,47 @@ final class PiggyBankViewController: BaseViewController {
         // (The DEBUG long-press acceptance-test hook that lived here was
         // removed 2026-08-07 after the 1-FAV on-chain proof passed: a
         // device-generated wallet received and spent real FAV.)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Data may still be loading; loadData's completion also calls this, so
+        // whichever settles last wins. The guard makes it idempotent.
+        showWalletCoachMarkIfPending()
+    }
+
+    /// One-off coach-mark for the wallet-create deep link. Points at the wallet
+    /// button when it's live; when blockchain withdrawals are still gated off
+    /// (claimsEnabled == false, so the wallet button is hidden), it falls back
+    /// to the claim button with "coming soon" copy rather than a dead end.
+    private func showWalletCoachMarkIfPending() {
+        guard pendingWalletCoachMark, view.window != nil, walletCoachMark == nil else { return }
+
+        let target: UIView
+        let title: String
+        let message: String
+        if !walletButton.isHidden {
+            target = walletButton
+            title = "Your FavCoins are real crypto 🌵"
+            message = "Tap “Link your 🌵 Cactus Wallet” to create your own blockchain wallet — right here in FavCircles. Only you hold the keys."
+        } else {
+            // Wallet creation isn't switched on yet — explain rather than point
+            // at a control that does nothing.
+            target = claimButton
+            title = "Your FavCoins are real crypto 🌵"
+            message = "These coins live on the 🌵 blockchain. Creating your own wallet to withdraw them is coming soon — keep earning and you'll be ready."
+        }
+
+        pendingWalletCoachMark = false
+        view.layoutIfNeeded()
+
+        let bubble = BubbleView()
+        bubble.configureHint(title: title, description: message, arrowDirection: .top)
+        bubble.onNext = { [weak bubble] in bubble?.dismiss { bubble?.removeFromSuperview() } }
+        view.addSubview(bubble)
+        bubble.pointTo(target, in: view)
+        bubble.show()
+        walletCoachMark = bubble
     }
 
     private func setupLayout() {
@@ -369,6 +416,10 @@ final class PiggyBankViewController: BaseViewController {
         renderActivity()
         scheduleInFlightRefresh()
         renderEarnGuide()
+
+        // Wallet-button visibility is now settled — if a deep-link coach-mark is
+        // pending and the view is on screen, show it (idempotent via its guard).
+        showWalletCoachMarkIfPending()
     }
 
     private func renderClaimControls(bank: PiggyBank) {

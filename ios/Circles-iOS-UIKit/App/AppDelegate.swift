@@ -690,6 +690,26 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     
     // MARK: - Notification Action Handlers
     
+    /// Post a navigation notification if the main tab bar is already installed;
+    /// otherwise stash a pending deep link for SceneDelegate.handlePendingDeepLink
+    /// to replay once the interface is up. A cold-start tap posts before any
+    /// observer exists and would otherwise be dropped unheard — same pattern the
+    /// daily-summary tap uses.
+    private func postOrStashDeepLink(navName: String, pending: String) {
+        DispatchQueue.main.async {
+            let mainUIReady = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+                .contains { $0.rootViewController is CirclesTabBarController }
+
+            if mainUIReady {
+                NotificationCenter.default.post(name: Notification.Name(navName), object: nil)
+            } else {
+                UserDefaults.standard.set(pending, forKey: "pendingDeepLink")
+            }
+        }
+    }
+
     private func handleNotificationTap(userInfo: [AnyHashable: Any]) {
         // Check for notification type
         var notificationType: String?
@@ -859,6 +879,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 )
             }
             
+        case "all_places_map":
+            // Engagement tip: "see all your favorite places in one view" → open
+            // the expanded map scoped to the user's own places, zoomed to fit
+            // them all (their whole world, or their region if they're local).
+            postOrStashDeepLink(navName: "NavigateToAllPlacesMap", pending: "all-places-map")
+
+        case "create_wallet":
+            // Engagement tip: "your FavCoins are real crypto" → open the Rewards
+            // hub's Piggy Bank tab with a coach-mark pointing at the wallet
+            // create/link button.
+            postOrStashDeepLink(navName: "NavigateToCreateWallet", pending: "create-wallet")
+
         default:
             Logger.debug("⚠️ AppDelegate: Unknown notification type: \(type)")
             // For unknown types, try to navigate based on available data

@@ -252,6 +252,20 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             name: Notification.Name("NavigateToDailySummary"),
             object: nil
         )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(navigateToAllPlacesMap),
+            name: Notification.Name("NavigateToAllPlacesMap"),
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(navigateToCreateWallet),
+            name: Notification.Name("NavigateToCreateWallet"),
+            object: nil
+        )
     }
     
     private func updateMessagesBadge() {
@@ -362,7 +376,32 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             }
         }
     }
-    
+
+    /// Engagement tip: open the expanded map showing all of the user's own
+    /// places, zoomed to fit them. Home tab, popped to root (same reasoning as
+    /// the daily-summary tap: a pushed detail would swallow the presentation).
+    @objc private func navigateToAllPlacesMap() {
+        selectedIndex = 0
+        guard let navController = viewControllers?[0] as? UINavigationController else { return }
+        navController.popToRootViewController(animated: false)
+        guard let circlesVC = navController.viewControllers.first as? CirclesHomeViewController else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            circlesVC.presentFullScreenMapShowingAllMyPlaces()
+        }
+    }
+
+    /// Engagement tip: open the Rewards hub on the Piggy Bank tab and point a
+    /// coach-mark at the wallet create/link button.
+    @objc private func navigateToCreateWallet() {
+        selectedIndex = 0
+        guard let navController = viewControllers?[0] as? UINavigationController else { return }
+        navController.popToRootViewController(animated: false)
+        let hub = RewardsHubViewController()
+        hub.initialTab = .piggyBank
+        hub.showWalletCoachMarkOnAppear = true
+        navController.pushViewController(hub, animated: true)
+    }
+
     // MARK: - UITabBarControllerDelegate
     
     func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {

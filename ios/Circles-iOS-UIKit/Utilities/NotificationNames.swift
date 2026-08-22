@@ -34,6 +34,9 @@ extension Notification.Name {
     static let navigateToPlace = Notification.Name("NavigateToPlace")
     static let navigateToConversation = Notification.Name("NavigateToConversation")
     static let navigateToDailySummary = Notification.Name("NavigateToDailySummary")
+    /// Engagement-tip deep links (observed in CirclesTabBarController).
+    static let navigateToAllPlacesMap = Notification.Name("NavigateToAllPlacesMap")
+    static let navigateToCreateWallet = Notification.Name("NavigateToCreateWallet")
     
     // Suggestions notifications
     static let clearSuggestionsBadge = Notification.Name("clearSuggestionsBadge")

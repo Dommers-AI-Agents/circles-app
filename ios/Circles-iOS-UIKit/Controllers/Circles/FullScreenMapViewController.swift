@@ -36,6 +36,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private var filteredPlaces: [Place] = []
     private var availableCategories: [UnifiedCategory] = []
     private var selectedConnectionId: String?
+    /// Force a fit-to-all-places zoom on load even for the My Places scope
+    /// (which normally centers on the user's location). Set by the "see all your
+    /// places" engagement-tip entry point so the whole collection is framed.
+    var fitAllPlacesOnLoad = false
     private var connections: [Connection] = []
     private var connectionPlaces: [String: [Place]] = [:] // connectionId -> places
     private let locationManager = CLLocationManager()
@@ -1556,8 +1560,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         Logger.debug("  - filteredPlaces.count: \(filteredPlaces.count)")
         Logger.debug("  - hasInitiallyZoomed: \(hasInitiallyZoomed)")
         
-        // If a specific connection is selected, always zoom to show their places
-        let shouldZoomToFilteredPlaces = (selectedConnectionId != nil && selectedConnectionId != "my_places_only") || 
+        // If a specific connection is selected, always zoom to show their places.
+        // fitAllPlacesOnLoad forces the same worldwide fit for the My Places
+        // scope, which otherwise centers on the user's current location.
+        let shouldZoomToFilteredPlaces = fitAllPlacesOnLoad ||
+                                        (selectedConnectionId != nil && selectedConnectionId != "my_places_only") ||
                                         selectedCategory != nil
         
         Logger.debug("  - shouldZoomToFilteredPlaces: \(shouldZoomToFilteredPlaces)")
