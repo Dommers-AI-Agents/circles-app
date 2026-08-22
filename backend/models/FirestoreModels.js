@@ -865,7 +865,9 @@ const validateNotification = (notificationData) => {
     'circle_invite',
     'store_claim',
     'store_claim_approved',
-    'premium_signup'
+    'premium_signup',
+    'did_you_know'   // low-cadence educational tips (tipsService) — persisted so
+                     // a missed push still lives in the Notifications list
   ];
   
   if (!notificationData.type || !validTypes.includes(notificationData.type)) {

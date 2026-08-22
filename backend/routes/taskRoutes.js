@@ -3,6 +3,7 @@ const express = require('express');
 const dailySummaryService = require('../services/dailySummaryService');
 const scheduledNotifications = require('../services/scheduledNotifications');
 const engagementNotificationService = require('../services/engagementNotificationService');
+const tipsService = require('../services/tipsService');
 const milestoneService = require('../services/milestoneService');
 const suggestionEngine = require('../services/suggestionEngine');
 const { runCategorySweep } = require('../services/categorySweep');
@@ -127,6 +128,35 @@ router.post('/reengagement', verifyCloudScheduler, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to send reengagement notifications',
+      details: error.message
+    });
+  }
+});
+
+// Educational "Did you know…" tips — low-cadence (2×/week) push + in-app
+// notifications that deep-link into a specific view. Hourly tick; the service
+// gates each user by their local weekday + hour. Test hooks (query or body):
+//   ?dryRun=true             — report who/what would send, send nothing
+//   ?userId=<id>&force=true  — send the next tip to one user now, no gating
+router.post('/tips', verifyCloudScheduler, async (req, res) => {
+  try {
+    const dryRun = req.query.dryRun === 'true' || req.body?.dryRun === true;
+    const userId = req.query.userId || req.body?.userId || null;
+    const force = req.query.force === 'true' || req.body?.force === true;
+    console.log('💡 Tips triggered via API', { dryRun, userId, force });
+
+    const result = await tipsService.sendTips({ dryRun, userId, force });
+
+    res.json({
+      success: true,
+      result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error in tips endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send tips',
       details: error.message
     });
   }

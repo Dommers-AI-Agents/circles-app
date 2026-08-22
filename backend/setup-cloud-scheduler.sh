@@ -105,6 +105,22 @@ gcloud scheduler jobs create http engagement-reminders \
   --headers="Content-Type=application/json,X-Cloudscheduler=true" \
   --attempt-deadline=180s
 
+# 5b. Educational Tips - hourly tick; tipsService delivers to each user at their
+#     own local Tue/Fri noon (2×/week). Runs every hour so every timezone gets
+#     served at the right local time, exactly like the daily-summary job.
+echo -e "${GREEN}Creating tips job...${NC}"
+gcloud scheduler jobs delete tips --location=$REGION --quiet 2>/dev/null || true
+gcloud scheduler jobs create http tips \
+  --location=$REGION \
+  --schedule="0 * * * *" \
+  --uri="${SERVICE_URL}/api/tasks/tips" \
+  --http-method=POST \
+  --oidc-service-account-email=$SERVICE_ACCOUNT \
+  --time-zone=$TIME_ZONE \
+  --description="Deliver low-cadence educational tips at each user's local Tue/Fri noon" \
+  --headers="Content-Type=application/json" \
+  --attempt-deadline=300s
+
 # 6. Weekly Summary - Mondays 9:00 AM EST
 echo -e "${GREEN}Creating weekly summary job...${NC}"
 gcloud scheduler jobs delete weekly-summary --location=$REGION --quiet 2>/dev/null || true

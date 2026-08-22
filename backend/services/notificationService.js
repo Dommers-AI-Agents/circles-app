@@ -220,7 +220,8 @@ class NotificationService {
       discoveryPrompts: true,
       weekendRecommendations: true,
       socialActivity: true,
-      milestones: true
+      milestones: true,
+      tips: true
     };
 
     const typeMap = {
@@ -240,7 +241,8 @@ class NotificationService {
       'place_comment': 'socialActivity',
       'new_follower': 'newFollowers',
       'engagement_reminder': 'reengagement',
-      'milestone': 'milestones'
+      'milestone': 'milestones',
+      'did_you_know': 'tips'
     };
 
     const preferencesKey = typeMap[type];
