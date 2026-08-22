@@ -351,9 +351,13 @@ class PlaceDetailViewController: BaseViewController {
         return view
     }()
     
+    // Bold, larger config so the like / comment / send icons read as prominent
+    // action buttons rather than thin hairline glyphs.
+    static let actionIconConfig = UIImage.SymbolConfiguration(pointSize: 22, weight: .bold)
+
     private let likeButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "heart"), for: .normal)
+        button.setImage(UIImage(systemName: "heart", withConfiguration: PlaceDetailViewController.actionIconConfig), for: .normal)
         button.tintColor = Constants.Colors.gray
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
@@ -371,12 +375,12 @@ class PlaceDetailViewController: BaseViewController {
     
     private let commentButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "bubble.left"), for: .normal)
+        button.setImage(UIImage(systemName: "bubble.left", withConfiguration: PlaceDetailViewController.actionIconConfig), for: .normal)
         button.tintColor = Constants.Colors.gray
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
-    
+
     private let commentCountLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
@@ -384,6 +388,16 @@ class PlaceDetailViewController: BaseViewController {
         label.text = ""
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
+    }()
+
+    // Send-arrow: fires the same standard share as the nav-bar share button
+    // (shareButtonTapped), sitting inline with like/comment like Instagram.
+    private let sendButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "paperplane.fill", withConfiguration: PlaceDetailViewController.actionIconConfig), for: .normal)
+        button.tintColor = Constants.Colors.gray
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
     }()
 
     private lazy var followButton: UIButton = {
@@ -1057,13 +1071,14 @@ class PlaceDetailViewController: BaseViewController {
             websiteButton.addTarget(self, action: #selector(websiteButtonTapped), for: .touchUpInside)
         }
 
-        // Add action buttons container before circle info. Share lives in the
-        // nav bar only — no duplicate icon in this row.
+        // Add action buttons container before circle info. The send-arrow mirrors
+        // the nav-bar share button so sharing is reachable inline too.
         infoContainerView.addSubview(actionButtonsContainer)
         actionButtonsContainer.addSubview(likeButton)
         actionButtonsContainer.addSubview(likeCountLabel)
         actionButtonsContainer.addSubview(commentButton)
         actionButtonsContainer.addSubview(commentCountLabel)
+        actionButtonsContainer.addSubview(sendButton)
         actionButtonsContainer.addSubview(addToCircleButton)
         actionButtonsContainer.addSubview(followButton)
 
@@ -1077,6 +1092,7 @@ class PlaceDetailViewController: BaseViewController {
         likeButton.addTarget(self, action: #selector(likeButtonTapped), for: .touchUpInside)
         followButton.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
         commentButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
+        sendButton.addTarget(self, action: #selector(shareButtonTapped), for: .touchUpInside)
         viewAllCommentsButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
         
         // Add tap gesture to like count label to show likes list
@@ -1237,13 +1253,19 @@ class PlaceDetailViewController: BaseViewController {
             commentCountLabel.leadingAnchor.constraint(equalTo: commentButton.trailingAnchor, constant: 4),
             commentCountLabel.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
 
+            // Send-arrow (share) sits inline after the comment count
+            sendButton.leadingAnchor.constraint(equalTo: commentCountLabel.trailingAnchor, constant: Constants.Spacing.medium),
+            sendButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
+            sendButton.widthAnchor.constraint(equalToConstant: 30),
+            sendButton.heightAnchor.constraint(equalToConstant: 30),
+
             followButton.trailingAnchor.constraint(equalTo: actionButtonsContainer.trailingAnchor, constant: -Constants.Spacing.medium),
             followButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
 
             // Add to Circle sits left of Follow, same size (sibling actions)
             addToCircleButton.trailingAnchor.constraint(equalTo: followButton.leadingAnchor, constant: -Constants.Spacing.small),
             addToCircleButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
-            addToCircleButton.leadingAnchor.constraint(greaterThanOrEqualTo: commentCountLabel.trailingAnchor, constant: Constants.Spacing.small),
+            addToCircleButton.leadingAnchor.constraint(greaterThanOrEqualTo: sendButton.trailingAnchor, constant: Constants.Spacing.small),
 
             // Practical actions row — after the social-proof row
             practicalButtonsStackView.topAnchor.constraint(equalTo: savedByView.bottomAnchor, constant: Constants.Spacing.medium),
@@ -3572,7 +3594,7 @@ extension PlaceDetailViewController {
         
         // Update heart icon
         let heartImage = isLiked ? "heart.fill" : "heart"
-        likeButton.setImage(UIImage(systemName: heartImage), for: .normal)
+        likeButton.setImage(UIImage(systemName: heartImage, withConfiguration: PlaceDetailViewController.actionIconConfig), for: .normal)
         likeButton.tintColor = isLiked ? UIColor.systemRed : Constants.Colors.gray
         
         // Update like count - blank instead of a noisy "0"
