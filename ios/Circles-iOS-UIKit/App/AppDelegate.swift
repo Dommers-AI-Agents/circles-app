@@ -891,6 +891,33 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             // create/link button.
             postOrStashDeepLink(navName: "NavigateToCreateWallet", pending: "create-wallet")
 
+        case "favcoin_claim_settled":
+            // Body says "Open your Piggy Bank" — so open the Piggy Bank
+            NotificationCenter.default.post(name: Notification.Name("NavigateToPiggyBank"), object: nil)
+
+        case "new_follower", "user_followed":
+            // "X started following you" → X's profile
+            if let fromUserId = (userInfo["fromUserId"] as? String) ?? (userInfo["actorId"] as? String) {
+                sceneDelegate?.navigateToUserProfile(userId: fromUserId)
+            }
+
+        case "video_uploaded", "video_liked", "moment_uploaded", "moment_liked":
+            // Moment pushes open the moment, not the place it was taken at
+            if let videoId = (userInfo["videoId"] as? String) ?? (userInfo["momentId"] as? String) {
+                sceneDelegate?.navigateToVideo(videoId: videoId)
+            } else if let placeId = userInfo["placeId"] as? String {
+                NotificationCenter.default.post(name: Notification.Name("NavigateToPlace"), object: placeId)
+            }
+
+        case "store_claim", "store_claim_approved":
+            // Venue claims are managed from the Me tab
+            sceneDelegate?.navigateToMeTab()
+
+        case "check_in", "checkin", "check_in_response":
+            if let placeId = userInfo["placeId"] as? String {
+                NotificationCenter.default.post(name: Notification.Name("NavigateToPlace"), object: placeId)
+            }
+
         default:
             Logger.debug("⚠️ AppDelegate: Unknown notification type: \(type)")
             // For unknown types, try to navigate based on available data
@@ -914,9 +941,25 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                     name: Notification.Name("NavigateToConversation"),
                     object: conversationId
                 )
+            } else if let videoId = (userInfo["videoId"] as? String) ?? (userInfo["momentId"] as? String) {
+                sceneDelegate?.navigateToVideo(videoId: videoId)
+            } else if let fromUserId = (userInfo["fromUserId"] as? String) ?? (userInfo["actorId"] as? String) {
+                sceneDelegate?.navigateToUserProfile(userId: fromUserId)
+            } else if let deepLink = userInfo["deepLink"] as? String,
+                      let url = URL(string: deepLink), url.scheme == "circles" {
+                // Engagement pushes carry circles:// deep links that no code
+                // was reading — route them through the scheme handler
+                sceneDelegate?.handleDeepLink(url)
             }
             // If no specific data, do nothing (stay on current screen)
         }
+    }
+
+    /// The connected scene's delegate — owner of all deep-link navigation.
+    private var sceneDelegate: SceneDelegate? {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0.delegate as? SceneDelegate }
+            .first
     }
     
     private func handleAcceptConnection(requestId: String) {

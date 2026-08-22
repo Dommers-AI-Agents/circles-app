@@ -437,6 +437,16 @@ class NotificationsViewController: BaseViewController {
             // The claimant is now an owner — land them on their stores list,
             // which auto-pushes into the manage hub when there's just one.
             navigationController?.pushViewController(OwnerVenuesViewController(), animated: true)
+        case "new_message":
+            // A message notification opens the conversation — the row used to
+            // fall to the default and do nothing (no placeId/fromUserId)
+            if let conversationId = notification.data?.conversationId, !conversationId.isEmpty {
+                NotificationCenter.default.post(name: Notification.Name("NavigateToConversation"), object: conversationId)
+            } else if let senderId = notification.data?.senderId, !senderId.isEmpty {
+                navigateToProfile(userId: senderId)
+            } else {
+                NotificationCenter.default.post(name: Notification.Name("NavigateToMessages"), object: nil)
+            }
         default:
             // Place-centric (like/comment/new place/suggestion) → the place;
             // otherwise the person who triggered it; otherwise nothing to open.
@@ -1066,6 +1076,8 @@ struct NotificationData: Codable {
     let circleId: String?
     let commentText: String?
     let connectionId: String? // Present on connection_request notifications
+    let senderId: String?        // new_message notifications
+    let conversationId: String?  // new_message notifications
 }
 
 // Response structure for notifications

@@ -129,8 +129,10 @@ class NotificationService {
             // IMPORTANT: Add custom data at root level of payload (outside aps)
             // This ensures iOS can access the data when notification is tapped
             ...notification.data,
-            // Also add type at root for easier access
-            type: notification.type
+            // The SPECIFIC subtype (data.type) wins in the delivered payload —
+            // the generic wrapper type used for preference gating was
+            // overwriting it, so taps routed on the wrong string
+            type: (notification.data && notification.data.type) || notification.type
           },
           headers: {
             'apns-priority': '10', // High priority for immediate delivery
@@ -682,7 +684,10 @@ class NotificationService {
       body: `${fromUserName} wants to connect with you`,
       data: {
         type: 'connection_request',
-        fromUserId: fromUserId
+        fromUserId: fromUserId,
+        // iOS's Accept/Decline notification actions read requestId
+        requestId: connectionId || null,
+        connectionId: connectionId || null
       }
     });
     
@@ -830,7 +835,9 @@ class NotificationService {
         title: `${fromUser.displayName} commented on ${placeName}`,
         body: commentText.substring(0, 100) + (commentText.length > 100 ? '...' : ''),
         data: {
-          type: 'place_comment',
+          // iOS's tap router handles 'place_commented' (opens the place WITH
+          // comments); 'place_comment' fell to the default and lost them
+          type: 'place_commented',
           placeId: placeId,
           fromUserId: fromUserId
         }
@@ -886,7 +893,7 @@ class NotificationService {
         title: notificationTitle,
         body: notificationBody,
         data: {
-          type: 'place_like',
+          type: 'place_liked', // the string iOS's tap router handles
           placeId: placeId,
           fromUserId: fromUserId
         }
@@ -943,7 +950,9 @@ class NotificationService {
         title: notificationTitle,
         body: notificationBody,
         data: {
-          type: 'place_comment',
+          // iOS's tap router handles 'place_commented' (opens the place WITH
+          // comments); 'place_comment' fell to the default and lost them
+          type: 'place_commented',
           placeId: placeId,
           fromUserId: fromUserId
         }

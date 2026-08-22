@@ -266,6 +266,13 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             name: Notification.Name("NavigateToCreateWallet"),
             object: nil
         )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(navigateToPiggyBank),
+            name: Notification.Name("NavigateToPiggyBank"),
+            object: nil
+        )
     }
     
     private func updateMessagesBadge() {
@@ -391,6 +398,16 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             circlesVC.presentFullScreenMapShowingAllMyPlaces(focusCategory: focus)
         }
+    }
+
+    /// "Your FavCoins settled" push: open the Piggy Bank (no coach-mark).
+    @objc private func navigateToPiggyBank() {
+        selectedIndex = 0
+        guard let navController = viewControllers?[0] as? UINavigationController else { return }
+        navController.popToRootViewController(animated: false)
+        let hub = RewardsHubViewController()
+        hub.initialTab = .piggyBank
+        navController.pushViewController(hub, animated: true)
     }
 
     /// Engagement tip: open the Rewards hub on the Piggy Bank tab and point a

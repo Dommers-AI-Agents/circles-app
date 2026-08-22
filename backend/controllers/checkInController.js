@@ -298,7 +298,9 @@ exports.createCheckIn = async (req, res) => {
           data: {
             checkInId: checkInId,
             placeName: checkIn.placeName,
-            userId: userId
+            userId: userId,
+            // iOS routes check-in taps on placeId — without it the tap did nothing
+            placeId: checkIn.placeId || null
           }
         });
         console.log(`📍 Check-in notification result for ${notifiedUserId}:`, result);
@@ -618,7 +620,9 @@ exports.respondToCheckIn = async (req, res) => {
         data: {
           checkInId: checkInId,
           responderId: userId,
-          status: status
+          status: status,
+          // iOS routes on placeId — the tap did nothing without it
+          placeId: checkIn.placeId || null
         }
       });
     }

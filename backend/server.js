@@ -299,6 +299,13 @@ ${address ? `<p style="margin:0 0 16px;opacity:.85">${esc(address)}</p>` : ''}
 </body></html>`);
 });
 
+// Email/universal-link targets with no page of their own: installed devices
+// never reach these (iOS intercepts); browsers get the marketing site
+// instead of a 404 JSON blob.
+app.get(['/app/open', '/app/daily-summary', '/daily-summary'], (req, res) => {
+  res.redirect('https://favcircles.com');
+});
+
 // Weekly map-digest email target (AASA /app/*): installed devices open the
 // app's map directly; browsers land on the marketing site.
 app.get('/app/map', (req, res) => {

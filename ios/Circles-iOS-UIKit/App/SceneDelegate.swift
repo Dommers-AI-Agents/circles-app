@@ -754,7 +754,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if path == "settings/notifications" {
             navigateToNotificationSettings()
         } else if path == "network" || path == "network/find-friends" {
-            guard let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
+            guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+                // Cold start from an email tap: the interface isn't up yet —
+                // stash so the link survives (it used to be dropped silently)
+                UserDefaults.standard.set("network", forKey: "pendingDeepLink")
+                return
+            }
             tabBarController.selectedIndex = 1 // Network tab
         } else if path == "add-place" {
             // Navigate to add place
@@ -764,7 +769,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
     
-    private func handleDeepLink(_ url: URL) {
+    func handleDeepLink(_ url: URL) {
         // Parse the URL and navigate to the appropriate screen
         guard url.scheme == "circles" else {
             Logger.debug("📱 SceneDelegate: URL scheme '\(url.scheme ?? "nil")' is not 'circles', returning")
@@ -976,7 +981,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
     
-    private func navigateToUserProfile(userId: String) {
+    func navigateToUserProfile(userId: String) {
         guard AuthService.shared.isLoggedIn,
               let tabBarController = window?.rootViewController as? CirclesTabBarController else {
             // Store the deep link target to navigate after login
@@ -1885,7 +1890,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         navigateToVideo(videoId: videoId)
     }
     
-    private func navigateToVideo(videoId: String) {
+    func navigateToVideo(videoId: String) {
         guard AuthService.shared.isLoggedIn,
               let tabBarController = window?.rootViewController as? CirclesTabBarController else {
             // Store the deep link target to navigate after login
@@ -1968,6 +1973,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// Engagement-tip deep link: show all of the user's places on the expanded
     /// map. The tab bar observer does the actual presentation; here we just hand
     /// off (or re-stash if the interface isn't up yet, e.g. pre-login).
+    /// Push-tap helper: land on the Me tab (venue claims are managed there)
+    func navigateToMeTab() {
+        guard AuthService.shared.isLoggedIn,
+              let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
+        tabBarController.selectedIndex = 3
+    }
+
     private func navigateToAllPlacesMap(focusCategory: String? = nil) {
         guard AuthService.shared.isLoggedIn,
               window?.rootViewController is CirclesTabBarController else {
