@@ -156,7 +156,13 @@ extension Activity {
         case .circleCreated:
             return "created a new circle \(targetName)"
         case .commentLiked:
-            return "liked a comment on \(targetName)"
+            // Older activities stamped targetName as "Comment on <place>" —
+            // combined with this template that read "liked a comment on
+            // Comment on <place>". Strip the redundant prefix.
+            let placeName = targetName.hasPrefix("Comment on ")
+                ? String(targetName.dropFirst("Comment on ".count))
+                : targetName
+            return "liked a comment on \(placeName)"
         case .checkIn:
             return "checked in at \(targetName)"
         case .videoUploaded:

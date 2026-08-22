@@ -420,6 +420,13 @@ extension CirclesHomeViewController {
                 let placeDetailVC = PlaceDetailViewController(place: place, circle: networkCircle)
                 placeDetailVC.showCommentsOnAppear = showComments
                 navigationController?.pushViewController(placeDetailVC, animated: true)
+            } else {
+                // No circle membership loaded (viewport-fetched network
+                // places usually aren't in any local circle array) — the tap
+                // used to fall through HERE and silently do nothing
+                let placeDetailVC = PlaceDetailViewController(place: place)
+                placeDetailVC.showCommentsOnAppear = showComments
+                navigationController?.pushViewController(placeDetailVC, animated: true)
             }
         } else {
             // If not found, load the place

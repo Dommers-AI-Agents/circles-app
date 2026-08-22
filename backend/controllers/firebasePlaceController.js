@@ -3729,7 +3729,9 @@ exports.likeComment = async (req, res, next) => {
         userId,
         'comment',
         commentId,
-        `Comment on ${place.name}`,
+        // Plain place name: iOS renders "liked a comment on <targetName>",
+        // so "Comment on X" here doubled into "a comment on Comment on X"
+        place.name,
         {
           placeId: placeId,
           placeName: place.name,
