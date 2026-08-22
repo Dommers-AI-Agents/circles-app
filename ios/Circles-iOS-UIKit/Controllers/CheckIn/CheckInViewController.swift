@@ -474,8 +474,29 @@ class CheckInViewController: BaseViewController {
                         sortedPlaces = places.sorted { $0.name < $1.name }
                     }
                     
-                    self.myPlaces = sortedPlaces
-                    self.filteredPlaces = sortedPlaces
+                    // One row per VENUE: the same place saved into two circles
+                    // (legitimate) or duplicate saves must not list twice in a
+                    // check-in picker — you check into the venue, not the save.
+                    // Keeps the first occurrence (nearest, thanks to the sort).
+                    var seenVenues = Set<String>()
+                    let dedupedPlaces = sortedPlaces.filter { place in
+                        let key: String
+                        if let globalId = place.globalPlaceId, !globalId.isEmpty {
+                            key = "gp:\(globalId)"
+                        } else if let googleId = place.googlePlaceId, !googleId.isEmpty {
+                            key = "g:\(googleId)"
+                        } else {
+                            // Name + ~500m coordinate bucket
+                            let coords = place.location?.coordinates ?? []
+                            let lat = coords.count == 2 ? Int(coords[1] * 200) : 0
+                            let lng = coords.count == 2 ? Int(coords[0] * 200) : 0
+                            key = "n:\(place.name.lowercased())|\(lat),\(lng)"
+                        }
+                        return seenVenues.insert(key).inserted
+                    }
+
+                    self.myPlaces = dedupedPlaces
+                    self.filteredPlaces = dedupedPlaces
                     self.placesTableView.reloadData()
                     
                     if places.isEmpty {
