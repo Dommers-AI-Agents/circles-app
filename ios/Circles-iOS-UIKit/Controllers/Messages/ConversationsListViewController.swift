@@ -127,6 +127,15 @@ class ConversationsListViewController: UIViewController {
         setupTableView()
         setupEmptyState()
         setupNewMessageButton()
+
+        // Push/notification taps land here with a conversation id — open it
+        // (retrying once, since the list may still be loading on cold start)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleOpenConversationById(_:)),
+            name: Notification.Name("OpenConversationById"),
+            object: nil
+        )
         setupSubscribers()
         checkForNewSuggestions()
         setupSSE()
@@ -492,6 +501,21 @@ class ConversationsListViewController: UIViewController {
     
     
     // MARK: - Navigation
+    @objc private func handleOpenConversationById(_ note: Notification) {
+        guard let conversationId = note.object as? String else { return }
+        openConversation(withId: conversationId, retriesLeft: 3)
+    }
+
+    private func openConversation(withId conversationId: String, retriesLeft: Int) {
+        if let conversation = messagingManager.conversations.first(where: { $0.id == conversationId }) {
+            showConversation(conversation)
+        } else if retriesLeft > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.openConversation(withId: conversationId, retriesLeft: retriesLeft - 1)
+            }
+        }
+    }
+
     private func showConversation(_ conversation: Conversation) {
         Logger.debug("🔍 ConversationsListViewController: showConversation called")
         Logger.debug("🔍 Conversation details: id=\(conversation.id)")

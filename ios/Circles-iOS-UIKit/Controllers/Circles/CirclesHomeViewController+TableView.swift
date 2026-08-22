@@ -317,13 +317,16 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
 
             // Navigate based on activity type
             switch activity.type {
-            case .placeAdded, .placeLiked, .placeCommented, .photoUploaded, .placeDiscovered:
+            case .placeAdded, .placeLiked, .photoUploaded, .placeDiscovered:
                 // Navigate to the place
                 navigateToPlace(withId: activity.targetId)
+            case .placeCommented:
+                // A comment activity lands IN the comments, not at the page top
+                navigateToPlace(withId: activity.targetId, showComments: true)
             case .commentLiked:
                 // targetId is the COMMENT id for these; the place lives in metadata
                 if let placeId = activity.metadata?.placeId {
-                    navigateToPlace(withId: placeId)
+                    navigateToPlace(withId: placeId, showComments: true)
                 }
             case .circleCreated, .circleLiked, .circleCommented:
                 // Navigate to the circle

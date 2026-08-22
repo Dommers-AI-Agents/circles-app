@@ -408,20 +408,22 @@ extension CirclesHomeViewController {
         }
     }
     
-    func navigateToPlace(withId placeId: String) {
+    func navigateToPlace(withId placeId: String, showComments: Bool = false) {
         // Try to find the place in our loaded data first
         if let place = allPlaces.first(where: { $0.id == placeId }) {
             // Find the circle for this place
             if let circle = circles.first(where: { $0.places?.contains(placeId) == true }) {
                 let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
+                placeDetailVC.showCommentsOnAppear = showComments
                 navigationController?.pushViewController(placeDetailVC, animated: true)
             } else if let networkCircle = networkCircles.first(where: { $0.places?.contains(placeId) == true }) {
                 let placeDetailVC = PlaceDetailViewController(place: place, circle: networkCircle)
+                placeDetailVC.showCommentsOnAppear = showComments
                 navigationController?.pushViewController(placeDetailVC, animated: true)
             }
         } else {
             // If not found, load the place
-            loadPlaceAndNavigate(placeId: placeId)
+            loadPlaceAndNavigate(placeId: placeId, showComments: showComments)
         }
     }
     
@@ -560,7 +562,7 @@ extension CirclesHomeViewController {
         navigationController?.pushViewController(placeDetailVC, animated: true)
     }
     
-    func loadPlaceAndNavigate(placeId: String) {
+    func loadPlaceAndNavigate(placeId: String, showComments: Bool = false) {
         // Show loading
         let loadingAlert = UIAlertController(title: "Loading", message: "Loading place...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
@@ -587,6 +589,7 @@ extension CirclesHomeViewController {
                                 switch circleResult {
                                 case .success(let circle):
                                     let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
+                                    placeDetailVC.showCommentsOnAppear = showComments
                                     self.navigationController?.pushViewController(placeDetailVC, animated: true)
                                 case .failure:
                                     // Show error

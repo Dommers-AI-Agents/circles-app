@@ -757,6 +757,21 @@ class PlaceDetailViewController: BaseViewController {
         fatalError("init(coder:) has not been implemented")
     }
     
+    /// Set before pushing when the tap that got here was ABOUT a comment
+    /// ("X commented on…", "X liked a comment on…") — lands the user in the
+    /// comments instead of at the top of the place page.
+    var showCommentsOnAppear = false
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if showCommentsOnAppear {
+            showCommentsOnAppear = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                self?.commentButtonTapped()
+            }
+        }
+    }
+
     // MARK: - Lifecycle
     
     override func viewDidLoad() {
@@ -2487,7 +2502,7 @@ class PlaceDetailViewController: BaseViewController {
         navigationController?.pushViewController(saversVC, animated: true)
     }
     
-    @objc private func commentButtonTapped() {
+    @objc func commentButtonTapped() {
         // Present comments view controller
         let commentsVC = PlaceCommentsViewController(place: place)
         commentsVC.onCommentsUpdated = { [weak self] updatedCommentCount in

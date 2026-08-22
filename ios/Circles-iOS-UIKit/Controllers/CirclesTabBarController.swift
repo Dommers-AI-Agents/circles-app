@@ -273,6 +273,34 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             name: Notification.Name("NavigateToPiggyBank"),
             object: nil
         )
+
+        // These four were POSTED by the push-tap router since forever but
+        // observed by nobody — place/comment/suggestion/activity pushes
+        // silently went nowhere.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(navigateToPlaceNotification(_:)),
+            name: Notification.Name("NavigateToPlace"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(navigateToConversationNotification(_:)),
+            name: Notification.Name("NavigateToConversation"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(navigateToSuggestionsNotification),
+            name: Notification.Name("NavigateToSuggestions"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(navigateToActivityFeed),
+            name: Notification.Name("NavigateToActivity"),
+            object: nil
+        )
     }
     
     private func updateMessagesBadge() {
@@ -398,6 +426,43 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             circlesVC.presentFullScreenMapShowingAllMyPlaces(focusCategory: focus)
         }
+    }
+
+    @objc private func navigateToPlaceNotification(_ note: Notification) {
+        guard let placeId = note.object as? String, !placeId.isEmpty else { return }
+        let showComments = (note.userInfo?["showComments"] as? Bool) ?? false
+        selectedIndex = 0
+        guard let navController = viewControllers?[0] as? UINavigationController,
+              let circlesVC = navController.viewControllers.first as? CirclesHomeViewController else { return }
+        navController.popToRootViewController(animated: false)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            circlesVC.navigateToPlace(withId: placeId, showComments: showComments)
+        }
+    }
+
+    @objc private func navigateToConversationNotification(_ note: Notification) {
+        selectedIndex = 2 // Messages
+        guard let conversationId = note.object as? String, !conversationId.isEmpty else { return }
+        // The conversations list opens it once its data is ready
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            NotificationCenter.default.post(
+                name: Notification.Name("OpenConversationById"),
+                object: conversationId
+            )
+        }
+    }
+
+    @objc private func navigateToSuggestionsNotification() {
+        selectedIndex = 0
+        guard let navController = viewControllers?[0] as? UINavigationController else { return }
+        navController.popToRootViewController(animated: false)
+        navController.pushViewController(SuggestionsViewController(), animated: true)
+    }
+
+    @objc private func navigateToActivityFeed() {
+        // The activity feed lives on the home page
+        selectedIndex = 0
+        (viewControllers?[0] as? UINavigationController)?.popToRootViewController(animated: false)
     }
 
     /// "Your FavCoins settled" push: open the Piggy Bank (no coach-mark).
