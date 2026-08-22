@@ -692,6 +692,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 // Shared from Help → Importing Your Places; receivers without
                 // the app get the website guide via the backend redirect
                 presentImportFlow()
+            case "map":
+                // Weekly map-digest email: open the user's own map, focused
+                // on the emailed category when one rides along
+                let focus = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                    .queryItems?.first(where: { $0.name == "focus" })?.value
+                navigateToAllPlacesMap(focusCategory: focus)
             default:
                 Logger.debug("📱 SceneDelegate: Unknown app path: \(appPath)")
             }
@@ -1962,13 +1968,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// Engagement-tip deep link: show all of the user's places on the expanded
     /// map. The tab bar observer does the actual presentation; here we just hand
     /// off (or re-stash if the interface isn't up yet, e.g. pre-login).
-    private func navigateToAllPlacesMap() {
+    private func navigateToAllPlacesMap(focusCategory: String? = nil) {
         guard AuthService.shared.isLoggedIn,
               window?.rootViewController is CirclesTabBarController else {
             UserDefaults.standard.set("all-places-map", forKey: "pendingDeepLink")
             return
         }
-        NotificationCenter.default.post(name: Notification.Name("NavigateToAllPlacesMap"), object: nil)
+        var userInfo: [AnyHashable: Any] = [:]
+        if let focusCategory = focusCategory { userInfo["focus"] = focusCategory }
+        NotificationCenter.default.post(name: Notification.Name("NavigateToAllPlacesMap"), object: nil, userInfo: userInfo)
     }
 
     /// Engagement-tip deep link: open the Piggy Bank wallet-create coach-mark.

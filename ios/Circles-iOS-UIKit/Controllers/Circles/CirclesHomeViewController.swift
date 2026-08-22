@@ -4901,13 +4901,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// for the "see all your favorite places in one view" engagement tip.
     /// Unlike `presentFullScreenMapWithCurrentState`, this passes NO initial
     /// region (so auto-zoom is allowed) and forces the fit even for My Places.
-    func presentFullScreenMapShowingAllMyPlaces() {
+    func presentFullScreenMapShowingAllMyPlaces(focusCategory: UnifiedCategory? = nil) {
         isReturningFromFullScreenMap = true
 
         let fullScreenMap = FullScreenMapViewController(
             places: excludingHiddenCircles(allPlaces),
             initialRegion: nil,                     // allow fit-all zoom on load
-            selectedCategory: nil,
+            selectedCategory: focusCategory,
             selectedConnectionId: "my_places_only"
         )
         fullScreenMap.viewMode = .allPlaces

@@ -255,7 +255,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
 
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(navigateToAllPlacesMap),
+            selector: #selector(navigateToAllPlacesMap(_:)),
             name: Notification.Name("NavigateToAllPlacesMap"),
             object: nil
         )
@@ -380,13 +380,16 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     /// Engagement tip: open the expanded map showing all of the user's own
     /// places, zoomed to fit them. Home tab, popped to root (same reasoning as
     /// the daily-summary tap: a pushed detail would swallow the presentation).
-    @objc private func navigateToAllPlacesMap() {
+    @objc private func navigateToAllPlacesMap(_ note: Notification) {
         selectedIndex = 0
         guard let navController = viewControllers?[0] as? UINavigationController else { return }
         navController.popToRootViewController(animated: false)
         guard let circlesVC = navController.viewControllers.first as? CirclesHomeViewController else { return }
+        // Weekly map-digest links carry the emailed category ("focus=cafe")
+        let focusRaw = note.userInfo?["focus"] as? String
+        let focus = focusRaw.flatMap { PlaceCategory(rawValue: $0) }.map { UnifiedCategory.standard($0) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            circlesVC.presentFullScreenMapShowingAllMyPlaces()
+            circlesVC.presentFullScreenMapShowingAllMyPlaces(focusCategory: focus)
         }
     }
 

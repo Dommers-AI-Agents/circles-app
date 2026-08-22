@@ -299,6 +299,12 @@ ${address ? `<p style="margin:0 0 16px;opacity:.85">${esc(address)}</p>` : ''}
 </body></html>`);
 });
 
+// Weekly map-digest email target (AASA /app/*): installed devices open the
+// app's map directly; browsers land on the marketing site.
+app.get('/app/map', (req, res) => {
+  res.redirect('https://favcircles.com');
+});
+
 // Public user profile share page. Universal Link target (AASA /user/*) —
 // opens the profile in-app when installed, App Store fallback otherwise.
 app.get('/user/:userId', async (req, res) => {

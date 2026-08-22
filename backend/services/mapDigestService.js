@@ -190,6 +190,7 @@ class MapDigestService {
     const count = view.places.length;
     const sampleNames = view.places.slice(0, 6).map((p) => p.name);
     const profileUrl = `https://api.favcircles.com/user/${user.id}`;
+    const mapUrl = `https://api.favcircles.com/app/map?focus=${encodeURIComponent(view.category)}`;
 
     const listItems = sampleNames
       .map((n) => `<li style="margin:4px 0;color:#333;">${n}</li>`)
@@ -208,7 +209,7 @@ class MapDigestService {
   </div>
 
   <div style="padding:20px 24px 0;">
-    <a href="${profileUrl}" style="text-decoration:none;">
+    <a href="${mapUrl}" style="text-decoration:none;">
       <img src="${imageUrl}" alt="${view.headline}" width="552" style="width:100%;border-radius:12px;border:1px solid #e5e5e5;display:block;" />
     </a>
     <p style="color:#999;font-size:11px;margin:6px 0 0;">Map data © OpenStreetMap contributors</p>
@@ -220,7 +221,7 @@ class MapDigestService {
   </div>
 
   <div style="padding:22px 24px;text-align:center;">
-    <a href="${profileUrl}"
+    <a href="${mapUrl}"
        style="display:inline-block;background:${BRAND_BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:13px 28px;border-radius:9px;">
       Open your map
     </a>
@@ -269,7 +270,7 @@ class MapDigestService {
       to: email,
       subject,
       html,
-      text: `${view.headline} — ${count} places on your FavCircles map. Open the app to see it: https://api.favcircles.com/user/${user.id}`
+      text: `${view.headline} — ${count} places on your FavCircles map. Open the app to see it: https://api.favcircles.com/app/map?focus=${view.category}`
     });
 
     return { userId: user.id, sent: true, headline: view.headline, count, imageUrl };
