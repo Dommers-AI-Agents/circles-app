@@ -28,6 +28,11 @@ class ScheduledNotifications {
     
     // Monthly summary on the 1st at 10 AM
     this.scheduleMonthlySummary();
+
+    // Weekly personal-map digest EMAIL ("all your favorite bars — one map").
+    // OFF until WEEKLY_MAP_DIGEST_ENABLED=true — Wes signs off on the look
+    // before anything mails the whole user base.
+    this.scheduleWeeklyMapDigest();
     
     // Discovery prompts at strategic times
     this.scheduleDiscoveryPrompts();
@@ -69,6 +74,24 @@ class ScheduledNotifications {
   }
 
   // Schedule weekly summary
+  scheduleWeeklyMapDigest() {
+    if (process.env.WEEKLY_MAP_DIGEST_ENABLED !== 'true') {
+      console.log('🗺️ Weekly map digest email: disabled (WEEKLY_MAP_DIGEST_ENABLED != true)');
+      return;
+    }
+    // Sunday 10:00 AM ET — weekend browsing time
+    const job = cron.schedule('0 10 * * 0', async () => {
+      console.log('🗺️ Running weekly map digest emails...');
+      try {
+        await require('./mapDigestService').runWeeklyDigest();
+      } catch (error) {
+        console.error('❌ Weekly map digest failed:', error);
+      }
+    }, { timezone: 'America/New_York' });
+    this.jobs.push(job);
+    console.log('🗺️ Weekly map digest email scheduled (Sundays 10:00 ET)');
+  }
+
   scheduleWeeklySummary() {
     // Run every Monday at 9:00 AM
     const job = cron.schedule('0 9 * * 1', async () => {
