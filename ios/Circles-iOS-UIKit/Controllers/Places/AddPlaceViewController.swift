@@ -27,6 +27,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     var selectedGooglePlaceDetails: GooglePlaceDetails? {
         didSet { applyVenueSourceLockIfNeeded() }
     }
+    /// Rotated on every new map/POI/search selection. Async place-asset work
+    /// (canonical match, Google details, photo download/upload) captures the
+    /// token when it starts and re-checks it before touching form state —
+    /// stale responses from a previous tap were attaching the wrong venue's
+    /// photo and details (Ilios name + Magnetic Pole Fit photo, 2026-08-22).
+    var placeAssetRequestToken = UUID()
     var isSuperUserForVenueEdits: Bool?
     var ownedGooglePlaceIds = Set<String>()
     var venueExemptionChecksInFlight = Set<String>()
@@ -1174,6 +1180,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// Fallback when no POI exists near the tapped point: drop a pin and
     /// reverse geocode the address for manual entry.
     func handleManualLocationTap(at coordinate: CLLocationCoordinate2D) {
+        // Manual pin = no venue; kill any in-flight venue-asset fetch so a
+        // late response can't attach a previous tap's photos/details
+        placeAssetRequestToken = UUID()
         // Remove any existing "Selected Location" annotations
         let selectedAnnotations = mapView.annotations.filter { ($0 as? PlaceSearchAnnotation)?.title == "Selected Location" }
         mapView.removeAnnotations(selectedAnnotations)
@@ -1259,7 +1268,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                 
                                 // Preload photos only if we haven't already uploaded any
                                 if self?.uploadedPhotoUrls.isEmpty == true {
-                                    self?.preloadAndUploadPhotosForPlace(googleDetails)
+                                    self?.preloadAndUploadPhotosForPlace(googleDetails, token: token)
                                 } else {
                                     Logger.debug("📸 Skipping photo preload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
                                 }
@@ -2929,6 +2938,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }
 
     func fetchPlaceAssets(name: String, coordinate: CLLocationCoordinate2D, address: String?) {
+        // New selection: everything still in flight for the previous one is stale
+        let token = UUID()
+        placeAssetRequestToken = token
         GlobalPlaceService.shared.matchKnownPlace(
             name: name,
             latitude: coordinate.latitude,
@@ -2937,6 +2949,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                guard self.placeAssetRequestToken == token else { return }
 
                 if case .success(let match?) = result, let googlePlaceId = match.googlePlaceId, !googlePlaceId.isEmpty {
                     Logger.debug("✅ Venue already in our database (\(match.globalPlaceId)) — skipping Google Places")
@@ -2958,14 +2971,14 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     return
                 }
 
-                self.searchGoogleForPlaceAssets(name: name, coordinate: coordinate, address: address)
+                self.searchGoogleForPlaceAssets(name: name, coordinate: coordinate, address: address, token: token)
             }
         }
     }
 
     /// The Google Places pipeline (Find Place → Details → photo upload),
     /// used only when the venue is new to our database.
-    func searchGoogleForPlaceAssets(name: String, coordinate: CLLocationCoordinate2D, address: String?) {
+    func searchGoogleForPlaceAssets(name: String, coordinate: CLLocationCoordinate2D, address: String?, token: UUID) {
         Logger.debug("🔍 Searching Google Places for: \(name)")
         GooglePlacesService.shared.searchPlaceByNameAndLocation(
             name: name,
@@ -2981,13 +2994,14 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         case .success(let place):
                             let googleDetails = GooglePlaceDetails(from: place)
                             DispatchQueue.main.async {
+                                guard self?.placeAssetRequestToken == token else { return }
                                 self?.selectedGooglePlaceDetails = googleDetails
                                 // Swap the generic synthesized description for
                                 // Google's real one, if this venue has one
                                 self?.upgradeDescriptionWithEditorialSummary(googleDetails.editorialSummary)
                                 // Only preload photos if we haven't already uploaded any
                                 if self?.uploadedPhotoUrls.isEmpty == true {
-                                    self?.preloadAndUploadPhotosForPlace(googleDetails)
+                                    self?.preloadAndUploadPhotosForPlace(googleDetails, token: token)
                                 } else {
                                     Logger.debug("📸 Skipping photo preload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
                                 }
@@ -3119,7 +3133,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
-    func preloadAndUploadPhotosForPlace(_ placeDetails: GooglePlaceDetails) {
+    func preloadAndUploadPhotosForPlace(_ placeDetails: GooglePlaceDetails, token: UUID? = nil) {
+        // nil token = caller predates token tracking (user-picked photos);
+        // otherwise every async completion below re-checks currency
+        func assetsStillCurrent() -> Bool { token == nil || token == placeAssetRequestToken }
         Logger.debug("🚀 Pre-loading photos for place: \(placeDetails.name)")
         Logger.debug("📸 DEBUG: Starting photo pre-load process")
         Logger.debug("📸 DEBUG: Existing uploaded URLs count: \(self.uploadedPhotoUrls.count)")
@@ -3150,7 +3167,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     if let imageData = existingImage.jpegData(compressionQuality: 0.8) {
                         Logger.debug("📸 Uploading Google photo (size: \(imageData.count / 1024) KB)...")
                         self.uploadImageData(imageData) { uploadedUrl in
-                            if let url = uploadedUrl {
+                            if let url = uploadedUrl, assetsStillCurrent() {
                                 if !self.uploadedPhotoUrls.contains(url) {
                                     self.uploadedPhotoUrls.append(url)
                                     Logger.debug("✅ Google photo uploaded: \(url)")
@@ -3176,8 +3193,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         Logger.debug("📸 Successfully loaded Google photo")
                         self?.downloadedGoogleImage = image
                         
-                        // Show in UI immediately
+                        // Show in UI immediately — unless the user has
+                        // since selected a different place
                         DispatchQueue.main.async {
+                            guard assetsStillCurrent() else { return }
                             self?.selectedImage = image
                             self?.photoImageView.image = image
                             self?.photoImageView.isHidden = false
@@ -3190,7 +3209,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             if let imageData = image.jpegData(compressionQuality: 0.8) {
                                 Logger.debug("📸 Uploading Google photo (size: \(imageData.count / 1024) KB)...")
                                 self?.uploadImageData(imageData) { uploadedUrl in
-                                    if let url = uploadedUrl {
+                                    if let url = uploadedUrl, assetsStillCurrent() {
                                         // Check for duplicates before appending
                                         if !(self?.uploadedPhotoUrls.contains(url) ?? false) {
                                             self?.uploadedPhotoUrls.append(url)
@@ -3233,6 +3252,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         // If no Google photo, show Look Around in UI
                         if self.downloadedGoogleImage == nil {
                             DispatchQueue.main.async {
+                                guard assetsStillCurrent() else { return }
                                 self.selectedImage = lookAroundImage
                                 self.photoImageView.image = lookAroundImage
                                 self.photoImageView.isHidden = false
@@ -3245,7 +3265,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         if let imageData = lookAroundImage.jpegData(compressionQuality: 0.8) {
                             Logger.debug("📸 Uploading Look Around photo (size: \(imageData.count / 1024) KB)...")
                             self.uploadImageData(imageData) { uploadedUrl in
-                                if let url = uploadedUrl {
+                                if let url = uploadedUrl, assetsStillCurrent() {
                                     // Check for duplicates before appending
                                     if !self.uploadedPhotoUrls.contains(url) {
                                         self.uploadedPhotoUrls.append(url)

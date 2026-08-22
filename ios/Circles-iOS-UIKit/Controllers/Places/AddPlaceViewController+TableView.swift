@@ -242,15 +242,17 @@ extension AddPlaceViewController {
         mapView.removeAnnotations(annotationsToRemove)
     }
     
-    func addSelectedLocationPin(at coordinate: CLLocationCoordinate2D) {
+    func addSelectedLocationPin(at coordinate: CLLocationCoordinate2D,
+                                title: String = "Selected Location",
+                                subtitle: String = "Place will be added here") {
         // Remove any existing "Selected Location" pins
         clearPreviousAnnotations()
         
         // Add new pin for selected location
         let annotation = PlaceSearchAnnotation()
         annotation.coordinate = coordinate
-        annotation.title = "Selected Location"
-        annotation.subtitle = "Place will be added here"
+        annotation.title = title
+        annotation.subtitle = subtitle
         annotation.isTemporary = true
         mapView.addAnnotation(annotation)
         annotations.append(annotation)

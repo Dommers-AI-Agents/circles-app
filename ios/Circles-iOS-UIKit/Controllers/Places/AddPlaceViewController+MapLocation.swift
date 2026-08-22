@@ -149,6 +149,14 @@ extension AddPlaceViewController: MKMapViewDelegate {
         let coordinate = featureAnnotation.coordinate
         resetRatingCollection()
 
+        // This tap selected a POI — the deferred manual-location fallback
+        // scheduled by handleMapTap for the same physical tap must not also
+        // run. It never got cancelled before, so every POI tap ALSO selected
+        // the venue nearest the raw tap point 0.35s later, and the two async
+        // form-fills raced (wrong photo under the right name).
+        pendingManualMapTap?.cancel()
+        pendingManualMapTap = nil
+
         // Dedup: the same selection can arrive via both didSelect variants
         if lastHandledPOIName == poiName,
            let lastTime = lastPOISelectionTime,
@@ -185,8 +193,9 @@ extension AddPlaceViewController: MKMapViewDelegate {
                     // Update location
                     self?.selectedLocation = coordinate
                     
-                    // Add marker to map
-                    self?.addSelectedLocationPin(at: coordinate)
+                    // Add marker to map, titled with the venue (not the
+                    // generic green "Selected Location" address pin)
+                    self?.addSelectedLocationPin(at: coordinate, title: poiData.name, subtitle: "Venue selected")
                     
                     // Center map on selected location
                     let region = MKCoordinateRegion(
@@ -283,6 +292,10 @@ extension AddPlaceViewController: MKMapViewDelegate {
     }
 
     func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+        // Any annotation selection consumes the tap — the manual fallback
+        // must not fire on top of it
+        pendingManualMapTap?.cancel()
+        pendingManualMapTap = nil
         // A selection means this tap wasn't an empty-map tap - stop the manual
         // handler from wiping the form
         pendingManualMapTap?.cancel()
@@ -377,7 +390,9 @@ extension AddPlaceViewController: MKMapViewDelegate {
         
         // Customize appearance
         if let markerView = annotationView {
-            if placeAnnotation.isTemporary {
+            if placeAnnotation.isTemporary && placeAnnotation.title == "Selected Location" {
+                // Green = manual location pin; venue selections keep the
+                // brand color so users can tell a venue save from an address
                 markerView.markerTintColor = .systemGreen
             } else {
                 markerView.markerTintColor = Constants.Colors.primary
