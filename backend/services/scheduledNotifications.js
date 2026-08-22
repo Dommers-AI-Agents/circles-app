@@ -88,7 +88,7 @@ class ScheduledNotifications {
         console.error('❌ Weekly map digest failed:', error);
       }
     }, { timezone: 'America/New_York' });
-    this.jobs.push(job);
+    this.jobs.set('weeklyMapDigest', job);
     console.log('🗺️ Weekly map digest email scheduled (Sundays 10:00 ET)');
   }
 
