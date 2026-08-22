@@ -33,6 +33,26 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// stale responses from a previous tap were attaching the wrong venue's
     /// photo and details (Ilios name + Magnetic Pole Fit photo, 2026-08-22).
     var placeAssetRequestToken = UUID()
+    /// True when the current photo/URLs came from the asset pipeline (canonical
+    /// match, Google, Look Around) rather than the user's own picker. A new
+    /// venue selection clears pipeline photos but never a user's chosen photo —
+    /// without this, the first fetched photo stuck forever ("image stopped
+    /// updating", 2026-08-22).
+    var photosWereAutoPopulated = false
+
+    /// Reset pipeline-sourced photo state so the next selection starts clean.
+    func clearAutoPopulatedPhotoState() {
+        guard photosWereAutoPopulated else { return }
+        photosWereAutoPopulated = false
+        uploadedPhotoUrls = []
+        downloadedGoogleImage = nil
+        downloadedLookAroundImage = nil
+        selectedImage = nil
+        photoImageView.image = nil
+        photoImageView.isHidden = true
+        removePhotoButton.isHidden = true
+        addPhotoButton.isHidden = false
+    }
     var isSuperUserForVenueEdits: Bool?
     var ownedGooglePlaceIds = Set<String>()
     var venueExemptionChecksInFlight = Set<String>()
@@ -1183,6 +1203,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Manual pin = no venue; kill any in-flight venue-asset fetch so a
         // late response can't attach a previous tap's photos/details
         placeAssetRequestToken = UUID()
+        clearAutoPopulatedPhotoState()
         // Remove any existing "Selected Location" annotations
         let selectedAnnotations = mapView.annotations.filter { ($0 as? PlaceSearchAnnotation)?.title == "Selected Location" }
         mapView.removeAnnotations(selectedAnnotations)
@@ -2787,8 +2808,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             // Update map to show the selected place
             self.showBothUserAndPlace(placeCoordinate: mapItem.placemark.coordinate)
             
-            // Add pin for the selected place using the existing method
-            self.addSelectedLocationPin(at: mapItem.placemark.coordinate)
+            // Pin carries the picked venue's name — the generic green
+            // "Selected Location" hid that the fallback sometimes grabs a
+            // different business than the label the user aimed at
+            self.addSelectedLocationPin(at: mapItem.placemark.coordinate,
+                                        title: mapItem.name ?? "Selected Location",
+                                        subtitle: mapItem.name == nil ? "Place will be added here" : "Venue selected")
             
             // Scroll to show form after a delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -2941,6 +2966,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // New selection: everything still in flight for the previous one is stale
         let token = UUID()
         placeAssetRequestToken = token
+        clearAutoPopulatedPhotoState()
         GlobalPlaceService.shared.matchKnownPlace(
             name: name,
             latitude: coordinate.latitude,
@@ -2963,7 +2989,24 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                     // no download/re-upload needed
                     if self.uploadedPhotoUrls.isEmpty && !match.photos.isEmpty {
                         self.uploadedPhotoUrls = Array(match.photos.prefix(5))
+                        self.photosWereAutoPopulated = true
                         Logger.debug("📸 Reusing \(self.uploadedPhotoUrls.count) canonical photos")
+                        // Show it too — URLs alone left the photo box stuck
+                        // on whatever the previous selection displayed
+                        if let firstUrl = self.uploadedPhotoUrls.first {
+                            ImageService.shared.loadImage(from: firstUrl) { [weak self] image in
+                                DispatchQueue.main.async {
+                                    guard let self = self,
+                                          self.placeAssetRequestToken == token,
+                                          let image = image else { return }
+                                    self.selectedImage = image
+                                    self.photoImageView.image = image
+                                    self.photoImageView.isHidden = false
+                                    self.removePhotoButton.isHidden = false
+                                    self.addPhotoButton.isHidden = true
+                                }
+                            }
+                        }
                     }
                     // Reuse the canonical description too — beats the
                     // synthesized "Category in City" placeholder
@@ -3169,6 +3212,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         self.uploadImageData(imageData) { uploadedUrl in
                             if let url = uploadedUrl, assetsStillCurrent() {
                                 if !self.uploadedPhotoUrls.contains(url) {
+                                    self.photosWereAutoPopulated = true
                                     self.uploadedPhotoUrls.append(url)
                                     Logger.debug("✅ Google photo uploaded: \(url)")
                                 } else {
@@ -3197,6 +3241,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         // since selected a different place
                         DispatchQueue.main.async {
                             guard assetsStillCurrent() else { return }
+                            self?.photosWereAutoPopulated = true
                             self?.selectedImage = image
                             self?.photoImageView.image = image
                             self?.photoImageView.isHidden = false
@@ -3212,6 +3257,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                     if let url = uploadedUrl, assetsStillCurrent() {
                                         // Check for duplicates before appending
                                         if !(self?.uploadedPhotoUrls.contains(url) ?? false) {
+                                            self?.photosWereAutoPopulated = true
                                             self?.uploadedPhotoUrls.append(url)
                                             Logger.debug("✅ Google photo uploaded: \(url)")
                                         } else {
@@ -3253,6 +3299,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         if self.downloadedGoogleImage == nil {
                             DispatchQueue.main.async {
                                 guard assetsStillCurrent() else { return }
+                                self.photosWereAutoPopulated = true
                                 self.selectedImage = lookAroundImage
                                 self.photoImageView.image = lookAroundImage
                                 self.photoImageView.isHidden = false
@@ -3268,6 +3315,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                                 if let url = uploadedUrl, assetsStillCurrent() {
                                     // Check for duplicates before appending
                                     if !self.uploadedPhotoUrls.contains(url) {
+                                        self.photosWereAutoPopulated = true
                                         self.uploadedPhotoUrls.append(url)
                                         Logger.debug("✅ Look Around photo uploaded: \(url)")
                                     } else {
