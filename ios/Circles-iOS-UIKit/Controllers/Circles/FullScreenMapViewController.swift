@@ -576,10 +576,14 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
     /// One path for every chip change: refresh the header, re-filter, re-zoom,
     /// and tell the delegate — the home page keeps its own list in lockstep.
-    private func chipFiltersChanged() {
+    private func chipFiltersChanged(zoomToRegion: Bool = false) {
         updateFilterHeaderTitles()
         applyFilter(adjustRegion: false)
-        zoomToFilteredPlaces()
+        // Category changes (coffee / drinks / restaurants) keep the user's
+        // current view — they just want to see the pins change where they're
+        // already looking, not fly the camera out to fit every match. Only
+        // picking a specific region deliberately moves the camera to it.
+        if zoomToRegion { zoomToFilteredPlaces() }
         delegate?.mapViewControllerDidChangeChipFilters(self)
     }
 
@@ -634,7 +638,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                                     image: regionMenuImage(for: group),
                                     state: selectedChipRegionId == group.id ? .on : .off) { [weak self] _ in
                 self?.selectedChipRegionId = group.id
-                self?.chipFiltersChanged()
+                self?.chipFiltersChanged(zoomToRegion: true)
             })
         }
         return actions
