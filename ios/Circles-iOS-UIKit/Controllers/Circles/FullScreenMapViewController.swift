@@ -905,6 +905,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         tableView.separatorStyle = .none
         tableView.rowHeight = 72
         tableView.isHidden = true
+        // Half-sheet look: rounded top corners where it meets the map above it
+        tableView.layer.cornerRadius = 16
+        tableView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        tableView.clipsToBounds = true
+        tableView.contentInset = UIEdgeInsets(top: 12, left: 0, bottom: 0, right: 0)
+        tableView.verticalScrollIndicatorInsets = UIEdgeInsets(top: 12, left: 0, bottom: 0, right: 0)
         tableView.register(QuickAccessPlaceCell.self, forCellReuseIdentifier: "FullScreenPlaceListCell")
         tableView.translatesAutoresizingMaskIntoConstraints = false
         return tableView
@@ -1255,11 +1261,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Overlay chip + list constraints, only if presented modally with filters
         if isPresentedModally && showFilters {
             NSLayoutConstraint.activate([
-                // Places list fills the map area below whichever header is up
-                placesListTableView.topAnchor.constraint(
-                    equalTo: showsFilterChips ? filterChipsContainer.bottomAnchor : view.safeAreaLayoutGuide.topAnchor,
-                    constant: showsFilterChips ? 8 : 60
-                ),
+                // Half-sheet: the list covers the bottom ~55% of the screen so the
+                // map stays visible and pannable above it (the filter chips stay
+                // over the map's top half).
+                placesListTableView.heightAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.heightAnchor, multiplier: 0.55),
                 placesListTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 placesListTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
                 placesListTableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
@@ -2234,9 +2240,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             placesListTableView.reloadData()
         }
 
+        // Half-sheet: the list sits over the bottom ~55%, so the map — and its
+        // filter chips + people row on top — stay visible and interactive.
         placesListTableView.isHidden = !isShowingPlacesList
         updatePlacesCount()
-        userListView?.isHidden = isShowingPlacesList
     }
 
     // MARK: - Add Place from Map
