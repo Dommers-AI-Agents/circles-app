@@ -981,6 +981,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     func setConnectionFilterContext(_ connectionId: String?) {
         let changed = selectedConnectionId != connectionId
         selectedConnectionId = connectionId
+        if changed { resetCoverageBannerDismissal() }
         if connectionId == nil || connectionId == "my_places_only" || connectionId == "my_connections_only" {
             selectedConnectionUser = nil
         }
@@ -1164,6 +1165,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         view.addSubview(placesCountLabel)
         // Hide place count initially until places are loaded
         placesCountLabel.isHidden = true
+
+        // Coverage banner (shown when a selected connection has nothing in view)
+        view.addSubview(coverageBanner)
         
         // Add overlay control chips only if presented modally and filters are enabled
         if isPresentedModally && showFilters {
@@ -1238,7 +1242,13 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             placesCountLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -70),
             placesCountLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             placesCountLabel.heightAnchor.constraint(equalToConstant: 40),
-            placesCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 40)
+            placesCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 40),
+
+            // Coverage banner: top-center, below the filter chips, over the map
+            coverageBanner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 56),
+            coverageBanner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            coverageBanner.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 12),
+            coverageBanner.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -12)
         ]
         
         // Add close button constraints only if presented modally. In header
@@ -2399,6 +2409,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Switching connections keeps the current camera — you're comparing
         // who-saved-what in the same view, so don't re-frame. (The coverage
         // banner offers to expand when the selection has nothing in view.)
+        resetCoverageBannerDismissal()
         hasExplicitInitialRegion = false
         applyFilter(adjustRegion: false)
     }
@@ -2471,6 +2482,181 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // stacked pills with different numbers was the original "always 257"
         // bug in a new outfit.
         placesCountLabel.isHidden = isShowingPlacesList || visibleCount == 0
+
+        updateConnectionCoverageBanner()
+    }
+
+    // MARK: - Connection coverage banner
+    //
+    // Switching connections keeps the camera put (no auto-zoom). When the
+    // selected person — or you — has nothing showing in the current view, this
+    // banner explains and offers ONE tap: show their other-category places that
+    // ARE in view, or expand to frame their places. A dismiss ✕ hides it so you
+    // can just pick another connection without it in the way.
+
+    private var coverageBannerAction: (() -> Void)?
+    private var coverageBannerDismissedForId: String?
+
+    private lazy var coverageBannerLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 14, weight: .medium)
+        label.textColor = .white
+        label.numberOfLines = 2
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private lazy var coverageBannerActionButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        button.setTitleColor(UIColor(red: 0.36, green: 0.65, blue: 1.0, alpha: 1.0), for: .normal)
+        button.contentEdgeInsets = .zero
+        button.contentHorizontalAlignment = .leading
+        button.addTarget(self, action: #selector(coverageBannerActionTapped), for: .touchUpInside)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
+    private lazy var coverageBannerDismissButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+        button.tintColor = UIColor.white.withAlphaComponent(0.55)
+        button.addTarget(self, action: #selector(coverageBannerDismissTapped), for: .touchUpInside)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
+    lazy var coverageBanner: UIView = {
+        let container = UIView()
+        container.backgroundColor = UIColor.black.withAlphaComponent(0.85)
+        container.layer.cornerRadius = 12
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.isHidden = true
+
+        let stack = UIStackView(arrangedSubviews: [coverageBannerLabel, coverageBannerActionButton])
+        stack.axis = .vertical
+        stack.spacing = 4
+        stack.alignment = .leading
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(stack)
+        container.addSubview(coverageBannerDismissButton)
+
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -10),
+            stack.trailingAnchor.constraint(equalTo: coverageBannerDismissButton.leadingAnchor, constant: -8),
+
+            coverageBannerDismissButton.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            coverageBannerDismissButton.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
+            coverageBannerDismissButton.widthAnchor.constraint(equalToConstant: 24),
+            coverageBannerDismissButton.heightAnchor.constraint(equalToConstant: 24)
+        ])
+        return container
+    }()
+
+    /// Reset the dismiss so the banner can re-evaluate for a new selection.
+    func resetCoverageBannerDismissal() { coverageBannerDismissedForId = nil }
+
+    /// Only for a specific person or your own places — aggregates (Everyone / My
+    /// Connections) have no single "their places" to expand to.
+    func updateConnectionCoverageBanner() {
+        guard isViewLoaded else { return }
+        let id = selectedConnectionId
+        let isSelf = (id == "my_places_only")
+        let isPerson = (id != nil && id != "my_places_only" && id != "my_connections_only")
+        guard isSelf || isPerson else { hideCoverageBanner(); return }
+
+        // Honor a dismiss until the selection changes.
+        if let dismissed = coverageBannerDismissedForId, dismissed == (id ?? "") {
+            hideCoverageBanner(); return
+        }
+
+        let rect = mapView.visibleMapRect
+        func inView(_ list: [Place]) -> Int {
+            list.filter { place in
+                guard let c = place.location?.clLocation?.coordinate else { return false }
+                return rect.contains(MKMapPoint(c))
+            }.count
+        }
+
+        // Places from this selection are already showing — nothing to say.
+        if inView(filteredPlaces) > 0 { hideCoverageBanner(); return }
+
+        let scoped = connectionScopedPlaces()   // their places, all categories
+        let anyInView = inView(scoped)
+        let name = isSelf ? "You" : (selectedConnectionUser?.displayName ?? "This person")
+        let has = isSelf ? "have" : "has"
+        let their = isSelf ? "your" : "their"
+
+        if anyInView > 0, selectedChipGroup != .all {
+            // They have pins in view, just filtered out by the category chip.
+            let cat = selectedChipGroup.title.lowercased()
+            showCoverageBanner(
+                message: "\(name) \(has) no \(cat) here.",
+                actionTitle: "Show \(their) \(anyInView) place\(anyInView == 1 ? "" : "s") here"
+            ) { [weak self] in self?.clearCategoryKeepingCamera() }
+        } else if scoped.count > 0 {
+            // Nothing in view, but they have places elsewhere.
+            showCoverageBanner(
+                message: "\(name) \(has) no places in this view.",
+                actionTitle: "Show \(their) places"
+            ) { [weak self] in self?.showConnectionPlaces() }
+        } else {
+            let msg = isSelf ? "You haven't saved any places yet."
+                             : "\(name) hasn't saved any places yet."
+            showCoverageBanner(message: msg, actionTitle: nil, action: nil)
+        }
+    }
+
+    private func showCoverageBanner(message: String, actionTitle: String?, action: (() -> Void)?) {
+        coverageBannerLabel.text = message
+        if let title = actionTitle {
+            coverageBannerActionButton.setTitle(title, for: .normal)
+            coverageBannerActionButton.isHidden = false
+        } else {
+            coverageBannerActionButton.isHidden = true
+        }
+        coverageBannerAction = action
+        view.bringSubviewToFront(coverageBanner)
+        coverageBanner.isHidden = false
+    }
+
+    private func hideCoverageBanner() {
+        coverageBanner.isHidden = true
+        coverageBannerAction = nil
+    }
+
+    @objc private func coverageBannerActionTapped() {
+        coverageBannerAction?()
+    }
+
+    @objc private func coverageBannerDismissTapped() {
+        coverageBannerDismissedForId = selectedConnectionId ?? ""
+        hideCoverageBanner()
+    }
+
+    /// Clear the category chip while keeping the current camera.
+    private func clearCategoryKeepingCamera() {
+        selectedChipGroup = .all
+        refreshFilterChips()
+        updateFilterHeaderTitles()
+        applyFilter(adjustRegion: false)   // re-filter pins; camera stays
+        // applyFilter → updatePlacesCount → updateConnectionCoverageBanner
+    }
+
+    /// Expand the camera to frame the selected connection's places (on demand).
+    private func showConnectionPlaces() {
+        // If the active category hides everything, clear it so there's something
+        // to frame.
+        if filteredPlaces.isEmpty && selectedChipGroup != .all {
+            selectedChipGroup = .all
+            refreshFilterChips()
+            updateFilterHeaderTitles()
+            applyFilter(adjustRegion: false)
+        }
+        zoomToFilteredPlaces()
+        hideCoverageBanner()
     }
 }
 
