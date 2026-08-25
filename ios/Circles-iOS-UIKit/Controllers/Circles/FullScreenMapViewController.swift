@@ -993,7 +993,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // zoom to fit the STALE unfiltered set (framing the whole country
         // instead of the selected connection's city)
         if changed && isViewLoaded && isPresentedModally {
-            applyFilter()
+            // Keep the camera put on connection change (no re-frame).
+            applyFilter(adjustRegion: false)
         }
     }
 
@@ -2395,11 +2396,13 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         userListView?.selectedUserId = (connectionId == nil || connectionId == "my_places_only" || connectionId == "my_connections_only") ? nil : connectionId
         // Let the presenter mirror the selection so it survives dismissal
         delegate?.mapViewController(self, didChangeConnectionFilter: connectionId)
-        // A filter change is explicit user intent — allow zooming to results
+        // Switching connections keeps the current camera — you're comparing
+        // who-saved-what in the same view, so don't re-frame. (The coverage
+        // banner offers to expand when the selection has nothing in view.)
         hasExplicitInitialRegion = false
-        applyFilter()
+        applyFilter(adjustRegion: false)
     }
-    
+
     private func applyFilter(adjustRegion: Bool = true) {
         let currentUserId = AuthService.shared.getUserId() ?? ""
         

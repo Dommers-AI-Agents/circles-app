@@ -5701,14 +5701,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     }
                     if circlesMissingPlaces.isEmpty {
                         self.updateAvailableCategories()
-                        // Zoom is wanted here - the map should frame this connection's places
-                        self.refreshMapDisplay()
+                        // Keep the camera put — switching connections never
+                        // re-frames the map (the coverage banner handles the
+                        // case where the connection has nothing in view).
+                        self.refreshMapDisplay(adjustRegion: false)
                     } else {
                         self.fetchPlacesForConnectionCircles(circlesMissingPlaces)
                     }
                 case .failure(let error):
                     Logger.debug("❌ Failed to fetch circles for connection \(connectionId): \(error.localizedDescription)")
-                    self.refreshMapDisplay()
+                    self.refreshMapDisplay(adjustRegion: false)
                 }
             }
         }
@@ -6192,12 +6194,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         if let connectionId = id, connectionId != "my_places_only", connectionId != "my_connections_only" {
             // Re-scope pins with what's already loaded BEFORE any async fetch —
             // otherwise other connections' pins linger until this connection's
-            // places arrive. But DEFER the zoom when we're about to fetch this
-            // connection's full place set (the viewport path): zooming here to
-            // the partial/stale set and again after the fetch made the camera
-            // visibly fly twice. Let the post-fetch pass do the one zoom.
-            let deferZoom = useViewportNetworkLoading
-            refreshMapDisplay(adjustRegion: !deferZoom)
+            // places arrive. Keep the camera exactly where it is: switching
+            // connections must not move the map (you're comparing who-saved-what
+            // in the same view). If the connection has nothing in view, the
+            // coverage banner offers to expand — we never auto-zoom here.
+            refreshMapDisplay(adjustRegion: false)
 
             if networkCircles.isEmpty {
                 Logger.debug("📍 Need to fetch network circles for connection filtering")
@@ -6215,8 +6216,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 fetchAllPlacesForConnection(connectionId)
             }
         } else {
-            // Following / My Connections / My Places Only: refresh with what's loaded
-            refreshMapDisplay()
+            // Following / My Connections / My Places Only: refresh with what's
+            // loaded, keeping the current camera (no zoom on connection change).
+            refreshMapDisplay(adjustRegion: false)
             // "Following" and "My Connections" must mean ALL of those places,
             // not just the viewport-loaded subset — pull every connection's
             // full set in the background
