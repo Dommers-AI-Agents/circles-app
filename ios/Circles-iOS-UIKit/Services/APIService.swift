@@ -237,9 +237,24 @@ class APIService {
     private var networkMonitorId = "APIService"
     
     // Request deduplication (simple approach)
+    // ⚠️ Shared mutable bookkeeping, touched from the main thread, URLSession
+    // callback queues, and delayed-retry closures. Every access MUST go
+    // through stateLock — unsynchronized dictionary writes corrupt the hash
+    // table and crash with garbage-pointer unrecognized-selector aborts
+    // (three launch crashes on 2026-08-25 pinned to exactly that).
     private var pendingGETRequests = Set<String>()
     private var pendingRequestTimers = [String: Timer]()
     private var lastRequestTimes = [String: Date]()
+    private let stateLock = NSLock()
+
+    /// Drop one request's dedup entry + timer (safe from any thread)
+    private func clearPendingRequest(_ requestKey: String) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        pendingGETRequests.remove(requestKey)
+        pendingRequestTimers[requestKey]?.invalidate()
+        pendingRequestTimers.removeValue(forKey: requestKey)
+    }
     private let minRequestInterval: TimeInterval = 0.5 // Minimum 500ms between identical requests to reduce load
     
     // Logger flags
@@ -335,19 +350,25 @@ class APIService {
     }
     
     func clearPendingRequests() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
         // Clear all pending GET request tracking
         pendingGETRequests.removeAll()
-        
+
         // Invalidate and clear all pending timers
         for timer in pendingRequestTimers.values {
             timer.invalidate()
         }
         pendingRequestTimers.removeAll()
-        
+
         Logger.debug("APIService: Cleared all pending requests and timers")
     }
-    
+
     func clearPendingRequestsForEndpoint(_ endpoint: String) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
         // Clear pending requests that match the endpoint pattern
         let keysToRemove = pendingGETRequests.filter { $0.contains(endpoint) }
         for key in keysToRemove {
@@ -399,22 +420,28 @@ class APIService {
                                          endpoint.contains("/circles/") ||
                                          endpoint.contains("/places/")
             
-            if shouldPreventDuplicates && pendingGETRequests.contains(requestKey) {
-                Logger.debug("Preventing duplicate GET request: \(requestKey)")
-                completion(.failure(.duplicateRequest))
-                return
-            }
-            
             if shouldPreventDuplicates {
-                pendingGETRequests.insert(requestKey)
-                
+                stateLock.lock()
+                let isDuplicate = pendingGETRequests.contains(requestKey)
+                if !isDuplicate {
+                    pendingGETRequests.insert(requestKey)
+                }
+                stateLock.unlock()
+
+                if isDuplicate {
+                    Logger.debug("Preventing duplicate GET request: \(requestKey)")
+                    completion(.failure(.duplicateRequest))
+                    return
+                }
+
                 // Clean up pending request after 0.5 seconds (reduced from 1.0)
                 let timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
-                    self?.pendingGETRequests.remove(requestKey)
-                    self?.pendingRequestTimers.removeValue(forKey: requestKey)
+                    self?.clearPendingRequest(requestKey)
                     Logger.debug("Cleaned up stale pending request: \(requestKey)")
                 }
+                stateLock.lock()
                 pendingRequestTimers[requestKey] = timer
+                stateLock.unlock()
             }
         }
         
@@ -483,33 +510,42 @@ class APIService {
             Logger.debug("📡 API APIService: Requires Auth: \(requiresAuth)")
         }
         
-        // Rate limiting check - prevent duplicate requests too close together
+        // Rate limiting check - prevent duplicate requests too close together.
+        // Read-and-stamp is one critical section: performRequest re-enters
+        // from delayed-retry closures on arbitrary queues, and an unlocked
+        // write here is what corrupted the dictionary (2026-08-25 crashes).
         let requestKey = "\(method.rawValue):\(endpoint)"
-        if let lastRequestTime = lastRequestTimes[requestKey] {
-            let timeSinceLastRequest = Date().timeIntervalSince(lastRequestTime)
-            if timeSinceLastRequest < minRequestInterval {
-                if logLevel >= .minimal {
-                    Logger.debug("⏰ APIService: Throttling request to \(endpoint) (last request \(Int(timeSinceLastRequest * 1000))ms ago)")
-                }
-                // Delay the request
-                DispatchQueue.main.asyncAfter(deadline: .now() + (minRequestInterval - timeSinceLastRequest)) {
-                    self.performRequest(
-                        endpoint: endpoint,
-                        method: method,
-                        queryParams: queryParams,
-                        body: body,
-                        headers: headers,
-                        requiresAuth: requiresAuth,
-                        retryCount: retryCount,
-                        completion: completion
-                    )
-                }
-                return
-            }
+        stateLock.lock()
+        let timeSinceLastRequest = lastRequestTimes[requestKey].map { Date().timeIntervalSince($0) }
+        let throttleDelay: TimeInterval? = (timeSinceLastRequest != nil && timeSinceLastRequest! < minRequestInterval)
+            ? (minRequestInterval - timeSinceLastRequest!)
+            : nil
+        if throttleDelay == nil {
+            // Claim this slot before releasing the lock so a racing caller
+            // sees the fresh stamp and throttles itself
+            lastRequestTimes[requestKey] = Date()
         }
-        
-        // Update last request time
-        lastRequestTimes[requestKey] = Date()
+        stateLock.unlock()
+
+        if let delay = throttleDelay {
+            if logLevel >= .minimal {
+                Logger.debug("⏰ APIService: Throttling request to \(endpoint) (last request \(Int((timeSinceLastRequest ?? 0) * 1000))ms ago)")
+            }
+            // Delay the request
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                self.performRequest(
+                    endpoint: endpoint,
+                    method: method,
+                    queryParams: queryParams,
+                    body: body,
+                    headers: headers,
+                    requiresAuth: requiresAuth,
+                    retryCount: retryCount,
+                    completion: completion
+                )
+            }
+            return
+        }
         
         // Build URL with query parameters
         guard var urlComponents = URLComponents(string: "\(environment.baseURL)/\(endpoint)") else {
@@ -703,9 +739,7 @@ class APIService {
                 // Clean up pending request tracking for GET requests
                 if method == .get {
                     let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
-                    self.pendingGETRequests.remove(requestKey)
-                    self.pendingRequestTimers[requestKey]?.invalidate()
-                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                    self.clearPendingRequest(requestKey)
                 }
                 
                 completion(.failure(apiError))
@@ -725,9 +759,7 @@ class APIService {
                 // Clean up pending request tracking for GET requests
                 if method == .get {
                     let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
-                    self.pendingGETRequests.remove(requestKey)
-                    self.pendingRequestTimers[requestKey]?.invalidate()
-                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                    self.clearPendingRequest(requestKey)
                 }
                 
                 completion(.failure(.invalidResponse))
@@ -839,9 +871,7 @@ class APIService {
                     // Clean up any pending GET request tracking
                     if method == .get {
                         let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
-                        self.pendingGETRequests.remove(requestKey)
-                        self.pendingRequestTimers[requestKey]?.invalidate()
-                        self.pendingRequestTimers.removeValue(forKey: requestKey)
+                        self.clearPendingRequest(requestKey)
                     }
                     completion(.failure(.httpError(401, data)))
                     return
@@ -856,9 +886,7 @@ class APIService {
                 // Clean up pending request tracking for GET requests
                 if method == .get {
                     let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
-                    self.pendingGETRequests.remove(requestKey)
-                    self.pendingRequestTimers[requestKey]?.invalidate()
-                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                    self.clearPendingRequest(requestKey)
                 }
                 
                 completion(.failure(.httpError(httpResponse.statusCode, data)))
@@ -897,9 +925,7 @@ class APIService {
                     // Clean up pending request tracking for GET requests
                     if method == .get {
                         let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
-                        self.pendingGETRequests.remove(requestKey)
-                        self.pendingRequestTimers[requestKey]?.invalidate()
-                        self.pendingRequestTimers.removeValue(forKey: requestKey)
+                        self.clearPendingRequest(requestKey)
                     }
                     
                     // Retry after delay using performRequest
@@ -925,9 +951,7 @@ class APIService {
                     // Clean up pending request tracking for GET requests
                     if method == .get {
                         let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
-                        self.pendingGETRequests.remove(requestKey)
-                        self.pendingRequestTimers[requestKey]?.invalidate()
-                        self.pendingRequestTimers.removeValue(forKey: requestKey)
+                        self.clearPendingRequest(requestKey)
                     }
                     
                     completion(.failure(.rateLimited(retryAfter: delay)))
@@ -958,9 +982,7 @@ class APIService {
                 // Clean up pending request tracking for GET requests
                 if method == .get {
                     let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
-                    self.pendingGETRequests.remove(requestKey)
-                    self.pendingRequestTimers[requestKey]?.invalidate()
-                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                    self.clearPendingRequest(requestKey)
                 }
                 
                 // Don't retry Firestore index errors or after multiple attempts
@@ -997,9 +1019,7 @@ class APIService {
                 // Clean up pending request tracking for GET requests
                 if method == .get {
                     let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
-                    self.pendingGETRequests.remove(requestKey)
-                    self.pendingRequestTimers[requestKey]?.invalidate()
-                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                    self.clearPendingRequest(requestKey)
                 }
                 
                 completion(.failure(.httpError(httpResponse.statusCode, data)))
@@ -1046,10 +1066,7 @@ class APIService {
                 // Remove from pending requests if it was a GET request
                 if method == .get {
                     let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
-                    self.pendingGETRequests.remove(requestKey)
-                    // Cancel and remove the timer
-                    self.pendingRequestTimers[requestKey]?.invalidate()
-                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                    self.clearPendingRequest(requestKey)
                 }
                 completion(.success(result))
             } catch {
@@ -1082,10 +1099,7 @@ class APIService {
                 // Remove from pending requests if it was a GET request
                 if method == .get {
                     let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
-                    self.pendingGETRequests.remove(requestKey)
-                    // Cancel and remove the timer
-                    self.pendingRequestTimers[requestKey]?.invalidate()
-                    self.pendingRequestTimers.removeValue(forKey: requestKey)
+                    self.clearPendingRequest(requestKey)
                 }
                 
                 completion(.failure(.decodingFailed(error)))
