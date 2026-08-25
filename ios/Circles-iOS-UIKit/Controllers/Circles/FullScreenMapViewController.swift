@@ -2341,7 +2341,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         let reference = currentUserLocation
             ?? CLLocation(latitude: currentRegion.center.latitude, longitude: currentRegion.center.longitude)
 
-        distanceSortedPlaces = filteredPlaces.map { place in
+        // Collapse multiple save docs for the same venue to one (a place saved
+        // by several people, or into multiple circles, was showing twice) —
+        // mirrors the home list via the shared Place.dedupedByVenue.
+        let deduped = Place.dedupedByVenue(filteredPlaces, preferredOwnerId: AuthService.shared.getUserId() ?? "")
+        distanceSortedPlaces = deduped.map { place in
             let distance = place.location?.clLocation.map { reference.distance(from: $0) }
             return (place: place, distance: distance)
         }.sorted { lhs, rhs in

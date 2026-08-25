@@ -6056,22 +6056,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         let currentUserId = AuthService.shared.getUserId() ?? ""
 
         // The map/list is fed by every save doc, so a venue saved by several
-        // people appeared multiple times. Group by the real-world venue and
-        // show it once. Key priority: globalPlaceId → googlePlaceId →
-        // name+rounded-coords.
-        func venueKey(_ p: Place) -> String {
-            if let g = p.globalPlaceId, !g.isEmpty { return "g:\(g)" }
-            if let gp = p.googlePlaceId, !gp.isEmpty { return "gp:\(gp)" }
-            let coords = p.location?.coordinates
-            let lng = coords?.first ?? 0
-            let lat = coords?.count == 2 ? coords![1] : 0
-            return "n:\(p.name.lowercased())|\(String(format: "%.4f,%.4f", lat, lng))"
-        }
-
+        // people appeared multiple times. Group by the real-world venue (shared
+        // Place.venueDedupeKey — same key the full-screen list uses) and show it
+        // once, while still collecting the saver names for this row.
         var order: [String] = []
         var groups: [String: [Place]] = [:]
         for place in filtered {
-            let key = venueKey(place)
+            let key = place.venueDedupeKey
             if groups[key] == nil { order.append(key) }
             groups[key, default: []].append(place)
         }
