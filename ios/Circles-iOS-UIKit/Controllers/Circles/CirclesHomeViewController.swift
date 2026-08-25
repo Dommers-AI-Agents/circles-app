@@ -388,9 +388,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         tableView.backgroundColor = Constants.Colors.secondaryBackground
         tableView.separatorStyle = .none
         tableView.isHidden = true
-        // Start content below the floating filter chips (12pt inset + 36pt chips + 8pt gap)
-        tableView.contentInset = UIEdgeInsets(top: 56, left: 0, bottom: 0, right: 0)
-        tableView.verticalScrollIndicatorInsets = UIEdgeInsets(top: 56, left: 0, bottom: 0, right: 0)
+        // Half-sheet look: rounded top corners where it meets the map above it
+        tableView.layer.cornerRadius = 16
+        tableView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        tableView.clipsToBounds = true
+        // The sheet now sits BELOW the floating filter chips (they stay over the
+        // map's top half), so the list only needs a little breathing room on top.
+        tableView.contentInset = UIEdgeInsets(top: 12, left: 0, bottom: 0, right: 0)
+        tableView.verticalScrollIndicatorInsets = UIEdgeInsets(top: 12, left: 0, bottom: 0, right: 0)
         tableView.register(QuickAccessPlaceCell.self, forCellReuseIdentifier: "HomePlaceListCell")
         tableView.translatesAutoresizingMaskIntoConstraints = false
         return tableView
@@ -2313,11 +2318,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             listToggleButton.widthAnchor.constraint(equalToConstant: 36),
             selectedConnectionAvatarButton.widthAnchor.constraint(equalToConstant: 36),
 
-            // Places list overlays the map exactly
-            placesListTableView.topAnchor.constraint(equalTo: mapContainerView.topAnchor),
+            // Half-sheet: the list covers the bottom ~55% of the map area so the
+            // map stays visible and pannable above it. listToggleTapped grows the
+            // map container in list mode so both the map slice and list have room.
             placesListTableView.leadingAnchor.constraint(equalTo: mapContainerView.leadingAnchor),
             placesListTableView.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor),
             placesListTableView.bottomAnchor.constraint(equalTo: mapContainerView.bottomAnchor),
+            placesListTableView.heightAnchor.constraint(equalTo: mapContainerView.heightAnchor, multiplier: 0.55),
 
             // Location status label
             
@@ -6014,10 +6021,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             placesListTableView.setContentOffset(CGPoint(x: 0, y: -placesListTableView.contentInset.top), animated: false)
         }
 
-        // The list fully covers the map; map-only controls hide with it
+        // Half-sheet: the list sits over the bottom ~55% of the map, so the map
+        // stays visible and pannable above it. Grow the map container in list
+        // mode so both the map slice and the list get usable room.
         placesListTableView.isHidden = !isShowingPlacesList
-        mapExpandButton.isHidden = isShowingPlacesList
+        mapHeightConstraint?.constant = isShowingPlacesList ? 500 : 320
+        // Map controls stay put now that the map is still shown; the place-count
+        // label is pinned low (behind the sheet), so it still hides.
         mapPlaceCountLabel.isHidden = isShowingPlacesList
+        UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
     }
 
     /// Force the home map's list overlay back to the map (no-op if already on
