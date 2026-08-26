@@ -21,9 +21,11 @@ for line in open(f"{OUT}/actions.log"):
 cuts = []
 def addcut(a, b):
     if b - a > 0.5: cuts.append((a, b))
-addcut(marks["sal-start"] + 1.5,    marks["sal-done"] - 2.0)
-addcut(marks["audio-b10b"] + 4.4,   marks["margie-done"] - 2.0)   # keep the b10b line + scroll tail
-addcut(marks["amanda-start"] + 1.2, marks["amanda-done"] - 2.0)
+addcut(marks["sal-start"] + 1.0,    marks["sal-done"] - 1.5)
+addcut(marks["audio-b10b"] + 3.9,   marks["margie-done"] - 1.5)   # keep the b10b line + scroll tail
+addcut(marks["amanda-start"] + 0.9, marks["amanda-done"] - 1.5)
+# static banner hold before the b12 line (catfix verification time) — safe to trim
+addcut(marks["outdoors"] + 1.5, marks["audio-b12"] - 0.3)
 cuts.sort()
 def shift(t):
     out = t
