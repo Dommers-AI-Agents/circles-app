@@ -85,8 +85,9 @@ if CUT:
            f"[s2]trim={cutA+CUT:.2f},setpts=PTS-STARTPTS[p2];[p1][p2]concat=n=2:v=1:a=0[v0];")
 else:
     fc += "[vs]null[v0];"
-fc += "[1:v]format=rgba,fade=t=in:st=0.25:d=0.5:alpha=1,fade=t=out:st=8.0:d=0.7:alpha=1[card];"
-fc += "[v0][card]overlay=0:0:enable='between(t,0.2,8.9)'[v1];"
+# card fully visible from frame 1 so the share/poster thumbnail shows the branded map
+fc += "[1:v]format=rgba,fade=t=out:st=8.0:d=0.7:alpha=1[card];"
+fc += "[v0][card]overlay=0:0:enable='between(t,0,8.9)'[v1];"
 cur, n = "v1", 2
 for i, (name, s, e) in enumerate(caps):
     fc += f"[{cur}][{2+i}:v]overlay=0:0:enable='between(t,{s:.2f},{e:.2f})'[v{n}];"
@@ -99,7 +100,7 @@ for r in (1,2,3):
         fc += f"[{cur}][{nring0+r-1}:v]overlay={x}:{y}:enable='{en}'[v{n}];"
         cur = f"v{n}"; n += 1
 fc += (f"[{cur}]trim=0:{wdur},setpts=PTS-STARTPTS,"
-       f"fade=t=in:d=0.35,fade=t=out:st={wdur-0.5}:d=0.5,format=yuv420p[vout];")
+       f"fade=t=out:st={wdur-0.5}:d=0.5,format=yuv420p[vout];")
 amixin = ""
 naud0 = nring0 + 3
 for j, b in enumerate(sorted(beats)):
