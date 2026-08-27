@@ -52,22 +52,41 @@ final class ShareViewController: UIViewController {
     // MARK: Shared item extraction
 
     private func extractSharedItem(completion: @escaping () -> Void) {
-        let providers = (extensionContext?.inputItems as? [NSExtensionItem])?
-            .flatMap { $0.attachments ?? [] } ?? []
+        let items = (extensionContext?.inputItems as? [NSExtensionItem]) ?? []
 
+        // Map apps often put the place NAME only in the item's attributed
+        // title/content ("Office Depot · Charlotte") and attach just a URL —
+        // capture both as text fallbacks.
+        for item in items {
+            if sharedText == nil, let text = item.attributedContentText?.string, !text.isEmpty {
+                sharedText = text
+            }
+            if sharedText == nil, let title = item.attributedTitle?.string, !title.isEmpty {
+                sharedText = title
+            }
+        }
+
+        let providers = items.flatMap { $0.attachments ?? [] }
         let group = DispatchGroup()
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
                 group.enter()
                 provider.loadItem(forTypeIdentifier: UTType.url.identifier) { [weak self] item, _ in
-                    if let url = item as? URL { self?.sharedURL = url.absoluteString }
+                    // URL arrives as NSURL, String, or Data depending on the host app
+                    if let url = item as? URL {
+                        self?.sharedURL = url.absoluteString
+                    } else if let text = item as? String {
+                        self?.sharedURL = text
+                    } else if let data = item as? Data, let text = String(data: data, encoding: .utf8) {
+                        self?.sharedURL = text
+                    }
                     group.leave()
                 }
             }
             if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
                 group.enter()
                 provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) { [weak self] item, _ in
-                    if let text = item as? String { self?.sharedText = text }
+                    if let text = item as? String, !text.isEmpty { self?.sharedText = text }
                     group.leave()
                 }
             }
@@ -77,8 +96,85 @@ final class ShareViewController: UIViewController {
 
     // MARK: Resolution
 
+    private struct URLHints {
+        var name: String?
+        var coordinate: CLLocationCoordinate2D?
+        var isEmpty: Bool { name == nil && coordinate == nil }
+    }
+
+    /// Pulls a place name and/or coordinate out of a Google or Apple Maps URL.
+    private static func placeHints(from urlString: String) -> URLHints {
+        var hints = URLHints()
+
+        if ImportParsingService.isGoogleMapsURL(urlString) {
+            if let pin = ImportParsingService.pinCoordinates(fromGoogleURL: urlString)
+                ?? ImportParsingService.featureCoordinate(fromGoogleURL: urlString) {
+                hints.coordinate = CLLocationCoordinate2D(latitude: pin.lat, longitude: pin.lng)
+            }
+            // Long-form place URLs carry the name: /maps/place/Office+Depot/@35.2,-80.8...
+            if let range = urlString.range(of: #"/maps/place/([^/@?]+)"#, options: .regularExpression) {
+                let raw = String(urlString[range].dropFirst("/maps/place/".count))
+                let name = raw.replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? raw
+                if !name.isEmpty { hints.name = name }
+            }
+            // The @lat,lng viewport centroid is a usable region hint when the
+            // feature id is absent (mobile share links after redirect)
+            if hints.coordinate == nil,
+               let range = urlString.range(of: #"@(-?\d+\.\d+),(-?\d+\.\d+)"#, options: .regularExpression) {
+                let parts = String(urlString[range].dropFirst()).components(separatedBy: ",")
+                if parts.count == 2, let lat = Double(parts[0]), let lng = Double(parts[1]),
+                   abs(lat) <= 90, abs(lng) <= 180 {
+                    hints.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lng)
+                }
+            }
+            return hints
+        }
+
+        // Apple Maps: https://maps.apple.com/?q=Office+Depot&ll=35.22,-80.84&address=...
+        if urlString.lowercased().contains("maps.apple") {
+            guard let components = URLComponents(string: urlString) else { return hints }
+            let items = components.queryItems ?? []
+            let value = { (key: String) in items.first(where: { $0.name == key })?.value }
+            for key in ["name", "q", "address"] {
+                if let v = value(key), !v.isEmpty, Double(v.components(separatedBy: ",").first ?? "") == nil {
+                    hints.name = v.replacingOccurrences(of: "+", with: " ")
+                    break
+                }
+            }
+            for key in ["ll", "sll", "center", "coordinate"] {
+                if let v = value(key) {
+                    let parts = v.components(separatedBy: ",")
+                    if parts.count == 2,
+                       let lat = Double(parts[0].trimmingCharacters(in: .whitespaces)),
+                       let lng = Double(parts[1].trimmingCharacters(in: .whitespaces)),
+                       abs(lat) <= 90, abs(lng) <= 180 {
+                        hints.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lng)
+                        break
+                    }
+                }
+            }
+            return hints
+        }
+
+        return hints
+    }
+
+    /// Share links from the Maps apps are redirectors (maps.app.goo.gl,
+    /// maps.apple/p/…) — the name and coordinates only exist on the URL they
+    /// redirect to. One GET resolves it; the final URL is what we parse.
+    private func resolveFinalURL(_ urlString: String, completion: @escaping (String) -> Void) {
+        guard let url = URL(string: urlString) else { completion(urlString); return }
+        var request = URLRequest(url: url, timeoutInterval: 8)
+        request.httpMethod = "GET"
+        URLSession.shared.dataTask(with: request) { _, response, _ in
+            DispatchQueue.main.async {
+                completion(response?.url?.absoluteString ?? urlString)
+            }
+        }.resume()
+    }
+
     private func startResolution() {
-        // Google Maps shares put the URL inside the text ("Check out X!
+        // Some apps put the URL inside the text ("Check out X!
         // https://maps.app.goo.gl/..."); split it so the name survives.
         if sharedURL == nil, let text = sharedText,
            let range = text.range(of: "https://", options: .caseInsensitive) {
@@ -89,26 +185,44 @@ final class ShareViewController: UIViewController {
         if let url = sharedURL, let range = seedName.range(of: url) {
             seedName.removeSubrange(range)
         }
+        // Share-sheet titles look like "Office Depot · Charlotte, North..." —
+        // keep the name half, drop the truncated location tail.
+        if let dotRange = seedName.range(of: " · ") {
+            seedName = String(seedName[..<dotRange.lowerBound])
+        }
         seedName = seedName
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "!·-–:"))
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        var coordinate: CLLocationCoordinate2D?
-        if let url = sharedURL, ImportParsingService.isGoogleMapsURL(url) {
-            if let pin = ImportParsingService.pinCoordinates(fromGoogleURL: url)
-                ?? ImportParsingService.featureCoordinate(fromGoogleURL: url) {
-                coordinate = CLLocationCoordinate2D(latitude: pin.lat, longitude: pin.lng)
+        placeNameLabel.text = seedName.isEmpty ? "Locating…" : seedName
+        spinner.startAnimating()
+
+        let hints = sharedURL.map(Self.placeHints(from:)) ?? URLHints()
+        if hints.coordinate == nil, let urlString = sharedURL, URL(string: urlString) != nil {
+            // Nothing useful in the URL as shared — follow its redirect and
+            // parse what it lands on (short links from both Maps apps).
+            resolveFinalURL(urlString) { [weak self] finalURL in
+                let resolved = Self.placeHints(from: finalURL)
+                self?.continueResolution(seedName: seedName,
+                                         name: resolved.name ?? hints.name,
+                                         coordinate: resolved.coordinate)
             }
+        } else {
+            continueResolution(seedName: seedName, name: hints.name, coordinate: hints.coordinate)
         }
+    }
+
+    private func continueResolution(seedName: String, name: String?, coordinate: CLLocationCoordinate2D?) {
+        let seedName = seedName.isEmpty ? (name ?? "") : seedName
 
         guard !seedName.isEmpty || coordinate != nil else {
+            spinner.stopAnimating()
             showParkAndFinish(message: "Couldn't read a place from this share")
             return
         }
 
-        placeNameLabel.text = seedName.isEmpty ? "Locating…" : seedName
-        spinner.startAnimating()
+        if !seedName.isEmpty { placeNameLabel.text = seedName }
 
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = seedName.isEmpty ? "point of interest" : seedName
