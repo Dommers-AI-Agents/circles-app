@@ -28,7 +28,12 @@ module.exports = {
   // reward points stay exclusive to scanning a specific enrolled store; a
   // generic "Join FavCircles" signup (no store) is rewarded in FavCoins, the
   // app-wide currency, instead. Once per user via clip_signup:<userId>.
-  RULE_VERSION: '2026.08-f',
+  // 2026.08-g: weekly engagement bonus — the first qualifying place action
+  // of each ISO week (add a place, share a circle, post a suggestion) pays a
+  // 10-coin bonus on top of the action's own earn. Deliberately weekly, not a
+  // daily streak: the app's job is episodic, and a daily streak would only
+  // train people to ignore it. Once per week via weekly_goal:<uid>:<isoWeek>.
+  RULE_VERSION: '2026.08-g',
   CLEARING_WINDOW_HOURS: 24,
   COINS: {
     ADD_PLACE: 3,
@@ -52,7 +57,8 @@ module.exports = {
     MOMENT_LIKE_RECEIVED: 0.05, // paid to the moment's OWNER
     BRAND_CODE_REDEEMED: 2,     // scanning the card that shipped in an order
     FIRST_PLACE_ADDED: 25,      // welcome gift — first place ever, once per user
-    CLIP_SIGNUP: 50             // generic App Clip signup (no store), once per user
+    CLIP_SIGNUP: 50,            // generic App Clip signup (no store), once per user
+    WEEKLY_GOAL: 10             // first qualifying place action of the ISO week
   },
   DAILY_CAPS: {              // earns past the cap: action still succeeds, pays 0
     ADD_PLACE: 20,
@@ -78,7 +84,8 @@ module.exports = {
     MOMENT_LIKE_RECEIVED: 100,  // passive — capped loosely
     BRAND_CODE_REDEEMED: 5,
     FIRST_PLACE_ADDED: 1,       // structurally once-ever via first_place:{uid}
-    CLIP_SIGNUP: 1              // structurally once-ever via clip_signup:{uid}
+    CLIP_SIGNUP: 1,             // structurally once-ever via clip_signup:{uid}
+    WEEKLY_GOAL: 1              // structurally once-a-week via weekly_goal:{uid}:{isoWeek}
   },
   CREATE_CIRCLE_MIN_PLACES: 3,   // enforced at CLEARING time, not earn time
   CLAIM: {

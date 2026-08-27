@@ -67,6 +67,9 @@ struct PiggyLedgerEvent: Decodable {
         case "activity_reaction": return "Reacted to activity"
         case "moment_liked": return "Liked a Moment"
         case "moment_like_received": return "Your Moment got liked"
+        case "first_place_added": return "First place welcome gift"
+        case "clip_signup": return "Joined FavCircles"
+        case "weekly_goal": return "Weekly bonus"
         case "claim": return "Sent to your 🌵 wallet"
         case "share_points_converted": return "Store points converted to FavCoins"
         default: return eventType.replacingOccurrences(of: "_", with: " ").capitalized
@@ -88,10 +91,17 @@ struct PiggyBankConfigPayload: Decodable {
     let explorerBaseUrl: String?
 }
 
+/// Weekly engagement bonus state: earned resets every ISO week server-side.
+struct PiggyWeeklyGoal: Decodable {
+    let earned: Bool
+    let coins: Double
+}
+
 struct PiggyBankResponse: Decodable {
     let success: Bool
     let bank: PiggyBank
     let activeClaim: PiggyActiveClaim?
+    let weeklyGoal: PiggyWeeklyGoal?   // absent on old servers
     let events: [PiggyLedgerEvent]
     let config: PiggyBankConfigPayload
 }

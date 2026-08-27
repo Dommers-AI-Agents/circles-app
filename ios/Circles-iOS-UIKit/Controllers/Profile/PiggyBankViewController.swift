@@ -22,6 +22,7 @@ final class PiggyBankViewController: BaseViewController {
     private var activeClaim: PiggyActiveClaim?
     private var events: [PiggyLedgerEvent] = []
     private var payloadConfig: PiggyBankConfigPayload?
+    private var weeklyGoal: PiggyWeeklyGoal?
 
     private var claimsEnabled: Bool { payloadConfig?.claimsEnabled == true }
 
@@ -374,6 +375,7 @@ final class PiggyBankViewController: BaseViewController {
                     self.activeClaim = response.activeClaim
                     self.events = response.events
                     self.payloadConfig = response.config
+                    self.weeklyGoal = response.weeklyGoal
                     self.render()
                 case .failure(let error):
                     self.showError(error)
@@ -410,6 +412,14 @@ final class PiggyBankViewController: BaseViewController {
         if bank.pendingCoins > 0 {
             breakdownStack.addArrangedSubview(makeBreakdownRow(
                 "🕐 \(PiggyBankFormatting.amount(bank.pendingCoins)) clearing — in your piggy within \(payloadConfig?.clearingWindowHours ?? 48)h"))
+        }
+        // Weekly bonus: earned state resets server-side every ISO week. The
+        // unearned line doubles as the nudge — one place action claims it.
+        if let weekly = weeklyGoal {
+            let bonus = "\(PiggyBankFormatting.amount(weekly.coins)) \(PiggyBankFormatting.coinUnit(weekly.coins))"
+            breakdownStack.addArrangedSubview(makeBreakdownRow(weekly.earned
+                ? "⭐️ Weekly bonus earned — +\(bonus) this week"
+                : "⭐️ Add, share, or suggest a place this week for +\(bonus)"))
         }
 
         renderClaimControls(bank: bank)
@@ -843,6 +853,7 @@ final class PiggyBankViewController: BaseViewController {
             ("CREATE_CIRCLE", "Create a circle (3+ places)"),
             ("PLACE_ADOPTED", "A friend saves a place you shared"),
             ("PROFILE_COMPLETED", "Complete your profile (photo + bio)"),
+            ("WEEKLY_GOAL", "Weekly bonus — first place action of the week"),
             ("ADD_PLACE", "Add a place"),
             ("SHARE_CIRCLE", "Share a circle with a friend"),
             ("CONNECTION_ACCEPTED", "Make a new connection"),

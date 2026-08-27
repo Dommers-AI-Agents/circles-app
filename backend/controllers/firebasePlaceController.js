@@ -1318,12 +1318,26 @@ exports.createPlace = async (req, res, next) => {
       }
     }
 
-    // One combined deposit for the animation: add_place + the welcome gift
-    const combinedPiggyBank = (welcomeGift && welcomeGift.credited)
+    // Weekly engagement bonus: first qualifying place action of the ISO week.
+    // Awaited (one doc-ID create attempt; duplicates bail instantly) so it can
+    // ride the same deposit animation as the add itself.
+    const weeklyBonus = await piggyBankService.credit({
+      userId: req.user.uid,
+      eventType: 'weekly_goal',
+      sourceRef: { placeId: placeRef.id }
+    });
+
+    // One combined deposit for the animation: add_place + welcome gift + weekly
+    // bonus. eventType prefers the rarest credited part so the client's label
+    // matches the biggest reason for the drop.
+    const creditedParts = [piggyBank, welcomeGift, weeklyBonus].filter(p => p && p.credited);
+    const combinedPiggyBank = creditedParts.length
       ? {
           credited: true,
-          coins: (piggyBank && piggyBank.credited ? piggyBank.coins : 0) + welcomeGift.coins,
-          eventType: 'first_place_added'
+          coins: creditedParts.reduce((sum, p) => sum + p.coins, 0),
+          eventType: (welcomeGift && welcomeGift.credited) ? 'first_place_added'
+            : (piggyBank && piggyBank.credited) ? 'add_place'
+            : 'weekly_goal'
         }
       : piggyBank;
 

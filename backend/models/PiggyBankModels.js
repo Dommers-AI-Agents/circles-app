@@ -56,6 +56,18 @@ const PIGGY_STATUSES = [
 // grow a load-order dependency on each other).
 const sanitizeKeyPart = (part) => String(part).replace(/[/.]/g, '_');
 
+// ISO-8601 week stamp, e.g. "2026-W35". ISO weeks start Monday and belong to
+// the year containing their Thursday — so the stamp's year can differ from the
+// calendar year around New Year, which is exactly what keeps week boundaries
+// unambiguous.
+function isoWeekStamp(date = new Date()) {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = d.getUTCDay() || 7;          // Mon=1 … Sun=7
+  d.setUTCDate(d.getUTCDate() + 4 - day);  // shift to this week's Thursday
+  const week = Math.ceil(((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
 /// The dedup key IS the idempotency guarantee: one ledger doc can ever exist
 /// per key, enforced by ref.create(). Every rule about "can this be earned
 /// twice" lives in how the key is built:
@@ -68,6 +80,7 @@ const sanitizeKeyPart = (part) => String(part).replace(/[/.]/g, '_');
 ///   referral:{inviteeUserId}                      one payout per new human ever
 ///   adopted:{sharerUid}:{globalPlaceId||googlePlaceId}:{adderUid}
 ///   suggestion:{uid}:{suggestionId}
+///   weekly_goal:{uid}:{isoWeek}                   one bonus per ISO week
 function derivePiggyDedupKey(eventType, parts = {}) {
   const s = sanitizeKeyPart;
   switch (eventType) {
@@ -113,6 +126,11 @@ function derivePiggyDedupKey(eventType, parts = {}) {
       // Generic App Clip signup FavCoin bonus: once per user, ever
       if (!parts.userId) return null;
       return `clip_signup:${s(parts.userId)}`;
+    case 'weekly_goal':
+      // Weekly engagement bonus: once per ISO week — the week segment IS the
+      // repeat rule (same trick as check_in's day segment).
+      if (!parts.userId) return null;
+      return `weekly_goal:${s(parts.userId)}:${isoWeekStamp()}`;
     case 'brand_code_redeemed':
       // Keyed on the code alone: codes are single-use, so one payout ever
       // per code no matter who races the redemption.

@@ -102,6 +102,12 @@ const createNewSuggestion = async (req, res) => {
       eventType: 'suggestion_posted',
       sourceRef: { suggestionId: suggestionRef.id }
     }).catch(() => {});
+    // Weekly engagement bonus: suggesting counts as the week's qualifying action
+    require('../services/piggyBankService').credit({
+      userId,
+      eventType: 'weekly_goal',
+      sourceRef: { suggestionId: suggestionRef.id }
+    }).catch(() => {});
 
     try {
       if (suggestionData.recipientId) {

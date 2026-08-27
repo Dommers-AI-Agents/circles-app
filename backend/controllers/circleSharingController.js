@@ -143,6 +143,12 @@ const shareCircle = async (req, res) => {
         eventType: 'share_circle',
         sourceRef: { circleId, targetUserId }
       }).catch(() => {});
+      // Weekly engagement bonus: sharing counts as the week's qualifying action
+      require('../services/piggyBankService').credit({
+        userId,
+        eventType: 'weekly_goal',
+        sourceRef: { circleId }
+      }).catch(() => {});
     }
     const newDoc = await docRef.get();
     const share = serializeDoc(newDoc);

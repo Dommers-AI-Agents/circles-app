@@ -101,13 +101,17 @@ class PiggyBankService {
 
   // Bank + recent history + display config, so iOS renders without hardcoding.
   async getPiggyBank(userId) {
-    const [bankDoc, eventsSnap] = await Promise.all([
+    // Weekly-goal status is a single doc-ID read: the dedup key embeds the
+    // current ISO week, so "does this week's row exist" answers "earned yet?".
+    const weeklyKey = derivePiggyDedupKey('weekly_goal', { userId });
+    const [bankDoc, eventsSnap, weeklyDoc] = await Promise.all([
       this.db.collection(PIGGY_COLLECTIONS.BANKS).doc(userId).get(),
       this.db.collection(PIGGY_COLLECTIONS.LEDGER)
         .where('userId', '==', userId)
         .orderBy('createdAt', 'desc')
         .limit(config.HISTORY_PAGE_SIZE)
-        .get()
+        .get(),
+      this.db.collection(PIGGY_COLLECTIONS.LEDGER).doc(weeklyKey).get()
     ]);
 
     const bank = bankDoc.exists ? bankDoc.data() : {};
@@ -146,6 +150,10 @@ class PiggyBankService {
         walletAddress: bank.walletAddress || null
       },
       activeClaim,
+      weeklyGoal: {
+        earned: weeklyDoc.exists,
+        coins: config.COINS.WEEKLY_GOAL
+      },
       events: eventsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })),
       config: {
         coinValues: config.COINS,
@@ -350,6 +358,24 @@ class PiggyBankService {
           ]);
           if (!videoDoc.exists || videoDoc.data().deletedAt) return { valid: false, reason: 'moment_deleted' };
           return likeDoc.exists ? { valid: true } : { valid: false, reason: 'like_removed' };
+        }
+        case 'weekly_goal': {
+          // Backed by whichever qualifying action triggered it — the bonus
+          // stands only if that action's record survived the clearing window.
+          if (ref.placeId) {
+            const doc = await this.db.collection(COLLECTIONS.PLACES).doc(ref.placeId).get();
+            return (doc.exists && !doc.data().deletedAt)
+              ? { valid: true } : { valid: false, reason: 'place_deleted' };
+          }
+          if (ref.circleId) {
+            const doc = await this.db.collection(COLLECTIONS.CIRCLES).doc(ref.circleId).get();
+            return doc.exists ? { valid: true } : { valid: false, reason: 'circle_deleted' };
+          }
+          if (ref.suggestionId) {
+            const doc = await this.db.collection(COLLECTIONS.SUGGESTIONS).doc(ref.suggestionId).get();
+            return doc.exists ? { valid: true } : { valid: false, reason: 'suggestion_deleted' };
+          }
+          return { valid: false, reason: 'missing_trigger_ref' };
         }
         default:
           return { valid: false, reason: 'unknown_event_type' };
