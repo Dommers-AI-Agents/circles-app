@@ -1022,6 +1022,8 @@ class PlaceService {
                     } else {
                         Logger.debug("  ⚠️ No photos in response")
                     }
+                    // Findable from the iOS search bar immediately
+                    SpotlightIndexService.shared.indexPlace(response.place)
                     completion(.success(response.place))
                 case .failure(let error):
                     completion(.failure(error))
@@ -1196,6 +1198,7 @@ class PlaceService {
                         object: nil,
                         userInfo: ["placeId": id]
                     )
+                    SpotlightIndexService.shared.removePlace(id: id)
                     completion(.success(true))
                 } else if case .failure(let error) = result {
                     completion(.failure(error))

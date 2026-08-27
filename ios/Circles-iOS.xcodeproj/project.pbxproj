@@ -21,6 +21,8 @@
 		6FE8F0B72DF7C276007CB88E /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE8F0B62DF7C276007CB88E /* FirebaseAnalytics */; };
 		6FE8F0B92DF7C291007CB88E /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE8F0B82DF7C291007CB88E /* FirebaseAuth */; };
 		AC10C11B000000000000000B /* Circles-Clip.app in Embed App Clips */ = {isa = PBXBuildFile; fileRef = AC10C11B0000000000000002 /* Circles-Clip.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FAB5000000000000000000AB /* Circles-Widget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FAB5000000000000000000A2 /* Circles-Widget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FAB5100000000000000000BB /* Circles-Share.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FAB5100000000000000000B2 /* Circles-Share.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CF10CRA50000000000000001 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = CF10CRA50000000000000002 /* FirebaseCrashlytics */; };
 /* End PBXBuildFile section */
 
@@ -46,6 +48,20 @@
 			remoteGlobalIDString = AC10C11B0000000000000003;
 			remoteInfo = "Circles-Clip";
 		};
+		FAB5000000000000000000AC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6F93608F2DD9725A0065A440 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FAB5000000000000000000A3;
+			remoteInfo = "Circles-Widget";
+		};
+		FAB5100000000000000000BC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6F93608F2DD9725A0065A440 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FAB5100000000000000000B3;
+			remoteInfo = "Circles-Share";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -60,6 +76,18 @@
 			name = "Embed App Clips";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FAB5200000000000000000C1 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				FAB5000000000000000000AB /* Circles-Widget.appex in Embed Foundation Extensions */,
+				FAB5100000000000000000BB /* Circles-Share.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -68,6 +96,8 @@
 		6F9360B72DD9725C0065A440 /* Circles-iOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Circles-iOSUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6FB901EE2E33966C0043EAA1 /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
 		AC10C11B0000000000000002 /* Circles-Clip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Circles-Clip.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		FAB5000000000000000000A2 /* Circles-Widget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Circles-Widget.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		FAB5100000000000000000B2 /* Circles-Share.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Circles-Share.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -78,6 +108,35 @@
 			);
 			target = 6F9360962DD9725A0065A440 /* Circles-iOS */;
 		};
+		FAB5000000000000000000AE /* Exceptions for "Circles-Widget" folder in "Circles-Widget" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = FAB5000000000000000000A3 /* Circles-Widget */;
+		};
+		FAB5000000000000000000AF /* Exceptions for "Circles-iOS-UIKit" folder in "Circles-Widget" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Models/WidgetSnapshotModels.swift,
+			);
+			target = FAB5000000000000000000A3 /* Circles-Widget */;
+		};
+		FAB5100000000000000000BE /* Exceptions for "Circles-Share" folder in "Circles-Share" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = FAB5100000000000000000B3 /* Circles-Share */;
+		};
+		FAB5100000000000000000BF /* Exceptions for "Circles-iOS-UIKit" folder in "Circles-Share" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Services/ExtensionMailbox.swift,
+				Services/ImportParsingService.swift,
+			);
+			target = FAB5100000000000000000B3 /* Circles-Share */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -85,6 +144,8 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				6F9360BF2DD9725C0065A440 /* Exceptions for "Circles-iOS-UIKit" folder in "Circles-iOS" target */,
+				FAB5000000000000000000AF /* Exceptions for "Circles-iOS-UIKit" folder in "Circles-Widget" target */,
+				FAB5100000000000000000BF /* Exceptions for "Circles-iOS-UIKit" folder in "Circles-Share" target */,
 			);
 			path = "Circles-iOS-UIKit";
 			sourceTree = "<group>";
@@ -102,6 +163,22 @@
 		AC10C11B0000000000000001 /* Circles-Clip */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Circles-Clip";
+			sourceTree = "<group>";
+		};
+		FAB5000000000000000000A1 /* Circles-Widget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FAB5000000000000000000AE /* Exceptions for "Circles-Widget" folder in "Circles-Widget" target */,
+			);
+			path = "Circles-Widget";
+			sourceTree = "<group>";
+		};
+		FAB5100000000000000000B1 /* Circles-Share */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FAB5100000000000000000BE /* Exceptions for "Circles-Share" folder in "Circles-Share" target */,
+			);
+			path = "Circles-Share";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -149,6 +226,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FAB5000000000000000000A5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FAB5100000000000000000B5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -157,6 +248,8 @@
 			children = (
 				6F9360992DD9725A0065A440 /* Circles-iOS-UIKit */,
 				AC10C11B0000000000000001 /* Circles-Clip */,
+				FAB5000000000000000000A1 /* Circles-Widget */,
+				FAB5100000000000000000B1 /* Circles-Share */,
 				6F9360B02DD9725C0065A440 /* Circles-iOS-UIKitTests */,
 				6F9360BA2DD9725C0065A440 /* Circles-iOS-UIKitUITests */,
 				6FE8F0B52DF7C276007CB88E /* Frameworks */,
@@ -169,6 +262,8 @@
 			children = (
 				6F9360972DD9725A0065A440 /* Circles-iOS.app */,
 				AC10C11B0000000000000002 /* Circles-Clip.app */,
+				FAB5000000000000000000A2 /* Circles-Widget.appex */,
+				FAB5100000000000000000B2 /* Circles-Share.appex */,
 				6F9360AD2DD9725C0065A440 /* Circles-iOSTests.xctest */,
 				6F9360B72DD9725C0065A440 /* Circles-iOSUITests.xctest */,
 			);
@@ -194,12 +289,15 @@
 				6F9360942DD9725A0065A440 /* Frameworks */,
 				6F9360952DD9725A0065A440 /* Resources */,
 				AC10C11B000000000000000A /* Embed App Clips */,
+				FAB5200000000000000000C1 /* Embed Foundation Extensions */,
 				CF10CRA50000000000000003 /* Upload dSYMs to Crashlytics */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				AC10C11B000000000000000D /* PBXTargetDependency */,
+				FAB5000000000000000000AD /* PBXTargetDependency */,
+				FAB5100000000000000000BD /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				6F9360992DD9725A0065A440 /* Circles-iOS-UIKit */,
@@ -292,6 +390,50 @@
 			productReference = AC10C11B0000000000000002 /* Circles-Clip.app */;
 			productType = "com.apple.product-type.application.on-demand-install-capable";
 		};
+		FAB5000000000000000000A3 /* Circles-Widget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FAB5000000000000000000A7 /* Build configuration list for PBXNativeTarget "Circles-Widget" */;
+			buildPhases = (
+				FAB5000000000000000000A4 /* Sources */,
+				FAB5000000000000000000A5 /* Frameworks */,
+				FAB5000000000000000000A6 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				FAB5000000000000000000A1 /* Circles-Widget */,
+			);
+			name = "Circles-Widget";
+			packageProductDependencies = (
+			);
+			productName = "Circles-Widget";
+			productReference = FAB5000000000000000000A2 /* Circles-Widget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		FAB5100000000000000000B3 /* Circles-Share */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FAB5100000000000000000B7 /* Build configuration list for PBXNativeTarget "Circles-Share" */;
+			buildPhases = (
+				FAB5100000000000000000B4 /* Sources */,
+				FAB5100000000000000000B5 /* Frameworks */,
+				FAB5100000000000000000B6 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				FAB5100000000000000000B1 /* Circles-Share */,
+			);
+			name = "Circles-Share";
+			packageProductDependencies = (
+			);
+			productName = "Circles-Share";
+			productReference = FAB5100000000000000000B2 /* Circles-Share.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -351,6 +493,8 @@
 			targets = (
 				6F9360962DD9725A0065A440 /* Circles-iOS */,
 				AC10C11B0000000000000003 /* Circles-Clip */,
+				FAB5000000000000000000A3 /* Circles-Widget */,
+				FAB5100000000000000000B3 /* Circles-Share */,
 				6F9360AC2DD9725C0065A440 /* Circles-iOSTests */,
 				6F9360B62DD9725C0065A440 /* Circles-iOSUITests */,
 			);
@@ -380,6 +524,20 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AC10C11B0000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FAB5000000000000000000A6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FAB5100000000000000000B6 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -438,6 +596,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FAB5000000000000000000A4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FAB5100000000000000000B4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -456,6 +628,16 @@
 			target = AC10C11B0000000000000003 /* Circles-Clip */;
 			targetProxy = AC10C11B000000000000000C /* PBXContainerItemProxy */;
 		};
+		FAB5000000000000000000AD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FAB5000000000000000000A3 /* Circles-Widget */;
+			targetProxy = FAB5000000000000000000AC /* PBXContainerItemProxy */;
+		};
+		FAB5100000000000000000BD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FAB5100000000000000000B3 /* Circles-Share */;
+			targetProxy = FAB5100000000000000000BC /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -468,7 +650,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Circles-iOS-UIKit/Circles-iOS-Debug.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 27;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Circles-iOS-UIKit/Info.plist";
@@ -494,7 +676,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.6;
+				MARKETING_VERSION = 1.2.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -515,7 +697,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Circles-iOS-UIKit/Circles-iOS-Release.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 27;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Circles-iOS-UIKit/Info.plist";
@@ -541,7 +723,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.6;
+				MARKETING_VERSION = 1.2.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -752,7 +934,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "Circles-Clip/Circles-Clip.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 27;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
@@ -768,7 +950,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.6;
+				MARKETING_VERSION = 1.2.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Clip;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -783,7 +965,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "Circles-Clip/Circles-Clip.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 27;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
@@ -799,9 +981,113 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.6;
+				MARKETING_VERSION = 1.2.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Clip;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		FAB5000000000000000000A8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Circles-Widget/Circles-Widget.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 67E8B4E8HV;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Circles-Widget/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.2.7;
+				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		FAB5000000000000000000A9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Circles-Widget/Circles-Widget.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 67E8B4E8HV;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Circles-Widget/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.2.7;
+				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		FAB5100000000000000000B8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Circles-Share/Circles-Share.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 67E8B4E8HV;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Circles-Share/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Save to FavCircles";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.2.7;
+				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		FAB5100000000000000000B9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Circles-Share/Circles-Share.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 67E8B4E8HV;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Circles-Share/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Save to FavCircles";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.2.7;
+				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -852,6 +1138,24 @@
 			buildConfigurations = (
 				AC10C11B0000000000000008 /* Debug */,
 				AC10C11B0000000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FAB5000000000000000000A7 /* Build configuration list for PBXNativeTarget "Circles-Widget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FAB5000000000000000000A8 /* Debug */,
+				FAB5000000000000000000A9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FAB5100000000000000000B7 /* Build configuration list for PBXNativeTarget "Circles-Share" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FAB5100000000000000000B8 /* Debug */,
+				FAB5100000000000000000B9 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

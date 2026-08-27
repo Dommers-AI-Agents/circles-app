@@ -1,4 +1,6 @@
 import UIKit
+import CoreLocation
+import CoreSpotlight
 import FacebookCore
 import FirebaseMessaging
 
@@ -181,7 +183,17 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // Handle Universal Links
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
         Logger.debug("📱 SceneDelegate: continue userActivity called")
-        
+
+        // Spotlight result tapped: route into the normal place-detail flow
+        if userActivity.activityType == CSSearchableItemActionType {
+            if let identifier = userActivity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
+               let placeId = SpotlightIndexService.placeId(fromSpotlightIdentifier: identifier) {
+                Logger.debug("📱 SceneDelegate: Spotlight tap for place \(placeId)")
+                navigateToPlace(placeId: placeId, refUserId: nil)
+            }
+            return
+        }
+
         guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
               let url = userActivity.webpageURL else {
             Logger.debug("📱 SceneDelegate: Not a web browsing activity")
@@ -215,6 +227,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Quietly locate any imported places still waiting on a coordinate
         // (rows past the import flow's inline-resolution cap)
         ImportResolutionQueue.shared.kick()
+
+        // Mirror saved places into iOS system search (once per session)
+        SpotlightIndexService.shared.refreshIndexIfNeeded()
+
+        // Feed the home-screen widget its snapshot
+        WidgetSnapshotService.shared.refresh()
+
+        // Sessions that predate the extension auth mirror get one now
+        if AuthService.shared.isLoggedIn {
+            KeychainService.shared.syncExtensionAuthMailbox()
+        }
+
+        // A share the extension parked (logged out / offline at share time)
+        drainPendingShareIfNeeded()
 
         if OnboardingManager.shared.isFirstSessionFlowActive {
             // Brand-new signup: no carousel (cut 2026-08-19) — go straight to
@@ -862,6 +888,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 Logger.debug("📱 SceneDelegate: Detected 'daily-summary' deep link")
                 self.navigateToDailySummary()
                 return
+            }
+
+            // Handle place deep links (e.g., circles://place/placeId) — used by
+            // the home-screen widget and Spotlight-adjacent surfaces. Universal
+            // links reach places via api.favcircles.com/place/<id>; this is the
+            // scheme twin that always opens the app directly.
+            if url.host == "place" {
+                Logger.debug("📱 SceneDelegate: Detected 'place' as host")
+                let placeId = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                if !placeId.isEmpty {
+                    self.navigateToPlace(placeId: placeId)
+                    return
+                }
             }
 
             // Handle network deep link (e.g., circles://network) — used by the
@@ -1631,9 +1670,44 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidEnterBackground(_ scene: UIScene) {
         // Called as the scene transitions from the foreground to the background.
-        // Save any necessary data
+        // Refresh the home-screen widget with whatever the session just saw.
+        WidgetSnapshotService.shared.refresh()
     }
     
+    // MARK: - Pending Share (from the Share Extension)
+
+    /// A share the extension couldn't finish (logged out or offline at share
+    /// time) parks in the App Group mailbox; finish it here by dropping the
+    /// user into the normal add-place flow, prefilled from the share.
+    private func drainPendingShareIfNeeded() {
+        guard AuthService.shared.isLoggedIn,
+              let tabBarController = window?.rootViewController as? CirclesTabBarController,
+              let pending = PendingShareMailbox.take() else { return }
+
+        let searchSeed = pending.sharedText ?? ""
+        var coordinate: CLLocationCoordinate2D?
+        if let urlString = pending.sharedURL, ImportParsingService.isGoogleMapsURL(urlString) {
+            if let pin = ImportParsingService.pinCoordinates(fromGoogleURL: urlString)
+                ?? ImportParsingService.featureCoordinate(fromGoogleURL: urlString) {
+                coordinate = CLLocationCoordinate2D(latitude: pin.lat, longitude: pin.lng)
+            }
+        }
+        guard !searchSeed.isEmpty || coordinate != nil else { return }
+
+        CircleService.shared.fetchUserCircles { result in
+            DispatchQueue.main.async {
+                guard case .success(let circles) = result, !circles.isEmpty else { return }
+                let lastUsedId = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey)
+                let target = circles.first(where: { $0.id == lastUsedId }) ?? circles[0]
+                let addPlaceVC = AddPlaceViewController(circleId: target.id, circles: circles)
+                addPlaceVC.prefillSearchWithPlace(name: searchSeed, coordinate: coordinate)
+                if let navController = tabBarController.selectedViewController as? UINavigationController {
+                    navController.pushViewController(addPlaceVC, animated: true)
+                }
+            }
+        }
+    }
+
     // MARK: - Referral Code Handling
     
     /// Connect invite links can carry the sharer's referral code (?code=XXXXXX).

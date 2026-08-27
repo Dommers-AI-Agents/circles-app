@@ -24,12 +24,13 @@ class KeychainService {
     
     func saveAuthToken(_ token: String, expiration: Date? = nil) {
         save(token, account: authTokenAccount)
-        
+
         // Save expiration date if provided
         if let expiration = expiration {
             let expirationString = ISO8601DateFormatter().string(from: expiration)
             save(expirationString, account: tokenExpirationAccount)
         }
+        syncExtensionAuthMailbox()
     }
     
     func getAuthToken() -> String? {
@@ -46,6 +47,7 @@ class KeychainService {
     
     func saveUserId(_ userId: String) {
         save(userId, account: userIdAccount)
+        syncExtensionAuthMailbox()
     }
     
     func getUserId() -> String? {
@@ -81,6 +83,24 @@ class KeychainService {
         delete(account: tokenExpirationAccount)
         delete(account: userIdAccount)
         delete(account: authProviderAccount)
+        ExtensionAuthMailbox.clear()
+    }
+
+    /// Mirror the session into the App Group so extensions (Share) can call
+    /// the API — the reverse of the App Clip adoption above. The keychain has
+    /// no access group, so this file IS the extensions' auth channel. Also
+    /// called once per launch (post-launch side effects) so sessions that
+    /// predate the mirror get one without waiting for a token refresh.
+    func syncExtensionAuthMailbox() {
+        guard let token = getAuthToken() else {
+            ExtensionAuthMailbox.clear()
+            return
+        }
+        ExtensionAuthMailbox.write(ExtensionAuthMailbox.Payload(
+            authToken: token,
+            tokenExpiration: retrieve(account: tokenExpirationAccount),
+            userId: getUserId()
+        ))
     }
 
     // MARK: - Saved Credentials (with Biometric Protection)

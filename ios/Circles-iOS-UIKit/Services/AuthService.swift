@@ -523,6 +523,12 @@ class AuthService {
         // Clear ImageService cache
         ImageService.shared.clearCache()
 
+        // Saved places are personal data — pull them out of system search
+        SpotlightIndexService.shared.clearIndex()
+
+        // And out of the home-screen widget's snapshot
+        WidgetSnapshotService.shared.clearOnLogout()
+
         // Clear app-specific UserDefaults
         clearAppUserDefaults()
         
