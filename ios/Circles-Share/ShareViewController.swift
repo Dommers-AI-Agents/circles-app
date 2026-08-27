@@ -27,6 +27,19 @@ final class ShareViewController: UIViewController {
     private static let lastCircleKey = "shareExt.lastCircleId"
     private let groupDefaults = UserDefaults(suiteName: ExtensionAuthMailbox.appGroupId)
 
+    /// What this share looked like, dumped to the App Group container so a
+    /// failed share can be diagnosed from the Mac (devicectl copy).
+    private var debugInfo: [String: Any] = [:]
+
+    private func dumpDebug() {
+        guard let url = FileManager.default
+                .containerURL(forSecurityApplicationGroupIdentifier: ExtensionAuthMailbox.appGroupId)?
+                .appendingPathComponent("share-debug.json"),
+              JSONSerialization.isValidJSONObject(debugInfo),
+              let data = try? JSONSerialization.data(withJSONObject: debugInfo, options: [.prettyPrinted]) else { return }
+        try? data.write(to: url, options: [.atomic])
+    }
+
     // MARK: UI
 
     private let card = UIView()
@@ -67,31 +80,65 @@ final class ShareViewController: UIViewController {
         }
 
         let providers = items.flatMap { $0.attachments ?? [] }
+        debugInfo["providerTypes"] = providers.map { $0.registeredTypeIdentifiers }
+        debugInfo["attributedContent"] = items.compactMap { $0.attributedContentText?.string }
+        debugInfo["attributedTitles"] = items.compactMap { $0.attributedTitle?.string }
+
         let group = DispatchGroup()
         for provider in providers {
-            if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+            // Hosts register wildly different types ("public.url",
+            // "public.plain-text", bare "public.text") and payload classes
+            // (NSURL, NSString, Data) — try every text-ish type they claim.
+            let urlTypes = [UTType.url.identifier, "public.file-url"]
+            let textTypes = [UTType.plainText.identifier, "public.text", UTType.utf8PlainText.identifier]
+
+            for type in urlTypes where provider.hasItemConformingToTypeIdentifier(type) {
                 group.enter()
-                provider.loadItem(forTypeIdentifier: UTType.url.identifier) { [weak self] item, _ in
-                    // URL arrives as NSURL, String, or Data depending on the host app
-                    if let url = item as? URL {
-                        self?.sharedURL = url.absoluteString
-                    } else if let text = item as? String {
-                        self?.sharedURL = text
-                    } else if let data = item as? Data, let text = String(data: data, encoding: .utf8) {
-                        self?.sharedURL = text
-                    }
+                provider.loadItem(forTypeIdentifier: type) { [weak self] item, _ in
+                    self?.absorb(item, preferURL: true)
                     group.leave()
                 }
+                break
             }
-            if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+            for type in textTypes where provider.hasItemConformingToTypeIdentifier(type) {
                 group.enter()
-                provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) { [weak self] item, _ in
-                    if let text = item as? String, !text.isEmpty { self?.sharedText = text }
+                provider.loadItem(forTypeIdentifier: type) { [weak self] item, _ in
+                    self?.absorb(item, preferURL: false)
                     group.leave()
                 }
+                break
             }
         }
         group.notify(queue: .main, execute: completion)
+    }
+
+    /// Files any loaded payload into sharedURL/sharedText no matter how the
+    /// host app encoded it.
+    private func absorb(_ item: (any NSSecureCoding)?, preferURL: Bool) {
+        var text: String?
+        if let url = item as? URL {
+            text = url.absoluteString
+        } else if let string = item as? String {
+            text = string
+        } else if let data = item as? Data {
+            text = String(data: data, encoding: .utf8)
+        } else if let attributed = item as? NSAttributedString {
+            text = attributed.string
+        }
+        guard let value = text?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return }
+
+        if value.lowercased().hasPrefix("http") && !value.contains(" ") {
+            if sharedURL == nil { sharedURL = value }
+        } else if preferURL, let range = value.range(of: "https://", options: .caseInsensitive) {
+            // A "URL" payload that's actually prose with a link inside
+            if sharedURL == nil {
+                sharedURL = String(value[range.lowerBound...])
+                    .components(separatedBy: .whitespacesAndNewlines).first
+            }
+            if sharedText == nil { sharedText = value }
+        } else if sharedText == nil {
+            sharedText = value
+        }
     }
 
     // MARK: Resolution
@@ -117,6 +164,13 @@ final class ShareViewController: UIViewController {
                 let name = raw.replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? raw
                 if !name.isEmpty { hints.name = name }
             }
+            // Mobile/API links carry the feature id as ftid=0x...:0x... — same
+            // S2 cell as the !1s form, different wrapper
+            if hints.coordinate == nil,
+               let match = firstMatch(#"ftid=0x([0-9a-fA-F]+):"#, in: urlString),
+               let cell = ImportParsingService.s2CellCenter(hex: match) {
+                hints.coordinate = CLLocationCoordinate2D(latitude: cell.lat, longitude: cell.lng)
+            }
             // The @lat,lng viewport centroid is a usable region hint when the
             // feature id is absent (mobile share links after redirect)
             if hints.coordinate == nil,
@@ -126,6 +180,12 @@ final class ShareViewController: UIViewController {
                    abs(lat) <= 90, abs(lng) <= 180 {
                     hints.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lng)
                 }
+            }
+            // ?q=Office+Depot (when it isn't a bare coordinate pair)
+            if hints.name == nil,
+               let q = URLComponents(string: urlString)?.queryItems?.first(where: { $0.name == "q" })?.value,
+               !q.isEmpty, Double(q.components(separatedBy: ",").first ?? "") == nil {
+                hints.name = q.replacingOccurrences(of: "+", with: " ")
             }
             return hints
         }
@@ -159,17 +219,65 @@ final class ShareViewController: UIViewController {
         return hints
     }
 
+    private static func firstMatch(_ pattern: String, in text: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              match.numberOfRanges > 1,
+              let range = Range(match.range(at: 1), in: text) else { return nil }
+        return String(text[range])
+    }
+    private func firstMatch(_ pattern: String, in text: String) -> String? {
+        Self.firstMatch(pattern, in: text)
+    }
+
     /// Share links from the Maps apps are redirectors (maps.app.goo.gl,
-    /// maps.apple/p/…) — the name and coordinates only exist on the URL they
-    /// redirect to. One GET resolves it; the final URL is what we parse.
-    private func resolveFinalURL(_ urlString: String, completion: @escaping (String) -> Void) {
-        guard let url = URL(string: urlString) else { completion(urlString); return }
+    /// maps.apple/p/…) — the name and coordinates only exist past the
+    /// redirect. One GET (with a desktop UA, so Google serves the full page
+    /// instead of an open-in-app interstitial) yields BOTH the final URL and
+    /// the page's og-tags: og:title carries the place name and og:image is a
+    /// staticmap URL with center=lat,lng — a name+coordinate source that
+    /// works even when the final URL itself is opaque.
+    private func resolvePlacePage(_ urlString: String,
+                                  completion: @escaping (_ finalURL: String,
+                                                         _ pageName: String?,
+                                                         _ pageCoordinate: CLLocationCoordinate2D?) -> Void) {
+        guard let url = URL(string: urlString) else { completion(urlString, nil, nil); return }
         var request = URLRequest(url: url, timeoutInterval: 8)
         request.httpMethod = "GET"
-        URLSession.shared.dataTask(with: request) { _, response, _ in
-            DispatchQueue.main.async {
-                completion(response?.url?.absoluteString ?? urlString)
+        request.setValue(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+            forHTTPHeaderField: "User-Agent")
+
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            let finalURL = response?.url?.absoluteString ?? urlString
+            var pageName: String?
+            var pageCoordinate: CLLocationCoordinate2D?
+
+            if let data = data, let html = String(data: data, encoding: .utf8) {
+                if let title = Self.firstMatch(#"og:title"[^>]*content="([^"]+)""#, in: html)
+                    ?? Self.firstMatch(#"content="([^"]+)"[^>]*og:title"#, in: html)
+                    ?? Self.firstMatch(#"<title>([^<]+)</title>"#, in: html) {
+                    let cleaned = title
+                        .replacingOccurrences(of: "&amp;", with: "&")
+                        .replacingOccurrences(of: "&#39;", with: "'")
+                        .components(separatedBy: " - Google Maps").first?
+                        .components(separatedBy: " · ").first?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let cleaned = cleaned, !cleaned.isEmpty,
+                       !cleaned.lowercased().contains("google maps"),
+                       !cleaned.lowercased().contains("apple maps") {
+                        pageName = cleaned
+                    }
+                }
+                // og:image staticmap: ...center=35.2271%2C-80.8431&zoom=...
+                if let lat = Self.firstMatch(#"center=(-?\d+\.\d+)%2C-?\d+\.\d+"#, in: html),
+                   let lng = Self.firstMatch(#"center=-?\d+\.\d+%2C(-?\d+\.\d+)"#, in: html),
+                   let latValue = Double(lat), let lngValue = Double(lng),
+                   abs(latValue) <= 90, abs(lngValue) <= 180 {
+                    pageCoordinate = CLLocationCoordinate2D(latitude: latValue, longitude: lngValue)
+                }
             }
+            DispatchQueue.main.async { completion(finalURL, pageName, pageCoordinate) }
         }.resume()
     }
 
@@ -198,15 +306,23 @@ final class ShareViewController: UIViewController {
         placeNameLabel.text = seedName.isEmpty ? "Locating…" : seedName
         spinner.startAnimating()
 
+        debugInfo["sharedURL"] = sharedURL ?? "nil"
+        debugInfo["sharedText"] = sharedText ?? "nil"
+        debugInfo["seedName"] = seedName
+
         let hints = sharedURL.map(Self.placeHints(from:)) ?? URLHints()
         if hints.coordinate == nil, let urlString = sharedURL, URL(string: urlString) != nil {
             // Nothing useful in the URL as shared — follow its redirect and
-            // parse what it lands on (short links from both Maps apps).
-            resolveFinalURL(urlString) { [weak self] finalURL in
+            // mine the landing page (short links from both Maps apps).
+            resolvePlacePage(urlString) { [weak self] finalURL, pageName, pageCoordinate in
+                guard let self = self else { return }
                 let resolved = Self.placeHints(from: finalURL)
-                self?.continueResolution(seedName: seedName,
-                                         name: resolved.name ?? hints.name,
-                                         coordinate: resolved.coordinate)
+                self.debugInfo["finalURL"] = finalURL
+                self.debugInfo["pageName"] = pageName ?? "nil"
+                self.debugInfo["pageCoordinate"] = pageCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? "nil"
+                self.continueResolution(seedName: seedName,
+                                        name: resolved.name ?? pageName ?? hints.name,
+                                        coordinate: resolved.coordinate ?? pageCoordinate)
             }
         } else {
             continueResolution(seedName: seedName, name: hints.name, coordinate: hints.coordinate)
@@ -214,13 +330,18 @@ final class ShareViewController: UIViewController {
     }
 
     private func continueResolution(seedName: String, name: String?, coordinate: CLLocationCoordinate2D?) {
-        let seedName = seedName.isEmpty ? (name ?? "") : seedName
+        // A name mined from the URL/page beats a share-sheet title fragment
+        let seedName = (name?.isEmpty == false ? name! : seedName)
 
         guard !seedName.isEmpty || coordinate != nil else {
             spinner.stopAnimating()
+            debugInfo["outcome"] = "no_name_no_coordinate"
+            dumpDebug()
             showParkAndFinish(message: "Couldn't read a place from this share")
             return
         }
+        debugInfo["outcome"] = "searching: \(seedName)"
+        dumpDebug()
 
         if !seedName.isEmpty { placeNameLabel.text = seedName }
 
