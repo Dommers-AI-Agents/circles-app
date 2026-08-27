@@ -296,11 +296,15 @@ user.withFollowerCounts(followers: 100, following: 50)
 
 ### **Info.plist Configuration (Important)**
 
-**⚠️ CRITICAL: Manual Info.plist Management**
-
-As of July 2025, the iOS app uses **manual Info.plist management** instead of auto-generation:
-- `GENERATE_INFOPLIST_FILE = NO` in project.pbxproj
-- Info.plist location: `/ios/Circles-iOS-UIKit/Info.plist`
+**Hybrid Info.plist management (verified against project.pbxproj 2026-08-27):**
+- Main app: `GENERATE_INFOPLIST_FILE = YES` **merged with** a manual
+  `INFOPLIST_FILE = Circles-iOS-UIKit/Info.plist` — the manual file carries
+  URL schemes, Facebook/Google keys, and privacy strings; generation fills in
+  the INFOPLIST_KEY_* build settings. (The earlier "GENERATE_INFOPLIST_FILE =
+  NO" claim in this doc was outdated.)
+- App Clip: fully generated (no Info.plist file, all INFOPLIST_KEY_*).
+- Widget/Share extensions (added 2026-08): generated, merged with minimal
+  manual plists carrying only the `NSExtension` dict.
 
 #### **Why Manual Management?**
 When we added `UIBackgroundModes` for push notifications, it created conflicts with Xcode's auto-generation during distribution builds. Manual management was chosen as the solution.

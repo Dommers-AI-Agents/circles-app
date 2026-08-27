@@ -1696,7 +1696,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         CircleService.shared.fetchUserCircles { result in
             DispatchQueue.main.async {
-                guard case .success(let circles) = result, !circles.isEmpty else { return }
+                guard case .success(let circles) = result, !circles.isEmpty else {
+                    // Offline relaunch: put the share back so a later launch
+                    // gets another chance — the mailbox must not eat shares.
+                    PendingShareMailbox.write(pending)
+                    return
+                }
                 let lastUsedId = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey)
                 let target = circles.first(where: { $0.id == lastUsedId }) ?? circles[0]
                 let addPlaceVC = AddPlaceViewController(circleId: target.id, circles: circles)
