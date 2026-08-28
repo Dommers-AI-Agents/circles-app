@@ -32,7 +32,7 @@ raw_total = dur(f"{OUT}/walk_raw.mp4")
 # how slow the network or OCR retries were on a given take.
 vt = {k: v + LEAD for k, v in marks.items()}
 
-beats_pre = ["b00","b01","b02","b03","b04","b05","b06","b07","b08"]
+beats_pre = [k[6:] for k, v in sorted(vt.items(), key=lambda x: x[1]) if k.startswith("audio-")]
 pre_sched, pe = [], 0.0
 for b in beats_pre:
     d = dur(f"{DIR}/beats/{b}.mp3")
@@ -100,7 +100,7 @@ else:
 vt = {k: shift(v) for k, v in vt.items()}
 total = dur(src)
 
-beats = ["b00","b01","b02","b03","b04","b05","b06","b07","b08"]
+beats = [k[6:] for k, v in sorted(vt.items(), key=lambda x: x[1]) if k.startswith("audio-")]
 events, prev_end = [], 0.0
 for b in beats:
     mp3 = f"{DIR}/beats/{b}.mp3"
