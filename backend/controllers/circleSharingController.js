@@ -1,5 +1,6 @@
 // backend/controllers/circleSharingController.js
 const { getFirestore } = require('../config/firebase');
+const { sortCirclesByUserOrder } = require('../utils/circleOrder');
 const { 
   COLLECTIONS, 
   createCircleShare, 
@@ -872,22 +873,13 @@ const getUserCircles = async (req, res) => {
     // visitor sees the circles in the same order the owner set them — not a
     // recency re-sort. Mirrors the owner's own list in firebaseCircleController:
     // circleOrder first, anything not yet in it by recency, "Places I Follow" last.
-    const ownerOrder = userData?.circleOrder || [];
-    const orderIndex = new Map(ownerOrder.map((id, i) => [id, i]));
-    const sortedDocs = circlesQuery.docs.sort((a, b) => {
-      const aFollow = a.data().isFollowedPlacesCircle === true;
-      const bFollow = b.data().isFollowedPlacesCircle === true;
-      if (aFollow !== bFollow) return aFollow ? 1 : -1; // Places I Follow sinks to the end
-
-      const ai = orderIndex.has(a.id) ? orderIndex.get(a.id) : Infinity;
-      const bi = orderIndex.has(b.id) ? orderIndex.get(b.id) : Infinity;
-      if (ai !== bi) return ai - bi; // honor the owner's explicit order
-
-      // Neither is in the owner's saved order (e.g. brand-new circles) → newest first
-      const aDate = a.data().updatedAt || a.data().createdAt || '';
-      const bDate = b.data().updatedAt || b.data().createdAt || '';
-      return bDate.localeCompare(aDate);
-    });
+    // Same helper as /circles/me (utils/circleOrder.js) so the tiebreak for
+    // circles not yet in circleOrder is identical everywhere.
+    const docsById = new Map(circlesQuery.docs.map(doc => [doc.id, doc]));
+    const sortedDocs = sortCirclesByUserOrder(
+      circlesQuery.docs.map(doc => ({ id: doc.id, ...doc.data() })),
+      userData?.circleOrder
+    ).map(c => docsById.get(c.id));
 
     // Get recent activity from connection data (empty for fake profiles)
     const recentActivity = connectionData?.recentActivity || [];

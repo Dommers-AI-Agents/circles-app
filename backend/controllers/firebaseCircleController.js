@@ -13,6 +13,7 @@ const {
 } = require('../models/FirestoreModels');
 const { trackCircleCreated, trackCircleView, trackCircleLiked, trackCircleCommented } = require('../services/activityService');
 const { normalizeUserId } = require('../services/idService');
+const { sortCirclesByUserOrder } = require('../utils/circleOrder');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
 const { attachOwnerDetails } = require('../services/ownerResolver');
 
@@ -103,47 +104,10 @@ exports.getMyCircles = async (req, res, next) => {
     }
     
     // Get user's circle order preference (doc fetched in the parallel batch above)
+    // and apply it via the shared helper — the same helper the dashboard /
+    // home-screen endpoints use, so every circle list matches the profile grid.
     const userData = userDoc.exists ? serializeDoc(userDoc) : null;
-    const circleOrder = userData?.circleOrder || [];
-    
-    // Sort circles based on user's preferred order
-    let sortedCircles;
-    if (circleOrder.length > 0) {
-      // Create a map for quick lookup
-      const circlesMap = new Map();
-      circles.forEach(circle => {
-        circlesMap.set(circle.id, circle);
-      });
-      
-      // Sort based on the order array
-      sortedCircles = [];
-      circleOrder.forEach(circleId => {
-        const circle = circlesMap.get(circleId);
-        if (circle) {
-          sortedCircles.push(circle);
-          circlesMap.delete(circleId);
-        }
-      });
-      
-      // Add any remaining circles not in the order array (newly created
-      // circles) — the auto-created "Places I Follow" circle always sinks
-      // to the very end
-      const remaining = [...circlesMap.values()].sort((a, b) =>
-        (a.isFollowedPlacesCircle === true) - (b.isFollowedPlacesCircle === true)
-      );
-      remaining.forEach(circle => {
-        sortedCircles.push(circle);
-      });
-    } else {
-      // Fallback to date-based sorting (newest first), with the auto-created
-      // "Places I Follow" circle pinned to the end of the list
-      sortedCircles = circles.sort((a, b) => {
-        const aFollow = a.isFollowedPlacesCircle === true;
-        const bFollow = b.isFollowedPlacesCircle === true;
-        if (aFollow !== bFollow) return aFollow ? 1 : -1;
-        return new Date(b.createdAt) - new Date(a.createdAt);
-      });
-    }
+    const sortedCircles = sortCirclesByUserOrder(circles, userData?.circleOrder);
 
     res.status(200).json({
       success: true,

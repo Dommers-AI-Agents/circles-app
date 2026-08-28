@@ -181,11 +181,10 @@ class CirclePickerSliderView: UIView {
         self.circles = circles
         pickerView.reloadAllComponents()
         
-        // Select middle item for better UX
+        // Circles arrive in the user's own order, so default to their top circle
         if circles.count > 0 {
-            let middleIndex = circles.count / 2
-            pickerView.selectRow(middleIndex, inComponent: 0, animated: false)
-            selectedIndex = middleIndex
+            pickerView.selectRow(0, inComponent: 0, animated: false)
+            selectedIndex = 0
         }
     }
     

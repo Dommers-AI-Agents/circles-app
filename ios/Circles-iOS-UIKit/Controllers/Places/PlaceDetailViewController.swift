@@ -2176,11 +2176,8 @@ class PlaceDetailViewController: BaseViewController {
                         // No circles available
                         AlertPresenter.showError(title: "No Circles", message: "You need to create a circle first before adding places to it.", from: self)
                     } else {
-                        // Sort circles alphabetically for easy finding
-                        let sortedCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-                        
-                        // Show circle picker
-                        let pickerVC = CirclePickerViewController(circles: sortedCircles)
+                        // Show circle picker in the user's own order (same as the profile grid)
+                        let pickerVC = CirclePickerViewController(circles: circles)
                         pickerVC.onCircleSelected = { [weak self] selectedCircle in
                             self?.addPlaceToCircle(selectedCircle)
                         }

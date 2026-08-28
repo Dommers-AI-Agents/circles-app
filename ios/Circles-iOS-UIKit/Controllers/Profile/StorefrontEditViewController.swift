@@ -152,8 +152,8 @@ class StorefrontEditViewController: BaseViewController {
     }
 
     @objc private func chooseCircleTapped() {
-        let sorted = userCircles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        let picker = CirclePickerViewController(circles: sorted)
+        // User's own order (same as the profile grid)
+        let picker = CirclePickerViewController(circles: userCircles)
         picker.onCircleSelected = { [weak self] circle in
             self?.selectedCircle = circle
             self?.circleButton.setTitle("📍 \(circle.name)", for: .normal)

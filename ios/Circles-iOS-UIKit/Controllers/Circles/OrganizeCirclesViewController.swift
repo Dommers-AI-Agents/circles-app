@@ -201,9 +201,8 @@ final class OrganizeCirclesViewController: BaseViewController {
         Self.schemeOrder.compactMap { scheme in
             let matching = circles.filter { schemes[$0.id] == scheme }
             guard !matching.isEmpty else { return nil }
-            return (scheme: scheme, circles: matching.sorted {
-                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-            })
+            // Within a group keep the user's own circle order (as on the profile)
+            return (scheme: scheme, circles: matching)
         }
     }
 

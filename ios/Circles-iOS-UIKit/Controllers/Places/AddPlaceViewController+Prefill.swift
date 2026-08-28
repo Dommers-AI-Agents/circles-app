@@ -217,8 +217,10 @@ extension AddPlaceViewController {
     }
 
     func applyUserCircles(_ circles: [Circle]) {
-        // Sort circles alphabetically for easy finding
-        userCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        // Keep the server's order — /circles/me already returns circles in the
+        // user's own arrangement (the drag-to-reorder order from their profile),
+        // so every circle list in the app reads the same way.
+        userCircles = circles
 
         // Find and set the current circle
         if let currentCircle = userCircles.first(where: { $0.id == selectedCircleId }) {

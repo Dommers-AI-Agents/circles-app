@@ -2,6 +2,7 @@
 const { admin, getFirestore } = require('../config/firebase');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
 const { fetchActivitiesByActors } = require('./activityFeedService');
+const { sortCirclesByUserOrder } = require('../utils/circleOrder');
 const db = getFirestore();
 
 class BackgroundAggregationService {
@@ -106,8 +107,13 @@ class BackgroundAggregationService {
                 networkCirclesSnapshot = { docs: allNetworkDocs };
             }
 
-            // Process circles
-            const myCircles = serializeQuerySnapshot(myCirclesSnapshot);
+            // Process circles — user's own profile order (sorted BEFORE the
+            // slice below so the cache keeps the user's top 20, not the 20 most
+            // recently touched)
+            const myCircles = sortCirclesByUserOrder(
+                serializeQuerySnapshot(myCirclesSnapshot),
+                currentUserDoc.exists ? currentUserDoc.data().circleOrder : undefined
+            );
             const networkCircles = networkCirclesSnapshot 
                 ? serializeQuerySnapshot(networkCirclesSnapshot)
                 : [];

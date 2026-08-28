@@ -60,12 +60,10 @@ class VisitCirclePickerViewController: BaseViewController {
     
     // MARK: - Data Loading
     override func loadData(completion: (() -> Void)? = nil) {
-        guard let userId = AuthService.shared.getUserId() else {
-            completion?()
-            return
-        }
-        
-        CircleService.shared.fetchUserCircles(userId: userId) { [weak self] result in
+        // Own circles come from /circles/me: the same profile-ordered list every
+        // other picker uses, and — unlike users/<id>/circles — it includes the
+        // user's private / my-network circles.
+        CircleService.shared.fetchUserCircles { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let circles):

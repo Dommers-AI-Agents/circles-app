@@ -1929,13 +1929,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Store the POI annotation for later use
         pendingPOIAnnotation = featureAnnotation
         
-        // Sort circles alphabetically for easy finding
-        let sortedCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        
+        // Circles arrive in the user's own order (same as the profile grid).
         // Create and configure the vertical slider picker
         let circlePicker = CirclePickerSliderView()
         circlePicker.delegate = self
-        circlePicker.configure(with: sortedCircles)
+        circlePicker.configure(with: circles)
         
         // Store reference to dismiss later
         currentCirclePicker = circlePicker
@@ -2297,10 +2295,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
 
     private func presentCirclePickerForAddPlace(circles: [Circle]) {
-        let sortedCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        let circlePickerVC = CirclePickerViewController(circles: sortedCircles)
+        // Circles arrive in the user's own order (same as the profile grid).
+        let circlePickerVC = CirclePickerViewController(circles: circles)
         circlePickerVC.onCircleSelected = { [weak self] circle in
-            self?.presentAddPlace(circleId: circle.id, circles: sortedCircles)
+            self?.presentAddPlace(circleId: circle.id, circles: circles)
         }
         circlePickerVC.onCreateNewCircle = { [weak self] in
             self?.presentCreateCircleThenAddPlace()

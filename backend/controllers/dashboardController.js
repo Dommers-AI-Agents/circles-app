@@ -5,6 +5,7 @@ const backgroundAggregationService = require('../services/backgroundAggregationS
 const cacheInvalidationService = require('../services/cacheInvalidationService');
 const { fetchActivitiesByActors } = require('../services/activityFeedService');
 const { queryInChunks } = require('../utils/firestoreChunks');
+const { sortCirclesByUserOrder } = require('../utils/circleOrder');
 const db = getFirestore();
 
 // Helper function to calculate map center from places
@@ -127,8 +128,11 @@ exports.getDashboard = async (req, res, next) => {
       );
     }
 
-    // Process my circles
-    const myCircles = serializeQuerySnapshot(myCirclesSnapshot);
+    // Process my circles — in the user's own profile order, same as /circles/me
+    const myCircles = sortCirclesByUserOrder(
+      serializeQuerySnapshot(myCirclesSnapshot),
+      currentUserDoc.exists ? currentUserDoc.data().circleOrder : undefined
+    );
 
     // Process network circles
     const networkCircles = networkCircleDocs

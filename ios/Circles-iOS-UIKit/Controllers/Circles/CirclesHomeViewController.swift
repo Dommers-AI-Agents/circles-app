@@ -5081,12 +5081,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
 
     func showCirclePicker() {
-        // Sort circles alphabetically for easy finding
-        let sortedCircles = circles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        // Present circles in the user's own order (same as the profile grid).
+        let pickerCircles = circles
         
-        let circlePickerVC = CirclePickerViewController(circles: sortedCircles)
+        let circlePickerVC = CirclePickerViewController(circles: pickerCircles)
         circlePickerVC.onCircleSelected = { [weak self] circle in
-            let addPlaceVC = AddPlaceViewController(circleId: circle.id, circles: sortedCircles)
+            let addPlaceVC = AddPlaceViewController(circleId: circle.id, circles: pickerCircles)
             self?.navigationController?.pushViewController(addPlaceVC, animated: true)
         }
         circlePickerVC.onCreateNewCircle = { [weak self] in

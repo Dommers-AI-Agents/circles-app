@@ -155,13 +155,10 @@ class CircleSelectionViewController: UIViewController {
                         circlesAfterExclusion = allCircles.filter { $0.id != excludedId }
                     }
                     
-                    // Sort circles alphabetically by name
-                    let sortedCircles = circlesAfterExclusion.sorted { (circle1, circle2) in
-                        return circle1.name.localizedCaseInsensitiveCompare(circle2.name) == .orderedAscending
-                    }
-                    
-                    self.circles = sortedCircles
-                    self.filteredCircles = sortedCircles
+                    // Keep the server's order (the user's profile arrangement) so this
+                    // list matches every other circle list in the app.
+                    self.circles = circlesAfterExclusion
+                    self.filteredCircles = circlesAfterExclusion
                     
                     if self.circles.isEmpty {
                         self.tableView.isHidden = true

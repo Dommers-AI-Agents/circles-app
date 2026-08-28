@@ -78,7 +78,8 @@ class CSVExportService {
     
     private func fetchUserCircles(userId: String) async throws -> [Circle] {
         return try await withCheckedThrowingContinuation { continuation in
-            CircleService.shared.fetchUserCircles(userId: userId) { result in
+            // /circles/me — own circles in profile order, including private ones
+            CircleService.shared.fetchUserCircles { result in
                 switch result {
                 case .success(let circles):
                     continuation.resume(returning: circles)
