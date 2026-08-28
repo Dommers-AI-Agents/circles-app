@@ -759,6 +759,10 @@ final class ShareViewController: UIViewController {
             self.spinner.stopAnimating()
             switch result {
             case .success(let save):
+                if save.upgradeRequired {
+                    self.showUpgradeRequired(circleName: circle.name, max: save.limitMax)
+                    return
+                }
                 self.savedPlaceId = save.placeId
                 if let placeId = save.placeId {
                     // Guarantees the "View in FavCircles" promise even when
@@ -1089,6 +1093,59 @@ final class ShareViewController: UIViewController {
         doneButton.isHidden = false
 
         UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
+    }
+
+    /// Plan limit hit: explain WHY, park the share so nothing is lost, and
+    /// route to the paywall in the app (IAP can't run inside extensions).
+    private func showUpgradeRequired(circleName: String, max: Int?) {
+        parkPendingShare()
+        PendingUpgradeMailbox.write()
+
+        backdropTitleLabel.text = "\(circleName) is full"
+        backdropSubtitleLabel.isHidden = true
+        circleButton.isHidden = true
+        coinHintLabel.isHidden = true
+
+        let limitText = max.map { "its \($0)-place limit" } ?? "its place limit"
+        statusLabel.text = "This circle has reached \(limitText) on your current plan. "
+            + "Upgrade to FavCircles Premium for unlimited places in every circle — "
+            + "we've saved this share, so it'll be ready to finish the moment you're in."
+        statusLabel.textColor = .label
+        statusLabel.font = .systemFont(ofSize: 14)
+        statusLabel.isHidden = false
+
+        saveButton.removeTarget(self, action: #selector(saveTapped), for: .touchUpInside)
+        saveButton.addTarget(self, action: #selector(upgradeTapped), for: .touchUpInside)
+        saveButton.setTitle("Upgrade in FavCircles", for: .normal)
+        saveButton.isHidden = false
+        saveButton.isEnabled = true
+        saveButton.alpha = 1.0
+
+        doneButton.setTitle("Not now", for: .normal)
+        doneButton.isHidden = false
+    }
+
+    @objc private func upgradeTapped() {
+        // The mailbox flag is already written — the app opens the paywall on
+        // next launch no matter what; direct open is the fast path.
+        guard let url = URL(string: "circles://upgrade") else {
+            extensionContext?.completeRequest(returningItems: nil)
+            return
+        }
+        extensionContext?.open(url) { [weak self] opened in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if opened || self.openViaResponderChain(url) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.extensionContext?.completeRequest(returningItems: nil)
+                    }
+                } else {
+                    self.statusLabel.text = "Open FavCircles to upgrade — your place is saved and waiting"
+                    self.saveButton.isHidden = true
+                    self.doneButton.setTitle("OK, got it", for: .normal)
+                }
+            }
+        }
     }
 
     @objc private func viewInAppTapped() {

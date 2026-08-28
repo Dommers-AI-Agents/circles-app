@@ -89,6 +89,11 @@ struct ShareAPIClient {
         /// post-enrichment duplicate gate caught it; placeId is the EXISTING
         /// save, so "View in FavCircles" still works.
         let alreadySaved: Bool
+        /// True when the save hit the plan's places-per-circle limit (403
+        /// upgradeRequired) — the card explains and offers the upgrade path.
+        var upgradeRequired: Bool = false
+        var limitCurrent: Int? = nil
+        var limitMax: Int? = nil
     }
 
     /// POST /places — the normal create path, so globalPlaceId stamping and
@@ -143,6 +148,16 @@ struct ShareAPIClient {
                 result = .success(SaveResult(placeId: json["existingPlaceId"] as? String,
                                              coins: nil,
                                              alreadySaved: true))
+            } else if let data = data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      json["upgradeRequired"] as? Bool == true {
+                // Plan limit — an explained outcome, not an error
+                result = .success(SaveResult(placeId: nil,
+                                             coins: nil,
+                                             alreadySaved: false,
+                                             upgradeRequired: true,
+                                             limitCurrent: json["currentCount"] as? Int,
+                                             limitMax: json["maxAllowed"] as? Int))
             } else {
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 result = .failure(NSError(

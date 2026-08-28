@@ -82,6 +82,35 @@ enum PendingOpenPlaceMailbox {
     }
 }
 
+/// extension → app: "the user hit a plan limit and tapped Upgrade" — the app
+/// presents the paywall on next launch (the parked share then finishes via
+/// the normal drain → prefilled Add Place underneath the paywall sheet).
+enum PendingUpgradeMailbox {
+    static let fileName = "pending-upgrade.json"
+
+    struct Payload: Codable { var createdAt: Date }
+
+    static var fileURL: URL? {
+        FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: ExtensionAuthMailbox.appGroupId)?
+            .appendingPathComponent(fileName)
+    }
+
+    static func write() {
+        guard let url = fileURL,
+              let data = try? JSONEncoder().encode(Payload(createdAt: Date())) else { return }
+        try? data.write(to: url, options: [.atomic, .completeFileProtection])
+    }
+
+    /// One-shot; stale (>1h) requests are dropped.
+    static func take() -> Bool {
+        guard let url = fileURL, let data = try? Data(contentsOf: url) else { return false }
+        try? FileManager.default.removeItem(at: url)
+        guard let payload = try? JSONDecoder().decode(Payload.self, from: data) else { return false }
+        return Date().timeIntervalSince(payload.createdAt) < 3600
+    }
+}
+
 enum PendingShareMailbox {
     static let appGroupId = "group.com.favcircles.circles"
     static let fileName = "pending-share.json"

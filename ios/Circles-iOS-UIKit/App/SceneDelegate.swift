@@ -239,8 +239,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             KeychainService.shared.syncExtensionAuthMailbox()
         }
 
+        // Plan-limit upgrade requested from the share extension: paywall over
+        // whatever the share drain below pushes — dismissing the paywall
+        // lands the user on the prefilled Add Place, ready to finish.
+        let upgradeRequested = AuthService.shared.isLoggedIn && PendingUpgradeMailbox.take()
+
         // A share the extension parked (logged out / offline at share time)
         drainPendingShareIfNeeded()
+
+        if upgradeRequested {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.presentUpgradePaywall()
+            }
+        }
 
         // "View in FavCircles" tapped in the share extension: go straight to
         // the place they just saved
@@ -911,6 +922,17 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     self.navigateToPlace(placeId: placeId)
                     return
                 }
+            }
+
+            // Handle upgrade deep link (circles://upgrade) — the share
+            // extension's "Upgrade in FavCircles" path (IAP can't run in
+            // extensions). Consume the mailbox flag so the next cold launch
+            // doesn't present the paywall a second time.
+            if url.host == "upgrade" {
+                Logger.debug("📱 SceneDelegate: Detected 'upgrade' deep link")
+                _ = PendingUpgradeMailbox.take()
+                self.presentUpgradePaywall()
+                return
             }
 
             // Handle network deep link (e.g., circles://network) — used by the
@@ -1684,6 +1706,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         WidgetSnapshotService.shared.refresh()
     }
     
+    /// Paywall entry for the share extension's upgrade path — server-enforced
+    /// place limit, .placeLimit copy.
+    private func presentUpgradePaywall() {
+        guard AuthService.shared.isLoggedIn,
+              let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
+        let host = tabBarController.presentedViewController ?? tabBarController
+        SubscriptionManager.shared.showPaywall(from: host, reason: .placeLimit)
+    }
+
     // MARK: - Pending Share (from the Share Extension)
 
     /// A share the extension couldn't finish (logged out or offline at share
