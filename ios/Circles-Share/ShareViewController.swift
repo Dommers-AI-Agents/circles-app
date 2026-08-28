@@ -1163,14 +1163,20 @@ final class ShareViewController: UIViewController {
         extensionContext?.open(url) { [weak self] opened in
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                self.debugInfo["extensionOpenReported"] = opened
                 if opened {
-                    self.extensionContext?.completeRequest(returningItems: nil)
+                    self.dumpDebug()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        self.extensionContext?.completeRequest(returningItems: nil)
+                    }
                 } else if self.openViaResponderChain(url) {
+                    self.dumpDebug()
                     // Give the app-switch animation a beat before dismissing
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                         self.extensionContext?.completeRequest(returningItems: nil)
                     }
                 } else {
+                    self.dumpDebug()
                     // iOS refused both open paths — the mailbox makes the
                     // promise real: the app lands on this place at next open.
                     self.statusLabel.text = "Your place is ready — just open FavCircles and it'll pop right up"
@@ -1191,15 +1197,22 @@ final class ShareViewController: UIViewController {
     /// system's opener).
     private func openViaResponderChain(_ url: URL) -> Bool {
         let selector = NSSelectorFromString("openURL:")
+        var walked: [String] = []
         var responder: UIResponder? = self
         while let current = responder {
+            walked.append(String(describing: type(of: current))
+                          + (current.responds(to: selector) ? "*" : ""))
             if !(current is UIView), !(current is UIViewController),
                current.responds(to: selector) {
+                debugInfo["openPath"] = "responder:\(type(of: current))"
+                debugInfo["responderChain"] = walked.joined(separator: " > ")
                 current.perform(selector, with: url)
                 return true
             }
             responder = current.next
         }
+        debugInfo["openPath"] = "none"
+        debugInfo["responderChain"] = walked.joined(separator: " > ")
         return false
     }
 
