@@ -82,6 +82,29 @@ struct ShareAPIClient {
         }.resume()
     }
 
+    /// POST /circles — create a circle inline from the share card (server
+    /// defaults privacy to public, credits create_circle coins, tracks the
+    /// activity — identical to an in-app create).
+    func createCircle(name: String, completion: @escaping (CircleChoice?) -> Void) {
+        var request = URLRequest(url: Self.baseURL.appendingPathComponent("circles"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["name": name])
+
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            var choice: CircleChoice?
+            if let data = data,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let circle = json["circle"] as? [String: Any],
+               let id = (circle["_id"] as? String) ?? (circle["id"] as? String),
+               let name = circle["name"] as? String {
+                choice = CircleChoice(id: id, name: name)
+            }
+            DispatchQueue.main.async { completion(choice) }
+        }.resume()
+    }
+
     struct SaveResult {
         let placeId: String?
         let coins: Double?

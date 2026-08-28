@@ -672,7 +672,7 @@ final class ShareViewController: UIViewController {
         pickerSheet.addSubview(pickerTable)
         pickerTable.reloadData()
 
-        let sheetHeight = min(CGFloat(circles.count) * 56 + 76,
+        let sheetHeight = min(CGFloat(circles.count + 1) * 56 + 76,
                               view.bounds.height * 0.62)
         NSLayoutConstraint.activate([
             pickerSheet.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
@@ -713,6 +713,56 @@ final class ShareViewController: UIViewController {
             self.pickerDim.removeFromSuperview()
             self.pickerSheet.removeFromSuperview()
             self.pickerSheet.transform = .identity
+        }
+    }
+
+    /// Create a circle without leaving the share card — name it, it becomes
+    /// the selected save target immediately.
+    private func promptCreateCircle() {
+        let alert = UIAlertController(title: "New Circle",
+                                      message: "Name your new circle",
+                                      preferredStyle: .alert)
+        alert.addTextField { field in
+            field.placeholder = "e.g. Date Nights"
+            field.autocapitalizationType = .words
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Create", style: .default) { [weak self, weak alert] _ in
+            guard let self = self, let client = self.client,
+                  let name = alert?.textFields?.first?.text?
+                      .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty else { return }
+            client.createCircle(name: name) { [weak self] created in
+                guard let self = self else { return }
+                guard let created = created else {
+                    self.statusLabel.text = "Couldn't create that circle — try a different name"
+                    self.statusLabel.isHidden = false
+                    return
+                }
+                self.circles.insert(created, at: 0)
+                self.selectedCircle = created
+                self.refreshCircleButton()
+                self.dismissCirclePicker()
+            }
+        })
+        present(alert, animated: true)
+    }
+
+    /// Plus-disc avatar for the "New Circle…" row.
+    private static func newCircleAvatar() -> UIImage {
+        let size = CGSize(width: 36, height: 36)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            brandBlue.withAlphaComponent(0.15).setFill()
+            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 20, weight: .semibold),
+                .foregroundColor: brandBlue
+            ]
+            let plus = "+"
+            let textSize = plus.size(withAttributes: attributes)
+            plus.draw(at: CGPoint(x: (size.width - textSize.width) / 2,
+                                  y: (size.height - textSize.height) / 2),
+                      withAttributes: attributes)
         }
     }
 
@@ -1216,24 +1266,30 @@ final class ShareViewController: UIViewController {
 // MARK: - Circle picker table
 
 extension ShareViewController: UITableViewDataSource, UITableViewDelegate {
+    // Row 0 = "New Circle…", rows 1+ = the user's circles
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        circles.count
+        circles.count + 1
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "circle")
             ?? UITableViewCell(style: .default, reuseIdentifier: "circle")
-        let circle = circles[indexPath.row]
-
         var content = cell.defaultContentConfiguration()
-        content.text = circle.name
         content.textProperties.font = .systemFont(ofSize: 16, weight: .medium)
-        content.image = Self.circleAvatar(for: circle.name)
         content.imageProperties.maximumSize = CGSize(width: 36, height: 36)
-        cell.contentConfiguration = content
 
-        let isSelected = circle.id == selectedCircle?.id
-        cell.accessoryType = isSelected ? .checkmark : .none
+        if indexPath.row == 0 {
+            content.text = "New Circle…"
+            content.textProperties.color = Self.brandBlue
+            content.image = Self.newCircleAvatar()
+            cell.accessoryType = .none
+        } else {
+            let circle = circles[indexPath.row - 1]
+            content.text = circle.name
+            content.image = Self.circleAvatar(for: circle.name)
+            cell.accessoryType = circle.id == selectedCircle?.id ? .checkmark : .none
+        }
+        cell.contentConfiguration = content
         cell.tintColor = Self.brandBlue
         cell.backgroundColor = .clear
         return cell
@@ -1241,7 +1297,11 @@ extension ShareViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        selectedCircle = circles[indexPath.row]
+        if indexPath.row == 0 {
+            promptCreateCircle()
+            return
+        }
+        selectedCircle = circles[indexPath.row - 1]
         refreshCircleButton()
         dismissCirclePicker()
     }
