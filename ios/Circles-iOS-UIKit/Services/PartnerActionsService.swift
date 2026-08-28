@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import SafariServices
 
 /// Partner action deep links on the place detail screen (Delivery / Reserve /
 /// Ride). The catalog is server-driven (GET app/partner-actions, backed by the
@@ -15,8 +16,8 @@ class PartnerActionsService {
     private let apiService = APIService.shared
     private let userDefaults = UserDefaults.standard
 
-    private let kCatalogCache = "partner_actions_catalog_v2"
-    private let kCatalogCachedAt = "partner_actions_catalog_cached_at_v2"
+    private let kCatalogCache = "partner_actions_catalog_v3"
+    private let kCatalogCachedAt = "partner_actions_catalog_cached_at_v3"
     private let cacheTTL: TimeInterval = 6 * 60 * 60
 
     private var sessionCatalog: PartnerActionCatalog?
@@ -162,7 +163,21 @@ class PartnerActionsService {
     /// Scheme-first when the partner app is installed (and its scheme is
     /// whitelisted in LSApplicationQueriesSchemes), else the web universal
     /// link — which itself app-links into the partner app when installed.
-    func open(provider: PartnerActionProvider, group: PartnerActionGroup, place: Place) {
+    /// Providers with openMode "inAppBrowser" present an in-app Safari sheet
+    /// instead (from `presenter`), so a partner app that intercepts the
+    /// universal link but drops the search context can't hijack the tap.
+    func open(provider: PartnerActionProvider, group: PartnerActionGroup, place: Place, from presenter: UIViewController? = nil) {
+        if provider.openMode == "inAppBrowser", let presenter = presenter,
+           let webURL = renderedURL(template: provider.webUrlTemplate, place: place) {
+            let safari = SFSafariViewController(url: webURL)
+            presenter.present(safari, animated: true)
+            AnalyticsService.shared.logEvent("partner_action_tapped", parameters: [
+                "group": group.id,
+                "provider": provider.id,
+                "category": place.category.rawValue
+            ])
+            return
+        }
         var target: URL?
         if let scheme = provider.appScheme,
            let probe = URL(string: "\(scheme)://"),

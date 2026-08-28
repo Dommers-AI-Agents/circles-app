@@ -42,6 +42,10 @@ function sanitizeProvider(p) {
   if (!out.id || !out.title) return null;
   if (typeof p.appUrlTemplate === 'string' && p.appUrlTemplate.length > 0) out.appUrlTemplate = p.appUrlTemplate;
   if (typeof p.appScheme === 'string' && p.appScheme.length > 0) out.appScheme = p.appScheme;
+  // "inAppBrowser" opens the web URL in an in-app Safari sheet — universal-link
+  // interception doesn't apply there, so partners whose app swallows the link
+  // and drops the search context (OpenTable) still land on the right page
+  if (typeof p.openMode === 'string' && p.openMode.length > 0) out.openMode = p.openMode;
   return out;
 }
 

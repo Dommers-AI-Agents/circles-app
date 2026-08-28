@@ -87,6 +87,11 @@ struct PartnerActionProvider: Codable {
     /// so this half is release-gated — web is not).
     let appUrlTemplate: String?
     let appScheme: String?
+    /// "inAppBrowser" presents the web URL in an in-app Safari sheet instead
+    /// of UIApplication.open — universal-link interception doesn't apply
+    /// there, so a partner app that swallows the link and drops the search
+    /// context (OpenTable) still lands on the right page. Nil/other = external.
+    let openMode: String?
 }
 
 /// Consumes-and-discards one element of any shape (lossy array decoding).

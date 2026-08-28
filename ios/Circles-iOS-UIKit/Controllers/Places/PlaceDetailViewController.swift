@@ -3943,7 +3943,7 @@ extension PlaceDetailViewController: PartnerActionsRowViewDelegate {
         let providers = PartnerActionsService.shared.usableProviders(in: group, for: place)
         guard !providers.isEmpty else { return }
         if providers.count == 1 {
-            PartnerActionsService.shared.open(provider: providers[0], group: group, place: place)
+            PartnerActionsService.shared.open(provider: providers[0], group: group, place: place, from: self)
             return
         }
         // Multi-provider group: pick via action sheet, anchored to the chip
@@ -3951,7 +3951,7 @@ extension PlaceDetailViewController: PartnerActionsRowViewDelegate {
         let actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = providers.map { provider in
             (title: provider.title, style: .default, handler: { [weak self] in
                 guard let self = self else { return }
-                PartnerActionsService.shared.open(provider: provider, group: group, place: self.place)
+                PartnerActionsService.shared.open(provider: provider, group: group, place: self.place, from: self)
             })
         }
         AlertPresenter.showActionSheet(

@@ -62,6 +62,10 @@ const GROUPS = [
         id: 'opentable',
         title: 'OpenTable',
         webUrlTemplate: 'https://www.opentable.com/s?term={name}&latitude={lat}&longitude={lng}&covers=2',
+        // The OpenTable app intercepts opentable.com universal links but drops
+        // the search params (lands on its home) — an in-app Safari sheet keeps
+        // the restaurant search results in view
+        openMode: 'inAppBrowser',
         enabled: true
       }
     ]
