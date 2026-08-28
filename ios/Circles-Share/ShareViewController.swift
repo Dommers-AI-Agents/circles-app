@@ -473,7 +473,8 @@ final class ShareViewController: UIViewController {
             spinner.stopAnimating()
             debugInfo["outcome"] = "no_name_no_coordinate"
             dumpDebug()
-            showParkAndFinish(message: "Couldn't read a place from this share")
+            parkPendingShare()
+            showResolutionFailure()
             return
         }
         debugInfo["outcome"] = "searching: \(seedName)"
@@ -507,7 +508,8 @@ final class ShareViewController: UIViewController {
                 self.resolvedAddress = "Address pending"
                 self.resolvedCoordinate = coordinate
             } else {
-                self.showParkAndFinish(message: "Couldn't find that place")
+                self.parkPendingShare()
+                self.showResolutionFailure()
                 return
             }
 
@@ -759,6 +761,35 @@ final class ShareViewController: UIViewController {
         ))
     }
 
+    /// Google didn't hand over the place info (usually its redirector losing
+    /// a race with a freshly-minted share link). Friendly, actionable, and
+    /// encouraging — the share itself is parked, so opening the app finishes
+    /// it, and the user shouldn't conclude that sharing is broken.
+    private func showResolutionFailure() {
+        debugInfo["finalMessage"] = "resolution_failure_friendly"
+        dumpDebug()
+        backdropTitleLabel.text = "That one didn't come through"
+        backdropSubtitleLabel.isHidden = true
+        nameLabel.text = nil
+        statusLabel.text = "We had trouble pulling this place's info from Google just now. "
+            + "Please add it directly in FavCircles — what you shared is saved and ready to finish there.\n\n"
+            + "Every place shares a little differently, so please keep sharing!"
+        statusLabel.textColor = .label
+        statusLabel.font = .systemFont(ofSize: 14)
+        statusLabel.isHidden = false
+        circleButton.isHidden = true
+        coinHintLabel.isHidden = true
+        saveButton.isHidden = true
+        doneButton.setTitle("OK", for: .normal)
+        doneButton.setTitleColor(Self.brandBlue, for: .normal)
+        doneButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        doneButton.isHidden = false
+        // Generous fallback dismiss — they have an OK button
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            self?.extensionContext?.completeRequest(returningItems: nil)
+        }
+    }
+
     private func showParkAndFinish(message: String) {
         debugInfo["finalMessage"] = message
         dumpDebug()
@@ -770,7 +801,7 @@ final class ShareViewController: UIViewController {
         coinHintLabel.isHidden = true
         saveButton.isEnabled = false
         saveButton.alpha = 0.5
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
             self?.extensionContext?.completeRequest(returningItems: nil)
         }
     }
@@ -850,7 +881,7 @@ final class ShareViewController: UIViewController {
         statusLabel.font = .systemFont(ofSize: 16, weight: .semibold)
         statusLabel.textColor = Self.brandBlue
         statusLabel.textAlignment = .center
-        statusLabel.numberOfLines = 3
+        statusLabel.numberOfLines = 0
         statusLabel.isHidden = true
 
         saveButton.setTitle("Save", for: .normal)
