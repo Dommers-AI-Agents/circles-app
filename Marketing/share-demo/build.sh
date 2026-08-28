@@ -54,7 +54,8 @@ PROTECT = {
     "flourish-up": (0.2, 1.7), "flourish-down": (0.2, 1.7),
     "maps-open": (0.3, 2.2), "app-launch": (0.3, 2.8),
     "done-a": (2.3, 1.0), "done-b": (2.3, 1.0),
-    "back-to-home": (1.9, 1.2),
+    "back-to-home": (1.9, 1.2), "open-person-filter": (0.3, 1.5),
+    "pick-my-places": (0.3, 1.6), "me-tab": (0.5, 2.4), "profile-scroll": (0.2, 1.6),
     "end": (2.6, 0.0),
 }
 DEFAULT_PROTECT = (0.35, 1.2)

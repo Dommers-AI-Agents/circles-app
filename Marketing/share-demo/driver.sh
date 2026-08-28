@@ -109,7 +109,7 @@ tap_save_below() {
 
 # ============ Segment 1: Apple Maps save ============
 at  0.5  "audio-b00"
-sleep 4.9
+sleep 8.3                                          # full intro line over the card
 "$TOOLS/tap.sh" 44 568; mark "maps-share"          # place card share button
 sleep 1.4
 rel 0 "audio-b01"
@@ -156,11 +156,22 @@ if [ "$PLACE_OK" != "1" ]; then die "place-view-never-opened"; fi
 rel 0.3 "audio-b04"
 sleep 8.0    # dwell until the chips line has FULLY landed before leaving
 
-# ============ Segment 3: home map finale ============
+# ============ Segment 3: My Places map ============
 ocr_tap "Home" "back-to-home" 8                    # Home tab pops to the map
-sleep 1.6
+sleep 1.4
+ocr_tap "Everyone" "open-person-filter" 8
+sleep 1.4
+ocr_tap "My Places" "pick-my-places" 8
+sleep 1.0
 rel 0 "audio-b05"
-sleep 5.6
+sleep 4.6                                          # dwell on the filtered map
+
+# ============ Segment 4: profile circles finale ============
+"$TOOLS/tap.sh" 362 900; mark "me-tab"
+sleep 2.6
+"$TOOLS/drag.sh" 220 700 220 520 500; mark "profile-scroll"
+rel 0.3 "audio-b06"
+sleep 6.0                                          # circles grid dwell
 mark "end"
 
 kill -INT $RECPID 2>/dev/null
