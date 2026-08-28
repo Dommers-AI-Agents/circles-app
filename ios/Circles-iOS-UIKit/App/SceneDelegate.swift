@@ -234,6 +234,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Feed the home-screen widget its snapshot
         WidgetSnapshotService.shared.refresh()
 
+        #if DEBUG
+        // Debug relay: mirror the share extension's diagnostics dump into
+        // Documents, the one place reliably pullable from a Mac via
+        // devicectl (the group container itself is not).
+        if let debugJSON = UserDefaults(suiteName: ExtensionAuthMailbox.appGroupId)?
+            .string(forKey: "shareExt.debug"),
+           let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            try? debugJSON.data(using: .utf8)?
+                .write(to: docs.appendingPathComponent("share-debug.json"), options: [.atomic])
+        }
+        #endif
+
         // Sessions that predate the extension auth mirror get one now
         if AuthService.shared.isLoggedIn {
             KeychainService.shared.syncExtensionAuthMailbox()
