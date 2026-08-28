@@ -121,8 +121,8 @@ final class ShareViewController: UIViewController {
         view.addSubview(backdropTitleLabel)
 
         backdropSubtitleLabel.text = "Select your circle and tap Save"
-        backdropSubtitleLabel.font = .systemFont(ofSize: 15, weight: .medium)
-        backdropSubtitleLabel.textColor = UIColor.white.withAlphaComponent(0.85)
+        backdropSubtitleLabel.font = .systemFont(ofSize: 17, weight: .bold)
+        backdropSubtitleLabel.textColor = UIColor(red: 1.0, green: 0.36, blue: 0.32, alpha: 1.0)
         backdropSubtitleLabel.textAlignment = .center
         backdropSubtitleLabel.numberOfLines = 2
         backdropSubtitleLabel.layer.shadowColor = UIColor.black.cgColor
@@ -268,15 +268,23 @@ final class ShareViewController: UIViewController {
                     hints.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lng)
                 }
             }
-            // ?q=Office+Depot (when it isn't a bare coordinate pair, and not
-            // an address — some venues' redirects put ONLY the street address
-            // in q, e.g. "500 Queens Rd, Charlotte"; a leading street number
-            // means it's not a name)
+            // ?q= usually packs "name, street address, city…" together
+            // ("Office Depot, 1620 South Blvd, Charlotte"). Keep only the
+            // leading name components — everything from the first
+            // street-number component on is address, which the card and the
+            // save must never carry in the NAME. A q that is ONLY an address
+            // (leading street number) yields no name at all.
             if hints.name == nil,
                let q = URLComponents(string: urlString)?.queryItems?.first(where: { $0.name == "q" })?.value,
                !q.isEmpty, Double(q.components(separatedBy: ",").first ?? "") == nil,
                q.range(of: #"^\s*\d+\s"#, options: .regularExpression) == nil {
-                hints.name = q.replacingOccurrences(of: "+", with: " ")
+                let cleaned = q.replacingOccurrences(of: "+", with: " ")
+                let nameParts = cleaned.components(separatedBy: ",").prefix { part in
+                    part.trimmingCharacters(in: .whitespaces)
+                        .range(of: #"^\d+\s"#, options: .regularExpression) == nil
+                }
+                let name = nameParts.joined(separator: ",").trimmingCharacters(in: .whitespaces)
+                if !name.isEmpty { hints.name = name }
             }
             return hints
         }
