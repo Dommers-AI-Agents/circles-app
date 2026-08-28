@@ -137,6 +137,8 @@
 		<string>linkedin-sdk</string>
 		<string>comgooglemaps</string>
 		<string>comgooglemaps-x-callback</string>
+		<string>uber</string>
+		<string>lyft</string>
 	</array>
 	<key>LinkedInClientID</key>
 	<string>86rx0d8w7xn8rq</string>

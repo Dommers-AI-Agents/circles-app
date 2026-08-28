@@ -28,6 +28,21 @@ router.get('/version', (req, res) => {
     }
 });
 
+// Partner action catalog for the place detail screen (server-driven deep-link
+// groups: Delivery / Reserve / Ride). Read-only, global, category-keyed —
+// iOS fetches once per session and caches. See services/partnerActionsService.
+router.get('/partner-actions', async (req, res) => {
+    try {
+        const catalog = await require('../services/partnerActionsService').getCatalog();
+        res.set('Cache-Control', 'public, max-age=300');
+        res.json({ success: true, data: catalog });
+    } catch (error) {
+        console.error('Error fetching partner actions:', error);
+        // Fails closed: an empty catalog just hides the row on the client
+        res.json({ success: true, data: { updatedAt: null, groups: [] } });
+    }
+});
+
 // Update version info (admin endpoint - add authentication)
 router.post('/version', async (req, res) => {
     try {

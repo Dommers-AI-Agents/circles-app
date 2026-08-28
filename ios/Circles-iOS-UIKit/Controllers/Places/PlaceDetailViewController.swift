@@ -296,6 +296,12 @@ class PlaceDetailViewController: BaseViewController {
     private var venueRewardsHeightConstraint: NSLayoutConstraint?
     private var venueRewardsTopConstraint: NSLayoutConstraint?
 
+    // Partner action chips (Delivery / Reserve / Ride) — server-driven catalog,
+    // collapsed until the catalog yields groups eligible for this place
+    private let partnerActionsRowView = PartnerActionsRowView()
+    private var partnerActionsHeightConstraint: NSLayoutConstraint?
+    private var partnerActionsTopConstraint: NSLayoutConstraint?
+
     // Verified owner of this venue (from getVenueByPlace). Owners can edit
     // venue fields from any save of their place — the backend restricts
     // their update to venue fields, and EditPlaceViewController unlocks the
@@ -829,6 +835,9 @@ class PlaceDetailViewController: BaseViewController {
         // Rewards venue (offers + announcements), if this place has one
         loadVenueRewards()
 
+        // Partner action chips (Delivery / Reserve / Ride), if any apply
+        loadPartnerActions()
+
         // Load who saved this place for the saved-by row
         loadPlaceSavers()
 
@@ -1047,6 +1056,9 @@ class PlaceDetailViewController: BaseViewController {
         infoContainerView.addSubview(mapView)
         infoContainerView.addSubview(venueRewardsView)
         venueRewardsView.delegate = self
+        infoContainerView.addSubview(partnerActionsRowView)
+        partnerActionsRowView.translatesAutoresizingMaskIntoConstraints = false
+        partnerActionsRowView.delegate = self
 
         // Always add notes labels - visibility will be controlled in configureUI
         infoContainerView.addSubview(notesTitleLabel)
@@ -1302,9 +1314,23 @@ class PlaceDetailViewController: BaseViewController {
             mapView.heightAnchor.constraint(equalToConstant: 160)
         ])
 
+        // Partner action chips dock under the practical row; collapsed
+        // (height 0, zero gap) until the catalog yields eligible groups, so
+        // the layout is pixel-identical to pre-feature when the row is empty
+        NSLayoutConstraint.activate([
+            partnerActionsRowView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            partnerActionsRowView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium)
+        ])
+        let partnerTop = partnerActionsRowView.topAnchor.constraint(equalTo: practicalButtonsStackView.bottomAnchor, constant: 0)
+        let partnerHeight = partnerActionsRowView.heightAnchor.constraint(equalToConstant: 0)
+        partnerTop.isActive = true
+        partnerHeight.isActive = true
+        partnerActionsTopConstraint = partnerTop
+        partnerActionsHeightConstraint = partnerHeight
+
         // About card collapses (top gap + height) when it has no content;
         // when visible, the height follows the stack's bottom instead
-        let aboutTop = aboutCardView.topAnchor.constraint(equalTo: practicalButtonsStackView.bottomAnchor, constant: Constants.Spacing.medium)
+        let aboutTop = aboutCardView.topAnchor.constraint(equalTo: partnerActionsRowView.bottomAnchor, constant: Constants.Spacing.medium)
         let aboutBottom = aboutStackView.bottomAnchor.constraint(equalTo: aboutCardView.bottomAnchor, constant: -Constants.Spacing.small)
         aboutBottom.priority = .defaultHigh
         let aboutHeight = aboutCardView.heightAnchor.constraint(equalToConstant: 0)
@@ -2005,6 +2031,20 @@ class PlaceDetailViewController: BaseViewController {
     }
 
     // MARK: - Venue rewards (offers + announcements for this place)
+
+    private func loadPartnerActions() {
+        PartnerActionsService.shared.getCatalog { [weak self] catalog in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                let groups = PartnerActionsService.shared.eligibleGroups(for: self.place, from: catalog)
+                self.partnerActionsRowView.configure(with: groups)
+                let show = !groups.isEmpty
+                self.partnerActionsHeightConstraint?.constant = show ? 44 : 0
+                self.partnerActionsTopConstraint?.constant = show ? Constants.Spacing.medium : 0
+                self.view.layoutIfNeeded()
+            }
+        }
+    }
 
     private func loadVenueRewards() {
         RewardsService.shared.getVenueByPlace(
@@ -3898,6 +3938,31 @@ extension PlaceDetailViewController {
 }
 
 // MARK: - PlaceVenueRewardsViewDelegate
+extension PlaceDetailViewController: PartnerActionsRowViewDelegate {
+    func partnerActionsRow(_ view: PartnerActionsRowView, didTap group: PartnerActionGroup, sourceView: UIView) {
+        let providers = PartnerActionsService.shared.usableProviders(in: group, for: place)
+        guard !providers.isEmpty else { return }
+        if providers.count == 1 {
+            PartnerActionsService.shared.open(provider: providers[0], group: group, place: place)
+            return
+        }
+        // Multi-provider group: pick via action sheet, anchored to the chip
+        // so iPad presents a popover instead of crashing
+        let actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = providers.map { provider in
+            (title: provider.title, style: .default, handler: { [weak self] in
+                guard let self = self else { return }
+                PartnerActionsService.shared.open(provider: provider, group: group, place: self.place)
+            })
+        }
+        AlertPresenter.showActionSheet(
+            title: group.sheetTitle,
+            actions: actions,
+            from: self,
+            sourceView: sourceView
+        )
+    }
+}
+
 extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
 
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapRedeem offer: RewardOffer, venue: PlaceVenue) {
