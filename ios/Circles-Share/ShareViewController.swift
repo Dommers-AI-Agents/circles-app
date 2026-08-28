@@ -485,6 +485,19 @@ final class ShareViewController: UIViewController {
             showResolutionFailure()
             return
         }
+
+        // A maps LINK was shared but no coordinate survived (redirector race
+        // lost even after retries): an un-anchored name search can save the
+        // WRONG branch of a chain (field-confirmed: "CVS Pharmacy" grabbed a
+        // store 2.5km from the shared one). Parking honestly beats guessing.
+        if coordinate == nil, sharedURL != nil {
+            spinner.stopAnimating()
+            debugInfo["outcome"] = "url_but_no_coordinate"
+            dumpDebug()
+            parkPendingShare()
+            showResolutionFailure()
+            return
+        }
         debugInfo["outcome"] = "searching: \(seedName)"
         dumpDebug()
 
@@ -1082,15 +1095,18 @@ final class ShareViewController: UIViewController {
             let amount = coins == coins.rounded() ? String(Int(coins)) : String(format: "%.2f", coins)
             status += "\n🪙 +\(amount) FavCoins earned"
         }
+        // iOS silently ignores app-opens from share extensions (verified on
+        // device: openURL: "succeeds" with no switch) — promise only what the
+        // pending-open mailbox actually delivers.
+        status += "\nOpen FavCircles — it'll pop right up"
         statusLabel.text = status
         statusLabel.isHidden = false
 
         saveButton.removeTarget(self, action: #selector(saveTapped), for: .touchUpInside)
         saveButton.addTarget(self, action: #selector(viewInAppTapped), for: .touchUpInside)
-        saveButton.setTitle("View in FavCircles", for: .normal)
+        saveButton.setTitle("Done", for: .normal)
         saveButton.isEnabled = true
         saveButton.alpha = 1.0
-        doneButton.isHidden = false
 
         UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
     }
@@ -1149,43 +1165,19 @@ final class ShareViewController: UIViewController {
     }
 
     @objc private func viewInAppTapped() {
-        // The mailbox is already written (belt) — the app navigates to the
-        // place on next launch no matter what. Opening directly: try the
-        // official extensionContext.open first (works for some extension
-        // point/OS combos), then the responder-chain openURL: workaround
-        // every shipping share extension leans on. Honest copy only if both
-        // refuse.
+        // The mailbox is written — the app lands on this place at next open,
+        // which is the promise the card makes. The direct open below is a
+        // free bet: iOS 26 silently no-ops it for share extensions today
+        // (verified on device — openURL: "succeeds", nothing switches), but
+        // if a future OS honors it, Done starts opening the app for real.
         guard let placeId = savedPlaceId,
               let url = URL(string: "circles://place/\(placeId)") else {
             extensionContext?.completeRequest(returningItems: nil)
             return
         }
-        extensionContext?.open(url) { [weak self] opened in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                self.debugInfo["extensionOpenReported"] = opened
-                if opened {
-                    self.dumpDebug()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                        self.extensionContext?.completeRequest(returningItems: nil)
-                    }
-                } else if self.openViaResponderChain(url) {
-                    self.dumpDebug()
-                    // Give the app-switch animation a beat before dismissing
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                        self.extensionContext?.completeRequest(returningItems: nil)
-                    }
-                } else {
-                    self.dumpDebug()
-                    // iOS refused both open paths — the mailbox makes the
-                    // promise real: the app lands on this place at next open.
-                    self.statusLabel.text = "Your place is ready — just open FavCircles and it'll pop right up"
-                    self.saveButton.isHidden = true
-                    self.doneButton.setTitle("OK, got it", for: .normal)
-                    self.doneButton.setTitleColor(Self.brandBlue, for: .normal)
-                    self.doneButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
-                }
-            }
+        _ = openViaResponderChain(url)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.extensionContext?.completeRequest(returningItems: nil)
         }
     }
 
