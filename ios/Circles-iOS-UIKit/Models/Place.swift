@@ -95,6 +95,14 @@ struct Place: Codable, Identifiable {
     let subcategory: String?
     let rating: Double?
     let userRatingsTotal: Int?
+    /// Google service-option flags (venue-owned, overlaid from globalPlaces).
+    /// nil = Google hasn't told us; false = definitively not offered. Used to
+    /// gate partner action chips (Delivery/Reserve) on the detail screen.
+    var delivery: Bool? = nil
+    var dineIn: Bool? = nil
+    var reservable: Bool? = nil
+    var takeout: Bool? = nil
+    var curbsidePickup: Bool? = nil
     /// The saver's own 0–10 score for this place (nil = unrated / "haven't
     /// been yet"). Per-user data on the save record — distinct from `rating`,
     /// which is Google's venue average.
@@ -145,6 +153,7 @@ struct Place: Codable, Identifiable {
         case globalPlaceId
         case name, description, address, location, website, phone, googlePlaceId
         case photos, videos, category, customCategoryId, subcategory, rating, userRatingsTotal, userRating, notes, privateNotes, publicNotes, tags, reviews, openingHours
+        case delivery, dineIn, reservable, takeout, curbsidePickup
         case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew, circleName
         case followersCount, isFollowing
         case city, state, stateCode, neighborhood, country, countryCode
@@ -235,6 +244,11 @@ struct Place: Codable, Identifiable {
         self.rating = try container.decodeIfPresent(Double.self, forKey: .rating)
         self.userRatingsTotal = try container.decodeIfPresent(Int.self, forKey: .userRatingsTotal)
         self.userRating = try container.decodeIfPresent(Int.self, forKey: .userRating)
+        self.delivery = try? container.decodeIfPresent(Bool.self, forKey: .delivery)
+        self.dineIn = try? container.decodeIfPresent(Bool.self, forKey: .dineIn)
+        self.reservable = try? container.decodeIfPresent(Bool.self, forKey: .reservable)
+        self.takeout = try? container.decodeIfPresent(Bool.self, forKey: .takeout)
+        self.curbsidePickup = try? container.decodeIfPresent(Bool.self, forKey: .curbsidePickup)
         self.notes = try container.decodeIfPresent(String.self, forKey: .notes)
         self.privateNotes = try container.decodeIfPresent(String.self, forKey: .privateNotes)
         self.publicNotes = try container.decodeIfPresent(String.self, forKey: .publicNotes)

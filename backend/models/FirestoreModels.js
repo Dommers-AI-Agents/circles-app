@@ -241,6 +241,13 @@ const createPlace = (placeData, circleId, addedBy) => {
     googlePrimaryType: placeData.googlePrimaryType || null,
     rating: placeData.rating || null,
     userRatingsTotal: placeData.userRatingsTotal || null,
+    // Google Atmosphere service options (?? — false is a real value); venue
+    // fields, stripped to the canonical record once the global link exists
+    delivery: placeData.delivery ?? null,
+    dineIn: placeData.dineIn ?? null,
+    reservable: placeData.reservable ?? null,
+    takeout: placeData.takeout ?? null,
+    curbsidePickup: placeData.curbsidePickup ?? null,
     notes: placeData.notes || null, // Legacy field - kept for backward compatibility
     // publicNotes REMOVED (2026-07-30): a shared opinion about a venue is a
     // comment (placeComments, keyed by globalPlaceId, visible to anyone who

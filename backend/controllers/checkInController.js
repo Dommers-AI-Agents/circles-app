@@ -116,9 +116,11 @@ async function enrichPlaceWithGoogleData(placeName, location) {
       params: {
         place_id: placeId,
         fields: ['name', 'formatted_address', 'photos', 'types', 'rating', 'user_ratings_total', 'price_level', 'website', 'formatted_phone_number', 'opening_hours',
-                 // editorial_summary rides the Atmosphere SKU this call
-                 // already bills for rating/price_level — no incremental cost
-                 'editorial_summary'],
+                 // editorial_summary + the service-option booleans ride the
+                 // Atmosphere SKU this call already bills for
+                 // rating/price_level — no incremental cost
+                 'editorial_summary',
+                 'delivery', 'dine_in', 'reservable', 'takeout', 'curbside_pickup'],
         // Pin to English so weekday_text day names match the dayIndex map below
         language: 'en',
         key: googleMapsApiKey
@@ -162,6 +164,12 @@ async function enrichPlaceWithGoogleData(placeName, location) {
       website: placeDetails.website || null,
       phoneNumber: placeDetails.formatted_phone_number || null,
       description: placeDetails.editorial_summary?.overview || null,
+      // ?? not || — false is a real answer ("does not deliver"), null = unknown
+      delivery: placeDetails.delivery ?? null,
+      dineIn: placeDetails.dine_in ?? null,
+      reservable: placeDetails.reservable ?? null,
+      takeout: placeDetails.takeout ?? null,
+      curbsidePickup: placeDetails.curbside_pickup ?? null,
       // Convert Google's weekday_text strings to { day, hours } objects -
       // the iOS OpeningHour model requires an integer `day` and fails to
       // decode plain strings (which breaks any response containing the place)
@@ -420,6 +428,11 @@ exports.createCheckIn = async (req, res) => {
               website: googleData.website || null,
               phoneNumber: googleData.phoneNumber || null,
               openingHours: googleData.openingHours || null,
+              delivery: googleData.delivery ?? null,
+              dineIn: googleData.dineIn ?? null,
+              reservable: googleData.reservable ?? null,
+              takeout: googleData.takeout ?? null,
+              curbsidePickup: googleData.curbsidePickup ?? null,
               addedViaCheckIn: true
             };
             

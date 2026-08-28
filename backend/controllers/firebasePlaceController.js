@@ -68,7 +68,11 @@ const overlayVenuePhotos = (place, venueData) => {
 // Venue data owned by the canonical globalPlaces record. Top-level fields map
 // 1:1; rating/hours/contact fields live nested under googleData on the record.
 const VENUE_TOP_FIELDS = ['name', 'address', 'location', 'category', 'subcategory', 'description'];
-const VENUE_GOOGLE_FIELDS = ['rating', 'userRatingsTotal', 'priceLevel', 'openingHours', 'website', 'phone'];
+// delivery/dineIn/reservable/takeout/curbsidePickup are Google Atmosphere
+// booleans (may be null = unknown) powering partner-action chip eligibility;
+// they ride Details calls that already bill Atmosphere for rating/price_level
+const VENUE_GOOGLE_FIELDS = ['rating', 'userRatingsTotal', 'priceLevel', 'openingHours', 'website', 'phone',
+                             'delivery', 'dineIn', 'reservable', 'takeout', 'curbsidePickup'];
 
 // Merge canonical venue fields over a save doc's (possibly stale) copies.
 // Per-user fields (notes, tags, privacy, photos, ...) are untouched.
@@ -157,7 +161,9 @@ const anchorVenueFieldsToSource = async (placeData) => {
             // bills for rating/price_level — no incremental API cost
             fields: ['name', 'formatted_address', 'geometry', 'website',
                      'formatted_phone_number', 'rating', 'user_ratings_total', 'price_level',
-                     'editorial_summary'],
+                     'editorial_summary',
+                     // Atmosphere SKU already billed above — no incremental cost
+                     'delivery', 'dine_in', 'reservable', 'takeout', 'curbside_pickup'],
             key: googleMapsApiKey
           }
         });
@@ -176,6 +182,12 @@ const anchorVenueFieldsToSource = async (placeData) => {
     placeData.rating = details.rating ?? null;
     placeData.userRatingsTotal = details.user_ratings_total ?? null;
     placeData.priceLevel = details.price_level ?? null;
+    // ?? not || — false is a real answer ("does not deliver"), null = unknown
+    placeData.delivery = details.delivery ?? null;
+    placeData.dineIn = details.dine_in ?? null;
+    placeData.reservable = details.reservable ?? null;
+    placeData.takeout = details.takeout ?? null;
+    placeData.curbsidePickup = details.curbside_pickup ?? null;
     // Google's editorial summary replaces whatever the client synthesized —
     // old app builds still send placeholder text ("A dining establishment in …")
     if (details.editorial_summary?.overview) {
@@ -1158,6 +1170,11 @@ exports.createPlace = async (req, res, next) => {
             placeData.website = googleData.website || placeData.website;
             placeData.phone = googleData.phoneNumber || placeData.phone;
             placeData.openingHours = googleData.openingHours || placeData.openingHours;
+            placeData.delivery = googleData.delivery ?? placeData.delivery;
+            placeData.dineIn = googleData.dineIn ?? placeData.dineIn;
+            placeData.reservable = googleData.reservable ?? placeData.reservable;
+            placeData.takeout = googleData.takeout ?? placeData.takeout;
+            placeData.curbsidePickup = googleData.curbsidePickup ?? placeData.curbsidePickup;
             if (googleData.description) {
               placeData.description = googleData.description;
               placeData.descriptionSource = 'google_editorial';
@@ -1183,6 +1200,11 @@ exports.createPlace = async (req, res, next) => {
                 'googleData.website': googleData.website || null,
                 'googleData.phone': googleData.phoneNumber || null,
                 'googleData.openingHours': googleData.openingHours || null,
+                'googleData.delivery': googleData.delivery ?? null,
+                'googleData.dineIn': googleData.dineIn ?? null,
+                'googleData.reservable': googleData.reservable ?? null,
+                'googleData.takeout': googleData.takeout ?? null,
+                'googleData.curbsidePickup': googleData.curbsidePickup ?? null,
                 updatedAt: new Date().toISOString()
               };
               if (googleData.description && !canonicalData.description) {
@@ -2156,7 +2178,10 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
           const response = await googleMapsClient.placeDetails({
             params: {
               place_id: googlePlaceId,
-              fields: ['name', 'rating', 'user_ratings_total', 'photos', 'formatted_address', 'formatted_phone_number', 'website', 'opening_hours'],
+              // rating/user_ratings_total already bill Atmosphere, so the
+              // service-option booleans below ride the same SKU for free
+              fields: ['name', 'rating', 'user_ratings_total', 'photos', 'formatted_address', 'formatted_phone_number', 'website', 'opening_hours',
+                       'delivery', 'dine_in', 'reservable', 'takeout', 'curbside_pickup'],
               key: googleMapsApiKey
             }
           });
@@ -2196,6 +2221,14 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
       if (googlePlace.user_ratings_total !== undefined) {
         updateData.userRatingsTotal = googlePlace.user_ratings_total;
       }
+
+      // Service-option booleans (partner-chip eligibility); undefined = Google
+      // doesn't know, so leave the stored value alone
+      if (googlePlace.delivery !== undefined) updateData.delivery = googlePlace.delivery;
+      if (googlePlace.dine_in !== undefined) updateData.dineIn = googlePlace.dine_in;
+      if (googlePlace.reservable !== undefined) updateData.reservable = googlePlace.reservable;
+      if (googlePlace.takeout !== undefined) updateData.takeout = googlePlace.takeout;
+      if (googlePlace.curbside_pickup !== undefined) updateData.curbsidePickup = googlePlace.curbside_pickup;
       
       // Update photos if available (always refresh to get latest photos)
       if (googlePlace.photos && googlePlace.photos.length > 0) {

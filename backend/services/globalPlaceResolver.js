@@ -291,7 +291,8 @@ async function createGlobalPlaceFromDetails({ name, address, location, category,
 // category) plus per-user data; these get stripped once the link exists.
 const STRIPPED_VENUE_FIELDS = [
   'likes', 'likesCount', 'website', 'phone', 'rating', 'userRatingsTotal',
-  'openingHours', 'priceLevel', 'subcategory'
+  'openingHours', 'priceLevel', 'subcategory',
+  'delivery', 'dineIn', 'reservable', 'takeout', 'curbsidePickup'
 ];
 
 // Denormalized query-cache fields mirrored from the canonical venue onto each

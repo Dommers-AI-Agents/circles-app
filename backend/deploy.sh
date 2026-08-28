@@ -157,6 +157,19 @@ gcloud run deploy $SERVICE_NAME \
     --port=8080 \
     --quiet
 
+# gcloud can crash (WaitException) or fail while the script would otherwise
+# barrel on to print "Deployment complete" over an unchanged service — this
+# happened 3× on 2026-08-28 when the us-central1 Cloud Build pool wedged
+# (builds stuck QUEUED for an hour). Fail loudly instead.
+if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ gcloud run deploy FAILED — the service is still running the previous revision.${NC}"
+    echo -e "${RED}   Check 'gcloud builds list --region=$REGION' for stuck QUEUED builds; a fallback that${NC}"
+    echo -e "${RED}   works when the regional pool is wedged:${NC}"
+    echo -e "${RED}   gcloud builds submit . --tag gcr.io/$PROJECT_ID/$SERVICE_NAME:manual && \\${NC}"
+    echo -e "${RED}   gcloud run deploy $SERVICE_NAME --image gcr.io/$PROJECT_ID/$SERVICE_NAME:manual --region $REGION --project $PROJECT_ID --quiet${NC}"
+    exit 1
+fi
+
 # Get the service URL
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
     --platform managed \

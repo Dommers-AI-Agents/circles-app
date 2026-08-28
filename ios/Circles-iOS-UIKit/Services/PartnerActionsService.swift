@@ -15,8 +15,8 @@ class PartnerActionsService {
     private let apiService = APIService.shared
     private let userDefaults = UserDefaults.standard
 
-    private let kCatalogCache = "partner_actions_catalog_v1"
-    private let kCatalogCachedAt = "partner_actions_catalog_cached_at_v1"
+    private let kCatalogCache = "partner_actions_catalog_v2"
+    private let kCatalogCachedAt = "partner_actions_catalog_cached_at_v2"
     private let cacheTTL: TimeInterval = 6 * 60 * 60
 
     private var sessionCatalog: PartnerActionCatalog?
@@ -88,9 +88,33 @@ class PartnerActionsService {
         let eligible = catalog.groups.filter { group in
             group.categories.contains("*") || group.categories.contains(category)
         }.filter { group in
+            venueFlagsAllow(group, for: place)
+        }.filter { group in
             group.providers.contains { renderedURL(template: $0.webUrlTemplate, place: place) != nil }
         }
         return Array(eligible.sorted { $0.order < $1.order }.prefix(3))
+    }
+
+    /// Google service-option gate: hide the group only when EVERY listed flag
+    /// is known-false for this place ("definitively doesn't deliver"). Any
+    /// true flag, or any unknown (nil) flag, keeps the group visible — most
+    /// places won't carry the flags until their Google data refreshes, and
+    /// the chip must not vanish on missing data.
+    private func venueFlagsAllow(_ group: PartnerActionGroup, for place: Place) -> Bool {
+        guard let flags = group.venueFlags, !flags.isEmpty else { return true }
+        let values = flags.map { venueFlagValue($0, on: place) }
+        return !values.allSatisfy { $0 == false }
+    }
+
+    private func venueFlagValue(_ flag: String, on place: Place) -> Bool? {
+        switch flag {
+        case "delivery": return place.delivery
+        case "dineIn": return place.dineIn
+        case "reservable": return place.reservable
+        case "takeout": return place.takeout
+        case "curbsidePickup": return place.curbsidePickup
+        default: return nil   // unknown flag name from a future catalog → no-op
+        }
     }
 
     /// Providers within a group whose web URL renders for this place.

@@ -95,6 +95,13 @@ const createGlobalPlace = (placeData) => {
       openingHours: placeData.openingHours || null,
       website: placeData.website || null,
       phone: placeData.phone || null,
+      // Service-option booleans (?? — false is a real value, null = unknown);
+      // power partner-action chip eligibility on the place detail screen
+      delivery: placeData.delivery ?? null,
+      dineIn: placeData.dineIn ?? null,
+      reservable: placeData.reservable ?? null,
+      takeout: placeData.takeout ?? null,
+      curbsidePickup: placeData.curbsidePickup ?? null,
       lastRefreshedAt: placeData.lastRefreshedAt || null
     },
     

@@ -43,10 +43,15 @@ struct PartnerActionGroup: Codable {
     let sheetTitle: String
     /// PlaceCategory raw values this group applies to, or ["*"] for all
     let categories: [String]
+    /// Optional Google service-option gate (e.g. ["delivery","takeout"]) —
+    /// the group hides when the place's flags are ALL known-false; any true
+    /// or unknown flag keeps it visible (most places lack the flags until
+    /// their Google data is refreshed).
+    let venueFlags: [String]?
     let order: Int
     let providers: [PartnerActionProvider]
 
-    enum CodingKeys: String, CodingKey { case id, title, icon, sheetTitle, categories, order, providers }
+    enum CodingKeys: String, CodingKey { case id, title, icon, sheetTitle, categories, venueFlags, order, providers }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -55,6 +60,7 @@ struct PartnerActionGroup: Codable {
         icon = (try? container.decode(String.self, forKey: .icon)) ?? "arrow.up.right.square"
         sheetTitle = (try? container.decode(String.self, forKey: .sheetTitle)) ?? title
         categories = (try? container.decode([String].self, forKey: .categories)) ?? ["*"]
+        venueFlags = try? container.decodeIfPresent([String].self, forKey: .venueFlags)
         order = (try? container.decode(Int.self, forKey: .order)) ?? 999
         var providersContainer = try container.nestedUnkeyedContainer(forKey: .providers)
         var decoded: [PartnerActionProvider] = []

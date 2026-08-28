@@ -60,7 +60,7 @@ async function getCatalog() {
         .map(sanitizeProvider)
         .filter(Boolean);
       if (providers.length === 0) return;
-      groups.push({
+      const group = {
         id: doc.id,
         title: String(d.title || doc.id),
         icon: String(d.icon || 'arrow.up.right.square'),
@@ -68,7 +68,12 @@ async function getCatalog() {
         categories: Array.isArray(d.categories) && d.categories.length ? d.categories.map(String) : ['*'],
         order: typeof d.order === 'number' ? d.order : 999,
         providers
-      });
+      };
+      // Optional Google service-option gate: hide the group when the place's
+      // flags are ALL known-false (any true, or unknown, still shows — most
+      // places haven't been refreshed since the flags were added)
+      if (Array.isArray(d.venueFlags) && d.venueFlags.length) group.venueFlags = d.venueFlags.map(String);
+      groups.push(group);
       if (d.updatedAt && (!latest || d.updatedAt > latest)) latest = d.updatedAt;
     });
     groups.sort((a, b) => a.order - b.order);

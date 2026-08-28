@@ -28,6 +28,9 @@ const GROUPS = [
     icon: 'takeoutbag.and.cup.and.straw.fill',
     sheetTitle: 'Order delivery with…',
     categories: ['restaurant', 'cafe', 'bar'],
+    // Hide when Google definitively says the place neither delivers nor does
+    // takeout; unknown flags (un-refreshed places) keep the chip visible
+    venueFlags: ['delivery', 'takeout'],
     order: 10,
     enabled: true,
     providers: [
@@ -51,6 +54,7 @@ const GROUPS = [
     icon: 'fork.knife',
     sheetTitle: 'Book a table with…',
     categories: ['restaurant'],
+    venueFlags: ['reservable'],
     order: 20,
     enabled: true,
     providers: [
