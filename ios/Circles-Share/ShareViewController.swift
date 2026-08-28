@@ -276,9 +276,12 @@ final class ShareViewController: UIViewController {
         guard let url = URL(string: cleanedString) else { completion(urlString, nil, nil); return }
         var request = URLRequest(url: url, timeoutInterval: 8)
         request.httpMethod = "GET"
-        request.setValue(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
-            forHTTPHeaderField: "User-Agent")
+        // Deliberately NOT a browser UA: Google's redirector serves real
+        // browsers (Safari/WebKit UAs) a 200 JS interstitial with no target
+        // URL in it, but 302s every plain client straight to the full place
+        // URL (q=<name, address> + ftid=<feature id>). Verified with curl
+        // against a live share link, 2026-08-27.
+        request.setValue("FavCircles/1.2.7 CFNetwork Darwin", forHTTPHeaderField: "User-Agent")
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             let finalURL = response?.url?.absoluteString ?? cleanedString
