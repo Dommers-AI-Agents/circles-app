@@ -26,16 +26,51 @@ def dur(path):
 
 raw_total = dur(f"{OUT}/walk_raw.mp4")
 
-# ---- auto-cut static "Saving..." stretches (server latency varies) ----
-# Video-time marks; cut the middle of save->done gaps beyond 4s, keeping a
-# beat after the tap and the success reveal before Done.
+# ---- auto-cut ALL dead space ----
+# Dead = no narration playing AND not within the protected window around an
+# action mark. Every such stretch is excised, so pacing is tight no matter
+# how slow the network or OCR retries were on a given take.
 vt = {k: v + LEAD for k, v in marks.items()}
-cuts = []
-for a, b in [("save-a", "done-a"), ("save-b", "done-b")]:
-    if a in vt and b in vt and (vt[b] - vt[a]) > 4.0:
-        s, e = vt[a] + 1.1, vt[b] - 2.4
-        if e - s > 0.4:
-            cuts.append((s, e))
+
+beats_pre = ["b00","b01","b02","b03","b04","b05","b06","b07","b08"]
+pre_sched, pe = [], 0.0
+for b in beats_pre:
+    d = dur(f"{DIR}/beats/{b}.mp3")
+    s = max(vt[f"audio-{b}"], pe + 0.25)
+    pre_sched.append((s, s + d))
+    pe = s + d
+
+# Per-mark protection (pre, post) seconds — how much surrounding video an
+# action needs to read on screen.
+PROTECT = {
+    "flourish-up": (0.2, 1.7), "flourish-down": (0.2, 1.7),
+    "maps-open": (0.3, 2.2), "app-launch": (0.3, 2.8),
+    "done-a": (2.3, 1.0), "done-b": (2.3, 1.0),
+    "end": (2.6, 0.0),
+}
+DEFAULT_PROTECT = (0.35, 1.2)
+protected = []
+for name, t in vt.items():
+    if name.startswith("audio-"): continue
+    pre, post = PROTECT.get(name, DEFAULT_PROTECT)
+    protected.append((t - pre, t + post))
+
+busy = sorted(pre_sched + protected)
+merged = []
+for s, e in busy:
+    if merged and s <= merged[-1][1] + 0.05:
+        merged[-1][1] = max(merged[-1][1], e)
+    else:
+        merged.append([s, e])
+
+cuts, pos = [], 0.0
+for s, e in merged:
+    if s - pos > 0.6:
+        cuts.append((pos + 0.1, s - 0.1))
+    pos = max(pos, e)
+if raw_total - pos > 0.8:
+    cuts.append((pos + 0.1, raw_total - 0.3))
+cuts = [(s, e) for s, e in cuts if e - s > 0.4 and s > 0.2]
 cuts.sort()
 
 def shift(t):
@@ -58,7 +93,7 @@ if cuts:
         "-c:v","libx264","-preset","medium","-crf","18","-pix_fmt","yuv420p",
         f"{OUT}/walk_cut.mp4"], check=True)
     src = f"{OUT}/walk_cut.mp4"
-    print(f"cut {sum(e-s for s,e in cuts):.1f}s of Saving... dead time ({len(cuts)} cuts)")
+    print(f"cut {sum(e-s for s,e in cuts):.1f}s of dead time ({len(cuts)} cuts)")
 else:
     src = f"{OUT}/walk_raw.mp4"
 
