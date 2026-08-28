@@ -13,6 +13,8 @@ struct GlobalPlace: Codable, Identifiable {
     let location: GeoLocation?
     let category: PlaceCategory
     let subcategory: String?
+    /// Venue description (Google editorial summary or owner-authored)
+    let description: String?
     
     // Unified media with attribution
     let photos: [AttributedPhoto]?
@@ -44,6 +46,7 @@ struct GlobalPlace: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case googlePlaceId, deduplicationKey, legacyPlaceIds, name, address, location, category, subcategory
+        case description
         case photos, videos, coverPhotoUrl, publicReviews, userContributions, googleData
         case totalCircleReferences, totalUserReferences, lastActivityAt
         case dataCompleteness, qualityScore
@@ -345,8 +348,9 @@ extension GlobalPlace {
         // Use private notes from relation if available, fallback to public review
         let privateNotes = relation?.privateNotes
         
-        // Map description from first public review text
-        let description = publicReviews?.first?.text
+        // The venue's own description leads; first public review is the
+        // legacy fallback for venues without one
+        let description = self.description ?? publicReviews?.first?.text
         
         // Debug logging to track conversion process
         Logger.debug("🔍 [GlobalPlace.toLegacyPlace] Converting GlobalPlace ID: \(id)")

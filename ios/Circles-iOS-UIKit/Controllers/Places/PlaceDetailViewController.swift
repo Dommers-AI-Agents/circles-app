@@ -1978,6 +1978,12 @@ class PlaceDetailViewController: BaseViewController {
             DispatchQueue.main.async {
                 guard let self = self, case .success(let updatedPlace) = result else { return }
                 self.place = updatedPlace
+                // Full re-render: the About card (description/hours/rating)
+                // was drawn from the stale list copy — venue enrichment that
+                // landed since (e.g. a share-extension save) must show without
+                // reopening the screen. updateMediaCarousel() runs after so
+                // configureDefaultImage() can't clobber loaded photos.
+                self.configureUI()
                 self.updateMediaCarousel()
                 // Likes/comments are global per place, so the server-refreshed
                 // copy can carry social state the stale list copy didn't have
