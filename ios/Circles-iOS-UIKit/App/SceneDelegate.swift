@@ -266,9 +266,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
 
         // "View in FavCircles" tapped in the share extension: go straight to
-        // the place they just saved
+        // the place they just saved. On a cold launch the root tab bar may
+        // not be installed yet — retry briefly instead of silently deferring
+        // to the next launch.
         if AuthService.shared.isLoggedIn, let placeId = PendingOpenPlaceMailbox.take() {
-            navigateToPlace(placeId: placeId)
+            navigateToPlaceWhenReady(placeId, attempts: 6)
         }
 
         if OnboardingManager.shared.isFirstSessionFlowActive {
@@ -1718,6 +1720,23 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         WidgetSnapshotService.shared.refresh()
     }
     
+    /// Cold-launch navigation: the pending-open place can only be pushed once
+    /// the tab bar is the root. Poll briefly; if the UI never settles, stash
+    /// the standard pendingDeepLink so the next launch lands it.
+    private func navigateToPlaceWhenReady(_ placeId: String, attempts: Int) {
+        if window?.rootViewController is CirclesTabBarController {
+            navigateToPlace(placeId: placeId)
+            return
+        }
+        guard attempts > 0 else {
+            UserDefaults.standard.set("place:\(placeId)", forKey: "pendingDeepLink")
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            self?.navigateToPlaceWhenReady(placeId, attempts: attempts - 1)
+        }
+    }
+
     /// Paywall entry for the share extension's upgrade path — server-enforced
     /// place limit, .placeLimit copy.
     private func presentUpgradePaywall() {

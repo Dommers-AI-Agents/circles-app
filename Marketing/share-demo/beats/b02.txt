@@ -1,1 +1,1 @@
-It grabs the name, photo and details automatically. Pick a circle — and Save.
+Pick a circle, and Save. That's it.

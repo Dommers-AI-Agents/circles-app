@@ -129,28 +129,37 @@ for i in 1 2 3; do
   sleep 1.8
 done
 ocr_tap "FavCircles" "pick-favcircles" 8
-sleep 3.6                                          # card resolves
+sleep 3.4                                          # card resolves
 rel 0 "audio-b02"
-sleep 2.6
+sleep 2.2
 tap_save_below "Charlotte NC" "save-a" 12
-sleep 3.2
-rel 0.4 "audio-b03"
-rel 0.9 "dwell-success"
+sleep 3.2                                          # success card (visual only)
+rel 1.0 "dwell-success"
 ocr_tap "Done" "done-a" 10
 sleep 0.6
 
 # ============ Segment 2: FavCircles place view + partner chips ============
-rel 0 "audio-b04"
+rel 0 "audio-b03"
 xcrun simctl launch $UDID com.favcircles.circles >/dev/null; mark "app-launch"
 sleep 6.0                                          # auto-navigate to the place
+# Verify the place view actually opened (cold-launch nav can lag); if not,
+# give it a moment more, then relaunch once as a last resort.
+PLACE_OK=0
+for i in $(seq 1 6); do
+  xcrun simctl io $UDID screenshot /tmp/_sd_ocr.png >/dev/null 2>&1
+  R=$("$TOOLS/ocrfind" /tmp/_sd_ocr.png "Added by")
+  if [ "$R" != "NOTFOUND" ] && [ "$R" != "ERR" ]; then PLACE_OK=1; break; fi
+  sleep 1.0
+done
+if [ "$PLACE_OK" != "1" ]; then die "place-view-never-opened"; fi
 "$TOOLS/drag.sh" 220 700 220 545 500; mark "chips-scroll"
-rel 0.3 "audio-b05"
-sleep 6.2                                          # dwell on DoorDash/Reserve/Ride chips
+rel 0.3 "audio-b04"
+sleep 8.0    # dwell until the chips line has FULLY landed before leaving
 
 # ============ Segment 3: home map finale ============
 ocr_tap "Home" "back-to-home" 8                    # Home tab pops to the map
-sleep 1.8
-rel 0 "audio-b06"
+sleep 1.6
+rel 0 "audio-b05"
 sleep 5.6
 mark "end"
 

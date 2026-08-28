@@ -26,7 +26,13 @@ def dur(path):
     return float(subprocess.check_output(
         ["ffprobe","-v","quiet","-show_entries","format=duration","-of","csv=p=0",path]).strip())
 
-raw_total = dur(f"{OUT}/walk_raw.mp4")
+# simctl recordVideo is VFR (frames only on screen change) — static holds
+# collapse when trimmed, desyncing picture from the mark-based audio
+# schedule. Normalize to CFR 30 first; all timing math runs on the result.
+subprocess.run(["ffmpeg","-y","-v","error","-i",f"{OUT}/walk_raw.mp4",
+    "-vf","fps=30","-c:v","libx264","-preset","fast","-crf","18",
+    "-pix_fmt","yuv420p", f"{OUT}/walk_norm.mp4"], check=True)
+raw_total = dur(f"{OUT}/walk_norm.mp4")
 
 # ---- auto-cut ALL dead space ----
 # Dead = no narration playing AND not within the protected window around an
@@ -48,6 +54,7 @@ PROTECT = {
     "flourish-up": (0.2, 1.7), "flourish-down": (0.2, 1.7),
     "maps-open": (0.3, 2.2), "app-launch": (0.3, 2.8),
     "done-a": (2.3, 1.0), "done-b": (2.3, 1.0),
+    "back-to-home": (1.9, 1.2),
     "end": (2.6, 0.0),
 }
 DEFAULT_PROTECT = (0.35, 1.2)
@@ -90,17 +97,20 @@ if cuts:
     for i, (s, e) in enumerate(segs):
         fc.append(f"[0:v]trim={s:.2f}:{e:.2f},setpts=PTS-STARTPTS[s{i}]")
     fc.append("".join(f"[s{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=0[vcut]")
-    subprocess.run(["ffmpeg","-y","-v","error","-i",f"{OUT}/walk_raw.mp4",
+    subprocess.run(["ffmpeg","-y","-v","error","-i",f"{OUT}/walk_norm.mp4",
         "-filter_complex",";".join(fc),"-map","[vcut]",
         "-c:v","libx264","-preset","medium","-crf","18","-pix_fmt","yuv420p",
         f"{OUT}/walk_cut.mp4"], check=True)
     src = f"{OUT}/walk_cut.mp4"
     print(f"cut {sum(e-s for s,e in cuts):.1f}s of dead time ({len(cuts)} cuts)")
 else:
-    src = f"{OUT}/walk_raw.mp4"
+    src = f"{OUT}/walk_norm.mp4"
 
 vt = {k: shift(v) for k, v in vt.items()}
 total = dur(src)
+print("CUTS:", [(round(s,2), round(e,2)) for s,e in cuts])
+for k, v in sorted(vt.items(), key=lambda x: x[1]):
+    print(f"  shifted {v:6.2f}  {k}")
 
 beats = [k[6:] for k, v in sorted(vt.items(), key=lambda x: x[1]) if k.startswith("audio-")]
 events, prev_end = [], 0.0
