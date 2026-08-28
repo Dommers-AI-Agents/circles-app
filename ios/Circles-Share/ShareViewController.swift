@@ -32,19 +32,16 @@ final class ShareViewController: UIViewController {
     private var debugInfo: [String: Any] = [:]
 
     private func dumpDebug() {
+        // Dev-build-only diagnostic channel (group defaults, pullable from a
+        // Mac via devicectl) — this is how the g_st/interstitial share bugs
+        // were diagnosed. Compiled out of Release: it records user share
+        // content, which has no business persisting in production.
+        #if DEBUG
         NSLog("FavCirclesShare: debug = %@", String(describing: debugInfo))
         guard JSONSerialization.isValidJSONObject(debugInfo),
-              let data = try? JSONSerialization.data(withJSONObject: debugInfo, options: [.prettyPrinted]) else {
-            NSLog("FavCirclesShare: debugInfo not serializable")
-            return
-        }
-        // Belt and braces: the file AND group defaults (Library/Preferences)
-        if let url = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: ExtensionAuthMailbox.appGroupId)?
-            .appendingPathComponent("share-debug.json") {
-            try? data.write(to: url, options: [.atomic])
-        }
+              let data = try? JSONSerialization.data(withJSONObject: debugInfo, options: [.prettyPrinted]) else { return }
         groupDefaults?.set(String(data: data, encoding: .utf8), forKey: "shareExt.debug")
+        #endif
     }
 
     // MARK: UI
@@ -63,18 +60,7 @@ final class ShareViewController: UIViewController {
         view.backgroundColor = UIColor.black.withAlphaComponent(0.35)
         buildCard()
 
-        // TEMP DEBUG: marker + container path, written before anything can
-        // fail — proves the extension launched and whether it can write.
-        let containerPath = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: ExtensionAuthMailbox.appGroupId)?.path
-        NSLog("FavCirclesShare: viewDidLoad, group container = %@", containerPath ?? "NIL")
         debugInfo["launchedAt"] = Date().description
-        debugInfo["containerPath"] = containerPath ?? "NIL"
-        if let markerURL = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: ExtensionAuthMailbox.appGroupId)?
-            .appendingPathComponent("share-launch.txt") {
-            try? Date().description.data(using: .utf8)?.write(to: markerURL, options: [.atomic])
-        }
 
         client = ShareAPIClient.fromMailbox()
         extractSharedItem { [weak self] in
