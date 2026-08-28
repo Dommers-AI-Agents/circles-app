@@ -11,7 +11,9 @@ OUT="$DIR/out"; mkdir -p "$OUT"
 LOG="$OUT/actions.log"; : > "$LOG"
 
 CHARLOTTE_NC_CIRCLE="b8xjuYHHDNnUD4bH8Ijq"
-OD_URL="https://maps.app.goo.gl/7eCjxX6QLhAHQ6JD8"
+# Full Google Maps URL (no redirector): loads Supperland's place panel with
+# its photo flare, and the extension parses name straight from q=
+GMAPS_URL="https://maps.google.com/?q=Supperland,+1212+The+Plaza,+Charlotte,+NC+28205"
 
 read CFOX CFOY CFW CFH < <("$TOOLS/frame.sh")
 export CFOX CFOY CFW CFH
@@ -59,7 +61,7 @@ sleep 1
 # interstitials (two known variants: "Go back to web" and "Stay on web").
 # Verified visible via the place panel's "Office supply store" line before
 # rolling; abort if it never appears.
-xcrun simctl openurl $UDID "$OD_URL"
+xcrun simctl openurl $UDID "$GMAPS_URL"
 sleep 6
 PAGE_READY=0
 for i in $(seq 1 14); do
@@ -67,7 +69,7 @@ for i in $(seq 1 14); do
   pre_dismiss "Go back to web" 1
   pre_dismiss "Continue" 1
   xcrun simctl io $UDID screenshot /tmp/_sd_pre.png >/dev/null 2>&1
-  R=$("$TOOLS/ocrfind" /tmp/_sd_pre.png "Office supply store")
+  R=$("$TOOLS/ocrfind" /tmp/_sd_pre.png "Directions")
   if [ "$R" != "NOTFOUND" ] && [ "$R" != "ERR" ]; then PAGE_READY=1; break; fi
   sleep 1
 done
@@ -146,9 +148,14 @@ ocr_tap() {
 
 # ================= Segment A: Google Maps (Safari) =================
 # Page is already loaded and nag-free from the pre-phase — the video opens on
-# the rendered Google Maps place page while the intro line plays.
+# the rendered Google Maps place page while the intro line plays, with a
+# scroll flourish through the restaurant's photo panel for flare.
 at  0.5  "audio-b00"
-sleep 4.6
+sleep 1.4
+"$TOOLS/drag.sh" 220 720 220 400 600; mark "flourish-up"
+sleep 1.6
+"$TOOLS/drag.sh" 220 430 220 700 600; mark "flourish-down"
+sleep 1.2
 "$TOOLS/tap.sh" 380 895; mark "safari-menu"      # Safari ... menu
 sleep 1.3
 rel 0 "audio-b01"
@@ -167,25 +174,25 @@ ocr_tap "Create" "create-circle" 6
 sleep 2.2                                          # circle created, picker closes
 rel 0 "audio-b04"
 tap_save_below "Date Nights" "save-a" 10
-sleep 4.0                                          # success card (+coins)
-rel 1.2 "dwell-success-a"
+sleep 3.4                                          # success card
+rel 0.8 "dwell-success-a"
 ocr_tap "Done" "done-a" 8
-sleep 1.0
+sleep 0.6
 
-# ================= Segment B: Apple Maps =================
+# ================= Segment B: Apple Maps (quick!) =================
 rel 0 "audio-b05"
-xcrun simctl openurl $UDID "maps://?q=Supperland%20Charlotte"; mark "maps-open"
-sleep 5.5
+xcrun simctl openurl $UDID "maps://?q=The%20Crunkleton%20Charlotte"; mark "maps-open"
+sleep 4.0
 "$TOOLS/tap.sh" 44 568; mark "maps-share"          # place card share button
-sleep 2.0
+sleep 1.6
 ocr_tap "FavCircles" "pick-favcircles-b" 8
-sleep 5.5                                          # card resolves (Date Nights preselected)
+sleep 4.0                                          # card resolves (Date Nights preselected)
 rel 0 "audio-b06"
 tap_save_below "Date Nights" "save-b" 12
-sleep 4.0
-rel 1.0 "dwell-success-b"
+sleep 3.2
+rel 0.5 "dwell-success-b"
 ocr_tap "Done" "done-b" 8
-sleep 0.8
+sleep 0.6
 
 # ================= Segment C: open FavCircles =================
 rel 0 "audio-b07"

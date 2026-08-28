@@ -24,16 +24,55 @@ def dur(path):
     return float(subprocess.check_output(
         ["ffprobe","-v","quiet","-show_entries","format=duration","-of","csv=p=0",path]).strip())
 
+raw_total = dur(f"{OUT}/walk_raw.mp4")
+
+# ---- auto-cut static "Saving..." stretches (server latency varies) ----
+# Video-time marks; cut the middle of save->done gaps beyond 4s, keeping a
+# beat after the tap and the success reveal before Done.
+vt = {k: v + LEAD for k, v in marks.items()}
+cuts = []
+for a, b in [("save-a", "done-a"), ("save-b", "done-b")]:
+    if a in vt and b in vt and (vt[b] - vt[a]) > 4.0:
+        s, e = vt[a] + 1.1, vt[b] - 2.4
+        if e - s > 0.4:
+            cuts.append((s, e))
+cuts.sort()
+
+def shift(t):
+    out = t
+    for s, e in cuts:
+        if t >= e: out -= (e - s)
+        elif t > s: out -= (t - s)
+    return out
+
+if cuts:
+    segs, pos, fc, idx = [], 0.0, [], 0
+    for s, e in cuts:
+        segs.append((pos, s)); pos = e
+    segs.append((pos, raw_total))
+    for i, (s, e) in enumerate(segs):
+        fc.append(f"[0:v]trim={s:.2f}:{e:.2f},setpts=PTS-STARTPTS[s{i}]")
+    fc.append("".join(f"[s{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=0[vcut]")
+    subprocess.run(["ffmpeg","-y","-v","error","-i",f"{OUT}/walk_raw.mp4",
+        "-filter_complex",";".join(fc),"-map","[vcut]",
+        "-c:v","libx264","-preset","medium","-crf","18","-pix_fmt","yuv420p",
+        f"{OUT}/walk_cut.mp4"], check=True)
+    src = f"{OUT}/walk_cut.mp4"
+    print(f"cut {sum(e-s for s,e in cuts):.1f}s of Saving... dead time ({len(cuts)} cuts)")
+else:
+    src = f"{OUT}/walk_raw.mp4"
+
+vt = {k: shift(v) for k, v in vt.items()}
+total = dur(src)
+
 beats = ["b00","b01","b02","b03","b04","b05","b06","b07","b08"]
 events, prev_end = [], 0.0
 for b in beats:
     mp3 = f"{DIR}/beats/{b}.mp3"
     d = dur(mp3)
-    start = max(marks[f"audio-{b}"] + LEAD, prev_end + 0.25)
+    start = max(vt[f"audio-{b}"], prev_end + 0.25)
     events.append((b, mp3, start, d))
     prev_end = start + d
-
-total = dur(f"{OUT}/walk_raw.mp4")
 capdir = f"{OUT}/caps"; os.makedirs(capdir, exist_ok=True)
 
 CAP_CSS = """*{margin:0;padding:0;box-sizing:border-box}
@@ -70,7 +109,7 @@ p{font-size:66px;font-weight:600;margin-top:34px;opacity:.94;text-align:center;l
 outro_png = render("outro", "<h1>FavCircles</h1><p>Save it. Share it.<br>Find it again.</p>", OUTRO_CSS)
 
 # ---- main pass: scale + caption overlays + narration mix ----
-inputs = ["-i", f"{OUT}/walk_raw.mp4"]
+inputs = ["-i", src]
 for _, mp3, _, _ in events: inputs += ["-i", mp3]
 n_audio = len(events)
 for png in cap_pngs: inputs += ["-i", png]
