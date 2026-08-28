@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch FavCircles — See the App in Action</title>
+    <meta name="description" content="Watch FavCircles in action: the 90-second tour, real map walkthroughs with friends' saved places, one-tap imports from Google Maps, and the store-owner guide.">
+    <link rel="canonical" href="https://favcircles.com/watch.html">
+    <link rel="icon" href="/favicon.ico">
+    <meta name="apple-itunes-app" content="app-id=6746807095">
+    <meta property="og:type" content="video.other">
+    <meta property="og:site_name" content="FavCircles">
+    <meta property="og:title" content="Watch FavCircles — See the App in Action">
+    <meta property="og:description" content="Your favorite places, and your friends', on one map. Watch the 90-second tour and real walkthroughs.">
+    <meta property="og:url" content="https://favcircles.com/watch.html">
+    <meta property="og:image" content="https://favcircles.com/videos/user-tour-poster.jpg">
+    <meta property="og:image:width" content="1920">
+    <meta property="og:image:height" content="1080">
+    <meta property="og:video" content="https://favcircles.com/videos/user-tour.mp4">
+    <meta property="og:video:type" content="video/mp4">
+    <meta property="og:video:width" content="1920">
+    <meta property="og:video:height" content="1080">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Watch FavCircles — See the App in Action">
+    <meta name="twitter:description" content="Your favorite places, and your friends', on one map. Free on the App Store.">
+    <meta name="twitter:image" content="https://favcircles.com/videos/user-tour-poster.jpg">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+
+        header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            transition: background 0.25s ease;
+            padding: 1rem 0;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+        }
+        header.scrolled { background: rgba(103, 124, 230, 0.94); }
+
+        nav { display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-size: 1.8rem; font-weight: bold; color: white; text-decoration: none; }
+        .nav-links { display: flex; list-style: none; gap: 1.6rem; }
+        .nav-links a { color: white; text-decoration: none; font-weight: 500; transition: opacity 0.3s; }
+        .nav-links a:hover { opacity: 0.8; }
+        .nav-links a.active { border-bottom: 2px solid rgba(255,255,255,0.85); padding-bottom: 2px; }
+
+        main { margin-top: 120px; }
+
+        .hero { text-align: center; padding: 2.4rem 0 0.6rem 0; color: white; }
+        .hero-icon {
+            width: 76px; height: 76px; border-radius: 18px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+            margin-bottom: 1rem;
+        }
+        .hero h1 { font-size: 2.7rem; margin-bottom: 0.7rem; font-weight: 700; line-height: 1.15; }
+        .hero p { font-size: 1.15rem; margin: 0 auto 1.6rem auto; opacity: 0.92; max-width: 620px; }
+
+        .store-badge {
+            display: inline-flex; align-items: center; gap: 0.9rem;
+            background: #000; color: white; text-decoration: none;
+            padding: 0.9rem 1.6rem; border-radius: 14px;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .store-badge:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3); }
+        .store-badge .icon { font-size: 1.9rem; }
+        .store-badge .label { font-size: 0.75rem; opacity: 0.8; text-align: left; line-height: 1.2; }
+        .store-badge .store { font-size: 1.15rem; font-weight: 600; text-align: left; line-height: 1.2; }
+        .hero-sub { margin-top: 1rem; font-size: 0.95rem; opacity: 0.85; }
+
+        /* Featured player */
+        .band {
+            background: white; border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 2.4rem; margin: 2rem 0;
+        }
+        .band h2 { color: #667eea; font-size: 1.8rem; margin-bottom: 0.5rem; }
+        .band p { margin-bottom: 1rem; color: #444; }
+        .band video, .card video {
+            width: 100%; display: block; border-radius: 14px;
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.25);
+            background: #0E2A47;
+        }
+        .band video { margin: 0.4rem 0 0.9rem 0; }
+        .video-actions { text-align: right; }
+        .duration {
+            display: inline-block; font-size: 0.8rem; font-weight: 700;
+            color: #667eea; background: rgba(102, 126, 234, 0.12);
+            padding: 0.15rem 0.6rem; border-radius: 50px; vertical-align: middle; margin-left: 0.5rem;
+        }
+
+        .share-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; border: none; cursor: pointer;
+            padding: 0.65rem 1.4rem; border-radius: 50px;
+            font-weight: 600; font-size: 0.95rem; font-family: inherit;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .share-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4); }
+
+        /* Demo grid */
+        .section-title { color: white; text-align: center; font-size: 1.9rem; margin: 2.6rem 0 0.4rem 0; }
+        .section-sub { color: white; text-align: center; opacity: 0.9; margin-bottom: 1.4rem; }
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem; margin: 0 0 1rem 0;
+        }
+        .card {
+            background: white; border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem; display: flex; flex-direction: column;
+        }
+        .card video { max-width: 300px; margin: 0 auto 1rem auto; aspect-ratio: 9 / 19.5; }
+        .card.wide-card { grid-column: 1 / -1; }
+        .card video.wide { max-width: 640px; aspect-ratio: 16 / 9; }
+        .card h3 { color: #667eea; font-size: 1.2rem; margin-bottom: 0.4rem; }
+        .card p { color: #444; font-size: 0.97rem; margin-bottom: 1rem; flex: 1; }
+        .card .video-actions { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+        .card .more { color: #667eea; font-weight: 600; text-decoration: none; font-size: 0.95rem; }
+
+        /* Closing CTA */
+        .cta-band { text-align: center; color: white; padding: 2.4rem 0 0.6rem 0; }
+        .cta-band h2 { font-size: 1.9rem; margin-bottom: 0.6rem; }
+        .cta-band p { opacity: 0.92; margin: 0 auto 1.4rem auto; max-width: 560px; }
+
+        footer { background: rgba(0, 0, 0, 0.2); color: white; text-align: center; padding: 2rem 0; margin-top: 4rem; }
+        footer a { color: white; text-decoration: underline; }
+
+        @media (max-width: 768px) {
+            header { position: static; padding: 0.7rem 0; }
+            nav { flex-direction: column; gap: 0.7rem; }
+            .logo { font-size: 1.5rem; }
+            .nav-links { flex-wrap: wrap; justify-content: center; gap: 0.7rem 0.95rem; font-size: 0.9rem; }
+            main { margin-top: 0; }
+            .hero { padding: 1.6rem 0 0.4rem 0; }
+            .hero h1 { font-size: 2.1rem; }
+            .hero p { font-size: 1.05rem; }
+            .band { padding: 1.6rem 1.2rem; }
+            .section-title { font-size: 1.6rem; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <a href="/" class="logo">FavCircles</a>
+            <ul class="nav-links">
+                <li><a href="/">Home</a></li>
+                <li><a href="/watch.html" class="active">Watch</a></li>
+                <li><a href="/faq.html">FAQ</a></li>
+                <li><a href="/store-owners.html">Store&nbsp;Owners</a></li>
+                <li><a href="/rewards.html">Store&nbsp;Rewards</a></li>
+                <li><a href="/cactus.html">Cactus&nbsp;Blockchain</a></li>
+                <li><a href="/support.html">Support</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="container">
+        <section class="hero">
+            <img src="/app-icon.png" alt="FavCircles app icon" class="hero-icon">
+            <h1>See FavCircles in action</h1>
+            <p>Your favorite places — and your friends' — on one map. Here's what it actually looks like.</p>
+            <a href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener" class="store-badge">
+                <span class="icon">&#63743;</span>
+                <span><span class="label">Download free on the</span><br><span class="store">App Store</span></span>
+            </a>
+            <p class="hero-sub">Free. No ads. Android coming soon.</p>
+        </section>
+
+        <div class="band" id="tour">
+            <h2>How it works <span class="duration">90 sec</span></h2>
+            <p>Circles, places, friends, Moments, store points, and FavCoins — the whole app in a minute and a half.</p>
+            <video src="/videos/user-tour.mp4"
+                   poster="/videos/user-tour-poster.jpg"
+                   controls playsinline preload="metadata"></video>
+            <div class="video-actions">
+                <button class="share-btn" type="button"
+                        data-share-title="FavCircles — How it works"
+                        data-share-text="See how FavCircles works in 90 seconds."
+                        data-share-url="https://favcircles.com/watch.html#tour">↗&nbsp; Share this video</button>
+            </div>
+        </div>
+
+        <h2 class="section-title">Real walkthroughs</h2>
+        <p class="section-sub">Recorded in the app, with real people's saved places.</p>
+
+        <div class="cards">
+            <div class="card" id="charlotte">
+                <video src="/videos/charlotte-demo.mp4"
+                       poster="/videos/charlotte-demo-poster.jpg"
+                       controls playsinline preload="metadata"></video>
+                <h3>Uptown Charlotte with friends <span class="duration">1:31</span></h3>
+                <p>Tap a friend's avatar to see their favorites on your map, switch to Everyone, filter by coffee, drinks, or food, and see who saved each spot.</p>
+                <div class="video-actions">
+                    <a class="more" href="/#how">What's a circle? →</a>
+                    <button class="share-btn" type="button"
+                            data-share-title="FavCircles — Charlotte walkthrough"
+                            data-share-text="See your friends' favorite places on your own map. Here's a real walkthrough of FavCircles around uptown Charlotte."
+                            data-share-url="https://favcircles.com/watch.html#charlotte">↗&nbsp; Share</button>
+                </div>
+            </div>
+
+            <div class="card" id="jersey-shore">
+                <video src="/videos/jersey-shore-demo.mp4"
+                       poster="/videos/jersey-shore-demo-poster.jpg"
+                       controls playsinline preload="metadata"></video>
+                <h3>The Jersey Shore, family edition <span class="duration">1:39</span></h3>
+                <p>Coffee, shopping, and the best spots to eat around the Shore — and what happens when a friend hasn't saved anything nearby yet.</p>
+                <div class="video-actions">
+                    <a class="more" href="/#why">Why FavCircles →</a>
+                    <button class="share-btn" type="button"
+                            data-share-title="FavCircles — Jersey Shore walkthrough"
+                            data-share-text="Discover great places through the people you trust. A real FavCircles walkthrough around the Jersey Shore."
+                            data-share-url="https://favcircles.com/watch.html#jersey-shore">↗&nbsp; Share</button>
+                </div>
+            </div>
+
+            <div class="card" id="import">
+                <video src="/videos/import-45s.mp4"
+                       controls playsinline preload="metadata"></video>
+                <h3>Bring your saved places with you <span class="duration">44 sec</span></h3>
+                <p>A real import, start to finish. Your Google Maps, Mapstr, or Swarm places land on your own map in one tap — free.</p>
+                <div class="video-actions">
+                    <a class="more" href="/switch-from-google-maps.html">Import guides →</a>
+                    <button class="share-btn" type="button"
+                            data-share-title="Bring your saved places to FavCircles"
+                            data-share-text="Import your Google Maps, Mapstr, or Swarm places into FavCircles in one tap — free."
+                            data-share-url="https://favcircles.com/watch.html#import">↗&nbsp; Share</button>
+                </div>
+            </div>
+
+            <div class="card wide-card" id="store-owners">
+                <video class="wide" src="/videos/store-owner-tutorial.mp4"
+                       poster="/videos/store-owner-tutorial-poster.jpg"
+                       controls playsinline preload="metadata"></video>
+                <h3>For store owners <span class="duration">3:59</span></h3>
+                <p>Claim your business, run a points-based loyalty program, and reach the customers who already love you — in under five minutes.</p>
+                <div class="video-actions">
+                    <a class="more" href="/store-owners.html">Store owner details →</a>
+                    <button class="share-btn" type="button"
+                            data-share-title="FavCircles for Store Owners — Video Tutorial"
+                            data-share-text="How to claim your store and run loyalty on FavCircles, in 4 minutes."
+                            data-share-url="https://favcircles.com/store-owner-tutorial.html">↗&nbsp; Share</button>
+                </div>
+            </div>
+        </div>
+
+        <section class="cta-band">
+            <h2>Ready to start your map?</h2>
+            <p>Your first place earns you 25 FavCoins. Every great place has a story — remember yours.</p>
+            <a href="https://apps.apple.com/us/app/favcircles/id6746807095" target="_blank" rel="noopener" class="store-badge">
+                <span class="icon">&#63743;</span>
+                <span><span class="label">Download free on the</span><br><span class="store">App Store</span></span>
+            </a>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 FavCircles. All rights reserved.</p>
+            <p><a href="/watch.html">Watch</a> |
+               <a href="/store-owners.html">Store Owners</a> |
+               <a href="/rewards.html">Store Rewards</a> |
+               <a href="/cactus.html">Cactus Blockchain</a> |
+               <a href="/connect-claude.html">Connect to Claude</a></p>
+            <p><a href="/switch-from-google-maps.html">Switch from Google Maps</a> |
+               <a href="/switch-from-mapstr.html">Switch from Mapstr</a> |
+               <a href="/switch-from-swarm.html">Switch from Swarm</a></p>
+            <p><a href="/support.html">Support</a> |
+               <a href="/privacy.html">Privacy Policy</a> |
+               <a href="/terms.html">Terms of Service</a> |
+               <a href="/delete-data.html">Delete Your Data</a></p>
+        </div>
+    </footer>
+
+    <script>
+        (function () {
+            var header = document.querySelector('header');
+            if (header) {
+                function onScroll() { header.classList.toggle('scrolled', window.scrollY > 10); }
+                window.addEventListener('scroll', onScroll, { passive: true });
+                onScroll();
+            }
+
+            // Only one video plays at a time
+            var videos = document.querySelectorAll('video');
+            videos.forEach(function (v) {
+                v.addEventListener('play', function () {
+                    videos.forEach(function (o) { if (o !== v) o.pause(); });
+                });
+            });
+
+            // Deep links (#charlotte etc.) scroll to and highlight the card
+            if (location.hash) {
+                var target = document.querySelector(location.hash);
+                if (target) setTimeout(function () { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 150);
+            }
+
+            document.querySelectorAll('.share-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var data = {
+                        title: btn.getAttribute('data-share-title'),
+                        text: btn.getAttribute('data-share-text'),
+                        url: btn.getAttribute('data-share-url')
+                    };
+                    if (navigator.share) {
+                        navigator.share(data).catch(function () {});
+                    } else if (navigator.clipboard) {
+                        navigator.clipboard.writeText(data.url).then(function () {
+                            var original = btn.textContent;
+                            btn.textContent = '✓ Link copied!';
+                            setTimeout(function () { btn.textContent = original; }, 2000);
+                        });
+                    }
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
