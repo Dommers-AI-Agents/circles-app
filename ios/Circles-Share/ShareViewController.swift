@@ -765,7 +765,9 @@ final class ShareViewController: UIViewController {
                     // the extension can't open the app itself
                     PendingOpenPlaceMailbox.write(placeId: placeId)
                 }
-                self.showSaveSuccess(circleName: circle.name, coins: save.coins)
+                self.showSaveSuccess(circleName: circle.name,
+                                     coins: save.coins,
+                                     alreadySaved: save.alreadySaved)
             case .failure:
                 // Offline or server hiccup: park it, the app finishes later.
                 self.parkPendingShare()
@@ -1058,13 +1060,20 @@ final class ShareViewController: UIViewController {
 
     // MARK: Success state
 
-    private func showSaveSuccess(circleName: String, coins: Double?) {
-        backdropTitleLabel.text = "Added to your FavCircles 🎉"
-        backdropSubtitleLabel.text = "It's in \(circleName) now"
+    private func showSaveSuccess(circleName: String, coins: Double?, alreadySaved: Bool = false) {
+        backdropTitleLabel.text = alreadySaved
+            ? "Already in your FavCircles ✓"
+            : "Added to your FavCircles 🎉"
+        backdropSubtitleLabel.text = alreadySaved
+            ? "Good taste — you saved this one before"
+            : "It's in \(circleName) now"
+        backdropSubtitleLabel.textColor = UIColor.white.withAlphaComponent(0.9)
         circleButton.isHidden = true
         coinHintLabel.isHidden = true
 
-        var status = "✓ Saved to \(circleName)"
+        var status = alreadySaved
+            ? "✓ Already saved in \(circleName)"
+            : "✓ Saved to \(circleName)"
         if let coins = coins, coins > 0 {
             let amount = coins == coins.rounded() ? String(Int(coins)) : String(format: "%.2f", coins)
             status += "\n🪙 +\(amount) FavCoins earned"

@@ -1086,6 +1086,8 @@ exports.createPlace = async (req, res, next) => {
         if (!existingPlace.empty) {
           return res.status(400).json({
             success: false,
+            code: 'DUPLICATE_PLACE',
+            existingPlaceId: existingPlace.docs[0].id,
             message: 'This place already exists in the selected circle'
           });
         }
@@ -1097,10 +1099,12 @@ exports.createPlace = async (req, res, next) => {
           .where('address', '==', address)
           .where('deletedAt', '==', null)
           .get();
-          
+
         if (!existingPlace.empty) {
           return res.status(400).json({
             success: false,
+            code: 'DUPLICATE_PLACE',
+            existingPlaceId: existingPlace.docs[0].id,
             message: 'This place already exists in the selected circle'
           });
         }
@@ -1201,6 +1205,26 @@ exports.createPlace = async (req, res, next) => {
         }
       } catch (enrichError) {
         console.warn('⚠️ Share-save enrichment failed (continuing bare):', enrichError.message);
+      }
+    }
+
+    // Second duplicate gate, post-enrichment: a share-extension save arrives
+    // without googlePlaceId, so the name+address check above misses the same
+    // venue saved earlier under a differently-formatted address. Now that
+    // enrichment resolved the venue identity, re-check the circle by it.
+    if (!force && !googlePlaceId && placeData.googlePlaceId) {
+      const dupSnap = await db.collection(COLLECTIONS.PLACES)
+        .where('circleId', '==', circleId)
+        .where('googlePlaceId', '==', placeData.googlePlaceId)
+        .where('deletedAt', '==', null)
+        .get();
+      if (!dupSnap.empty) {
+        return res.status(400).json({
+          success: false,
+          code: 'DUPLICATE_PLACE',
+          existingPlaceId: dupSnap.docs[0].id,
+          message: 'This place already exists in the selected circle'
+        });
       }
     }
 

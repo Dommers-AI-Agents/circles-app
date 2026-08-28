@@ -85,6 +85,10 @@ struct ShareAPIClient {
     struct SaveResult {
         let placeId: String?
         let coins: Double?
+        /// True when the venue was already in the chosen circle — the server's
+        /// post-enrichment duplicate gate caught it; placeId is the EXISTING
+        /// save, so "View in FavCircles" still works.
+        let alreadySaved: Bool
     }
 
     /// POST /places — the normal create path, so globalPlaceId stamping and
@@ -131,7 +135,14 @@ struct ShareAPIClient {
                         placeId = (place["_id"] as? String) ?? (place["id"] as? String)
                     }
                 }
-                result = .success(SaveResult(placeId: placeId, coins: coins))
+                result = .success(SaveResult(placeId: placeId, coins: coins, alreadySaved: false))
+            } else if let data = data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      json["code"] as? String == "DUPLICATE_PLACE" {
+                // Not a failure — the place is already in that circle
+                result = .success(SaveResult(placeId: json["existingPlaceId"] as? String,
+                                             coins: nil,
+                                             alreadySaved: true))
             } else {
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 result = .failure(NSError(
