@@ -224,16 +224,12 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
     
     // Only create activity record for non-private circles
     if (circlePrivacy !== 'private') {
-      // Create activity record in the activities collection
+      // Create activity record in the activities collection. Thumbnail via
+      // resolvePlacePhoto: a canonical-matched save (share extension, adopt)
+      // carries no photos of its own — the venue's canonical record does.
       const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
-      let placePhoto = null;
-      let placeAddress = null;
-      
-      if (placeDoc.exists) {
-        const placeData = placeDoc.data();
-        placePhoto = placeData.photos && placeData.photos.length > 0 ? placeData.photos[0] : null;
-        placeAddress = placeData.address || null;
-      }
+      const placePhoto = await resolvePlacePhoto(placeId);
+      const placeAddress = placeDoc.exists ? (placeDoc.data().address || null) : null;
       
       await createActivity(
         'place_added',
