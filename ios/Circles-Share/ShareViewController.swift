@@ -437,9 +437,13 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    /// Google's redirector occasionally serves a transient "Dynamic Link Not
-    /// Found" shell instead of the 302 (seen in the field; the immediate
-    /// retry succeeded). One retry when the fetch yielded nothing usable.
+    /// Google mints the share link at the moment the user taps share, and the
+    /// redirector can lag behind it — the first hit lands on a "Dynamic Link
+    /// Not Found" shell that resolves fine seconds later (field-confirmed:
+    /// the user's manual second attempt succeeded). Retry with backoff while
+    /// the spinner shows: 0.8s, then 2s.
+    private static let fetchRetryDelays: [TimeInterval] = [0.8, 2.0]
+
     private func resolvePageWithRetry(_ urlString: String,
                                       attempt: Int = 0,
                                       completion: @escaping (String, String?, CLLocationCoordinate2D?) -> Void) {
@@ -447,10 +451,10 @@ final class ShareViewController: UIViewController {
             guard let self = self else { return }
             let gotNothing = Self.placeHints(from: finalURL).isEmpty
                 && pageName == nil && pageCoordinate == nil
-            if gotNothing && attempt == 0 {
-                self.debugInfo["retriedFetch"] = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                    self.resolvePageWithRetry(urlString, attempt: 1, completion: completion)
+            if gotNothing && attempt < Self.fetchRetryDelays.count {
+                self.debugInfo["fetchRetries"] = attempt + 1
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.fetchRetryDelays[attempt]) {
+                    self.resolvePageWithRetry(urlString, attempt: attempt + 1, completion: completion)
                 }
             } else {
                 completion(finalURL, pageName, pageCoordinate)
