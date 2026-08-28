@@ -132,12 +132,12 @@ final class ShareViewController: UIViewController {
         view.addSubview(backdropSubtitleLabel)
 
         NSLayoutConstraint.activate([
-            backdropSubtitleLabel.bottomAnchor.constraint(equalTo: card.topAnchor, constant: -22),
-            backdropSubtitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            backdropSubtitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
-            backdropTitleLabel.bottomAnchor.constraint(equalTo: backdropSubtitleLabel.topAnchor, constant: -8),
+            backdropTitleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 44),
             backdropTitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            backdropTitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32)
+            backdropTitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+            backdropSubtitleLabel.topAnchor.constraint(equalTo: backdropTitleLabel.bottomAnchor, constant: 10),
+            backdropSubtitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
+            backdropSubtitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32)
         ])
 
         debugInfo["launchedAt"] = Date().description
@@ -268,10 +268,14 @@ final class ShareViewController: UIViewController {
                     hints.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lng)
                 }
             }
-            // ?q=Office+Depot (when it isn't a bare coordinate pair)
+            // ?q=Office+Depot (when it isn't a bare coordinate pair, and not
+            // an address — some venues' redirects put ONLY the street address
+            // in q, e.g. "500 Queens Rd, Charlotte"; a leading street number
+            // means it's not a name)
             if hints.name == nil,
                let q = URLComponents(string: urlString)?.queryItems?.first(where: { $0.name == "q" })?.value,
-               !q.isEmpty, Double(q.components(separatedBy: ",").first ?? "") == nil {
+               !q.isEmpty, Double(q.components(separatedBy: ",").first ?? "") == nil,
+               q.range(of: #"^\s*\d+\s"#, options: .regularExpression) == nil {
                 hints.name = q.replacingOccurrences(of: "+", with: " ")
             }
             return hints
@@ -364,9 +368,9 @@ final class ShareViewController: UIViewController {
                         .components(separatedBy: " - Google Maps").first?
                         .components(separatedBy: " · ").first?
                         .trimmingCharacters(in: .whitespacesAndNewlines)
+                    let junkTitles = ["google maps", "apple maps", "dynamic link", "not found", "error"]
                     if let cleaned = cleaned, !cleaned.isEmpty,
-                       !cleaned.lowercased().contains("google maps"),
-                       !cleaned.lowercased().contains("apple maps") {
+                       !junkTitles.contains(where: { cleaned.lowercased().contains($0) }) {
                         pageName = cleaned
                     }
                 }
@@ -404,7 +408,7 @@ final class ShareViewController: UIViewController {
         }
         seedName = seedName
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "!·-–:"))
+            .trimmingCharacters(in: CharacterSet(charactersIn: "!·-–:…."))
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         nameLabel.text = seedName.isEmpty ? "Locating…" : seedName
@@ -418,7 +422,7 @@ final class ShareViewController: UIViewController {
         if hints.coordinate == nil, let urlString = sharedURL, URL(string: urlString) != nil {
             // Nothing useful in the URL as shared — follow its redirect and
             // mine the landing page (short links from both Maps apps).
-            resolvePlacePage(urlString) { [weak self] finalURL, pageName, pageCoordinate in
+            resolvePageWithRetry(urlString) { [weak self] finalURL, pageName, pageCoordinate in
                 guard let self = self else { return }
                 let resolved = Self.placeHints(from: finalURL)
                 self.debugInfo["finalURL"] = finalURL
@@ -433,9 +437,33 @@ final class ShareViewController: UIViewController {
         }
     }
 
+    /// Google's redirector occasionally serves a transient "Dynamic Link Not
+    /// Found" shell instead of the 302 (seen in the field; the immediate
+    /// retry succeeded). One retry when the fetch yielded nothing usable.
+    private func resolvePageWithRetry(_ urlString: String,
+                                      attempt: Int = 0,
+                                      completion: @escaping (String, String?, CLLocationCoordinate2D?) -> Void) {
+        resolvePlacePage(urlString) { [weak self] finalURL, pageName, pageCoordinate in
+            guard let self = self else { return }
+            let gotNothing = Self.placeHints(from: finalURL).isEmpty
+                && pageName == nil && pageCoordinate == nil
+            if gotNothing && attempt == 0 {
+                self.debugInfo["retriedFetch"] = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                    self.resolvePageWithRetry(urlString, attempt: 1, completion: completion)
+                }
+            } else {
+                completion(finalURL, pageName, pageCoordinate)
+            }
+        }
+    }
+
     private func continueResolution(seedName: String, name: String?, coordinate: CLLocationCoordinate2D?) {
-        // A name mined from the URL/page beats a share-sheet title fragment
-        let seedName = (name?.isEmpty == false ? name! : seedName)
+        // The share-sheet title is Google Maps' own rendering of the place
+        // NAME — it wins. Mined URL/page values are the fallback: for some
+        // venues (service-area businesses, lodging) the redirect's q= carries
+        // only the street address, which must not displace the real name.
+        let seedName = seedName.isEmpty ? (name ?? "") : seedName
 
         guard !seedName.isEmpty || coordinate != nil else {
             spinner.stopAnimating()
