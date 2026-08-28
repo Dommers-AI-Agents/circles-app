@@ -53,6 +53,26 @@ sleep 4
 pre_dismiss "Allow" 3
 xcrun simctl terminate $UDID com.apple.Maps 2>/dev/null
 sleep 1
+
+# Pre-load the Google Maps place page OFF-CAMERA: the recording must open on
+# the rendered page — no black loading screen, and none of Google's app-nag
+# interstitials (two known variants: "Go back to web" and "Stay on web").
+# Verified visible via the place panel's "Office supply store" line before
+# rolling; abort if it never appears.
+xcrun simctl openurl $UDID "$OD_URL"
+sleep 6
+PAGE_READY=0
+for i in $(seq 1 14); do
+  pre_dismiss "Stay on web" 1
+  pre_dismiss "Go back to web" 1
+  pre_dismiss "Continue" 1
+  xcrun simctl io $UDID screenshot /tmp/_sd_pre.png >/dev/null 2>&1
+  R=$("$TOOLS/ocrfind" /tmp/_sd_pre.png "Office supply store")
+  if [ "$R" != "NOTFOUND" ] && [ "$R" != "ERR" ]; then PAGE_READY=1; break; fi
+  sleep 1
+done
+if [ "$PAGE_READY" != "1" ]; then echo "PRE-LOAD FAILED: place page never rendered" >&2; exit 1; fi
+sleep 1.5
 xcrun simctl spawn $UDID defaults write group.com.favcircles.circles shareExt.lastCircleId -string "$CHARLOTTE_NC_CIRCLE" 2>/dev/null
 xcrun simctl status_bar $UDID override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularMode active --cellularBars 4 2>/dev/null
 sleep 2
@@ -125,12 +145,10 @@ ocr_tap() {
 }
 
 # ================= Segment A: Google Maps (Safari) =================
+# Page is already loaded and nag-free from the pre-phase — the video opens on
+# the rendered Google Maps place page while the intro line plays.
 at  0.5  "audio-b00"
-xcrun simctl openurl $UDID "$OD_URL"; mark "safari-open"
-sleep 4.5
-# Google's "better on the app" nag — appears only sometimes
-ocr_tap_opt "Go back to web" "nag-dismiss" 4
-sleep 1.0
+sleep 4.6
 "$TOOLS/tap.sh" 380 895; mark "safari-menu"      # Safari ... menu
 sleep 1.3
 rel 0 "audio-b01"
