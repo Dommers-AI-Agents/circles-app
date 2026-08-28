@@ -813,9 +813,15 @@ class PlaceDetailViewController: BaseViewController {
         if circle == nil && place.circleId != nil && !place.circleId!.isEmpty {
             fetchCircle()
         }
-        
+
         // Load user's circles for check-in detection
         loadUserCircles()
+
+        // Free Apple Look Around street imagery: auto-shows for photo-less
+        // places, otherwise arms the Photos/Look Around toggle. This whole
+        // pipeline existed but was never invoked — "street view" silently
+        // never fired anywhere in the app.
+        autoLoadStreetView()
         
         // Try to load GlobalPlace data for better attribution
         loadGlobalPlaceData()
@@ -2605,6 +2611,8 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     private func autoLoadStreetView() {
+        // Idempotent: configureUI re-runs on server refresh; one fetch is enough
+        guard streetViewImage == nil else { return }
         guard let location = place.location?.clLocation else { return }
         
         if #available(iOS 16.0, *) {
@@ -2622,7 +2630,8 @@ class PlaceDetailViewController: BaseViewController {
                     )
                     await MainActor.run {
                         self.streetViewImage = image
-                        
+                        self.isStreetViewAvailable = true
+
                         // Only show street view automatically if there are no photos
                         let hasPhotos = (self.place.photos != nil && !self.place.photos!.isEmpty) || self.customImage != nil
                         
