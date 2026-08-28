@@ -368,7 +368,12 @@ class ActivityFeedCell: UITableViewCell {
                                    activity.type == .placeLiked ||
                                    activity.type == .videoUploaded ||
                                    activity.type == .videoLiked ||
-                                   activity.type == .photoUploaded) &&
+                                   activity.type == .photoUploaded ||
+                                   // Circle activities carry the circle's
+                                   // cover image in the same placePhoto key
+                                   activity.type == .circleCreated ||
+                                   activity.type == .circleLiked ||
+                                   activity.type == .circleCommented) &&
                                    thumbnailUrl != nil
 
         placeImageView.isHidden = !shouldShowPlaceImage

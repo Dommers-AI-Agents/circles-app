@@ -55,17 +55,21 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
     const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(circleId).get();
     let circleName = 'Unknown Circle';
     let circlePrivacy = 'private';
-    
+    let circleCover = null;
+
     if (circleDoc.exists) {
       const circleData = circleDoc.data();
       circleName = circleData.name || 'Unknown Circle';
       circlePrivacy = circleData.privacy || 'private';
+      circleCover = circleData.coverImage || null;
     }
-    
+
     // Only create activity for public and myNetwork circles
     // Private circles should not generate activities
     if (circlePrivacy !== 'private') {
-      // Create activity record in the activities collection
+      // Create activity record in the activities collection. placePhoto is
+      // the feed's generic thumbnail key — for circle activities it carries
+      // the circle's cover image.
       await createActivity(
         'circle_created',
         createdByUserId,
@@ -74,7 +78,8 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
         circleName,
         {
           circleId: circleId,
-          circleName: circleName
+          circleName: circleName,
+          placePhoto: circleCover
         }
       );
     }
@@ -902,10 +907,12 @@ const trackCircleLiked = async (circleId, likedByUserId, circleOwnerId) => {
     let circleName = 'Unknown Circle';
     let circlePrivacy = 'private';
     
+    let circleCover = null;
     if (circleDoc.exists) {
       const circleData = circleDoc.data();
       circleName = circleData.name || 'Unknown Circle';
       circlePrivacy = circleData.privacy || 'private';
+      circleCover = circleData.coverImage || null;
     }
 
     // Only track likes for public and myNetwork circles
@@ -921,7 +928,8 @@ const trackCircleLiked = async (circleId, likedByUserId, circleOwnerId) => {
         {
           circleId: circleId,
           circleName: circleName,
-          likedByUserId: likedByUserId
+          likedByUserId: likedByUserId,
+          placePhoto: circleCover
         }
       );
 
@@ -956,10 +964,12 @@ const trackCircleCommented = async (circleId, commentedByUserId, circleOwnerId, 
     let circleName = 'Unknown Circle';
     let circlePrivacy = 'private';
     
+    let circleCover = null;
     if (circleDoc.exists) {
       const circleData = circleDoc.data();
       circleName = circleData.name || 'Unknown Circle';
       circlePrivacy = circleData.privacy || 'private';
+      circleCover = circleData.coverImage || null;
     }
 
     // Only track comments for public and myNetwork circles
@@ -976,7 +986,8 @@ const trackCircleCommented = async (circleId, commentedByUserId, circleOwnerId, 
           circleId: circleId,
           circleName: circleName,
           commentedByUserId: commentedByUserId,
-          commentText: commentText.substring(0, 100) // Truncate long comments
+          commentText: commentText.substring(0, 100), // Truncate long comments
+          placePhoto: circleCover
         }
       );
 
