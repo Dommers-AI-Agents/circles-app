@@ -68,7 +68,10 @@ struct ShareAPIClient {
             "category": category,
             "circleId": circleId,
             // GeoJSON order: [lng, lat]
-            "location": ["type": "Point", "coordinates": [longitude, latitude]]
+            "location": ["type": "Point", "coordinates": [longitude, latitude]],
+            // The extension can't run the Places SDK — the backend enriches
+            // (canonical venue first, Google only for platform-new venues)
+            "enrichFromGoogle": true
         ]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 

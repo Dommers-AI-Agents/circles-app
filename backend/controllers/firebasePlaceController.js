@@ -1112,6 +1112,49 @@ exports.createPlace = async (req, res, next) => {
     // Create place data
     const placeData = createPlace(req.body, circleId, req.user.uid);
 
+    // Share-extension saves arrive bare (name/address/coords) with
+    // enrichFromGoogle set — the extension can't run the Places SDK. Mirror
+    // the check-in pattern exactly: canonical venue first (zero Google spend
+    // when anyone on the platform already saved this venue), Google
+    // enrichment only for venues new to the whole platform. Failure leaves a
+    // bare-but-valid save — availability over completeness.
+    if (req.body.enrichFromGoogle === true && !placeData.googlePlaceId) {
+      try {
+        const coords = placeData.location?.coordinates;
+        let canonicalDoc = null;
+        if (Array.isArray(coords) && coords.length === 2) {
+          const { findCanonicalByNameAndLocation } = require('../services/globalPlaceResolver');
+          canonicalDoc = await findCanonicalByNameAndLocation(placeData.name, { coordinates: coords });
+        }
+        if (canonicalDoc) {
+          const canonical = canonicalDoc.data();
+          if (canonical.googlePlaceId) placeData.googlePlaceId = canonical.googlePlaceId;
+          console.log(`✅ Share save matched canonical venue ${canonicalDoc.id} — skipping Google enrichment`);
+        } else if (Array.isArray(coords) && coords.length === 2) {
+          const { enrichPlaceWithGoogleData } = require('./checkInController');
+          const googleData = await enrichPlaceWithGoogleData(placeData.name, {
+            latitude: coords[1],
+            longitude: coords[0]
+          });
+          if (googleData.googlePlaceId) {
+            placeData.googlePlaceId = googleData.googlePlaceId;
+            if (googleData.name) placeData.name = googleData.name;
+            if (googleData.address) placeData.address = googleData.address;
+            if (googleData.photos && googleData.photos.length > 0) placeData.photos = googleData.photos;
+            if (googleData.googleTypes && googleData.googleTypes.length > 0) placeData.googleTypes = googleData.googleTypes;
+            placeData.rating = googleData.rating ?? placeData.rating;
+            placeData.priceLevel = googleData.priceLevel ?? placeData.priceLevel;
+            placeData.website = googleData.website || placeData.website;
+            placeData.phone = googleData.phoneNumber || placeData.phone;
+            placeData.openingHours = googleData.openingHours || placeData.openingHours;
+            console.log(`✅ Share save enriched from Google: ${googleData.googlePlaceId}`);
+          }
+        }
+      } catch (enrichError) {
+        console.warn('⚠️ Share-save enrichment failed (continuing bare):', enrichError.message);
+      }
+    }
+
     // Google-backed saves: venue fields are locked to their source at creation
     // too, mirroring the updatePlace lock. Super-users and the venue's
     // verified owner keep their submitted values.

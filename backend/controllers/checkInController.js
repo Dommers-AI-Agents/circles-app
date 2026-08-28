@@ -175,6 +175,9 @@ async function enrichPlaceWithGoogleData(placeName, location) {
     return {};
   }
 }
+// Shared with createPlace (share-extension saves use the same
+// canonical-first-then-Google enrichment)
+exports.enrichPlaceWithGoogleData = enrichPlaceWithGoogleData;
 
 // Create a new check-in
 exports.createCheckIn = async (req, res) => {
