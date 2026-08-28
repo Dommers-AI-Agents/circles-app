@@ -47,16 +47,55 @@ struct ShareAPIClient {
         }.resume()
     }
 
+    struct KnownVenue {
+        let photoURL: String?
+        let description: String?
+    }
+
+    /// GET /places/global/match — does the platform already know this venue?
+    /// Powers the card's photo + description preview before saving.
+    func matchKnownVenue(name: String,
+                         latitude: Double,
+                         longitude: Double,
+                         completion: @escaping (KnownVenue?) -> Void) {
+        var components = URLComponents(url: Self.baseURL.appendingPathComponent("places/global/match"),
+                                       resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "name", value: name),
+            URLQueryItem(name: "lat", value: String(latitude)),
+            URLQueryItem(name: "lng", value: String(longitude))
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            var venue: KnownVenue?
+            if let data = data,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let match = (json["data"] as? [String: Any])?["match"] as? [String: Any] {
+                venue = KnownVenue(
+                    photoURL: (match["photos"] as? [String])?.first,
+                    description: match["description"] as? String
+                )
+            }
+            DispatchQueue.main.async { completion(venue) }
+        }.resume()
+    }
+
+    struct SaveResult {
+        let placeId: String?
+        let coins: Double?
+    }
+
     /// POST /places — the normal create path, so globalPlaceId stamping and
     /// FavCoin credit happen server-side exactly as an in-app add would.
-    /// Success passes back the credited coin amount (nil = no credit).
     func createPlace(name: String,
                      address: String,
                      latitude: Double,
                      longitude: Double,
                      category: String,
                      circleId: String,
-                     completion: @escaping (Result<Double?, Error>) -> Void) {
+                     completion: @escaping (Result<SaveResult, Error>) -> Void) {
         var request = URLRequest(url: Self.baseURL.appendingPathComponent("places"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
@@ -76,18 +115,23 @@ struct ShareAPIClient {
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         URLSession.shared.dataTask(with: request) { data, response, error in
-            let result: Result<Double?, Error>
+            let result: Result<SaveResult, Error>
             if let error = error {
                 result = .failure(error)
             } else if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
                 var coins: Double?
+                var placeId: String?
                 if let data = data,
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let piggy = json["piggyBank"] as? [String: Any],
-                   piggy["credited"] as? Bool == true {
-                    coins = piggy["coins"] as? Double
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    if let piggy = json["piggyBank"] as? [String: Any],
+                       piggy["credited"] as? Bool == true {
+                        coins = piggy["coins"] as? Double
+                    }
+                    if let place = json["place"] as? [String: Any] {
+                        placeId = (place["_id"] as? String) ?? (place["id"] as? String)
+                    }
                 }
-                result = .success(coins)
+                result = .success(SaveResult(placeId: placeId, coins: coins))
             } else {
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 result = .failure(NSError(

@@ -47,6 +47,41 @@ enum ExtensionAuthMailbox {
     }
 }
 
+/// extension → app: "the user asked to see this place" — written when the
+/// share extension's "View in FavCircles" hand-off can't open the app
+/// directly (extensionContext.open is unreliable for share extensions). The
+/// app drains it on launch and navigates straight to the place.
+enum PendingOpenPlaceMailbox {
+    static let fileName = "pending-open-place.json"
+
+    struct Payload: Codable {
+        var placeId: String
+        var createdAt: Date
+    }
+
+    static var fileURL: URL? {
+        FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: ExtensionAuthMailbox.appGroupId)?
+            .appendingPathComponent(fileName)
+    }
+
+    static func write(placeId: String) {
+        guard let url = fileURL,
+              let data = try? JSONEncoder().encode(Payload(placeId: placeId, createdAt: Date())) else { return }
+        try? data.write(to: url, options: [.atomic, .completeFileProtection])
+    }
+
+    /// One-shot: reading removes the file. Stale requests (>1h) are dropped —
+    /// auto-navigating to a place the user shared yesterday would be jarring.
+    static func take() -> String? {
+        guard let url = fileURL, let data = try? Data(contentsOf: url) else { return nil }
+        try? FileManager.default.removeItem(at: url)
+        guard let payload = try? JSONDecoder().decode(Payload.self, from: data),
+              Date().timeIntervalSince(payload.createdAt) < 3600 else { return nil }
+        return payload.placeId
+    }
+}
+
 enum PendingShareMailbox {
     static let appGroupId = "group.com.favcircles.circles"
     static let fileName = "pending-share.json"

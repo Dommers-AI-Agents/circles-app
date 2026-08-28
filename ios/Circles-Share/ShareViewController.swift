@@ -47,13 +47,31 @@ final class ShareViewController: UIViewController {
     // MARK: UI
 
     private let card = UIView()
-    private let titleLabel = UILabel()
-    private let placeNameLabel = UILabel()
+    private let headerImageView = UIImageView()
+    private let headerGradient = CAGradientLayer()
+    private let brandChip = UILabel()
+    private let closeButton = UIButton(type: .system)
+    private let nameLabel = UILabel()
     private let addressLabel = UILabel()
+    private let descriptionLabel = UILabel()
     private let circleButton = UIButton(type: .system)
+    private let coinHintLabel = UILabel()
+    private let statusLabel = UILabel()
     private let saveButton = UIButton(type: .system)
-    private let cancelButton = UIButton(type: .system)
+    private let doneButton = UIButton(type: .system)
     private let spinner = UIActivityIndicatorView(style: .medium)
+
+    private var savedPlaceId: String?
+    /// True while the header shows the map snapshot — a venue photo upgrade
+    /// replaces it, but a late-arriving snapshot must never replace the photo.
+    private var headerIsMapOnly = true
+
+    /// Mirror of the app's Constants.Colors.primary (#3182CE / lighter in dark)
+    private static let brandBlue = UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.39, green: 0.70, blue: 0.93, alpha: 1.0)
+            : UIColor(red: 0.20, green: 0.51, blue: 0.81, alpha: 1.0)
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -327,7 +345,7 @@ final class ShareViewController: UIViewController {
             .trimmingCharacters(in: CharacterSet(charactersIn: "!·-–:"))
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        placeNameLabel.text = seedName.isEmpty ? "Locating…" : seedName
+        nameLabel.text = seedName.isEmpty ? "Locating…" : seedName
         spinner.startAnimating()
 
         debugInfo["sharedURL"] = sharedURL ?? "nil"
@@ -367,7 +385,7 @@ final class ShareViewController: UIViewController {
         debugInfo["outcome"] = "searching: \(seedName)"
         dumpDebug()
 
-        if !seedName.isEmpty { placeNameLabel.text = seedName }
+        if !seedName.isEmpty { nameLabel.text = seedName }
 
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = seedName.isEmpty ? "point of interest" : seedName
@@ -396,8 +414,11 @@ final class ShareViewController: UIViewController {
                 return
             }
 
-            self.placeNameLabel.text = self.resolvedName
+            self.nameLabel.text = self.resolvedName
             self.addressLabel.text = self.resolvedAddress
+            if let coordinate = self.resolvedCoordinate {
+                self.loadHeaderImagery(coordinate: coordinate, name: self.resolvedName ?? seedName)
+            }
             self.loadCircles()
         }
     }
@@ -456,11 +477,13 @@ final class ShareViewController: UIViewController {
             self.selectedCircle = circles.first(where: { $0.id == lastUsedId }) ?? circles[0]
             self.refreshCircleButton()
             self.saveButton.isEnabled = true
+            self.saveButton.alpha = 1.0
         }
     }
 
     private func refreshCircleButton() {
-        circleButton.setTitle("Circle: \(selectedCircle?.name ?? "…")  ▾", for: .normal)
+        circleButton.setImage(UIImage(systemName: "circle.grid.2x2"), for: .normal)
+        circleButton.setTitle("  \(selectedCircle?.name ?? "…")  ▾", for: .normal)
         circleButton.menu = UIMenu(children: circles.map { choice in
             UIAction(title: choice.name,
                      state: choice.id == selectedCircle?.id ? .on : .off) { [weak self] _ in
@@ -480,6 +503,8 @@ final class ShareViewController: UIViewController {
               let circle = selectedCircle else { return }
 
         saveButton.isEnabled = false
+        saveButton.alpha = 0.6
+        saveButton.setTitle("Saving…", for: .normal)
         spinner.startAnimating()
         groupDefaults?.set(circle.id, forKey: Self.lastCircleKey)
 
@@ -494,15 +519,14 @@ final class ShareViewController: UIViewController {
             guard let self = self else { return }
             self.spinner.stopAnimating()
             switch result {
-            case .success(let coins):
-                var message = "Saved to \(circle.name) ✓"
-                if let coins = coins, coins > 0 {
-                    message += "  +\(coins == coins.rounded() ? String(Int(coins)) : String(coins)) FavCoins"
+            case .success(let save):
+                self.savedPlaceId = save.placeId
+                if let placeId = save.placeId {
+                    // Guarantees the "View in FavCircles" promise even when
+                    // the extension can't open the app itself
+                    PendingOpenPlaceMailbox.write(placeId: placeId)
                 }
-                self.titleLabel.text = message
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                    self.extensionContext?.completeRequest(returningItems: nil)
-                }
+                self.showSaveSuccess(circleName: circle.name, coins: save.coins)
             case .failure:
                 // Offline or server hiccup: park it, the app finishes later.
                 self.parkPendingShare()
@@ -528,10 +552,14 @@ final class ShareViewController: UIViewController {
     private func showParkAndFinish(message: String) {
         debugInfo["finalMessage"] = message
         dumpDebug()
-        titleLabel.text = message
-        placeNameLabel.isHidden = placeNameLabel.text == nil
+        statusLabel.text = message
+        statusLabel.textColor = .secondaryLabel
+        statusLabel.isHidden = false
+        circleButton.isHidden = true
+        coinHintLabel.isHidden = true
         saveButton.isEnabled = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
+        saveButton.alpha = 0.5
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
             self?.extensionContext?.completeRequest(returningItems: nil)
         }
     }
@@ -540,53 +568,256 @@ final class ShareViewController: UIViewController {
 
     private func buildCard() {
         card.backgroundColor = .systemBackground
-        card.layer.cornerRadius = 16
+        card.layer.cornerRadius = 24
+        card.clipsToBounds = true
         card.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(card)
 
-        titleLabel.text = "Save to FavCircles"
-        titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
-        titleLabel.textAlignment = .center
-        titleLabel.numberOfLines = 2
+        // ---- Header: venue photo (or live map snapshot) with gradient ----
+        headerImageView.contentMode = .scaleAspectFill
+        headerImageView.clipsToBounds = true
+        headerImageView.backgroundColor = Self.brandBlue.withAlphaComponent(0.25)
+        headerImageView.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(headerImageView)
 
-        placeNameLabel.font = .systemFont(ofSize: 16, weight: .medium)
-        placeNameLabel.textAlignment = .center
-        placeNameLabel.numberOfLines = 2
+        headerGradient.colors = [UIColor.clear.cgColor,
+                                 UIColor.black.withAlphaComponent(0.72).cgColor]
+        headerGradient.locations = [0.35, 1.0]
+        headerImageView.layer.addSublayer(headerGradient)
 
-        addressLabel.font = .systemFont(ofSize: 13)
-        addressLabel.textColor = .secondaryLabel
-        addressLabel.textAlignment = .center
+        brandChip.text = "  FavCircles  "
+        brandChip.font = .systemFont(ofSize: 12, weight: .bold)
+        brandChip.textColor = .white
+        brandChip.backgroundColor = Self.brandBlue
+        brandChip.layer.cornerRadius = 11
+        brandChip.clipsToBounds = true
+        brandChip.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(brandChip)
+
+        closeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+        closeButton.tintColor = UIColor.white.withAlphaComponent(0.9)
+        closeButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(closeButton)
+
+        nameLabel.font = .systemFont(ofSize: 22, weight: .bold)
+        nameLabel.textColor = .white
+        nameLabel.numberOfLines = 2
+        nameLabel.layer.shadowColor = UIColor.black.cgColor
+        nameLabel.layer.shadowOpacity = 0.4
+        nameLabel.layer.shadowRadius = 3
+        nameLabel.layer.shadowOffset = CGSize(width: 0, height: 1)
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(nameLabel)
+
+        addressLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        addressLabel.textColor = UIColor.white.withAlphaComponent(0.9)
         addressLabel.numberOfLines = 2
+        addressLabel.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(addressLabel)
 
-        circleButton.titleLabel?.font = .systemFont(ofSize: 15)
+        // ---- Body ----
+        descriptionLabel.font = .systemFont(ofSize: 13)
+        descriptionLabel.textColor = .secondaryLabel
+        descriptionLabel.numberOfLines = 3
+        descriptionLabel.isHidden = true
+
+        circleButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
+        circleButton.setTitleColor(.label, for: .normal)
+        circleButton.tintColor = Self.brandBlue
+        circleButton.backgroundColor = .secondarySystemBackground
+        circleButton.layer.cornerRadius = 12
+        circleButton.contentHorizontalAlignment = .center
+        circleButton.heightAnchor.constraint(equalToConstant: 44).isActive = true
+
+        coinHintLabel.text = "🪙 Every place you save earns FavCoins"
+        coinHintLabel.font = .systemFont(ofSize: 12)
+        coinHintLabel.textColor = .tertiaryLabel
+        coinHintLabel.textAlignment = .center
+
+        statusLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        statusLabel.textColor = Self.brandBlue
+        statusLabel.textAlignment = .center
+        statusLabel.numberOfLines = 3
+        statusLabel.isHidden = true
 
         saveButton.setTitle("Save", for: .normal)
-        saveButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        saveButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        saveButton.setTitleColor(.white, for: .normal)
+        saveButton.backgroundColor = Self.brandBlue
+        saveButton.layer.cornerRadius = 14
         saveButton.isEnabled = false
+        saveButton.alpha = 0.5
+        saveButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
 
-        cancelButton.setTitle("Cancel", for: .normal)
-        cancelButton.titleLabel?.font = .systemFont(ofSize: 16)
-        cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        doneButton.setTitle("Done", for: .normal)
+        doneButton.titleLabel?.font = .systemFont(ofSize: 15)
+        doneButton.setTitleColor(.secondaryLabel, for: .normal)
+        doneButton.isHidden = true
+        doneButton.addTarget(self, action: #selector(doneTapped), for: .touchUpInside)
 
         spinner.hidesWhenStopped = true
 
         let stack = UIStackView(arrangedSubviews: [
-            titleLabel, spinner, placeNameLabel, addressLabel, circleButton, saveButton, cancelButton
+            spinner, descriptionLabel, circleButton, statusLabel, saveButton, coinHintLabel, doneButton
         ])
         stack.axis = .vertical
-        stack.spacing = 10
+        stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false
         card.addSubview(stack)
 
         NSLayoutConstraint.activate([
             card.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             card.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            card.widthAnchor.constraint(equalToConstant: 300),
-            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 20),
-            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -20),
-            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -16)
+            card.widthAnchor.constraint(equalToConstant: 330),
+
+            headerImageView.topAnchor.constraint(equalTo: card.topAnchor),
+            headerImageView.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            headerImageView.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            headerImageView.heightAnchor.constraint(equalToConstant: 168),
+
+            brandChip.topAnchor.constraint(equalTo: card.topAnchor, constant: 12),
+            brandChip.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
+            brandChip.heightAnchor.constraint(equalToConstant: 22),
+
+            closeButton.topAnchor.constraint(equalTo: card.topAnchor, constant: 10),
+            closeButton.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -10),
+            closeButton.widthAnchor.constraint(equalToConstant: 30),
+            closeButton.heightAnchor.constraint(equalToConstant: 30),
+
+            addressLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
+            addressLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            addressLabel.bottomAnchor.constraint(equalTo: headerImageView.bottomAnchor, constant: -10),
+
+            nameLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
+            nameLabel.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            nameLabel.bottomAnchor.constraint(equalTo: addressLabel.topAnchor, constant: -2),
+
+            stack.topAnchor.constraint(equalTo: headerImageView.bottomAnchor, constant: 14),
+            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -14)
         ])
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        headerGradient.frame = headerImageView.bounds
+    }
+
+    // MARK: Header imagery
+
+    /// Map snapshot immediately (no auth, works for any coordinate), then a
+    /// crossfade upgrade to the venue's real photo when the platform already
+    /// knows this place.
+    private func loadHeaderImagery(coordinate: CLLocationCoordinate2D, name: String) {
+        let options = MKMapSnapshotter.Options()
+        options.region = MKCoordinateRegion(center: coordinate,
+                                            latitudinalMeters: 650,
+                                            longitudinalMeters: 650)
+        options.size = CGSize(width: 330, height: 168)
+        options.traitCollection = traitCollection
+        MKMapSnapshotter(options: options).start { [weak self] snapshot, _ in
+            guard let snapshot = snapshot else { return }
+            DispatchQueue.main.async {
+                guard let self = self, self.headerIsMapOnly else { return }
+                self.headerImageView.image = Self.annotated(snapshot: snapshot, coordinate: coordinate)
+            }
+        }
+
+        client?.matchKnownVenue(name: name,
+                                latitude: coordinate.latitude,
+                                longitude: coordinate.longitude) { [weak self] venue in
+            guard let self = self, let venue = venue else { return }
+            if let text = venue.description, !text.isEmpty {
+                self.descriptionLabel.text = text
+                self.descriptionLabel.isHidden = false
+            }
+            if let urlString = venue.photoURL, let url = URL(string: urlString) {
+                URLSession.shared.dataTask(with: url) { data, _, _ in
+                    guard let data = data, let image = UIImage(data: data) else { return }
+                    DispatchQueue.main.async {
+                        self.headerIsMapOnly = false
+                        UIView.transition(with: self.headerImageView,
+                                          duration: 0.35,
+                                          options: .transitionCrossDissolve) {
+                            self.headerImageView.image = image
+                        }
+                    }
+                }.resume()
+            }
+        }
+    }
+
+    /// Draw a brand-colored pin dot on the snapshot at the venue's position.
+    private static func annotated(snapshot: MKMapSnapshotter.Snapshot,
+                                  coordinate: CLLocationCoordinate2D) -> UIImage {
+        let point = snapshot.point(for: coordinate)
+        return UIGraphicsImageRenderer(size: snapshot.image.size).image { _ in
+            snapshot.image.draw(at: .zero)
+            let outer = UIBezierPath(ovalIn: CGRect(x: point.x - 10, y: point.y - 10, width: 20, height: 20))
+            brandBlue.withAlphaComponent(0.35).setFill()
+            outer.fill()
+            let inner = UIBezierPath(ovalIn: CGRect(x: point.x - 5.5, y: point.y - 5.5, width: 11, height: 11))
+            brandBlue.setFill()
+            inner.fill()
+            UIColor.white.setStroke()
+            inner.lineWidth = 2
+            inner.stroke()
+        }
+    }
+
+    // MARK: Success state
+
+    private func showSaveSuccess(circleName: String, coins: Double?) {
+        circleButton.isHidden = true
+        coinHintLabel.isHidden = true
+
+        var status = "✓ Saved to \(circleName)"
+        if let coins = coins, coins > 0 {
+            let amount = coins == coins.rounded() ? String(Int(coins)) : String(format: "%.2f", coins)
+            status += "\n🪙 +\(amount) FavCoins earned"
+        }
+        statusLabel.text = status
+        statusLabel.isHidden = false
+
+        saveButton.removeTarget(self, action: #selector(saveTapped), for: .touchUpInside)
+        saveButton.addTarget(self, action: #selector(viewInAppTapped), for: .touchUpInside)
+        saveButton.setTitle("View in FavCircles", for: .normal)
+        saveButton.isEnabled = true
+        saveButton.alpha = 1.0
+        doneButton.isHidden = false
+
+        UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
+    }
+
+    @objc private func viewInAppTapped() {
+        // The mailbox is already written (belt) — the app navigates to the
+        // place on its next launch no matter what. extensionContext.open is
+        // the braces: unreliable for share extensions, so a refusal just
+        // falls back to the mailbox with honest copy.
+        guard let placeId = savedPlaceId,
+              let url = URL(string: "circles://place/\(placeId)") else {
+            extensionContext?.completeRequest(returningItems: nil)
+            return
+        }
+        extensionContext?.open(url) { [weak self] opened in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if opened {
+                    self.extensionContext?.completeRequest(returningItems: nil)
+                } else {
+                    self.statusLabel.text = "✓ It'll be waiting when you open FavCircles"
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+                        self.extensionContext?.completeRequest(returningItems: nil)
+                    }
+                }
+            }
+        }
+    }
+
+    @objc private func doneTapped() {
+        extensionContext?.completeRequest(returningItems: nil)
     }
 }

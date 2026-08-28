@@ -242,6 +242,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // A share the extension parked (logged out / offline at share time)
         drainPendingShareIfNeeded()
 
+        // "View in FavCircles" tapped in the share extension: go straight to
+        // the place they just saved
+        if AuthService.shared.isLoggedIn, let placeId = PendingOpenPlaceMailbox.take() {
+            navigateToPlace(placeId: placeId)
+        }
+
         if OnboardingManager.shared.isFirstSessionFlowActive {
             // Brand-new signup: no carousel (cut 2026-08-19) — go straight to
             // the chain: first-people sheet → notifications → home tour.
