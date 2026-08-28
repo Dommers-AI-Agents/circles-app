@@ -1084,9 +1084,11 @@ final class ShareViewController: UIViewController {
 
     @objc private func viewInAppTapped() {
         // The mailbox is already written (belt) — the app navigates to the
-        // place on its next launch no matter what. extensionContext.open is
-        // the braces: unreliable for share extensions, so a refusal just
-        // falls back to the mailbox with honest copy.
+        // place on next launch no matter what. Opening directly: try the
+        // official extensionContext.open first (works for some extension
+        // point/OS combos), then the responder-chain openURL: workaround
+        // every shipping share extension leans on. Honest copy only if both
+        // refuse.
         guard let placeId = savedPlaceId,
               let url = URL(string: "circles://place/\(placeId)") else {
             extensionContext?.completeRequest(returningItems: nil)
@@ -1097,6 +1099,11 @@ final class ShareViewController: UIViewController {
                 guard let self = self else { return }
                 if opened {
                     self.extensionContext?.completeRequest(returningItems: nil)
+                } else if self.openViaResponderChain(url) {
+                    // Give the app-switch animation a beat before dismissing
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.extensionContext?.completeRequest(returningItems: nil)
+                    }
                 } else {
                     self.statusLabel.text = "✓ It'll be waiting when you open FavCircles"
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
@@ -1105,6 +1112,22 @@ final class ShareViewController: UIViewController {
                 }
             }
         }
+    }
+
+    /// Share extensions can't call UIApplication.open directly, but the
+    /// UIApplication instance sits at the top of the responder chain and
+    /// still answers openURL: — the standard workaround.
+    private func openViaResponderChain(_ url: URL) -> Bool {
+        let selector = NSSelectorFromString("openURL:")
+        var responder: UIResponder? = self
+        while let current = responder {
+            if current is UIApplication, current.responds(to: selector) {
+                current.perform(selector, with: url)
+                return true
+            }
+            responder = current.next
+        }
+        return false
     }
 
     @objc private func doneTapped() {

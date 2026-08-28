@@ -904,6 +904,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 Logger.debug("📱 SceneDelegate: Detected 'place' as host")
                 let placeId = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
                 if !placeId.isEmpty {
+                    // The share extension writes the pending-open mailbox as a
+                    // fallback before trying this deep link — consume it so the
+                    // next cold launch doesn't navigate here a second time
+                    _ = PendingOpenPlaceMailbox.take()
                     self.navigateToPlace(placeId: placeId)
                     return
                 }
