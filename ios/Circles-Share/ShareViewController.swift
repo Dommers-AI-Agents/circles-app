@@ -414,6 +414,15 @@ final class ShareViewController: UIViewController {
         if let dotRange = seedName.range(of: " · ") {
             seedName = String(seedName[..<dotRange.lowerBound])
         }
+        // Safari shares the PAGE TITLE ("Office Depot, Charlotte - Explore in
+        // Google Maps") — scrub the app-name tail.
+        for marker in [" - Explore in Google Maps", " - Google Maps", " — Google Maps",
+                       " - Google Search", " - Apple Maps"] {
+            if let range = seedName.range(of: marker, options: .caseInsensitive) {
+                seedName = String(seedName[..<range.lowerBound])
+            }
+        }
+        seedName = seedName.trimmingCharacters(in: .whitespacesAndNewlines)
         seedName = seedName
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "!·-–:…."))
@@ -471,11 +480,11 @@ final class ShareViewController: UIViewController {
     }
 
     private func continueResolution(seedName: String, name: String?, coordinate: CLLocationCoordinate2D?) {
-        // The share-sheet title is Google Maps' own rendering of the place
-        // NAME — it wins. Mined URL/page values are the fallback: for some
-        // venues (service-area businesses, lodging) the redirect's q= carries
-        // only the street address, which must not displace the real name.
-        let seedName = seedName.isEmpty ? (name ?? "") : seedName
+        // The name mined from the URL/page wins: q=-derived names are now
+        // address-guarded (a q that's only a street address yields no name),
+        // junk page titles are rejected, and browser share text is often the
+        // PAGE TITLE, not the place name. Share text is the fallback.
+        let seedName = (name?.isEmpty == false) ? name! : seedName
 
         guard !seedName.isEmpty || coordinate != nil else {
             spinner.stopAnimating()
