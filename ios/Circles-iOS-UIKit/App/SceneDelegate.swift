@@ -234,6 +234,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Feed the home-screen widget its snapshot
         WidgetSnapshotService.shared.refresh()
 
+        // TEMP DEBUG (share-ext investigation): unconditional group-container
+        // write so a device pull proves whether container writes work at all.
+        if let markerURL = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: ExtensionAuthMailbox.appGroupId)?
+            .appendingPathComponent("app-launch-marker.txt") {
+            try? Date().description.data(using: .utf8)?.write(to: markerURL, options: [.atomic])
+        }
+
         // Sessions that predate the extension auth mirror get one now
         if AuthService.shared.isLoggedIn {
             KeychainService.shared.syncExtensionAuthMailbox()

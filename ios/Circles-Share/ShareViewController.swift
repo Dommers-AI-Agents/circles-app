@@ -32,12 +32,19 @@ final class ShareViewController: UIViewController {
     private var debugInfo: [String: Any] = [:]
 
     private func dumpDebug() {
-        guard let url = FileManager.default
-                .containerURL(forSecurityApplicationGroupIdentifier: ExtensionAuthMailbox.appGroupId)?
-                .appendingPathComponent("share-debug.json"),
-              JSONSerialization.isValidJSONObject(debugInfo),
-              let data = try? JSONSerialization.data(withJSONObject: debugInfo, options: [.prettyPrinted]) else { return }
-        try? data.write(to: url, options: [.atomic])
+        NSLog("FavCirclesShare: debug = %@", String(describing: debugInfo))
+        guard JSONSerialization.isValidJSONObject(debugInfo),
+              let data = try? JSONSerialization.data(withJSONObject: debugInfo, options: [.prettyPrinted]) else {
+            NSLog("FavCirclesShare: debugInfo not serializable")
+            return
+        }
+        // Belt and braces: the file AND group defaults (Library/Preferences)
+        if let url = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: ExtensionAuthMailbox.appGroupId)?
+            .appendingPathComponent("share-debug.json") {
+            try? data.write(to: url, options: [.atomic])
+        }
+        groupDefaults?.set(String(data: data, encoding: .utf8), forKey: "shareExt.debug")
     }
 
     // MARK: UI
@@ -56,8 +63,22 @@ final class ShareViewController: UIViewController {
         view.backgroundColor = UIColor.black.withAlphaComponent(0.35)
         buildCard()
 
+        // TEMP DEBUG: marker + container path, written before anything can
+        // fail — proves the extension launched and whether it can write.
+        let containerPath = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: ExtensionAuthMailbox.appGroupId)?.path
+        NSLog("FavCirclesShare: viewDidLoad, group container = %@", containerPath ?? "NIL")
+        debugInfo["launchedAt"] = Date().description
+        debugInfo["containerPath"] = containerPath ?? "NIL"
+        if let markerURL = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: ExtensionAuthMailbox.appGroupId)?
+            .appendingPathComponent("share-launch.txt") {
+            try? Date().description.data(using: .utf8)?.write(to: markerURL, options: [.atomic])
+        }
+
         client = ShareAPIClient.fromMailbox()
         extractSharedItem { [weak self] in
+            self?.dumpDebug()
             self?.startResolution()
         }
     }
@@ -241,15 +262,26 @@ final class ShareViewController: UIViewController {
                                   completion: @escaping (_ finalURL: String,
                                                          _ pageName: String?,
                                                          _ pageCoordinate: CLLocationCoordinate2D?) -> Void) {
-        guard let url = URL(string: urlString) else { completion(urlString, nil, nil); return }
+        // Google's share sheet appends ?g_st=<share-target-id> to the short
+        // link — and with it present the redirector answers 200 with an
+        // interstitial instead of the 302 to the full place URL (verified
+        // with curl). Strip it and the redirect carries q=<name, address>
+        // and ftid=<feature id> — everything we need.
+        var cleanedString = urlString
+        if var components = URLComponents(string: urlString) {
+            components.queryItems = components.queryItems?.filter { $0.name != "g_st" }
+            if components.queryItems?.isEmpty == true { components.queryItems = nil }
+            cleanedString = components.string ?? urlString
+        }
+        guard let url = URL(string: cleanedString) else { completion(urlString, nil, nil); return }
         var request = URLRequest(url: url, timeoutInterval: 8)
         request.httpMethod = "GET"
         request.setValue(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
             forHTTPHeaderField: "User-Agent")
 
-        URLSession.shared.dataTask(with: request) { data, response, _ in
-            let finalURL = response?.url?.absoluteString ?? urlString
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            let finalURL = response?.url?.absoluteString ?? cleanedString
             var pageName: String?
             var pageCoordinate: CLLocationCoordinate2D?
 
@@ -277,7 +309,10 @@ final class ShareViewController: UIViewController {
                     pageCoordinate = CLLocationCoordinate2D(latitude: latValue, longitude: lngValue)
                 }
             }
-            DispatchQueue.main.async { completion(finalURL, pageName, pageCoordinate) }
+            DispatchQueue.main.async { [weak self] in
+                self?.debugInfo["fetchError"] = error?.localizedDescription ?? "none"
+                completion(finalURL, pageName, pageCoordinate)
+            }
         }.resume()
     }
 
@@ -502,6 +537,8 @@ final class ShareViewController: UIViewController {
     }
 
     private func showParkAndFinish(message: String) {
+        debugInfo["finalMessage"] = message
+        dumpDebug()
         titleLabel.text = message
         placeNameLabel.isHidden = placeNameLabel.text == nil
         saveButton.isEnabled = false
