@@ -1,0 +1,1 @@
+It pulls the place in automatically — name, photo, details, done.
