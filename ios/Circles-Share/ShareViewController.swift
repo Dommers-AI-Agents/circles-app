@@ -48,6 +48,8 @@ final class ShareViewController: UIViewController {
 
     private let backgroundImageView = UIImageView()
     private let backgroundDim = UIView()
+    private let backdropTitleLabel = UILabel()
+    private let backdropSubtitleLabel = UILabel()
     private let card = UIView()
     private let headerImageView = UIImageView()
     private let headerGradient = CAGradientLayer()
@@ -103,6 +105,40 @@ final class ShareViewController: UIViewController {
         ])
 
         buildCard()
+
+        // Headline on the backdrop, above the card — tells the user exactly
+        // what's happening in FavCircles' voice.
+        backdropTitleLabel.text = "Adding to your FavCircles…"
+        backdropTitleLabel.font = .systemFont(ofSize: 24, weight: .bold)
+        backdropTitleLabel.textColor = .white
+        backdropTitleLabel.textAlignment = .center
+        backdropTitleLabel.numberOfLines = 3
+        backdropTitleLabel.layer.shadowColor = UIColor.black.cgColor
+        backdropTitleLabel.layer.shadowOpacity = 0.55
+        backdropTitleLabel.layer.shadowRadius = 4
+        backdropTitleLabel.layer.shadowOffset = CGSize(width: 0, height: 1)
+        backdropTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backdropTitleLabel)
+
+        backdropSubtitleLabel.text = "Select your circle and tap Save"
+        backdropSubtitleLabel.font = .systemFont(ofSize: 15, weight: .medium)
+        backdropSubtitleLabel.textColor = UIColor.white.withAlphaComponent(0.85)
+        backdropSubtitleLabel.textAlignment = .center
+        backdropSubtitleLabel.numberOfLines = 2
+        backdropSubtitleLabel.layer.shadowColor = UIColor.black.cgColor
+        backdropSubtitleLabel.layer.shadowOpacity = 0.55
+        backdropSubtitleLabel.layer.shadowRadius = 3
+        backdropSubtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backdropSubtitleLabel)
+
+        NSLayoutConstraint.activate([
+            backdropSubtitleLabel.bottomAnchor.constraint(equalTo: card.topAnchor, constant: -22),
+            backdropSubtitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
+            backdropSubtitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+            backdropTitleLabel.bottomAnchor.constraint(equalTo: backdropSubtitleLabel.topAnchor, constant: -8),
+            backdropTitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
+            backdropTitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32)
+        ])
 
         debugInfo["launchedAt"] = Date().description
 
@@ -411,7 +447,10 @@ final class ShareViewController: UIViewController {
         debugInfo["outcome"] = "searching: \(seedName)"
         dumpDebug()
 
-        if !seedName.isEmpty { nameLabel.text = seedName }
+        if !seedName.isEmpty {
+            nameLabel.text = seedName
+            backdropTitleLabel.text = "Adding \(seedName) to your FavCircles"
+        }
 
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = seedName.isEmpty ? "point of interest" : seedName
@@ -442,6 +481,9 @@ final class ShareViewController: UIViewController {
 
             self.nameLabel.text = self.resolvedName
             self.addressLabel.text = self.resolvedAddress
+            if let resolvedName = self.resolvedName {
+                self.backdropTitleLabel.text = "Adding \(resolvedName) to your FavCircles"
+            }
             if let coordinate = self.resolvedCoordinate {
                 self.loadHeaderImagery(coordinate: coordinate, name: self.resolvedName ?? seedName)
             }
@@ -578,6 +620,7 @@ final class ShareViewController: UIViewController {
     private func showParkAndFinish(message: String) {
         debugInfo["finalMessage"] = message
         dumpDebug()
+        backdropSubtitleLabel.isHidden = true
         statusLabel.text = message
         statusLabel.textColor = .secondaryLabel
         statusLabel.isHidden = false
@@ -815,6 +858,8 @@ final class ShareViewController: UIViewController {
     // MARK: Success state
 
     private func showSaveSuccess(circleName: String, coins: Double?) {
+        backdropTitleLabel.text = "Added to your FavCircles 🎉"
+        backdropSubtitleLabel.text = "It's in \(circleName) now"
         circleButton.isHidden = true
         coinHintLabel.isHidden = true
 
