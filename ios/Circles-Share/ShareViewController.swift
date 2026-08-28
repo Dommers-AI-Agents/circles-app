@@ -497,7 +497,7 @@ final class ShareViewController: UIViewController {
             self.spinner.stopAnimating()
 
             if let item = response?.mapItems.first {
-                self.resolvedName = item.name ?? seedName
+                self.resolvedName = Self.bestName(shared: seedName, apple: item.name)
                 self.resolvedAddress = Self.formatAddress(item.placemark)
                 self.resolvedCoordinate = item.placemark.coordinate
                 self.resolvedCategory = Self.category(for: item.pointOfInterestCategory)
@@ -523,6 +523,25 @@ final class ShareViewController: UIViewController {
             }
             self.loadCircles()
         }
+    }
+
+    /// The user saw a place NAME in the share sheet — that's what they expect
+    /// to save. Apple's MKLocalSearch falls back to an address placemark when
+    /// it can't match a business, and that placemark's name is literally the
+    /// street address ("500 Queens Rd") — never let it replace the shared
+    /// name. Apple's name wins only when it plausibly IS the same place
+    /// (shares a significant word), because it's usually better-formatted.
+    private static func bestName(shared: String, apple: String?) -> String {
+        guard let apple = apple, !apple.isEmpty else { return shared }
+        guard !shared.isEmpty else { return apple }
+        // Leading street number = address masquerading as a name
+        if apple.range(of: #"^\d+\s"#, options: .regularExpression) != nil { return shared }
+        let words = { (s: String) -> Set<String> in
+            Set(s.lowercased()
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { $0.count > 2 })
+        }
+        return words(shared).isDisjoint(with: words(apple)) ? shared : apple
     }
 
     private static func formatAddress(_ placemark: MKPlacemark) -> String {
