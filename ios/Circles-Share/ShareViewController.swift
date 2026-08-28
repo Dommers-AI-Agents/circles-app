@@ -46,6 +46,8 @@ final class ShareViewController: UIViewController {
 
     // MARK: UI
 
+    private let backgroundImageView = UIImageView()
+    private let backgroundDim = UIView()
     private let card = UIView()
     private let headerImageView = UIImageView()
     private let headerGradient = CAGradientLayer()
@@ -75,7 +77,31 @@ final class ShareViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor.black.withAlphaComponent(0.35)
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+
+        // The whole sheet is ours — fill it with a live map of the area
+        // (fades in once the snapshot lands), dimmed so the card pops.
+        backgroundImageView.contentMode = .scaleAspectFill
+        backgroundImageView.clipsToBounds = true
+        backgroundImageView.alpha = 0
+        backgroundImageView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backgroundImageView)
+
+        backgroundDim.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+        backgroundDim.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backgroundDim)
+
+        NSLayoutConstraint.activate([
+            backgroundImageView.topAnchor.constraint(equalTo: view.topAnchor),
+            backgroundImageView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            backgroundImageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backgroundImageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backgroundDim.topAnchor.constraint(equalTo: view.topAnchor),
+            backgroundDim.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            backgroundDim.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backgroundDim.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+
         buildCard()
 
         debugInfo["launchedAt"] = Date().description
@@ -723,6 +749,24 @@ final class ShareViewController: UIViewController {
             DispatchQueue.main.async {
                 guard let self = self, self.headerIsMapOnly else { return }
                 self.headerImageView.image = Self.annotated(snapshot: snapshot, coordinate: coordinate)
+            }
+        }
+
+        // Full-sheet backdrop: a wider view of the same neighborhood
+        let backdropOptions = MKMapSnapshotter.Options()
+        backdropOptions.region = MKCoordinateRegion(center: coordinate,
+                                                    latitudinalMeters: 2200,
+                                                    longitudinalMeters: 2200)
+        backdropOptions.size = view.bounds.size == .zero
+            ? CGSize(width: 430, height: 930)
+            : view.bounds.size
+        backdropOptions.traitCollection = traitCollection
+        MKMapSnapshotter(options: backdropOptions).start { [weak self] snapshot, _ in
+            guard let snapshot = snapshot else { return }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.backgroundImageView.image = Self.annotated(snapshot: snapshot, coordinate: coordinate)
+                UIView.animate(withDuration: 0.4) { self.backgroundImageView.alpha = 1 }
             }
         }
 
