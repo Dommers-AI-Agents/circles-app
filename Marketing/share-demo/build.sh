@@ -8,12 +8,14 @@ set -eu
 DIR=$(cd "$(dirname "$0")" && pwd)
 OUT="$DIR/out"
 LEAD=${LEAD:-1.0}
+NAME=${NAME:-share-demo}
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
-python3 - "$DIR" "$OUT" "$LEAD" "$CHROME" <<'PY'
+python3 - "$DIR" "$OUT" "$LEAD" "$CHROME" "$NAME" <<'PY'
 import subprocess, sys, os, html as htmlmod
 
 DIR, OUT, LEAD, CHROME = sys.argv[1], sys.argv[2], float(sys.argv[3]), sys.argv[4]
+NAME = sys.argv[5]
 
 marks = {}
 for line in open(f"{OUT}/actions.log"):
@@ -189,17 +191,17 @@ subprocess.run(["ffmpeg","-y","-v","error",
     "-filter_complex","[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]",
     "-map","[v]","-map","[a]",
     "-c:v","libx264","-preset","medium","-crf","19","-pix_fmt","yuv420p",
-    "-c:a","aac","-b:a","192k", f"{OUT}/favcircles-share-demo.mp4"], check=True)
+    "-c:a","aac","-b:a","192k", f"{OUT}/favcircles-{NAME}.mp4"], check=True)
 
 # ---- Instagram 9:16 variant ----
-subprocess.run(["ffmpeg","-y","-v","error","-i",f"{OUT}/favcircles-share-demo.mp4",
+subprocess.run(["ffmpeg","-y","-v","error","-i",f"{OUT}/favcircles-{NAME}.mp4",
     "-filter_complex",
     "[0:v]split[fg][bg];[bg]scale=1080:1920,boxblur=40[bgb];"
     "[fg]scale=-2:1920[fgs];[bgb][fgs]overlay=(W-w)/2:0",
     "-c:v","libx264","-preset","medium","-crf","19","-pix_fmt","yuv420p",
-    "-c:a","copy", f"{OUT}/favcircles-share-demo-ig.mp4"], check=True)
+    "-c:a","copy", f"{OUT}/favcircles-{NAME}-ig.mp4"], check=True)
 
 print("built:")
-for f in ["favcircles-share-demo.mp4","favcircles-share-demo-ig.mp4"]:
+for f in [f"favcircles-{NAME}.mp4", f"favcircles-{NAME}-ig.mp4"]:
     print(" ", f, f"{dur(f'{OUT}/{f}'):.1f}s")
 PY
