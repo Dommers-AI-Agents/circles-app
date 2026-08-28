@@ -552,14 +552,124 @@ final class ShareViewController: UIViewController {
     private func refreshCircleButton() {
         circleButton.setImage(UIImage(systemName: "circle.grid.2x2"), for: .normal)
         circleButton.setTitle("  \(selectedCircle?.name ?? "…")  ▾", for: .normal)
-        circleButton.menu = UIMenu(children: circles.map { choice in
-            UIAction(title: choice.name,
-                     state: choice.id == selectedCircle?.id ? .on : .off) { [weak self] _ in
-                self?.selectedCircle = choice
-                self?.refreshCircleButton()
-            }
-        })
-        circleButton.showsMenuAsPrimaryAction = true
+    }
+
+    // MARK: Circle picker sheet (custom — the system UIMenu looks nothing
+    // like FavCircles and swallows the whole screen)
+
+    private let pickerDim = UIControl()
+    private let pickerSheet = UIView()
+    private let pickerTable = UITableView(frame: .zero, style: .plain)
+
+    @objc private func circleButtonTapped() {
+        guard !circles.isEmpty, pickerSheet.superview == nil else { return }
+
+        pickerDim.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+        pickerDim.alpha = 0
+        pickerDim.frame = view.bounds
+        pickerDim.addTarget(self, action: #selector(dismissCirclePicker), for: .touchUpInside)
+        view.addSubview(pickerDim)
+
+        pickerSheet.backgroundColor = .systemBackground
+        pickerSheet.layer.cornerRadius = 24
+        pickerSheet.clipsToBounds = true
+        pickerSheet.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(pickerSheet)
+
+        let grabber = UIView()
+        grabber.backgroundColor = .tertiaryLabel
+        grabber.layer.cornerRadius = 2.5
+        grabber.translatesAutoresizingMaskIntoConstraints = false
+        pickerSheet.addSubview(grabber)
+
+        let header = UILabel()
+        header.text = "Choose a circle"
+        header.font = .systemFont(ofSize: 18, weight: .bold)
+        header.textAlignment = .center
+        header.translatesAutoresizingMaskIntoConstraints = false
+        pickerSheet.addSubview(header)
+
+        pickerTable.dataSource = self
+        pickerTable.delegate = self
+        pickerTable.rowHeight = 56
+        pickerTable.separatorInset = UIEdgeInsets(top: 0, left: 64, bottom: 0, right: 16)
+        pickerTable.backgroundColor = .clear
+        pickerTable.translatesAutoresizingMaskIntoConstraints = false
+        pickerSheet.addSubview(pickerTable)
+        pickerTable.reloadData()
+
+        let sheetHeight = min(CGFloat(circles.count) * 56 + 76,
+                              view.bounds.height * 0.62)
+        NSLayoutConstraint.activate([
+            pickerSheet.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            pickerSheet.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            pickerSheet.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
+            pickerSheet.heightAnchor.constraint(equalToConstant: sheetHeight),
+
+            grabber.topAnchor.constraint(equalTo: pickerSheet.topAnchor, constant: 8),
+            grabber.centerXAnchor.constraint(equalTo: pickerSheet.centerXAnchor),
+            grabber.widthAnchor.constraint(equalToConstant: 40),
+            grabber.heightAnchor.constraint(equalToConstant: 5),
+
+            header.topAnchor.constraint(equalTo: pickerSheet.topAnchor, constant: 22),
+            header.leadingAnchor.constraint(equalTo: pickerSheet.leadingAnchor, constant: 16),
+            header.trailingAnchor.constraint(equalTo: pickerSheet.trailingAnchor, constant: -16),
+
+            pickerTable.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
+            pickerTable.leadingAnchor.constraint(equalTo: pickerSheet.leadingAnchor),
+            pickerTable.trailingAnchor.constraint(equalTo: pickerSheet.trailingAnchor),
+            pickerTable.bottomAnchor.constraint(equalTo: pickerSheet.bottomAnchor)
+        ])
+
+        // Spring in from below
+        view.layoutIfNeeded()
+        pickerSheet.transform = CGAffineTransform(translationX: 0, y: sheetHeight + 40)
+        UIView.animate(withDuration: 0.45, delay: 0,
+                       usingSpringWithDamping: 0.85, initialSpringVelocity: 0.4) {
+            self.pickerDim.alpha = 1
+            self.pickerSheet.transform = .identity
+        }
+    }
+
+    @objc private func dismissCirclePicker() {
+        UIView.animate(withDuration: 0.25, animations: {
+            self.pickerDim.alpha = 0
+            self.pickerSheet.transform = CGAffineTransform(translationX: 0, y: self.pickerSheet.bounds.height + 40)
+        }) { _ in
+            self.pickerDim.removeFromSuperview()
+            self.pickerSheet.removeFromSuperview()
+            self.pickerSheet.transform = .identity
+        }
+    }
+
+    /// Deterministic avatar: colored disc + the circle's initial, so every
+    /// circle keeps a stable identity color across opens.
+    private static let avatarPalette: [UIColor] = [
+        brandBlue,
+        UIColor(red: 0.31, green: 0.82, blue: 0.77, alpha: 1.0),  // teal (brand accent)
+        UIColor(red: 0.95, green: 0.61, blue: 0.29, alpha: 1.0),  // orange
+        UIColor(red: 0.62, green: 0.48, blue: 0.92, alpha: 1.0),  // purple
+        UIColor(red: 0.93, green: 0.46, blue: 0.60, alpha: 1.0),  // pink
+        UIColor(red: 0.42, green: 0.78, blue: 0.47, alpha: 1.0)   // green
+    ]
+
+    private static func circleAvatar(for name: String) -> UIImage {
+        let colorIndex = name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % avatarPalette.count
+        let color = avatarPalette[colorIndex]
+        let size = CGSize(width: 36, height: 36)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            color.setFill()
+            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
+            let initial = String(name.trimmingCharacters(in: .whitespaces).prefix(1)).uppercased()
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 16, weight: .bold),
+                .foregroundColor: UIColor.white
+            ]
+            let textSize = initial.size(withAttributes: attributes)
+            initial.draw(at: CGPoint(x: (size.width - textSize.width) / 2,
+                                     y: (size.height - textSize.height) / 2),
+                         withAttributes: attributes)
+        }
     }
 
     // MARK: Save
@@ -698,6 +808,7 @@ final class ShareViewController: UIViewController {
         circleButton.layer.cornerRadius = 12
         circleButton.contentHorizontalAlignment = .center
         circleButton.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        circleButton.addTarget(self, action: #selector(circleButtonTapped), for: .touchUpInside)
 
         coinHintLabel.text = "🪙 Every place you save earns FavCoins"
         coinHintLabel.font = .systemFont(ofSize: 12)
@@ -908,5 +1019,39 @@ final class ShareViewController: UIViewController {
 
     @objc private func doneTapped() {
         extensionContext?.completeRequest(returningItems: nil)
+    }
+}
+
+// MARK: - Circle picker table
+
+extension ShareViewController: UITableViewDataSource, UITableViewDelegate {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        circles.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "circle")
+            ?? UITableViewCell(style: .default, reuseIdentifier: "circle")
+        let circle = circles[indexPath.row]
+
+        var content = cell.defaultContentConfiguration()
+        content.text = circle.name
+        content.textProperties.font = .systemFont(ofSize: 16, weight: .medium)
+        content.image = Self.circleAvatar(for: circle.name)
+        content.imageProperties.maximumSize = CGSize(width: 36, height: 36)
+        cell.contentConfiguration = content
+
+        let isSelected = circle.id == selectedCircle?.id
+        cell.accessoryType = isSelected ? .checkmark : .none
+        cell.tintColor = Self.brandBlue
+        cell.backgroundColor = .clear
+        return cell
+    }
+
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        selectedCircle = circles[indexPath.row]
+        refreshCircleButton()
+        dismissCirclePicker()
     }
 }
