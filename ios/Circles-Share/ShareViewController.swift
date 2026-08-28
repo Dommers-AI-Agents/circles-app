@@ -267,7 +267,7 @@ final class ShareViewController: UIViewController {
         // URL in it, but 302s every plain client straight to the full place
         // URL (q=<name, address> + ftid=<feature id>). Verified with curl
         // against a live share link, 2026-08-27.
-        request.setValue("FavCircles/1.2.7 CFNetwork Darwin", forHTTPHeaderField: "User-Agent")
+        request.setValue("FavCircles CFNetwork Darwin", forHTTPHeaderField: "User-Agent")
 
         URLSession.shared.dataTask(with: request) { data, response, error in
             let finalURL = response?.url?.absoluteString ?? cleanedString
