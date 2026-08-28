@@ -541,12 +541,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         return c
     }()
     private lazy var stickyAddButton: UIButton = {
-        let b = UIButton(type: .system)
-        b.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
-        b.tintColor = Constants.Colors.primary
+        let b = ProfileViewController.makeNewCircleButton()
         b.addTarget(self, action: #selector(createCircleButtonTapped), for: .touchUpInside)
-        b.accessibilityLabel = "New circle"
-        b.translatesAutoresizingMaskIntoConstraints = false
         return b
     }()
     private var isStickyTabBarVisible = false
@@ -740,15 +736,25 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     // Floating add button for creating circles
     lazy var floatingAddButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "plus.circle.fill"), for: .normal)
-        button.tintColor = Constants.Colors.primary
-        button.backgroundColor = .clear
-        button.translatesAutoresizingMaskIntoConstraints = false
+        let button = ProfileViewController.makeNewCircleButton()
         button.addTarget(self, action: #selector(createCircleButtonTapped), for: .touchUpInside)
-        button.accessibilityLabel = "New circle"
         return button
     }()
+
+    // Encompassing ring around the plus glyph so the create-circle button reads
+    // as a button (sized for the 38pt constraints set at layout time)
+    static func makeNewCircleButton() -> UIButton {
+        let b = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
+        b.setImage(UIImage(systemName: "plus.circle.fill", withConfiguration: config), for: .normal)
+        b.tintColor = Constants.Colors.primary
+        b.layer.borderWidth = 2
+        b.layer.borderColor = Constants.Colors.primary.cgColor
+        b.layer.cornerRadius = 19
+        b.accessibilityLabel = "New circle"
+        b.translatesAutoresizingMaskIntoConstraints = false
+        return b
+    }
     
     // Map view elements
     lazy var mapContainerView: UIView = {
@@ -985,6 +991,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         shareProfileButton.layer.borderColor = UIColor.separator.cgColor
         visitHistoryButton.layer.borderColor = UIColor.separator.cgColor
         suggestedButton.layer.borderColor = UIColor.separator.cgColor
+        let ringColor = Constants.Colors.primary.resolvedColor(with: traitCollection).cgColor
+        floatingAddButton.layer.borderColor = ringColor
+        stickyAddButton.layer.borderColor = ringColor
     }
     
     override func viewDidLayoutSubviews() {
@@ -1426,8 +1435,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             // Add-circle button: compact, just left of the tab control
             floatingAddButton.centerYAnchor.constraint(equalTo: contentTypeSegmentedControl.centerYAnchor),
             floatingAddButton.trailingAnchor.constraint(equalTo: contentTypeSegmentedControl.leadingAnchor, constant: -12),
-            floatingAddButton.widthAnchor.constraint(equalToConstant: 34),
-            floatingAddButton.heightAnchor.constraint(equalToConstant: 34)
+            floatingAddButton.widthAnchor.constraint(equalToConstant: 38),
+            floatingAddButton.heightAnchor.constraint(equalToConstant: 38)
         ])
         
         // Create height constraints for collection views
@@ -4005,8 +4014,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 
             stickyAddButton.centerYAnchor.constraint(equalTo: stickySegmentedControl.centerYAnchor),
             stickyAddButton.trailingAnchor.constraint(equalTo: stickySegmentedControl.leadingAnchor, constant: -12),
-            stickyAddButton.widthAnchor.constraint(equalToConstant: 34),
-            stickyAddButton.heightAnchor.constraint(equalToConstant: 34),
+            stickyAddButton.widthAnchor.constraint(equalToConstant: 38),
+            stickyAddButton.heightAnchor.constraint(equalToConstant: 38),
 
             stickyTabSeparator.leadingAnchor.constraint(equalTo: stickyTabBar.leadingAnchor),
             stickyTabSeparator.trailingAnchor.constraint(equalTo: stickyTabBar.trailingAnchor),
