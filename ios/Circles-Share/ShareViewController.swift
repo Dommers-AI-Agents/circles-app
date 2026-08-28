@@ -1114,23 +1114,30 @@ final class ShareViewController: UIViewController {
                         self.extensionContext?.completeRequest(returningItems: nil)
                     }
                 } else {
-                    self.statusLabel.text = "✓ It'll be waiting when you open FavCircles"
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
-                        self.extensionContext?.completeRequest(returningItems: nil)
-                    }
+                    // iOS refused both open paths — the mailbox makes the
+                    // promise real: the app lands on this place at next open.
+                    self.statusLabel.text = "Your place is ready — just open FavCircles and it'll pop right up"
+                    self.saveButton.isHidden = true
+                    self.doneButton.setTitle("OK, got it", for: .normal)
+                    self.doneButton.setTitleColor(Self.brandBlue, for: .normal)
+                    self.doneButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
                 }
             }
         }
     }
 
-    /// Share extensions can't call UIApplication.open directly, but the
-    /// UIApplication instance sits at the top of the responder chain and
-    /// still answers openURL: — the standard workaround.
+    /// Share extensions can't call UIApplication.open directly; walk the
+    /// responder chain and perform openURL: on whatever answers it — in
+    /// extension processes that responder is often a host-app proxy rather
+    /// than a literal UIApplication, so no class check (UIResponder itself
+    /// doesn't implement openURL:, so any responder that answers is the
+    /// system's opener).
     private func openViaResponderChain(_ url: URL) -> Bool {
         let selector = NSSelectorFromString("openURL:")
         var responder: UIResponder? = self
         while let current = responder {
-            if current is UIApplication, current.responds(to: selector) {
+            if !(current is UIView), !(current is UIViewController),
+               current.responds(to: selector) {
                 current.perform(selector, with: url)
                 return true
             }
