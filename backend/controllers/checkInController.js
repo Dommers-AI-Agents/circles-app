@@ -115,7 +115,10 @@ async function enrichPlaceWithGoogleData(placeName, location) {
     const detailsResponse = await googleMapsClient.placeDetails({
       params: {
         place_id: placeId,
-        fields: ['name', 'formatted_address', 'photos', 'types', 'rating', 'price_level', 'website', 'formatted_phone_number', 'opening_hours'],
+        fields: ['name', 'formatted_address', 'photos', 'types', 'rating', 'user_ratings_total', 'price_level', 'website', 'formatted_phone_number', 'opening_hours',
+                 // editorial_summary rides the Atmosphere SKU this call
+                 // already bills for rating/price_level — no incremental cost
+                 'editorial_summary'],
         // Pin to English so weekday_text day names match the dayIndex map below
         language: 'en',
         key: googleMapsApiKey
@@ -154,9 +157,11 @@ async function enrichPlaceWithGoogleData(placeName, location) {
       photos: photos,
       googleTypes: placeDetails.types || [],
       rating: placeDetails.rating || null,
+      userRatingsTotal: placeDetails.user_ratings_total || null,
       priceLevel: placeDetails.price_level || null,
       website: placeDetails.website || null,
       phoneNumber: placeDetails.formatted_phone_number || null,
+      description: placeDetails.editorial_summary?.overview || null,
       // Convert Google's weekday_text strings to { day, hours } objects -
       // the iOS OpeningHour model requires an integer `day` and fails to
       // decode plain strings (which breaks any response containing the place)

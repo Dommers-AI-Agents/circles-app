@@ -1126,11 +1126,17 @@ exports.createPlace = async (req, res, next) => {
           const { findCanonicalByNameAndLocation } = require('../services/globalPlaceResolver');
           canonicalDoc = await findCanonicalByNameAndLocation(placeData.name, { coordinates: coords });
         }
-        if (canonicalDoc) {
-          const canonical = canonicalDoc.data();
-          if (canonical.googlePlaceId) placeData.googlePlaceId = canonical.googlePlaceId;
-          console.log(`✅ Share save matched canonical venue ${canonicalDoc.id} — skipping Google enrichment`);
+        const canonicalData = canonicalDoc ? canonicalDoc.data() : null;
+
+        if (canonicalData && canonicalData.googlePlaceId) {
+          // Genuinely enriched canonical: zero Google spend — the anchor
+          // below overlays every venue field from it.
+          placeData.googlePlaceId = canonicalData.googlePlaceId;
+          console.log(`✅ Share save matched enriched canonical ${canonicalDoc.id} — skipping Google`);
         } else if (Array.isArray(coords) && coords.length === 2) {
+          // No canonical, or a BARE one (seeded by an earlier bare save of
+          // this venue — a bare match must not satisfy canonical-first, or
+          // the venue stays bare forever).
           const { enrichPlaceWithGoogleData } = require('./checkInController');
           const googleData = await enrichPlaceWithGoogleData(placeData.name, {
             latitude: coords[1],
@@ -1143,11 +1149,54 @@ exports.createPlace = async (req, res, next) => {
             if (googleData.photos && googleData.photos.length > 0) placeData.photos = googleData.photos;
             if (googleData.googleTypes && googleData.googleTypes.length > 0) placeData.googleTypes = googleData.googleTypes;
             placeData.rating = googleData.rating ?? placeData.rating;
+            placeData.userRatingsTotal = googleData.userRatingsTotal ?? placeData.userRatingsTotal;
             placeData.priceLevel = googleData.priceLevel ?? placeData.priceLevel;
             placeData.website = googleData.website || placeData.website;
             placeData.phone = googleData.phoneNumber || placeData.phone;
             placeData.openingHours = googleData.openingHours || placeData.openingHours;
+            if (googleData.description) {
+              placeData.description = googleData.description;
+              placeData.descriptionSource = 'google_editorial';
+            }
             console.log(`✅ Share save enriched from Google: ${googleData.googlePlaceId}`);
+
+            // Upgrade the bare canonical IN PLACE. Without this,
+            // ensureGlobalPlaceLink matches the save to the bare record,
+            // strips the enriched fields off the save, and every read
+            // overlays bare data — the enrichment would vanish.
+            if (canonicalDoc) {
+              const { createAttributedPhoto } = require('../models/GlobalPlace');
+              const upgradedName = googleData.name || canonicalData.name;
+              const canonicalUpdates = {
+                googlePlaceId: googleData.googlePlaceId,
+                name: upgradedName,
+                nameLower: (upgradedName || '').toLowerCase(),
+                searchTokens: buildSearchTokens(upgradedName),
+                address: googleData.address || canonicalData.address,
+                'googleData.rating': googleData.rating ?? null,
+                'googleData.userRatingsTotal': googleData.userRatingsTotal ?? null,
+                'googleData.priceLevel': googleData.priceLevel ?? null,
+                'googleData.website': googleData.website || null,
+                'googleData.phone': googleData.phoneNumber || null,
+                'googleData.openingHours': googleData.openingHours || null,
+                updatedAt: new Date().toISOString()
+              };
+              if (googleData.description && !canonicalData.description) {
+                canonicalUpdates.description = googleData.description;
+                canonicalUpdates.descriptionSource = 'google_editorial';
+              }
+              if (googleData.photos && googleData.photos.length > 0 &&
+                  !(canonicalData.photos || []).length) {
+                canonicalUpdates.photos = googleData.photos.map(url => createAttributedPhoto({
+                  url,
+                  uploadedBy: null,
+                  uploadedByName: null,
+                  source: 'google_places'
+                }));
+              }
+              await canonicalDoc.ref.update(canonicalUpdates);
+              console.log(`⬆️ Upgraded bare canonical ${canonicalDoc.id} with Google enrichment`);
+            }
           }
         }
       } catch (enrichError) {
