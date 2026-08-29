@@ -59,6 +59,36 @@ if raw_total < need - 0.05:
 # how slow the network or OCR retries were on a given take.
 vt = {k: v + LEAD for k, v in marks.items()}
 
+# ---- optional: real-phone clip for the Google Maps segment ----
+# The simulator can't run Google Maps, so PHONE_CLIP (Wes's iPhone screen
+# recording: list card → Share → FavCircles → list card → picker → Save →
+# "Saving…") replaces the simulator's Safari-hosted opening. We enter the
+# simulator take right at its success card ("30 places saved"), which the
+# phone take can't show (its account already had the circle).
+PHONE = os.environ.get("PHONE_CLIP", f"{DIR}/phone-google-maps-share.mp4" if os.path.exists(f"{DIR}/phone-google-maps-share.mp4") else None)
+PHONE_HOLD = 0.0
+if PHONE:
+    PHONE_IN, PHONE_OUT = float(os.environ.get("PHONE_IN", "6.0")), float(os.environ.get("PHONE_OUT", "21.7"))
+    PHONE_BEATS = {"b00": 0.3, "b01": 3.6, "b02": 7.3}     # seconds into the phone segment
+    subprocess.run(["ffmpeg","-y","-v","error","-ss",f"{PHONE_IN:.2f}","-to",f"{PHONE_OUT:.2f}","-i",PHONE,
+        "-vf","scale=1080:2340,fps=30","-an","-c:v","libx264","-preset","fast","-crf","18","-pix_fmt","yuv420p",
+        f"{OUT}/phone_seg.mp4"], check=True)
+    phone_d = dur(f"{OUT}/phone_seg.mp4")
+    S0 = vt["dwell-success"] - float(os.environ.get("SIM_START_BACK", "2.2"))
+    subprocess.run(["ffmpeg","-y","-v","error","-ss",f"{S0:.2f}","-i",f"{OUT}/walk_norm.mp4",
+        "-vf","scale=1080:2340,fps=30","-an","-c:v","libx264","-preset","fast","-crf","18","-pix_fmt","yuv420p",
+        f"{OUT}/sim_seg.mp4"], check=True)
+    subprocess.run(["ffmpeg","-y","-v","error","-i",f"{OUT}/phone_seg.mp4","-i",f"{OUT}/sim_seg.mp4",
+        "-filter_complex","[0:v][1:v]concat=n=2:v=1:a=0[v]","-map","[v]",
+        "-c:v","libx264","-preset","fast","-crf","18","-pix_fmt","yuv420p", f"{OUT}/walk_joined.mp4"], check=True)
+    os.replace(f"{OUT}/walk_joined.mp4", f"{OUT}/walk_norm.mp4")
+    raw_total = dur(f"{OUT}/walk_norm.mp4")
+    vt = {k: t - S0 + phone_d for k, t in vt.items() if t >= S0}
+    for b, t in PHONE_BEATS.items(): vt[f"audio-{b}"] = t
+    vt["phone-hold"] = 0.0
+    PHONE_HOLD = phone_d + 0.05
+    print(f"phone segment {phone_d:.1f}s in front; simulator take enters at {S0:.2f}s")
+
 beats_pre = [k[6:] for k, v in sorted(vt.items(), key=lambda x: x[1]) if k.startswith("audio-")]
 pre_sched, pe = [], 0.0
 for b in beats_pre:
@@ -70,8 +100,9 @@ for b in beats_pre:
 # Per-mark protection (pre, post) seconds — how much surrounding video an
 # action needs to read on screen.
 PROTECT = {
+    "phone-hold": (0.0, PHONE_HOLD),    # the phone clip is pre-cut: never excise inside it
     "page-share": (0.4, 1.6), "pick-favcircles": (0.35, 1.4),
-    "save-list": (0.4, 2.6), "done-a": (2.6, 1.0), "backfill-done": (0.0, 0.0),
+    "save-list": (0.4, 2.6), "done-a": (2.6, 0.35), "backfill-done": (0.0, 0.0),
     "app-launch": (0.3, 2.8), "me-tab": (0.4, 2.2), "open-circle": (0.5, 3.2),
     "list-scroll-1": (0.3, 1.7), "list-scroll-2": (0.3, 1.8),
     "back-to-profile": (0.4, 2.6), "back-to-profile-retry": (0.4, 2.6), "end": (2.6, 0.0),
