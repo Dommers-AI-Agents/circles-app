@@ -11,6 +11,8 @@ const {
   updatePlaceAddress,
   getUnresolvedPlaces,
   resolveImportedPlace,
+  getPlacesNeedingPhoto,
+  setPlacePhotoFallback,
   flagPlaceInfo,
   likePlace,
   getPlaceLikes,
@@ -62,6 +64,10 @@ router.route('/my-save/:globalPlaceId')
 router.route('/unresolved')
   .get(getUnresolvedPlaces);
 
+// Own imported places without a photo (background Look Around fallback queue)
+router.route('/needs-photo')
+  .get(getPlacesNeedingPhoto);
+
 // Migration endpoint for Google API photos
 router.route('/migrate-photos')
   .post(migrateGooglePhotosToFirebase);
@@ -79,6 +85,10 @@ router.route('/:id/update-address')
 // Stamp on-device Apple resolution onto an unmapped import
 router.route('/:id/resolve')
   .put(resolveImportedPlace);
+
+// Attach an on-device Apple Look Around snapshot as an import's photo
+router.route('/:id/photo-fallback')
+  .put(setPlacePhotoFallback);
 
 router.route('/:id/flag')
   .post(flagPlaceInfo);

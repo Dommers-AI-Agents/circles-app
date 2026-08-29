@@ -227,6 +227,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Quietly locate any imported places still waiting on a coordinate
         // (rows past the import flow's inline-resolution cap)
         ImportResolutionQueue.shared.kick()
+        // …and give imported places without a photo a free Apple Look Around one
+        ImportPhotoQueue.shared.kick()
 
         // Mirror saved places into iOS system search (once per session)
         SpotlightIndexService.shared.refreshIndexIfNeeded()
@@ -1898,6 +1900,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                                 if let circleId = response.results.first?.circleId {
                                     self.navigateToCircle(circleId: circleId)
                                 }
+                                ImportPhotoQueue.shared.kick()
                             case .failure(let error):
                                 AlertPresenter.showError(error, from: presenter)
                             }

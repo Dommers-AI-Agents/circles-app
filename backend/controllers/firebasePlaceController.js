@@ -2440,6 +2440,77 @@ exports.getUnresolvedPlaces = async (req, res) => {
   }
 };
 
+// @desc    Own IMPORTED places that still have no photo — the app fills in a
+//          free on-device Apple Look Around snapshot for each (imports never
+//          spend on Google photos). Two failed passes retire a row.
+// @route   GET /api/places/needs-photo
+// @access  Private
+exports.getPlacesNeedingPhoto = async (req, res) => {
+  try {
+    const snapshot = await db.collection(COLLECTIONS.PLACES)
+      .where('addedBy', '==', req.user.uid)
+      .get();
+    const places = [];
+    snapshot.forEach(doc => {
+      const p = doc.data();
+      if (p.deletedAt || !p.importSource) return;
+      if (Array.isArray(p.photos) && p.photos.length > 0) return;
+      if ((p.photoFallbackAttempts || 0) >= 2) return;
+      const coords = p.location && p.location.coordinates;
+      if (!Array.isArray(coords) || coords.length !== 2) return;
+      places.push({ id: doc.id, name: p.name, lat: coords[1], lng: coords[0] });
+    });
+    // Newest imports first; the client caps each pass
+    res.json({ success: true, data: { places: places.slice(0, 60), count: places.length } });
+  } catch (error) {
+    console.error('❌ getPlacesNeedingPhoto failed:', error);
+    res.status(500).json({ success: false, message: 'Failed to load places needing a photo' });
+  }
+};
+
+// @desc    Attach the on-device Look Around snapshot (already uploaded via
+//          /upload/image) as the place's photo — only if it still has none.
+//          { unavailable: true } records a strike instead (no coverage).
+// @route   PUT /api/places/:id/photo-fallback
+// @access  Private (owner)
+exports.setPlacePhotoFallback = async (req, res) => {
+  try {
+    const ref = db.collection(COLLECTIONS.PLACES).doc(req.params.id);
+    const snap = await ref.get();
+    if (!snap.exists || snap.data().deletedAt) {
+      return res.status(404).json({ success: false, message: 'Place not found' });
+    }
+    const place = snap.data();
+    if (!isSameUser(place.addedBy, req.user.uid)) {
+      return res.status(403).json({ success: false, message: 'Not your place' });
+    }
+    const photoUrl = typeof req.body?.photoUrl === 'string' ? req.body.photoUrl.trim() : '';
+    const { FieldValue } = admin.firestore;
+
+    if (!photoUrl) {
+      await ref.update({ photoFallbackAttempts: FieldValue.increment(1), updatedAt: new Date().toISOString() });
+      return res.json({ success: true, data: { placeId: ref.id, applied: false } });
+    }
+    if (!/^https:\/\/(firebasestorage\.googleapis\.com|storage\.googleapis\.com)\//.test(photoUrl)) {
+      return res.status(400).json({ success: false, message: 'Photo must be an uploaded FavCircles image' });
+    }
+    if (Array.isArray(place.photos) && place.photos.length > 0) {
+      // The user (or another pass) got there first — never overwrite a real photo
+      return res.json({ success: true, data: { placeId: ref.id, applied: false } });
+    }
+    await ref.update({
+      photos: [photoUrl],
+      photoSource: 'apple_look_around',
+      photoFallbackAttempts: FieldValue.increment(1),
+      updatedAt: new Date().toISOString()
+    });
+    res.json({ success: true, data: { placeId: ref.id, applied: true } });
+  } catch (error) {
+    console.error('❌ setPlacePhotoFallback failed:', error);
+    res.status(500).json({ success: false, message: 'Failed to set photo' });
+  }
+};
+
 // @desc    Stamp an on-device Apple Maps resolution onto an unmapped import:
 //          location + geohash, address when the save has none, canonical
 //          venue link, and a venue-level duplicate check against the caller's

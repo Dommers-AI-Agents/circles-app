@@ -866,7 +866,8 @@ final class ShareViewController: UIViewController {
         if outcome.failed > 0 {
             status += "\n\(outcome.failed) couldn't be saved"
         }
-        status += "\nOpen FavCircles — it'll pop right up"
+        // The app's ImportPhotoQueue fills free Apple Look Around snapshots in
+        status += "\nOpen FavCircles — it'll pop right up, and street-view photos fill in"
         statusLabel.text = status
         statusLabel.isHidden = false
 

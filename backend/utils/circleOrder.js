@@ -8,9 +8,12 @@
 // through this so the add-place picker, move-to-circle picker, home screen,
 // map picker, etc. all read in exactly the same order as the profile grid.
 //
-// Rules (mirrors the long-standing getUserCircles behaviour):
+// Rules:
 //   1. circles listed in circleOrder, in that order
-//   2. circles not yet in circleOrder (newly created) — newest first
+//   2. circles not yet in circleOrder (created since the last drag-reorder)
+//      append AFTER the arranged ones, oldest first — so a brand-new circle
+//      lands at the bottom of the list, where the user expects it (Wes,
+//      2026-08-29). With no arrangement at all, newest first.
 //   3. the auto-created "Places I Follow" circle always sinks to the very end
 
 const circleTimestamp = (circle) => {
@@ -38,7 +41,11 @@ const sortCirclesByUserOrder = (circles, circleOrder) => {
     const bi = orderIndex.has(idOf(b)) ? orderIndex.get(idOf(b)) : Infinity;
     if (ai !== bi) return ai - bi;
 
-    return circleTimestamp(b) - circleTimestamp(a);
+    // Both unlisted: append in creation order under an arrangement, newest
+    // first when the user has never arranged anything
+    return order.length > 0
+      ? circleTimestamp(a) - circleTimestamp(b)
+      : circleTimestamp(b) - circleTimestamp(a);
   });
 };
 

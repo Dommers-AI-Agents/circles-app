@@ -164,6 +164,7 @@ class ImportReviewViewController: BaseViewController {
         // Rows past the inline-resolution cap imported unmapped — start
         // locating them quietly now
         ImportResolutionQueue.shared.kick()
+        ImportPhotoQueue.shared.kick()
 
         showSuccess(message) { [weak self] in
             self?.dismiss(animated: true)
