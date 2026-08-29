@@ -427,7 +427,9 @@ class NetworkManager {
         )
     }
     
-    func handleConnectionInvite(from inviteUserId: String, completion: @escaping (Result<Connection, Error>) -> Void) {
+    func handleConnectionInvite(from inviteUserId: String,
+                                message: String = "Connected via invite link",
+                                completion: @escaping (Result<Connection, Error>) -> Void) {
         Logger.debug("🔗 NetworkManager: handleConnectionInvite called with userId: \(inviteUserId)")
         
         // Parse userId from deep link format
@@ -473,7 +475,7 @@ class NetworkManager {
         Logger.debug("🔗 NetworkManager: Sending connection request to user \(cleanUserId)")
         
         // Send connection request with autoAccept = true for invite links
-        sendConnectionRequest(to: cleanUserId, message: "Connected via invite link", autoAccept: true) { result in
+        sendConnectionRequest(to: cleanUserId, message: message, autoAccept: true) { result in
             switch result {
             case .success(let connection):
                 Logger.debug("🔗 NetworkManager: Connection created successfully: \(connection.id), status: \(connection.status)")

@@ -52,6 +52,15 @@ class ShareProfileViewController: BaseViewController {
         return imageView
     }()
     
+    private lazy var nearbyButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("  Or hold phones together", for: .normal)
+        button.setImage(UIImage(systemName: "dot.radiowaves.left.and.right"), for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+        button.tintColor = .white
+        return button
+    }()
+
     private let buttonsStackView: UIStackView = {
         let stackView = UIStackView()
         stackView.axis = .horizontal
@@ -182,6 +191,15 @@ class ShareProfileViewController: BaseViewController {
         buttonsStackView.addArrangedSubview(downloadContainer)
         
         backgroundView.addSubview(buttonsStackView)
+
+        // Standing next to each other? Skip the QR — proximity connect.
+        nearbyButton.translatesAutoresizingMaskIntoConstraints = false
+        nearbyButton.addTarget(self, action: #selector(nearbyTapped), for: .touchUpInside)
+        backgroundView.addSubview(nearbyButton)
+        NSLayoutConstraint.activate([
+            nearbyButton.bottomAnchor.constraint(equalTo: buttonsStackView.topAnchor, constant: -18),
+            nearbyButton.centerXAnchor.constraint(equalTo: backgroundView.centerXAnchor)
+        ])
         
         NSLayoutConstraint.activate([
             // Background view
@@ -284,6 +302,13 @@ class ShareProfileViewController: BaseViewController {
         }
     }
     
+    @objc private func nearbyTapped() {
+        let tapVC = TapToConnectViewController()
+        let navController = UINavigationController(rootViewController: tapVC)
+        navController.modalPresentationStyle = .pageSheet
+        present(navController, animated: true)
+    }
+
     private func generateQRCode() {
         guard let data = deepLink.data(using: .utf8) else { return }
         

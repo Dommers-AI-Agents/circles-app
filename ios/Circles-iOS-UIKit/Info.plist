@@ -188,6 +188,13 @@
 	<false/>
 	<key>GMSApiKey</key>
 	<string>AIzaSyAwcmtCmYmq5dbsBsYA1T3Fx949VeK0Cv8</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_fc-tap._tcp</string>
+		<string>_fc-tap._udp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>FavCircles finds nearby friends' phones so you can connect by holding them together.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Circles needs access to your camera to take photos and record videos for your places.</string>
 	<key>NSMicrophoneUsageDescription</key>

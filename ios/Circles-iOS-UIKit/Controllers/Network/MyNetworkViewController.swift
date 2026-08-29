@@ -236,7 +236,16 @@ class MyNetworkViewController: BaseViewController {
         )
         qrButton.accessibilityLabel = "Show my connect QR code"
 
-        navigationItem.rightBarButtonItems = [addConnectionButton, qrButton]
+        // Tap to stay in touch: hold two phones together, connect in one tap
+        let nearbyButton = UIBarButtonItem(
+            image: UIImage(systemName: "dot.radiowaves.left.and.right"),
+            style: .plain,
+            target: self,
+            action: #selector(tapToConnectTapped)
+        )
+        nearbyButton.accessibilityLabel = "Tap phones to connect"
+
+        navigationItem.rightBarButtonItems = [addConnectionButton, nearbyButton, qrButton]
         
         view.addSubview(searchBar)
         view.addSubview(segmentedControl)
@@ -348,6 +357,13 @@ class MyNetworkViewController: BaseViewController {
         shareProfileVC.modalPresentationStyle = .overFullScreen
         shareProfileVC.modalTransitionStyle = .crossDissolve
         present(shareProfileVC, animated: true)
+    }
+
+    @objc private func tapToConnectTapped() {
+        let tapVC = TapToConnectViewController()
+        let navController = UINavigationController(rootViewController: tapVC)
+        navController.modalPresentationStyle = .pageSheet
+        present(navController, animated: true)
     }
 
     // MARK: - Requests badge
@@ -487,6 +503,9 @@ class MyNetworkViewController: BaseViewController {
                 }),
                 ("Show My QR Code", .default, { [weak self] in
                     self?.showMyQRCodeTapped()
+                }),
+                ("Tap Phones to Connect", .default, { [weak self] in
+                    self?.tapToConnectTapped()
                 }),
                 ("Search People I Know", .default, { [weak self] in
                     self?.searchBar.becomeFirstResponder()

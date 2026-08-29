@@ -21,9 +21,9 @@
 		6FE8F0B72DF7C276007CB88E /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE8F0B62DF7C276007CB88E /* FirebaseAnalytics */; };
 		6FE8F0B92DF7C291007CB88E /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE8F0B82DF7C291007CB88E /* FirebaseAuth */; };
 		AC10C11B000000000000000B /* Circles-Clip.app in Embed App Clips */ = {isa = PBXBuildFile; fileRef = AC10C11B0000000000000002 /* Circles-Clip.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		CF10CRA50000000000000001 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = CF10CRA50000000000000002 /* FirebaseCrashlytics */; };
 		FAB5000000000000000000AB /* Circles-Widget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FAB5000000000000000000A2 /* Circles-Widget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FAB5100000000000000000BB /* Circles-Share.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FAB5100000000000000000B2 /* Circles-Share.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		CF10CRA50000000000000001 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = CF10CRA50000000000000002 /* FirebaseCrashlytics */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -650,7 +650,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Circles-iOS-UIKit/Circles-iOS-Debug.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -677,7 +677,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.8;
+				MARKETING_VERSION = 1.2.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -698,7 +698,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Circles-iOS-UIKit/Circles-iOS-Release.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -725,7 +725,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.8;
+				MARKETING_VERSION = 1.2.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -936,7 +936,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "Circles-Clip/Circles-Clip.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
@@ -952,7 +952,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.8;
+				MARKETING_VERSION = 1.2.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Clip;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -967,7 +967,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "Circles-Clip/Circles-Clip.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
@@ -983,7 +983,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.8;
+				MARKETING_VERSION = 1.2.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Clip;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -997,7 +997,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = "Circles-Widget/Circles-Widget.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Circles-Widget/Info.plist";
@@ -1008,7 +1008,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.8;
+				MARKETING_VERSION = 1.2.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1023,7 +1023,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = "Circles-Widget/Circles-Widget.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Circles-Widget/Info.plist";
@@ -1034,7 +1034,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.8;
+				MARKETING_VERSION = 1.2.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1049,7 +1049,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = "Circles-Share/Circles-Share.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Circles-Share/Info.plist";
@@ -1060,7 +1060,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.8;
+				MARKETING_VERSION = 1.2.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Share;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1075,7 +1075,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = "Circles-Share/Circles-Share.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Circles-Share/Info.plist";
@@ -1086,7 +1086,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.8;
+				MARKETING_VERSION = 1.2.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.favcircles.circles.Share;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
