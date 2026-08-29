@@ -12,6 +12,7 @@ const { Client } = require('@googlemaps/google-maps-services-js');
 const geofire = require('geofire-common');
 const { normalizeUserId, isSameUser } = require('../services/idService');
 const { ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
+const { ensureCircleCoverImage } = require('../services/circleCover');
 const { indexSavedPlace, indexPlaceRemoved, indexPlaceMoved } = require('../services/circleLocationSummary');
 const { GLOBAL_COLLECTIONS, buildSearchTokens } = require('../models/GlobalPlace');
 const { sanitizeVenueDescription } = require('../utils/venueDescriptionSanitizer');
@@ -1380,6 +1381,10 @@ exports.createPlace = async (req, res, next) => {
         placesCount: (circle.placesCount || 0) + 1, // Increment places count
         updatedAt: new Date().toISOString()
       });
+      // Default cover: a circle with no cover takes its first place photo
+      if (!circle.coverImage && Array.isArray(place.photos) && place.photos.length > 0) {
+        ensureCircleCoverImage(circleId, place.photos[0]);
+      }
     }
 
     // Gamification: the user's live place count rides along so the client can
@@ -2504,6 +2509,8 @@ exports.setPlacePhotoFallback = async (req, res) => {
       photoFallbackAttempts: FieldValue.increment(1),
       updatedAt: new Date().toISOString()
     });
+    // The circle may have been cover-less until now (imports arrive photo-less)
+    ensureCircleCoverImage(place.circleId, photoUrl);
     res.json({ success: true, data: { placeId: ref.id, applied: true } });
   } catch (error) {
     console.error('❌ setPlacePhotoFallback failed:', error);
