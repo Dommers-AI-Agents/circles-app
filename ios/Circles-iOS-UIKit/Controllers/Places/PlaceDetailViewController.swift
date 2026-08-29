@@ -367,7 +367,7 @@ class PlaceDetailViewController: BaseViewController {
     private let likeButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "heart", withConfiguration: PlaceDetailViewController.actionIconConfig), for: .normal)
-        button.tintColor = .white
+        button.tintColor = .label
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -385,7 +385,7 @@ class PlaceDetailViewController: BaseViewController {
     private let commentButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "bubble.left", withConfiguration: PlaceDetailViewController.actionIconConfig), for: .normal)
-        button.tintColor = .white
+        button.tintColor = .label
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -404,7 +404,7 @@ class PlaceDetailViewController: BaseViewController {
     private let sendButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "paperplane.fill", withConfiguration: PlaceDetailViewController.actionIconConfig), for: .normal)
-        button.tintColor = .white
+        button.tintColor = .label
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
@@ -3692,7 +3692,7 @@ extension PlaceDetailViewController {
         // Update heart icon
         let heartImage = isLiked ? "heart.fill" : "heart"
         likeButton.setImage(UIImage(systemName: heartImage, withConfiguration: PlaceDetailViewController.actionIconConfig), for: .normal)
-        likeButton.tintColor = isLiked ? UIColor.systemRed : .white
+        likeButton.tintColor = isLiked ? UIColor.systemRed : .label
         
         // Update like count - blank instead of a noisy "0"
         let likeCount = place.likesCount ?? place.likes?.count ?? 0
