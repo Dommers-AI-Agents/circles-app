@@ -111,6 +111,38 @@ enum PendingUpgradeMailbox {
     }
 }
 
+/// extension → app: "the user just imported a whole list into this circle" —
+/// same contract as PendingOpenPlaceMailbox, but the app lands on the circle.
+enum PendingOpenCircleMailbox {
+    static let fileName = "pending-open-circle.json"
+
+    struct Payload: Codable {
+        var circleId: String
+        var createdAt: Date
+    }
+
+    static var fileURL: URL? {
+        FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: ExtensionAuthMailbox.appGroupId)?
+            .appendingPathComponent(fileName)
+    }
+
+    static func write(circleId: String) {
+        guard let url = fileURL,
+              let data = try? JSONEncoder().encode(Payload(circleId: circleId, createdAt: Date())) else { return }
+        try? data.write(to: url, options: [.atomic, .completeFileProtection])
+    }
+
+    /// One-shot; stale (>1h) requests are dropped.
+    static func take() -> String? {
+        guard let url = fileURL, let data = try? Data(contentsOf: url) else { return nil }
+        try? FileManager.default.removeItem(at: url)
+        guard let payload = try? JSONDecoder().decode(Payload.self, from: data),
+              Date().timeIntervalSince(payload.createdAt) < 3600 else { return nil }
+        return payload.circleId
+    }
+}
+
 enum PendingShareMailbox {
     static let appGroupId = "group.com.favcircles.circles"
     static let fileName = "pending-share.json"
@@ -121,6 +153,10 @@ enum PendingShareMailbox {
         /// The shared text (or page title) — the add-place search seed.
         var sharedText: String?
         var createdAt: Date
+        /// Set when the share was a Google Maps LIST link the extension
+        /// couldn't finish importing (offline / logged out): the app resolves
+        /// the list and imports it as a circle instead of the add-place flow.
+        var googleListURL: String? = nil
     }
 
     static var fileURL: URL? {

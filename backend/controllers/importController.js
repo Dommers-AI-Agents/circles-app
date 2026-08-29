@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const importService = require('../services/importService');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
 const swarmService = require('../services/swarmService');
+const { resolveGoogleList, GoogleListError } = require('../services/googleListResolver');
 const { getFirestore } = require('../config/firebase');
 
 const db = getFirestore();
@@ -38,6 +39,43 @@ exports.prepareImport = async (req, res) => {
   }
 };
 
+// @desc    Expand a shared Google Maps LIST link into its places, so the
+//          share extension / app can import the whole list as one circle.
+// @route   POST /api/import/resolve-google-list   body: { url }
+// @access  Private
+// @returns { success, list: { id, name, description, author, url, totalCount,
+//            truncated, places: [{ name, address, lat, lng, notes,
+//            sourceExternalId, sourceUrl }] } }
+//          404 NOT_A_LIST when the link is a single place (caller falls back
+//          to the normal single-place flow); 422 for private/missing lists.
+const GOOGLE_LIST_STATUS = {
+  INVALID_URL: 400,
+  NOT_GOOGLE_MAPS: 400,
+  INVALID_LIST_ID: 400,
+  NOT_A_LIST: 404,
+  LIST_NOT_FOUND: 422,
+  UPSTREAM: 502
+};
+
+exports.resolveGoogleListLink = async (req, res) => {
+  const url = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+  if (!url || url.length > 2048) {
+    return res.status(400).json({ success: false, code: 'INVALID_URL', message: 'A Google Maps list link is required' });
+  }
+  try {
+    const list = await resolveGoogleList(url);
+    console.log(`📋 Google list resolved for ${req.user.uid}: "${list.name}" (${list.places.length}/${list.totalCount})`);
+    res.json({ success: true, list });
+  } catch (error) {
+    if (error instanceof GoogleListError) {
+      return res.status(GOOGLE_LIST_STATUS[error.code] || 400)
+        .json({ success: false, code: error.code, message: error.message });
+    }
+    console.error('❌ Google list resolve error:', error);
+    res.status(502).json({ success: false, code: 'UPSTREAM', message: 'Could not read that list right now' });
+  }
+};
+
 // @desc    Create circles + places from a reviewed import payload
 // @route   POST /api/import/execute
 // @access  Private (Premium)
@@ -54,7 +92,8 @@ exports.executeImport = async (req, res) => {
 
     const result = await importService.executeImport(req.user.uid, req.body);
     if (result.error) {
-      return res.status(400).json({ success: false, message: result.error });
+      return res.status(result.upgradeRequired ? 403 : 400)
+        .json({ success: false, message: result.error, upgradeRequired: !!result.upgradeRequired });
     }
 
     const totals = result.results.reduce((acc, r) => {

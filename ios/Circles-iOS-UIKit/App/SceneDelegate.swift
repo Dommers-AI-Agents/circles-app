@@ -272,6 +272,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if AuthService.shared.isLoggedIn, let placeId = PendingOpenPlaceMailbox.take() {
             navigateToPlaceWhenReady(placeId, attempts: 6)
         }
+        // A whole Google Maps list imported from the share extension → land
+        // on the circle it became.
+        if AuthService.shared.isLoggedIn, let circleId = PendingOpenCircleMailbox.take() {
+            navigateToCircleWhenReady(circleId, attempts: 6)
+        }
 
         if OnboardingManager.shared.isFirstSessionFlowActive {
             // Brand-new signup: no carousel (cut 2026-08-19) — go straight to
@@ -1723,6 +1728,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// Cold-launch navigation: the pending-open place can only be pushed once
     /// the tab bar is the root. Poll briefly; if the UI never settles, stash
     /// the standard pendingDeepLink so the next launch lands it.
+    private func navigateToCircleWhenReady(_ circleId: String, attempts: Int) {
+        if window?.rootViewController is CirclesTabBarController {
+            navigateToCircle(circleId: circleId)
+            return
+        }
+        guard attempts > 0 else {
+            UserDefaults.standard.set("circle:\(circleId)", forKey: "pendingDeepLink")
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            self?.navigateToCircleWhenReady(circleId, attempts: attempts - 1)
+        }
+    }
+
     private func navigateToPlaceWhenReady(_ placeId: String, attempts: Int) {
         if window?.rootViewController is CirclesTabBarController {
             navigateToPlace(placeId: placeId)
@@ -1756,6 +1775,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
               let tabBarController = window?.rootViewController as? CirclesTabBarController,
               let pending = PendingShareMailbox.take() else { return }
 
+        if let listURL = pending.googleListURL, !listURL.isEmpty {
+            finishPendingGoogleListImport(url: listURL, pending: pending, host: tabBarController)
+            return
+        }
+
         let searchSeed = pending.sharedText ?? ""
         var coordinate: CLLocationCoordinate2D?
         if let urlString = pending.sharedURL, ImportParsingService.isGoogleMapsURL(urlString) {
@@ -1780,6 +1804,105 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 addPlaceVC.prefillSearchWithPlace(name: searchSeed, coordinate: coordinate)
                 if let navController = tabBarController.selectedViewController as? UINavigationController {
                     navController.pushViewController(addPlaceVC, animated: true)
+                }
+            }
+        }
+    }
+
+    /// The share extension parked a Google Maps LIST it couldn't import
+    /// (offline / logged out at share time). Resolve it here, confirm once,
+    /// import it as one circle, and land on that circle. Errors put the share
+    /// back so a later launch gets another chance.
+    private func finishPendingGoogleListImport(url: String,
+                                               pending: PendingShareMailbox.Payload,
+                                               host: UIViewController) {
+        struct ResolveResponse: Decodable {
+            struct List: Decodable {
+                struct Place: Decodable {
+                    let name: String
+                    let address: String?
+                    let lat: Double?
+                    let lng: Double?
+                    let notes: String?
+                    let sourceExternalId: String?
+                    let sourceUrl: String?
+                }
+                let id: String
+                let name: String
+                let description: String?
+                let url: String
+                let places: [Place]
+            }
+            let list: List
+        }
+        struct ExecuteResponse: Decodable {
+            struct Item: Decodable {
+                let circleId: String?
+                let circleName: String?
+                let created: Int
+                let skippedDuplicates: Int
+            }
+            let results: [Item]
+        }
+
+        APIService.shared.request(
+            endpoint: "import/resolve-google-list",
+            method: .post,
+            body: ["url": url],
+            requiresAuth: true
+        ) { [weak self] (result: Result<ResolveResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                guard case .success(let response) = result else {
+                    // Keep the share for another launch (offline again, or a
+                    // transient Google hiccup); a private list can't be helped.
+                    if case .failure(let error) = result {
+                        var unrecoverable = false
+                        if case .httpError(let code, _) = error, code == 422 || code == 404 { unrecoverable = true }
+                        if !unrecoverable { PendingShareMailbox.write(pending) }
+                    }
+                    return
+                }
+                let list = response.list
+                let count = list.places.count
+                guard count > 0 else { return }
+                let presenter = host.presentedViewController ?? host
+                AlertPresenter.showConfirmation(
+                    title: "Save “\(list.name)”?",
+                    message: "The Google Maps list you shared has \(count) place\(count == 1 ? "" : "s"). "
+                        + "They'll become a new circle with the same name.",
+                    confirmTitle: "Save \(count) place\(count == 1 ? "" : "s")",
+                    from: presenter
+                ) {
+                    let places: [[String: Any]] = list.places.map { place in
+                        var body: [String: Any] = ["name": place.name]
+                        if let address = place.address { body["address"] = address }
+                        if let lat = place.lat, let lng = place.lng { body["lat"] = lat; body["lng"] = lng }
+                        if let notes = place.notes { body["notes"] = notes }
+                        if let id = place.sourceExternalId { body["sourceExternalId"] = id }
+                        if let sourceUrl = place.sourceUrl { body["sourceUrl"] = sourceUrl }
+                        return body
+                    }
+                    var listBody: [String: Any] = ["name": list.name, "sourceUrl": list.url, "places": places]
+                    if let description = list.description { listBody["description"] = description }
+                    APIService.shared.request(
+                        endpoint: "import/execute",
+                        method: .post,
+                        body: ["source": "google_list", "lists": [listBody]],
+                        requiresAuth: true
+                    ) { [weak self] (result: Result<ExecuteResponse, APIError>) in
+                        DispatchQueue.main.async {
+                            guard let self = self else { return }
+                            switch result {
+                            case .success(let response):
+                                if let circleId = response.results.first?.circleId {
+                                    self.navigateToCircle(circleId: circleId)
+                                }
+                            case .failure(let error):
+                                AlertPresenter.showError(error, from: presenter)
+                            }
+                        }
+                    }
                 }
             }
         }

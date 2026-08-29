@@ -24,6 +24,19 @@ final class ShareViewController: UIViewController {
     private var circles: [ShareAPIClient.CircleChoice] = []
     private var selectedCircle: ShareAPIClient.CircleChoice?
 
+    // MARK: List mode — a shared Google Maps LIST becomes one circle
+    //
+    // The same card, but the "place" is the whole list: the header shows every
+    // pin, the circle button defaults to a NEW circle named after the list
+    // (the picker still offers existing circles), and Save imports every place
+    // in one server call. Import saves are coin-free by design (bulk), so the
+    // coin hint is hidden here.
+    private var googleList: ShareAPIClient.GoogleList?
+    /// True once the shared link turned out to be a list — parks as a list too.
+    private var detectedGoogleList = false
+    private var isListMode: Bool { googleList != nil }
+    private var savedCircleId: String?
+
     private static let lastCircleKey = "shareExt.lastCircleId"
     private let groupDefaults = UserDefaults(suiteName: ExtensionAuthMailbox.appGroupId)
 
@@ -435,12 +448,24 @@ final class ShareViewController: UIViewController {
         debugInfo["sharedText"] = sharedText ?? "nil"
         debugInfo["seedName"] = seedName
 
+        // A Google Maps LIST link shared in its long form (placelists / !11m)
+        if Self.isGoogleListURL(sharedURL) {
+            enterListMode()
+            return
+        }
+
         let hints = sharedURL.map(Self.placeHints(from:)) ?? URLHints()
         if hints.coordinate == nil, let urlString = sharedURL, URL(string: urlString) != nil {
             // Nothing useful in the URL as shared — follow its redirect and
             // mine the landing page (short links from both Maps apps).
             resolvePageWithRetry(urlString) { [weak self] finalURL, pageName, pageCoordinate in
                 guard let self = self else { return }
+                // Short list links only reveal themselves after the redirect
+                if Self.isGoogleListURL(finalURL) {
+                    self.debugInfo["finalURL"] = finalURL
+                    self.enterListMode()
+                    return
+                }
                 let resolved = Self.placeHints(from: finalURL)
                 self.debugInfo["finalURL"] = finalURL
                 self.debugInfo["pageName"] = pageName ?? "nil"
@@ -468,6 +493,7 @@ final class ShareViewController: UIViewController {
             guard let self = self else { return }
             let gotNothing = Self.placeHints(from: finalURL).isEmpty
                 && pageName == nil && pageCoordinate == nil
+                && !Self.isGoogleListURL(finalURL)
             if gotNothing && attempt < Self.fetchRetryDelays.count {
                 self.debugInfo["fetchRetries"] = attempt + 1
                 DispatchQueue.main.asyncAfter(deadline: .now() + Self.fetchRetryDelays[attempt]) {
@@ -607,6 +633,252 @@ final class ShareViewController: UIViewController {
         }
     }
 
+    // MARK: List mode
+
+    /// Shared Google Maps LIST links redirect to
+    /// /maps/@/data=!4m3!11m2!2s<listId>!3e3 (or /maps/placelists/list/<id>);
+    /// a single place never carries the !11m entity-list segment.
+    static func isGoogleListURL(_ urlString: String?) -> Bool {
+        guard let raw = urlString, !raw.isEmpty else { return false }
+        let decoded = raw.removingPercentEncoding ?? raw
+        guard decoded.contains("google.") else { return false }
+        return decoded.contains("/maps/placelists/list/")
+            || decoded.range(of: #"!11m\d+!2s"#, options: .regularExpression) != nil
+    }
+
+    private func enterListMode() {
+        detectedGoogleList = true
+        debugInfo["mode"] = "google_list"
+        guard let client = client else {
+            parkPendingShare()
+            showParkAndFinish(message: "Open FavCircles to finish saving this list")
+            return
+        }
+        guard let urlString = sharedURL else {
+            showListFailure()
+            return
+        }
+        nameLabel.text = "Reading your list…"
+        addressLabel.text = nil
+        backdropTitleLabel.text = "Adding a whole list to your FavCircles"
+        backdropSubtitleLabel.text = "Every place becomes a pin in one circle"
+        coinHintLabel.isHidden = true
+        spinner.startAnimating()
+
+        client.resolveGoogleList(url: urlString) { [weak self] result in
+            guard let self = self else { return }
+            self.spinner.stopAnimating()
+            switch result {
+            case .success(let list):
+                self.debugInfo["listName"] = list.name
+                self.debugInfo["listCount"] = list.places.count
+                guard !list.places.isEmpty else {
+                    self.showListFailure(message: "That list is empty — nothing to save yet.")
+                    return
+                }
+                self.googleList = list
+                self.showListCard(list)
+                self.loadCircles()
+            case .failure(let error):
+                self.debugInfo["listError"] = error.localizedDescription
+                let status = (error as NSError).code
+                if status == 422 {
+                    self.showListFailure(message: "Google says this list is private or gone. "
+                        + "In Google Maps, open the list, tap Share, and make sure link sharing is on — then share it again.")
+                } else {
+                    self.parkPendingShare()
+                    self.showListFailure()
+                }
+            }
+        }
+    }
+
+    private func showListCard(_ list: ShareAPIClient.GoogleList) {
+        nameLabel.text = list.name
+        var meta = "\(list.places.count) place\(list.places.count == 1 ? "" : "s")"
+        if list.truncated { meta = "First \(list.places.count) of \(list.totalCount) places" }
+        if let author = list.author, !author.isEmpty { meta += " · by \(author)" }
+        addressLabel.text = meta
+        if let description = list.description, !description.isEmpty {
+            descriptionLabel.text = description
+            descriptionLabel.isHidden = false
+        }
+        backdropTitleLabel.text = "Adding “\(list.name)” to your FavCircles"
+        backdropSubtitleLabel.text = "Pick where these \(list.places.count) places go and tap Save"
+        saveButton.setTitle("Save \(list.places.count) place\(list.places.count == 1 ? "" : "s")", for: .normal)
+        loadListImagery(list)
+    }
+
+    /// Header + backdrop: one map framing every pin in the list.
+    private func loadListImagery(_ list: ShareAPIClient.GoogleList) {
+        let coordinates = list.places.compactMap { place -> CLLocationCoordinate2D? in
+            guard let lat = place.latitude, let lng = place.longitude,
+                  CLLocationCoordinate2DIsValid(CLLocationCoordinate2D(latitude: lat, longitude: lng)) else { return nil }
+            return CLLocationCoordinate2D(latitude: lat, longitude: lng)
+        }
+        guard !coordinates.isEmpty else { return }
+        let region = Self.region(fitting: coordinates)
+
+        let options = MKMapSnapshotter.Options()
+        options.region = region
+        options.size = CGSize(width: 330, height: 168)
+        options.traitCollection = traitCollection
+        MKMapSnapshotter(options: options).start { [weak self] snapshot, _ in
+            guard let snapshot = snapshot else { return }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.headerIsMapOnly = true
+                self.headerImageView.image = Self.annotated(snapshot: snapshot, coordinates: coordinates)
+            }
+        }
+
+        let backdropOptions = MKMapSnapshotter.Options()
+        var wide = region
+        wide.span.latitudeDelta *= 1.8
+        wide.span.longitudeDelta *= 1.8
+        backdropOptions.region = wide
+        backdropOptions.size = view.bounds.size == .zero
+            ? CGSize(width: 430, height: 930)
+            : view.bounds.size
+        backdropOptions.traitCollection = traitCollection
+        MKMapSnapshotter(options: backdropOptions).start { [weak self] snapshot, _ in
+            guard let snapshot = snapshot else { return }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.backgroundImageView.image = Self.annotated(snapshot: snapshot, coordinates: coordinates)
+                UIView.animate(withDuration: 0.4) { self.backgroundImageView.alpha = 1 }
+            }
+        }
+    }
+
+    /// Bounding region around a set of pins, padded, never narrower than a
+    /// neighborhood. A lone far-away outlier zooms the frame out — accepted.
+    private static func region(fitting coordinates: [CLLocationCoordinate2D]) -> MKCoordinateRegion {
+        let lats = coordinates.map { $0.latitude }
+        let lngs = coordinates.map { $0.longitude }
+        let center = CLLocationCoordinate2D(latitude: (lats.min()! + lats.max()!) / 2,
+                                            longitude: (lngs.min()! + lngs.max()!) / 2)
+        let latDelta = max((lats.max()! - lats.min()!) * 1.35, 0.012)
+        let lngDelta = max((lngs.max()! - lngs.min()!) * 1.35, 0.012)
+        return MKCoordinateRegion(center: center,
+                                  span: MKCoordinateSpan(latitudeDelta: min(latDelta, 170),
+                                                         longitudeDelta: min(lngDelta, 350)))
+    }
+
+    /// Small brand dots for every pin in a list snapshot.
+    private static func annotated(snapshot: MKMapSnapshotter.Snapshot,
+                                  coordinates: [CLLocationCoordinate2D]) -> UIImage {
+        UIGraphicsImageRenderer(size: snapshot.image.size).image { _ in
+            snapshot.image.draw(at: .zero)
+            for coordinate in coordinates {
+                let point = snapshot.point(for: coordinate)
+                let dot = UIBezierPath(ovalIn: CGRect(x: point.x - 4.5, y: point.y - 4.5, width: 9, height: 9))
+                brandBlue.setFill()
+                dot.fill()
+                UIColor.white.setStroke()
+                dot.lineWidth = 1.5
+                dot.stroke()
+            }
+        }
+    }
+
+    /// The list flow's honest failure card — parked (when it makes sense) so
+    /// the app can finish it, with list-specific guidance.
+    private func showListFailure(message: String? = nil) {
+        debugInfo["finalMessage"] = "list_failure"
+        dumpDebug()
+        spinner.stopAnimating()
+        backdropTitleLabel.text = "That list didn't come through"
+        backdropSubtitleLabel.isHidden = true
+        nameLabel.text = nil
+        addressLabel.text = nil
+        statusLabel.text = message
+            ?? "We had trouble reading this list from Google just now. "
+             + "Open FavCircles and we'll try again from there — the link is saved."
+        statusLabel.textColor = .label
+        statusLabel.font = .systemFont(ofSize: 14)
+        statusLabel.isHidden = false
+        circleButton.isHidden = true
+        coinHintLabel.isHidden = true
+        saveButton.isHidden = true
+        doneButton.setTitle("OK", for: .normal)
+        doneButton.setTitleColor(Self.brandBlue, for: .normal)
+        doneButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        doneButton.isHidden = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in
+            self?.extensionContext?.completeRequest(returningItems: nil)
+        }
+    }
+
+    private func saveListTapped(_ list: ShareAPIClient.GoogleList) {
+        guard let client = client else { return }
+        let targetName = selectedCircle?.name ?? list.name
+        saveButton.isEnabled = false
+        saveButton.alpha = 0.6
+        saveButton.setTitle("Saving \(list.places.count) places…", for: .normal)
+        circleButton.isEnabled = false
+        spinner.startAnimating()
+        if let circle = selectedCircle {
+            groupDefaults?.set(circle.id, forKey: Self.lastCircleKey)
+        }
+
+        client.importGoogleList(list, existingCircleId: selectedCircle?.id) { [weak self] result in
+            guard let self = self else { return }
+            self.spinner.stopAnimating()
+            switch result {
+            case .success(let outcome):
+                if outcome.upgradeRequired {
+                    self.showUpgradeRequired(circleName: targetName, max: nil)
+                    return
+                }
+                self.savedCircleId = outcome.circleId
+                if let circleId = outcome.circleId {
+                    PendingOpenCircleMailbox.write(circleId: circleId)
+                }
+                self.showListSaveSuccess(outcome)
+            case .failure:
+                self.parkPendingShare()
+                self.showParkAndFinish(message: "Saved for later — open FavCircles to finish importing this list")
+            }
+        }
+    }
+
+    private func showListSaveSuccess(_ outcome: ShareAPIClient.ListImportResult) {
+        let circleName = outcome.circleName
+        let allDuplicates = outcome.created == 0 && outcome.skippedDuplicates > 0
+        backdropTitleLabel.text = allDuplicates
+            ? "Already in your FavCircles ✓"
+            : "Added to your FavCircles 🎉"
+        backdropSubtitleLabel.text = allDuplicates
+            ? "Every place on this list was already in \(circleName)"
+            : "\(outcome.created) place\(outcome.created == 1 ? "" : "s") now in \(circleName)"
+        backdropSubtitleLabel.textColor = UIColor.white.withAlphaComponent(0.9)
+        circleButton.isHidden = true
+        coinHintLabel.isHidden = true
+        descriptionLabel.isHidden = true
+
+        var status = allDuplicates
+            ? "✓ Already saved in \(circleName)"
+            : "✓ \(outcome.created) place\(outcome.created == 1 ? "" : "s") saved to \(circleName)"
+        if !allDuplicates, outcome.skippedDuplicates > 0 {
+            status += "\n\(outcome.skippedDuplicates) already there"
+        }
+        if outcome.failed > 0 {
+            status += "\n\(outcome.failed) couldn't be saved"
+        }
+        status += "\nOpen FavCircles — it'll pop right up"
+        statusLabel.text = status
+        statusLabel.isHidden = false
+
+        saveButton.removeTarget(self, action: #selector(saveTapped), for: .touchUpInside)
+        saveButton.addTarget(self, action: #selector(viewInAppTapped), for: .touchUpInside)
+        saveButton.setTitle("Done", for: .normal)
+        saveButton.isEnabled = true
+        saveButton.alpha = 1.0
+
+        UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
+    }
+
     // MARK: Circles
 
     private func loadCircles() {
@@ -619,13 +891,19 @@ final class ShareViewController: UIViewController {
         client.getCircles { [weak self] circles in
             guard let self = self else { return }
             self.circles = circles
-            guard !circles.isEmpty else {
+            // A list import creates its own circle, so no circles is fine there
+            guard !circles.isEmpty || self.isListMode else {
                 self.parkPendingShare()
                 self.showParkAndFinish(message: "Open FavCircles to finish saving")
                 return
             }
-            let lastUsedId = self.groupDefaults?.string(forKey: Self.lastCircleKey)
-            self.selectedCircle = circles.first(where: { $0.id == lastUsedId }) ?? circles[0]
+            if self.isListMode {
+                // Default: a NEW circle named after the list (nil selection)
+                self.selectedCircle = nil
+            } else {
+                let lastUsedId = self.groupDefaults?.string(forKey: Self.lastCircleKey)
+                self.selectedCircle = circles.first(where: { $0.id == lastUsedId }) ?? circles[0]
+            }
             self.refreshCircleButton()
             self.saveButton.isEnabled = true
             self.saveButton.alpha = 1.0
@@ -633,6 +911,11 @@ final class ShareViewController: UIViewController {
     }
 
     private func refreshCircleButton() {
+        if isListMode, selectedCircle == nil, let list = googleList {
+            circleButton.setImage(UIImage(systemName: "plus.circle"), for: .normal)
+            circleButton.setTitle("  New circle “\(list.name)”  ▾", for: .normal)
+            return
+        }
         circleButton.setImage(UIImage(systemName: "circle.grid.2x2"), for: .normal)
         circleButton.setTitle("  \(selectedCircle?.name ?? "…")  ▾", for: .normal)
     }
@@ -808,6 +1091,10 @@ final class ShareViewController: UIViewController {
     // MARK: Save
 
     @objc private func saveTapped() {
+        if let list = googleList {
+            saveListTapped(list)
+            return
+        }
         guard let client = client,
               let name = resolvedName,
               let coordinate = resolvedCoordinate,
@@ -859,10 +1146,12 @@ final class ShareViewController: UIViewController {
     }
 
     private func parkPendingShare() {
+        let isList = detectedGoogleList || Self.isGoogleListURL(sharedURL)
         PendingShareMailbox.write(PendingShareMailbox.Payload(
             sharedURL: sharedURL,
-            sharedText: resolvedName ?? sharedText,
-            createdAt: Date()
+            sharedText: googleList?.name ?? resolvedName ?? sharedText,
+            createdAt: Date(),
+            googleListURL: isList ? sharedURL : nil
         ))
     }
 
@@ -1229,8 +1518,15 @@ final class ShareViewController: UIViewController {
         // free bet: iOS 26 silently no-ops it for share extensions today
         // (verified on device — openURL: "succeeds", nothing switches), but
         // if a future OS honors it, Done starts opening the app for real.
-        guard let placeId = savedPlaceId,
-              let url = URL(string: "circles://place/\(placeId)") else {
+        let target: URL?
+        if let circleId = savedCircleId {
+            target = URL(string: "circles://circle/\(circleId)")
+        } else if let placeId = savedPlaceId {
+            target = URL(string: "circles://place/\(placeId)")
+        } else {
+            target = nil
+        }
+        guard let url = target else {
             extensionContext?.completeRequest(returningItems: nil)
             return
         }
@@ -1288,10 +1584,15 @@ extension ShareViewController: UITableViewDataSource, UITableViewDelegate {
         content.imageProperties.maximumSize = CGSize(width: 36, height: 36)
 
         if indexPath.row == 0 {
-            content.text = "New Circle…"
+            if let list = googleList {
+                content.text = "New circle “\(list.name)”"
+                cell.accessoryType = selectedCircle == nil ? .checkmark : .none
+            } else {
+                content.text = "New Circle…"
+                cell.accessoryType = .none
+            }
             content.textProperties.color = Self.brandBlue
             content.image = Self.newCircleAvatar()
-            cell.accessoryType = .none
         } else {
             let circle = circles[indexPath.row - 1]
             content.text = circle.name
@@ -1307,7 +1608,14 @@ extension ShareViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         if indexPath.row == 0 {
-            promptCreateCircle()
+            if isListMode {
+                // Back to the default: the list becomes its own new circle
+                selectedCircle = nil
+                refreshCircleButton()
+                dismissCirclePicker()
+            } else {
+                promptCreateCircle()
+            }
             return
         }
         selectedCircle = circles[indexPath.row - 1]
