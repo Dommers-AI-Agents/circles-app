@@ -110,10 +110,12 @@ async function createGlobalPlaceFromLegacy(legacyPlaceDoc) {
   // Photos inherited from a legacy place doc are usually Google Places photos
   // re-hosted on Firebase Storage — we can't prove a person took them, so they
   // get NO user attribution (iOS hides the "Photo by" chip when there's no name)
+  const seenPhotoUrls = new Set();
   const attributedPhotos = (Array.isArray(legacyPlace.photos) ? legacyPlace.photos : [])
     .map(photo => {
       const url = typeof photo === 'string' ? photo : photo?.url;
-      if (!url) return null;
+      if (!url || seenPhotoUrls.has(url)) return null;
+      seenPhotoUrls.add(url);
       return createAttributedPhoto({
         url,
         uploadedBy: null,

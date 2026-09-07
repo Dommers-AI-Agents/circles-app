@@ -185,6 +185,19 @@ exports.getGlobalPlace = async (req, res, next) => {
     
     const placeData = serializeDoc(placeDoc);
     console.log(`✅ [GlobalPlace API] Successfully found place: "${placeData.name}" (ID: ${placeDoc.id})`);
+
+    // Same URL twice in the stored array (writes that predate the append
+    // guards) renders as duplicate gallery tiles — collapse at read time;
+    // scripts/dedupe-global-place-photos.js repairs the data itself.
+    if (Array.isArray(placeData.photos) && placeData.photos.length > 1) {
+      const seenUrls = new Set();
+      placeData.photos = placeData.photos.filter(photo => {
+        const url = typeof photo === 'string' ? photo : photo?.url;
+        if (!url || seenUrls.has(url)) return false;
+        seenUrls.add(url);
+        return true;
+      });
+    }
     console.log(`📷 [GlobalPlace API] Returning ${placeData.photos?.length || 0} photos with attribution`);
     
     // Get user's relationship to this place if they have one
@@ -613,6 +626,22 @@ exports.uploadPlaceMedia = async (req, res, next) => {
     const beforeUpdate = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).get();
     const beforePhotoCount = beforeUpdate.data()?.photos?.length || 0;
     console.log(`📊 [UploadMedia] Photos before update: ${beforePhotoCount}`);
+
+    // A URL already on the venue (double-tap retry, or a backfill that got
+    // there first) must not become a second array entry — every entry renders
+    // as its own gallery tile. Return the existing entry as a success.
+    const existingEntry = (beforeUpdate.data()?.[updateField] || []).find(media => {
+      const url = typeof media === 'string' ? media : (media?.url || media?.videoUrl);
+      return url === mediaUrl;
+    });
+    if (existingEntry) {
+      console.log(`↩️ [UploadMedia] ${mediaType} URL already on ${resolvedId} — returning existing entry`);
+      return res.status(200).json({
+        success: true,
+        data: existingEntry,
+        message: `${mediaType} already on this place`
+      });
+    }
 
     // Add media to place
     console.log(`🔄 [UploadMedia] Adding ${mediaType} to ${updateField} array using arrayUnion...`);

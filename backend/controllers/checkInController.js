@@ -81,7 +81,11 @@ async function findOrCreateCheckInCircle(userId) {
 }
 
 // Helper function to enrich place data with Google Places API
-async function enrichPlaceWithGoogleData(placeName, location) {
+// options.skipPhotos: don't fetch/re-host the Google photo — pass it when the
+// canonical venue already has photos, or every additional saver mints another
+// Firebase Storage copy of the same image (billed Photo request + a
+// byte-identical duplicate in the gallery).
+async function enrichPlaceWithGoogleData(placeName, location, options = {}) {
   try {
     if (!googleMapsApiKey) {
       console.warn('Google Maps API key not configured, skipping enrichment');
@@ -135,7 +139,7 @@ async function enrichPlaceWithGoogleData(placeName, location) {
     // API key in client-readable documents — the create-place path rejects
     // exactly these URLs for the same reason.
     let photos = [];
-    if (placeDetails.photos && placeDetails.photos.length > 0) {
+    if (!options.skipPhotos && placeDetails.photos && placeDetails.photos.length > 0) {
       const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${placeDetails.photos[0].photo_reference}&key=${googleMapsApiKey}`;
       try {
         const { downloadAndUploadMultipleImages } = require('../services/storage');

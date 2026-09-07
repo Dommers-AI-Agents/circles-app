@@ -1158,6 +1158,11 @@ exports.createPlace = async (req, res, next) => {
           const googleData = await enrichPlaceWithGoogleData(placeData.name, {
             latitude: coords[1],
             longitude: coords[0]
+          }, {
+            // A bare canonical can still carry photos (copied from the first
+            // save) — re-hosting Google's photo again would add a
+            // byte-identical duplicate under a new URL.
+            skipPhotos: !!(canonicalData && (canonicalData.photos || []).length)
           });
           if (googleData.googlePlaceId) {
             placeData.googlePlaceId = googleData.googlePlaceId;
