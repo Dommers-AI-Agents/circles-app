@@ -33,6 +33,7 @@ class VenueManageViewController: BaseViewController {
     // Seeded from the venue payload when present, otherwise optimistic to
     // avoid flashing locks; the server enforces regardless.
     private var ownerPremium: Bool
+    private var managerCount: Int = 0
 
     private enum Section: Int, CaseIterable {
         case dashboard
@@ -72,6 +73,7 @@ class VenueManageViewController: BaseViewController {
         self.windowCode = venue.windowCode
         self.windowStickerUrl = venue.windowStickerUrl
         self.venuePlaceId = venue.globalPlaceId ?? venue.googlePlaceId
+        self.managerCount = venue.managerUserIds?.count ?? 0
         // Default LOCKED until the server confirms — an optimistic-true here
         // showed free owners unlocked tools that then 403'd on tap
         self.ownerPremium = venue.ownerPremium ?? false
@@ -834,7 +836,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch Section(rawValue: section)! {
         case .dashboard: return 1
-        case .businessInfo: return venuePlaceId != nil ? 3 : 2 // place page + contact name + contact email
+        case .businessInfo: return venuePlaceId != nil ? 4 : 3 // place page + contact name + contact email + managers
         case .windowQR: return 2 // show QR + email QR codes
         case .earnRate: return 1
         case .offers: return offers.count + 1 // + "Add offer" row
@@ -867,10 +869,16 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
                 config.text = "Contact name"
                 config.secondaryText = contactName?.isEmpty == false ? contactName : "Add your name"
                 config.image = UIImage(systemName: "person.crop.circle")
-            } else {
+            } else if contactRow == 1 {
                 config.text = "Contact email"
                 config.secondaryText = contactEmail?.isEmpty == false ? contactEmail : "Add an email"
                 config.image = UIImage(systemName: "envelope.badge")
+            } else {
+                config.text = "Managers"
+                config.secondaryText = managerCount > 0
+                    ? "\(managerCount) manager\(managerCount == 1 ? "" : "s") help\(managerCount == 1 ? "s" : "") run this store"
+                    : "Invite someone to run this store with you"
+                config.image = UIImage(systemName: "person.2.badge.gearshape")
             }
             config.imageProperties.tintColor = Constants.Colors.primary
             cell.accessoryType = .disclosureIndicator
@@ -1001,8 +1009,15 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
                 viewPublicPageTapped()
             } else if contactRow == 0 {
                 editContactName()
-            } else {
+            } else if contactRow == 1 {
                 editContactEmail()
+            } else {
+                let managersVC = VenueManagersViewController(venueId: venueId, venueName: venueName)
+                managersVC.onManagersChanged = { [weak self] count in
+                    self?.managerCount = count
+                    self?.tableView.reloadData()
+                }
+                navigationController?.pushViewController(managersVC, animated: true)
             }
         case .windowQR:
             if indexPath.row == 0 {

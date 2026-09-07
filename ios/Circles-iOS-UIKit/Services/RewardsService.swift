@@ -381,6 +381,59 @@ class RewardsService {
         }
     }
 
+    // MARK: - Venue managers (multi-user store management)
+
+    /// The venue's team: billing owner + the managers they invited
+    func getVenueManagers(venueId: String, completion: @escaping (Result<VenueManagersData, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/managers",
+            method: .get,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueManagersData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    /// Owner-only: invite another FavCircles account (by email) to manage the store
+    func addVenueManager(venueId: String, email: String, completion: @escaping (Result<[VenueManager], Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/managers",
+            method: .post,
+            body: ["email": email],
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueManagerListData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.managers))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
+    /// Owner removes any manager; a manager may remove themself
+    func removeVenueManager(venueId: String, managerId: String, completion: @escaping (Result<[VenueManager], Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/managers/\(managerId)",
+            method: .delete,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<VenueManagerListData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.managers))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     /// Free owner tier: update the venue's business contact info
     func updateVenueInfo(venueId: String, contactName: String?, contactEmail: String?, completion: @escaping (Result<AdminVenue, Error>) -> Void) {
         var body: [String: Any] = [:]
@@ -1065,6 +1118,30 @@ struct AdminVenue: Codable {
     let ownerPremium: Bool?
     // Online-only brand store — no physical location, never on a map
     let isVirtual: Bool?
+    // Team: the billing owner + managers they invited. isPrimaryOwner says
+    // whether the CURRENT user is the billing owner (drives the add/remove
+    // managers UI; the server enforces regardless).
+    let ownerUserId: String?
+    let managerUserIds: [String]?
+    let isPrimaryOwner: Bool?
+}
+
+struct VenueManager: Codable {
+    let userId: String
+    let displayName: String?
+    let email: String?
+    let profilePicture: String?
+}
+
+struct VenueManagersData: Codable {
+    let owner: VenueManager?
+    let managers: [VenueManager]
+    let canManage: Bool?
+    let maxManagers: Int?
+}
+
+struct VenueManagerListData: Codable {
+    let managers: [VenueManager]
 }
 
 struct AdminVenueStats: Codable {

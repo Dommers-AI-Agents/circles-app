@@ -22,10 +22,24 @@ const rewardConfig = require('../config/rewardConfig');
 const emailService = require('../services/emailService');
 const { resolveGlobalPlace } = require('../services/globalPlaceResolver');
 const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
-const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, isCompActive, venueLoyaltyStatus } = require('../services/ownerSubscriptionService');
+const { isOwnerPremiumUser, isOwnerPremiumForVenue, isOwnerPremiumById, isVenueLoyaltyActive, isCompActive, venueLoyaltyStatus } = require('../services/ownerSubscriptionService');
 const { createActivity } = require('./activityController');
 const sseService = require('../services/sseService');
 const { normalizeUserId, isSameUser } = require('../services/idService');
+
+// ---------- Venue team ----------
+// A venue's team = the billing owner (ownerUserId — exactly one account, the
+// one whose Business subscription keeps the venue live) plus any managers the
+// owner invited (managerUserIds). Managers get every day-to-day owner
+// surface; billing, claims, and the storefront identity stay owner-only.
+const venueManagerIds = (venue) =>
+  (Array.isArray(venue?.managerUserIds) ? venue.managerUserIds : []).filter(Boolean);
+const isVenueTeamMember = (venue, uid) => {
+  if (!venue || !uid) return false;
+  if (venue.ownerUserId && isSameUser(venue.ownerUserId, uid)) return true;
+  return venueManagerIds(venue).some((id) => isSameUser(id, uid));
+};
+const MAX_VENUE_MANAGERS = 10;
 
 const db = getFirestore();
 
@@ -441,7 +455,7 @@ exports.getVenueByPlace = async (req, res) => {
       return res.json({ success: true, data: { venue: null, claim } });
     }
 
-    const isOwner = (!!venue.ownerUserId && venue.ownerUserId === userId)
+    const isOwner = isVenueTeamMember(venue, userId)
       || req.user.isSuperUser === true;
 
     // Claim state only matters while the venue is unowned
@@ -514,6 +528,13 @@ exports.getMe = async (req, res) => {
     const ownedHit = await venuesRef
       .where('ownerUserId', '==', req.user.uid).limit(1).get();
     ownsVenues = !ownedHit.empty;
+
+    // Managers see the same owner UI as the billing owner
+    if (!ownsVenues) {
+      const managedHit = await venuesRef
+        .where('managerUserIds', 'array-contains', req.user.uid).limit(1).get();
+      ownsVenues = !managedHit.empty;
+    }
 
     // Venue enrolled before the owner signed up: unclaimed email match counts
     // (getMyVenues performs the actual claim)
@@ -588,6 +609,8 @@ exports.createVenueFromApp = async (req, res) => {
         windowCode: venue.windowCode,
         registerCode: venue.registerCode,
         windowStickerUrl: rewardService.stickerUrl(venue.windowCode),
+  ownerUserId: venue.ownerUserId || null,
+  managerUserIds: venueManagerIds(venue),
         registerCardUrl: rewardService.stickerUrl(venue.registerCode),
         googlePlaceId: venue.googlePlaceId,
         offers: venue.offers,
@@ -691,6 +714,8 @@ const ownerVenueInfo = (venue) => ({
   // Exact URL encoded in the printed window sticker, so the in-app QR
   // renders identically to the physical one
   windowStickerUrl: rewardService.stickerUrl(venue.windowCode),
+  ownerUserId: venue.ownerUserId || null,
+  managerUserIds: venueManagerIds(venue),
   earnRate: rewardService.effectiveEarnRate(venue),
   offers: venue.offers || [],
   announcements: venue.announcements || [],
@@ -708,11 +733,12 @@ exports.requireVenueOwner = async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Venue not found' });
     }
     const venue = { venueId: venueDoc.id, ...venueDoc.data() };
-    const isOwner = !!venue.ownerUserId && venue.ownerUserId === req.user.uid;
-    if (!isOwner && req.user.isSuperUser !== true) {
+    if (!isVenueTeamMember(venue, req.user.uid) && req.user.isSuperUser !== true) {
       return res.status(403).json({ success: false, error: 'You do not manage this venue' });
     }
     req.venue = venue;
+    // Some team actions (managing the managers) stay with the billing owner
+    req.isPrimaryVenueOwner = !!venue.ownerUserId && isSameUser(venue.ownerUserId, req.user.uid);
     next();
   } catch (error) {
     console.error('❌ Venue owner check failed:', error);
@@ -732,6 +758,16 @@ exports.getMyVenues = async (req, res) => {
     const snapshot = await venuesRef.where('ownerUserId', '==', uid).get();
     let venues = snapshot.docs.map((doc) => ({ venueId: doc.id, ...doc.data() }));
 
+    // Venues this user manages for someone else ride along with the ones
+    // they own (same list, same tools; billing stays with the owner)
+    const managedSnap = await venuesRef
+      .where('managerUserIds', 'array-contains', uid).get();
+    managedSnap.docs.forEach((doc) => {
+      if (!venues.some((v) => v.venueId === doc.id)) {
+        venues.push({ venueId: doc.id, ...doc.data() });
+      }
+    });
+
     if (venues.length === 0 && req.user.email) {
       const emailHit = await venuesRef
         .where('ownerEmail', '==', req.user.email.toLowerCase()).get();
@@ -746,9 +782,15 @@ exports.getMyVenues = async (req, res) => {
     // Follower counts ride along so venue list rows can show them; the
     // subscription only covers one venue, so premium is stamped per venue.
     const venueInfos = venues.map(ownerVenueInfo);
-    venueInfos.forEach((info, i) => {
-      info.ownerPremium = isOwnerPremiumForVenue(req.user, venues[i].venueId, venues[i]);
-    });
+    await Promise.all(venueInfos.map(async (info, i) => {
+      const venue = venues[i];
+      info.isPrimaryOwner = !!venue.ownerUserId && isSameUser(venue.ownerUserId, uid);
+      // A manager's tools unlock on the BILLING owner's subscription — the
+      // store is subscribed, not the person tapping
+      info.ownerPremium = info.isPrimaryOwner || !venue.ownerUserId
+        ? isOwnerPremiumForVenue(req.user, venue.venueId, venue)
+        : await isOwnerPremiumById(venue.ownerUserId, venue.venueId, venue);
+    }));
     await Promise.all(venueInfos.map(async (info, i) => {
       const globalPlaceId = await venueGlobalPlaceId(venues[i]);
       if (!globalPlaceId) return;
@@ -1143,9 +1185,12 @@ exports.setVenueCoverPhoto = async (req, res) => {
 exports.emailAiSetup = async (req, res) => {
   try {
     const uid = req.user.uid;
-    const owned = await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
-      .where('ownerUserId', '==', uid).limit(1).get();
-    if (owned.empty && req.user.isSuperUser !== true) {
+    const venuesRef = db.collection(STICKER_COLLECTIONS.STICKER_VENUES);
+    const owned = await venuesRef.where('ownerUserId', '==', uid).limit(1).get();
+    const managed = owned.empty
+      ? await venuesRef.where('managerUserIds', 'array-contains', uid).limit(1).get()
+      : owned;
+    if (owned.empty && managed.empty && req.user.isSuperUser !== true) {
       return res.status(403).json({ success: false, error: 'Only store owners can request the AI setup guide' });
     }
 
@@ -1508,8 +1553,12 @@ exports.updateVenueInfo = async (req, res) => {
     if (contactName !== undefined) update.contactName = String(contactName).trim() || null;
     if (contactEmail !== undefined) {
       update.contactEmail = contactEmail.trim().toLowerCase();
-      // ownerEmail mirrors contactEmail (used for lazy claim-by-email)
-      update.ownerEmail = update.contactEmail;
+      // ownerEmail mirrors contactEmail (used for lazy claim-by-email) —
+      // but only when the billing owner (or an admin) edits it: a manager
+      // shouldn't be able to repoint the ownership-claim email
+      if (req.isPrimaryVenueOwner === true || req.user.isSuperUser === true) {
+        update.ownerEmail = update.contactEmail;
+      }
     }
 
     await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
@@ -2469,6 +2518,8 @@ exports.createVirtualVenue = async (req, res) => {
         windowCode: venue.windowCode,
         registerCode: venue.registerCode,
         windowStickerUrl: rewardService.stickerUrl(venue.windowCode),
+  ownerUserId: venue.ownerUserId || null,
+  managerUserIds: venueManagerIds(venue),
         registerCardUrl: rewardService.stickerUrl(venue.registerCode)
       }
     });
@@ -2669,5 +2720,114 @@ exports.redeemCode = async (req, res) => {
   } catch (error) {
     console.error('❌ Code redemption failed:', error);
     res.status(500).json({ success: false, error: 'Failed to redeem code' });
+  }
+};
+
+// ---------- Venue managers (multi-user store management) ----------
+
+// Resolve a set of user ids to lightweight rows for the managers UI
+const managerRows = async (userIds) => {
+  const rows = await Promise.all(userIds.map(async (id) => {
+    try {
+      const doc = await db.collection(COLLECTIONS.USERS).doc(id).get();
+      const u = doc.exists ? doc.data() : {};
+      return {
+        userId: id,
+        displayName: u.displayName || u.name || null,
+        email: u.email || null,
+        profilePicture: u.profilePicture || u.picture || null
+      };
+    } catch (error) {
+      return { userId: id, displayName: null, email: null, profilePicture: null };
+    }
+  }));
+  return rows;
+};
+
+// @desc    The venue's team: billing owner + managers
+// @route   GET /api/rewards/venues/:venueId/managers
+// @access  Venue team (requireVenueOwner)
+exports.listVenueManagers = async (req, res) => {
+  try {
+    const venue = req.venue;
+    const owner = venue.ownerUserId ? await managerRows([venue.ownerUserId]) : [];
+    const managers = await managerRows(venueManagerIds(venue));
+    res.json({
+      success: true,
+      data: {
+        owner: owner[0] || null,
+        managers,
+        canManage: req.isPrimaryVenueOwner === true || req.user.isSuperUser === true,
+        maxManagers: MAX_VENUE_MANAGERS
+      }
+    });
+  } catch (error) {
+    console.error('❌ Failed to list venue managers:', error);
+    res.status(500).json({ success: false, error: 'Failed to load managers' });
+  }
+};
+
+// @desc    Invite another FavCircles account to manage this store
+// @route   POST /api/rewards/venues/:venueId/managers   body: { email }
+// @access  Primary owner (or super user)
+exports.addVenueManager = async (req, res) => {
+  try {
+    if (req.isPrimaryVenueOwner !== true && req.user.isSuperUser !== true) {
+      return res.status(403).json({ success: false, error: 'Only the store owner can add managers' });
+    }
+    const venue = req.venue;
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'An email address is required' });
+    }
+    const managerUserId = await rewardService.resolveOwnerUserId(email);
+    if (!managerUserId) {
+      return res.status(404).json({
+        success: false,
+        error: 'No FavCircles account uses that email — ask them to sign up first, then add them'
+      });
+    }
+    if (venue.ownerUserId && isSameUser(venue.ownerUserId, managerUserId)) {
+      return res.status(400).json({ success: false, error: 'That account already owns this store' });
+    }
+    const current = venueManagerIds(venue);
+    if (current.some((id) => isSameUser(id, managerUserId))) {
+      return res.status(400).json({ success: false, error: 'That account already manages this store' });
+    }
+    if (current.length >= MAX_VENUE_MANAGERS) {
+      return res.status(400).json({ success: false, error: `A store can have at most ${MAX_VENUE_MANAGERS} managers` });
+    }
+    const managerUserIds = [...current, managerUserId];
+    await db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(venue.venueId)
+      .update({ managerUserIds, updatedAt: new Date().toISOString() });
+    res.json({ success: true, data: { managers: await managerRows(managerUserIds) } });
+  } catch (error) {
+    console.error('❌ Failed to add venue manager:', error);
+    res.status(500).json({ success: false, error: 'Failed to add manager' });
+  }
+};
+
+// @desc    Remove a manager (owner removes anyone; a manager may remove themself)
+// @route   DELETE /api/rewards/venues/:venueId/managers/:managerId
+// @access  Primary owner, super user, or the manager themself
+exports.removeVenueManager = async (req, res) => {
+  try {
+    const venue = req.venue;
+    const managerId = req.params.managerId;
+    const removingSelf = isSameUser(managerId, req.user.uid);
+    if (req.isPrimaryVenueOwner !== true && req.user.isSuperUser !== true && !removingSelf) {
+      return res.status(403).json({ success: false, error: 'Only the store owner can remove managers' });
+    }
+    const current = venueManagerIds(venue);
+    const managerUserIds = current.filter((id) => !isSameUser(id, managerId));
+    if (managerUserIds.length === current.length) {
+      return res.status(404).json({ success: false, error: 'That account does not manage this store' });
+    }
+    await db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(venue.venueId)
+      .update({ managerUserIds, updatedAt: new Date().toISOString() });
+    res.json({ success: true, data: { managers: await managerRows(managerUserIds) } });
+  } catch (error) {
+    console.error('❌ Failed to remove venue manager:', error);
+    res.status(500).json({ success: false, error: 'Failed to remove manager' });
   }
 };

@@ -53,6 +53,10 @@ const createStickerVenue = (data, windowCode, registerCode) => {
     // Resolved from contactEmail at creation when possible; venues enrolled
     // before the owner signed up are lazily claimed by email in getMyVenues.
     ownerUserId: data.ownerUserId || null,
+    // Additional accounts the owner invited to run the store day-to-day.
+    // Managers get every owner surface; billing (the Business subscription)
+    // stays anchored to the single ownerUserId.
+    managerUserIds: Array.isArray(data.managerUserIds) ? data.managerUserIds : [],
     ownerEmail: (data.contactEmail || '').trim().toLowerCase() || null,
     googlePlaceId: data.googlePlaceId || null,
     globalPlaceId: data.globalPlaceId || null,

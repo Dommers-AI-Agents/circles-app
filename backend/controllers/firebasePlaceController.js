@@ -96,11 +96,14 @@ const overlayVenueFields = (place, globalData) => {
 };
 
 // A verified store owner (approved ownership claim → stickerVenues.ownerUserId)
-// edits their venue's Google-backed fields like a super-user does.
+// — or a manager the owner invited (managerUserIds) — edits their venue's
+// Google-backed fields like a super-user does.
 const isVerifiedVenueOwner = async (uid, placeId, googlePlaceId) => {
   try {
     const venue = await rewardService.findVenueByPlace(placeId || googlePlaceId, googlePlaceId);
-    return !!(venue && venue.ownerUserId && isSameUser(venue.ownerUserId, uid));
+    if (!venue) return false;
+    if (venue.ownerUserId && isSameUser(venue.ownerUserId, uid)) return true;
+    return (venue.managerUserIds || []).some((id) => isSameUser(id, uid));
   } catch (error) {
     console.error('⚠️ Venue-owner check failed:', error.message);
     return false;
@@ -3374,9 +3377,10 @@ exports.getPlaceComments = async (req, res, next) => {
       const placeData = placeDoc.data();
       const venue = await rewardService.findVenueByPlace(
         globalPlaceId || placeId, placeData.googlePlaceId || null);
-      if (venue && venue.ownerUserId) {
+      if (venue && (venue.ownerUserId || (venue.managerUserIds || []).length)) {
+        const team = [venue.ownerUserId, ...(venue.managerUserIds || [])].filter(Boolean);
         comments.forEach((c) => {
-          if (isSameUser(c.userId, venue.ownerUserId)) c.isVenueOwner = true;
+          if (team.some((id) => isSameUser(c.userId, id))) c.isVenueOwner = true;
         });
       }
     } catch (badgeError) {
@@ -4340,9 +4344,10 @@ exports.getPlaceCommentReplies = async (req, res, next) => {
       if (replies.length > 0) {
         const venue = await rewardService.findVenueByPlace(
           replies[0].globalPlaceId || req.params.id, null);
-        if (venue && venue.ownerUserId) {
+        if (venue && (venue.ownerUserId || (venue.managerUserIds || []).length)) {
+          const team = [venue.ownerUserId, ...(venue.managerUserIds || [])].filter(Boolean);
           replies.forEach((r) => {
-            if (isSameUser(r.userId, venue.ownerUserId)) r.isVenueOwner = true;
+            if (team.some((id) => isSameUser(r.userId, id))) r.isVenueOwner = true;
           });
         }
       }

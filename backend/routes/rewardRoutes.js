@@ -78,6 +78,12 @@ router.put('/venues/:venueId/cover-photo', rewardController.requireVenueOwner, r
 // free owner tier, same as the in-app tap-to-edit surface
 router.patch('/venues/:venueId/place', rewardController.requireVenueOwner, rewardController.updateVenuePlace);
 router.post('/venues/:venueId/email-qr', rewardController.requireVenueOwner, rewardController.emailVenueQR);
+// Managers: the owner invites other accounts to run the store with them —
+// free owner tier (team admin isn't a Business-tier tool). Mutations are
+// gated to the primary owner inside the handlers.
+router.get('/venues/:venueId/managers', rewardController.requireVenueOwner, rewardController.listVenueManagers);
+router.post('/venues/:venueId/managers', rewardController.requireVenueOwner, rewardController.addVenueManager);
+router.delete('/venues/:venueId/managers/:managerId', rewardController.requireVenueOwner, rewardController.removeVenueManager);
 router.patch('/venues/:venueId/info', rewardController.requireVenueOwner, rewardController.updateVenueInfo);
 router.post('/venues/:venueId/offers', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.addOffer);
 router.put('/venues/:venueId/offers/:offerId', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.updateOffer);
