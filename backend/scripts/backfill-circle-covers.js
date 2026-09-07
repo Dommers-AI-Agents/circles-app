@@ -20,9 +20,8 @@ const onlyOwner = process.argv.indexOf('--owner') > 0 ? process.argv[process.arg
   for (const doc of snap.docs) {
     const c = doc.data();
     if (c.coverImage || c.deletedAt) continue;
-    if (!Array.isArray(c.places) || c.places.length === 0) continue;
     candidates++;
-    const cover = await firstPlacePhoto(c);
+    const cover = await firstPlacePhoto(c, doc.id);
     if (!cover) { noPhoto++; continue; }
     if (DRY_RUN) { console.log(`  would set "${c.name}" ← ${cover.slice(0, 60)}…`); set++; continue; }
     await doc.ref.update({ coverImage: cover, coverImageSource: 'place_photo', updatedAt: new Date().toISOString() });

@@ -9,19 +9,36 @@ const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const db = getFirestore();
 
+const usablePhoto = (p) =>
+  // Skip raw Google Places photo URLs — every render of those is billed
+  (Array.isArray(p.photos) ? p.photos : [])
+    .find(u => typeof u === 'string' && u.startsWith('https://') && !u.includes('maps.googleapis.com')) || null;
+
 /** First photo of the first place (in the circle's own order) that has one. */
-async function firstPlacePhoto(circleData) {
+async function firstPlacePhoto(circleData, circleId = null) {
   const ids = Array.isArray(circleData.places) ? circleData.places : [];
-  // Circle order = newest first; look at a handful, then fall back to a query
+  // Circle order = newest first; look at a handful
   for (const id of ids.slice(0, 12)) {
     const snap = await db.collection(COLLECTIONS.PLACES).doc(id).get();
     if (!snap.exists) continue;
     const p = snap.data();
     if (p.deletedAt) continue;
-    // Skip raw Google Places photo URLs — every render of those is billed
-    const photo = (Array.isArray(p.photos) ? p.photos : [])
-      .find(u => typeof u === 'string' && u.startsWith('https://') && !u.includes('maps.googleapis.com'));
+    const photo = usablePhoto(p);
     if (photo) return photo;
+  }
+  // Some circles never maintain places[] — "Places I Follow" saves only set
+  // circleId on the place doc. Fall back to a query by circleId.
+  if (ids.length === 0 && circleId) {
+    const snap = await db.collection(COLLECTIONS.PLACES)
+      .where('circleId', '==', circleId)
+      .limit(20)
+      .get();
+    for (const doc of snap.docs) {
+      const p = doc.data();
+      if (p.deletedAt) continue;
+      const photo = usablePhoto(p);
+      if (photo) return photo;
+    }
   }
   return null;
 }
@@ -41,7 +58,7 @@ async function ensureCircleCoverImage(circleId, photoUrl = null) {
     const circle = snap.data();
     if (circle.coverImage) return circle.coverImage;
 
-    const cover = photoUrl || await firstPlacePhoto(circle);
+    const cover = photoUrl || await firstPlacePhoto(circle, circleId);
     if (!cover) return null;
     await ref.update({
       coverImage: cover,
