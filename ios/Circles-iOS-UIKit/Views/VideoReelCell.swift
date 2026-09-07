@@ -35,14 +35,36 @@ class VideoReelCell: UICollectionViewCell {
         return view
     }()
     
+    // Photos show the FULL frame (aspect-fit) — a landscape photo aspect-filled
+    // into the portrait reel cell cropped ~60% of its width away. The blurred
+    // copy behind it fills the letterbox bands so the cell still reads full.
     private let photoImageView: UIImageView = {
         let imageView = UIImageView()
-        imageView.contentMode = .scaleAspectFill
+        imageView.contentMode = .scaleAspectFit
         imageView.clipsToBounds = true
         imageView.backgroundColor = .clear
         imageView.translatesAutoresizingMaskIntoConstraints = false
         imageView.isHidden = true
         imageView.isUserInteractionEnabled = false
+        return imageView
+    }()
+
+    private let photoBlurBackgroundView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.isHidden = true
+        imageView.isUserInteractionEnabled = false
+        let blur = UIVisualEffectView(effect: UIBlurEffect(style: .dark))
+        blur.translatesAutoresizingMaskIntoConstraints = false
+        imageView.addSubview(blur)
+        NSLayoutConstraint.activate([
+            blur.topAnchor.constraint(equalTo: imageView.topAnchor),
+            blur.leadingAnchor.constraint(equalTo: imageView.leadingAnchor),
+            blur.trailingAnchor.constraint(equalTo: imageView.trailingAnchor),
+            blur.bottomAnchor.constraint(equalTo: imageView.bottomAnchor)
+        ])
         return imageView
     }()
     
@@ -451,6 +473,9 @@ class VideoReelCell: UICollectionViewCell {
         photoImageView.image = nil
         photoImageView.isHidden = true
         photoImageView.removeFromSuperview()
+        photoBlurBackgroundView.image = nil
+        photoBlurBackgroundView.isHidden = true
+        photoBlurBackgroundView.removeFromSuperview()
         
         // Configure watch on platform button for embedded videos
         if reel.isEmbedded, let platform = reel.embedPlatform {
@@ -466,9 +491,19 @@ class VideoReelCell: UICollectionViewCell {
             // Display photo
             soundButton.isHidden = true // Hide sound button for photos
             
-            // Add photo image view if not already added
+            // Add photo image views if not already added: blurred fill copy
+            // behind, full aspect-fit photo on top
+            if photoBlurBackgroundView.superview == nil {
+                videoContainerView.insertSubview(photoBlurBackgroundView, at: 0)
+                NSLayoutConstraint.activate([
+                    photoBlurBackgroundView.topAnchor.constraint(equalTo: videoContainerView.topAnchor),
+                    photoBlurBackgroundView.leadingAnchor.constraint(equalTo: videoContainerView.leadingAnchor),
+                    photoBlurBackgroundView.trailingAnchor.constraint(equalTo: videoContainerView.trailingAnchor),
+                    photoBlurBackgroundView.bottomAnchor.constraint(equalTo: videoContainerView.bottomAnchor)
+                ])
+            }
             if photoImageView.superview == nil {
-                videoContainerView.insertSubview(photoImageView, at: 0)
+                videoContainerView.insertSubview(photoImageView, at: 1)
                 NSLayoutConstraint.activate([
                     photoImageView.topAnchor.constraint(equalTo: videoContainerView.topAnchor),
                     photoImageView.leadingAnchor.constraint(equalTo: videoContainerView.leadingAnchor),
@@ -477,11 +512,13 @@ class VideoReelCell: UICollectionViewCell {
                 ])
             }
             photoImageView.isHidden = false
-            
+            photoBlurBackgroundView.isHidden = false
+
             // Load the photo from thumbnail URL
             if let thumbnailUrl = reel.thumbnailUrl {
                 ImageService.shared.loadImage(from: thumbnailUrl) { [weak self] image in
                     self?.photoImageView.image = image
+                    self?.photoBlurBackgroundView.image = image
                 }
             }
         } else if reel.isEmbedded {
