@@ -1,5 +1,19 @@
 import UIKit
 
+// MARK: - Place Text Matching
+extension Place {
+    /// One matcher for the search overlay AND the map-pin search filter, so
+    /// the results list and the pins can never disagree about what "matches".
+    func matches(searchQuery query: String) -> Bool {
+        name.localizedCaseInsensitiveContains(query) ||
+        address.localizedCaseInsensitiveContains(query) ||
+        (description ?? "").localizedCaseInsensitiveContains(query) ||
+        (notes ?? "").localizedCaseInsensitiveContains(query) ||
+        (publicNotes ?? "").localizedCaseInsensitiveContains(query) ||
+        (privateNotes ?? "").localizedCaseInsensitiveContains(query)
+    }
+}
+
 // MARK: - PlaceSearchable Protocol
 protocol PlaceSearchable: UIViewController, UISearchBarDelegate {
     var allPlaces: [Place] { get set }
@@ -49,14 +63,7 @@ extension PlaceSearchable {
     }
     
     func filterPlaces(searchText: String) {
-        filteredPlaces = allPlaces.filter { place in
-            place.name.localizedCaseInsensitiveContains(searchText) ||
-            place.address.localizedCaseInsensitiveContains(searchText) ||
-            (place.description ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (place.notes ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (place.publicNotes ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (place.privateNotes ?? "").localizedCaseInsensitiveContains(searchText)
-        }
+        filteredPlaces = allPlaces.filter { $0.matches(searchQuery: searchText) }
     }
 }
 

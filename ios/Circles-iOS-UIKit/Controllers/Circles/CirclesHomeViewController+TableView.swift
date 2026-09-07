@@ -370,12 +370,16 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 suggestedDistances = [:]
                 userSearchWorkItem?.cancel()
                 suggestedSearchWorkItem?.cancel()
+                mapViewController?.setSearchFilter(nil)
                 hideSearchResults()
                 updateEmptyState()
                 let detailVC = PlaceDetailViewController(place: suggestion.toLegacyPlace())
                 navigationController?.pushViewController(detailVC, animated: true)
             default:
                 guard indexPath.row < filteredPlaces.count else { return }
+                // The PlaceSearchable default clears the bar/overlay but knows
+                // nothing about the map's pin filter
+                mapViewController?.setSearchFilter(nil)
                 handleSearchResultSelection(at: indexPath)
             }
         } else if tableView == activityTableView {

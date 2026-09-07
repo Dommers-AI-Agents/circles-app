@@ -78,19 +78,72 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     var showsFilterChips: Bool = false
     var initialChipGroup: PlaceCategoryGroup = .all
     var initialChipRegionId: String?
+    /// Seed for the search-text pin filter, like initialChipGroup — set by the
+    /// presenter so expanding the map carries the home search query over.
+    var initialSearchQuery: String?
 
     /// Read access for the presenter, so expansion can copy the live state.
     var currentChipGroup: PlaceCategoryGroup { selectedChipGroup }
     var currentChipRegionId: String? { selectedChipRegionId }
+
+    // MARK: - Search-text pin filter (shared by the embedded child and the modal)
+    /// Normalized (trimmed, never "") — nil means no text filter.
+    private var searchQuery: String?
+    private var searchDebounceTimer: Timer?
+
+    /// Applies (debounced) a search-text filter to the pins. Single debounce
+    /// owner: the home page's persistent bar and the modal's own bar both land
+    /// here. nil/empty clears IMMEDIATELY (cancelling any pending apply).
+    /// - zoomToResults: frame the matches after applying — modal-only behavior;
+    ///   the embedded caller passes false (its short viewport can't absorb
+    ///   zoomToFilteredPlaces' chip-bar edge padding, and the results overlay
+    ///   covers it while typing anyway).
+    func setSearchFilter(_ query: String?, zoomToResults: Bool = false) {
+        let normalized = query?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newValue = (normalized?.isEmpty ?? true) ? nil : normalized
+        // Invalidate BEFORE the equality check: typing "p" then deleting it
+        // makes the second call a no-op by value, but the "p" timer must die
+        // with it or stale text filters an empty bar.
+        searchDebounceTimer?.invalidate()
+        guard newValue != searchQuery else { return }
+        if newValue == nil {
+            searchQuery = nil
+            applyFilter(adjustRegion: false)
+            return
+        }
+        searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            self.searchQuery = newValue
+            self.applyFilter(adjustRegion: false)
+            if zoomToResults && !self.filteredPlaces.isEmpty {
+                self.zoomToFilteredPlaces()
+            }
+        }
+    }
+
+    /// Runs any place list through the current search filter — public for the
+    /// same reason as applyChipFilters: the home page's list sits beside the
+    /// pins and must show the same set.
+    func applySearchFilter(_ list: [Place]) -> [Place] {
+        guard let query = searchQuery else { return list }
+        return list.filter { $0.matches(searchQuery: query) }
+    }
 
     /// Returns the chip filters to their load state (All Categories · All
     /// Places) — the Home tab's reset uses this so a re-tap really does put
     /// the whole map header back to "Me · All Categories · All Places".
     func resetChipFilters() {
         guard showsFilterChips else { return }
-        guard selectedChipGroup != .all || selectedChipRegionId != nil else { return }
+        guard selectedChipGroup != .all || selectedChipRegionId != nil || searchQuery != nil else { return }
         selectedChipGroup = .all
         selectedChipRegionId = nil
+        searchDebounceTimer?.invalidate()
+        searchQuery = nil
+        // Only the modal mounts a bar of its own; don't instantiate the lazy
+        // view on the embedded child just to blank it.
+        if isPresentedModally && isViewLoaded {
+            mapSearchBar.text = ""
+        }
         refreshFilterChips()
         applyFilter(adjustRegion: false)
     }
@@ -281,6 +334,41 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             row.heightAnchor.constraint(equalToConstant: 32)
         ])
         return container
+    }()
+
+    /// Modal-only pin search: filters the annotations by name/address/notes.
+    /// The embedded child has no bar of its own — the home page's persistent
+    /// search bar drives it through setSearchFilter.
+    private lazy var mapSearchBar: UISearchBar = {
+        let bar = UISearchBar()
+        bar.placeholder = "Search places"
+        bar.searchBarStyle = .minimal
+        bar.returnKeyType = .search
+        bar.delegate = self
+        // Frosted dark backing so the field reads over any map content
+        bar.searchTextField.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        bar.searchTextField.textColor = .white
+        bar.searchTextField.attributedPlaceholder = NSAttributedString(
+            string: "Search places",
+            attributes: [.foregroundColor: UIColor.white.withAlphaComponent(0.7)]
+        )
+        bar.searchTextField.leftView?.tintColor = UIColor.white.withAlphaComponent(0.7)
+        bar.tintColor = .white
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        return bar
+    }()
+
+    private lazy var searchEmptyLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.textColor = .white
+        label.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        label.layer.cornerRadius = 10
+        label.layer.masksToBounds = true
+        label.textAlignment = .center
+        label.isHidden = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }()
 
     private func makeFilterDropdown() -> UIButton {
@@ -1084,6 +1172,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Carry the small view's chip selections into the expanded view
         selectedChipGroup = initialChipGroup
         selectedChipRegionId = initialChipRegionId
+        // Same for the search query — set the ivar directly (no debounce/zoom
+        // on load); the applyFilter() below picks it up, and setupUI seeds the
+        // bar text.
+        let seededQuery = initialSearchQuery?.trimmingCharacters(in: .whitespacesAndNewlines)
+        searchQuery = (seededQuery?.isEmpty ?? true) ? nil : seededQuery
         setupUI()
         setupMap()
         setupTableView()
@@ -1200,6 +1293,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 view.addSubview(listChipButton)
                 listChipButton.translatesAutoresizingMaskIntoConstraints = false
                 view.addSubview(addPlaceChipButton)
+                view.addSubview(mapSearchBar)
+                view.addSubview(searchEmptyLabel)
+                mapSearchBar.text = searchQuery
             }
 
             // Legacy avatar row only in hamburger mode — the Connection
@@ -1245,11 +1341,18 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             placesCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 40),
 
             // Coverage banner: top-center, below the filter chips, over the map
-            coverageBanner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 56),
+            // (top anchor added per-mode below — the modal header mode has a
+            // search-bar row the banner must clear)
             coverageBanner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             coverageBanner.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 12),
             coverageBanner.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -12)
         ]
+
+        if isPresentedModally && showFilters && showsFilterChips {
+            constraints.append(coverageBanner.topAnchor.constraint(equalTo: mapSearchBar.bottomAnchor, constant: 8))
+        } else {
+            constraints.append(coverageBanner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 56))
+        }
         
         // Add close button constraints only if presented modally. In header
         // mode the dropdown row owns the top edge, so close moves to the
@@ -1290,6 +1393,17 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                     filterChipsContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
                     filterChipsContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
                     filterChipsContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+
+                    // Search shares the second row with the close button
+                    mapSearchBar.topAnchor.constraint(equalTo: filterChipsContainer.bottomAnchor, constant: 8),
+                    mapSearchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+                    mapSearchBar.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -8),
+                    mapSearchBar.heightAnchor.constraint(equalToConstant: 44),
+
+                    searchEmptyLabel.topAnchor.constraint(equalTo: mapSearchBar.bottomAnchor, constant: 8),
+                    searchEmptyLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                    searchEmptyLabel.heightAnchor.constraint(equalToConstant: 30),
+                    searchEmptyLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 160),
 
                     listChipButton.topAnchor.constraint(equalTo: closeButton.bottomAnchor, constant: 8),
                     listChipButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
@@ -1724,6 +1838,19 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
     
     // MARK: - MKMapViewDelegate
+
+    func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+        // A drag under the search keyboard means "back to the map" — but only
+        // a USER gesture: this also fires for programmatic zooms (including
+        // the debounced zoom-to-matches while typing), which must not steal
+        // the keyboard mid-word.
+        guard isPresentedModally, showsFilterChips,
+              (mapView.subviews.first?.gestureRecognizers ?? []).contains(where: {
+                  $0.state == .began || $0.state == .changed || $0.state == .ended
+              })
+        else { return }
+        mapSearchBar.resignFirstResponder()
+    }
 
     func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
         // Every zoom/pan changes which pins have room to be full-size —
@@ -2434,6 +2561,13 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         if showsFilterChips {
             filteredPlaces = applyChipFilters(filteredPlaces)
         }
+
+        // Search text is a pure additional AND predicate — composes with the
+        // connection scope (modal) or home's pre-filter (embedded child)
+        // without double-filtering either. Deliberately outside
+        // applyChipFilters: that method is also the home list's chip contract,
+        // and non-chip maps run applyFilter too.
+        filteredPlaces = applySearchFilter(filteredPlaces)
         Logger.debug("  Final filtered places: \(filteredPlaces.count)")
         
         updatePlacesCount()
@@ -2480,6 +2614,17 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // stacked pills with different numbers was the original "always 257"
         // bug in a new outfit.
         placesCountLabel.isHidden = isShowingPlacesList || visibleCount == 0
+
+        // Zero-match search feedback (modal only — the embedded map's overlay
+        // list is already explaining the empty result while the user types)
+        if isPresentedModally && showsFilterChips {
+            if let query = searchQuery, filteredPlaces.isEmpty {
+                searchEmptyLabel.text = "  No places match \"\(query)\"  "
+                searchEmptyLabel.isHidden = false
+            } else {
+                searchEmptyLabel.isHidden = true
+            }
+        }
 
         updateConnectionCoverageBanner()
     }
@@ -2560,6 +2705,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// Connections) have no single "their places" to expand to.
     func updateConnectionCoverageBanner() {
         guard isViewLoaded else { return }
+        // While a search query is active the search empty-state owns the
+        // messaging — the banner's actions (clear category / zoom to their
+        // places) would fight the text filter.
+        guard searchQuery == nil else { hideCoverageBanner(); return }
         let id = selectedConnectionId
         let isSelf = (id == "my_places_only")
         let isPerson = (id != nil && id != "my_places_only" && id != "my_connections_only")
@@ -2840,5 +2989,16 @@ extension FullScreenMapViewController: HorizontalUserListViewDelegate {
 
     func didLongPressUser(_ user: User, connectionId: String) {
         presentProfile(for: user)
+    }
+}
+
+// MARK: - UISearchBarDelegate (modal pin search)
+extension FullScreenMapViewController: UISearchBarDelegate {
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        setSearchFilter(searchText, zoomToResults: true) // debounced inside
+    }
+
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        searchBar.resignFirstResponder()
     }
 }

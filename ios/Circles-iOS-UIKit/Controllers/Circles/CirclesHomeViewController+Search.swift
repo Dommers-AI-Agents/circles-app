@@ -21,6 +21,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
             suggestedDistances = [:]
             userSearchWorkItem?.cancel()
             suggestedSearchWorkItem?.cancel()
+            mapViewController?.setSearchFilter(nil)
             hideSearchResults()
             updateEmptyState()
             return
@@ -30,6 +31,10 @@ extension CirclesHomeViewController: UISearchBarDelegate {
 
         // Places — local, instant
         filterPlaces(searchText: trimmed)
+
+        // The pins narrow with the text too (FSM debounces internally; no
+        // zoom — the results overlay covers the embedded map while typing)
+        mapViewController?.setSearchFilter(trimmed)
 
         // People — debounced server search so we don't fire a request per
         // keystroke. Clear stale people up front so the PEOPLE section never
@@ -85,6 +90,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         suggestedDistances = [:]
         userSearchWorkItem?.cancel()
         suggestedSearchWorkItem?.cancel()
+        mapViewController?.setSearchFilter(nil)
         hideSearchResults()
         updateEmptyState()
     }
@@ -98,14 +104,9 @@ extension CirclesHomeViewController {
     func filterPlaces(searchText: String) {
         let searchSource = deduplicatePlaces(userPlaces: userOwnPlaces, networkPlaces: networkPlaces)
 
-        filteredPlaces = searchSource.filter { place in
-            place.name.localizedCaseInsensitiveContains(searchText) ||
-            place.address.localizedCaseInsensitiveContains(searchText) ||
-            (place.description ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (place.notes ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (place.publicNotes ?? "").localizedCaseInsensitiveContains(searchText) ||
-            (place.privateNotes ?? "").localizedCaseInsensitiveContains(searchText)
-        }
+        // Shared matcher (Place.matches) — the same predicate filters the map
+        // pins, so this list and the pins can't drift.
+        filteredPlaces = searchSource.filter { $0.matches(searchQuery: searchText) }
 
         // Nearest first, with the distance shown on each row ("looking for
         // pizza NEAR ME" is the whole query) — same reference the places
@@ -138,6 +139,14 @@ extension CirclesHomeViewController {
         if networkPlaces.isEmpty && !isLoadingNetworkPlaces {
             loadNetworkPlaces()
         }
+    }
+
+    /// The search text currently filtering the home surface, or nil — the
+    /// expand handoff seeds the modal's search bar with this.
+    var activeSearchQuery: String? {
+        guard isSearching else { return nil }
+        let trimmed = searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty ?? true) ? nil : trimmed
     }
 
     /// The point "near" means: the user's real location when we have it,
@@ -249,6 +258,7 @@ extension CirclesHomeViewController {
         suggestedDistances = [:]
         userSearchWorkItem?.cancel()
         suggestedSearchWorkItem?.cancel()
+        mapViewController?.setSearchFilter(nil)
         hideSearchResults()
         updateEmptyState()
 

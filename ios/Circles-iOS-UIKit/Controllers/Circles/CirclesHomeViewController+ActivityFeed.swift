@@ -361,6 +361,13 @@ extension CirclesHomeViewController {
     func resetMapToDefault() {
         resetPlacesListToMap()
 
+        // An active search is a filter too — resetChipFilters below clears the
+        // map's copy of the query, so the bar/overlay must not stay behind
+        // claiming the pins are filtered.
+        if isSearching {
+            searchBarCancelButtonClicked(searchBar)
+        }
+
         // Chip filters (category group + region) live inside the embedded map.
         mapViewController?.resetChipFilters()
 

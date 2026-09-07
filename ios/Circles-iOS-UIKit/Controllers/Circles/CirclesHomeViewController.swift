@@ -4894,6 +4894,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         fullScreenMap.showsFilterChips = true
         fullScreenMap.initialChipGroup = mapViewController?.currentChipGroup ?? .all
         fullScreenMap.initialChipRegionId = mapViewController?.currentChipRegionId
+        // Expansion is the same map, larger — carry the active search text too
+        fullScreenMap.initialSearchQuery = activeSearchQuery
         
         // Separate user places from connection places
         let buckets = buildConnectionPlaceBuckets()
@@ -6059,6 +6061,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         var filtered = applyFiltersToPlaces(allPlaces)
         if let mapVC = mapViewController {
             filtered = mapVC.applyChipFilters(filtered)
+            filtered = mapVC.applySearchFilter(filtered)
         }
         let referenceLocation = mapViewController?.currentUserLocation
             ?? mapViewController.map { CLLocation(latitude: $0.currentRegion.center.latitude, longitude: $0.currentRegion.center.longitude) }
