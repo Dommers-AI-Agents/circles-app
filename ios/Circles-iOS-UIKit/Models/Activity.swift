@@ -142,6 +142,7 @@ struct ActivityMetadata: Codable {
     let videoTitle: String?  // For video uploads
     let videoThumbnail: String?  // For video uploads
     let videoDuration: Double?  // For video uploads
+    let contentType: String?  // Moment content: "photo" | "video" (photo moments ride the video pipeline)
 }
 
 // MARK: - Activity Helper Methods
@@ -167,7 +168,11 @@ extension Activity {
         case .checkIn:
             return "checked in at \(targetName)"
         case .videoUploaded:
-            return "uploaded a video at \(targetName)"
+            // Photo moments ride the video pipeline (type video_uploaded);
+            // metadata.contentType tells them apart for the row wording
+            return metadata?.contentType == "photo"
+                ? "shared a photo at \(targetName)"
+                : "uploaded a video at \(targetName)"
         case .photoUploaded:
             return "uploaded a photo at \(targetName)"
         case .placeDiscovered:

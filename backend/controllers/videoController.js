@@ -619,7 +619,10 @@ exports.completeVideoUpload = async (req, res) => {
           videoDuration: videoData.duration,
           placeId: videoData.placeId,
           momentVisibility: videoData.visibility || 'public',
-          momentOwnerId: userId
+          momentOwnerId: userId,
+          // Photo moments ride the video pipeline; the feed row wording
+          // ("shared a photo" vs "uploaded a video") keys off this
+          contentType: videoData.contentType || 'video'
         },
         timestamp: FieldValue.serverTimestamp(),
         isRead: false,
@@ -2024,7 +2027,8 @@ exports.addEmbeddedVideo = async (req, res) => {
           videoThumbnail: videoData.thumbnailUrl || null,
           placeId: placeId,
           momentVisibility: videoData.visibility || 'public',
-          momentOwnerId: userId
+          momentOwnerId: userId,
+          contentType: videoData.contentType || 'video'
         }
       );
     }
