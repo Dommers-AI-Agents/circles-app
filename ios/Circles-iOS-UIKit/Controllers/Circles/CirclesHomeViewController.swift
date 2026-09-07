@@ -12,8 +12,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     var networkCircles: [Circle] = []
     var isShowingNetworkCircles = false
     var allPlaces: [Place] = []
+    /// While isSearching, this is the SEARCH-RESULTS array the overlay table
+    /// renders and indexes into. Map-refresh paths must never write it during
+    /// a search (see mapRefreshDidFilter) — a background load swapping it
+    /// under the visible rows made taps open the wrong place.
     var filteredPlaces: [Place] = []
     var isSearching = false
+    /// User tapped Done to peek at the (still search-filtered) map — the
+    /// overlay stays down until they edit the query or refocus the bar.
+    var isSearchOverlayDismissed = false
     var selectedCategory: UnifiedCategory?
     var mapUpdateTimer: Timer? // Debounce timer for map updates
     var notificationBadgeTimer: Timer? // Periodic refresh timer for notification badge
@@ -3632,15 +3639,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                                 
                                 // Update map with progressive data
                                 self.allPlaces = uniquePlaces
-                                self.filteredPlaces = self.applyFiltersToPlaces(uniquePlaces)
-                                self.mapViewController?.updatePlaces(self.filteredPlaces)
-                                
+                                let progressivePlaces = self.applyFiltersToPlaces(uniquePlaces)
+                                self.mapRefreshDidFilter(progressivePlaces)
+                                self.mapViewController?.updatePlaces(progressivePlaces)
+
                                 // Trigger map region adjustment for progressive loading
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                                     self?.mapViewController?.adjustMapRegion()
                                 }
-                                
-                                self.updatePlaceCountLabel(count: self.filteredPlaces.count)
+
+                                self.updatePlaceCountLabel(count: progressivePlaces.count)
                                 
                                 // Update loading message with progress and animation
                                 let totalCircles = allCircles.count
@@ -3724,7 +3732,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 // Final map update with complete data (progressive loading already showed most places)
                 self.isMapDataReady = true
                 let finalPlaces = self.applyFiltersToPlaces(uniquePlaces)
-                self.filteredPlaces = finalPlaces
+                self.mapRefreshDidFilter(finalPlaces)
                 self.mapViewController?.updatePlaces(finalPlaces)
                 
                 // Trigger final map region adjustment
@@ -3894,7 +3902,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Apply filters and update map (include merged viewport places, not just the incoming batch)
         let placesToDisplay = applyFiltersToPlaces((useViewportNetworkLoading && !isFromCache) ? allPlaces : places)
-        self.filteredPlaces = placesToDisplay
+        mapRefreshDidFilter(placesToDisplay)
 
         // Update map with current places
         self.mapViewController?.updatePlaces(placesToDisplay)
@@ -4194,7 +4202,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             }
             self.isMapDataReady = true
             let filtered = self.applyFiltersToPlaces(cached)
-            self.filteredPlaces = filtered
+            self.mapRefreshDidFilter(filtered)
             self.mapViewController?.updatePlaces(filtered)
             self.updatePlaceCountLabel(count: filtered.count)
             self.updateAvailableCategories()
@@ -4240,7 +4248,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             Logger.debug("📍 No circles to fetch places from")
             self.allPlaces = []
             self.userOwnPlaces = []
-            self.filteredPlaces = []
+            self.mapRefreshDidFilter([])
             
             // Mark data as ready (empty) and update map
             self.isMapDataReady = true
@@ -4463,8 +4471,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             Logger.debug("   Places with location: \(placesWithLocation)")
             Logger.debug("   Places without location: \(placesWithoutLocation)")
             
-            // Update filteredPlaces for UI consistency (search, empty states, etc.)
-            self.filteredPlaces = mapFilteredPlaces
+            // Mirror for UI consistency (empty states) — guarded during search
+            self.mapRefreshDidFilter(mapFilteredPlaces)
             
             // Use progressive loading instead of waiting for everything
             self.updateMapProgressively(with: deduplicatedPlaces, isFromCache: false)
@@ -5244,11 +5252,23 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
+    /// Map-refresh paths report their freshly filtered set here. When idle it
+    /// mirrors into filteredPlaces (legacy "UI consistency" for empty states);
+    /// during a search it must NOT — filteredPlaces is then the search-results
+    /// array the overlay table is rendering AND indexing into, and overwriting
+    /// it mid-search made a tap open whatever place happened to share the row
+    /// number in the map's array.
+    func mapRefreshDidFilter(_ places: [Place]) {
+        if !isSearching {
+            filteredPlaces = places
+        }
+    }
+
     func applyFiltersAndUpdateMap() {
         // Apply filtering to all places
         let filteredPlaces = applyFiltersToPlaces(allPlaces)
-        self.filteredPlaces = filteredPlaces
-        
+        mapRefreshDidFilter(filteredPlaces)
+
         // Mark data as ready and update map
         isMapDataReady = true
         updateMapWhenReady()

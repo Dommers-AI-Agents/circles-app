@@ -12,6 +12,9 @@ extension CirclesHomeViewController: UISearchBarDelegate {
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        // Editing the query brings the results list back after a map peek
+        isSearchOverlayDismissed = false
+
         guard !trimmed.isEmpty else {
             isSearching = false
             filteredPlaces = []
@@ -64,8 +67,12 @@ extension CirclesHomeViewController: UISearchBarDelegate {
     }
 
     /// Shows the results overlay if either section has matches, hides it otherwise.
+    /// A map peek (Done) keeps it down until the user edits or refocuses the bar
+    /// — late async results (people fetch, suggested venues) must not yank the
+    /// map away again.
     func refreshSearchOverlay() {
-        if isSearching && (!filteredPlaces.isEmpty || !searchedUsers.isEmpty || !visibleSuggestedPlaces.isEmpty) {
+        if isSearching && !isSearchOverlayDismissed
+            && (!filteredPlaces.isEmpty || !searchedUsers.isEmpty || !visibleSuggestedPlaces.isEmpty) {
             showSearchResults()
         } else {
             hideSearchResults()
@@ -73,16 +80,35 @@ extension CirclesHomeViewController: UISearchBarDelegate {
     }
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
-        // Dismiss the keyboard when "Done" is tapped
         searchBar.resignFirstResponder()
-        // Update empty state if needed
+        // "Search" while results are up = show me the MAP: drop the list so the
+        // (still search-filtered) pins are visible. The query stays active —
+        // tapping the bar or editing brings the list back.
+        if isSearching {
+            isSearchOverlayDismissed = true
+            hideSearchResults()
+        }
         updateEmptyState()
+    }
+
+    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+        searchBar.setShowsCancelButton(true, animated: true)
+        // Refocusing after a map peek restores the results list
+        if isSearching && isSearchOverlayDismissed {
+            isSearchOverlayDismissed = false
+            refreshSearchOverlay()
+        }
+    }
+
+    func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
+        searchBar.setShowsCancelButton(false, animated: true)
     }
 
     func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
         searchBar.text = ""
         searchBar.resignFirstResponder()
         isSearching = false
+        isSearchOverlayDismissed = false
         filteredPlaces = []
         searchedUsers = []
         searchDistances = [:]

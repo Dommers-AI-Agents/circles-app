@@ -108,15 +108,9 @@ const POPULAR_PLACES = {
   ],
 
   // Belmar, NJ defaults used when we don't have city-specific places
+  // (a "Starbucks, 1799 River Rd" entry was removed 2026-09-07 — not a real
+  // venue; scripts/cleanup-bogus-starbucks.js purged the seeded copies)
   'belmar': [
-    {
-      name: "Starbucks",
-      category: "cafe",
-      description: "Popular coffee chain",
-      address: "1799 River Rd, Belmar, NJ 07719",
-      coordinates: [-74.0407, 40.1771],
-      website: "https://starbucks.com"
-    },
     {
       name: "Playa Bowls",
       category: "cafe",
