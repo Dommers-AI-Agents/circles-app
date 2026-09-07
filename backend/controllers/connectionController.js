@@ -1,5 +1,6 @@
 // backend/controllers/connectionController.js
 const { getFirestore } = require('../config/firebase');
+const { projectPublicUser } = require('../services/publicUserProjection');
 const { FieldValue } = require('firebase-admin/firestore');
 const { 
   COLLECTIONS, 
@@ -149,7 +150,7 @@ const getConnections = async (req, res) => {
         try {
           const userDoc = otherUserDocMap.get(otherUserId);
           if (userDoc && userDoc.exists) {
-            connection.connectedUser = serializeDoc(userDoc);
+            connection.connectedUser = projectPublicUser(serializeDoc(userDoc), ['email']);
             // DO NOT overwrite connectedUserId - it should remain as stored in database
 
             // Does this person follow the caller back? Drives the client's
@@ -423,7 +424,7 @@ const sendConnectionRequest = async (req, res) => {
       
       if (connectionData.status === 'accepted') {
         const connection = serializeDoc(existingConnection);
-        connection.connectedUser = serializeDoc(targetUserDoc);
+        connection.connectedUser = projectPublicUser(serializeDoc(targetUserDoc), ['email']);
         return res.status(200).json({
           success: true,
           data: connection,
@@ -485,7 +486,7 @@ const sendConnectionRequest = async (req, res) => {
     const connection = serializeDoc(newDoc);
     
     // Populate connected user data
-    connection.connectedUser = serializeDoc(targetUserDoc);
+    connection.connectedUser = projectPublicUser(serializeDoc(targetUserDoc), ['email']);
     
     console.log(`✅ Connection created successfully:`, {
       connectionId: connection.id,
@@ -690,7 +691,7 @@ const acceptConnection = async (req, res) => {
     // Populate connected user data
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(connection.userId).get();
     if (userDoc.exists) {
-      updatedConnection.connectedUser = serializeDoc(userDoc);
+      updatedConnection.connectedUser = projectPublicUser(serializeDoc(userDoc), ['email']);
     }
 
     // Piggy bank: FavCoins for the new connection — BOTH users earn (one
@@ -1116,7 +1117,7 @@ const getActiveConnections = async (req, res) => {
         try {
           const userDoc = await db.collection(COLLECTIONS.USERS).doc(otherUserId).get();
           if (userDoc.exists) {
-            connection.connectedUser = serializeDoc(userDoc);
+            connection.connectedUser = projectPublicUser(serializeDoc(userDoc), ['email']);
             
             // Get total places count
             const userCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)

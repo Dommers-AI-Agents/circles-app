@@ -1,5 +1,6 @@
 // backend/controllers/messagingController.js
 const { getFirestore } = require('../config/firebase');
+const { projectPublicUser } = require('../services/publicUserProjection');
 const { 
   COLLECTIONS, 
   createConversation,
@@ -370,7 +371,7 @@ const createNewConversation = async (req, res) => {
         const otherUserId = conversation.participants.find(id => id !== userId);
         const otherUserDoc = await db.collection(COLLECTIONS.USERS).doc(otherUserId).get();
         if (otherUserDoc.exists) {
-          conversation.participantDetails = [serializeDoc(otherUserDoc)];
+          conversation.participantDetails = [projectPublicUser(serializeDoc(otherUserDoc), ['email'])];
         }
 
         return res.status(200).json({

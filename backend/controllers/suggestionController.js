@@ -1,5 +1,6 @@
 // backend/controllers/suggestionController.js
 const { getFirestore } = require('../config/firebase');
+const { projectPublicUser } = require('../services/publicUserProjection');
 const { FieldValue, FieldPath } = require('firebase-admin/firestore');
 const { 
   COLLECTIONS, 
@@ -81,7 +82,7 @@ const createNewSuggestion = async (req, res) => {
     
     // Get user details for response
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-    const userDetails = userDoc.exists ? serializeDoc(userDoc) : null;
+    const userDetails = userDoc.exists ? projectPublicUser(serializeDoc(userDoc)) : null;
 
     const suggestion = {
       _id: suggestionRef.id,
@@ -232,7 +233,7 @@ const getNetworkSuggestions = async (req, res) => {
       // Get user details
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(suggestion.userId).get();
       if (userDoc.exists) {
-        suggestion.userDetails = serializeDoc(userDoc);
+        suggestion.userDetails = projectPublicUser(serializeDoc(userDoc));
       }
 
       suggestions.push(suggestion);
@@ -428,7 +429,7 @@ const addComment = async (req, res) => {
 
     // Get user details
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-    const userDetails = userDoc.exists ? serializeDoc(userDoc) : null;
+    const userDetails = userDoc.exists ? projectPublicUser(serializeDoc(userDoc)) : null;
 
     res.status(201).json({
       success: true,
@@ -469,7 +470,7 @@ const getComments = async (req, res) => {
       commentsSnapshot.docs.map(async (doc) => {
         const comment = doc.data();
         const userDoc = await db.collection(COLLECTIONS.USERS).doc(comment.userId).get();
-        const userDetails = userDoc.exists ? serializeDoc(userDoc) : null;
+        const userDetails = userDoc.exists ? projectPublicUser(serializeDoc(userDoc)) : null;
 
         return {
           _id: doc.id,
@@ -701,7 +702,7 @@ const getSuggestionsByUser = async (req, res) => {
       // Get user details
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(suggestion.userId).get();
       if (userDoc.exists) {
-        suggestion.userDetails = serializeDoc(userDoc);
+        suggestion.userDetails = projectPublicUser(serializeDoc(userDoc));
       }
       
       suggestions.push(suggestion);

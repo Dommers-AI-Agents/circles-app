@@ -1,5 +1,6 @@
 // backend/controllers/userDiscoveryController.js
 const { getFirestore } = require('../config/firebase');
+const { projectPublicUser } = require('../services/publicUserProjection');
 const { FieldValue } = require('firebase-admin/firestore');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const geofire = require('geofire-common');
@@ -59,7 +60,7 @@ const getDiscoverUsers = async (req, res) => {
       const { placesCount, circlesCount } = placeCounts.get(doc.id) || { placesCount: 0, circlesCount: 0 };
       return {
         id: doc.id,
-        ...u,
+        ...projectPublicUser(u),
         placesCount,
         circlesCount,
         discoveryType,
@@ -410,7 +411,9 @@ const searchUsersAdvanced = async (req, res) => {
 
       enrichedResults.push({
         id: user.id,
-        email: user.email,
+        // The searcher typed this email themselves; name/username matches
+        // don't get to harvest addresses.
+        email: user.matchType === 'email' ? user.email : undefined,
         displayName: user.displayName,
         profilePicture: user.profilePicture,
         bio: user.bio,

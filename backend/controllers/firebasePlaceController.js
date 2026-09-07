@@ -1,5 +1,6 @@
 // backend/controllers/firebasePlaceController.js
 const admin = require('firebase-admin');
+const { projectPublicUser } = require('../services/publicUserProjection');
 const { getFirestore } = require('../config/firebase');
 const {
   COLLECTIONS, 
@@ -345,7 +346,6 @@ const buildAddedByUserMap = async (places) => {
     const userInfo = {
       id: userData.id,
       displayName: userData.displayName || 'Unknown User',
-      email: userData.email,
       profilePicture: userData.profilePicture
     };
     userMap.set(userData.id, userInfo);
@@ -3359,7 +3359,7 @@ exports.getPlaceComments = async (req, res, next) => {
         // Get user details
         const userDoc = await db.collection(COLLECTIONS.USERS).doc(comment.userId).get();
         if (userDoc.exists) {
-          comment.user = serializeDoc(userDoc);
+          comment.user = projectPublicUser(serializeDoc(userDoc));
         }
         
         // Ensure replyCount is included (default to 0 if not present)
@@ -3513,7 +3513,7 @@ exports.addPlaceComment = async (req, res, next) => {
     // Get user details
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
     if (userDoc.exists) {
-      comment.user = serializeDoc(userDoc);
+      comment.user = projectPublicUser(serializeDoc(userDoc));
     }
     
     // Send notification to place owner if it's not the commenter
@@ -4194,7 +4194,7 @@ exports.addPlaceCommentReply = async (req, res, next) => {
     // Get user details for the reply
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
     if (userDoc.exists) {
-      reply.user = serializeDoc(userDoc);
+      reply.user = projectPublicUser(serializeDoc(userDoc));
     }
     
     // Update parent comment reply count

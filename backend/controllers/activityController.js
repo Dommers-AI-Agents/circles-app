@@ -1,5 +1,6 @@
 // backend/controllers/activityController.js
 const { admin, getFirestore } = require('../config/firebase');
+const { projectPublicUser } = require('../services/publicUserProjection');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
 const db = getFirestore();
 
@@ -177,7 +178,7 @@ exports.getNetworkActivities = async (req, res, next) => {
     const actorsMap = new Map();
     actorResults.forEach(snapshot => {
       snapshot.docs.forEach(doc => {
-        actorsMap.set(doc.id, serializeDoc(doc));
+        actorsMap.set(doc.id, projectPublicUser(serializeDoc(doc)));
       });
     });
 
