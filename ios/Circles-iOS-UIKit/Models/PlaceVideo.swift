@@ -39,6 +39,10 @@ struct PlaceVideo: Codable {
     // Additional properties from API
     var user: User?
     var likedByCurrentUser: Bool?
+
+    /// People tagged in this moment (accepted connections of the owner),
+    /// denormalized server-side as {id, displayName, profilePicture}.
+    var taggedUsers: [TaggedMomentUser]?
     
     // Activity-related properties
     var activityId: String?
@@ -80,6 +84,7 @@ struct PlaceVideo: Codable {
         case embedHtml
         case embedMetadata
         case likedByCurrentUser
+        case taggedUsers
         case activityId
         case activityReactionCount
         case activityCommentCount
@@ -90,6 +95,26 @@ struct PlaceVideo: Codable {
     var isEmbedded: Bool {
         return videoType == "embedded"
     }
+
+    // MARK: Tagged people
+
+    func isTagged(_ userId: String?) -> Bool {
+        guard let userId = userId else { return false }
+        return taggedUsers?.contains(where: { $0.id == userId }) ?? false
+    }
+
+    /// "with Alice" / "with Alice +2" — nil when nobody is tagged.
+    var taggedSummary: String? {
+        guard let tagged = taggedUsers, !tagged.isEmpty else { return nil }
+        let first = tagged[0].displayName
+        return tagged.count == 1 ? "with \(first)" : "with \(first) +\(tagged.count - 1)"
+    }
+}
+
+struct TaggedMomentUser: Codable {
+    let id: String
+    let displayName: String
+    let profilePicture: String?
 }
 
 // MARK: - Embed Metadata

@@ -616,7 +616,11 @@ class VideoReelCell: UICollectionViewCell {
         }
         
         // Configure UI
-        usernameLabel.text = "@\(reel.user?.displayName ?? "unknown")"
+        if let taggedSummary = reel.taggedSummary {
+            usernameLabel.text = "@\(reel.user?.displayName ?? "unknown") · \(taggedSummary)"
+        } else {
+            usernameLabel.text = "@\(reel.user?.displayName ?? "unknown")"
+        }
         placeNameLabel.text = "📍 \(reel.placeName)"
         descriptionLabel.text = reel.description.isEmpty ? reel.title : reel.description
         likeCountLabel.text = formatCount(reel.likeCount)

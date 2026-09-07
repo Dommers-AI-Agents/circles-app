@@ -15,6 +15,7 @@ class ContentUploadViewController: UIViewController {
     private var selectedPlace: Place?
     private var pendingContent: ContentType?
     private var selectedVisibility: VideoVisibility = .followers // Default to followers
+    private var selectedTaggedUsers: [TaggedMomentUser] = []
     private var shouldNavigateToMomentsOnSuccess = false // Flag to control navigation behavior
     
     // Background image processing
@@ -588,9 +589,10 @@ extension ContentUploadViewController: VideoLinkInputDelegate {
 
 // MARK: - MomentPlacePickerDelegate
 extension ContentUploadViewController: MomentPlacePickerDelegate {
-    func momentPlacePicker(_ picker: MomentPlacePickerViewController, didSelect place: Place, visibility: VideoVisibility) {
+    func momentPlacePicker(_ picker: MomentPlacePickerViewController, didSelect place: Place, visibility: VideoVisibility, taggedUsers: [TaggedMomentUser]) {
         guard let content = pendingContent else { return }
         selectedVisibility = visibility
+        selectedTaggedUsers = taggedUsers
         selectedPlace = place
         pendingContent = nil
         if let presentedVC = presentedViewController {
@@ -816,6 +818,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             "description": "",
             "visibility": selectedVisibility.rawValue,
             "tags": [],
+            "taggedUserIds": selectedTaggedUsers.map { $0.id },
             "contentType": "photo",
             "fileSize": imageData.count,
             "duration": 0,
@@ -928,6 +931,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             "description": "",
             "visibility": selectedVisibility.rawValue,
             "tags": [],
+            "taggedUserIds": selectedTaggedUsers.map { $0.id },
             "contentType": "video",
             "fileSize": fileSize,
             "duration": duration,

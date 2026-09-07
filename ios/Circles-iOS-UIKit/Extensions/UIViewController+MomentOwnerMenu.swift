@@ -28,6 +28,44 @@ extension UIViewController {
         )
     }
 
+    /// Menu for a viewer who is TAGGED in someone else's moment:
+    /// "Remove me from this Moment" (self-service untag — the consent story),
+    /// plus a path into the normal moderation sheet.
+    func presentMomentTaggedViewerMenu(for reel: PlaceVideo,
+                                       sourceView: UIView? = nil,
+                                       onUntagged: @escaping () -> Void,
+                                       onMoreOptions: @escaping () -> Void) {
+        AlertPresenter.showActionSheet(
+            title: "Moment options",
+            message: "You're tagged in this Moment",
+            actions: [
+                ("Remove me from this Moment", .destructive, { [weak self] in
+                    guard let self = self else { return }
+                    let loading = AlertPresenter.showLoading(message: "Removing tag…", from: self)
+                    APIService.shared.request(
+                        endpoint: "videos/\(reel.id)/tags/me",
+                        method: .delete,
+                        requiresAuth: true
+                    ) { (result: Result<UntagResponse, APIError>) in
+                        DispatchQueue.main.async {
+                            loading.dismiss(animated: true) {
+                                switch result {
+                                case .success:
+                                    onUntagged()
+                                case .failure(let error):
+                                    AlertPresenter.showError(error, from: self)
+                                }
+                            }
+                        }
+                    }
+                }),
+                ("More options…", .default, { onMoreOptions() })
+            ],
+            from: self,
+            sourceView: sourceView
+        )
+    }
+
     private func presentMomentPrivacyPicker(for reel: PlaceVideo,
                                             onPrivacyChanged: @escaping (VideoVisibility) -> Void) {
         let actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] =
@@ -83,4 +121,11 @@ extension UIViewController {
             }
         }
     }
+}
+
+
+struct UntagResponse: Decodable {
+    struct Payload: Decodable { let removed: Bool }
+    let success: Bool
+    let data: Payload
 }

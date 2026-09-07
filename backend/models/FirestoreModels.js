@@ -446,6 +446,11 @@ const createPlaceVideo = (videoData, userId) => {
     originalSize: videoData.originalSize || 0, // bytes before compression
     compressionRatio: videoData.compressionRatio || 0,
     visibility: videoData.visibility || 'followers', // public, followers, network(=connections), private
+    // People tagged in the moment: accepted connections only, validated
+    // server-side; denormalized {id, displayName, profilePicture} ride along
+    // so every read path gets them without a join (names may drift — accepted)
+    taggedUserIds: videoData.taggedUserIds || [],
+    taggedUsers: videoData.taggedUsers || [],
     viewCount: 0,
     lastViewedAt: null,
     likeCount: 0,
@@ -869,6 +874,7 @@ const validateNotification = (notificationData) => {
     'activity_comment',
     'check_in',
     'new_suggestion',
+    'moment_tag',
     'circle_invite',
     'store_claim',
     'store_claim_approved',

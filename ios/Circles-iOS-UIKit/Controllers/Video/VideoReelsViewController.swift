@@ -684,6 +684,33 @@ extension VideoReelsViewController: VideoReelCellDelegate {
         // Someone else's moment: report / unfollow / block instead of the
         // owner's delete-and-privacy menu
         if reel.userId != AuthService.shared.currentUser?.id {
+            // Tagged in someone else's moment → self-service untag first
+            if reel.isTagged(AuthService.shared.currentUser?.id) {
+                presentMomentTaggedViewerMenu(
+                    for: reel,
+                    sourceView: cell,
+                    onUntagged: { [weak self] in
+                        guard let self = self, let idx = self.reels.firstIndex(where: { $0.id == reel.id }) else { return }
+                        self.reels[idx].taggedUsers?.removeAll { $0.id == AuthService.shared.currentUser?.id }
+                        self.collectionView.reloadData()
+                    },
+                    onMoreOptions: { [weak self] in
+                        self?.presentContentModerationSheet(
+                            contentType: "moment",
+                            contentId: reel.id,
+                            ownerId: reel.userId,
+                            ownerName: reel.user?.displayName,
+                            sourceView: cell,
+                            onContentHidden: { [weak self] in
+                                guard let self = self, let idx = self.reels.firstIndex(where: { $0.id == reel.id }) else { return }
+                                self.reels.remove(at: idx)
+                                self.collectionView.reloadData()
+                            }
+                        )
+                    }
+                )
+                return
+            }
             presentContentModerationSheet(
                 contentType: "moment",
                 contentId: reel.id,

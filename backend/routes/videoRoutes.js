@@ -40,6 +40,9 @@ router.delete('/reels/:videoId/like', protect, require('../controllers/videoCont
 router.post('/reels/:videoId/view', protect, require('../controllers/videoController').trackReelView);
 
 // Video likes endpoint
+// "Remove me from this Moment" — tagged person only
+router.delete('/:videoId/tags/me', protect, require('../controllers/videoController').removeMyMomentTag);
+
 router.get('/:videoId/likes', protect, require('../controllers/videoController').getVideoLikes);
 
 // Activity endpoint for videos

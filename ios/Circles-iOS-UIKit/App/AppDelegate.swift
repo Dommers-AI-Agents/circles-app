@@ -901,7 +901,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 sceneDelegate?.navigateToUserProfile(userId: fromUserId)
             }
 
-        case "video_uploaded", "video_liked", "moment_uploaded", "moment_liked":
+        case "video_uploaded", "video_liked", "moment_uploaded", "moment_liked", "moment_tag":
             // Moment pushes open the moment, not the place it was taken at
             if let videoId = (userInfo["videoId"] as? String) ?? (userInfo["momentId"] as? String) {
                 sceneDelegate?.navigateToVideo(videoId: videoId)

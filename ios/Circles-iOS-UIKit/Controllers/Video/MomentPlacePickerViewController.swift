@@ -3,10 +3,11 @@ import MapKit
 import CoreLocation
 
 protocol MomentPlacePickerDelegate: AnyObject {
-    /// The user picked a place and a visibility for the moment.
+    /// The user picked a place, a visibility, and (optionally) people to tag.
     func momentPlacePicker(_ picker: MomentPlacePickerViewController,
                            didSelect place: Place,
-                           visibility: VideoVisibility)
+                           visibility: VideoVisibility,
+                           taggedUsers: [TaggedMomentUser])
 }
 
 /// Place picker for posting a Moment — same shape as the check-in place
@@ -18,6 +19,7 @@ class MomentPlacePickerViewController: BaseViewController {
 
     weak var delegate: MomentPlacePickerDelegate?
     private var visibility: VideoVisibility
+    private var taggedUsers: [TaggedMomentUser] = []
 
     private var currentLocation: CLLocation?
     private var myPlaces: [Place] = []      // full distance-sorted list
@@ -55,6 +57,16 @@ class MomentPlacePickerViewController: BaseViewController {
         l.textColor = Constants.Colors.secondaryLabel
         l.translatesAutoresizingMaskIntoConstraints = false
         return l
+    }()
+
+    private lazy var tagPeopleButton: UIButton = {
+        let b = UIButton(type: .system)
+        b.contentHorizontalAlignment = .leading
+        b.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
+        b.setImage(UIImage(systemName: "person.crop.circle.badge.plus"), for: .normal)
+        b.addTarget(self, action: #selector(tagPeopleTapped), for: .touchUpInside)
+        b.translatesAutoresizingMaskIntoConstraints = false
+        return b
     }()
 
     private let sourceControl: UISegmentedControl = {
@@ -97,7 +109,8 @@ class MomentPlacePickerViewController: BaseViewController {
         tableView.dataSource = self
         nearbySearch.delegate = self
 
-        [privacyLabel, privacyControl, privacySubtitle, sourceControl, searchBar, tableView, loadingIndicator].forEach { view.addSubview($0) }
+        [privacyLabel, privacyControl, privacySubtitle, tagPeopleButton, sourceControl, searchBar, tableView, loadingIndicator].forEach { view.addSubview($0) }
+        refreshTagButton()
         setupConstraints()
         updatePrivacySubtitle()
 
@@ -136,7 +149,12 @@ class MomentPlacePickerViewController: BaseViewController {
             privacySubtitle.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             privacySubtitle.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
 
-            sourceControl.topAnchor.constraint(equalTo: privacySubtitle.bottomAnchor, constant: 16),
+            tagPeopleButton.topAnchor.constraint(equalTo: privacySubtitle.bottomAnchor, constant: 8),
+            tagPeopleButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            tagPeopleButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            tagPeopleButton.heightAnchor.constraint(equalToConstant: 30),
+
+            sourceControl.topAnchor.constraint(equalTo: tagPeopleButton.bottomAnchor, constant: 8),
             sourceControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             sourceControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
 
@@ -154,10 +172,43 @@ class MomentPlacePickerViewController: BaseViewController {
         ])
     }
 
+    // MARK: - Tag people
+
+    private func refreshTagButton() {
+        if visibility == .private {
+            tagPeopleButton.setTitle("  Tags are off for Only Me moments", for: .normal)
+            tagPeopleButton.isEnabled = false
+            tagPeopleButton.tintColor = Constants.Colors.secondaryLabel
+            return
+        }
+        tagPeopleButton.isEnabled = true
+        tagPeopleButton.tintColor = Constants.Colors.primary
+        if taggedUsers.isEmpty {
+            tagPeopleButton.setTitle("  Tag people who were there", for: .normal)
+        } else {
+            let first = taggedUsers[0].displayName
+            let summary = taggedUsers.count == 1 ? first : "\(first) +\(taggedUsers.count - 1)"
+            tagPeopleButton.setTitle("  With \(summary)", for: .normal)
+        }
+    }
+
+    @objc private func tagPeopleTapped() {
+        let picker = TagPeoplePickerViewController()
+        picker.initialSelection = taggedUsers
+        picker.onDone = { [weak self] chosen in
+            guard let self = self else { return }
+            self.taggedUsers = chosen
+            self.refreshTagButton()
+        }
+        present(UINavigationController(rootViewController: picker), animated: true)
+    }
+
     // MARK: - Privacy bubble
 
     @objc private func privacyChanged() {
         visibility = VideoVisibility.allCases[privacyControl.selectedSegmentIndex]
+        if visibility == .private { taggedUsers = [] }
+        refreshTagButton()
         updatePrivacySubtitle()
     }
     private func updatePrivacySubtitle() {
@@ -287,7 +338,7 @@ extension MomentPlacePickerViewController: UITableViewDataSource, UITableViewDel
             return
         }
         let place = rows[indexPath.row]
-        delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility)
+        delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility, taggedUsers: taggedUsers)
     }
 }
 
@@ -325,7 +376,7 @@ extension MomentPlacePickerViewController: NearbyPlaceSearchDelegate {
 
     func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didResolve place: Place) {
         setLoading(false)
-        delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility)
+        delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility, taggedUsers: taggedUsers)
     }
 
     func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didFailWith error: Error) {

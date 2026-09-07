@@ -277,6 +277,63 @@ exports.checkVideoQuota = async (req, res) => {
 };
 
 // Initiate video upload
+// Tags on a moment: accepted connections only, capped, resolved to
+// denormalized {id, displayName, profilePicture} at write time. Never trusts
+// the client list — every id is re-checked against the connections collection.
+const notificationService = require('../services/notificationService');
+const MAX_MOMENT_TAGS = 10;
+async function resolveTaggedConnections(userId, requestedIds) {
+  const ids = [...new Set((Array.isArray(requestedIds) ? requestedIds : [])
+    .filter(id => typeof id === 'string' && id.trim() && id !== userId))]
+    .slice(0, MAX_MOMENT_TAGS);
+  if (ids.length === 0) return { taggedUserIds: [], taggedUsers: [] };
+
+  const [outgoing, incoming] = await Promise.all([
+    db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', userId).where('status', '==', 'accepted').get(),
+    db.collection(COLLECTIONS.CONNECTIONS)
+      .where('connectedUserId', '==', userId).where('status', '==', 'accepted').get()
+  ]);
+  const connected = new Set();
+  outgoing.forEach(doc => connected.add(doc.data().connectedUserId));
+  incoming.forEach(doc => connected.add(doc.data().userId));
+
+  const accepted = ids.filter(id => connected.has(id));
+  const taggedUsers = [];
+  for (const id of accepted) {
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(id).get();
+    if (!userDoc.exists) continue;
+    const data = userDoc.data();
+    taggedUsers.push({
+      id,
+      displayName: data.displayName || 'Someone',
+      profilePicture: data.profilePicture || null
+    });
+  }
+  return { taggedUserIds: taggedUsers.map(u => u.id), taggedUsers };
+}
+
+async function notifyMomentTags(videoData, videoId, taggerId) {
+  if (!Array.isArray(videoData.taggedUserIds) || videoData.taggedUserIds.length === 0) return;
+  try {
+    const taggerDoc = await db.collection(COLLECTIONS.USERS).doc(taggerId).get();
+    const taggerName = taggerDoc.exists ? taggerDoc.data().displayName : 'Someone';
+    const taggerPhoto = taggerDoc.exists ? taggerDoc.data().profilePicture : null;
+    for (const recipientId of videoData.taggedUserIds) {
+      await notificationService.notifyMomentTag(recipientId, {
+        taggerId,
+        taggerName,
+        taggerPhoto,
+        videoId,
+        placeId: videoData.placeId || null,
+        placeName: videoData.placeName || null
+      }).catch(err => console.error(`⚠️ moment_tag notify failed for ${recipientId}:`, err.message));
+    }
+  } catch (error) {
+    console.error('⚠️ moment_tag notifications failed (non-fatal):', error.message);
+  }
+}
+
 exports.initiateVideoUpload = async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -297,7 +354,8 @@ exports.initiateVideoUpload = async (req, res) => {
       placeDescription,
       placePhone,
       placeWebsite,
-      isNewPlace // Flag to indicate if place needs to be created
+      isNewPlace, // Flag to indicate if place needs to be created
+      taggedUserIds // people in this moment (accepted connections only)
     } = req.body;
     
     // Validate video data
@@ -410,6 +468,13 @@ exports.initiateVideoUpload = async (req, res) => {
       }
     }
     
+    // Tags: validated against accepted connections; a private ("only me")
+    // moment carries no tags — tagging someone into content they can't view
+    // would only confuse (and the feed row never exists for private moments).
+    const resolvedTags = visibility === 'private'
+      ? { taggedUserIds: [], taggedUsers: [] }
+      : await resolveTaggedConnections(userId, taggedUserIds);
+
     // Create video document (also used for photos in Reels)
     const videoData = createPlaceVideo({
       placeId: finalPlaceId,
@@ -420,6 +485,8 @@ exports.initiateVideoUpload = async (req, res) => {
       description,
       visibility,
       tags,
+      taggedUserIds: resolvedTags.taggedUserIds,
+      taggedUsers: resolvedTags.taggedUsers,
       contentType: contentType || 'video' // Store content type
     }, userId);
     
@@ -637,6 +704,9 @@ exports.completeVideoUpload = async (req, res) => {
       });
     }
     
+    // Tagged people hear about it now that the moment is actually viewable
+    notifyMomentTags(videoData, videoId, userId);
+
     // Get updated video
     const updatedDoc = await videoRef.get();
     const updatedVideo = serializeDoc(updatedDoc);
@@ -1900,7 +1970,8 @@ exports.addEmbeddedVideo = async (req, res) => {
       title,
       description,
       visibility = 'followers',
-      tags = []
+      tags = [],
+      taggedUserIds = []
     } = req.body;
 
     // Validate URL
@@ -2009,7 +2080,15 @@ exports.addEmbeddedVideo = async (req, res) => {
       };
     }
     
+    // Tags (accepted connections only; none on private moments)
+    const resolvedTags = visibility === 'private'
+      ? { taggedUserIds: [], taggedUsers: [] }
+      : await resolveTaggedConnections(userId, taggedUserIds);
+    videoData.taggedUserIds = resolvedTags.taggedUserIds;
+    videoData.taggedUsers = resolvedTags.taggedUsers;
+
     const videoRef = await db.collection(COLLECTIONS.PLACE_VIDEOS).add(videoData);
+    notifyMomentTags(videoData, videoRef.id, userId);
     const videoId = videoRef.id;
     
     // Create activity (positional args — the object form silently failed and
@@ -2051,6 +2130,35 @@ exports.addEmbeddedVideo = async (req, res) => {
 };
 
 // Get video metadata from URL (for preview)
+// @desc    Remove MYSELF from a moment's tags ("remove me from this Moment").
+//          Only the tagged person can do this; the owner edits via updateVideo.
+// @route   DELETE /api/videos/:videoId/tags/me
+exports.removeMyMomentTag = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { videoId } = req.params;
+    const videoRef = db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId);
+    const videoDoc = await videoRef.get();
+    if (!videoDoc.exists || videoDoc.data().deletedAt) {
+      return res.status(404).json({ success: false, message: 'Moment not found' });
+    }
+    const data = videoDoc.data();
+    if (!Array.isArray(data.taggedUserIds) || !data.taggedUserIds.includes(userId)) {
+      return res.json({ success: true, data: { removed: false } });
+    }
+    await videoRef.update({
+      taggedUserIds: data.taggedUserIds.filter(id => id !== userId),
+      taggedUsers: (data.taggedUsers || []).filter(u => u && u.id !== userId),
+      updatedAt: new Date().toISOString()
+    });
+    console.log(`🏷️ ${userId} removed their tag from moment ${videoId}`);
+    res.json({ success: true, data: { removed: true } });
+  } catch (error) {
+    console.error('Error removing moment tag:', error);
+    res.status(500).json({ success: false, message: 'Failed to remove tag' });
+  }
+};
+
 exports.getVideoMetadata = async (req, res) => {
   const oembedService = require('../services/oembedService');
   

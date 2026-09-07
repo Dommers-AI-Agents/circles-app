@@ -385,6 +385,49 @@ class NotificationService {
     });
   }
 
+  // Someone tagged you in a Moment. Accepted connections only (validated at
+  // tag time in videoController). Persists in-app + SSE + best-effort push;
+  // data.type moment_tag routes the tap to the moment itself.
+  async notifyMomentTag(recipientId, { taggerId, taggerName, taggerPhoto, videoId, placeId, placeName }) {
+    const body = `${taggerName} tagged you in a Moment${placeName ? ` at ${placeName}` : ''}`;
+    const notifData = {
+      type: 'moment_tag',
+      fromUserId: taggerId,
+      fromUserName: taggerName,
+      fromUserPhoto: taggerPhoto || null,
+      videoId,
+      placeId: placeId || null
+    };
+
+    const notificationData = createNotification({
+      userId: recipientId,
+      type: 'moment_tag',
+      title: 'Tagged in a Moment',
+      body,
+      data: notifData
+    });
+    const validationErrors = validateNotification(notificationData);
+    if (validationErrors.length === 0) {
+      const notificationRef = await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(notificationData);
+      sseService.notifyUser(recipientId, 'new_notification', {
+        notificationId: notificationRef.id,
+        type: 'moment_tag',
+        title: notificationData.title,
+        body,
+        data: notifData
+      });
+    } else {
+      console.error('❌ Validation errors for moment tag notification:', validationErrors);
+    }
+
+    await this.sendToUser(recipientId, {
+      type: 'moment_tag',
+      title: 'Tagged in a Moment',
+      body,
+      data: notifData
+    });
+  }
+
   // Directed suggestion (recommend a place to one person). Persists an in-app
   // notification — recipients with push off must still see "X suggested … for
   // you" — then fires SSE and a best-effort push. Mirrors notifyConnectionRequest.
