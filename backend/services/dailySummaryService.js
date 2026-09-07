@@ -106,6 +106,13 @@ class DailySummaryService {
 
   // Gather statistics for user's network activity
   async gatherUserStats(userId) {
+    // Short TTL cache: the summary describes "yesterday", which doesn't change
+    // during the day — and the modal fetch usually lands minutes after the
+    // scheduler computed the same stats to build the push.
+    this._statsCache = this._statsCache || new Map();
+    const cached = this._statsCache.get(userId);
+    if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.stats;
+
     const stats = {
       newPlaces: 0,
       newPlacesByCategory: {},
@@ -221,17 +228,18 @@ class DailySummaryService {
           .slice(0, 3)
           .map(([userId, count]) => ({ userId, count }));
 
-        // Fetch contributor names
-        for (const contributor of topContributorIds) {
-          const userDoc = await db.collection(COLLECTIONS.USERS).doc(contributor.userId).get();
+        // Fetch contributor names (parallel — max 3)
+        const contributorDocs = await Promise.all(
+          topContributorIds.map(c => db.collection(COLLECTIONS.USERS).doc(c.userId).get())
+        );
+        contributorDocs.forEach((userDoc, i) => {
           if (userDoc.exists) {
-            const userData = userDoc.data();
             stats.topContributors.push({
-              name: userData.displayName || 'A connection',
-              count: contributor.count
+              name: userDoc.data().displayName || 'A connection',
+              count: topContributorIds[i].count
             });
           }
-        }
+        });
       }
 
       // Get unread messages count
@@ -245,50 +253,40 @@ class DailySummaryService {
         stats.unreadMessages += unreadCount;
       }
 
-      // Get activity on user's places (comments and likes)
+      // Get activity on user's places (comments and likes).
+      //
+      // INVERTED from the original per-place fan-out: a heavy user (2k saves)
+      // used to trigger ~4,000 parallel Firestore queries here, which is why
+      // the summary modal sat on a spinner (and sometimes timed out). A single
+      // day's comments/likes across the whole platform is a tiny set, so we
+      // range-scan those once each and filter to the user's places in memory.
+      // select() keeps the places scan to two fields instead of full docs.
       const userPlacesSnapshot = await db.collection(COLLECTIONS.PLACES)
         .where('addedBy', '==', userId)
+        .select('globalPlaceId')
         .get();
 
-      const userPlaceIds = userPlacesSnapshot.docs.map(doc => doc.id);
-      
+      const userPlaceIds = new Set(userPlacesSnapshot.docs.map(doc => doc.id));
+
       // Store user's total place count
-      stats.userPlaceCount = userPlaceIds.length;
+      stats.userPlaceCount = userPlaceIds.size;
 
-      if (userPlaceIds.length > 0) {
-        // Get recent comments on user's places. Comments are keyed by the
-        // canonical venue record (globalPlaceId); createdAt is filtered in
-        // memory to avoid needing a new composite index.
-        const userGlobalPlaceIds = [...new Set(
-          userPlacesSnapshot.docs.map(doc => doc.data().globalPlaceId).filter(Boolean)
-        )];
-        const commentPromises = userGlobalPlaceIds.map(globalPlaceId =>
-          db.collection('placeComments')
-            .where('globalPlaceId', '==', globalPlaceId)
-            .get()
-        );
-
-        const commentSnapshots = await Promise.all(commentPromises);
+      if (userPlaceIds.size > 0) {
         const cutoff = yesterday.toISOString();
-        commentSnapshots.forEach(snapshot => {
-          snapshot.docs.forEach(doc => {
-            if (String(doc.data().createdAt || '') >= cutoff) {
-              stats.placeComments += 1;
-            }
-          });
-        });
-
-        // Get recent likes on user's places
-        const likePromises = userPlaceIds.map(placeId =>
-          db.collection('placeLikes')
-            .where('placeId', '==', placeId)
-            .where('createdAt', '>=', yesterday.toISOString())
-            .get()
+        const userGlobalPlaceIds = new Set(
+          userPlacesSnapshot.docs.map(doc => doc.data().globalPlaceId).filter(Boolean)
         );
 
-        const likeSnapshots = await Promise.all(likePromises);
-        likeSnapshots.forEach(snapshot => {
-          stats.placeLikes += snapshot.size;
+        const [recentComments, recentLikes] = await Promise.all([
+          db.collection('placeComments').where('createdAt', '>=', cutoff).get(),
+          db.collection('placeLikes').where('createdAt', '>=', cutoff).get()
+        ]);
+
+        recentComments.docs.forEach(doc => {
+          if (userGlobalPlaceIds.has(doc.data().globalPlaceId)) stats.placeComments += 1;
+        });
+        recentLikes.docs.forEach(doc => {
+          if (userPlaceIds.has(doc.data().placeId)) stats.placeLikes += 1;
         });
       }
 
@@ -296,6 +294,7 @@ class DailySummaryService {
       console.error(`Error gathering stats for user ${userId}:`, error);
     }
 
+    this._statsCache.set(userId, { stats, at: Date.now() });
     return stats;
   }
 
