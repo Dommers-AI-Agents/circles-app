@@ -79,6 +79,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     // filters the map to a connection/followee, or opens a stranger's profile.
     var searchedUsers: [User] = []
     var userSearchWorkItem: DispatchWorkItem?
+    // Search overlay distance/suggested state: distances (meters) keyed by
+    // place id for the PLACES rows, plus the SUGGESTED fallback — global
+    // venues fetched when the query matches nothing you or your network saved
+    var searchDistances: [String: CLLocationDistance] = [:]
+    var suggestedPlaces: [GlobalPlace] = []
+    var suggestedDistances: [String: CLLocationDistance] = [:]
+    var suggestedSearchWorkItem: DispatchWorkItem?
 
     // MARK: - Viewport-Based Network Place Loading
     // When true, network places load on demand for the visible map region

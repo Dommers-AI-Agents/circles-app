@@ -16,7 +16,11 @@ extension CirclesHomeViewController: UISearchBarDelegate {
             isSearching = false
             filteredPlaces = []
             searchedUsers = []
+            searchDistances = [:]
+            suggestedPlaces = []
+            suggestedDistances = [:]
             userSearchWorkItem?.cancel()
+            suggestedSearchWorkItem?.cancel()
             hideSearchResults()
             updateEmptyState()
             return
@@ -56,7 +60,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
 
     /// Shows the results overlay if either section has matches, hides it otherwise.
     func refreshSearchOverlay() {
-        if isSearching && (!filteredPlaces.isEmpty || !searchedUsers.isEmpty) {
+        if isSearching && (!filteredPlaces.isEmpty || !searchedUsers.isEmpty || !visibleSuggestedPlaces.isEmpty) {
             showSearchResults()
         } else {
             hideSearchResults()
@@ -76,7 +80,11 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         isSearching = false
         filteredPlaces = []
         searchedUsers = []
+        searchDistances = [:]
+        suggestedPlaces = []
+        suggestedDistances = [:]
         userSearchWorkItem?.cancel()
+        suggestedSearchWorkItem?.cancel()
         hideSearchResults()
         updateEmptyState()
     }
@@ -99,11 +107,106 @@ extension CirclesHomeViewController {
             (place.privateNotes ?? "").localizedCaseInsensitiveContains(searchText)
         }
 
+        // Nearest first, with the distance shown on each row ("looking for
+        // pizza NEAR ME" is the whole query) — same reference the places
+        // list uses: real location, else the map's center.
+        searchDistances = [:]
+        if let reference = searchReferenceLocation() {
+            for place in filteredPlaces {
+                if let location = place.location?.clLocation {
+                    searchDistances[place.id] = reference.distance(from: location)
+                }
+            }
+        }
+        filteredPlaces.sort { lhs, rhs in
+            switch (searchDistances[lhs.id], searchDistances[rhs.id]) {
+            case let (l?, r?): return l < r
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+        }
+
+        // Nothing saved by you or your network matches? Suggest nearby global
+        // venues instead of a dead end. Centralized here so every caller
+        // (keystroke, scope change, late network-places load) keeps the rule:
+        // suggested exists only while the local sections are empty.
+        updateSuggestedPlaces(for: searchText)
+
         // Network places power the search superset — load them once in the
         // background (previously only loaded when the user picked the scope).
         if networkPlaces.isEmpty && !isLoadingNetworkPlaces {
             loadNetworkPlaces()
         }
+    }
+
+    /// The point "near" means: the user's real location when we have it,
+    /// otherwise the center of the map they're looking at.
+    func searchReferenceLocation() -> CLLocation? {
+        mapViewController?.currentUserLocation
+            ?? mapViewController.map { CLLocation(latitude: $0.currentRegion.center.latitude, longitude: $0.currentRegion.center.longitude) }
+    }
+
+    /// SUGGESTED rows render only while there are no local place results.
+    var visibleSuggestedPlaces: [GlobalPlace] {
+        filteredPlaces.isEmpty ? suggestedPlaces : []
+    }
+
+    /// Debounced global-venue lookup for the SUGGESTED fallback section.
+    func updateSuggestedPlaces(for query: String) {
+        suggestedSearchWorkItem?.cancel()
+        guard filteredPlaces.isEmpty else {
+            suggestedPlaces = []
+            suggestedDistances = [:]
+            return
+        }
+        // No reference point → skip: quality-ranked global hits with no
+        // geo filter would confidently suggest pizza on another continent.
+        guard let reference = searchReferenceLocation() else { return }
+
+        let work = DispatchWorkItem { [weak self] in
+            // limit is applied server-side BEFORE the radius filter (quality
+            // cut first), so ask generously and trim client-side.
+            GlobalPlaceService.shared.searchGlobalPlaces(
+                query: query,
+                location: (lat: reference.coordinate.latitude, lng: reference.coordinate.longitude),
+                radius: 80,
+                limit: 50
+            ) { result in
+                DispatchQueue.main.async {
+                    guard let self = self, self.isSearching,
+                          self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) == query,
+                          self.filteredPlaces.isEmpty else { return }
+                    if case .success(let places) = result {
+                        // Server sorts nearest-first when given a location
+                        self.suggestedPlaces = Array(places.prefix(8))
+                        self.suggestedDistances = [:]
+                        for place in self.suggestedPlaces {
+                            if let location = place.location?.clLocation {
+                                self.suggestedDistances[place.id] = reference.distance(from: location)
+                            }
+                        }
+                        self.refreshSearchOverlay()
+                        self.updateEmptyState()
+                    }
+                }
+            }
+        }
+        suggestedSearchWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+
+    /// The 'i' accessory: peek at a place in a sheet WITHOUT tearing down the
+    /// search — dismiss and the results are still there.
+    func presentSearchPreview(place: Place, circle: Circle?) {
+        searchBar.resignFirstResponder()
+        let detailVC = PlaceDetailViewController(place: place, circle: circle)
+        let nav = UINavigationController(rootViewController: detailVC)
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
     }
 
     /// Sizes the unified overlay for both the PLACES and PEOPLE sections
@@ -112,10 +215,12 @@ extension CirclesHomeViewController {
         let cellHeight: CGFloat = 60
         let headerHeight: CGFloat = 28
         let placeRows = min(filteredPlaces.count, 6)
+        let suggestedRows = min(visibleSuggestedPlaces.count, 6)
         let userRows = min(searchedUsers.count, 6)
 
         var height: CGFloat = 0
         if placeRows > 0 { height += headerHeight + CGFloat(placeRows) * cellHeight }
+        if suggestedRows > 0 { height += headerHeight + CGFloat(suggestedRows) * cellHeight }
         if userRows > 0 { height += headerHeight + CGFloat(userRows) * cellHeight }
         height = min(height, 400) // cap — the overlay scrolls beyond this
 
@@ -139,7 +244,11 @@ extension CirclesHomeViewController {
         isSearching = false
         filteredPlaces = []
         searchedUsers = []
+        searchDistances = [:]
+        suggestedPlaces = []
+        suggestedDistances = [:]
         userSearchWorkItem?.cancel()
+        suggestedSearchWorkItem?.cancel()
         hideSearchResults()
         updateEmptyState()
 

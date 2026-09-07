@@ -6,9 +6,12 @@ import CoreLocation
 // CirclesHomeViewController. Extracted from the main controller (Wave 4).
 
 // MARK: - Search overlay sections
-// The unified search overlay has two sections: places first, then people.
+// The unified search overlay: your/your network's places first, then a
+// SUGGESTED fallback (nearby global venues, shown only when the places
+// section is empty), then people.
 enum SearchSection: Int, CaseIterable {
     case places
+    case suggested
     case people
 }
 
@@ -29,6 +32,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             guard isSearching else { return 0 }
             switch SearchSection(rawValue: section) {
             case .places: return filteredPlaces.count
+            case .suggested: return visibleSuggestedPlaces.count
             case .people: return searchedUsers.count
             case .none: return 0
             }
@@ -77,6 +81,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             if SearchSection(rawValue: indexPath.section) == .people {
                 let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
                 cell.accessoryView = nil
+                cell.accessoryType = .none
                 guard indexPath.row < searchedUsers.count else { return cell }
                 let user = searchedUsers[indexPath.row]
 
@@ -101,8 +106,36 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 return cell
             }
 
+            // SUGGESTED section: a nearby global venue nobody in your
+            // network has saved — tap to view, 'i' to peek
+            if SearchSection(rawValue: indexPath.section) == .suggested {
+                let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
+                cell.accessoryView = nil
+                cell.accessoryType = .detailDisclosureButton
+                guard indexPath.row < visibleSuggestedPlaces.count else { return cell }
+                let suggestion = visibleSuggestedPlaces[indexPath.row]
+
+                var content = cell.defaultContentConfiguration()
+                content.text = suggestion.name
+                var subtitle = suggestion.address
+                if let rating = suggestion.googleData?.rating {
+                    subtitle = String(format: "★ %.1f · %@", rating, subtitle)
+                }
+                if let distance = suggestedDistances[suggestion.id] {
+                    subtitle = "\(listDistanceFormatter.string(fromDistance: distance)) · \(subtitle)"
+                }
+                content.secondaryText = subtitle
+                content.secondaryTextProperties.color = Constants.Colors.secondaryLabel
+                content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
+                content.image = UIImage(systemName: "sparkles")
+                content.imageProperties.tintColor = .systemOrange
+                cell.contentConfiguration = content
+                return cell
+            }
+
             // PLACES section: a place result
             let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
+            cell.accessoryView = nil
 
             // Add bounds check
             guard indexPath.row < filteredPlaces.count else {
@@ -154,7 +187,12 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             } else if let networkCircle = networkCircles.first(where: { $0.id == place.circleId }) {
                 subtitle += " • \(networkCircle.name)"
             }
-            
+
+            // Distance leads the line — the list is sorted nearest-first
+            if let distance = searchDistances[place.id] {
+                subtitle = "\(listDistanceFormatter.string(fromDistance: distance)) · \(subtitle)"
+            }
+
             content.secondaryText = subtitle
             content.secondaryTextProperties.color = Constants.Colors.secondaryLabel
             content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
@@ -182,8 +220,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             content.imageProperties.tintColor = Constants.Colors.primary
             
             cell.contentConfiguration = content
-            cell.accessoryType = .disclosureIndicator
-            
+            // The 'i' opens a preview sheet without leaving the results
+            cell.accessoryType = .detailDisclosureButton
+
             return cell
         } else if tableView == activityTableView {
             let cell = tableView.dequeueReusableCell(withIdentifier: ActivityFeedCell.identifier, for: indexPath) as! ActivityFeedCell
@@ -230,6 +269,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         guard tableView == searchResultsTableView, isSearching else { return nil }
         switch SearchSection(rawValue: section) {
         case .places: return filteredPlaces.isEmpty ? nil : "PLACES"
+        case .suggested: return visibleSuggestedPlaces.isEmpty ? nil : "SUGGESTED NEARBY"
         case .people: return searchedUsers.isEmpty ? nil : "PEOPLE"
         case .none: return nil
         }
@@ -239,11 +279,29 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         guard tableView == searchResultsTableView, isSearching else { return 0 }
         switch SearchSection(rawValue: section) {
         case .places: return filteredPlaces.isEmpty ? 0 : 28
+        case .suggested: return visibleSuggestedPlaces.isEmpty ? 0 : 28
         case .people: return searchedUsers.isEmpty ? 0 : 28
         case .none: return 0
         }
     }
     
+    // The 'i' accessory on a search result: preview the place in a sheet
+    // without clearing the search — dismiss and the list is still there.
+    func tableView(_ tableView: UITableView, accessoryButtonTappedForRowWith indexPath: IndexPath) {
+        guard tableView == searchResultsTableView else { return }
+        switch SearchSection(rawValue: indexPath.section) {
+        case .places:
+            guard indexPath.row < filteredPlaces.count else { return }
+            let place = filteredPlaces[indexPath.row]
+            presentSearchPreview(place: place, circle: resolveCircle(for: place))
+        case .suggested:
+            guard indexPath.row < visibleSuggestedPlaces.count else { return }
+            presentSearchPreview(place: visibleSuggestedPlaces[indexPath.row].toLegacyPlace(), circle: nil)
+        default:
+            break
+        }
+    }
+
     // Long-press a Specials row to share the deal (with the place link)
     func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
         guard tableView == specialsTableView, indexPath.row < specials.count else { return nil }
@@ -295,10 +353,28 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             hideSearchScopeDropdown()
             isSearchScopeDropdownOpen = false
         } else if tableView == searchResultsTableView {
-            if SearchSection(rawValue: indexPath.section) == .people {
+            switch SearchSection(rawValue: indexPath.section) {
+            case .people:
                 guard indexPath.row < searchedUsers.count else { return }
                 selectSearchedUser(searchedUsers[indexPath.row])
-            } else {
+            case .suggested:
+                guard indexPath.row < visibleSuggestedPlaces.count else { return }
+                let suggestion = visibleSuggestedPlaces[indexPath.row]
+                searchBar.text = ""
+                searchBar.resignFirstResponder()
+                isSearching = false
+                filteredPlaces = []
+                searchedUsers = []
+                searchDistances = [:]
+                suggestedPlaces = []
+                suggestedDistances = [:]
+                userSearchWorkItem?.cancel()
+                suggestedSearchWorkItem?.cancel()
+                hideSearchResults()
+                updateEmptyState()
+                let detailVC = PlaceDetailViewController(place: suggestion.toLegacyPlace())
+                navigationController?.pushViewController(detailVC, animated: true)
+            default:
                 guard indexPath.row < filteredPlaces.count else { return }
                 handleSearchResultSelection(at: indexPath)
             }
