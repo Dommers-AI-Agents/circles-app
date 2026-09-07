@@ -30,7 +30,11 @@ const DRY_RUN = process.env.DRY_RUN === 'true';
       const linked = await db.collection('places').where('circleId', '==', doc.id).limit(1).get();
       if (!linked.empty) { kept++; console.log(`  ⚠️ ${owner}: ${doc.id} unflagged but has linked places — kept`); continue; }
       console.log(`  ${DRY_RUN ? 'would delete' : 'deleting'} empty duplicate ${doc.id} (owner ${owner})`);
-      if (!DRY_RUN) await doc.ref.delete();
+      if (!DRY_RUN) {
+        // Convention: circles are archived to deletedCircles, then removed
+        await db.collection('deletedCircles').doc(doc.id).set({ ...c, deletedAt: new Date().toISOString(), deletedBy: 'cleanup-checkin-circle-dups' });
+        await doc.ref.delete();
+      }
       deleted++;
     }
   }
