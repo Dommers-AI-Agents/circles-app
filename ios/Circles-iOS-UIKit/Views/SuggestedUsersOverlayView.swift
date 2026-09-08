@@ -524,6 +524,7 @@ class SuggestedUsersOverlayView: UIView, UIGestureRecognizerDelegate {
         ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
             switch result {
             case .success(let response):
+                AuthService.shared.recordFollowChange(userId: user.id, isFollowing: true)
                 // First-ever follow of this person earns a dime
                 PiggyBankDepositView.play(credit: response.piggyBank)
                 // Send connection request

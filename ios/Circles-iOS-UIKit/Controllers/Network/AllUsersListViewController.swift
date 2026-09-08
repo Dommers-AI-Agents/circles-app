@@ -949,6 +949,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
                 guard let self = self else { return }
                 switch result {
                 case .success(let response):
+                    AuthService.shared.recordFollowChange(userId: user.id, isFollowing: shouldFollow)
                     // First follow of this person earns a dime — play the
                     // deposit like every other follow surface does
                     if shouldFollow {

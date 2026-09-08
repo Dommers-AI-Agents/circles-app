@@ -318,6 +318,7 @@ final class WelcomeConnectionsViewController: BaseViewController {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let response):
+                    AuthService.shared.recordFollowChange(userId: user.id, isFollowing: true)
                     self?.followedIds.insert(user.id)
                     button.setTitle("Following ✓", for: .normal)
                     PiggyBankDepositView.play(credit: response.piggyBank)

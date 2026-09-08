@@ -2379,6 +2379,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
                 switch result {
                 case .success(let response):
                     Logger.debug("✅ Successfully \(action)ed user: \(user.displayName)")
+                    AuthService.shared.recordFollowChange(userId: user.id, isFollowing: action == "follow")
                     // First-ever follow earns a dime (nil on unfollow)
                     PiggyBankDepositView.play(credit: response.piggyBank)
 

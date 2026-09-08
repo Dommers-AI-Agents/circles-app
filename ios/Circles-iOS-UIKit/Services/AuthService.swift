@@ -143,6 +143,25 @@ class AuthService {
         _currentUser = user
         // Note: AuthManager removed - listeners notified via authStateListeners
     }
+
+    /// Keep the cached user's `following` list in sync after a follow/unfollow
+    /// succeeds. Screens derive settled state from this cache (e.g. the
+    /// notifications "Follow Back" button shows "✓ Following" only when
+    /// currentUser.following contains the id) — before this helper, ten call
+    /// sites POSTed follows without touching the cache, so buttons reverted to
+    /// "Follow" after navigating away even though the follow stuck server-side.
+    func recordFollowChange(userId: String, isFollowing: Bool) {
+        guard let user = _currentUser else { return }
+        var list = user.following ?? []
+        if isFollowing {
+            guard !list.contains(userId) else { return }
+            list.append(userId)
+        } else {
+            guard list.contains(userId) else { return }
+            list.removeAll { $0 == userId }
+        }
+        _currentUser = user.copy(following: list, followingCount: list.count)
+    }
     
     // Auth state change listeners
     private var authStateListeners: [String: (Bool) -> Void] = [:]

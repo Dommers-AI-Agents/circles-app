@@ -331,6 +331,7 @@ extension FollowersListViewController: FollowerUserCellDelegate {
                 
                 switch result {
                 case .success(let response):
+                    AuthService.shared.recordFollowChange(userId: user.id, isFollowing: !isFollowing)
                     // First follow of this person earns a dime — play it
                     if !isFollowing {
                         PiggyBankDepositView.play(credit: response.piggyBank)

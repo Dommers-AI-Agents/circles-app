@@ -366,6 +366,7 @@ class DiscoveryListViewController: BaseViewController {
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 if case .success(let response) = result {
+                    AuthService.shared.recordFollowChange(userId: user.id, isFollowing: true)
                     // First-ever follow of this person earns a dime
                     PiggyBankDepositView.play(credit: response.piggyBank)
                 } else if case .failure(let error) = result {

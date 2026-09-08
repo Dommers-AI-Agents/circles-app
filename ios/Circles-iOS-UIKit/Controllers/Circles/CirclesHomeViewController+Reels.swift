@@ -404,6 +404,7 @@ extension CirclesHomeViewController: VideoReelCellDelegate {
                 guard let self = self else { return }
                 switch result {
                 case .success(let response):
+                    AuthService.shared.recordFollowChange(userId: ownerId, isFollowing: true)
                     PiggyBankDepositView.play(credit: response.piggyBank)
                     self.markReelOwnerFollowed(ownerId)
                     cell.showFollowConfirmed()

@@ -608,6 +608,11 @@ extension NotificationsViewController: NotificationCellDelegate {
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 if case .success(let response) = result {
+                    // Sync the cached following list — the cell derives its
+                    // settled "✓ Following" state from it on re-render, so
+                    // without this the button reverted to "Follow back" after
+                    // navigating away and back
+                    AuthService.shared.recordFollowChange(userId: userId, isFollowing: true)
                     // First-ever follow of this person earns a dime
                     PiggyBankDepositView.play(credit: response.piggyBank)
                 } else if case .failure(let error) = result {
@@ -615,7 +620,10 @@ extension NotificationsViewController: NotificationCellDelegate {
                     // cell's "✓ Following" is correct, so stay quiet. (The
                     // server is idempotent now; this guards older responses.)
                     let message = (error.serverMessage ?? "").lowercased()
-                    if message.contains("already following") { return }
+                    if message.contains("already following") {
+                        AuthService.shared.recordFollowChange(userId: userId, isFollowing: true)
+                        return
+                    }
                     self.showError(error)
                     self.tableView.reloadData()
                 }

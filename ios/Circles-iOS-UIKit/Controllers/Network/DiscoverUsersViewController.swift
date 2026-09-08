@@ -349,6 +349,7 @@ class DiscoverUsersViewController: BaseViewController {
                 guard let self = self else { return }
                 switch result {
                 case .success(let response):
+                    AuthService.shared.recordFollowChange(userId: user.id, isFollowing: true)
                     // First-ever follow of this person earns a dime
                     PiggyBankDepositView.play(credit: response.piggyBank)
                     self.sendConnectionRequest(to: user)
