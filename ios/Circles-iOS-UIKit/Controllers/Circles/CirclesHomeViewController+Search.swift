@@ -25,19 +25,28 @@ extension CirclesHomeViewController: UISearchBarDelegate {
             userSearchWorkItem?.cancel()
             suggestedSearchWorkItem?.cancel()
             mapViewController?.setSearchFilter(nil)
+            closeSearchAutoOpenedList()
             hideSearchResults()
             updateEmptyState()
             return
         }
 
+        let searchJustStarted = !isSearching
         isSearching = true
 
-        // Places — local, instant
+        // Places — local, instant (still needed: powers the SUGGESTED
+        // fallback rule and the empty state, even though place rows no longer
+        // render in the dropdown)
         filterPlaces(searchText: trimmed)
 
-        // The pins narrow with the text too (FSM debounces internally; no
-        // zoom — the results overlay covers the embedded map while typing)
+        // Place results live on the MAP and its LIST, not in a dropdown: the
+        // pins narrow with the text (FSM debounces internally, camera stays)
+        // and the map's places list opens alongside so both show the results.
         mapViewController?.setSearchFilter(trimmed)
+        if searchJustStarted && !isShowingPlacesList {
+            searchAutoOpenedList = true
+            listToggleTapped()
+        }
 
         // People — debounced server search so we don't fire a request per
         // keystroke. Clear stale people up front so the PEOPLE section never
@@ -66,16 +75,26 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         updateEmptyState()
     }
 
-    /// Shows the results overlay if either section has matches, hides it otherwise.
-    /// A map peek (Done) keeps it down until the user edits or refocuses the bar
-    /// — late async results (people fetch, suggested venues) must not yank the
-    /// map away again.
+    /// Shows the PEOPLE/SUGGESTED dropdown when either has matches. Place
+    /// results deliberately don't render here anymore — they live on the map
+    /// and its list — so venue searches leave the map fully visible. A map
+    /// peek (Done/map tap) keeps it down until the user edits or refocuses
+    /// the bar — late async results must not yank the map away again.
     func refreshSearchOverlay() {
         if isSearching && !isSearchOverlayDismissed
-            && (!filteredPlaces.isEmpty || !searchedUsers.isEmpty || !visibleSuggestedPlaces.isEmpty) {
+            && (!searchedUsers.isEmpty || !visibleSuggestedPlaces.isEmpty) {
             showSearchResults()
         } else {
             hideSearchResults()
+        }
+    }
+
+    /// Closes the places list only if the SEARCH opened it — a list the user
+    /// had open before searching stays as they left it.
+    func closeSearchAutoOpenedList() {
+        if searchAutoOpenedList {
+            searchAutoOpenedList = false
+            resetPlacesListToMap()
         }
     }
 
@@ -87,38 +106,14 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         updateEmptyState()
     }
 
-    /// MAP PEEK: hide the results list while the search — and the filtered
-    /// pins — stay live. Entered by tapping the visible map or the keyboard's
-    /// Search key; exited via the Show List pill or refocusing/editing the bar.
+    /// Hide the people/suggested dropdown while the search — and the filtered
+    /// pins + list — stay live. Entered by tapping the visible map or the
+    /// keyboard's Search key; exited by refocusing/editing the bar.
     func enterSearchMapPeek() {
         guard isSearching, !isSearchOverlayDismissed else { return }
         isSearchOverlayDismissed = true
         searchBar.resignFirstResponder()
         hideSearchResults()
-    }
-
-    @objc func showListFromMapPeek() {
-        isSearchOverlayDismissed = false
-        refreshSearchOverlay()
-        updateSearchListToggle()
-    }
-
-    /// The Show List pill exists exactly while a peek is active.
-    func updateSearchListToggle() {
-        searchListToggleButton.isHidden = !(isSearching && isSearchOverlayDismissed)
-    }
-
-    /// Overrides the PlaceSearchable default (same animation) so EVERY hide
-    /// path — clears, result taps, peeks — keeps the Show List pill in sync.
-    func hideSearchResults() {
-        UIView.animate(withDuration: 0.3) {
-            self.searchResultsTableView.alpha = 0
-            self.searchResultsHeightConstraint?.constant = 0
-            self.view.layoutIfNeeded()
-        } completion: { _ in
-            self.searchResultsTableView.isHidden = true
-        }
-        updateSearchListToggle()
     }
 
     func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
@@ -147,6 +142,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         userSearchWorkItem?.cancel()
         suggestedSearchWorkItem?.cancel()
         mapViewController?.setSearchFilter(nil)
+        closeSearchAutoOpenedList()
         hideSearchResults()
         updateEmptyState()
     }
@@ -274,17 +270,15 @@ extension CirclesHomeViewController {
         present(nav, animated: true)
     }
 
-    /// Sizes the unified overlay for both the PLACES and PEOPLE sections
-    /// (each with a header), capped so it never swallows the whole screen.
+    /// Sizes the SUGGESTED/PEOPLE dropdown (place rows render on the map and
+    /// its list instead), capped so it never swallows the whole screen.
     func showSearchResults() {
         let cellHeight: CGFloat = 60
         let headerHeight: CGFloat = 28
-        let placeRows = min(filteredPlaces.count, 6)
         let suggestedRows = min(visibleSuggestedPlaces.count, 6)
         let userRows = min(searchedUsers.count, 6)
 
         var height: CGFloat = 0
-        if placeRows > 0 { height += headerHeight + CGFloat(placeRows) * cellHeight }
         if suggestedRows > 0 { height += headerHeight + CGFloat(suggestedRows) * cellHeight }
         if userRows > 0 { height += headerHeight + CGFloat(userRows) * cellHeight }
         height = min(height, 400) // cap — the overlay scrolls beyond this
@@ -298,7 +292,6 @@ extension CirclesHomeViewController {
             self.view.layoutIfNeeded()
         }
         searchResultsTableView.reloadData()
-        updateSearchListToggle()
     }
 
     /// Handles a tap on a PEOPLE result: connections/followees filter the map
@@ -316,6 +309,7 @@ extension CirclesHomeViewController {
         userSearchWorkItem?.cancel()
         suggestedSearchWorkItem?.cancel()
         mapViewController?.setSearchFilter(nil)
+        closeSearchAutoOpenedList()
         hideSearchResults()
         updateEmptyState()
 

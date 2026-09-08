@@ -94,6 +94,30 @@ extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
         }
     }
 
+    func mapViewController(_ controller: FullScreenMapViewController, didApplySearchQuery query: String?) {
+        if controller === mapViewController {
+            // The embedded map just applied the (debounced) query — the list
+            // beside the pins follows so both show the same results
+            if isShowingPlacesList {
+                rebuildDistanceSortedPlaces()
+                placesListTableView.reloadData()
+            }
+            return
+        }
+        // Unlike the chips, the modal's SEARCH mirrors back (Wes's call):
+        // edit the query on the expanded map, dismiss, and home retains it —
+        // bar text, pins, and list — until the user clears it. Reusing
+        // textDidChange runs the full home pipeline (people fetch, suggested
+        // rule, auto-open/close of the list, embedded pin filter). Loop-safe:
+        // the embedded echo lands in the branch above, and an unchanged query
+        // is a no-op both here and in setSearchFilter.
+        guard controller === presentedFullScreenMap else { return }
+        let text = query ?? ""
+        guard searchBar.text != text else { return }
+        searchBar.text = text
+        searchBar(searchBar, textDidChange: text)
+    }
+
     func mapViewController(_ controller: FullScreenMapViewController, didSelectPlace place: Place) {
         let timestamp = Date().timeIntervalSince1970
         Logger.debug("🎯 [DEBUG-\(timestamp)] CirclesHomeViewController.mapViewController called for place: \(place.name)")

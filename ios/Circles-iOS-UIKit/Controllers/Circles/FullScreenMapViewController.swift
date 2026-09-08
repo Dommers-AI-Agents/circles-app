@@ -11,6 +11,11 @@ protocol FullScreenMapViewControllerDelegate: AnyObject {
     /// Fired when the category/region chip filters change, so an embedding
     /// parent (the home page) can re-filter its own list to match the pins.
     func mapViewControllerDidChangeChipFilters(_ controller: FullScreenMapViewController)
+    /// Fired whenever a search-text filter is actually APPLIED to the pins
+    /// (debounce landed, or the query cleared). The home page uses it to keep
+    /// its distance list live and — from the modal — to mirror the query back
+    /// so the search survives dismissal until the user clears it.
+    func mapViewController(_ controller: FullScreenMapViewController, didApplySearchQuery query: String?)
 }
 
 // Default no-ops so existing conformers don't need to handle every event
@@ -18,6 +23,7 @@ extension FullScreenMapViewControllerDelegate {
     func mapViewController(_ controller: FullScreenMapViewController, regionDidChangeTo region: MKCoordinateRegion) {}
     func mapViewController(_ controller: FullScreenMapViewController, didChangeConnectionFilter connectionId: String?) {}
     func mapViewControllerDidChangeChipFilters(_ controller: FullScreenMapViewController) {}
+    func mapViewController(_ controller: FullScreenMapViewController, didApplySearchQuery query: String?) {}
 }
 
 enum MapViewMode {
@@ -109,12 +115,14 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         if newValue == nil {
             searchQuery = nil
             applyFilter(adjustRegion: false)
+            delegate?.mapViewController(self, didApplySearchQuery: nil)
             return
         }
         searchDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
             guard let self = self else { return }
             self.searchQuery = newValue
             self.applyFilter(adjustRegion: false)
+            self.delegate?.mapViewController(self, didApplySearchQuery: newValue)
         }
     }
 
@@ -135,6 +143,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         selectedChipGroup = .all
         selectedChipRegionId = nil
         searchDebounceTimer?.invalidate()
+        let hadSearchQuery = searchQuery != nil
         searchQuery = nil
         // Only the modal mounts a bar of its own; don't instantiate the lazy
         // view on the embedded child just to blank it.
@@ -143,6 +152,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         }
         refreshFilterChips()
         applyFilter(adjustRegion: false)
+        if hadSearchQuery {
+            delegate?.mapViewController(self, didApplySearchQuery: nil)
+        }
     }
 
     /// The place set scoped to the current connection filter — the shared base

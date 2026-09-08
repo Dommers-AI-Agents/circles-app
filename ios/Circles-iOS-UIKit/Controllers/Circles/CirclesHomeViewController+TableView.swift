@@ -31,7 +31,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         } else if tableView == searchResultsTableView {
             guard isSearching else { return 0 }
             switch SearchSection(rawValue: section) {
-            case .places: return filteredPlaces.count
+            // Place matches render on the map + its list now, never as
+            // dropdown rows — the dropdown is people/suggested only
+            case .places: return 0
             case .suggested: return visibleSuggestedPlaces.count
             case .people: return searchedUsers.count
             case .none: return 0
@@ -268,7 +270,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         guard tableView == searchResultsTableView, isSearching else { return nil }
         switch SearchSection(rawValue: section) {
-        case .places: return filteredPlaces.isEmpty ? nil : "PLACES"
+        case .places: return nil // place rows moved to the map + its list
         case .suggested: return visibleSuggestedPlaces.isEmpty ? nil : "SUGGESTED NEARBY"
         case .people: return searchedUsers.isEmpty ? nil : "PEOPLE"
         case .none: return nil
@@ -278,7 +280,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
         guard tableView == searchResultsTableView, isSearching else { return 0 }
         switch SearchSection(rawValue: section) {
-        case .places: return filteredPlaces.isEmpty ? 0 : 28
+        case .places: return 0 // place rows moved to the map + its list
         case .suggested: return visibleSuggestedPlaces.isEmpty ? 0 : 28
         case .people: return searchedUsers.isEmpty ? 0 : 28
         case .none: return 0
@@ -371,15 +373,17 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 userSearchWorkItem?.cancel()
                 suggestedSearchWorkItem?.cancel()
                 mapViewController?.setSearchFilter(nil)
+                closeSearchAutoOpenedList()
                 hideSearchResults()
                 updateEmptyState()
                 let detailVC = PlaceDetailViewController(place: suggestion.toLegacyPlace())
                 navigationController?.pushViewController(detailVC, animated: true)
             default:
+                // Place rows no longer render in the dropdown (they live on
+                // the map + its list); unreachable, kept for enum coverage
                 guard indexPath.row < filteredPlaces.count else { return }
-                // The PlaceSearchable default clears the bar/overlay but knows
-                // nothing about the map's pin filter
                 mapViewController?.setSearchFilter(nil)
+                closeSearchAutoOpenedList()
                 handleSearchResultSelection(at: indexPath)
             }
         } else if tableView == activityTableView {

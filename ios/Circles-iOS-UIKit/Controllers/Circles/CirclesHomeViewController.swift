@@ -18,9 +18,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// under the visible rows made taps open the wrong place.
     var filteredPlaces: [Place] = []
     var isSearching = false
-    /// User tapped Done to peek at the (still search-filtered) map — the
-    /// overlay stays down until they edit the query or refocus the bar.
+    /// User tapped Done/the map to drop the people/suggested dropdown — it
+    /// stays down until they edit the query or refocus the bar.
     var isSearchOverlayDismissed = false
+    /// The search auto-opened the map's places list (so both map and list show
+    /// the results); clearing the search closes it again — but a list the user
+    /// opened themselves before searching is left as they had it.
+    var searchAutoOpenedList = false
     var selectedCategory: UnifiedCategory?
     var mapUpdateTimer: Timer? // Debounce timer for map updates
     var notificationBadgeTimer: Timer? // Periodic refresh timer for notification badge
@@ -532,20 +536,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     var searchResultsHeightConstraint: NSLayoutConstraint?
 
-    /// Floating pill shown only during a search's MAP PEEK (results list
-    /// dismissed, pins still filtered) — the way back to the list without
-    /// touching the keyboard. Peek entry: tap the visible map, or the
-    /// keyboard's Search key.
-    lazy var searchListToggleButton: UIButton = {
-        let button = UIButton.smallActionButton(title: "Show List", style: .primary)
-        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.25
-        button.layer.shadowOffset = CGSize(width: 0, height: 2)
-        button.layer.shadowRadius = 4
-        button.isHidden = true
-        return button
-    }()
 
     let loadingIndicator: UIActivityIndicatorView = {
         let indicator = UIActivityIndicatorView(style: .large)
@@ -2187,10 +2177,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Add search results table view
         view.addSubview(searchResultsTableView)
 
-        // Map-peek toggle floats above everything the overlay covered
-        view.addSubview(searchListToggleButton)
-        searchListToggleButton.addTarget(self, action: #selector(showListFromMapPeek), for: .touchUpInside)
-
         // Add floating record button (for Reels tab) - now hidden in favor of camera button
         view.addSubview(floatingRecordButton)
         floatingRecordButton.addTarget(self, action: #selector(recordReelTapped), for: .touchUpInside)
@@ -2227,10 +2213,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             searchScopeButton.trailingAnchor.constraint(equalTo: quickAddPlaceButton.leadingAnchor),
             searchScopeButton.widthAnchor.constraint(equalToConstant: 0),
             searchScopeButton.heightAnchor.constraint(equalToConstant: 0),
-
-            // Map-peek "Show List" pill: top-right under the bar, over the map
-            searchListToggleButton.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 8),
-            searchListToggleButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium),
 
             // Scroll view
             scrollView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
@@ -6162,7 +6144,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Simple empty state
         if distanceSortedPlaces.isEmpty {
             let emptyLabel = UILabel()
-            emptyLabel.text = "No places to show"
+            emptyLabel.text = activeSearchQuery.map { "No places match \"\($0)\"" } ?? "No places to show"
             emptyLabel.font = UIFont.systemFont(ofSize: 15, weight: .medium)
             emptyLabel.textColor = Constants.Colors.secondaryLabel
             emptyLabel.textAlignment = .center
