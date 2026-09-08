@@ -7,8 +7,9 @@ import CoreLocation
 
 // MARK: - UISearchBarDelegate
 extension CirclesHomeViewController: UISearchBarDelegate {
-    // Unified search: places filter instantly (local), people are fetched from
-    // the server (debounced). Results render in one overlay as PLACES / PEOPLE.
+    // Unified search: place matches filter the MAP pins (and its list, when
+    // the user opens it) instantly; people are fetched from the server
+    // (debounced) and render in the dropdown with the SUGGESTED fallback.
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -25,13 +26,11 @@ extension CirclesHomeViewController: UISearchBarDelegate {
             userSearchWorkItem?.cancel()
             suggestedSearchWorkItem?.cancel()
             mapViewController?.setSearchFilter(nil)
-            closeSearchAutoOpenedList()
             hideSearchResults()
             updateEmptyState()
             return
         }
 
-        let searchJustStarted = !isSearching
         isSearching = true
 
         // Places — local, instant (still needed: powers the SUGGESTED
@@ -39,14 +38,11 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         // render in the dropdown)
         filterPlaces(searchText: trimmed)
 
-        // Place results live on the MAP and its LIST, not in a dropdown: the
-        // pins narrow with the text (FSM debounces internally, camera stays)
-        // and the map's places list opens alongside so both show the results.
+        // Place results live on the MAP, not in a dropdown: the pins narrow
+        // with the text (FSM debounces internally, camera stays). The list
+        // toggle remains the user's choice — when open, it shows the same
+        // filtered set (Wes: don't auto-open it).
         mapViewController?.setSearchFilter(trimmed)
-        if searchJustStarted && !isShowingPlacesList {
-            searchAutoOpenedList = true
-            listToggleTapped()
-        }
 
         // People — debounced server search so we don't fire a request per
         // keystroke. Clear stale people up front so the PEOPLE section never
@@ -89,14 +85,6 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         }
     }
 
-    /// Closes the places list only if the SEARCH opened it — a list the user
-    /// had open before searching stays as they left it.
-    func closeSearchAutoOpenedList() {
-        if searchAutoOpenedList {
-            searchAutoOpenedList = false
-            resetPlacesListToMap()
-        }
-    }
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         searchBar.resignFirstResponder()
@@ -142,7 +130,6 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         userSearchWorkItem?.cancel()
         suggestedSearchWorkItem?.cancel()
         mapViewController?.setSearchFilter(nil)
-        closeSearchAutoOpenedList()
         hideSearchResults()
         updateEmptyState()
     }
@@ -309,7 +296,6 @@ extension CirclesHomeViewController {
         userSearchWorkItem?.cancel()
         suggestedSearchWorkItem?.cancel()
         mapViewController?.setSearchFilter(nil)
-        closeSearchAutoOpenedList()
         hideSearchResults()
         updateEmptyState()
 

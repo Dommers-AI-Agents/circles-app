@@ -6,9 +6,9 @@ import CoreLocation
 // CirclesHomeViewController. Extracted from the main controller (Wave 4).
 
 // MARK: - Search overlay sections
-// The unified search overlay: your/your network's places first, then a
-// SUGGESTED fallback (nearby global venues, shown only when the places
-// section is empty), then people.
+// The search dropdown renders SUGGESTED (nearby global venues, only when no
+// local place matches) and PEOPLE. The places case remains for enum coverage
+// but renders 0 rows — place matches show on the map + its list instead.
 enum SearchSection: Int, CaseIterable {
     case places
     case suggested
@@ -373,7 +373,6 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 userSearchWorkItem?.cancel()
                 suggestedSearchWorkItem?.cancel()
                 mapViewController?.setSearchFilter(nil)
-                closeSearchAutoOpenedList()
                 hideSearchResults()
                 updateEmptyState()
                 let detailVC = PlaceDetailViewController(place: suggestion.toLegacyPlace())
@@ -383,7 +382,6 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 // the map + its list); unreachable, kept for enum coverage
                 guard indexPath.row < filteredPlaces.count else { return }
                 mapViewController?.setSearchFilter(nil)
-                closeSearchAutoOpenedList()
                 handleSearchResultSelection(at: indexPath)
             }
         } else if tableView == activityTableView {

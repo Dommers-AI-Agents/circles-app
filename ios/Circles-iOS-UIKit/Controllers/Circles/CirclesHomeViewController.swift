@@ -21,10 +21,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// User tapped Done/the map to drop the people/suggested dropdown — it
     /// stays down until they edit the query or refocus the bar.
     var isSearchOverlayDismissed = false
-    /// The search auto-opened the map's places list (so both map and list show
-    /// the results); clearing the search closes it again — but a list the user
-    /// opened themselves before searching is left as they had it.
-    var searchAutoOpenedList = false
     var selectedCategory: UnifiedCategory?
     var mapUpdateTimer: Timer? // Debounce timer for map updates
     var notificationBadgeTimer: Timer? // Periodic refresh timer for notification badge
