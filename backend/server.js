@@ -396,6 +396,8 @@ app.use('/api/contact', require('./routes/contactRoutes')); // Website contact f
 app.use('/api/diagnostics', require('./routes/diagnosticRoutes'));
 app.use('/api/tasks', taskRoutes);
 app.use('/api/trash', require('./routes/trashRoutes'));
+// User/content reporting — required for store compliance (Play + App Store)
+app.use('/api/reports', require('./routes/reportRoutes'));
 app.use('/api/visits', visitRoutes);
 app.use('/api/check-ins', checkInRoutes);
 app.use('/api/videos', videoRoutes);

@@ -141,14 +141,38 @@ class NotificationService {
         }
       };
 
-      // Send to all device tokens
-      const tokens = deviceTokens.map(dt => dt.token);
-      console.log(`🔔 Sending ${notification.type} notification to ${tokens.length} tokens for user ${userId}`);
-      
-      const response = await this.messaging.sendEachForMulticast({
-        ...message,
-        tokens: tokens
-      });
+      // Send per-platform. iOS keeps the notification+apns shape unchanged.
+      // Android gets a DATA-ONLY message: a notification block would make the
+      // FCM SDK post the tray notification itself and the tap would only
+      // bring the task to front WITHOUT delivering data extras — the app's
+      // own FcMessagingService builds the notification and owns tap routing.
+      const iosTokens = deviceTokens.filter(dt => dt.platform !== 'android').map(dt => dt.token);
+      const androidTokens = deviceTokens.filter(dt => dt.platform === 'android').map(dt => dt.token);
+      const tokens = [...iosTokens, ...androidTokens];
+      console.log(`🔔 Sending ${notification.type} notification to ${tokens.length} tokens for user ${userId} (${androidTokens.length} android)`);
+
+      const sends = [];
+      if (iosTokens.length > 0) {
+        sends.push(this.messaging.sendEachForMulticast({ ...message, tokens: iosTokens }));
+      }
+      if (androidTokens.length > 0) {
+        sends.push(this.messaging.sendEachForMulticast({
+          data: {
+            ...(notification.data || {}),
+            title: notification.title || '',
+            body: notification.body || '',
+            type: (notification.data && notification.data.type) || notification.type || ''
+          },
+          android: { priority: 'high' },
+          tokens: androidTokens
+        }));
+      }
+      const results = await Promise.all(sends);
+      const response = {
+        successCount: results.reduce((n, r) => n + r.successCount, 0),
+        failureCount: results.reduce((n, r) => n + r.failureCount, 0),
+        responses: results.flatMap(r => r.responses)
+      };
 
       console.log(`🔔 Notification send result - Success: ${response.successCount}, Failures: ${response.failureCount}`)
       
