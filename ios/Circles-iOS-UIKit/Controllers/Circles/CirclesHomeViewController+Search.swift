@@ -213,35 +213,56 @@ extension CirclesHomeViewController {
         guard let reference = searchReferenceLocation() else { return }
 
         let work = DispatchWorkItem { [weak self] in
-            // limit is applied server-side BEFORE the radius filter (quality
-            // cut first), so ask generously and trim client-side.
-            GlobalPlaceService.shared.searchGlobalPlaces(
-                query: query,
-                location: (lat: reference.coordinate.latitude, lng: reference.coordinate.longitude),
-                radius: 80,
-                limit: 50
-            ) { result in
-                DispatchQueue.main.async {
-                    guard let self = self, self.isSearching,
-                          self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) == query,
-                          self.filteredPlaces.isEmpty else { return }
-                    if case .success(let places) = result {
-                        // Server sorts nearest-first when given a location
-                        self.suggestedPlaces = Array(places.prefix(8))
-                        self.suggestedDistances = [:]
-                        for place in self.suggestedPlaces {
-                            if let location = place.location?.clLocation {
-                                self.suggestedDistances[place.id] = reference.distance(from: location)
-                            }
-                        }
-                        self.refreshSearchOverlay()
-                        self.updateEmptyState()
-                    }
-                }
-            }
+            self?.fetchSuggestedPlaces(serverQuery: query, typedQuery: query,
+                                       reference: reference, allowFallback: true)
         }
         suggestedSearchWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+
+    /// One SUGGESTED fetch. The server matches exact name-word PREFIXES, so a
+    /// typo ("piza") returns nothing even though the local sections now
+    /// forgive it — when the full query comes back empty, retry ONCE with a
+    /// 3-char prefix of the longest word ("piz" does match pizza-named
+    /// venues). Staleness is always checked against what the user TYPED.
+    private func fetchSuggestedPlaces(serverQuery: String, typedQuery: String,
+                                      reference: CLLocation, allowFallback: Bool) {
+        // limit is applied server-side BEFORE the radius filter (quality
+        // cut first), so ask generously and trim client-side.
+        GlobalPlaceService.shared.searchGlobalPlaces(
+            query: serverQuery,
+            location: (lat: reference.coordinate.latitude, lng: reference.coordinate.longitude),
+            radius: 80,
+            limit: 50
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self, self.isSearching,
+                      self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) == typedQuery,
+                      self.filteredPlaces.isEmpty else { return }
+                guard case .success(let places) = result else { return }
+
+                if places.isEmpty, allowFallback,
+                   let longest = typedQuery.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                       .max(by: { $0.count < $1.count }),
+                   longest.count >= 4 {
+                    self.fetchSuggestedPlaces(serverQuery: String(longest.prefix(3)),
+                                              typedQuery: typedQuery,
+                                              reference: reference, allowFallback: false)
+                    return
+                }
+
+                // Server sorts nearest-first when given a location
+                self.suggestedPlaces = Array(places.prefix(8))
+                self.suggestedDistances = [:]
+                for place in self.suggestedPlaces {
+                    if let location = place.location?.clLocation {
+                        self.suggestedDistances[place.id] = reference.distance(from: location)
+                    }
+                }
+                self.refreshSearchOverlay()
+                self.updateEmptyState()
+            }
+        }
     }
 
     /// The 'i' accessory: peek at a place in a sheet WITHOUT tearing down the

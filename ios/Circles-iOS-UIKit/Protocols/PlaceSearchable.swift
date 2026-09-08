@@ -4,13 +4,70 @@ import UIKit
 extension Place {
     /// One matcher for the search overlay AND the map-pin search filter, so
     /// the results list and the pins can never disagree about what "matches".
+    /// Typo-tolerant: "piza" finds "pizza" — a query word of 4+ characters may
+    /// be one edit away from a word (or word prefix) in the place's text, two
+    /// edits for 8+ characters. Exact substring containment stays the fast
+    /// path, so nothing that matched before stops matching.
     func matches(searchQuery query: String) -> Bool {
-        name.localizedCaseInsensitiveContains(query) ||
-        address.localizedCaseInsensitiveContains(query) ||
-        (description ?? "").localizedCaseInsensitiveContains(query) ||
-        (notes ?? "").localizedCaseInsensitiveContains(query) ||
-        (publicNotes ?? "").localizedCaseInsensitiveContains(query) ||
-        (privateNotes ?? "").localizedCaseInsensitiveContains(query)
+        let haystack = Self.fold(
+            [name, address, description ?? "", notes ?? "", publicNotes ?? "", privateNotes ?? ""]
+                .joined(separator: " ")
+        )
+        let needle = Self.fold(query)
+        guard !needle.isEmpty else { return true }
+        if haystack.contains(needle) { return true }
+
+        // Every query word must appear somewhere — as a substring, or within
+        // typo distance of some word in the text.
+        let tokens = needle.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        guard !tokens.isEmpty else { return false }
+        let words = haystack.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        return tokens.allSatisfy { token in
+            haystack.contains(token) || words.contains { Self.fuzzyMatch(token: token, word: $0) }
+        }
+    }
+
+    private static func fold(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
+
+    /// True when `token` is within typo distance of `word`, or of `word`'s
+    /// prefix of the same length (so partially-typed words tolerate typos
+    /// too: "piza" matches "pizzeria" via its "pizz" prefix).
+    private static func fuzzyMatch(token: String, word: String) -> Bool {
+        let n = token.count
+        guard n >= 4 else { return false } // short words: exact only, too noisy
+        let allowed = n >= 8 ? 2 : 1
+        if abs(word.count - n) <= allowed,
+           boundedEditDistance(token, word, limit: allowed) <= allowed {
+            return true
+        }
+        if word.count > n,
+           boundedEditDistance(token, String(word.prefix(n)), limit: allowed) <= allowed {
+            return true
+        }
+        return false
+    }
+
+    /// Levenshtein distance, bailing out with limit+1 as soon as the limit is
+    /// unreachable — keeps per-keystroke filtering cheap over large sets.
+    private static func boundedEditDistance(_ a: String, _ b: String, limit: Int) -> Int {
+        let s = Array(a.unicodeScalars), t = Array(b.unicodeScalars)
+        if abs(s.count - t.count) > limit { return limit + 1 }
+        var previous = Array(0...t.count)
+        var current = [Int](repeating: 0, count: t.count + 1)
+        for i in 1...s.count {
+            current[0] = i
+            var rowMin = i
+            for j in 1...t.count {
+                let cost = s[i - 1] == t[j - 1] ? 0 : 1
+                current[j] = min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
+                rowMin = min(rowMin, current[j])
+            }
+            if rowMin > limit { return limit + 1 }
+            swap(&previous, &current)
+        }
+        return previous[t.count]
     }
 }
 
