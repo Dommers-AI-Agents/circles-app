@@ -94,11 +94,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// Applies (debounced) a search-text filter to the pins. Single debounce
     /// owner: the home page's persistent bar and the modal's own bar both land
     /// here. nil/empty clears IMMEDIATELY (cancelling any pending apply).
-    /// - zoomToResults: frame the matches after applying — modal-only behavior;
-    ///   the embedded caller passes false (its short viewport can't absorb
-    ///   zoomToFilteredPlaces' chip-bar edge padding, and the results overlay
-    ///   covers it while typing anyway).
-    func setSearchFilter(_ query: String?, zoomToResults: Bool = false) {
+    /// Search NEVER moves the camera — the zoom the user set is theirs (Wes:
+    /// the expanded map "wasn't retaining the zoom level when using search");
+    /// matches outside the view are offered through the tappable
+    /// searchEmptyLabel instead.
+    func setSearchFilter(_ query: String?) {
         let normalized = query?.trimmingCharacters(in: .whitespacesAndNewlines)
         let newValue = (normalized?.isEmpty ?? true) ? nil : normalized
         // Invalidate BEFORE the equality check: typing "p" then deleting it
@@ -115,9 +115,6 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             guard let self = self else { return }
             self.searchQuery = newValue
             self.applyFilter(adjustRegion: false)
-            if zoomToResults && !self.filteredPlaces.isEmpty {
-                self.zoomToFilteredPlaces()
-            }
         }
     }
 
@@ -368,8 +365,17 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         label.textAlignment = .center
         label.isHidden = true
         label.translatesAutoresizingMaskIntoConstraints = false
+        // "N matches outside this view" mode is the one sanctioned way search
+        // moves the camera: an explicit tap.
+        label.isUserInteractionEnabled = true
+        label.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(searchEmptyLabelTapped)))
         return label
     }()
+
+    @objc private func searchEmptyLabelTapped() {
+        guard searchQuery != nil, !filteredPlaces.isEmpty else { return }
+        zoomToFilteredPlaces()
+    }
 
     private func makeFilterDropdown() -> UIButton {
         var config = UIButton.Configuration.plain()
@@ -2615,11 +2621,17 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // bug in a new outfit.
         placesCountLabel.isHidden = isShowingPlacesList || visibleCount == 0
 
-        // Zero-match search feedback (modal only — the embedded map's overlay
-        // list is already explaining the empty result while the user types)
+        // Search feedback (modal only — the embedded map's overlay list is
+        // already explaining results while the user types). Search never moves
+        // the camera, so when the matches sit outside the current view the
+        // pill says so and a tap frames them — the user opts into the zoom.
         if isPresentedModally && showsFilterChips {
             if let query = searchQuery, filteredPlaces.isEmpty {
                 searchEmptyLabel.text = "  No places match \"\(query)\"  "
+                searchEmptyLabel.isHidden = false
+            } else if searchQuery != nil, !filteredPlaces.isEmpty, visibleCount == 0 {
+                let n = filteredPlaces.count
+                searchEmptyLabel.text = "  \(n) match\(n == 1 ? "" : "es") outside this view — tap to show  "
                 searchEmptyLabel.isHidden = false
             } else {
                 searchEmptyLabel.isHidden = true
@@ -2995,7 +3007,7 @@ extension FullScreenMapViewController: HorizontalUserListViewDelegate {
 // MARK: - UISearchBarDelegate (modal pin search)
 extension FullScreenMapViewController: UISearchBarDelegate {
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        setSearchFilter(searchText, zoomToResults: true) // debounced inside
+        setSearchFilter(searchText) // debounced inside; never moves the camera
     }
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
