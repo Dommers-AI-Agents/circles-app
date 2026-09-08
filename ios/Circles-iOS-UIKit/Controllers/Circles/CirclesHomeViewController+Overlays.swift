@@ -68,9 +68,18 @@ extension CirclesHomeViewController: UIGestureRecognizerDelegate {
             return false
         }
         
-        // Don't intercept touches if keyboard is showing (this prevents issues with keyboard buttons)
+        // Don't intercept touches if keyboard is showing (this prevents issues
+        // with keyboard buttons) — EXCEPT the map-peek tap: while search
+        // results are up, a tap outside them (the visible map) must reach
+        // dismissDropdowns so it can drop the list and show the filtered map.
         if searchBar.isFirstResponder {
-            return false
+            let location = touch.location(in: view)
+            let allowForMapPeek = isSearching && !isSearchOverlayDismissed
+                && !searchResultsTableView.isHidden
+                && !searchResultsTableView.frame.contains(location)
+            if !allowForMapPeek {
+                return false
+            }
         }
         
         // Don't intercept touches on the dropdown table views

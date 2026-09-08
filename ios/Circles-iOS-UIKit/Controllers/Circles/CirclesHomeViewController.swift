@@ -531,7 +531,22 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
     
     var searchResultsHeightConstraint: NSLayoutConstraint?
-    
+
+    /// Floating pill shown only during a search's MAP PEEK (results list
+    /// dismissed, pins still filtered) — the way back to the list without
+    /// touching the keyboard. Peek entry: tap the visible map, or the
+    /// keyboard's Search key.
+    lazy var searchListToggleButton: UIButton = {
+        let button = UIButton.smallActionButton(title: "Show List", style: .primary)
+        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.25
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
+        button.isHidden = true
+        return button
+    }()
+
     let loadingIndicator: UIActivityIndicatorView = {
         let indicator = UIActivityIndicatorView(style: .large)
         indicator.color = Constants.Colors.primary
@@ -2171,7 +2186,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Add search results table view
         view.addSubview(searchResultsTableView)
-        
+
+        // Map-peek toggle floats above everything the overlay covered
+        view.addSubview(searchListToggleButton)
+        searchListToggleButton.addTarget(self, action: #selector(showListFromMapPeek), for: .touchUpInside)
+
         // Add floating record button (for Reels tab) - now hidden in favor of camera button
         view.addSubview(floatingRecordButton)
         floatingRecordButton.addTarget(self, action: #selector(recordReelTapped), for: .touchUpInside)
@@ -2208,6 +2227,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             searchScopeButton.trailingAnchor.constraint(equalTo: quickAddPlaceButton.leadingAnchor),
             searchScopeButton.widthAnchor.constraint(equalToConstant: 0),
             searchScopeButton.heightAnchor.constraint(equalToConstant: 0),
+
+            // Map-peek "Show List" pill: top-right under the bar, over the map
+            searchListToggleButton.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 8),
+            searchListToggleButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium),
 
             // Scroll view
             scrollView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
@@ -6300,14 +6323,28 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             if let gesture = gesture {
                 let location = gesture.location(in: view)
                 let searchBarFrame = searchBar.convert(searchBar.bounds, to: view)
-                
+
                 // Only dismiss keyboard if tap is outside search bar
                 if !searchBarFrame.contains(location) {
                     searchBar.resignFirstResponder()
                 }
             }
         }
-        
+
+        // Tap on the visible map (anywhere outside the results list and the
+        // bar) while results are up = "show me the MAP": drop the list into a
+        // peek — the search stays live, the pins stay filtered, and the
+        // floating Show List pill (or refocusing the bar) brings the list back.
+        if isSearching && !isSearchOverlayDismissed && !searchResultsTableView.isHidden,
+           let gesture = gesture {
+            let location = gesture.location(in: view)
+            let overlayFrame = searchResultsTableView.convert(searchResultsTableView.bounds, to: view)
+            let searchBarFrame = searchBar.convert(searchBar.bounds, to: view)
+            if !overlayFrame.contains(location) && !searchBarFrame.contains(location) {
+                enterSearchMapPeek()
+            }
+        }
+
         // Then handle dropdown dismissal
         if isSearchScopeDropdownOpen {
             isSearchScopeDropdownOpen = false

@@ -81,14 +81,44 @@ extension CirclesHomeViewController: UISearchBarDelegate {
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         searchBar.resignFirstResponder()
-        // "Search" while results are up = show me the MAP: drop the list so the
-        // (still search-filtered) pins are visible. The query stays active —
-        // tapping the bar or editing brings the list back.
-        if isSearching {
-            isSearchOverlayDismissed = true
-            hideSearchResults()
-        }
+        // "Search" while results are up = show me the MAP (same peek a tap on
+        // the visible map enters)
+        enterSearchMapPeek()
         updateEmptyState()
+    }
+
+    /// MAP PEEK: hide the results list while the search — and the filtered
+    /// pins — stay live. Entered by tapping the visible map or the keyboard's
+    /// Search key; exited via the Show List pill or refocusing/editing the bar.
+    func enterSearchMapPeek() {
+        guard isSearching, !isSearchOverlayDismissed else { return }
+        isSearchOverlayDismissed = true
+        searchBar.resignFirstResponder()
+        hideSearchResults()
+    }
+
+    @objc func showListFromMapPeek() {
+        isSearchOverlayDismissed = false
+        refreshSearchOverlay()
+        updateSearchListToggle()
+    }
+
+    /// The Show List pill exists exactly while a peek is active.
+    func updateSearchListToggle() {
+        searchListToggleButton.isHidden = !(isSearching && isSearchOverlayDismissed)
+    }
+
+    /// Overrides the PlaceSearchable default (same animation) so EVERY hide
+    /// path — clears, result taps, peeks — keeps the Show List pill in sync.
+    func hideSearchResults() {
+        UIView.animate(withDuration: 0.3) {
+            self.searchResultsTableView.alpha = 0
+            self.searchResultsHeightConstraint?.constant = 0
+            self.view.layoutIfNeeded()
+        } completion: { _ in
+            self.searchResultsTableView.isHidden = true
+        }
+        updateSearchListToggle()
     }
 
     func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
@@ -268,6 +298,7 @@ extension CirclesHomeViewController {
             self.view.layoutIfNeeded()
         }
         searchResultsTableView.reloadData()
+        updateSearchListToggle()
     }
 
     /// Handles a tap on a PEOPLE result: connections/followees filter the map
