@@ -1622,6 +1622,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Surface the sign-in-time duplicate-account hint (once per login)
         promptForDuplicateAccountsIfNeeded()
 
+        // "At Beach Haus? Check in" — one-tap check-in when opening the app
+        // at a saved place (CirclesHomeViewController+ProximityCheckIn)
+        maybeShowProximityCheckInChip()
+
         // New accounts: the first-session chain (SceneDelegate) normally
         // presents the first-people sheet; this is the fallback for launches
         // where the chain isn't running (e.g. killed the app between the

@@ -1939,6 +1939,15 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
         // Customize marker appearance based on category
         if let markerView = annotationView {
+            // Left accessory: one-tap check-in with this place pre-filled
+            // (calloutAccessoryControlTapped branches on left vs right).
+            if markerView.leftCalloutAccessoryView == nil {
+                let checkInButton = UIButton(type: .system)
+                checkInButton.setImage(UIImage(systemName: "mappin.and.ellipse"), for: .normal)
+                checkInButton.tintColor = Constants.Colors.primary
+                checkInButton.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
+                markerView.leftCalloutAccessoryView = checkInButton
+            }
             markerView.markerTintColor = placeAnnotation.place.category.color
             markerView.glyphImage = UIImage(systemName: placeAnnotation.place.category.systemIconName)
             // NO clusteringIdentifier: numbered cluster bubbles hide the
@@ -1955,11 +1964,17 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
         let timestamp = Date().timeIntervalSince1970
         Logger.debug("🔵 [DEBUG-\(timestamp)] Info button tapped!")
-        guard let placeAnnotation = view.annotation as? PlaceAnnotation else { 
+        guard let placeAnnotation = view.annotation as? PlaceAnnotation else {
             Logger.debug("❌ [DEBUG-\(timestamp)] Failed to cast annotation to PlaceAnnotation")
-            return 
+            return
         }
-        
+
+        // Left accessory = check in here; right accessory keeps opening detail
+        if control === view.leftCalloutAccessoryView {
+            CheckInViewController.present(from: self, prefilledPlace: placeAnnotation.place)
+            return
+        }
+
         Logger.debug("✅ [DEBUG-\(timestamp)] Place: \(placeAnnotation.place.name)")
         Logger.debug("📱 [DEBUG-\(timestamp)] Delegate exists: \(delegate != nil)")
         Logger.debug("🗺️ [DEBUG-\(timestamp)] View mode: \(viewMode)")

@@ -27,6 +27,9 @@ class CheckInRecipientSelectionViewController: BaseViewController {
         return view
     }()
     
+    /// Overridden by the caller when the flow has fewer steps (prefilled place).
+    var stepText: String = "Step 3 of 3: Who to Notify"
+
     private let stepLabel: UILabel = {
         let label = UILabel()
         label.text = "Step 3 of 3: Who to Notify"
@@ -105,6 +108,7 @@ class CheckInRecipientSelectionViewController: BaseViewController {
         
         // Add subviews
         view.addSubview(stepIndicatorView)
+        stepLabel.text = stepText
         stepIndicatorView.addSubview(stepLabel)
         stepIndicatorView.addSubview(progressView)
         

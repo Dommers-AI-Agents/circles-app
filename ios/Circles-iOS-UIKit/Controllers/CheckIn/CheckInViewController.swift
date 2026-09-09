@@ -3,7 +3,77 @@ import MapKit
 import CoreLocation
 
 class CheckInViewController: BaseViewController {
-    
+
+    // MARK: - Entry-point context
+    // Callers with context skip friction: a prefilled place (place view, map
+    // callout, proximity chip) jumps straight to details as a 2-step flow; a
+    // restricted list (a circle's places) keeps the picker but only over
+    // those places, distance-sorted, with local search instead of POI search.
+    private let prefilledPlace: Place?
+    private let restrictedPlaces: [Place]?
+
+    init(prefilledPlace: Place? = nil, restrictedPlaces: [Place]? = nil) {
+        self.prefilledPlace = prefilledPlace
+        self.restrictedPlaces = restrictedPlaces
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        self.prefilledPlace = nil
+        self.restrictedPlaces = nil
+        super.init(coder: coder)
+    }
+
+    private var totalSteps: Int { prefilledPlace != nil ? 2 : 3 }
+
+    /// Present the check-in flow the standard way from any entry point.
+    static func present(from presenter: UIViewController,
+                        prefilledPlace: Place? = nil,
+                        restrictedPlaces: [Place]? = nil) {
+        let checkInVC = CheckInViewController(prefilledPlace: prefilledPlace,
+                                              restrictedPlaces: restrictedPlaces)
+        let navController = UINavigationController(rootViewController: checkInVC)
+        navController.modalPresentationStyle = .fullScreen
+        presenter.present(navController, animated: true)
+    }
+
+    /// Post-save prompt, GPS-gated: offered ONLY when the user is physically
+    /// at the place they just saved (people often save a place while standing
+    /// in it). The coin drop stays the save flow's feedback — this alert is
+    /// rare and high-signal by construction. Fires after a delay so the
+    /// navigation + coin animation settle first.
+    static func offerIfAtPlace(_ place: Place, delay: TimeInterval = 1.5) {
+        guard let placeLocation = place.location?.clLocation else { return }
+        LocationService.shared.getCurrentLocation { current in
+            guard let current = current,
+                  current.distance(from: placeLocation) <= 120 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard let top = topPresenter(), top.presentedViewController == nil else { return }
+                AlertPresenter.showConfirmation(
+                    title: "You're at \(place.name)",
+                    message: "Check in and let your people know?",
+                    confirmTitle: "Check In",
+                    cancelTitle: "Not Now",
+                    from: top
+                ) {
+                    CheckInViewController.present(from: top, prefilledPlace: place)
+                }
+            }
+        }
+    }
+
+    private static func topPresenter() -> UIViewController? {
+        let keyWindow = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }
+        var top = keyWindow?.rootViewController
+        while let presented = top?.presentedViewController {
+            top = presented
+        }
+        return top
+    }
+
     // MARK: - Properties
     private var myPlaces: [Place] = []
     private var nearbyPlaces: [Place] = []   // network places nearby (not mine), distance-sorted
@@ -178,12 +248,32 @@ class CheckInViewController: BaseViewController {
         setupSearchCompleter()
         // Setup keyboard handling for tap-to-dismiss
         setupKeyboardHandling(dismissOnTap: true)
+
+        if let place = prefilledPlace {
+            // Context already chose the place — open directly on details.
+            selectedPlace = place
+            moveToStep2()
+        } else if restrictedPlaces != nil {
+            // One known set of places (a circle): no My/Nearby toggle.
+            placeSelectionSegmentedControl.isHidden = true
+            stepLabel.text = "Step 1 of 3: Choose Place"
+        }
         // Don't load data here - wait for viewDidAppear
     }
-    
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        
+
+        // A prefilled place needs no list; location still resolves in the
+        // background so the check-in carries coordinates.
+        if prefilledPlace != nil {
+            if currentLocation == nil,
+               [.authorizedWhenInUse, .authorizedAlways].contains(locationManager.authorizationStatus) {
+                locationManager.requestLocation()
+            }
+            return
+        }
+
         // Load data after view is fully presented
         if !hasLoadedData {
             // If we're on Nearby tab and don't have location, request it first
@@ -387,9 +477,36 @@ class CheckInViewController: BaseViewController {
     
     // MARK: - Data Loading
     override func loadData(completion: (() -> Void)? = nil) {
+        if prefilledPlace != nil {
+            completion?()
+            return
+        }
+        if let restricted = restrictedPlaces {
+            // The circle handed us its places — no API, just distance-sort.
+            let sorted: [Place]
+            if let location = currentLocation {
+                sorted = restricted.sorted {
+                    (calculateDistanceToPlace($0, from: location) ?? .greatestFiniteMagnitude) <
+                    (calculateDistanceToPlace($1, from: location) ?? .greatestFiniteMagnitude)
+                }
+            } else {
+                sorted = restricted
+            }
+            myPlaces = sorted
+            filteredPlaces = sorted
+            hideLoadingState()
+            placesTableView.reloadData()
+            if sorted.isEmpty {
+                customEmptyStateMessage = "This circle has no places yet"
+                showEmptyState()
+            }
+            completion?()
+            return
+        }
+
         // Clear any pending requests before loading new data
         APIService.shared.clearPendingRequestsForEndpoint("places/my-places")
-        
+
         if placeSelectionSegmentedControl.selectedSegmentIndex == 0 {
             // Load My Places
             loadMyPlaces()
@@ -592,8 +709,13 @@ class CheckInViewController: BaseViewController {
     
     private func moveToStep2() {
         currentStep = 2
-        stepLabel.text = "Step 2 of 3: Set Details"
-        progressView.setProgress(0.67, animated: true)
+        if prefilledPlace != nil {
+            stepLabel.text = "Step 1 of 2: Set Details"
+            progressView.setProgress(0.5, animated: true)
+        } else {
+            stepLabel.text = "Step 2 of 3: Set Details"
+            progressView.setProgress(0.67, animated: true)
+        }
         
         // Update selected place info
         if let place = selectedPlace {
@@ -617,6 +739,9 @@ class CheckInViewController: BaseViewController {
         // Create recipient selection view controller
         let recipientVC = CheckInRecipientSelectionViewController()
         recipientVC.delegate = self
+        if prefilledPlace != nil {
+            recipientVC.stepText = "Step 2 of 2: Who to Notify"
+        }
         
         // Pass check-in details
         var checkInData: [String: Any] = [
@@ -831,6 +956,15 @@ extension CheckInViewController: UISearchBarDelegate {
             searchResults = []
             if placeSelectionSegmentedControl.selectedSegmentIndex == 0 {
                 filteredPlaces = myPlaces
+            }
+            placesTableView.reloadData()
+        } else if restrictedPlaces != nil {
+            // Circle mode filters within the circle — a POI search would
+            // escape the set the caller asked for.
+            let query = searchText.lowercased()
+            filteredPlaces = myPlaces.filter {
+                $0.name.lowercased().contains(query) ||
+                $0.address.lowercased().contains(query)
             }
             placesTableView.reloadData()
         } else {

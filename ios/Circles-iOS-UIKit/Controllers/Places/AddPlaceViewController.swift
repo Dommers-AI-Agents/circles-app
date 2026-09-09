@@ -1983,6 +1983,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                             )
 
                             self?.postPendingReviewIfNeeded(for: place)
+                            // Rare, GPS-gated: user saved a place while standing in it
+                            CheckInViewController.offerIfAtPlace(place)
 
                             // No success popup — the piggy-bank coin drop IS
                             // the success feedback; an alert here covered it up
@@ -2124,6 +2126,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         )
 
                         self?.postPendingReviewIfNeeded(for: place)
+                        // Rare, GPS-gated: user saved a place while standing in it
+                        CheckInViewController.offerIfAtPlace(place)
 
                         // No success popup — the piggy-bank coin drop IS the
                         // success feedback; an alert here covered it up
@@ -2198,6 +2202,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                         )
 
                         self?.postPendingReviewIfNeeded(for: place)
+                        // Rare, GPS-gated: user saved a place while standing in it
+                        CheckInViewController.offerIfAtPlace(place)
 
                         // No success popup — the piggy-bank coin drop IS the
                         // success feedback; an alert here covered it up

@@ -331,6 +331,8 @@ class PlaceDetailViewController: BaseViewController {
         button.setImage(UIImage(systemName: systemName), for: .normal)
         button.setTitle(" \(title)", for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.8
         button.tintColor = Constants.Colors.primary
         button.setTitleColor(Constants.Colors.primary, for: .normal)
         button.backgroundColor = Constants.Colors.secondaryBackground
@@ -341,6 +343,8 @@ class PlaceDetailViewController: BaseViewController {
 
     // Edit (own places) and Report (others' places) live in the ••• menu
     private let directionsRowButton = PlaceDetailViewController.practicalButton(title: "Directions", systemName: "location.north.line")
+    // Check In leads the row: it's the engagement action, the rest are utilities
+    private let checkInRowButton = PlaceDetailViewController.practicalButton(title: "Check In", systemName: "mappin.and.ellipse")
 
     // Add to Circle: compact pill in the action row, left of Follow — same
     // size and style family (they're sibling actions; this one also picks
@@ -1081,8 +1085,11 @@ class PlaceDetailViewController: BaseViewController {
             infoContainerView.addSubview(tagsStackView)
         }
         
-        // Quick actions row: Directions / Call / Website. Edit and Report
-        // live in the ••• menu, so three chips always fit untruncated.
+        // Quick actions row: Check In / Directions / Call / Website. Edit and
+        // Report live in the ••• menu; titles scale slightly to keep four
+        // chips untruncated.
+        practicalButtonsStackView.addArrangedSubview(checkInRowButton)
+        checkInRowButton.addTarget(self, action: #selector(checkInRowButtonTapped), for: .touchUpInside)
         practicalButtonsStackView.addArrangedSubview(directionsRowButton)
         directionsRowButton.addTarget(self, action: #selector(directionsButtonTapped), for: .touchUpInside)
 
@@ -2252,6 +2259,10 @@ class PlaceDetailViewController: BaseViewController {
         present(activityViewController, animated: true)
     }
     
+    @objc private func checkInRowButtonTapped() {
+        CheckInViewController.present(from: self, prefilledPlace: place)
+    }
+
     @objc private func directionsButtonTapped() {
         // Open directions to the place in Maps app
         if let location = place.location?.clLocation {
