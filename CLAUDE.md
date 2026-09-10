@@ -76,7 +76,7 @@ The app follows a client-server architecture:
 - **`places` collection** = thin per-user save records referencing the venue via `globalPlaceId`, holding per-user data (`addedBy`, `circleId`, `privacy`, `privateNotes`, `publicNotes`, `tags`, `customCategoryId`, `photos`) plus a denormalized query cache (`name`, `address`, `location`, `geohash`, `category`) used by geo/search list queries.
 - **`placeComments`** are keyed by `globalPlaceId` (with `placeId` kept for legacy readers).
 - Every save path must stamp `globalPlaceId` via `ensureGlobalPlaceLink` (`backend/services/globalPlaceResolver.js`).
-- Read endpoints merge venue + social data over the save doc via `getGlobalSocial`/`fetchGlobalSocialMap`/`overlayVenueFields` in `firebasePlaceController.js`; the API `Place` shape seen by iOS is unchanged.
+- Read endpoints merge venue + social data over the save doc via `getGlobalSocial`/`fetchGlobalSocialMap`/`overlayVenueFields` in `backend/services/placeReadService.js` (never import these from a controller); venue-field propagation lives in `services/placeVenueSync.js`. The API `Place` shape seen by iOS is unchanged.
 - Venue edits (name, address, rating refresh) go through `propagateVenueUpdates`: canonical record updated once, cache fields synced to the venue's other copies. A venue correction by one saver is visible to all savers — intended.
 - Likes toggle in ONE transaction on the globalPlaces doc (`likePlace`). Never fan out social writes across copies.
 - Migration scripts (idempotent, support `DRY_RUN=true`): `scripts/backfill-global-place-links.js`, `scripts/migrate-social-to-global.js`, `scripts/strip-place-venue-fields.js` (run last, after soak).
@@ -103,6 +103,9 @@ The app provides a set of shared utilities that new code should use:
 - Some very large controllers are being broken up (Wave 4): the home, add-place,
   and profile controllers were each split from ~5–9k-line single files into a
   smaller core plus focused sibling files (`+Map`, `+Search`, `+TableView`, etc.).
+  The home controller family now lives in `Controllers/Home`, the full-screen map
+  in `Controllers/Map`, store-owner screens in `Controllers/Venue`, and rewards
+  screens in `Controllers/Rewards` (Sept 2026).
 - Known cleanup still in progress: ~46 files use `UIAlertController` directly
   (should use `AlertPresenter`) and ~186 `UIButton(type:)` sites (should use the
   factory). Don't assume an existing controller already follows the patterns.
@@ -577,6 +580,23 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
 - 🚧 **Adoption is partial** — ~46 files still use `UIAlertController` directly and
   ~186 `UIButton(type:)` sites remain; migration is ongoing.
 - 🚧 **God-object breakup in progress** — home/add-place/profile controllers split
-  into a core + focused sibling files; `firebasePlaceController.js` still to do.
+  into a core + focused sibling files. Backend controllers were split by domain
+  in Sept 2026 (see "Backend controller layout" below); iOS controllers were
+  regrouped by feature (`Controllers/Home`, `Map`, `Venue`, `Rewards`).
+
+### Backend controller layout (Sept 2026)
+The former 3–5k-line controllers are split by domain; handlers are unchanged
+and routes import from the new files. Put new handlers in the matching file:
+- `controllers/places/` — `placeController` (save-record CRUD/list/search),
+  `placeSocialController` (likes/savers/comments/views),
+  `placeVenueMaintenanceController` (Google refresh, flags, import resolution, photo fallback).
+- `controllers/users/` — `userController`, `followController`, `friendRequestController`,
+  `deviceTokenController`, `pinnedPlacesController`, `onboardingController`, `accountAdminController`.
+- `controllers/video/` — `videoUploadController`, `videoFeedController`, `videoSocialController`, `videoShareController`.
+- `controllers/venues/` — `rewardScanController` (consumer), `venueOwnerController` (incl. `requireVenueOwner`),
+  `venueAdminController`, `venueOffersController`, `venueClaimsController`, `storefrontController`,
+  `redemptionCodeController`, `venueManagersController`.
+- Shared helpers live in `services/` (`placeReadService`, `placeVenueSync`, `venueHelpers`,
+  `connectionMap`). **Controllers must not import from other controllers.**
 - ⚠️ The earlier "74% reduction / 7,562 lines / all 49 refactored" claims were
   inaccurate and have been corrected throughout this doc.
