@@ -3,7 +3,67 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/firebaseAuth');
 const { requireOwnerPremium } = require('../middleware/ownerPremium');
-const rewardController = require('../controllers/rewardController');
+const {
+  scan,
+  confirmStickerSave,
+  getBalance,
+  redeemOffer,
+  getOffers,
+  getVenueByPlace,
+  getMe
+} = require('../controllers/venues/rewardScanController');
+const {
+  createVenueFromApp,
+  emailVenueQR,
+  setSuperUser,
+  setVenueOwner,
+  createVenue,
+  listVenues
+} = require('../controllers/venues/venueAdminController');
+const {
+  requireVenueOwner,
+  getMyVenues,
+  getVenueDashboard,
+  getVenueFollowers,
+  getVenueSavers,
+  getVenueActivity,
+  setVenueCoverPhoto,
+  emailAiSetup,
+  updateVenuePlace,
+  updateVenueInfo,
+  updateVenueSettings,
+  rotateRegisterCode
+} = require('../controllers/venues/venueOwnerController');
+const {
+  addOffer,
+  updateOffer,
+  addAnnouncement,
+  updateAnnouncement,
+  deleteAnnouncement
+} = require('../controllers/venues/venueOffersController');
+const {
+  claimVenue,
+  claimPlace,
+  claimBusinessByDetails,
+  listClaims,
+  approveClaim,
+  denyClaim
+} = require('../controllers/venues/venueClaimsController');
+const {
+  updateStorefront,
+  getStorefront,
+  createVirtualVenue
+} = require('../controllers/venues/storefrontController');
+const {
+  createRedemptionCodes,
+  listRedemptionCodes,
+  redeemCode
+} = require('../controllers/venues/redemptionCodeController');
+const {
+  listVenueManagers,
+  addVenueManager,
+  removeVenueManager
+} = require('../controllers/venues/venueManagersController');
 
 // Admin guard — same Bearer ADMIN_SECRET convention as routes/adminRoutes.js
 const adminAuth = (req, res, next) => {
@@ -18,30 +78,30 @@ const adminAuth = (req, res, next) => {
 };
 
 // Admin venue management (mounted before protect so it uses its own guard)
-router.post('/admin/venues', adminAuth, rewardController.createVenue);
-router.get('/admin/venues', adminAuth, rewardController.listVenues);
+router.post('/admin/venues', adminAuth, createVenue);
+router.get('/admin/venues', adminAuth, listVenues);
 
 // Authenticated user endpoints
 router.use(protect);
-router.get('/me', rewardController.getMe);
-router.post('/scan', rewardController.scan);
-router.post('/sticker-save', rewardController.confirmStickerSave);
-router.get('/balance', rewardController.getBalance);
-router.get('/offers', rewardController.getOffers);
-router.post('/redeem-offer', rewardController.redeemOffer);
+router.get('/me', getMe);
+router.post('/scan', scan);
+router.post('/sticker-save', confirmStickerSave);
+router.get('/balance', getBalance);
+router.get('/offers', getOffers);
+router.post('/redeem-offer', redeemOffer);
 // Single-use brand loyalty codes (order-box cards, booth handouts)
-router.post('/redeem-code', rewardController.redeemCode);
+router.post('/redeem-code', redeemCode);
 // Brand storefronts (account-anchored businesses / virtual stores)
-router.put('/storefront', rewardController.updateStorefront);
-router.get('/storefront/:userId', rewardController.getStorefront);
-router.post('/venues/virtual', rewardController.createVirtualVenue);
+router.put('/storefront', updateStorefront);
+router.get('/storefront/:userId', getStorefront);
+router.post('/venues/virtual', createVirtualVenue);
 // `by-place` is a literal segment, so this can't shadow /venues/:venueId/* routes
-router.get('/venues/by-place/:placeId', rewardController.getVenueByPlace);
-router.post('/venues/:venueId/claim', rewardController.claimVenue);
+router.get('/venues/by-place/:placeId', getVenueByPlace);
+router.post('/venues/:venueId/claim', claimVenue);
 // Claim straight from a place page — works whether or not a venue is enrolled
-router.post('/places/:placeId/claim', rewardController.claimPlace);
+router.post('/places/:placeId/claim', claimPlace);
 // Add-and-claim: business never saved by anyone — submit by details
-router.post('/businesses/claim', rewardController.claimBusinessByDetails);
+router.post('/businesses/claim', claimBusinessByDetails);
 
 // Super-user endpoints (in-app venue management + granting access)
 const requireSuperUser = (req, res, next) => {
@@ -52,47 +112,47 @@ const requireSuperUser = (req, res, next) => {
   }
 };
 
-router.post('/venues', requireSuperUser, rewardController.createVenueFromApp);
-router.get('/venues', requireSuperUser, rewardController.listVenues);
-router.post('/superusers', requireSuperUser, rewardController.setSuperUser);
-router.post('/venues/:venueId/owner', requireSuperUser, rewardController.setVenueOwner);
-router.get('/claims', requireSuperUser, rewardController.listClaims);
-router.post('/claims/:claimId/approve', requireSuperUser, rewardController.approveClaim);
-router.post('/claims/:claimId/deny', requireSuperUser, rewardController.denyClaim);
+router.post('/venues', requireSuperUser, createVenueFromApp);
+router.get('/venues', requireSuperUser, listVenues);
+router.post('/superusers', requireSuperUser, setSuperUser);
+router.post('/venues/:venueId/owner', requireSuperUser, setVenueOwner);
+router.get('/claims', requireSuperUser, listClaims);
+router.post('/claims/:claimId/approve', requireSuperUser, approveClaim);
+router.post('/claims/:claimId/deny', requireSuperUser, denyClaim);
 
 // Venue-owner endpoints. Free owner tier: venue list, dashboard headline,
 // window QR (scan-to-save). Business tier (requireOwnerPremium; super-users
 // and ownerManuallyVerified bypass): offers, announcements, earn rate, and
 // the register QR — the loyalty program.
-router.get('/my-venues', rewardController.getMyVenues);
-router.post('/email-ai-setup', rewardController.emailAiSetup);
-router.get('/venues/:venueId/dashboard', rewardController.requireVenueOwner, rewardController.getVenueDashboard);
+router.get('/my-venues', getMyVenues);
+router.post('/email-ai-setup', emailAiSetup);
+router.get('/venues/:venueId/dashboard', requireVenueOwner, getVenueDashboard);
 // Stat drill-downs (who follows / who saved / the scan ledger) are Business-
 // tier detail, like the dashboard's monthly history
-router.get('/venues/:venueId/followers', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.getVenueFollowers);
-router.get('/venues/:venueId/savers', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.getVenueSavers);
-router.get('/venues/:venueId/activity', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.getVenueActivity);
+router.get('/venues/:venueId/followers', requireVenueOwner, requireOwnerPremium, getVenueFollowers);
+router.get('/venues/:venueId/savers', requireVenueOwner, requireOwnerPremium, getVenueSavers);
+router.get('/venues/:venueId/activity', requireVenueOwner, requireOwnerPremium, getVenueActivity);
 // Cover photo is basic storefront presence — free owner tier
-router.put('/venues/:venueId/cover-photo', rewardController.requireVenueOwner, rewardController.setVenueCoverPhoto);
+router.put('/venues/:venueId/cover-photo', requireVenueOwner, setVenueCoverPhoto);
 // Canonical place-record edit (name/description/category/phone/website) —
 // free owner tier, same as the in-app tap-to-edit surface
-router.patch('/venues/:venueId/place', rewardController.requireVenueOwner, rewardController.updateVenuePlace);
-router.post('/venues/:venueId/email-qr', rewardController.requireVenueOwner, rewardController.emailVenueQR);
+router.patch('/venues/:venueId/place', requireVenueOwner, updateVenuePlace);
+router.post('/venues/:venueId/email-qr', requireVenueOwner, emailVenueQR);
 // Managers: the owner invites other accounts to run the store with them —
 // free owner tier (team admin isn't a Business-tier tool). Mutations are
 // gated to the primary owner inside the handlers.
-router.get('/venues/:venueId/managers', rewardController.requireVenueOwner, rewardController.listVenueManagers);
-router.post('/venues/:venueId/managers', rewardController.requireVenueOwner, rewardController.addVenueManager);
-router.delete('/venues/:venueId/managers/:managerId', rewardController.requireVenueOwner, rewardController.removeVenueManager);
-router.patch('/venues/:venueId/info', rewardController.requireVenueOwner, rewardController.updateVenueInfo);
-router.post('/venues/:venueId/offers', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.addOffer);
-router.put('/venues/:venueId/offers/:offerId', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.updateOffer);
-router.post('/venues/:venueId/announcements', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.addAnnouncement);
-router.put('/venues/:venueId/announcements/:announcementId', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.updateAnnouncement);
-router.delete('/venues/:venueId/announcements/:announcementId', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.deleteAnnouncement);
-router.patch('/venues/:venueId', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.updateVenueSettings);
-router.post('/venues/:venueId/register-code', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.rotateRegisterCode);
-router.post('/venues/:venueId/codes', rewardController.requireVenueOwner, requireOwnerPremium, rewardController.createRedemptionCodes);
-router.get('/venues/:venueId/codes', rewardController.requireVenueOwner, rewardController.listRedemptionCodes);
+router.get('/venues/:venueId/managers', requireVenueOwner, listVenueManagers);
+router.post('/venues/:venueId/managers', requireVenueOwner, addVenueManager);
+router.delete('/venues/:venueId/managers/:managerId', requireVenueOwner, removeVenueManager);
+router.patch('/venues/:venueId/info', requireVenueOwner, updateVenueInfo);
+router.post('/venues/:venueId/offers', requireVenueOwner, requireOwnerPremium, addOffer);
+router.put('/venues/:venueId/offers/:offerId', requireVenueOwner, requireOwnerPremium, updateOffer);
+router.post('/venues/:venueId/announcements', requireVenueOwner, requireOwnerPremium, addAnnouncement);
+router.put('/venues/:venueId/announcements/:announcementId', requireVenueOwner, requireOwnerPremium, updateAnnouncement);
+router.delete('/venues/:venueId/announcements/:announcementId', requireVenueOwner, requireOwnerPremium, deleteAnnouncement);
+router.patch('/venues/:venueId', requireVenueOwner, requireOwnerPremium, updateVenueSettings);
+router.post('/venues/:venueId/register-code', requireVenueOwner, requireOwnerPremium, rotateRegisterCode);
+router.post('/venues/:venueId/codes', requireVenueOwner, requireOwnerPremium, createRedemptionCodes);
+router.get('/venues/:venueId/codes', requireVenueOwner, listRedemptionCodes);
 
 module.exports = router;
