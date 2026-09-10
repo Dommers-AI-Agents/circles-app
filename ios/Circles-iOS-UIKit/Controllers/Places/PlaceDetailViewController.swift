@@ -343,8 +343,13 @@ class PlaceDetailViewController: BaseViewController {
 
     // Edit (own places) and Report (others' places) live in the ••• menu
     private let directionsRowButton = PlaceDetailViewController.practicalButton(title: "Directions", systemName: "location.north.line")
-    // Check In leads the row: it's the engagement action, the rest are utilities
-    private let checkInRowButton = PlaceDetailViewController.practicalButton(title: "Check In", systemName: "mappin.and.ellipse")
+    // Check In leads the row: it's the engagement action, the rest are utilities.
+    // Same icon as every check-in surface (UIImage.checkInIcon).
+    private let checkInRowButton: UIButton = {
+        let button = PlaceDetailViewController.practicalButton(title: "Check In", systemName: "checkmark.circle")
+        button.setImage(.checkInIcon, for: .normal)
+        return button
+    }()
 
     // Add to Circle: compact pill in the action row, left of Follow — same
     // size and style family (they're sibling actions; this one also picks
@@ -1162,8 +1167,16 @@ class PlaceDetailViewController: BaseViewController {
         
         // Add navigation bar buttons — everything else lives in the ••• menu
         let moreButton = UIBarButtonItem(image: UIImage(systemName: "ellipsis.circle"), style: .plain, target: self, action: #selector(moreButtonTapped))
+        // Check-in at the top of every place view (same icon everywhere)
+        let checkInBarButton = UIBarButtonItem(
+            image: .checkInIcon,
+            style: .plain,
+            target: self,
+            action: #selector(checkInRowButtonTapped)
+        )
+        checkInBarButton.accessibilityLabel = "Check in"
         // share lives in the nav bar (rightBarButtonItem above)
-        navigationItem.rightBarButtonItems = [moreButton, navigationItem.rightBarButtonItem!]
+        navigationItem.rightBarButtonItems = [moreButton, navigationItem.rightBarButtonItem!, checkInBarButton]
         
         // Layout constraints
         NSLayoutConstraint.activate([

@@ -1943,7 +1943,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             // (calloutAccessoryControlTapped branches on left vs right).
             if markerView.leftCalloutAccessoryView == nil {
                 let checkInButton = UIButton(type: .system)
-                checkInButton.setImage(UIImage(systemName: "mappin.and.ellipse"), for: .normal)
+                checkInButton.setImage(.checkInIcon, for: .normal)
                 checkInButton.tintColor = Constants.Colors.primary
                 checkInButton.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
                 markerView.leftCalloutAccessoryView = checkInButton

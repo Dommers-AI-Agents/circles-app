@@ -667,11 +667,12 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         // Check in at one of this circle's places (picker restricted to the
         // circle, distance-sorted)
         let checkInButton = UIBarButtonItem(
-            image: UIImage(systemName: "mappin.and.ellipse"),
+            image: .checkInIcon,
             style: .plain,
             target: self,
             action: #selector(circleCheckInTapped)
         )
+        checkInButton.accessibilityLabel = "Check in"
         rightBarButtons.append(checkInButton)
         
         // Show export button for circle owner

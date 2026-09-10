@@ -1,13 +1,13 @@
 import UIKit
 import CoreLocation
 
-// The proximity check-in chip: when the app opens within ~120m of one of the
+// The proximity check-in chip: when the app opens within ~50m of one of the
 // user's saved places, a dismissible pill offers a one-tap check-in with the
 // place pre-filled. Shown at most once per place per day; never during the
 // first-session onboarding chain.
 extension CirclesHomeViewController {
 
-    private static let proximityRadiusMeters: CLLocationDistance = 120
+    private static let proximityRadiusMeters: CLLocationDistance = 50
     private static let chipTag = 99_431
 
     func maybeShowProximityCheckInChip() {
@@ -57,7 +57,7 @@ extension CirclesHomeViewController {
         chip.layer.shadowOffset = CGSize(width: 0, height: 3)
         chip.translatesAutoresizingMaskIntoConstraints = false
 
-        let icon = UIImageView(image: UIImage(systemName: "mappin.and.ellipse"))
+        let icon = UIImageView(image: .checkInIcon)
         icon.tintColor = .white
         icon.translatesAutoresizingMaskIntoConstraints = false
 

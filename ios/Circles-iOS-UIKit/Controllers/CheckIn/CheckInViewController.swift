@@ -46,7 +46,7 @@ class CheckInViewController: BaseViewController {
         guard let placeLocation = place.location?.clLocation else { return }
         LocationService.shared.getCurrentLocation { current in
             guard let current = current,
-                  current.distance(from: placeLocation) <= 120 else { return }
+                  current.distance(from: placeLocation) <= 50 else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 guard let top = topPresenter(), top.presentedViewController == nil else { return }
                 AlertPresenter.showConfirmation(
