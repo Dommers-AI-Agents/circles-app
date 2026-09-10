@@ -4,34 +4,46 @@ const {
   getUser,
   updateUser,
   searchUsers,
+  reorderCircles,
+  getUserPublicCircles,
+  getDailySummary
+} = require('../controllers/users/userController');
+const {
   getFriends,
   sendFriendRequest,
   getFriendRequests,
   respondToFriendRequest,
-  removeFriend,
-  reorderCircles,
-  registerDeviceToken,
-  removeDeviceToken,
-  updateNotificationPreferences,
-  getUserPublicCircles,
-  findDuplicateAccounts,
-  checkDuplicateConnections,
+  removeFriend
+} = require('../controllers/users/friendRequestController');
+const {
   followUser,
   unfollowUser,
   getUserFollowers,
   getUserFollowing,
+  recalculateFollowerCounts
+} = require('../controllers/users/followController');
+const {
+  registerDeviceToken,
+  removeDeviceToken,
+  updateNotificationPreferences
+} = require('../controllers/users/deviceTokenController');
+const {
   addPinnedPlace,
   removePinnedPlace,
   getPinnedPlaces,
-  reorderPinnedPlaces,
-  recalculateFollowerCounts,
+  reorderPinnedPlaces
+} = require('../controllers/users/pinnedPlacesController');
+const {
   getTutorialStatus,
   completeTutorial,
-  retryOnboarding,
   recordAppOpen,
-  mergeUserAccounts,
-  getDailySummary
-} = require('../controllers/firebaseUserController');
+  retryOnboarding
+} = require('../controllers/users/onboardingController');
+const {
+  findDuplicateAccounts,
+  checkDuplicateConnections,
+  mergeUserAccounts
+} = require('../controllers/users/accountAdminController');
 const { changePassword } = require('../controllers/firebaseAuthController');
 const { protect } = require('../middleware/firebaseAuth');
 
