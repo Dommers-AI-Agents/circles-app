@@ -2,7 +2,7 @@
 // (Mapstr, Google Takeout, Swarm) into circles + places.
 //
 // Place creation deliberately mirrors the legacy path in
-// firebasePlaceController.createPlace (places collection + circle places[] /
+// placeController.createPlace (places collection + circle places[] /
 // placesCount) — that is the source of truth for how the app populates
 // circles. If createPlace ever starts writing globalPlaces, mirror it here.
 

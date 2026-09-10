@@ -64,7 +64,7 @@ const notificationTestRoutes = require('./routes/notificationTestRoutes');
 const globalPlaceRoutes = require('./routes/globalPlaceRoutes');
 
 // Import Firebase Place controller for circle-specific routes
-const { getPlacesByCircleId, getPlacesByCircleIdPublic, reorderPlacesInCircle } = require('./controllers/firebasePlaceController');
+const { getPlacesByCircleId, getPlacesByCircleIdPublic, reorderPlacesInCircle } = require('./controllers/places/placeController');
 const { protect } = require('./middleware/firebaseAuth');
 
 const app = express();

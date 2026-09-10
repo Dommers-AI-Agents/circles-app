@@ -16,7 +16,7 @@
 //
 // PRIVACY: only publicly-visible places feed this. A reason string is shown to
 // a stranger, so naming a venue from someone's private or network-only circle
-// would leak it. See isPlaceVisibleToViewer in firebasePlaceController.
+// would leak it. See isPlaceVisibleToViewer in placeReadService.
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');

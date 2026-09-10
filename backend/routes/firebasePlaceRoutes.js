@@ -7,13 +7,14 @@ const {
   updatePlace,
   deletePlace,
   searchPlaces,
-  refreshPlaceFromGoogle,
   updatePlaceAddress,
-  getUnresolvedPlaces,
-  resolveImportedPlace,
-  getPlacesNeedingPhoto,
-  setPlacePhotoFallback,
-  flagPlaceInfo,
+  addExistingPlaceToCircle,
+  movePlace,
+  getPlacesByMultipleCircles,
+  getMySaveOfVenue,
+  getMyPlacesForCheckIn
+} = require('../controllers/places/placeController');
+const {
   likePlace,
   getPlaceLikes,
   getPlaceSavers,
@@ -23,14 +24,17 @@ const {
   likeComment,
   addPlaceCommentReply,
   getPlaceCommentReplies,
-  addExistingPlaceToCircle,
-  trackPlaceView,
-  movePlace,
-  getPlacesByMultipleCircles,
-  getMyPlacesForCheckIn,
-  getMySaveOfVenue,
+  trackPlaceView
+} = require('../controllers/places/placeSocialController');
+const {
+  refreshPlaceFromGoogle,
+  flagPlaceInfo,
+  getUnresolvedPlaces,
+  getPlacesNeedingPhoto,
+  setPlacePhotoFallback,
+  resolveImportedPlace,
   migrateGooglePhotosToFirebase
-} = require('../controllers/firebasePlaceController');
+} = require('../controllers/places/placeVenueMaintenanceController');
 const {
   followPlace,
   unfollowPlace,

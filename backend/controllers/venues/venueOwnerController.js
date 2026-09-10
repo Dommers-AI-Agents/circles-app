@@ -311,7 +311,7 @@ exports.getVenueSavers = async (req, res) => {
     }
 
     // Circle visibility from the OWNER's viewpoint (same rules as the
-    // consumer savers list in firebasePlaceController.getPlaceSavers)
+    // consumer savers list in placeSocialController.getPlaceSavers)
     const circleIds = [...new Set([...bySaver.values()].flatMap((e) => [...e.circleIds]))];
     const circlesById = new Map();
     for (let i = 0; i < circleIds.length; i += 100) {
