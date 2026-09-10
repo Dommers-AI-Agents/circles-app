@@ -250,9 +250,13 @@ class CheckInViewController: BaseViewController {
         setupKeyboardHandling(dismissOnTap: true)
 
         if let place = prefilledPlace {
-            // Context already chose the place — open directly on details.
+            // Context already chose the place — open directly on details. The
+            // picker's selection is what normally enables Next; a prefilled
+            // place counts as selected.
             selectedPlace = place
             moveToStep2()
+            nextButton.isEnabled = true
+            nextButton.alpha = 1.0
         } else if restrictedPlaces != nil {
             // One known set of places (a circle): no My/Nearby toggle.
             placeSelectionSegmentedControl.isHidden = true
