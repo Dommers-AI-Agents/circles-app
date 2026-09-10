@@ -39,8 +39,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     let presentationDebounceInterval: TimeInterval = 1.0 // 1 second to prevent double-taps
     
     // MARK: - Enhanced Performance Properties
-    var optimizedCache: HomeScreenCache = HomeScreenCache()
-    var isUsingFastLoad = false // Track if we're using optimized fast loading
     var skeletonLoadingView: HomeScreenSkeletonView? // Progressive loading skeleton
     
     // Instance-based cache with expiry
@@ -95,15 +93,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     var suggestedSearchWorkItem: DispatchWorkItem?
 
     // MARK: - Viewport-Based Network Place Loading
-    // When true, network places load on demand for the visible map region
-    // instead of the per-circle fan-out. Flip to false to restore old behavior.
-    let useViewportNetworkLoading = true
-
-    // MARK: - Batched Place Loading
-    // When true, own-circle places load via ONE POST places/batch call instead
-    // of one GET per circle. Flip to false to restore the per-circle fan-out
-    // (kept for one release as a fallback).
-    let useBatchPlacesFetch = true
     // Guards the disk-cache paint so it happens at most once per instance
     var hasPaintedPlacesFromDiskCache = false
     var fetchedViewportCircles: [(center: CLLocationCoordinate2D, radiusM: Double)] = []
@@ -860,7 +849,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Don't fetch circles here - it will be called in viewWillAppear
         
-        // Step 2: Start background image preloading for better performance
+        // Start background image preloading for better performance
         startBackgroundImagePreloading()
     }
     
@@ -879,115 +868,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    // MARK: - Enhanced Data Loading (BaseViewController Override) - DISABLED
-    // Temporarily disabled to restore original loading behavior
-    /*
-    override func loadData(completion: (() -> Void)? = nil) {
-        Logger.debug("⚡ [Enhanced] loadData called - attempting optimized loading")
-        
-        // Show progressive skeleton loading immediately
-        showProgressiveSkeletonLoading()
-        
-        // Check cache first for ultra-fast loading
-        if let cachedContent = optimizedCache.retrieve() {
-            Logger.debug("⚡ [Cache Hit] Using cached data for instant loading")
-            isUsingFastLoad = true
-            applyHomeScreenData(cachedContent)
-            hideProgressiveSkeletonLoading()
-            completion?()
-            return
-        }
-        
-        // Try fast homescreen API for immediate display data
-        loadHomeScreenDataFast { [weak self] success in
-            guard let self = self else { return }
-            
-            if success {
-                Logger.debug("⚡ [Fast API] Successfully loaded via homescreen endpoint")
-                self.isUsingFastLoad = true
-                self.hideProgressiveSkeletonLoading()
-                
-                // Background load full data for completeness
-                DispatchQueue.global(qos: .background).async {
-                    self.loadFullDashboardData()
-                }
-            } else {
-                Logger.debug("⚡ [Fallback] Fast API failed, using full dashboard")
-                self.loadFullDashboardData()
-            }
-            
-            completion?()
-        }
-    }
-    */
-    
-    // MARK: - Safe Cache Optimization (Step 1)
-    func tryLoadFromCache() {
-        // Only try cache if we haven't started loading yet
-        guard !hasStartedLoading && circles.isEmpty else { 
-            Logger.debug("📦 [SafeCache] Skipping - already loading or have data")
-            return 
-        }
-        
-        // Check if we have cached data
-        if let cachedContent = optimizedCache.retrieve() {
-            Logger.debug("📦 [SafeCache] Found cached data - applying as background enhancement")
-            
-            // Apply cached circles and places for immediate map population
-            if !cachedContent.myCircles.isEmpty && circles.isEmpty {
-                self.circles = cachedContent.myCircles
-                self.networkCircles = cachedContent.networkCircles
-                Logger.debug("📦 [SafeCache] Applied \(cachedContent.myCircles.count) cached circles")
-                
-                // Extract places from cached circles for immediate map display
-                extractAndShowCachedPlaces()
-            }
-            
-            // Apply cached activities to show something immediately
-            if !cachedContent.activities.isEmpty && activities.isEmpty {
-                self.activities = cachedContent.activities
-                DispatchQueue.main.async {
-                    self.activityTableView.reloadData()
-                    // Hide optional skeleton since we have data
-                    self.hideOptionalSkeletonLoading()
-                }
-                Logger.debug("📦 [SafeCache] Applied \(cachedContent.activities.count) cached activities")
-            }
-            
-            // Start background image preloading
-            DispatchQueue.global(qos: .background).async {
-                self.preloadImagesFromCache(cachedContent)
-            }
-        }
-    }
-    
-    func preloadImagesFromCache(_ data: HomeScreenContent) {
-        var imageUrls: [String] = []
-        
-        // Collect user profile images
-        imageUrls.append(contentsOf: data.userList.compactMap { $0.profileImageUrl })
-        
-        // Collect activity-related images
-        for activity in data.activities {
-            if let actor = activity.actor, let profilePicture = actor.profilePicture {
-                if !profilePicture.starts(with: "sf-symbol:") {
-                    imageUrls.append(profilePicture)
-                }
-            }
-        }
-        
-        let uniqueUrls = Array(Set(imageUrls))
-        
-        guard !uniqueUrls.isEmpty else { return }
-        
-        Logger.debug("📦 [SafeCache] Preloading \(uniqueUrls.count) images in background")
-        
-        ImageService.shared.preloadImages(from: uniqueUrls) { loadedCount in
-            Logger.debug("📦 [SafeCache] Preloaded \(loadedCount)/\(uniqueUrls.count) images")
-        }
-    }
-    
-    // MARK: - Background Image Preloading (Step 2)
+    // MARK: - Background Image Preloading
     func startBackgroundImagePreloading() {
         DispatchQueue.global(qos: .background).async {
             // Check if we have any data to preload from
@@ -1017,7 +898,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    // MARK: - Optional Skeleton Loading (Step 3)
+    // MARK: - Optional Skeleton Loading
     var skeletonTimer: Timer?
     
     func scheduleOptionalSkeletonLoading() {
@@ -1068,427 +949,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         skeletonLoadingView = nil
     }
     
-    // MARK: - Step 4: Fast API Integration as Alternative Data Source
-    var hasTriedFastAPI = false
-    
-    func tryFastAPIAsAlternative() {
-        // Only try once per session and only if we don't have data yet
-        guard !hasTriedFastAPI && circles.isEmpty && activities.isEmpty else { return }
-        
-        hasTriedFastAPI = true
-        Logger.debug("🚀 [Step4] Attempting fast API as alternative data source")
-        
-        // Try the optimized homescreen endpoint
-        APIService.shared.request(
-            endpoint: "home/homescreen",
-            method: .get,
-            queryParams: nil
-        ) { [weak self] (result: Result<HomeScreenResponse, APIError>) in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                
-                switch result {
-                case .success(let response):
-                    Logger.debug("🚀 [Step4] Fast API succeeded - applying alternative data")
-                    
-                    // Apply the fast data as an alternative source
-                    if let userList = response.data?.userList, !userList.isEmpty {
-                        // Refresh user list view to show updated data
-                        self.userListView.refresh()
-                        Logger.debug("🚀 [Step4] Applied \\(userList.count) users from fast API")
-                    }
-                    
-                    if let activities = response.data?.recentActivities, !activities.isEmpty && self.activities.isEmpty {
-                        self.activities = activities
-                        self.activityTableView.reloadData()
-                        self.activityLoadingContainer.isHidden = true
-                        Logger.debug("🚀 [Step4] Applied \\(activities.count) activities from fast API")
-                    }
-                    
-                    // Cache this data for future use
-                    if let data = response.data {
-                        let stats = HomeScreenStats(
-                            totalCircles: 0,
-                            totalPlaces: 0, 
-                            totalActivities: data.recentActivities?.count ?? 0,
-                            totalUsers: data.userList?.count ?? 0,
-                            mapPlaces: 0,
-                            loadTimeMs: data.stats?.loadTimeMs ?? 0
-                        )
-                        let content = HomeScreenContent(
-                            myCircles: [],
-                            networkCircles: [],
-                            activities: data.recentActivities ?? [],
-                            userList: data.userList ?? [],
-                            mapData: nil,
-                            stats: stats
-                        )
-                        self.optimizedCache.store(content)
-                    }
-                    
-                    // Hide skeleton if showing
-                    self.hideOptionalSkeletonLoading()
-                    
-                case .failure(let error):
-                    Logger.debug("🚀 [Step4] Fast API failed, will continue with regular loading: \\(error)")
-                    // Don't show error to user - this is just an optimization attempt
-                    // Regular loading will continue normally
-                }
-            }
-        }
-    }
-    
-    // MARK: - Progressive Skeleton Loading
-    func showProgressiveSkeletonLoading() {
-        guard skeletonLoadingView == nil else { return }
-        
-        Logger.debug("💀 [Skeleton] Showing progressive loading skeleton")
-        
-        // Create and show skeleton view
-        skeletonLoadingView = showSkeletonLoading(in: view)
-        
-        // Hide main content initially
-        mapContainerView.alpha = 0
-        activityTableView.alpha = 0
-        userListView.alpha = 0
-    }
-    
-    func hideProgressiveSkeletonLoading() {
-        guard let skeleton = skeletonLoadingView else { return }
-        
-        Logger.debug("💀 [Skeleton] Hiding progressive loading skeleton")
-        
-        // Animate content in and skeleton out
-        UIView.animate(withDuration: 0.3, animations: {
-            self.mapContainerView.alpha = 1.0
-            self.activityTableView.alpha = 1.0
-            self.userListView.alpha = 1.0
-        })
-        
-        hideSkeletonLoading(skeleton)
-        skeletonLoadingView = nil
-    }
-    
-    func updateProgressiveLoading(stage: ProgressiveLoadingStage) {
-        Logger.debug("💀 [Progressive] Loading stage: \(stage)")
-        
-        switch stage {
-        case .userListLoaded:
-            // Show user list with animation
-            UIView.animate(withDuration: 0.2) {
-                self.userListView.alpha = 1.0
-            }
-            
-        case .activitiesLoaded:
-            // Show activity feed with animation
-            UIView.animate(withDuration: 0.2) {
-                self.activityTableView.alpha = 1.0
-            }
-            
-        case .mapDataLoaded:
-            // Show map with animation
-            UIView.animate(withDuration: 0.2) {
-                self.mapContainerView.alpha = 1.0
-            }
-            
-        case .allDataLoaded:
-            // Hide skeleton completely
-            hideProgressiveSkeletonLoading()
-        }
-    }
-    
-    // MARK: - Ultra-Fast Home Screen Loading
-    func loadHomeScreenDataFast(completion: @escaping (Bool) -> Void) {
-        Logger.debug("⚡ [FastLoad] Fetching ultra-fast home screen data...")
-        
-        APIService.shared.request(
-            endpoint: "home/homescreen",
-            method: .get,
-            queryParams: nil,
-            body: nil,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EnhancedHomeScreenData, APIError>) in
-            guard let self = self else { return }
-            
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    let loadTime = response.data.stats.loadTimeMs
-                    Logger.debug("⚡ [FastLoad] Success in \(loadTime)ms - Users: \(response.data.userList.count), Activities: \(response.data.activities.count)")
-                    
-                    // Apply user list immediately for horizontal scroll
-                    self.applyFastUserList(response.data.userList)
-                    
-                    // Apply recent activities immediately
-                    self.applyFastActivities(response.data.activities)
-                    
-                    // Show UI immediately
-                    self.showHomeScreenUI()
-                    
-                    completion(true)
-                    
-                case .failure(let error):
-                    Logger.debug("⚡ [FastLoad] Failed: \(error.localizedDescription)")
-                    completion(false)
-                }
-            }
-        }
-    }
-    
-    // MARK: - Full Dashboard Data Loading (Background)
-    func loadFullDashboardData() {
-        Logger.debug("📊 [FullLoad] Loading complete dashboard data...")
-        
-        APIService.shared.request(
-            endpoint: "home/dashboard",
-            method: .get,
-            queryParams: ["includeMapData": "true", "includeUserList": "true"],
-            body: nil,
-            requiresAuth: true
-        ) { [weak self] (result: Result<EnhancedHomeScreenData, APIError>) in
-            guard let self = self else { return }
-            
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    let loadTime = response.data.stats.loadTimeMs
-                    Logger.debug("📊 [FullLoad] Success in \(loadTime)ms - Full data loaded")
-                    
-                    // Cache the full data for next time
-                    self.optimizedCache.store(response.data)
-                    
-                    // Apply full data (this will enhance what's already displayed)
-                    self.applyHomeScreenData(response.data)
-                    
-                    // Update map with places if available
-                    if let mapData = response.data.mapData {
-                        self.applyMapData(mapData)
-                    }
-                    
-                case .failure(let error):
-                    Logger.debug("📊 [FullLoad] Failed: \(error.localizedDescription)")
-                    // Fallback to legacy loading if needed
-                    if !self.isUsingFastLoad {
-                        self.fetchCircles()
-                    }
-                }
-            }
-        }
-    }
-    
-    // MARK: - Fast Data Application Methods
-    func applyFastUserList(_ userList: [UserListItem]) {
-        Logger.debug("⚡ [FastApply] Applying user list with \(userList.count) users")
-        
-        // For now, trigger a refresh of the user list view to show the most recent data
-        // The HorizontalUserListView will load its own connection data
-        userListView.refresh()
-        // Never hide the row for zero relationships — that's exactly when the
-        // discovery suffix (suggested people + Find People) matters most
-        userListView.isHidden = false
-        
-        // Trigger progressive loading update
-        updateProgressiveLoading(stage: .userListLoaded)
-        
-        Logger.debug("⚡ [FastApply] User list updated and visible")
-    }
-    
-    func applyFastActivities(_ activities: [Activity]) {
-        Logger.debug("⚡ [FastApply] Applying \(activities.count) activities")
-        
-        self.activities = activities
-        
-        // Update activity table immediately
-        activityTableView.reloadData()
-        activityLoadingContainer.isHidden = true
-        
-        // Show activity view
-        activityTableView.isHidden = false
-        
-        // Trigger progressive loading update
-        updateProgressiveLoading(stage: .activitiesLoaded)
-        
-        Logger.debug("⚡ [FastApply] Activities updated and visible")
-    }
-    
-    func showHomeScreenUI() {
-        Logger.debug("⚡ [FastApply] Showing home screen UI")
-        
-        // Hide loading states
-        hideLoadingState()
-        activityLoadingContainer.isHidden = true
-        
-        // Show main UI components
-        mapContainerView.isHidden = false
-        filterStackView.isHidden = false
-        filterContainer.isHidden = false
-        mapExpandButton.isHidden = false
-        
-        // Update empty state
-        updateEmptyState()
-        
-        Logger.debug("⚡ [FastApply] Home screen UI visible")
-    }
-    
-    func applyHomeScreenData(_ data: HomeScreenContent) {
-        Logger.debug("📊 [FullApply] Applying complete home screen data")
-        
-        // Apply circles data
-        self.circles = data.myCircles
-        self.networkCircles = data.networkCircles
-        
-        // Note: Places will be loaded separately through the existing fetchAllPlacesFromCircles method
-        // The optimized API provides circle data, but places need to be fetched separately
-        // This maintains compatibility with the existing place loading architecture
-        
-        // Apply activities if not already showing fast-loaded ones
-        if !isUsingFastLoad || self.activities.isEmpty {
-            self.activities = data.activities
-            activityTableView.reloadData()
-        }
-        
-        // Apply user list if not already showing fast-loaded one
-        if !isUsingFastLoad {
-            applyFastUserList(data.userList)
-        }
-        
-        // Start background image preloading
-        preloadImages(from: data)
-        
-        // Mark as loaded
-        CirclesHomeViewController.hasLoadedInitialData = true
-        hasStartedLoading = true
-        
-        // Update UI
-        showHomeScreenUI()
-        updateUIAfterDataLoad()
-        
-        Logger.debug("📊 [FullApply] Complete data applied - Activities: \(data.activities.count)")
-    }
-    
-    // MARK: - Image Preloading
-    func preloadImages(from data: HomeScreenContent) {
-        var imageUrls: [String] = []
-        
-        // Collect user profile images
-        imageUrls.append(contentsOf: data.userList.compactMap { $0.profileImageUrl })
-        
-        // Collect activity-related images (actor profiles)
-        // Note: We'll skip place images for now since we need to load places separately
-        for activity in data.activities {
-            if let actor = activity.actor, let profilePicture = actor.profilePicture {
-                // Only add actual URLs, not SF Symbol references
-                if !profilePicture.starts(with: "sf-symbol:") {
-                    imageUrls.append(profilePicture)
-                }
-            }
-        }
-        
-        // Remove duplicates
-        let uniqueUrls = Array(Set(imageUrls))
-        
-        guard !uniqueUrls.isEmpty else { return }
-        
-        Logger.debug("📷 [Preload] Starting background preload of \(uniqueUrls.count) images")
-        
-        // Preload images in background
-        DispatchQueue.global(qos: .background).async {
-            ImageService.shared.preloadImages(from: uniqueUrls) { loadedCount in
-                Logger.debug("📷 [Preload] Completed: \(loadedCount)/\(uniqueUrls.count) images cached")
-            }
-        }
-    }
-    
-    func applyMapData(_ mapData: MapData) {
-        Logger.debug("🗺️ [MapApply] Applying map data with \(mapData.places.count) places")
-        
-        // Set map region immediately for better UX
-        if let bounds = mapData.bounds {
-            // TODO: Set map region once the correct map view property is identified
-            Logger.debug("🗺️ [MapApply] Map region update requested (deferred)")
-        }
-        
-        // Start progressive place loading
-        loadMapPlacesProgressively(mapData.places)
-    }
-    
-    // MARK: - Progressive Map Loading
-    func loadMapPlacesProgressively(_ mapPlaces: [MapPlace]) {
-        Logger.debug("🗺️ [Progressive] Starting progressive map loading for \(mapPlaces.count) places")
-        
-        // Load places in batches for smooth performance
-        let batchSize = 10
-        let batches = mapPlaces.chunked(into: batchSize)
-        
-        var loadedPlaces: [Place] = []
-        var batchIndex = 0
-        
-        func loadNextBatch() {
-            guard batchIndex < batches.count else {
-                Logger.debug("🗺️ [Progressive] Completed loading all \(loadedPlaces.count) places")
-                isMapDataReady = true
-                return
-            }
-            
-            let currentBatch = batches[batchIndex]
-            Logger.debug("🗺️ [Progressive] Loading batch \(batchIndex + 1)/\(batches.count) (\(currentBatch.count) places)")
-            
-            // Convert current batch to Place objects
-            // TODO: This will be implemented once place data structure is confirmed
-            let batchPlaces: [Place] = []
-            
-            // Add to loaded places
-            loadedPlaces.append(contentsOf: batchPlaces)
-            
-            // Update map with current batch (async to prevent UI blocking)
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                
-                // Update map with accumulated places
-                self.updateMapWithPlaces(loadedPlaces)
-                
-                batchIndex += 1
-                
-                // Schedule next batch with small delay for smooth loading
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    loadNextBatch()
-                }
-            }
-        }
-        
-        // Start loading
-        loadNextBatch()
-    }
-    
-    // MARK: - Async Map Updates
-    func updateMapWithPlaces(_ places: [Place], animated: Bool = false) {
-        Logger.debug("🗺️ [UpdateMap] Map update requested for \(places.count) places")
-        
-        // Update the embedded map controller with smooth loading
-        guard let mapVC = mapViewController else {
-            Logger.debug("🗺️ [UpdateMap] No map controller available, skipping update")
-            return
-        }
-        
-        // Use the embedded map controller's smooth update method
-        mapVC.updatePlaces(places)
-        
-        Logger.debug("🗺️ [UpdateMap] Map update delegated to embedded map controller")
-    }
-    
-    func updateUIAfterDataLoad() {
-        // TODO: Re-enable these methods once they're identified in the existing codebase
-        // For now, we'll skip these updates to get the basic functionality working
-        
-        // Update empty state
-        updateEmptyState()
-        
-        // Update notification badge  
-        updateNotificationBadge()
-        
-        Logger.debug("📊 [UpdateUI] UI updates completed")
-    }
-    
+    // MARK: - Lifecycle (continued)
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         
@@ -1522,14 +983,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // loading (nil photo → generic glyph); this picks up the real one.
         updateSelectedConnectionAvatar()
 
-        // Step 1: Safe cache optimization - check if we have cached data to speed up loading
-        tryLoadFromCache()
-
-        // Step 2: Instant pins — paint the last session's complete place set
+        // Instant pins — paint the last session's complete place set
         // from disk while the network refresh (below) is in flight
         paintPlacesFromDiskCacheIfEmpty()
 
-        // Step 3: Optional skeleton loading - only for slow connections
+        // Optional skeleton loading - only for slow connections
         scheduleOptionalSkeletonLoading()
 
         // (Removed: tryFastAPIAsAlternative — it fetched home/homescreen on
@@ -3486,7 +2944,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         var networkCirclesResult: [Circle] = []
         var activitiesResult: [Activity] = []
         var reelsResult: [PlaceVideo] = []
-        var allFetchedPlaces: [Place] = []
         
         // 1. Load my circles
         group.enter()
@@ -3568,7 +3025,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // Now fetch places from all circles in parallel.
             // With viewport loading, network circle places arrive on demand for the
             // visible map region instead — only own circles are fan-out fetched.
-            let allCircles = self.useViewportNetworkLoading ? myCirclesResult : myCirclesResult + networkCirclesResult
+            let allCircles = myCirclesResult
             guard !allCircles.isEmpty else {
                 self.isMapDataReady = true
                 self.updateMapWhenReady()
@@ -3582,113 +3039,32 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 return
             }
             
-            // Phase 2: Fetch places — one batch call, or the legacy per-circle
-            // fan-out when the fallback flag is off
+            // Phase 2: Fetch places — one POST places/batch per 50 circle ids
             let placeGroup = DispatchGroup()
-            let placeSemaphore = DispatchSemaphore(value: 5) // Max 5 concurrent requests (legacy path)
             var placesArray = [[Place]]()
             let placesLock = NSLock()
             var placesFetchComplete = true
 
-            if self.useBatchPlacesFetch {
-                let circleIdsToFetch = allCircles.map { $0.id }
-                var chunkStart = 0
-                while chunkStart < circleIdsToFetch.count {
-                    let chunk = Array(circleIdsToFetch[chunkStart..<min(chunkStart + 50, circleIdsToFetch.count)])
-                    chunkStart += 50
-                    placeGroup.enter()
-                    PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: chunk) { result in
-                        switch result {
-                        case .success(let places):
-                            placesLock.lock()
-                            placesArray.append(places)
-                            placesLock.unlock()
-                            Logger.debug("✅ Batch fetched \(places.count) places from \(chunk.count) circles")
-                        case .failure(let error):
-                            Logger.debug("❌ Batch place fetch failed: \(error)")
-                            placesFetchComplete = false
-                        }
-                        placeGroup.leave()
-                    }
-                }
-            } else {
-            for circle in allCircles {
+            let circleIdsToFetch = allCircles.map { $0.id }
+            var chunkStart = 0
+            while chunkStart < circleIdsToFetch.count {
+                let chunk = Array(circleIdsToFetch[chunkStart..<min(chunkStart + 50, circleIdsToFetch.count)])
+                chunkStart += 50
                 placeGroup.enter()
-
-                DispatchQueue.global(qos: .userInitiated).async {
-                    placeSemaphore.wait()
-
-                    PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
-                        switch result {
-                        case .success(let places):
-                            placesLock.lock()
-                            placesArray.append(places)
-                            
-                            // PROGRESSIVE LOADING: Show places as they become available
-                            let currentPlaces = placesArray.flatMap { $0 }
-                            placesLock.unlock()
-                            
-                            // Update map progressively with newly loaded places
-                            DispatchQueue.main.async { [weak self] in
-                                guard let self = self else { return }
-                                
-                                // Deduplicate current places
-                                var uniquePlaces: [Place] = []
-                                var seenIds = Set<String>()
-                                for place in currentPlaces {
-                                    if !seenIds.contains(place.id) {
-                                        seenIds.insert(place.id)
-                                        uniquePlaces.append(place)
-                                    }
-                                }
-                                
-                                // Update map with progressive data
-                                self.allPlaces = uniquePlaces
-                                let progressivePlaces = self.applyFiltersToPlaces(uniquePlaces)
-                                self.mapRefreshDidFilter(progressivePlaces)
-                                self.mapViewController?.updatePlaces(progressivePlaces)
-
-                                // Trigger map region adjustment for progressive loading
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                                    self?.mapViewController?.adjustMapRegion()
-                                }
-
-                                self.updatePlaceCountLabel(count: progressivePlaces.count)
-                                
-                                // Update loading message with progress and animation
-                                let totalCircles = allCircles.count
-                                let loadedCircles = placesArray.count
-                                let progressPercentage = Int((Double(loadedCircles) / Double(totalCircles)) * 100)
-                                let progressFloat = Float(loadedCircles) / Float(totalCircles)
-                                
-                                // Update progress bar with smooth animation
-                                UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseOut]) {
-                                    self.mapLoadingProgressView.setProgress(progressFloat, animated: true)
-                                }
-                                
-                                // Update loading text with better messaging
-                                UIView.transition(with: self.mapLoadingLabel, duration: 0.2, options: .transitionCrossDissolve, animations: {
-                                    if uniquePlaces.count > 0 {
-                                        self.mapLoadingLabel.text = "Loading places... \(uniquePlaces.count) found (\(loadedCircles)/\(totalCircles) areas)"
-                                    } else {
-                                        self.mapLoadingLabel.text = "Loading places... \(progressPercentage)% (\(loadedCircles)/\(totalCircles) areas)"
-                                    }
-                                })
-                                
-                                Logger.debug("🗺️ [Progressive] Updated map with \(uniquePlaces.count) places (\(loadedCircles)/\(totalCircles) circles loaded)")
-                            }
-                            
-                        case .failure(let error):
-                            Logger.debug("❌ Failed to fetch places for circle '\(circle.name)': \(error)")
-                            placesFetchComplete = false
-                        }
-
-                        placeSemaphore.signal()
-                        placeGroup.leave()
+                PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: chunk) { result in
+                    switch result {
+                    case .success(let places):
+                        placesLock.lock()
+                        placesArray.append(places)
+                        placesLock.unlock()
+                        Logger.debug("✅ Batch fetched \(places.count) places from \(chunk.count) circles")
+                    case .failure(let error):
+                        Logger.debug("❌ Batch place fetch failed: \(error)")
+                        placesFetchComplete = false
                     }
+                    placeGroup.leave()
                 }
             }
-            } // end legacy per-circle fallback
 
             placeGroup.notify(queue: .main) { [weak self] in
                 guard let self = self else { return }
@@ -3864,19 +3240,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         isShowingLoadingUI = true
     }
     
-    // PROGRESSIVE PLACE LOADING: Show cached places immediately
-    func extractAndShowCachedPlaces() {
-        // For now, skip cached place extraction since creating dummy Place objects
-        // requires complex initialization. The immediate loading indicator is more important
-        // and provides the main UX benefit the user requested.
-        
-        // Update loading message to indicate we found cached circles
-        DispatchQueue.main.async { [weak self] in
-            self?.mapLoadingLabel.text = "Found \(self?.circles.count ?? 0) circles, loading places..."
-            Logger.debug("📦 [Cache→Map] Found cached circles, will load places next")
-        }
-    }
-    
     // PROGRESSIVE MAP UPDATES: Update map with places as they become available
     func updateMapProgressively(with places: [Place], isFromCache: Bool = false) {
         // Only update if we have places and the map is ready
@@ -3889,11 +3252,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         } else {
             // Full place data. With viewport loading, merge instead of replacing
             // so already-fetched viewport (network) places aren't wiped out.
-            if useViewportNetworkLoading {
-                self.allPlaces = removeDuplicatePlaces(places + self.allPlaces)
-            } else {
-                self.allPlaces = places
-            }
+            self.allPlaces = removeDuplicatePlaces(places + self.allPlaces)
             self.userOwnPlaces = places.filter { place in
                 circles.contains { circle in
                     circle.places?.contains(place.id) == true
@@ -3906,7 +3265,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
         
         // Apply filters and update map (include merged viewport places, not just the incoming batch)
-        let placesToDisplay = applyFiltersToPlaces((useViewportNetworkLoading && !isFromCache) ? allPlaces : places)
+        let placesToDisplay = applyFiltersToPlaces(!isFromCache ? allPlaces : places)
         mapRefreshDidFilter(placesToDisplay)
 
         // Update map with current places
@@ -4278,44 +3637,26 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // places when the old cache was enabled; that's why it was disabled).
         var ownPlacesFetchComplete = true
 
-        if useBatchPlacesFetch {
-            // One POST places/batch instead of one GET per circle (server caps
-            // a request at 50 circle ids; typically this is a single request)
-            let ownCircleIds = circles.map { $0.id }
-            Logger.debug("📍 Batch-fetching places from \(ownCircleIds.count) user circles")
-            var index = 0
-            while index < ownCircleIds.count {
-                let chunk = Array(ownCircleIds[index..<min(index + 50, ownCircleIds.count)])
-                index += 50
-                group.enter()
-                PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: chunk) { result in
-                    switch result {
-                    case .success(let places):
-                        Logger.debug("✅ Batch fetched \(places.count) places from \(chunk.count) circles")
-                        userPlacesCount += places.count
-                        allFetchedPlaces.append(contentsOf: places)
-                    case .failure(let error):
-                        Logger.debug("❌ Batch place fetch failed: \(error)")
-                        ownPlacesFetchComplete = false
-                    }
-                    group.leave()
+        // One POST places/batch instead of one GET per circle (server caps
+        // a request at 50 circle ids; typically this is a single request)
+        let ownCircleIds = circles.map { $0.id }
+        Logger.debug("📍 Batch-fetching places from \(ownCircleIds.count) user circles")
+        var index = 0
+        while index < ownCircleIds.count {
+            let chunk = Array(ownCircleIds[index..<min(index + 50, ownCircleIds.count)])
+            index += 50
+            group.enter()
+            PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: chunk) { result in
+                switch result {
+                case .success(let places):
+                    Logger.debug("✅ Batch fetched \(places.count) places from \(chunk.count) circles")
+                    userPlacesCount += places.count
+                    allFetchedPlaces.append(contentsOf: places)
+                case .failure(let error):
+                    Logger.debug("❌ Batch place fetch failed: \(error)")
+                    ownPlacesFetchComplete = false
                 }
-            }
-        } else {
-            Logger.debug("📍 Starting to fetch places from \(circles.count) user circles:")
-            for circle in circles {
-                group.enter()
-                PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
-                    switch result {
-                    case .success(let places):
-                        userPlacesCount += places.count
-                        allFetchedPlaces.append(contentsOf: places)
-                    case .failure(let error):
-                        Logger.debug("❌ Failed to fetch places for USER circle '\(circle.name)' (id: \(circle.id)): \(error)")
-                        ownPlacesFetchComplete = false
-                    }
-                    group.leave()
-                }
+                group.leave()
             }
         }
 
@@ -4332,24 +3673,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 switch result {
                 case .success(let response):
                     self?.networkCircles = response.data
-                    // Now fetch places from network circles
-                    // (skipped with viewport loading — places arrive per visible region)
-                    if self?.useViewportNetworkLoading != true {
-                        for circle in response.data {
-                            group.enter()
-                            PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
-                                switch result {
-                                case .success(let places):
-                                    Logger.debug("✅ Found \(places.count) places in network circle: \(circle.name)")
-                                    Logger.debug("   Circle owner ID: \(circle.owner)")
-                                    allFetchedPlaces.append(contentsOf: places)
-                                case .failure(let error):
-                                    Logger.debug("Failed to fetch places for network circle \(circle.id): \(error)")
-                                }
-                                group.leave()
-                            }
-                        }
-                    }
+                    // Their places arrive per visible map region (viewport loading)
                 case .failure(let error):
                     Logger.debug("Failed to fetch network circles: \(error)")
                     // If it's a duplicate request error, retry
@@ -4360,23 +3684,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     }
                 }
                 group.leave()
-            }
-        } else if !useViewportNetworkLoading {
-            // Use existing network circles
-            for circle in networkCircles {
-                Logger.debug("📍 Fetching places for network circle: \(circle.name) (\(circle.id))")
-                group.enter()
-                PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
-                    switch result {
-                    case .success(let places):
-                        Logger.debug("✅ Found \(places.count) places in network circle: \(circle.name)")
-                        Logger.debug("   Circle owner ID: \(circle.owner)")
-                        allFetchedPlaces.append(contentsOf: places)
-                    case .failure(let error):
-                        Logger.debug("❌ Failed to fetch places for network circle \(circle.name) (\(circle.id)): \(error)")
-                    }
-                    group.leave()
-                }
             }
         }
         
@@ -4489,7 +3796,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
             // With viewport loading, re-fetch network places for the current
             // region so refresh paths (place added/edited) pick up changes
-            if self.useViewportNetworkLoading, let mapVC = self.mapViewController {
+            if let mapVC = self.mapViewController {
                 self.fetchedViewportCircles.removeAll()
                 self.fetchViewportPlaces(region: mapVC.currentRegion, for: mapVC)
             }
@@ -5207,26 +4514,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     func fetchNetworkPlacesAndCombineWithCached() {
-        var networkPlaces: [Place] = []
-        let group = DispatchGroup()
-
-        // Fetch places from network circles
-        // (skipped with viewport loading — places arrive per visible region)
-        for circle in (useViewportNetworkLoading ? [] : networkCircles) {
-            group.enter()
-            PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
-                switch result {
-                case .success(let places):
-                    Logger.debug("✅ Fetched \(places.count) network places from circle '\(circle.name)'")
-                    networkPlaces.append(contentsOf: places)
-                case .failure(let error):
-                    Logger.debug("❌ Error fetching network places from circle '\(circle.name)': \(error.localizedDescription)")
-                }
-                group.leave()
-            }
-        }
-        
-        group.notify(queue: .main) { [weak self] in
+        // Network places arrive per visible map region (viewport loading), so
+        // only the cached own-places need separating here.
+        DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
             // When using cached places, we need to separate user's own places
@@ -5248,8 +4538,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self.userOwnPlaces = userPlacesFromCache
             
             // Deduplicate places before combining
-            let allPlaces = self.deduplicatePlaces(userPlaces: self.cachedPlaces, networkPlaces: networkPlaces)
-            Logger.debug("📍 Combined places: \(self.cachedPlaces.count) cached user + \(networkPlaces.count) network = \(allPlaces.count) total (after deduplication)")
+            let allPlaces = self.deduplicatePlaces(userPlaces: self.cachedPlaces, networkPlaces: [])
+            Logger.debug("📍 Cached places: \(self.cachedPlaces.count) → \(allPlaces.count) after deduplication")
             Logger.debug("📍 User's own places: \(self.userOwnPlaces.count)")
             
             self.allPlaces = allPlaces
@@ -5619,7 +4909,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// Fetches network places for the given map region and merges them into
     /// `allPlaces`. Called (debounced) whenever the map's visible region changes.
     func fetchViewportPlaces(region: MKCoordinateRegion, for controller: FullScreenMapViewController) {
-        guard useViewportNetworkLoading else { return }
 
         // Region → covering circle: half the bounding-box diagonal, +10% pad
         let latMeters = region.span.latitudeDelta * 111_320.0
@@ -6240,14 +5529,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 fetchNetworkCircles { [weak self] in
                     guard let self = self else { return }
                     self.updateAvailableCategories()
-                    if self.useViewportNetworkLoading {
-                        // Ensure ALL of this connection's places are loaded (not viewport-bounded)
-                        self.fetchAllPlacesForConnection(connectionId)
-                    } else {
-                        self.updateMapPlaces()
-                    }
+                    // Ensure ALL of this connection's places are loaded (not viewport-bounded)
+                    self.fetchAllPlacesForConnection(connectionId)
                 }
-            } else if useViewportNetworkLoading {
+            } else {
                 fetchAllPlacesForConnection(connectionId)
             }
         } else {
@@ -6257,7 +5542,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // "Following" and "My Connections" must mean ALL of those places,
             // not just the viewport-loaded subset — pull every connection's
             // full set in the background
-            if (id == nil || id == "my_connections_only") && useViewportNetworkLoading {
+            if id == nil || id == "my_connections_only" {
                 prefetchAllConnectionPlaces()
             }
         }

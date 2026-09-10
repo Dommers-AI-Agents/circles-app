@@ -47,7 +47,6 @@ extension CirclesHomeViewController: EditCircleDelegate {
 // MARK: - FullScreenMapViewControllerDelegate
 extension CirclesHomeViewController: FullScreenMapViewControllerDelegate {
     func mapViewController(_ controller: FullScreenMapViewController, regionDidChangeTo region: MKCoordinateRegion) {
-        guard useViewportNetworkLoading else { return }
 
         // While filtered to a specific connection, their places are already
         // fully loaded and everyone else's are filtered out — a viewport fetch

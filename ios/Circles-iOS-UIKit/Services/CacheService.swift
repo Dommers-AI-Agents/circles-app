@@ -1,13 +1,12 @@
 import Foundation
 import UIKit
 
-// MARK: - Disk Cache Service for Home Screen Performance
+// MARK: - Disk Cache Service (image cache)
 class CacheService {
     static let shared = CacheService()
     
     private let fileManager = FileManager.default
     private let cacheDirectory: URL
-    private let homeScreenCacheKey = "homescreen_data"
     private let imagesCacheKey = "cached_images"
     
     private init() {
@@ -21,66 +20,6 @@ class CacheService {
         }
         
         Logger.debug("📁 [CacheService] Initialized with directory: \(cacheDirectory.path)")
-    }
-    
-    // MARK: - Home Screen Data Cache
-    func cacheHomeScreenData(_ data: HomeScreenContent) {
-        do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            let encodedData = try encoder.encode(data)
-            
-            let cacheFile = cacheDirectory.appendingPathComponent("\(homeScreenCacheKey).json")
-            try encodedData.write(to: cacheFile)
-            
-            // Store timestamp for expiry check
-            let timestampFile = cacheDirectory.appendingPathComponent("\(homeScreenCacheKey)_timestamp.txt")
-            let timestamp = Date().timeIntervalSince1970
-            try String(timestamp).write(to: timestampFile, atomically: true, encoding: .utf8)
-            
-            Logger.debug("💾 [CacheService] Home screen data cached to disk")
-        } catch {
-            Logger.debug("❌ [CacheService] Failed to cache home screen data: \(error)")
-        }
-    }
-    
-    func getCachedHomeScreenData(maxAgeMinutes: TimeInterval = 10) -> HomeScreenContent? {
-        do {
-            let cacheFile = cacheDirectory.appendingPathComponent("\(homeScreenCacheKey).json")
-            let timestampFile = cacheDirectory.appendingPathComponent("\(homeScreenCacheKey)_timestamp.txt")
-            
-            // Check if files exist
-            guard fileManager.fileExists(atPath: cacheFile.path),
-                  fileManager.fileExists(atPath: timestampFile.path) else {
-                Logger.debug("📁 [CacheService] No cached home screen data found")
-                return nil
-            }
-            
-            // Check if cache is still valid
-            let timestampString = try String(contentsOf: timestampFile)
-            guard let timestamp = Double(timestampString) else { return nil }
-            
-            let cacheAge = Date().timeIntervalSince1970 - timestamp
-            let maxAgeSeconds = maxAgeMinutes * 60
-            
-            if cacheAge > maxAgeSeconds {
-                Logger.debug("📁 [CacheService] Cached data expired (age: \(Int(cacheAge/60))min)")
-                return nil
-            }
-            
-            // Load and decode data
-            let cachedData = try Data(contentsOf: cacheFile)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let homeScreenData = try decoder.decode(HomeScreenContent.self, from: cachedData)
-            
-            Logger.debug("📁 [CacheService] Retrieved valid cached data (age: \(Int(cacheAge/60))min)")
-            return homeScreenData
-            
-        } catch {
-            Logger.debug("❌ [CacheService] Failed to retrieve cached data: \(error)")
-            return nil
-        }
     }
     
     // MARK: - Enhanced Image Cache with Optimization
