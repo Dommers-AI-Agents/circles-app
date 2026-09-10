@@ -2678,6 +2678,13 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
     private var coverageBannerAction: (() -> Void)?
     private var coverageBannerDismissedForId: String?
+    /// Set by the home controller while a tapped connection's circles/places are
+    /// still loading. Until then the place set is incomplete (and the selected id
+    /// may not yet be the canonical one the owner-match needs), so judging "no
+    /// places" would flash a wrong verdict that the fetch then reverses.
+    var isConnectionFetchPending = false {
+        didSet { if oldValue != isConnectionFetchPending { updateConnectionCoverageBanner() } }
+    }
 
     private lazy var coverageBannerLabel: UILabel = {
         let label = UILabel()
@@ -2748,6 +2755,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // messaging — the banner's actions (clear category / zoom to their
         // places) would fight the text filter.
         guard searchQuery == nil else { hideCoverageBanner(); return }
+        // Hold the verdict until the tapped connection's places have arrived.
+        guard !isConnectionFetchPending else { hideCoverageBanner(); return }
         let id = selectedConnectionId
         let isSelf = (id == "my_places_only")
         let isPerson = (id != nil && id != "my_places_only" && id != "my_connections_only")

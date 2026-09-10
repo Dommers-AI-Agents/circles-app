@@ -4982,6 +4982,24 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// Uses the same user-circles + per-circle path as the profile map — the
     /// places/batch endpoint re-checks connections by exact id and can silently
     /// drop circles when connection docs and circle owners use different id formats.
+    /// The connection (as tapped) whose places are still loading, if any. Both
+    /// maps hold their "no places" banner while this is set.
+    private var pendingConnectionFetchId: String?
+
+    private func setConnectionFetchPending(_ connectionId: String?) {
+        pendingConnectionFetchId = connectionId
+        let pending = connectionId != nil
+        mapViewController?.isConnectionFetchPending = pending
+        presentedFullScreenMap?.isConnectionFetchPending = pending
+    }
+
+    /// Clears the pending flag if `connectionId` is still the one being waited on
+    /// (a later tap on someone else keeps its own fetch pending).
+    private func finishConnectionFetch(_ connectionId: String) {
+        guard pendingConnectionFetchId == connectionId else { return }
+        setConnectionFetchPending(nil)
+    }
+
     func fetchAllPlacesForConnection(_ connectionId: String) {
         Logger.debug("📍 Fetching circles for connection \(connectionId)")
         APIService.shared.request(
@@ -5024,15 +5042,17 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     }
                     if circlesMissingPlaces.isEmpty {
                         self.updateAvailableCategories()
+                        self.finishConnectionFetch(connectionId)
                         // Keep the camera put — switching connections never
                         // re-frames the map (the coverage banner handles the
                         // case where the connection has nothing in view).
                         self.refreshMapDisplay(adjustRegion: false)
                     } else {
-                        self.fetchPlacesForConnectionCircles(circlesMissingPlaces)
+                        self.fetchPlacesForConnectionCircles(circlesMissingPlaces, for: connectionId)
                     }
                 case .failure(let error):
                     Logger.debug("❌ Failed to fetch circles for connection \(connectionId): \(error.localizedDescription)")
+                    self.finishConnectionFetch(connectionId)
                     self.refreshMapDisplay(adjustRegion: false)
                 }
             }
@@ -5098,8 +5118,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
 
-    func fetchPlacesForConnectionCircles(_ connectionCircles: [Circle]) {
+    func fetchPlacesForConnectionCircles(_ connectionCircles: [Circle], for connectionId: String) {
         guard !connectionCircles.isEmpty else {
+            finishConnectionFetch(connectionId)
             refreshMapDisplay()
             return
         }
@@ -5126,6 +5147,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             Logger.debug("📍 Connection places fetched: \(fetchedPlaces.count)")
             self.allPlaces = self.removeDuplicatePlaces(self.allPlaces + fetchedPlaces)
             self.updateAvailableCategories()
+            self.finishConnectionFetch(connectionId)
             // Zoom is wanted here — the map should frame this connection's places
             self.refreshMapDisplay()
         }
@@ -5522,6 +5544,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // connections must not move the map (you're comparing who-saved-what
             // in the same view). If the connection has nothing in view, the
             // coverage banner offers to expand — we never auto-zoom here.
+            // The banner stays hidden until this connection's places are in
+            // (see fetchAllPlacesForConnection) — judging it now would flash
+            // "no places" against a half-loaded set.
+            setConnectionFetchPending(connectionId)
             refreshMapDisplay(adjustRegion: false)
 
             if networkCircles.isEmpty {
@@ -5538,6 +5564,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         } else {
             // Following / My Connections / My Places Only: refresh with what's
             // loaded, keeping the current camera (no zoom on connection change).
+            setConnectionFetchPending(nil)
             refreshMapDisplay(adjustRegion: false)
             // "Following" and "My Connections" must mean ALL of those places,
             // not just the viewport-loaded subset — pull every connection's
