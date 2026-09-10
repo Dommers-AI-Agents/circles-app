@@ -267,7 +267,7 @@ exports.getGlobalPlace = async (req, res, next) => {
       if (visible.length > 0) {
         visible.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
         const chosen = visible.find(p => p.addedBy === viewerId) || visible[0];
-        const { overlayVenueFields, buildAddedByUserMap } = require('./firebasePlaceController');
+        const { overlayVenueFields, buildAddedByUserMap } = require('../services/placeReadService');
         representativeSave = overlayVenueFields(chosen, placeData);
         const userMap = await buildAddedByUserMap([chosen]);
         representativeSave.addedByUser = userMap.get(chosen.addedBy) || null;

@@ -916,7 +916,7 @@ const getUserCircles = async (req, res) => {
 
     // Places marked Private are owner-only, even inside a visible circle —
     // the person viewing this profile is never the owner of these places
-    const { isPlaceVisibleToViewer } = require('./firebasePlaceController');
+    const { isPlaceVisibleToViewer } = require('../services/placeReadService');
 
     // Fetch places for each circle
     const circles = await Promise.all(sortedDocs.map(async doc => {
@@ -994,7 +994,7 @@ const getUserCircles = async (req, res) => {
     // circles/:id/places — without it iOS shows "Added by Unknown" on every
     // pin/row rendered from this payload
     try {
-      const { buildAddedByUserMap } = require('./firebasePlaceController');
+      const { buildAddedByUserMap } = require('../services/placeReadService');
       const embeddedPlaces = circles.flatMap(circle => circle.placesWithDetails || []);
       const addedByUserMap = await buildAddedByUserMap(embeddedPlaces);
       circles.forEach(circle => {

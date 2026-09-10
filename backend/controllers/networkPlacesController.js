@@ -178,7 +178,7 @@ const getNetworkPlacesInViewport = async (req, res) => {
 
     // Overlay social + venue data from the canonical venue records so map
     // pins/cards match the detail page
-    const { fetchGlobalSocialMap, overlayVenueFields } = require('./firebasePlaceController');
+    const { fetchGlobalSocialMap, overlayVenueFields } = require('../services/placeReadService');
     const socialByGlobalId = await fetchGlobalSocialMap(places);
     const placesWithSocial = places.map(place => {
       const social = socialByGlobalId.get(place.globalPlaceId);
