@@ -7,13 +7,40 @@ const {
   checkVideoQuota,
   initiateVideoUpload,
   completeVideoUpload,
+  addEmbeddedVideo,
+  getVideoMetadata,
+  checkVideoStatus,
+  removeMyMomentTag,
+  deleteVideo,
+  updateVideo
+} = require('../controllers/video/videoUploadController');
+const {
   getPlaceVideos,
   getUserVideos,
   getVideoFeed,
   getVideoDetails,
-  deleteVideo,
-  updateVideo
-} = require('../controllers/videoController');
+  getReelsFeed,
+  getUserReels,
+  getPlaceReels,
+  getPublicVideoDetails
+} = require('../controllers/video/videoFeedController');
+const {
+  likeReel,
+  unlikeReel,
+  trackReelView,
+  getVideoComments,
+  createVideoComment,
+  getVideoActivity,
+  getVideoLikes,
+  deleteVideoComment,
+  createVideoCommentReply,
+  likeVideoComment,
+  getVideoCommentReplies
+} = require('../controllers/video/videoSocialController');
+const {
+  getVideoShareInfo,
+  generateVideoShareLink
+} = require('../controllers/video/videoShareController');
 
 // Quota check
 router.get('/quota', protect, checkVideoQuota);
@@ -23,8 +50,8 @@ router.post('/upload/initiate', protect, uploadLimiter, initiateVideoUpload);
 router.post('/:videoId/upload/complete', protect, uploadLimiter, completeVideoUpload);
 
 // Embedded video endpoints - Also limited as they create content
-router.post('/embed', protect, uploadLimiter, require('../controllers/videoController').addEmbeddedVideo);
-router.get('/metadata', protect, require('../controllers/videoController').getVideoMetadata);
+router.post('/embed', protect, uploadLimiter, addEmbeddedVideo);
+router.get('/metadata', protect, getVideoMetadata);
 
 // Get videos
 router.get('/place/:placeId', getPlaceVideos);
@@ -32,37 +59,37 @@ router.get('/user/:userId', getUserVideos);
 router.get('/feed', protect, getVideoFeed);
 
 // Reels-specific endpoints
-router.get('/reels/feed', protect, require('../controllers/videoController').getReelsFeed);
-router.get('/reels/user/:userId', protect, require('../controllers/videoController').getUserReels);
-router.get('/reels/place/:placeId', protect, require('../controllers/videoController').getPlaceReels);
-router.post('/reels/:videoId/like', protect, require('../controllers/videoController').likeReel);
-router.delete('/reels/:videoId/like', protect, require('../controllers/videoController').unlikeReel);
-router.post('/reels/:videoId/view', protect, require('../controllers/videoController').trackReelView);
+router.get('/reels/feed', protect, getReelsFeed);
+router.get('/reels/user/:userId', protect, getUserReels);
+router.get('/reels/place/:placeId', protect, getPlaceReels);
+router.post('/reels/:videoId/like', protect, likeReel);
+router.delete('/reels/:videoId/like', protect, unlikeReel);
+router.post('/reels/:videoId/view', protect, trackReelView);
 
 // Video likes endpoint
 // "Remove me from this Moment" — tagged person only
-router.delete('/:videoId/tags/me', protect, require('../controllers/videoController').removeMyMomentTag);
+router.delete('/:videoId/tags/me', protect, removeMyMomentTag);
 
-router.get('/:videoId/likes', protect, require('../controllers/videoController').getVideoLikes);
+router.get('/:videoId/likes', protect, getVideoLikes);
 
 // Activity endpoint for videos
-router.get('/:videoId/activity', protect, require('../controllers/videoController').getVideoActivity);
+router.get('/:videoId/activity', protect, getVideoActivity);
 
 // Share link generation
-router.post('/:videoId/share', protect, require('../controllers/videoController').generateVideoShareLink);
+router.post('/:videoId/share', protect, generateVideoShareLink);
 // Public: metadata for the /share/video/:videoId landing page
-router.get('/:videoId/share-info', require('../controllers/videoController').getVideoShareInfo);
+router.get('/:videoId/share-info', getVideoShareInfo);
 
 // Public video access (no auth required)
-router.get('/public/:videoId', require('../controllers/videoController').getPublicVideoDetails);
+router.get('/public/:videoId', getPublicVideoDetails);
 
 // Comments endpoints for videos
-router.get('/:videoId/comments', protect, require('../controllers/videoController').getVideoComments);
-router.post('/:videoId/comments', protect, require('../controllers/videoController').createVideoComment);
-router.delete('/:videoId/comments/:commentId', protect, require('../controllers/videoController').deleteVideoComment);
-router.post('/:videoId/comments/:commentId/like', protect, require('../controllers/videoController').likeVideoComment);
-router.post('/:videoId/comments/:commentId/replies', protect, require('../controllers/videoController').createVideoCommentReply);
-router.get('/:videoId/comments/:commentId/replies', protect, require('../controllers/videoController').getVideoCommentReplies);
+router.get('/:videoId/comments', protect, getVideoComments);
+router.post('/:videoId/comments', protect, createVideoComment);
+router.delete('/:videoId/comments/:commentId', protect, deleteVideoComment);
+router.post('/:videoId/comments/:commentId/like', protect, likeVideoComment);
+router.post('/:videoId/comments/:commentId/replies', protect, createVideoCommentReply);
+router.get('/:videoId/comments/:commentId/replies', protect, getVideoCommentReplies);
 
 // `protect` is required: getVideoDetails resolves the viewer's relationship to
 // the owner (followers/connections visibility), which needs req.user.uid.
@@ -70,7 +97,7 @@ router.get('/:videoId/comments/:commentId/replies', protect, require('../control
 router.get('/:videoId', protect, getVideoDetails);
 
 // Video status check for polling
-router.get('/:videoId/status', protect, require('../controllers/videoController').checkVideoStatus);
+router.get('/:videoId/status', protect, checkVideoStatus);
 
 // Video management
 router.delete('/:videoId', protect, deleteVideo);
