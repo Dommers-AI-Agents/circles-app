@@ -59,6 +59,7 @@ class SettingsViewController: BaseTableViewController {
         case changePassword
         case passkey
         case manageAccounts
+        case logout
 
         var title: String {
             switch self {
@@ -66,6 +67,7 @@ class SettingsViewController: BaseTableViewController {
             case .changePassword: return "Change Password"
             case .passkey: return "Set Up Passkey"
             case .manageAccounts: return "Manage Accounts"
+            case .logout: return "Log Out"
             }
         }
     }
@@ -462,6 +464,21 @@ class SettingsViewController: BaseTableViewController {
         present(navController, animated: true)
     }
     
+    private func showLogoutConfirmation() {
+        AlertPresenter.showConfirmation(
+            title: "Log Out",
+            message: "Are you sure you want to log out?",
+            confirmTitle: "Log Out",
+            isDestructive: true,
+            from: self,
+            onConfirm: {
+                // The SceneDelegate's auth-state listener swaps the window to
+                // the login screen once local auth clears — no navigation here.
+                AuthService.shared.logout()
+            }
+        )
+    }
+
     private func showDeleteAccountConfirmation() {
         AlertPresenter.showConfirmation(
             title: "Delete Account",
@@ -674,9 +691,15 @@ extension SettingsViewController {
                 case .manageAccounts:
                     cell.textLabel?.text = row.title
                     cell.accessoryType = .disclosureIndicator
+                case .logout:
+                    var config = cell.defaultContentConfiguration()
+                    config.text = row.title
+                    config.textProperties.color = Constants.Colors.danger
+                    cell.contentConfiguration = config
+                    cell.accessoryType = .none
                 }
             }
-            
+
         case .privacy:
             if let row = PrivacyRow(rawValue: indexPath.row) {
                 cell.textLabel?.text = row.title
@@ -809,6 +832,8 @@ extension SettingsViewController {
                     setUpPasskey()
                 case .manageAccounts:
                     showAccountMerge()
+                case .logout:
+                    showLogoutConfirmation()
                 }
             }
             
