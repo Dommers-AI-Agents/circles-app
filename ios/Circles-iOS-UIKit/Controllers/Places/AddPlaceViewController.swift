@@ -2752,43 +2752,19 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
 
     // MARK: - Bare-address → business suggestion
 
-    /// True when a map item is a street-address entity rather than a business:
-    /// no POI category, and its name is just the address line MapKit builds
-    /// ("300 East Blvd" / "121 W Trade St").
+    /// A street-address entity rather than a business (see BareAddressHeuristic).
     private static func isBareAddressItem(_ mapItem: MKMapItem) -> Bool {
-        guard mapItem.pointOfInterestCategory == nil,
-              let name = mapItem.name, !name.isEmpty else { return false }
         let placemark = mapItem.placemark
-        let streetLine = [placemark.subThoroughfare, placemark.thoroughfare]
-            .compactMap { $0 }.joined(separator: " ")
-        let normalize = { (s: String) in
-            s.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted)
-                .filter { !$0.isEmpty }.joined(separator: " ")
-        }
-        let normName = normalize(name)
-        guard !normName.isEmpty else { return false }
-        return normName == normalize(streetLine)
-            || normName == normalize(placemark.thoroughfare ?? "")
+        return BareAddressHeuristic.isBareAddress(
+            name: mapItem.name,
+            hasPointOfInterestCategory: mapItem.pointOfInterestCategory != nil,
+            subThoroughfare: placemark.subThoroughfare,
+            thoroughfare: placemark.thoroughfare
+        )
     }
 
-    /// Business/address name kinship: the business name's tokens are contained
-    /// in the address line ("300 East" ⊂ "300 East Blvd") or vice versa —
-    /// Wes's rule: only suggest a business with the same or almost-same name.
     private static func namesRelated(business: String, address: String) -> Bool {
-        let tokens = { (s: String) -> [String] in
-            s.lowercased()
-                .folding(options: .diacriticInsensitive, locale: nil)
-                .components(separatedBy: CharacterSet.alphanumerics.inverted)
-                .filter { !$0.isEmpty }
-        }
-        let b = tokens(business)
-        let a = tokens(address)
-        guard !b.isEmpty, !a.isEmpty else { return false }
-        let bSet = Set(b), aSet = Set(a)
-        if bSet.isSubset(of: aSet) || aSet.isSubset(of: bSet) { return true }
-        // Prefix kinship covers abbreviation drift ("W Trade" vs "West Trade")
-        let overlap = bSet.intersection(aSet).count
-        return overlap >= 2 && overlap >= b.count - 1
+        BareAddressHeuristic.namesRelated(business: business, address: address)
     }
 
     private func offerBusinessSuggestionIfBareAddress(for addressItem: MKMapItem) {
@@ -3317,75 +3293,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }
     
     func setCategoryFromGoogleTypes(_ types: [String]) {
-        // Reset subcategory
-        selectedSubcategory = nil
-        
-        // Check types and set appropriate category
-        if types.contains("restaurant") || types.contains("food") {
-            selectedCategory = .restaurant
-            // Try to set subcategory based on more specific types
-            if types.contains("meal_takeaway") || types.contains("meal_delivery") {
-                selectedSubcategory = "Fast Food"
-            } else if types.contains("bakery") {
-                selectedSubcategory = "Bakery"
-            }
-        } else if types.contains("cafe") {
-            selectedCategory = .cafe
-            if types.contains("coffee_shop") {
-                selectedSubcategory = "Coffee Shop"
-            }
-        } else if types.contains("bar") || types.contains("night_club") {
-            selectedCategory = .bar
-            if types.contains("night_club") {
-                selectedSubcategory = "Nightclub"
-            }
-        } else if types.contains("lodging") || types.contains("hotel") {
-            selectedCategory = .hotel
-        } else if types.contains("store") || types.contains("shopping_mall") {
-            selectedCategory = .retail
-            if types.contains("grocery_or_supermarket") {
-                selectedSubcategory = "Grocery Store"
-            } else if types.contains("clothing_store") {
-                selectedSubcategory = "Clothing Store"
-            } else if types.contains("electronics_store") {
-                selectedSubcategory = "Electronics"
-            }
-        } else if types.contains("beauty_salon") || types.contains("hair_care") || types.contains("spa") {
-            selectedCategory = .service
-            if types.contains("beauty_salon") {
-                selectedSubcategory = "Beauty Salon"
-            } else if types.contains("hair_care") {
-                selectedSubcategory = "Hair Salon"
-            } else if types.contains("spa") {
-                selectedSubcategory = "Spa"
-            }
-        } else if types.contains("gym") || types.contains("health") {
-            selectedCategory = .fitness
-            if types.contains("gym") {
-                selectedSubcategory = "Gym"
-            }
-        } else if types.contains("doctor") || types.contains("hospital") || types.contains("pharmacy") {
-            selectedCategory = .healthcare
-            if types.contains("doctor") {
-                selectedSubcategory = "Doctor"
-            } else if types.contains("hospital") {
-                selectedSubcategory = "Hospital"
-            } else if types.contains("pharmacy") {
-                selectedSubcategory = "Pharmacy"
-            }
-        } else if types.contains("tourist_attraction") || types.contains("museum") || types.contains("park") {
-            selectedCategory = .attraction
-            if types.contains("museum") {
-                selectedSubcategory = "Museum"
-            } else if types.contains("park") {
-                selectedSubcategory = "Park"
-            }
-        } else if types.contains("movie_theater") {
-            selectedCategory = .entertainment
-            selectedSubcategory = "Movie Theater"
-        } else {
-            selectedCategory = .other
-        }
+        let mapping = PlaceCategoryMapper.mapping(forGoogleTypes: types)
+        selectedCategory = mapping.category
+        selectedSubcategory = mapping.subcategory
         
         // Update category button text
         if let subcategory = selectedSubcategory {
@@ -3513,77 +3423,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return addressComponents.joined(separator: ", ")
     }
     
-    func determinePlaceCategory(from types: [String]) -> PlaceCategory {
-        // Check for specific types in order of priority
-        if types.contains("restaurant") { return .restaurant }
-        if types.contains("cafe") { return .cafe }
-        if types.contains("bar") { return .bar }
-        if types.contains("lodging") || types.contains("hotel") { return .hotel }
-        if types.contains("store") || types.contains("shopping_mall") { return .retail }
-        if types.contains("tourist_attraction") || types.contains("museum") { return .attraction }
-        if types.contains("health") || types.contains("hospital") || types.contains("doctor") { return .healthcare }
-        if types.contains("gym") || types.contains("spa") { return .fitness }
-        if types.contains("movie_theater") || types.contains("night_club") { return .entertainment }
-        
-        // Default to service
-        return .service
-    }
-    
-    func getCategoryForMapItem(_ mapItem: MKMapItem) -> String {
-        if let category = mapItem.pointOfInterestCategory {
-            switch category {
-            case .restaurant: return "Restaurant"
-            case .cafe: return "Café"
-            case .nightlife, .brewery, .winery: return "Bar"
-            case .store, .foodMarket: return "Shop"
-            case .gasStation: return "Gas Station"
-            case .hotel: return "Hotel"
-            case .park: return "Park"
-            case .pharmacy: return "Pharmacy"
-            case .bank, .atm: return "Bank"
-            default: return "Place"
-            }
-        }
-        return "Place"
-    }
-    
     func getCategoryDescription(for category: MKPointOfInterestCategory) -> String {
-        switch category {
-        case .restaurant: return "A dining establishment"
-        case .cafe: return "A coffee shop or casual dining spot"
-        case .nightlife, .brewery, .winery: return "A bar or nightlife venue"
-        case .hotel, .campground: return "Accommodation services"
-        case .store, .foodMarket: return "Retail shopping location"
-        case .gasStation, .evCharger: return "Vehicle fueling or charging station"
-        case .parking: return "Parking facility"
-        case .carRental: return "Car rental services"
-        case .laundry: return "Laundry services"
-        case .postOffice: return "Postal services"
-        case .bank, .atm: return "Banking and financial services"
-        case .pharmacy: return "Pharmacy and medication services"
-        case .hospital: return "Healthcare services"
-        case .fireStation, .police: return "Emergency services"
-        case .publicTransport: return "Public transportation"
-        case .school, .university: return "Educational institution"
-        case .library: return "Library and information services"
-        case .movieTheater: return "Movie theater entertainment"
-        case .museum: return "Museum and cultural exhibits"
-        case .park, .beach, .nationalPark: return "Outdoor recreation area"
-        case .theater: return "Theater and performing arts venue"
-        case .zoo, .aquarium: return "Animal exhibits and attractions"
-        case .amusementPark: return "Amusement park and rides"
-        case .stadium: return "Sports and event venue"
-        case .marina: return "Marina and boating services"
-        default:
-            if #available(iOS 18.0, *) {
-                switch category {
-                case .miniGolf: return "Mini golf recreation"
-                case .castle, .landmark: return "Historical landmark or attraction"
-                default: return "Local business or point of interest"
-                }
-            } else {
-                return "Local business or point of interest"
-            }
-        }
+        category.placeDescription
     }
 }

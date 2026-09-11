@@ -268,5 +268,3 @@ extension AddPlaceViewController {
         mapView.setRegion(region, animated: true)
     }
 }
-
-// MARK: - PHPickerViewControllerDelegate

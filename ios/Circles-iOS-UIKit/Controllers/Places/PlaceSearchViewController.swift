@@ -347,43 +347,7 @@ class PlaceSearchViewController: BaseViewController {
     }
     
     private func getCategoryDescription(for category: MKPointOfInterestCategory) -> String {
-        switch category {
-        case .restaurant: return "A dining establishment"
-        case .cafe: return "A coffee shop or casual dining spot"
-        case .nightlife, .brewery, .winery: return "A bar or nightlife venue"
-        case .hotel, .campground: return "Accommodation services"
-        case .store, .foodMarket: return "Retail shopping location"
-        case .gasStation, .evCharger: return "Vehicle fueling or charging station"
-        case .parking: return "Parking facility"
-        case .carRental: return "Car rental services"
-        case .laundry: return "Laundry services"
-        case .postOffice: return "Postal services"
-        case .bank, .atm: return "Banking and financial services"
-        case .pharmacy: return "Pharmacy and medication services"
-        case .hospital: return "Healthcare services"
-        case .fireStation, .police: return "Emergency services"
-        case .publicTransport: return "Public transportation"
-        case .school, .university: return "Educational institution"
-        case .library: return "Library and information services"
-        case .movieTheater: return "Movie theater entertainment"
-        case .museum: return "Museum and cultural exhibits"
-        case .park, .beach, .nationalPark: return "Outdoor recreation area"
-        case .theater: return "Theater and performing arts venue"
-        case .zoo, .aquarium: return "Animal exhibits and attractions"
-        case .amusementPark: return "Amusement park and rides"
-        case .stadium: return "Sports and event venue"
-        case .marina: return "Marina and boating services"
-        default:
-            if #available(iOS 18.0, *) {
-                switch category {
-                case .miniGolf: return "Mini golf recreation"
-                case .castle, .landmark: return "Historical landmark or attraction"
-                default: return "Local business or point of interest"
-                }
-            } else {
-                return "Local business or point of interest"
-            }
-        }
+        category.placeDescription
     }
     
     private func handlePlaceSelection(_ mapItem: MKMapItem, originalAddress: String? = nil) {

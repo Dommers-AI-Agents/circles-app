@@ -2751,26 +2751,6 @@ extension CircleDetailViewController: PlaceSearchDelegate {
         }
     }
     
-    private func determinePlaceCategory(from types: [String]) -> PlaceCategory {
-        // Check for specific place types and map to our categories
-        if types.contains("restaurant") { return .restaurant }
-        if types.contains("cafe") { return .cafe }
-        if types.contains("bar") || types.contains("night_club") { return .bar }
-        if types.contains("lodging") || types.contains("hotel") { return .hotel }
-        if types.contains("store") || types.contains("shopping_mall") { return .retail }
-        if types.contains("hospital") || types.contains("doctor") || types.contains("pharmacy") { return .healthcare }
-        if types.contains("gym") || types.contains("health") { return .fitness }
-        if types.contains("school") || types.contains("university") { return .education }
-        if types.contains("park") || types.contains("campground") { return .outdoor }
-        if types.contains("movie_theater") || types.contains("museum") || types.contains("art_gallery") { return .entertainment }
-        if types.contains("bus_station") || types.contains("subway_station") || types.contains("train_station") { return .transport }
-        if types.contains("bank") || types.contains("atm") { return .finance }
-        if types.contains("tourist_attraction") || types.contains("point_of_interest") { return .attraction }
-        
-        // Default to service or other
-        if types.contains("establishment") { return .service }
-        return .other
-    }
 }
 
 // MARK: - Helper Methods
