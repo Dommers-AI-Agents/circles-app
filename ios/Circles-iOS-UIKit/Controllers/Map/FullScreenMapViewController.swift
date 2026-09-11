@@ -221,16 +221,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         guard !coordinates.isEmpty else { return }
 
         if coordinates.count == 1, let only = coordinates.first {
-            mapView.setRegion(MKCoordinateRegion(
-                center: only, latitudinalMeters: 2_000, longitudinalMeters: 2_000
-            ), animated: animated)
+            mapView.setRegion(MapRegionFitter.singleRegion(only), animated: animated)
             return
         }
 
-        var union = MKMapRect.null
-        for coordinate in coordinates {
-            union = union.union(MKMapRect(origin: MKMapPoint(coordinate), size: MKMapSize(width: 0, height: 0)))
-        }
+        guard let union = MapRegionFitter.enclosingRect(coordinates) else { return }
         let padding = UIEdgeInsets(top: 170, left: 44, bottom: 70, right: 44)
         mapView.setVisibleMapRect(union, edgePadding: padding, animated: animated)
     }
@@ -1658,31 +1653,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
             Logger.debug("  - Coordinates for zoom: \(coordinates.count)")
 
-            if !coordinates.isEmpty {
-                // Calculate center and span to show all filtered places
-                let minLat = coordinates.map { $0.latitude }.min() ?? 0
-                let maxLat = coordinates.map { $0.latitude }.max() ?? 0
-                let minLon = coordinates.map { $0.longitude }.min() ?? 0
-                let maxLon = coordinates.map { $0.longitude }.max() ?? 0
-
-                let center = CLLocationCoordinate2D(
-                    latitude: (minLat + maxLat) / 2,
-                    longitude: (minLon + maxLon) / 2
-                )
-
-                // Add padding to the span, clamped to MapKit's valid limits so
-                // setRegion never silently rejects the region
-                let latDelta = min(max((maxLat - minLat) * 1.3, 0.01), 180)
-                let lonDelta = min(max((maxLon - minLon) * 1.3, 0.01), 360)
-                
-                let span = MKCoordinateSpan(
-                    latitudeDelta: latDelta,
-                    longitudeDelta: lonDelta
-                )
-                
-                Logger.debug("  - Setting region to center: \(center), span: \(span)")
-                
-                let region = MKCoordinateRegion(center: center, span: span)
+            // Padded to the span, clamped to MapKit's valid limits so
+            // setRegion never silently rejects the region
+            if let region = MapRegionFitter.boundingRegion(coordinates, clampSpan: true) {
+                Logger.debug("  - Setting region to center: \(region.center), span: \(region.span)")
                 mapView.setRegion(region, animated: true)
                 issuedRegionChange = true
                 hasInitiallyZoomed = true
@@ -1696,29 +1670,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             let focusPlaces = ownPlaces.isEmpty ? filteredPlaces : ownPlaces
 
             if let userLocation = userLocation {
-                let minRadius: CLLocationDistance = 3_218.7   // 2 miles
-                let maxRadius: CLLocationDistance = 40_233.6  // 25 miles
-
-                let distances = focusPlaces
-                    .compactMap { place -> CLLocationDistance? in
-                        guard let placeLocation = place.location?.clLocation else { return nil }
-                        return userLocation.distance(from: placeLocation)
-                    }
-                    .sorted()
-
-                var radius = maxRadius
-                if !distances.isEmpty {
-                    let withinMax = distances.filter { $0 <= maxRadius }.count
-                    if withinMax >= 3 {
-                        // Enough favorites nearby: fit the closest 10 (or all nearby ones)
-                        let targetIndex = min(9, withinMax - 1)
-                        radius = min(max(distances[targetIndex] * 1.2, minRadius), maxRadius)
-                    } else {
-                        // Favorites are far away: zoom out just enough to show the nearest few
-                        let targetIndex = min(2, distances.count - 1)
-                        radius = max(distances[targetIndex] * 1.2, minRadius)
-                    }
+                let distances = focusPlaces.compactMap { place -> CLLocationDistance? in
+                    guard let placeLocation = place.location?.clLocation else { return nil }
+                    return userLocation.distance(from: placeLocation)
                 }
+                let radius = MapRegionFitter.focusRadius(distances: distances)
 
                 Logger.debug("  - Default region: \(focusPlaces.count) focus places (\(ownPlaces.count) own), radius \(Int(radius))m")
 
@@ -1739,24 +1695,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                     }
                 }
                 
-                if !coordinates.isEmpty {
-                    // Calculate center and span to show all places
-                    let minLat = coordinates.map { $0.latitude }.min() ?? 0
-                    let maxLat = coordinates.map { $0.latitude }.max() ?? 0
-                    let minLon = coordinates.map { $0.longitude }.min() ?? 0
-                    let maxLon = coordinates.map { $0.longitude }.max() ?? 0
-                    
-                    let center = CLLocationCoordinate2D(
-                        latitude: (minLat + maxLat) / 2,
-                        longitude: (minLon + maxLon) / 2
-                    )
-                    
-                    let span = MKCoordinateSpan(
-                        latitudeDelta: (maxLat - minLat) * 1.3,
-                        longitudeDelta: (maxLon - minLon) * 1.3
-                    )
-                    
-                    let region = MKCoordinateRegion(center: center, span: span)
+                if let region = MapRegionFitter.boundingRegion(coordinates, clampSpan: false) {
                     mapView.setRegion(region, animated: !hasInitiallyZoomed)
                     issuedRegionChange = true
                     hasInitiallyZoomed = true
@@ -2100,50 +2039,13 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     // MARK: - Helper Methods for POI Duplicate Detection
     
     private func checkIfPOIAlreadyExists(name: String, coordinate: CLLocationCoordinate2D) -> Bool {
-        // Check all places (including filtered and unfiltered)
-        let allPlacesToCheck = viewMode == .allPlaces ? places : filteredPlaces
-        
-        // Check by name and proximity (within ~100 meters)
-        for place in allPlacesToCheck {
-            guard let placeLocation = place.location?.clLocation else { continue }
-            
-            // Check name similarity (case insensitive)
-            let nameMatch = place.name.lowercased() == name.lowercased() ||
-                           place.name.lowercased().contains(name.lowercased()) ||
-                           name.lowercased().contains(place.name.lowercased())
-            
-            // Check location proximity (100 meters)
-            let distance = placeLocation.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
-            let locationMatch = distance < 100 // 100 meters
-            
-            if nameMatch && locationMatch {
-                return true
-            }
-        }
-        
-        return false
+        findExistingPlace(name: name, coordinate: coordinate) != nil
     }
     
     private func findExistingPlace(name: String, coordinate: CLLocationCoordinate2D) -> Place? {
-        // Find the exact place that matches
+        // Check all places (including filtered and unfiltered)
         let allPlacesToCheck = viewMode == .allPlaces ? places : filteredPlaces
-        
-        for place in allPlacesToCheck {
-            guard let placeLocation = place.location?.clLocation else { continue }
-            
-            let nameMatch = place.name.lowercased() == name.lowercased() ||
-                           place.name.lowercased().contains(name.lowercased()) ||
-                           name.lowercased().contains(place.name.lowercased())
-            
-            let distance = placeLocation.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
-            let locationMatch = distance < 100 // 100 meters
-            
-            if nameMatch && locationMatch {
-                return place
-            }
-        }
-        
-        return nil
+        return POIDuplicateMatcher.existingPlace(named: name, at: coordinate, in: allPlacesToCheck)
     }
     
     private func loadPlacesForCurrentView() {
@@ -2436,17 +2338,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // by several people, or into multiple circles, was showing twice) —
         // mirrors the home list via the shared Place.dedupedByVenue.
         let deduped = Place.dedupedByVenue(filteredPlaces, preferredOwnerId: AuthService.shared.getUserId() ?? "")
-        distanceSortedPlaces = deduped.map { place in
-            let distance = place.location?.clLocation.map { reference.distance(from: $0) }
-            return (place: place, distance: distance)
-        }.sorted { lhs, rhs in
-            switch (lhs.distance, rhs.distance) {
-            case let (l?, r?): return l < r
-            case (_?, nil): return true
-            case (nil, _?): return false
-            case (nil, nil): return lhs.place.name.localizedCaseInsensitiveCompare(rhs.place.name) == .orderedAscending
-            }
-        }
+        distanceSortedPlaces = DistancePlaceSorter.sorted(deduped, from: reference)
 
         if distanceSortedPlaces.isEmpty {
             let emptyLabel = UILabel()
