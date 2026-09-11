@@ -1735,10 +1735,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             // Show videos/moments
             Logger.debug("📹 Switching to Moments tab")
             
-            // TEMPORARY: Clear image cache to debug duplicate thumbnails
-            ImageService.shared.clearAllCaches()
-            Logger.debug("🧹 Cleared all image caches for debugging")
-            
             circlesCollectionView.isHidden = true
             uploadsTab.setActive(false)
             mapContainerView.isHidden = true
