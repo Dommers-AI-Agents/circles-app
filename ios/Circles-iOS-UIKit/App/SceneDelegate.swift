@@ -206,11 +206,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         
         // Handle Universal Links from our backend (branded domain and the
         // legacy run.app host - old shared links must keep working)
-        let universalLinkHosts = [
-            "api.favcircles.com",
-            "circles-backend-196924649787.us-central1.run.app"
-        ]
-        if let host = url.host, universalLinkHosts.contains(host) {
+        if let host = url.host, DeepLinkRouter.universalLinkHosts.contains(host) {
             handleUniversalLink(url)
         }
     }
@@ -716,319 +712,121 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         Logger.debug("📱 SceneDelegate: handleURLContext called with URL: \(url.absoluteString)")
         handleDeepLink(url)
     }
-    
+
+    /// Universal links (https://api.favcircles.com/…). `DeepLinkRouter` decides
+    /// WHERE (unit tested); `route(_:)` decides HOW.
     private func handleUniversalLink(_ url: URL) {
-        // Handle Universal Links from our backend
         Logger.debug("📱 SceneDelegate: Processing Universal Link with path: \(url.path)")
-        
-        let pathComponents = url.pathComponents.filter { $0 != "/" }
-        
-        // Check if it's an /app/* path
-        if pathComponents.first == "app" && pathComponents.count >= 2 {
-            let appPath = pathComponents[1]
-            
-            switch appPath {
-            case "daily-summary":
-                navigateToDailySummary()
-            case "open":
-                // Handle generic open with path parameter
-                if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
-                   let pathParam = urlComponents.queryItems?.first(where: { $0.name == "path" })?.value {
-                    handleOpenPath(pathParam)
-                }
-            case "video":
-                if pathComponents.count >= 3 {
-                    let videoId = pathComponents[2]
-                    navigateToVideo(videoId: videoId)
-                }
-            case "circle":
-                if pathComponents.count >= 3 {
-                    let circleId = pathComponents[2]
-                    handleCircleLink(circleId: circleId, url: url)
-                }
-            case "connect":
-                if pathComponents.count >= 3 {
-                    let userId = pathComponents[2]
-                    stashInviteReferralCode(from: url)
-                    handleConnectionInvite(from: userId)
-                }
-            case "import":
-                // Shared from Help → Importing Your Places; receivers without
-                // the app get the website guide via the backend redirect
-                presentImportFlow()
-            case "map":
-                // Weekly map-digest email: open the user's own map, focused
-                // on the emailed category when one rides along
-                let focus = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                    .queryItems?.first(where: { $0.name == "focus" })?.value
-                navigateToAllPlacesMap(focusCategory: focus)
-            default:
-                Logger.debug("📱 SceneDelegate: Unknown app path: \(appPath)")
-            }
-        } else if pathComponents.first == "daily-summary" {
-            navigateToDailySummary()
-        } else if pathComponents.first == "video" && pathComponents.count >= 2 {
-            let videoId = pathComponents[1]
-            navigateToVideo(videoId: videoId)
-        } else if pathComponents.first == "share" && pathComponents.count >= 3 && pathComponents[1] == "video" {
-            // Shared moment links (https://<backend>/share/video/<id>) open
-            // the moment directly when the app is installed
-            let videoId = pathComponents[2]
-            navigateToVideo(videoId: videoId)
-        } else if pathComponents.first == "circle" && pathComponents.count >= 2 {
-            let circleId = pathComponents[1]
-            handleCircleLink(circleId: circleId, url: url)
-        } else if pathComponents.first == "place" && pathComponents.count >= 2 {
-            // Shared place links (https://<backend>/place/<id>?ref=<userId>)
-            // open the place directly, carrying share attribution
-            let placeId = pathComponents[1]
-            let refUserId = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                .queryItems?.first(where: { $0.name == "ref" })?.value
-            navigateToPlace(placeId: placeId, refUserId: refUserId)
-        } else if pathComponents.first == "user" && pathComponents.count >= 2 {
-            // Shared profile links (https://<backend>/user/<id>)
-            let userId = pathComponents[1]
-            navigateToUserProfile(userId: userId)
-        } else if pathComponents.first == "connect" && pathComponents.count >= 2 {
-            // Shared connect links (https://<backend>/connect/<id>?code=<referral>)
-            let userId = pathComponents[1]
-            stashInviteReferralCode(from: url)
-            handleConnectionInvite(from: userId)
-        } else if pathComponents.first == "s" && pathComponents.count >= 2 {
-            // Physical sticker QR code: https://<backend>/s/<code>
-            let code = pathComponents[1]
-            handleStickerCode(code)
+        guard let destination = DeepLinkRouter().destination(for: url) else {
+            Logger.debug("📱 SceneDelegate: Unknown universal link path: \(url.path)")
+            return
         }
+        route(destination)
     }
 
-    /// Circle universal links may carry a ?share= token granting view access
-    /// to private circles — validate it the same way the custom-scheme path
-    /// does instead of dropping it
-    private func handleCircleLink(circleId: String, url: URL) {
-        if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
-           let shareToken = urlComponents.queryItems?.first(where: { $0.name == "share" })?.value {
-            handleSharedCircleWithToken(circleId: circleId, shareToken: shareToken)
-        } else {
-            navigateToCircle(circleId: circleId)
-        }
-    }
-    
-    private func handleOpenPath(_ path: String) {
-        // Handle specific paths
-        if path == "settings/notifications" {
-            navigateToNotificationSettings()
-        } else if path == "network" || path == "network/find-friends" {
-            guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
-                // Cold start from an email tap: the interface isn't up yet —
-                // stash so the link survives (it used to be dropped silently)
-                UserDefaults.standard.set("network", forKey: "pendingDeepLink")
-                return
-            }
-            tabBarController.selectedIndex = 1 // Network tab
-        } else if path == "add-place" {
-            // Welcome-email CTA: open the Add Place flow directly
-            guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
-                UserDefaults.standard.set("add-place", forKey: "pendingDeepLink")
-                return
-            }
-            tabBarController.selectedIndex = 0 // Home tab
-            if let navController = tabBarController.viewControllers?.first as? UINavigationController,
-               let homeVC = navController.viewControllers.first as? CirclesHomeViewController {
-                navController.popToRootViewController(animated: false)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    homeVC.quickAddPlaceButtonTapped()
-                }
-            }
-        } else if path == "me" {
-            // Business/claim emails: venue management lives on the Me tab
-            guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
-                UserDefaults.standard.set("me", forKey: "pendingDeepLink")
-                return
-            }
-            tabBarController.selectedIndex = 3
-        }
-    }
-    
+    /// Custom-scheme links (circles://…).
     func handleDeepLink(_ url: URL) {
-        // Parse the URL and navigate to the appropriate screen
-        guard url.scheme == "circles" else {
+        guard url.scheme == DeepLinkRouter.customScheme else {
             Logger.debug("📱 SceneDelegate: URL scheme '\(url.scheme ?? "nil")' is not 'circles', returning")
             return
         }
-        
         Logger.debug("📱 SceneDelegate: Processing deep link with path: \(url.path)")
-        Logger.debug("📱 SceneDelegate: Path components: \(url.pathComponents)")
-        Logger.debug("📱 SceneDelegate: Path components count: \(url.pathComponents.count)")
-        
-        // Handle different path components
-        let components = url.pathComponents
-        
-        // Log each component for debugging
-        for (index, component) in components.enumerated() {
-            Logger.debug("📱 SceneDelegate: Component[\(index)]: '\(component)'")
+        guard let destination = DeepLinkRouter().destination(for: url) else {
+            Logger.debug("📱 SceneDelegate: Unrecognized deep link: \(url.absoluteString)")
+            return
         }
-        
-        // Handle deep linking after app is fully loaded
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            Logger.debug("📱 SceneDelegate: Inside dispatch queue, processing components")
-            
-            // First check if this is a host-based URL format (e.g., circles://connect/userId)
-            if url.host == "connect" {
-                // Handle circles://connect/userId format where "connect" is the host
-                Logger.debug("📱 SceneDelegate: Detected 'connect' as host")
-                let userId = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                Logger.debug("📱 SceneDelegate: Extracted userId from path: \(userId)")
-                if !userId.isEmpty {
-                    Logger.debug("📱 SceneDelegate: Calling handleConnectionInvite with userId: \(userId)")
-                    self.stashInviteReferralCode(from: url)
-                    self.handleConnectionInvite(from: userId)
-                    return
-                }
-            }
-            
-            // Handle video deep links (e.g., circles://video/[videoId])
-            if url.host == "video" {
-                Logger.debug("📱 SceneDelegate: Detected 'video' as host")
-                let videoId = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                Logger.debug("📱 SceneDelegate: Extracted videoId from path: \(videoId)")
-                if !videoId.isEmpty {
-                    Logger.debug("📱 SceneDelegate: Calling handleVideoDeepLink with videoId: \(videoId)")
-                    self.handleVideoDeepLink(videoId: videoId)
-                    return
-                }
-            }
-            
-            // Handle referral deep links (e.g., circles://referral?code=ABC123)
-            if url.host == "referral" {
-                Logger.debug("📱 SceneDelegate: Detected 'referral' as host")
-                if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
-                   let code = urlComponents.queryItems?.first(where: { $0.name == "code" })?.value {
-                    Logger.debug("📱 SceneDelegate: Found referral code: \(code)")
-                    self.handleReferralCode(code)
-                    return
-                }
-            }
-            
-            // Handle sticker deep links (e.g., circles://sticker?code=AB12CD)
-            // used by the sticker landing page fallback for in-app browsers
-            if url.host == "sticker" {
-                Logger.debug("📱 SceneDelegate: Detected 'sticker' as host")
-                if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
-                   let code = urlComponents.queryItems?.first(where: { $0.name == "code" })?.value {
-                    Logger.debug("📱 SceneDelegate: Found sticker code: \(code)")
-                    self.handleStickerCode(code)
-                    return
-                }
-            }
+        // Scheme links can arrive before the interface is fully up — give it a beat
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.route(destination)
+        }
+    }
 
-            // Handle daily summary deep link (e.g., circles://daily-summary)
-            if url.host == "daily-summary" {
-                Logger.debug("📱 SceneDelegate: Detected 'daily-summary' deep link")
-                self.navigateToDailySummary()
-                return
+    /// Presentation for a parsed link.
+    private func route(_ destination: DeepLinkDestination) {
+        switch destination {
+        case .dailySummary:
+            navigateToDailySummary()
+        case .video(let id, let promptsLogin):
+            if promptsLogin { handleVideoDeepLink(videoId: id) } else { navigateToVideo(videoId: id) }
+        case .circle(let id, let shareToken):
+            // A ?share= token grants view access to a private circle —
+            // validate it instead of dropping it
+            if let shareToken {
+                handleSharedCircleWithToken(circleId: id, shareToken: shareToken)
+            } else {
+                navigateToCircle(circleId: id)
             }
+        case .sharedCircle(let shareId):
+            handleSharedCircle(shareId: shareId)
+        case .place(let id, let refUserId):
+            navigateToPlace(placeId: id, refUserId: refUserId)
+        case .placeFromExtension(let id):
+            // The share extension writes the pending-open mailbox as a
+            // fallback before trying this deep link — consume it so the
+            // next cold launch doesn't navigate here a second time
+            _ = PendingOpenPlaceMailbox.take()
+            navigateToPlace(placeId: id)
+        case .userProfile(let id):
+            navigateToUserProfile(userId: id)
+        case .connectionInvite(let userId, let referralCode):
+            stashInviteReferralCode(referralCode)
+            handleConnectionInvite(from: userId)
+        case .importFlow:
+            // Shared from Help → Importing Your Places; receivers without
+            // the app get the website guide via the backend redirect
+            presentImportFlow()
+        case .allPlacesMap(let focusCategory):
+            // Weekly map-digest email: the user's own map, focused on the
+            // emailed category when one rides along
+            navigateToAllPlacesMap(focusCategory: focusCategory)
+        case .notificationSettings:
+            navigateToNotificationSettings()
+        case .network:
+            selectTabOrStash(index: 1, pendingKey: "network")
+        case .addPlace:
+            openAddPlaceFlow()
+        case .meTab:
+            // Business/claim emails: venue management lives on the Me tab
+            selectTabOrStash(index: 3, pendingKey: "me")
+        case .referral(let code):
+            handleReferralCode(code)
+        case .sticker(let code):
+            handleStickerCode(code)
+        case .upgradePaywall:
+            // The share extension's "Upgrade in FavCircles" path (IAP can't
+            // run in extensions). Consume the mailbox flag so the next cold
+            // launch doesn't present the paywall a second time.
+            _ = PendingUpgradeMailbox.take()
+            presentUpgradePaywall()
+        }
+    }
 
-            // Handle place deep links (e.g., circles://place/placeId) — used by
-            // the home-screen widget and Spotlight-adjacent surfaces. Universal
-            // links reach places via api.favcircles.com/place/<id>; this is the
-            // scheme twin that always opens the app directly.
-            if url.host == "place" {
-                Logger.debug("📱 SceneDelegate: Detected 'place' as host")
-                let placeId = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                if !placeId.isEmpty {
-                    // The share extension writes the pending-open mailbox as a
-                    // fallback before trying this deep link — consume it so the
-                    // next cold launch doesn't navigate here a second time
-                    _ = PendingOpenPlaceMailbox.take()
-                    self.navigateToPlace(placeId: placeId)
-                    return
-                }
-            }
+    /// Email CTAs can land on a cold start before the interface is up —
+    /// stash the target so the link survives (it used to be dropped silently).
+    private func selectTabOrStash(index: Int, pendingKey: String) {
+        guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+            UserDefaults.standard.set(pendingKey, forKey: "pendingDeepLink")
+            return
+        }
+        tabBarController.selectedIndex = index
+    }
 
-            // Handle upgrade deep link (circles://upgrade) — the share
-            // extension's "Upgrade in FavCircles" path (IAP can't run in
-            // extensions). Consume the mailbox flag so the next cold launch
-            // doesn't present the paywall a second time.
-            if url.host == "upgrade" {
-                Logger.debug("📱 SceneDelegate: Detected 'upgrade' deep link")
-                _ = PendingUpgradeMailbox.take()
-                self.presentUpgradePaywall()
-                return
-            }
-
-            // Handle network deep link (e.g., circles://network) — used by the
-            // connection-accepted email's "View Connection" button
-            if url.host == "network" {
-                Logger.debug("📱 SceneDelegate: Detected 'network' deep link")
-                self.navigateToMyNetwork()
-                return
-            }
-            
-            // Handle settings/notifications deep link (e.g., circles://settings/notifications)
-            if url.host == "settings" && url.path == "/notifications" {
-                Logger.debug("📱 SceneDelegate: Detected 'settings/notifications' deep link")
-                self.navigateToNotificationSettings()
-                return
-            }
-            
-            // Handle circle deep links with share tokens (e.g., circles://circle/circleId?share=shareToken)
-            if url.host == "circle" {
-                Logger.debug("📱 SceneDelegate: Detected 'circle' as host")
-                let circleId = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                Logger.debug("📱 SceneDelegate: Extracted circleId from path: \(circleId)")
-                
-                // Check for share token in query parameters
-                if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
-                   let shareToken = urlComponents.queryItems?.first(where: { $0.name == "share" })?.value {
-                    Logger.debug("📱 SceneDelegate: Found share token: \(shareToken)")
-                    self.handleSharedCircleWithToken(circleId: circleId, shareToken: shareToken)
-                    return
-                } else if !circleId.isEmpty {
-                    // Regular circle navigation without share token
-                    self.navigateToCircle(circleId: circleId)
-                    return
-                }
-            }
-            
-            // Then check path-based URL format (e.g., circles:///connect/userId)
-            if components.count >= 2 {
-                if components[1] == "circle" && components.count >= 3 {
-                    // Example: circles://circle/circle_123
-                    let circleId = components[2]
-                    
-                    // Check for share token in query parameters
-                    if let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
-                       let shareToken = urlComponents.queryItems?.first(where: { $0.name == "share" })?.value {
-                        Logger.debug("📱 SceneDelegate: Found share token in path format: \(shareToken)")
-                        self.handleSharedCircleWithToken(circleId: circleId, shareToken: shareToken)
-                    } else {
-                        self.navigateToCircle(circleId: circleId)
-                    }
-                } else if components[1] == "share" && components.count >= 4 && components[2] == "circle" {
-                    // Example: circles://share/circle/shareId_123
-                    let shareId = components[3]
-                    self.handleSharedCircle(shareId: shareId)
-                } else if components[1] == "place" && components.count >= 3 {
-                    // Example: circles://place/place_123?ref=user_456
-                    let placeId = components[2]
-                    let refUserId = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                        .queryItems?.first(where: { $0.name == "ref" })?.value
-                    self.navigateToPlace(placeId: placeId, refUserId: refUserId)
-                } else if components[1] == "user" && components.count >= 3 {
-                    // Example: circles://user/user_123
-                    let userId = components[2]
-                    self.navigateToUserProfile(userId: userId)
-                } else if components[1] == "connect" && components.count >= 3 {
-                    // Example: circles:///connect/user_123 (with triple slash)
-                    let userId = components[2]
-                    Logger.debug("📱 SceneDelegate: Handling connection invite from user: \(userId)")
-                    self.stashInviteReferralCode(from: url)
-                    self.handleConnectionInvite(from: userId)
-                }
+    /// Welcome-email CTA: open the Add Place flow directly
+    private func openAddPlaceFlow() {
+        guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+            UserDefaults.standard.set("add-place", forKey: "pendingDeepLink")
+            return
+        }
+        tabBarController.selectedIndex = 0 // Home tab
+        if let navController = tabBarController.viewControllers?.first as? UINavigationController,
+           let homeVC = navController.viewControllers.first as? CirclesHomeViewController {
+            navController.popToRootViewController(animated: false)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                homeVC.quickAddPlaceButtonTapped()
             }
         }
     }
-    
+
     private func navigateToCircle(circleId: String, isSharedViaLink: Bool = false) {
         guard AuthService.shared.isLoggedIn,
               let tabBarController = window?.rootViewController as? CirclesTabBarController else {
@@ -1516,7 +1314,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 case "daily-summary": self.navigateToDailySummary()
                 case "all-places-map": self.navigateToAllPlacesMap()
                 case "create-wallet": self.navigateToCreateWallet()
-                case "add-place", "me": self.handleOpenPath(pendingLink)
+                case "add-place", "me":
+                    if let destination = DeepLinkRouter().openPathDestination(pendingLink) { self.route(destination) }
                 default: break
                 }
             }
@@ -1917,12 +1716,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// For a recipient who isn't signed in yet, stash it as the pending referral
     /// code so the Register screen prefills it and applies it after signup.
     /// Logged-in users just get the normal auto-connect — no referral involved.
-    private func stashInviteReferralCode(from url: URL) {
+    private func stashInviteReferralCode(_ code: String?) {
         guard !AuthService.shared.isLoggedIn,
               !ReferralService.shared.hasUsedReferralCode(),
-              let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                  .queryItems?.first(where: { $0.name == "code" })?.value,
-              !code.isEmpty else { return }
+              let code, !code.isEmpty else { return }
         Logger.debug("📱 SceneDelegate: Stashing referral code from connect invite: \(code)")
         ReferralService.shared.savePendingReferralCode(code.uppercased())
     }
