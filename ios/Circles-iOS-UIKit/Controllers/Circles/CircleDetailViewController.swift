@@ -15,6 +15,11 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     private var selectedCategory: PlaceCategory?
     private var selectedTag: String? // Raw tag value from place.tags; nil = All
     private var isSharedViaLink: Bool = false
+    private lazy var placesLoader: CirclePlacesLoader = {
+        let loader = CirclePlacesLoader()
+        loader.delegate = self
+        return loader
+    }()
     private var editors: [User] = []
     
     // Dynamic constraints for managing spacing when editors are hidden/shown
@@ -958,85 +963,9 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     }
     
     private func fetchPlaces() {
-        Logger.debug("🔍 CircleDetailViewController: About to fetch places for circle: \(circle.name) (ID: \(circle.id))")
-        Logger.debug("   - Circle privacy: \(circle.privacy)")
-        Logger.debug("   - Is shared via link: \(isSharedViaLink)")
-        
-        // Use public endpoint for public circles accessed via share link
-        if circle.privacy == .public && isSharedViaLink {
-            PlaceService.shared.fetchPlacesByCircleIdPublic(circleId: circle.id) { [weak self] result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success(let places):
-                        Logger.info("Fetched \(places.count) places for public circle: \(self?.circle.name ?? "")")
-                        
-                        // Places are already ordered by the backend based on the circle's places array
-                        self?.places = places
-                        self?.updateTagChips()
-                        self?.applyFilter()
-                        self?.updateAddPlaceButtonTitle()
-                    case .failure(let error):
-                        Logger.error("Failed to fetch places for public circle: \(error.localizedDescription)")
-                        // Don't use sample places - show empty state instead
-                        self?.places = []
-                        self?.filteredPlaces = []
-                        self?.updateTagChips()
-                        self?.updateAddPlaceButtonTitle()
-                    }
-                    
-                    self?.tableView.reloadData()
-                    
-                    // End refresh animation
-                    self?.scrollView.refreshControl?.endRefreshing()
-                    
-                    // Force layout update to calculate correct content size
-                    DispatchQueue.main.async {
-                        self?.tableView.layoutIfNeeded()
-                        self?.updateTableViewHeight()
-                    }
-                    
-                    self?.addAnnotationsToMap()
-                }
-            }
-        } else {
-            // Use authenticated endpoint for private circles or authenticated users
-            PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success(let places):
-                        Logger.info("Fetched \(places.count) places for circle: \(self?.circle.name ?? "")")
-                        
-                        // Places are already ordered by the backend based on the circle's places array
-                        self?.places = places
-                        self?.updateTagChips()
-                        self?.applyFilter()
-                        self?.updateAddPlaceButtonTitle()
-                    case .failure(let error):
-                        Logger.error("Failed to fetch places: \(error.localizedDescription)")
-                        // Don't use sample places - show empty state instead
-                        self?.places = []
-                        self?.filteredPlaces = []
-                        self?.updateTagChips()
-                        self?.updateAddPlaceButtonTitle()
-                    }
-                    
-                    self?.tableView.reloadData()
-                    
-                    // End refresh animation
-                    self?.scrollView.refreshControl?.endRefreshing()
-                    
-                    // Force layout update to calculate correct content size
-                    DispatchQueue.main.async {
-                        self?.tableView.layoutIfNeeded()
-                        self?.updateTableViewHeight()
-                    }
-                    
-                    self?.addAnnotationsToMap()
-                }
-            }
-        }
+        placesLoader.fetchPlaces(for: circle, isSharedViaLink: isSharedViaLink)
     }
-    
+
     private func updateTableViewHeight() {
         // Force layout to calculate proper content size
         tableView.layoutIfNeeded()
@@ -2273,6 +2202,37 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
                 }
             }
         }
+    }
+}
+
+extension CircleDetailViewController: CirclePlacesLoaderDelegate {
+    func loaderDidLoadPlaces(_ loadedPlaces: [Place]) {
+        places = loadedPlaces
+        updateTagChips()
+        applyFilter()
+        updateAddPlaceButtonTitle()
+    }
+
+    func loaderDidFailToLoadPlaces(_ error: Error) {
+        places = []
+        filteredPlaces = []
+        updateTagChips()
+        updateAddPlaceButtonTitle()
+    }
+
+    func loaderDidFinishLoadingPlaces() {
+        tableView.reloadData()
+
+        // End refresh animation
+        scrollView.refreshControl?.endRefreshing()
+
+        // Force layout update to calculate correct content size
+        DispatchQueue.main.async { [weak self] in
+            self?.tableView.layoutIfNeeded()
+            self?.updateTableViewHeight()
+        }
+
+        addAnnotationsToMap()
     }
 }
 
