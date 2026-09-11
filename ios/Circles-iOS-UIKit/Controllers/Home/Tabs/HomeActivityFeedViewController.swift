@@ -180,9 +180,11 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
 
         Logger.debug("📊 Starting to fetch activities... (loadMore: \(loadMore))")
 
-        // Check if user needs notification prompt when viewing activity feed
+        // Notification prompt on first feed view. Its banner is added to the
+        // presenter's view, so present from the home (parent), not this
+        // 600pt tab slot.
         if !loadMore && activities.isEmpty {
-            NotificationPromptManager.shared.checkAndPromptIfNeeded(in: self, context: .activityFeed)
+            NotificationPromptManager.shared.checkAndPromptIfNeeded(in: parent ?? self, context: .activityFeed)
         }
 
         if loadMore {
