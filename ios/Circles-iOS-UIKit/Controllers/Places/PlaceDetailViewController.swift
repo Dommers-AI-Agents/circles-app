@@ -3331,146 +3331,22 @@ extension PlaceDetailViewController {
     }
     
     private func createInlineCommentView(_ comment: PlaceComment) -> UIView {
-        let containerView = UIView()
-        containerView.backgroundColor = Constants.Colors.background
-        containerView.layer.cornerRadius = 8
-        containerView.translatesAutoresizingMaskIntoConstraints = false
-        
-        // User info stack (avatar + name + time)
-        let userInfoStack = UIStackView()
-        userInfoStack.axis = .horizontal
-        userInfoStack.spacing = 8
-        userInfoStack.alignment = .center
-        userInfoStack.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Avatar
-        let avatarImageView = UIImageView()
-        avatarImageView.contentMode = .scaleAspectFill
-        avatarImageView.clipsToBounds = true
-        avatarImageView.layer.cornerRadius = 16
-        avatarImageView.backgroundColor = Constants.Colors.tertiaryBackground
-        avatarImageView.image = UIImage(systemName: "person.circle.fill")
-        avatarImageView.tintColor = Constants.Colors.secondaryLabel
-        avatarImageView.translatesAutoresizingMaskIntoConstraints = false
-        avatarImageView.widthAnchor.constraint(equalToConstant: 32).isActive = true
-        avatarImageView.heightAnchor.constraint(equalToConstant: 32).isActive = true
-        
-        // Load avatar if available
-        if let urlString = comment.user?.profilePicture, let url = URL(string: urlString) {
-            URLSession.shared.dataTask(with: url) { data, _, _ in
-                if let data = data, let image = UIImage(data: data) {
-                    DispatchQueue.main.async {
-                        avatarImageView.image = image
-                    }
-                }
-            }.resume()
+        let row = PlaceCommentRowView(comment: comment)
+        row.onLikeTapped = { [weak self, weak row] button in
+            guard let self = self, let row = row else { return }
+            self.toggleInlineCommentLike(commentId: comment.id, sender: button, row: row)
         }
-        
-        // Name and time stack
-        let nameTimeStack = UIStackView()
-        nameTimeStack.axis = .vertical
-        nameTimeStack.spacing = 2
-        
-        let nameLabel = UILabel()
-        nameLabel.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.textColor = Constants.Colors.label
-        let commentAuthorName = comment.user?.displayName ?? "Unknown User"
-        if comment.isVenueOwner == true {
-            // The store speaking on its own page — badge the name
-            let attributed = NSMutableAttributedString(string: commentAuthorName)
-            attributed.append(NSAttributedString(
-                string: "  OWNER",
-                attributes: [
-                    .font: UIFont.systemFont(ofSize: 10, weight: .bold),
-                    .foregroundColor: Constants.Colors.primary,
-                    .baselineOffset: 1
-                ]
-            ))
-            nameLabel.attributedText = attributed
-        } else {
-            nameLabel.text = commentAuthorName
-        }
-
-        let timeLabel = UILabel()
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        timeLabel.text = formatter.localizedString(for: comment.createdAt, relativeTo: Date())
-        timeLabel.font = UIFont.systemFont(ofSize: 12)
-        timeLabel.textColor = Constants.Colors.secondaryLabel
-        
-        nameTimeStack.addArrangedSubview(nameLabel)
-        nameTimeStack.addArrangedSubview(timeLabel)
-        
-        userInfoStack.addArrangedSubview(avatarImageView)
-        userInfoStack.addArrangedSubview(nameTimeStack)
-        
-        // Like button
-        let likeButton = UIButton(type: .system)
-        let isLiked = comment.isLikedByCurrentUser
-        likeButton.setImage(UIImage(systemName: isLiked ? "heart.fill" : "heart"), for: .normal)
-        likeButton.tintColor = isLiked ? .systemRed : Constants.Colors.secondaryLabel
-        likeButton.translatesAutoresizingMaskIntoConstraints = false
-        likeButton.widthAnchor.constraint(equalToConstant: 24).isActive = true
-        likeButton.heightAnchor.constraint(equalToConstant: 24).isActive = true
-        likeButton.tag = displayedComments.firstIndex(where: { $0.id == comment.id }) ?? 0
-        likeButton.addTarget(self, action: #selector(inlineCommentLikeButtonTapped(_:)), for: .touchUpInside)
-        
-        // Like count label. Tagged so the like handler can find THIS label —
-        // it used to hunt by "first UILabel that isn't subviews[2]", which
-        // matched the COMMENT TEXT label and overwrote the comment with the
-        // like count (a hearted comment visibly "disappeared").
-        let likeCountLabel = UILabel()
-        likeCountLabel.tag = Self.inlineCommentLikeCountTag
-        likeCountLabel.text = comment.displayLikesCount > 0 ? "\(comment.displayLikesCount)" : ""
-        likeCountLabel.font = UIFont.systemFont(ofSize: 12)
-        likeCountLabel.textColor = Constants.Colors.secondaryLabel
-        likeCountLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Comment text
-        let commentLabel = UILabel()
-        commentLabel.text = comment.text
-        commentLabel.font = UIFont.systemFont(ofSize: 14)
-        commentLabel.textColor = Constants.Colors.label
-        commentLabel.numberOfLines = 0
-        commentLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Add subviews
-        containerView.addSubview(userInfoStack)
-        containerView.addSubview(likeButton)
-        containerView.addSubview(likeCountLabel)
-        containerView.addSubview(commentLabel)
-        
-        // Constraints
-        NSLayoutConstraint.activate([
-            userInfoStack.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
-            userInfoStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
-            
-            likeButton.centerYAnchor.constraint(equalTo: userInfoStack.centerYAnchor),
-            likeButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
-            
-            likeCountLabel.centerYAnchor.constraint(equalTo: likeButton.centerYAnchor),
-            likeCountLabel.trailingAnchor.constraint(equalTo: likeButton.leadingAnchor, constant: -4),
-            
-            commentLabel.topAnchor.constraint(equalTo: userInfoStack.bottomAnchor, constant: 8),
-            commentLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
-            commentLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
-            commentLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12)
-        ])
-        
-        return containerView
+        return row
     }
     
     private func updateCommentCount(_ count: Int) {
         commentCountLabel.text = count > 0 ? "\(count)" : ""
     }
     
-    private static let inlineCommentLikeCountTag = 9101
-
-    @objc private func inlineCommentLikeButtonTapped(_ sender: UIButton) {
-        let index = sender.tag
-        guard index < displayedComments.count else { return }
-        
-        let comment = displayedComments[index]
+    private func toggleInlineCommentLike(commentId: String, sender: UIButton, row: PlaceCommentRowView) {
+        // Look the comment up fresh — the list can have been reloaded since
+        // this row was built
+        guard let comment = displayedComments.first(where: { $0.id == commentId }) else { return }
         
         // Haptic feedback
         let generator = UIImpactFeedbackGenerator(style: .light)
@@ -3486,19 +3362,11 @@ extension PlaceDetailViewController {
                 
                 switch result {
                 case .success(let (liked, likesCount, piggyBank)):
-                    // Update button appearance
-                    sender.setImage(UIImage(systemName: liked ? "heart.fill" : "heart"), for: .normal)
-                    sender.tintColor = liked ? .systemRed : Constants.Colors.secondaryLabel
+                    // Update heart and count
+                    row.setLiked(liked, count: likesCount)
 
                     // FavCoins for the heart (leprechaun for the fraction)
                     PiggyBankDepositView.play(credit: piggyBank)
-                    
-                    // Update the like count label (looked up by tag — the old
-                    // sibling-position heuristic matched the comment text
-                    // label and clobbered the comment body)
-                    if let likeCountLabel = sender.superview?.viewWithTag(Self.inlineCommentLikeCountTag) as? UILabel {
-                        likeCountLabel.text = likesCount > 0 ? "\(likesCount)" : ""
-                    }
                     
                     // Show animation
                     UIView.animate(withDuration: 0.1, animations: {
