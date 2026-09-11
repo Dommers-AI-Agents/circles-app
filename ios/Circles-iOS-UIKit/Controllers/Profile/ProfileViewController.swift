@@ -522,31 +522,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     // A mirror of the tab control (+ add-circle button) pinned to the top,
     // revealed once the profile header scrolls past it so the tabs stay
     // reachable while scrolling a long circle/uploads list.
-    private lazy var stickyTabBar: UIView = {
-        let v = UIView()
-        v.backgroundColor = Constants.Colors.background
-        v.isHidden = true
-        v.alpha = 0
-        v.translatesAutoresizingMaskIntoConstraints = false
-        return v
-    }()
-    private let stickyTabSeparator: UIView = {
-        let v = UIView()
-        v.backgroundColor = .separator
-        v.translatesAutoresizingMaskIntoConstraints = false
-        return v
-    }()
-    private lazy var stickySegmentedControl: UISegmentedControl = {
-        let c = UISegmentedControl(items: ["Circles", "Moments", "Uploads"])
-        c.selectedSegmentIndex = 0
-        c.addTarget(self, action: #selector(stickySegmentChanged), for: .valueChanged)
-        c.translatesAutoresizingMaskIntoConstraints = false
-        return c
-    }()
-    private lazy var stickyAddButton: UIButton = {
-        let b = ProfileViewController.makeNewCircleButton()
-        b.addTarget(self, action: #selector(createCircleButtonTapped), for: .touchUpInside)
-        return b
+    private lazy var stickyTabBar: ProfileStickyTabBar = {
+        let bar = ProfileStickyTabBar()
+        bar.segmentedControl.addTarget(self, action: #selector(stickySegmentChanged), for: .valueChanged)
+        bar.addButton.addTarget(self, action: #selector(createCircleButtonTapped), for: .touchUpInside)
+        return bar
     }()
     private var isStickyTabBarVisible = false
 
@@ -922,7 +902,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         suggestedButton.layer.borderColor = UIColor.separator.cgColor
         let ringColor = Constants.Colors.primary.resolvedColor(with: traitCollection).cgColor
         floatingAddButton.layer.borderColor = ringColor
-        stickyAddButton.layer.borderColor = ringColor
+        stickyTabBar.addButton.layer.borderColor = ringColor
     }
     
     override func viewDidLayoutSubviews() {
@@ -3548,30 +3528,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 
     private func setupStickyTabBar() {
         view.addSubview(stickyTabBar)
-        stickyTabBar.addSubview(stickySegmentedControl)
-        stickyTabBar.addSubview(stickyAddButton)
-        stickyTabBar.addSubview(stickyTabSeparator)
 
         NSLayoutConstraint.activate([
             stickyTabBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             stickyTabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            stickyTabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            stickyTabBar.heightAnchor.constraint(equalToConstant: 48),
-
-            stickySegmentedControl.centerXAnchor.constraint(equalTo: stickyTabBar.centerXAnchor),
-            stickySegmentedControl.centerYAnchor.constraint(equalTo: stickyTabBar.centerYAnchor),
-            stickySegmentedControl.widthAnchor.constraint(equalToConstant: 200),
-            stickySegmentedControl.heightAnchor.constraint(equalToConstant: 32),
-
-            stickyAddButton.centerYAnchor.constraint(equalTo: stickySegmentedControl.centerYAnchor),
-            stickyAddButton.trailingAnchor.constraint(equalTo: stickySegmentedControl.leadingAnchor, constant: -12),
-            stickyAddButton.widthAnchor.constraint(equalToConstant: 38),
-            stickyAddButton.heightAnchor.constraint(equalToConstant: 38),
-
-            stickyTabSeparator.leadingAnchor.constraint(equalTo: stickyTabBar.leadingAnchor),
-            stickyTabSeparator.trailingAnchor.constraint(equalTo: stickyTabBar.trailingAnchor),
-            stickyTabSeparator.bottomAnchor.constraint(equalTo: stickyTabBar.bottomAnchor),
-            stickyTabSeparator.heightAnchor.constraint(equalToConstant: 0.5)
+            stickyTabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
 
         view.bringSubviewToFront(stickyTabBar)
@@ -3579,16 +3540,16 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
 
     @objc private func stickySegmentChanged() {
-        contentTypeSegmentedControl.selectedSegmentIndex = stickySegmentedControl.selectedSegmentIndex
+        contentTypeSegmentedControl.selectedSegmentIndex = stickyTabBar.segmentedControl.selectedSegmentIndex
         contentTypeChanged()
     }
 
     /// Keeps the sticky bar's selection and add-button visibility mirrored to
     /// the inline controls. Call after any inline tab/visibility change.
     func syncStickyTabBar() {
-        stickySegmentedControl.selectedSegmentIndex = contentTypeSegmentedControl.selectedSegmentIndex
+        stickyTabBar.segmentedControl.selectedSegmentIndex = contentTypeSegmentedControl.selectedSegmentIndex
         // Add-circle only on the Circles tab; mirror the inline button's state
-        stickyAddButton.isHidden = floatingAddButton.isHidden
+        stickyTabBar.addButton.isHidden = floatingAddButton.isHidden
     }
 
     private func setStickyTabBar(visible: Bool) {
