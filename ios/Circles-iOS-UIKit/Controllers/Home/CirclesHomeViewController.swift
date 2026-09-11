@@ -606,12 +606,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     var dailySummaryCard: DailySummaryCardView?
     var hasDailySummaryData = false
     
-    // Reels Properties
-    var reels: [PlaceVideo] = []
-    var isLoadingReels = false
-    var reelsOffset = 0
-    var hasMoreReels = true
-    var isLoadingMoreReels = false
+    // Moments tab (child); `reels` forwards for the loader/preload/blocked-user paths
+    lazy var momentsTab: HomeMomentsViewController = {
+        let tab = HomeMomentsViewController()
+        tab.host = self
+        return tab
+    }()
+    var reels: [PlaceVideo] { get { momentsTab.reels } set { momentsTab.reels = newValue } }
     
     // Suggested Users Overlay
     var hasCheckedForSuggestedUsers = false
@@ -696,35 +697,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return tab
     }()
 
-    // Reels collection view for vertical video feed
-    let reelsCollectionView: UICollectionView = {
-        let layout = UICollectionViewFlowLayout()
-        layout.scrollDirection = .vertical
-        layout.minimumInteritemSpacing = 0
-        layout.minimumLineSpacing = 0
-        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
-        collectionView.backgroundColor = .black
-        collectionView.isPagingEnabled = true
-        collectionView.showsVerticalScrollIndicator = false
-        collectionView.contentInsetAdjustmentBehavior = .never // Use .never for full-screen video display like VideoReelsViewController
-        collectionView.translatesAutoresizingMaskIntoConstraints = false
-        collectionView.isHidden = true // Hidden by default
-        return collectionView
-    }()
-    
-    // Track current video index for auto-play
-    var currentReelIndex = 0
-    var reelPlayers: [Int: AVPlayer] = [:]
-    
-    // Track video loading states to prevent index misalignment
-    enum VideoLoadState {
-        case notLoaded
-        case loading
-        case ready
-        case failed
-    }
-    var reelVideoStates: [Int: VideoLoadState] = [:]
-    
     let activityEmptyStateLabel: UILabel = {
         let label = UILabel()
         label.text = "No recent activity from your network"
@@ -825,15 +797,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Setup SSE delegate
         SSEService.shared.addDelegate(self)
-        
-        // Configure reels collection view layout
-        if let flowLayout = reelsCollectionView.collectionViewLayout as? UICollectionViewFlowLayout {
-            flowLayout.scrollDirection = .vertical
-            flowLayout.minimumInteritemSpacing = 0
-            flowLayout.minimumLineSpacing = 0
-            flowLayout.sectionInset = .zero
-            // Don't set item size here - let the delegate method handle it
-        }
         
         // Keep map container visible but show loading overlay
         // This prevents the black screen issue
@@ -969,24 +932,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     // MARK: - Lifecycle (continued)
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        
-        // Invalidate reels collection view layout to ensure proper sizing
-        if reelsCollectionView.bounds.width > 0 {
-            reelsCollectionView.collectionViewLayout.invalidateLayout()
-        }
-    }
-    
-    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
-        super.viewWillTransition(to: size, with: coordinator)
-        
-        // Invalidate collection view layout on rotation
-        coordinator.animate(alongsideTransition: { _ in
-            self.reelsCollectionView.collectionViewLayout.invalidateLayout()
-        }, completion: nil)
-    }
-    
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         
@@ -1636,7 +1581,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityFeedSection.addSubview(momentsCameraButton)
         activityFeedSection.addSubview(tabContentContainer)
         activityFeedSection.addSubview(activityTableView)
-        activityFeedSection.addSubview(reelsCollectionView)
         activityFeedSection.addSubview(activityEmptyStateLabel)
         activityFeedSection.addSubview(activityLoadingContainer)
         
@@ -1853,12 +1797,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             activityTableView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
             activityTableView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
             
-            // Reels collection view (full width for video experience)
-            reelsCollectionView.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
-            reelsCollectionView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
-            reelsCollectionView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
-            reelsCollectionView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
-
             // Content tabs (same slot as the inline content views)
             tabContentContainer.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
             tabContentContainer.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
@@ -2008,11 +1946,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityTableView.rowHeight = UITableView.automaticDimension
         activityTableView.estimatedRowHeight = 120
         
-        // Setup reels collection view
-        reelsCollectionView.delegate = self
-        reelsCollectionView.dataSource = self
-        reelsCollectionView.register(VideoReelCell.self, forCellWithReuseIdentifier: "VideoReelCell")
-
         // Setup segmented control
         contentSegmentedControl.addTarget(self, action: #selector(contentSegmentChanged), for: .valueChanged)
         
@@ -2130,7 +2063,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             }
             
             if !self.reels.isEmpty {
-                self.reelsCollectionView.reloadData()
+                self.momentsTab.collectionView.reloadData()
             }
 
             // A slimmed preload may complete before the non-critical feed calls
@@ -2167,7 +2100,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         case 0:
             fetchActivities()
         case 1:
-            fetchReels()
+            momentsTab.refreshTab()
         default:
             specialsTab.refreshTab()
         }
@@ -2186,60 +2119,30 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         switch selectedIndex {
         case 0:
             // Show Activity feed
+            momentsTab.setTabVisible(false) // pauses any playing moment
             specialsTab.setTabVisible(false)
             activityTableView.isHidden = false
-            reelsCollectionView.isHidden = true
             momentsCameraButton.isHidden = true
             activityHeaderLabel.text = "Recent Activity"
-
-            // Pause any playing videos
-            pauseAllVideos()
 
             // Load activities if needed
             if activities.isEmpty {
                 fetchActivities()
             }
         case 1:
-            // Show Reels feed
+            // Show Moments feed; the tab resets to the first video, refreshes
+            // and autoplays once loaded
             specialsTab.setTabVisible(false)
             activityTableView.isHidden = true
-            reelsCollectionView.isHidden = false
-
-            // Reset to first video
-            currentReelIndex = 0
-
-            // Force layout update before showing collection view
-            view.layoutIfNeeded()
-
-            // Invalidate layout to ensure proper sizing
-            reelsCollectionView.collectionViewLayout.invalidateLayout()
-
-            // Reset collection view to top to fix Y offset issue
-            reelsCollectionView.setContentOffset(.zero, animated: false)
-
-            // Scroll to first item explicitly
-            if !reels.isEmpty {
-                let firstIndexPath = IndexPath(item: 0, section: 0)
-                reelsCollectionView.scrollToItem(at: firstIndexPath, at: .top, animated: false)
-            }
-
             momentsCameraButton.isHidden = false
             activityHeaderLabel.text = "Moments"
-
-            // Always refresh reels when switching to Moments tab to get latest videos
-            fetchReels()
-
-            // Note: fetchReels will handle playing the first video after loading
+            momentsTab.setTabVisible(true)
         default:
             // Show Specials (live offers + announcements from participating venues)
+            momentsTab.setTabVisible(false) // pauses any playing moment
             activityTableView.isHidden = true
-            reelsCollectionView.isHidden = true
             momentsCameraButton.isHidden = true
             activityHeaderLabel.text = "Specials"
-
-            // Pause any playing videos (may be arriving from Moments)
-            pauseAllVideos()
-
             specialsTab.setTabVisible(true)
         }
     }
@@ -2250,7 +2153,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// `tabContentContainer`. Every tab starts hidden; the segment switch
     /// (`contentSegmentChanged`) shows the selected one.
     func embedContentTabs() {
-        for tab in [specialsTab] as [UIViewController & HomeContentTab] {
+        for tab in [momentsTab, specialsTab] as [UIViewController & HomeContentTab] {
             addChild(tab)
             tab.view.translatesAutoresizingMaskIntoConstraints = false
             tab.view.isHidden = true
@@ -2566,222 +2469,31 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         fetchActivities(loadMore: true)
     }
 
-    // MARK: - Reels Methods
+    // MARK: - Moments (forwarded to the Moments tab)
     func fetchReels(loadMore: Bool = false, completion: ((Bool) -> Void)? = nil) {
-        guard !isLoadingReels && !isLoadingMoreReels else {
-            completion?(false)
-            return
-        }
-        
-        if loadMore && !hasMoreReels {
-            completion?(false)
-            return
-        }
-        
-        if loadMore {
-            isLoadingMoreReels = true
-        } else {
-            isLoadingReels = true
-            activityLoadingContainer.isHidden = false
-            activityLoadingIndicator.startAnimating()
-            activityEmptyStateLabel.isHidden = true
-            reelsOffset = 0
-            hasMoreReels = true
-            
-            // Clear existing players and states when loading fresh data
-            for player in reelPlayers.values {
-                player.pause()
-            }
-            AudioSessionManager.shared.endPlayback()
-            reelPlayers.removeAll()
-            reelVideoStates.removeAll()
-        }
-        
-        let offset = loadMore ? reelsOffset : 0
-        let endpoint = "videos/reels/feed?limit=20&offset=\(offset)"
-        
-        APIService.shared.request(
-            endpoint: endpoint,
-            method: .get
-        ) { [weak self] (result: Result<VideosResponse, APIError>) in
-            guard let self = self else { return }
-            
-            DispatchQueue.main.async {
-                if loadMore {
-                    self.isLoadingMoreReels = false
-                } else {
-                    self.isLoadingReels = false
-                    self.activityLoadingIndicator.stopAnimating()
-                    self.activityLoadingContainer.isHidden = true
-                }
-                
-                switch result {
-                case .success(let response):
-                    // Filter out failed uploads and videos without URLs
-                    let validReels = response.data.filter { video in
-                        let hasValidUrl = video.contentType == "photo" ? video.thumbnailUrl != nil : video.videoUrl != nil
-                        return video.uploadStatus == .ready && hasValidUrl
-                    }
-                    
-                    if loadMore {
-                        self.reels.append(contentsOf: validReels)
-                    } else {
-                        self.reels = validReels
-                    }
-                    
-                    self.reelsOffset = self.reels.count
-                    self.hasMoreReels = response.hasMore
-                    self.updateReelsFeed()
-                    
-                case .failure(let error):
-                    Logger.debug("❌ Error fetching reels: \(error)")
-                    
-                    // Handle specific error types gracefully
-                    var isHandledError = false
-                    
-                    if case APIError.serverError = error {
-                        // Check if this is the "too many disjunctions" error
-                        let errorString = error.localizedDescription
-                        if errorString.contains("Too many disjunctions") || errorString.contains("32 disjunctions") {
-                            Logger.debug("🔍 Detected Firestore disjunction limit error - showing user-friendly message")
-                            
-                            if !loadMore {
-                                self.showFirestoreQueryLimitError()
-                                isHandledError = true
-                            }
-                        }
-                    } else if case APIError.rateLimited = error {
-                        Logger.debug("🔍 Rate limited loading Moments feed - showing fallback content")
-                        
-                        if !loadMore {
-                            self.showMomentsFeedFallback()
-                            isHandledError = true
-                        }
-                    }
-                    
-                    // Only show empty state if error wasn't handled with a specific fallback
-                    if !isHandledError && !loadMore {
-                        self.reels = []
-                        self.updateReelsFeed()
-                    }
-                }
-                
-                self.scrollView.refreshControl?.endRefreshing()
-                completion?(true)
-            }
-        }
+        momentsTab.fetchReels(loadMore: loadMore, completion: completion)
     }
-    
-    func updateReelsFeed() {
-        isLoadingReels = false
-        activityLoadingIndicator.stopAnimating()
-        activityLoadingContainer.isHidden = true
-        
-        // Only show collection view if Moments tab is selected
-        if contentSegmentedControl.selectedSegmentIndex == 1 {
-            reelsCollectionView.isHidden = false
-        }
-        
-        // Update empty state
-        if reels.isEmpty {
-            activityEmptyStateLabel.text = "No moments yet. Be the first to share a moment!"
-            activityEmptyStateLabel.isHidden = false
-        } else {
-            activityEmptyStateLabel.isHidden = true
-        }
-        
-        // Reset to first video when loading new data
-        currentReelIndex = 0
-        
-        // Force layout update
-        view.layoutIfNeeded()
-        
-        // Invalidate layout to ensure proper sizing
-        reelsCollectionView.collectionViewLayout.invalidateLayout()
-        
-        // Reload collection
-        reelsCollectionView.reloadData()
-        
-        // Preload video for first visible item after reload
-        if !reels.isEmpty {
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                if self.reels[0].contentType != "photo" && self.reelVideoStates[0] == nil {
-                    self.reelVideoStates[0] = .loading
-                    self.loadReelVideo(at: 0)
-                }
-            }
-        }
-        
-        // Reset scroll position to top after loading new data
-        reelsCollectionView.setContentOffset(.zero, animated: false)
-        
-        // Ensure we're at the first item
-        if !reels.isEmpty {
-            let firstIndexPath = IndexPath(item: 0, section: 0)
-            reelsCollectionView.scrollToItem(at: firstIndexPath, at: .top, animated: false)
-        }
 
-        view.layoutIfNeeded()
+    /// Stops any playing moment and hands the audio session back.
+    func pauseAllVideos() {
+        momentsTab.pauseAllVideos()
+    }
 
-        // Start playing the first video ONLY if Moments is the visible tab.
-        // The feed is also fetched on launch while Activity is showing; playing
-        // here unconditionally started audio the user never asked for and cut
-        // off whatever they were listening to.
-        if contentSegmentedControl.selectedSegmentIndex == 1 && !reels.isEmpty {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                self?.playVideo(at: 0)
-            }
-        }
+    /// Switch the home content to the Moments tab and land on a specific moment.
+    /// Used when a moment activity (or its thumbnail) is tapped: instead of a
+    /// modal player, drop the user into the inline Moments feed positioned on
+    /// that moment. Setting selectedSegmentIndex in code does not fire
+    /// .valueChanged, so this mirrors contentSegmentChanged's Moments case —
+    /// minus its refresh, since present(moment:) loads the feed itself.
+    func openMomentInMomentsTab(_ video: PlaceVideo) {
+        contentSegmentedControl.selectedSegmentIndex = 1
+        specialsTab.setTabVisible(false)
+        activityTableView.isHidden = true
+        momentsCameraButton.isHidden = false
+        activityHeaderLabel.text = "Moments"
+        momentsTab.present(moment: video)
     }
-    
-    func showFirestoreQueryLimitError() {
-        isLoadingReels = false
-        activityLoadingIndicator.stopAnimating()
-        activityLoadingContainer.isHidden = true
-        
-        // Only show collection view if Moments tab is selected
-        if contentSegmentedControl.selectedSegmentIndex == 1 {
-            reelsCollectionView.isHidden = false
-        }
-        activityEmptyStateLabel.text = "Too much content to load right now! Try refreshing in a few moments, or check back later for your Moments feed."
-        activityEmptyStateLabel.isHidden = false
-        
-        Logger.debug("🔍 Showing user-friendly message for Firestore query limit")
-        
-        // Clear reels array to show empty state
-        reels = []
-        reelsCollectionView.reloadData()
-        
-        // Auto-retry after 30 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30.0) { [weak self] in
-            Logger.debug("🔍 Auto-retrying Moments feed after Firestore error")
-            self?.fetchReels()
-        }
-    }
-    
-    func showMomentsFeedFallback() {
-        isLoadingReels = false
-        activityLoadingIndicator.stopAnimating()
-        activityLoadingContainer.isHidden = true
-        
-        // Only show collection view if Moments tab is selected
-        if contentSegmentedControl.selectedSegmentIndex == 1 {
-            reelsCollectionView.isHidden = false
-        }
-        activityEmptyStateLabel.text = "Feed temporarily unavailable due to high activity. Pull to refresh to try again!"
-        activityEmptyStateLabel.isHidden = false
-        
-        Logger.debug("🔍 Showing fallback message for rate limited Moments feed")
-        
-        // Clear reels array to show empty state
-        reels = []
-        reelsCollectionView.reloadData()
-        
-        // Enable pull-to-refresh for immediate retry
-        scrollView.refreshControl?.isEnabled = true
-    }
-    
+
     // MARK: - Data Fetching (forwarded to HomeDataLoader)
     func performInitialDataLoad() { loader.performInitialDataLoad() }
     
@@ -3321,9 +3033,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             guard let self = self else { return }
             if let blockedId = notification.userInfo?["userId"] as? String {
                 // Drop their content locally right away, then refetch for truth
-                self.reels.removeAll { $0.userId == blockedId }
+                self.momentsTab.removeReels(by: blockedId)
                 self.activities.removeAll { $0.actorId == blockedId }
-                self.reelsCollectionView.reloadData()
                 self.activityTableView.reloadData()
             }
             self.fetchActivities()
@@ -4855,5 +4566,41 @@ extension CirclesHomeViewController: HomeDataLoaderDelegate {
 extension CirclesHomeViewController: HomeContentTabHost {
     func endRefreshing() {
         scrollView.refreshControl?.endRefreshing()
+    }
+
+    func layoutContentIfNeeded() {
+        view.layoutIfNeeded()
+    }
+}
+
+// MARK: - VideoLinkInputDelegate
+extension CirclesHomeViewController: VideoLinkInputDelegate {
+    func videoLinkInputDidFinish(with video: PlaceVideo) {
+        // Convert to moment and handle
+        let moment = PlaceMoment(from: video)
+        contentUploadDidFinish(with: moment)
+    }
+
+    func videoLinkInputDidCancel() {
+        // User cancelled - nothing to do
+    }
+}
+
+// MARK: - Notification badge timer
+extension CirclesHomeViewController {
+    func startNotificationBadgeRefresh() {
+        notificationBadgeTimer?.invalidate()
+
+        // Refresh the badge every 30 seconds so it stays current even if
+        // SSE events are missed
+        notificationBadgeTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            self?.updateNotificationBadge()
+        }
+    }
+
+    func stopNotificationBadgeRefresh() {
+        notificationBadgeTimer?.invalidate()
+        notificationBadgeTimer = nil
+        Logger.debug("🔔 [Timer] Stopped periodic notification badge refresh")
     }
 }

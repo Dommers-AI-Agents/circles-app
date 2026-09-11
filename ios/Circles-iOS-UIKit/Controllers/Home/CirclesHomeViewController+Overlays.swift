@@ -22,36 +22,6 @@ extension CirclesHomeViewController: UIScrollViewDelegate {
                 }
             }
         }
-        // Handle pagination for reels collection view
-        else if scrollView == reelsCollectionView {
-            let contentHeight = scrollView.contentSize.height
-            let scrollOffset = scrollView.contentOffset.y
-            let frameHeight = scrollView.frame.size.height
-            
-            if scrollOffset > contentHeight - frameHeight * 1.5 {
-                if !isLoadingMoreReels && hasMoreReels {
-                    fetchReels(loadMore: true)
-                }
-            }
-        }
-    }
-    
-    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
-        if scrollView == reelsCollectionView {
-            updateCurrentReelIndex()
-        }
-    }
-    
-    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-        if !decelerate && scrollView == reelsCollectionView {
-            updateCurrentReelIndex()
-        }
-    }
-    
-    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
-        if scrollView == reelsCollectionView {
-            updateCurrentReelIndex()
-        }
     }
 }
 

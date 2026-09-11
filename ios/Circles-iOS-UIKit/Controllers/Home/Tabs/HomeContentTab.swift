@@ -39,4 +39,7 @@ extension HomeContentTab {
 protocol HomeContentTabHost: AnyObject {
     /// The outer scroll view's pull-to-refresh finished for this fetch.
     func endRefreshing()
+    /// Lay out the whole home tree now (a tab's own `view.layoutIfNeeded()`
+    /// only covers its subtree, which may not be positioned yet).
+    func layoutContentIfNeeded()
 }
