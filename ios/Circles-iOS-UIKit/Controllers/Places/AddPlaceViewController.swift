@@ -26,12 +26,18 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     var selectedGooglePlaceDetails: GooglePlaceDetails? {
         didSet { applyVenueSourceLockIfNeeded() }
     }
-    /// Rotated on every new map/POI/search selection. Async place-asset work
-    /// (canonical match, Google details, photo download/upload) captures the
-    /// token when it starts and re-checks it before touching form state —
-    /// stale responses from a previous tap were attaching the wrong venue's
-    /// photo and details (Ilios name + Magnetic Pole Fit photo, 2026-08-22).
-    var placeAssetRequestToken = UUID()
+    /// Canonical-match → Google → photo upload pipeline, with the request
+    /// token that makes stale responses from a previous selection harmless.
+    lazy var placeAssetLoader: PlaceAssetLoader = {
+        let loader = PlaceAssetLoader()
+        loader.delegate = self
+        return loader
+    }()
+    /// Rotated on every new map/POI/search selection (see `PlaceAssetLoader`).
+    var placeAssetRequestToken: UUID {
+        get { placeAssetLoader.requestToken }
+        set { placeAssetLoader.requestToken = newValue }
+    }
     /// True when the current photo/URLs came from the asset pipeline (canonical
     /// match, Google, Look Around) rather than the user's own picker. A new
     /// venue selection clears pipeline photos but never a user's chosen photo —
@@ -51,6 +57,14 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         photoImageView.isHidden = true
         removePhotoButton.isHidden = true
         addPhotoButton.isHidden = false
+    }
+
+    /// Put a pipeline photo (canonical, Google, Look Around) in the photo box.
+    func showPipelinePhoto(_ image: UIImage) {
+        photoImageView.image = image
+        photoImageView.isHidden = false
+        removePhotoButton.isHidden = false
+        addPhotoButton.isHidden = true
     }
     var isSuperUserForVenueEdits: Bool?
     var ownedGooglePlaceIds = Set<String>()
@@ -2842,103 +2856,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }
 
     func fetchPlaceAssets(name: String, coordinate: CLLocationCoordinate2D, address: String?) {
-        // New selection: everything still in flight for the previous one is stale
-        let token = UUID()
-        placeAssetRequestToken = token
-        clearAutoPopulatedPhotoState()
-        GlobalPlaceService.shared.matchKnownPlace(
-            name: name,
-            latitude: coordinate.latitude,
-            longitude: coordinate.longitude,
-            address: address
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                guard self.placeAssetRequestToken == token else { return }
-
-                if case .success(let match?) = result, let googlePlaceId = match.googlePlaceId, !googlePlaceId.isEmpty {
-                    Logger.debug("✅ Venue already in our database (\(match.globalPlaceId)) — skipping Google Places")
-                    self.selectedGooglePlaceDetails = GooglePlaceDetails(
-                        placeID: googlePlaceId,
-                        name: match.name,
-                        address: match.address ?? address,
-                        coordinate: coordinate
-                    )
-                    // Canonical photos are Firebase URLs — reuse directly,
-                    // no download/re-upload needed
-                    if self.uploadedPhotoUrls.isEmpty && !match.photos.isEmpty {
-                        self.uploadedPhotoUrls = Array(match.photos.prefix(5))
-                        self.photosWereAutoPopulated = true
-                        Logger.debug("📸 Reusing \(self.uploadedPhotoUrls.count) canonical photos")
-                        // Show it too — URLs alone left the photo box stuck
-                        // on whatever the previous selection displayed
-                        if let firstUrl = self.uploadedPhotoUrls.first {
-                            ImageService.shared.loadImage(from: firstUrl) { [weak self] image in
-                                DispatchQueue.main.async {
-                                    guard let self = self,
-                                          self.placeAssetRequestToken == token,
-                                          let image = image else { return }
-                                    self.selectedImage = image
-                                    self.photoImageView.image = image
-                                    self.photoImageView.isHidden = false
-                                    self.removePhotoButton.isHidden = false
-                                    self.addPhotoButton.isHidden = true
-                                }
-                            }
-                        }
-                    }
-                    // Reuse the canonical description too — beats the
-                    // synthesized "Category in City" placeholder
-                    self.upgradeDescriptionWithEditorialSummary(match.description)
-                    return
-                }
-
-                self.searchGoogleForPlaceAssets(name: name, coordinate: coordinate, address: address, token: token)
-            }
-        }
-    }
-
-    /// The Google Places pipeline (Find Place → Details → photo upload),
-    /// used only when the venue is new to our database.
-    func searchGoogleForPlaceAssets(name: String, coordinate: CLLocationCoordinate2D, address: String?, token: UUID) {
-        Logger.debug("🔍 Searching Google Places for: \(name)")
-        GooglePlacesService.shared.searchPlaceByNameAndLocation(
-            name: name,
-            coordinate: coordinate,
-            address: address ?? ""
-        ) { [weak self] result in
-            switch result {
-            case .success(let prediction):
-                if let prediction = prediction {
-                    Logger.debug("✅ Found Google Place match: \(prediction.attributedPrimaryText.string)")
-                    GooglePlacesService.shared.fetchPlaceDetails(placeID: prediction.placeID) { detailsResult in
-                        switch detailsResult {
-                        case .success(let place):
-                            let googleDetails = GooglePlaceDetails(from: place)
-                            DispatchQueue.main.async {
-                                guard self?.placeAssetRequestToken == token else { return }
-                                self?.selectedGooglePlaceDetails = googleDetails
-                                // Swap the generic synthesized description for
-                                // Google's real one, if this venue has one
-                                self?.upgradeDescriptionWithEditorialSummary(googleDetails.editorialSummary)
-                                // Only preload photos if we haven't already uploaded any
-                                if self?.uploadedPhotoUrls.isEmpty == true {
-                                    self?.preloadAndUploadPhotosForPlace(googleDetails, token: token)
-                                } else {
-                                    Logger.debug("📸 Skipping photo preload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
-                                }
-                            }
-                        case .failure(let error):
-                            Logger.debug("❌ Failed to fetch Google Place details: \(error)")
-                        }
-                    }
-                } else {
-                    Logger.debug("⚠️ No Google Place match found for: \(name)")
-                }
-            case .failure(let error):
-                Logger.debug("❌ Failed to search Google Places: \(error)")
-            }
-        }
+        placeAssetLoader.fetchPlaceAssets(name: name, coordinate: coordinate, address: address)
     }
 
     func updateMapForLocation(_ coordinate: CLLocationCoordinate2D) {
@@ -3000,191 +2918,13 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }
     
     func preloadAndUploadPhotosForPlace(_ placeDetails: GooglePlaceDetails, token: UUID? = nil) {
-        // nil token = caller predates token tracking (user-picked photos);
-        // otherwise every async completion below re-checks currency
-        func assetsStillCurrent() -> Bool { token == nil || token == placeAssetRequestToken }
-        Logger.debug("🚀 Pre-loading photos for place: \(placeDetails.name)")
-        Logger.debug("📸 DEBUG: Starting photo pre-load process")
-        Logger.debug("📸 DEBUG: Existing uploaded URLs count: \(self.uploadedPhotoUrls.count)")
-        Logger.debug("📸 DEBUG: Already have Google image: \(self.downloadedGoogleImage != nil)")
-        
-        // Don't reset if we already have photos - this prevents duplicate uploads
-        if self.uploadedPhotoUrls.isEmpty {
-            // Only reset if we don't have any uploaded photos yet
-            self.downloadedGoogleImage = nil
-            self.downloadedLookAroundImage = nil
-            Logger.debug("📸 DEBUG: No existing uploads, cleared downloaded images")
-        } else {
-            Logger.debug("📸 DEBUG: Keeping existing \(self.uploadedPhotoUrls.count) uploaded photo URLs")
-            for (index, url) in self.uploadedPhotoUrls.enumerated() {
-                Logger.debug("  Existing photo \(index + 1): \(url)")
-            }
-        }
-        
-        let photoGroup = DispatchGroup()
-        
-        // Handle Google Place photo
-        if !placeDetails.photos.isEmpty {
-            if let existingImage = self.downloadedGoogleImage {
-                // We already have a downloaded image, just upload it
-                Logger.debug("📸 Using existing downloaded Google photo")
-                if self.uploadedPhotoUrls.isEmpty {
-                    photoGroup.enter()
-                    if let imageData = existingImage.jpegData(compressionQuality: 0.8) {
-                        Logger.debug("📸 Uploading Google photo (size: \(imageData.count / 1024) KB)...")
-                        self.uploadImageData(imageData) { uploadedUrl in
-                            if let url = uploadedUrl, assetsStillCurrent() {
-                                if !self.uploadedPhotoUrls.contains(url) {
-                                    self.photosWereAutoPopulated = true
-                                    self.uploadedPhotoUrls.append(url)
-                                    Logger.debug("✅ Google photo uploaded: \(url)")
-                                } else {
-                                    Logger.debug("⚠️ Skipping duplicate photo URL: \(url)")
-                                }
-                            }
-                            photoGroup.leave()
-                        }
-                    } else {
-                        photoGroup.leave()
-                    }
-                } else {
-                    Logger.debug("📸 Skipping Google photo upload - already have \(self.uploadedPhotoUrls.count) uploaded photos")
-                }
-            } else {
-                // Need to download and upload the photo
-                photoGroup.enter()
-                Logger.debug("📸 Loading photo from Google Places...")
-                GooglePlacesService.shared.loadPhoto(from: placeDetails.photos[0], maxSize: CGSize(width: 800, height: 800)) { [weak self] result in
-                    switch result {
-                    case .success(let image):
-                        Logger.debug("📸 Successfully loaded Google photo")
-                        self?.downloadedGoogleImage = image
-                        
-                        // Show in UI immediately — unless the user has
-                        // since selected a different place
-                        DispatchQueue.main.async {
-                            guard assetsStillCurrent() else { return }
-                            self?.photosWereAutoPopulated = true
-                            self?.selectedImage = image
-                            self?.photoImageView.image = image
-                            self?.photoImageView.isHidden = false
-                            self?.removePhotoButton.isHidden = false
-                            self?.addPhotoButton.isHidden = true
-                        }
-                        
-                        // Only upload if we don't already have uploaded photos
-                        if self?.uploadedPhotoUrls.isEmpty == true {
-                            if let imageData = image.jpegData(compressionQuality: 0.8) {
-                                Logger.debug("📸 Uploading Google photo (size: \(imageData.count / 1024) KB)...")
-                                self?.uploadImageData(imageData) { uploadedUrl in
-                                    if let url = uploadedUrl, assetsStillCurrent() {
-                                        // Check for duplicates before appending
-                                        if !(self?.uploadedPhotoUrls.contains(url) ?? false) {
-                                            self?.photosWereAutoPopulated = true
-                                            self?.uploadedPhotoUrls.append(url)
-                                            Logger.debug("✅ Google photo uploaded: \(url)")
-                                        } else {
-                                            Logger.debug("⚠️ Skipping duplicate photo URL: \(url)")
-                                        }
-                                    }
-                                    photoGroup.leave()
-                                }
-                            } else {
-                                photoGroup.leave()
-                            }
-                        } else {
-                            Logger.debug("📸 Skipping Google photo upload - already have \(self?.uploadedPhotoUrls.count ?? 0) uploaded photos")
-                            photoGroup.leave()
-                        }
-                        
-                    case .failure(let error):
-                        Logger.debug("❌ Failed to load Google photo: \(error)")
-                        photoGroup.leave()
-                    }
-                }
-            }
-        }
-        
-        // Try Apple Look Around
-        if #available(iOS 16.0, *) {
-            photoGroup.enter()
-            Task {
-                Logger.debug("📸 Checking Apple Look Around...")
-                let hasLookAround = await AppleLookAroundService.shared.checkLookAroundAvailability(at: placeDetails.coordinate)
-                
-                if hasLookAround {
-                    Logger.debug("✅ Look Around is available")
-                    do {
-                        let lookAroundImage = try await AppleLookAroundService.shared.getLookAroundSnapshot(at: placeDetails.coordinate)
-                        self.downloadedLookAroundImage = lookAroundImage
-                        
-                        // If no Google photo, show Look Around in UI
-                        if self.downloadedGoogleImage == nil {
-                            DispatchQueue.main.async {
-                                guard assetsStillCurrent() else { return }
-                                self.photosWereAutoPopulated = true
-                                self.selectedImage = lookAroundImage
-                                self.photoImageView.image = lookAroundImage
-                                self.photoImageView.isHidden = false
-                                self.removePhotoButton.isHidden = false
-                                self.addPhotoButton.isHidden = true
-                            }
-                        }
-                        
-                        // Upload the image
-                        if let imageData = lookAroundImage.jpegData(compressionQuality: 0.8) {
-                            Logger.debug("📸 Uploading Look Around photo (size: \(imageData.count / 1024) KB)...")
-                            self.uploadImageData(imageData) { uploadedUrl in
-                                if let url = uploadedUrl, assetsStillCurrent() {
-                                    // Check for duplicates before appending
-                                    if !self.uploadedPhotoUrls.contains(url) {
-                                        self.photosWereAutoPopulated = true
-                                        self.uploadedPhotoUrls.append(url)
-                                        Logger.debug("✅ Look Around photo uploaded: \(url)")
-                                    } else {
-                                        Logger.debug("⚠️ Skipping duplicate photo URL: \(url)")
-                                    }
-                                }
-                                photoGroup.leave()
-                            }
-                        } else {
-                            photoGroup.leave()
-                        }
-                    } catch {
-                        Logger.debug("❌ Failed to get Look Around snapshot: \(error)")
-                        photoGroup.leave()
-                    }
-                } else {
-                    Logger.debug("⚠️ Look Around not available")
-                    photoGroup.leave()
-                }
-            }
-        }
-        
-        // Log completion
-        photoGroup.notify(queue: .main) {
-            Logger.debug("📸 DEBUG: Photo pre-loading complete")
-            Logger.debug("📸 DEBUG: Total photos uploaded: \(self.uploadedPhotoUrls.count)")
-            Logger.debug("📸 DEBUG: Google image downloaded: \(self.downloadedGoogleImage != nil)")
-            Logger.debug("📸 DEBUG: Look Around image downloaded: \(self.downloadedLookAroundImage != nil)")
-            for (index, url) in self.uploadedPhotoUrls.enumerated() {
-                Logger.debug("  Uploaded photo \(index + 1): \(url)")
-            }
-        }
+        placeAssetLoader.preloadAndUploadPhotosForPlace(placeDetails, token: token)
     }
-    
+
     func uploadImageData(_ imageData: Data, completion: @escaping (String?) -> Void) {
-        PlaceService.shared.uploadMultipleImages([imageData]) { result in
-            switch result {
-            case .success(let urls):
-                completion(urls.first)
-            case .failure(let error):
-                Logger.debug("❌ Image upload failed: \(error)")
-                completion(nil)
-            }
-        }
+        placeAssetLoader.uploadImageData(imageData, completion: completion)
     }
-    
+
     func fillFormWithGooglePlace(_ placeDetails: GooglePlaceDetails) {
         // Store the Google Place details
         self.selectedGooglePlaceDetails = placeDetails
@@ -3410,3 +3150,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         category.placeDescription
     }
 }
+
+// MARK: - PlaceAssetLoaderDelegate
+
+/// The stored photo/details state and `clearAutoPopulatedPhotoState`,
+/// `showPipelinePhoto`, `upgradeDescriptionWithEditorialSummary` already
+/// satisfy the loader's requirements by name.
+extension AddPlaceViewController: PlaceAssetLoaderDelegate {}
