@@ -262,15 +262,15 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             // Menus can't be mutated once shown, so fetch any uncached avatars
             // BEFORE building — the deferred element's own loading state covers
             // the (capped) wait, and the first open gets faces, not placeholders.
-            self.withConnectionAvatarsWarmed {
-                done(self.connectionMenuElements())
+            self.menuBuilder.withConnectionAvatarsWarmed {
+                done(self.menuBuilder.connectionMenuElements())
             }
         }])
         categoryFilterButton.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in
-            done(self?.categoryMenuElements() ?? [])
+            done(self?.menuBuilder.categoryMenuElements() ?? [])
         }])
         placeFilterButton.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in
-            done(self?.placeMenuElements() ?? [])
+            done(self?.menuBuilder.placeMenuElements() ?? [])
         }])
 
         NSLayoutConstraint.activate([
@@ -380,243 +380,13 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
     // MARK: Dropdown menus
 
-    /// Everyone / My Connections / My Places, then each person in the home
-    /// connections row's order — the same ranking, so the list reads identically
-    /// everywhere. Each person shows their avatar, so it scans by face not name.
-    private func connectionMenuElements() -> [UIMenuElement] {
-        // "My Places" wears YOUR face — same circular treatment as everyone
-        // below it, so the row reads as you rather than a generic glyph.
-        let myAvatar: UIImage?
-        if let me = AuthService.shared.currentUser {
-            myAvatar = menuAvatar(for: me)
-        } else {
-            myAvatar = UIImage(systemName: "person.crop.circle.fill")?
-                .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
-        }
-
-        // "Everyone" gets a two-tone palette symbol — one figure in the
-        // brand color, one in a warm accent — so it reads as "everyone", not
-        // another flat glyph. Rasterized to pixels: withRenderingMode after
-        // applyingSymbolConfiguration silently DROPS the palette, and menus
-        // re-tint template images — baking the bitmap sidesteps both.
-        let followingIcon: UIImage? = {
-            guard let symbol = UIImage(
-                systemName: "person.2.fill",
-                withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
-                    .applying(UIImage.SymbolConfiguration(paletteColors: [Constants.Colors.primary, .systemOrange]))
-            ) else { return nil }
-            return UIGraphicsImageRenderer(size: symbol.size).image { _ in
-                symbol.draw(at: .zero)
-            }.withRenderingMode(.alwaysOriginal)
-        }()
-
-        // "Everyone" (nil) leads the list — the default scope: you + your
-        // accepted connections + everyone you follow.
-        var actions: [UIAction] = [
-            UIAction(title: "Everyone",
-                     image: followingIcon,
-                     state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
-                self?.selectConnectionFromHeader(id: nil, user: nil)
-            }
-        ]
-
-        // "My Connections" = accepted connections only (the narrower cut).
-        let myConnectionsIcon = UIImage(
-            systemName: "person.2.fill",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
-        )?.withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
-        actions.append(
-            UIAction(title: "My Connections",
-                     image: myConnectionsIcon,
-                     state: selectedConnectionId == HomePlaceFilter.myConnectionsOnlyId ? .on : .off) { [weak self] _ in
-                self?.selectConnectionFromHeader(id: HomePlaceFilter.myConnectionsOnlyId, user: nil)
-            }
-        )
-
-        // "My Places" wears YOUR face — same circular treatment as everyone
-        // below it, so the row reads as you rather than a generic glyph.
-        actions.append(
-            UIAction(title: "My Places",
-                     image: myAvatar,
-                     state: selectedConnectionId == HomePlaceFilter.myPlacesOnlyId && selectedImportOrigin == nil ? .on : .off) { [weak self] _ in
-                self?.selectedImportOrigin = nil
-                self?.selectConnectionFromHeader(id: HomePlaceFilter.myPlacesOnlyId, user: nil)
-            }
-        )
-
-        // Origin sub-rows under My Places — only for users whose own places
-        // include imports. Splits your pins into in-app adds vs each import
-        // source ("was this from Google or added on FavCircles?").
-        let currentUserIdForOrigins = AuthService.shared.getUserId() ?? ""
-        let mySources = Set(places
-            .filter { IDNormalizer.isSameUser($0.addedBy, currentUserIdForOrigins) }
-            .compactMap { $0.importSource })
-        if !mySources.isEmpty {
-            var origins = ["in_app"] + mySources.sorted()
-            // Keep the active selection pickable even if its places vanished
-            if let active = selectedImportOrigin, !origins.contains(active) { origins.append(active) }
-            for origin in origins {
-                let icon = UIImage(systemName: origin == "in_app" ? "plus.app.fill" : "square.and.arrow.down.fill")?
-                    .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
-                actions.append(UIAction(
-                    title: "›  \(MapChipFilter.originTitle(origin))",
-                    image: icon,
-                    state: selectedConnectionId == HomePlaceFilter.myPlacesOnlyId && selectedImportOrigin == origin ? .on : .off
-                ) { [weak self] _ in
-                    guard let self = self else { return }
-                    self.selectedImportOrigin = origin
-                    if self.selectedConnectionId == HomePlaceFilter.myPlacesOnlyId {
-                        self.chipFiltersChanged()
-                    } else {
-                        self.selectConnectionFromHeader(id: HomePlaceFilter.myPlacesOnlyId, user: nil)
-                        // Embedded: the scope change round-trips through the
-                        // home controller; re-run the chip pipeline so the
-                        // origin cut applies to whatever it hands back
-                        self.chipFiltersChanged()
-                    }
-                })
-            }
-        }
-
-        // Person rows: ranked connections first (same order as the home row),
-        // then everyone else you follow — the map can scope to any of them.
-        let currentUserId = AuthService.shared.getUserId() ?? ""
-        var listedIds = Set<String>()
-        for connection in HorizontalUserListView.rankedConnections(connections) {
-            guard let user = connection.connectedUser else { continue }
-            let otherId = connection.otherUserId(currentUserId: currentUserId)
-            listedIds.insert(otherId)
-            actions.append(UIAction(title: user.displayName,
-                                    image: menuAvatar(for: user),
-                                    state: selectedConnectionId == otherId ? .on : .off) { [weak self] _ in
-                self?.selectConnectionFromHeader(id: otherId, user: user)
-            })
-        }
-        for user in NetworkManager.shared.followingUsers {
-            guard !user.id.isEmpty,
-                  !listedIds.contains(user.id),
-                  !IDNormalizer.isSameUser(user.id, currentUserId) else { continue }
-            listedIds.insert(user.id)
-            actions.append(UIAction(title: user.displayName,
-                                    image: menuAvatar(for: user),
-                                    state: selectedConnectionId == user.id ? .on : .off) { [weak self] _ in
-                self?.selectConnectionFromHeader(id: user.id, user: user)
-            })
-        }
-        return actions
-    }
-
-    /// Circular avatar for a menu row, from the image cache. On a cache miss,
-    /// returns a placeholder and prefetches so the NEXT open of this menu (it's
-    /// rebuilt fresh every time via UIDeferredMenuElement) shows the photo.
-    /// Downloads every menu avatar that isn't already cached, then calls
-    /// `completion` (on main). Capped so a dead network can't hold the menu
-    /// hostage — anything still missing falls back to the placeholder.
-    private func withConnectionAvatarsWarmed(timeout: TimeInterval = 0.6, _ completion: @escaping () -> Void) {
-        // The people list includes everyone followed — make sure that roster
-        // is loaded before the menu builds (first open of the session)
-        if NetworkManager.shared.followingUsers.isEmpty {
-            NetworkManager.shared.loadFollowingUsers { [weak self] in
-                self?.warmAvatars(timeout: timeout, completion)
-            }
-        } else {
-            warmAvatars(timeout: timeout, completion)
-        }
-    }
-
-    private func warmAvatars(timeout: TimeInterval, _ completion: @escaping () -> Void) {
-        var users = connections.compactMap { $0.connectedUser }
-        users.append(contentsOf: NetworkManager.shared.followingUsers)
-        if let me = AuthService.shared.currentUser { users.append(me) }
-
-        let pending: [(id: String, url: String)] = users.compactMap { user in
-            guard let url = user.profilePicture, !url.isEmpty,
-                  ImageService.shared.cachedImage(forKey: "profile_\(user.id)_\(url.hashValue)") == nil
-            else { return nil }
-            return (user.id, url)
-        }
-        guard !pending.isEmpty else { completion(); return }
-
-        let group = DispatchGroup()
-        pending.forEach { item in
-            group.enter()
-            ImageService.shared.loadProfileImage(for: item.id, from: item.url) { _ in group.leave() }
-        }
-        var finished = false
-        let finish = { if !finished { finished = true; completion() } }
-        group.notify(queue: .main) { finish() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { finish() }
-    }
-
-    private func menuAvatar(for user: User) -> UIImage? {
-        // No photo → a colored, filled avatar (never the flat grey glyph). The
-        // hue is derived from the user id so a person keeps one color across
-        // launches and the list reads as a row of distinct faces.
-        let placeholder = Self.coloredAvatarPlaceholder(for: user)
-        guard let urlString = user.profilePicture, !urlString.isEmpty else { return placeholder }
-
-        let cacheKey = "profile_\(user.id)_\(urlString.hashValue)"
-        if let cached = ImageService.shared.cachedImage(forKey: cacheKey) {
-            return Self.circularMenuImage(cached)
-        }
-        // Warm the cache for the next open; menus can't be mutated in place.
-        ImageService.shared.loadProfileImage(for: user.id, from: urlString) { _ in }
-        return placeholder
-    }
-
-    /// A colored, filled person glyph for menu rows without a profile photo.
-    /// Hue is picked deterministically from the user id so the same person keeps
-    /// one color across launches (String.hashValue is per-process seeded, so we
-    /// sum unicode scalars instead of hashing).
-    static func coloredAvatarPlaceholder(for user: User) -> UIImage? {
-        let palette: [UIColor] = [
-            Constants.Colors.primary, .systemOrange, .systemPink, .systemPurple,
-            .systemTeal, .systemGreen, .systemIndigo, .systemRed
-        ]
-        let seed = user.id.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
-        let color = palette[seed % palette.count]
-        return UIImage(
-            systemName: "person.crop.circle.fill",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 24, weight: .regular)
-        )?.withTintColor(color, renderingMode: .alwaysOriginal)
-    }
-
-    /// Aspect-fill crops an image into a small circle for use as a menu icon.
-    static func circularMenuImage(_ image: UIImage, diameter: CGFloat = 26) -> UIImage {
-        let size = CGSize(width: diameter, height: diameter)
-        return UIGraphicsImageRenderer(size: size).image { _ in
-            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).addClip()
-            let scale = max(diameter / max(image.size.width, 1), diameter / max(image.size.height, 1))
-            let width = image.size.width * scale
-            let height = image.size.height * scale
-            image.draw(in: CGRect(x: (diameter - width) / 2, y: (diameter - height) / 2, width: width, height: height))
-        }.withRenderingMode(.alwaysOriginal)
-    }
-
-    private func categoryMenuElements() -> [UIMenuElement] {
-        // Faceted: the options come from the set filtered by the OTHER active
-        // filters (connection + region), so "Dan · Rhode Island" offers only
-        // the categories Dan actually has in Rhode Island.
-        var facetBase = applyOriginFilter(connectionScopedPlaces())
-        if let regionId = selectedChipRegionId,
-           let region = chipRegionGroups.first(where: { $0.id == regionId }) {
-            facetBase = facetBase.filter { region.contains($0) }
-        }
-        var groups = PlaceCategoryGroup.present(in: facetBase.map { $0.category.rawValue })
-        // Never hide the active selection, even at zero — you need the row to
-        // un-pick it.
-        if selectedChipGroup != .all && !groups.contains(selectedChipGroup) {
-            groups.append(selectedChipGroup)
-        }
-        return groups.map { group in
-            UIAction(title: group == .all ? "All Categories" : group.title,
-                     image: categoryMenuIcon(for: group),
-                     state: selectedChipGroup == group ? .on : .off) { [weak self] _ in
-                self?.selectedChipGroup = group
-                self?.chipFiltersChanged()
-            }
-        }
-    }
+    /// Builds the three header dropdowns; row taps come back through
+    /// `menuBuilder(_:perform:)` so the selection logic stays here.
+    private lazy var menuBuilder: MapFilterMenuBuilder = {
+        let builder = MapFilterMenuBuilder()
+        builder.delegate = self
+        return builder
+    }()
 
     /// One path for every chip change: refresh the header, re-filter, re-zoom,
     /// and tell the delegate — the home page keeps its own list in lockstep.
@@ -629,118 +399,6 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // picking a specific region deliberately moves the camera to it.
         if zoomToRegion { zoomToFilteredPlaces() }
         delegate?.mapViewControllerDidChangeChipFilters(self)
-    }
-
-    /// Menu icon matching the map pins' color coding: each group shows its
-    /// category's glyph in its pin color, so the dropdown reads like a legend.
-    private func categoryMenuIcon(for group: PlaceCategoryGroup) -> UIImage? {
-        if group == .all {
-            return UIImage(systemName: "square.grid.2x2")?
-                .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
-        }
-        let raw = group.categories.contains("other")
-            ? "other"
-            : (group.categories.sorted().first ?? "other")
-        let category = PlaceCategory(rawValue: raw) ?? .other
-        return UIImage(systemName: category.systemIconName)?
-            .withTintColor(category.color, renderingMode: .alwaysOriginal)
-    }
-
-    /// All Places, Near me (when a fix landed), then states most-places-first.
-    private func placeMenuElements() -> [UIMenuElement] {
-        // Faceted: regions and their counts come from the set filtered by the
-        // OTHER active filters (connection + category), so "Dan · Hotels"
-        // shows "Rhode Island (2)" and no Arizona row at all. Selecting a
-        // region still stores the id, which applyFilter resolves against the
-        // full chipRegionGroups (same ids — same grouper).
-        var facetBase = applyOriginFilter(connectionScopedPlaces())
-        if selectedChipGroup != .all {
-            facetBase = facetBase.filter { selectedChipGroup.matches($0.category.rawValue) }
-        }
-        var facetGroups = RegionGrouper.groups(for: facetBase, origin: chipOrigin)
-        // Never hide the active selection, even at zero — you need the row to
-        // un-pick it.
-        if let selectedId = selectedChipRegionId,
-           !facetGroups.contains(where: { $0.id == selectedId }),
-           let full = chipRegionGroups.first(where: { $0.id == selectedId }) {
-            facetGroups.append(RegionGroup(
-                id: full.id, title: full.title, count: 0,
-                placeIds: [], centroid: full.centroid
-            ))
-        }
-
-        var actions: [UIAction] = [
-            UIAction(title: "All Places",
-                     image: Self.emojiImage("🌎"),
-                     state: selectedChipRegionId == nil ? .on : .off) { [weak self] _ in
-                self?.selectedChipRegionId = nil
-                self?.chipFiltersChanged()
-            }
-        ]
-        for group in facetGroups {
-            actions.append(UIAction(title: "\(group.title) (\(group.count))",
-                                    image: regionMenuImage(for: group),
-                                    state: selectedChipRegionId == group.id ? .on : .off) { [weak self] _ in
-                self?.selectedChipRegionId = group.id
-                self?.chipFiltersChanged(zoomToRegion: true)
-            })
-        }
-        return actions
-    }
-
-    /// Row image for a region: the bundled state flag for US states, the emoji
-    /// flag for countries, a location glyph for "Near me". States without a
-    /// flag asset (e.g. DC) simply show no image.
-    private func regionMenuImage(for group: RegionGroup) -> UIImage? {
-        if group.id == "near-me" {
-            return UIImage(systemName: "location.fill")?
-                .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
-        }
-        if group.id == "other-countries" {
-            return UIImage(systemName: "globe")?
-                .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
-        }
-        if group.id.hasPrefix("state:") {
-            let code = String(group.id.dropFirst("state:".count)).lowercased()
-            // Every code RegionGrouper can emit has a bundled flag (50 states +
-            // DC/PR/VI/GU), so states appearing for the first time — a user's
-            // first Montana place — get their flag with no code change. The US
-            // flag is the safety net if an asset is ever missing, so a state
-            // row never shows imageless next to flagged siblings.
-            if let flag = UIImage(named: "flag-us-\(code)") {
-                return flag.withRenderingMode(.alwaysOriginal)
-            }
-            return Self.emojiFlagImage(countryCode: "US")
-        }
-        if group.id.hasPrefix("country:") {
-            // Rendered from the ISO2 code at runtime — any country that ever
-            // appears gets its emoji flag with no bundled asset.
-            let code = String(group.id.dropFirst("country:".count))
-            return Self.emojiFlagImage(countryCode: code)
-        }
-        return nil
-    }
-
-    /// Renders a country's emoji flag (🇨🇦) into a menu-sized image.
-    static func emojiFlagImage(countryCode: String) -> UIImage? {
-        let base: UInt32 = 127397
-        var flag = ""
-        for scalar in countryCode.uppercased().unicodeScalars {
-            guard let indicator = UnicodeScalar(base + scalar.value) else { return nil }
-            flag.append(String(indicator))
-        }
-        return emojiImage(flag)
-    }
-
-    /// Renders any emoji (🌎, 🇨🇦) into a menu-sized image — full color, unlike
-    /// tinted SF Symbols.
-    static func emojiImage(_ emoji: String, fontSize: CGFloat = 20) -> UIImage? {
-        let attributed = NSAttributedString(string: emoji, attributes: [.font: UIFont.systemFont(ofSize: fontSize)])
-        let size = attributed.size()
-        guard size.width > 0 else { return nil }
-        return UIGraphicsImageRenderer(size: size).image { _ in
-            attributed.draw(at: .zero)
-        }.withRenderingMode(.alwaysOriginal)
     }
 
     private func selectConnectionFromHeader(id: String?, user: User?) {
@@ -775,7 +433,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         updateFilterHeaderTitles()
         // Start avatar downloads now, long before the dropdown can be opened —
         // by first tap the cache is warm and the menu shows faces immediately.
-        withConnectionAvatarsWarmed {}
+        menuBuilder.withConnectionAvatarsWarmed {}
     }
     // IDs of the current user's own places. When set, the default map region
     // centers on the user's favorites instead of just their raw location.
@@ -1104,7 +762,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // people in the order muscle memory expects.
         self.connections = HorizontalUserListView.rankedConnections(connections)
         self.connectionPlaces = connectionPlaces
-        withConnectionAvatarsWarmed {}
+        menuBuilder.withConnectionAvatarsWarmed {}
         
         // Note: we intentionally do NOT reset hasInitiallyZoomed here anymore.
         // adjustMapRegion() keeps the current camera when the selected
@@ -2862,5 +2520,55 @@ extension FullScreenMapViewController: UISearchBarDelegate {
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         searchBar.resignFirstResponder()
+    }
+}
+
+// MARK: - MapFilterMenuBuilderDelegate
+
+extension FullScreenMapViewController: MapFilterMenuBuilderDelegate {
+    func menuBuilderState(_ builder: MapFilterMenuBuilder) -> MapFilterMenuBuilder.State {
+        var state = MapFilterMenuBuilder.State()
+        state.selectedConnectionId = selectedConnectionId
+        state.selectedImportOrigin = selectedImportOrigin
+        state.selectedChipGroup = selectedChipGroup
+        state.selectedChipRegionId = selectedChipRegionId
+        state.chipRegionGroups = chipRegionGroups
+        state.chipOrigin = chipOrigin
+        state.places = places
+        state.connections = connections
+        state.facetBase = applyOriginFilter(connectionScopedPlaces())
+        return state
+    }
+
+    func menuBuilder(_ builder: MapFilterMenuBuilder, perform action: MapFilterMenuAction) {
+        switch action {
+        case .selectConnection(let id, let user):
+            selectConnectionFromHeader(id: id, user: user)
+
+        case .selectMyPlaces:
+            selectedImportOrigin = nil
+            selectConnectionFromHeader(id: HomePlaceFilter.myPlacesOnlyId, user: nil)
+
+        case .selectImportOrigin(let origin):
+            selectedImportOrigin = origin
+            if selectedConnectionId == HomePlaceFilter.myPlacesOnlyId {
+                chipFiltersChanged()
+            } else {
+                selectConnectionFromHeader(id: HomePlaceFilter.myPlacesOnlyId, user: nil)
+                // Embedded: the scope change round-trips through the
+                // home controller; re-run the chip pipeline so the
+                // origin cut applies to whatever it hands back
+                chipFiltersChanged()
+            }
+
+        case .selectChipGroup(let group):
+            selectedChipGroup = group
+            chipFiltersChanged()
+
+        case .selectRegion(let id):
+            selectedChipRegionId = id
+            // Only picking a specific region deliberately moves the camera
+            chipFiltersChanged(zoomToRegion: id != nil)
+        }
     }
 }
