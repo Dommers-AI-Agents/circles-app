@@ -1990,17 +1990,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let reference = mapView.userLocation.location
             ?? CLLocation(latitude: mapView.region.center.latitude, longitude: mapView.region.center.longitude)
 
-        mapDistanceSortedPlaces = filteredPlaces.map { place in
-            let distance = place.location?.clLocation.map { reference.distance(from: $0) }
-            return (place: place, distance: distance)
-        }.sorted { lhs, rhs in
-            switch (lhs.distance, rhs.distance) {
-            case let (l?, r?): return l < r
-            case (_?, nil): return true
-            case (nil, _?): return false
-            case (nil, nil): return lhs.place.name.localizedCaseInsensitiveCompare(rhs.place.name) == .orderedAscending
-            }
-        }
+        mapDistanceSortedPlaces = DistancePlaceSorter.sorted(filteredPlaces, from: reference)
 
         if mapDistanceSortedPlaces.isEmpty {
             let emptyLabel = UILabel()
@@ -2034,59 +2024,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         default:
             return "Connect with \(name)\nto see the places they share with their network."
         }
-    }
-    
-    func extractCityFromAddress(_ address: String) -> String? {
-        // Split address by comma
-        let components = address.components(separatedBy: ", ").map { $0.trimmingCharacters(in: .whitespaces) }
-        
-        // Common patterns:
-        // "123 Main St, City, State ZIP"
-        // "123 Main St, City, State"
-        // "Place Name, 123 Main St, City, State"
-        // "123 Main St, City"
-        
-        if components.count >= 3 {
-            // Check if last component is ZIP/postal code (contains numbers)
-            let lastComponent = components.last ?? ""
-            let hasZipCode = lastComponent.rangeOfCharacter(from: .decimalDigits) != nil
-            
-            if hasZipCode && components.count >= 3 {
-                // Format: "..., City, State ZIP"
-                // City is 2 positions from the end
-                let potentialCity = components[components.count - 3]
-                // Clean up in case state is attached (e.g., "Phoenix AZ" -> "Phoenix")
-                let cityParts = potentialCity.components(separatedBy: " ")
-                if cityParts.count > 1 && cityParts.last?.count == 2 {
-                    // Remove state abbreviation if attached
-                    return cityParts.dropLast().joined(separator: " ")
-                }
-                return potentialCity
-            } else if components.count >= 2 {
-                // Format: "..., City, State" or "..., City"
-                // City is typically second to last
-                let potentialCity = components[components.count - 2]
-                // Clean up in case state is attached
-                let cityParts = potentialCity.components(separatedBy: " ")
-                if cityParts.count > 1 && cityParts.last?.count == 2 {
-                    // Remove state abbreviation if attached
-                    return cityParts.dropLast().joined(separator: " ")
-                }
-                return potentialCity
-            }
-        } else if components.count == 2 {
-            // Simple format: "Address, City"
-            let potentialCity = components[1]
-            // Clean up in case state is attached
-            let cityParts = potentialCity.components(separatedBy: " ")
-            if cityParts.count > 1 && cityParts.last?.count == 2 {
-                // Remove state abbreviation if attached
-                return cityParts.dropLast().joined(separator: " ")
-            }
-            return potentialCity
-        }
-        
-        return nil
     }
     
     @objc func followersStatTapped() {
