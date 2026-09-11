@@ -154,6 +154,7 @@ class AlertPresenter {
         placeholder: String? = nil,
         initialText: String? = nil,
         keyboardType: UIKeyboardType = .default,
+        confirmTitle: String = "OK",
         from viewController: UIViewController,
         onSubmit: @escaping (String?) -> Void
     ) {
@@ -166,7 +167,7 @@ class AlertPresenter {
         }
         
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+        alert.addAction(UIAlertAction(title: confirmTitle, style: .default) { _ in
             let text = alert.textFields?.first?.text
             onSubmit(text)
         })
@@ -191,7 +192,8 @@ class AlertPresenter {
                 textField.placeholder = field.placeholder
                 textField.keyboardType = field.keyboardType
                 textField.text = field.initialText
-                textField.autocapitalizationType = field.keyboardType == .emailAddress ? .none : .words
+                // Addresses and URLs are never capitalized
+                textField.autocapitalizationType = [.emailAddress, .URL].contains(field.keyboardType) ? .none : .words
             }
         }
 
