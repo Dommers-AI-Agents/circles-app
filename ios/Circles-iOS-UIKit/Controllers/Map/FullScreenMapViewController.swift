@@ -1490,57 +1490,6 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
     
     @available(iOS 16.0, *)
-    private func addPOIToCircle(_ featureAnnotation: MKMapFeatureAnnotation, circle: Circle, notes: String? = nil) {
-        // Show loading
-        let loadingAlert = UIAlertController(title: "Adding Place", message: "Please wait...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        // Convert POI to Place
-        AppleMapsService.shared.convertPOIToPlace(
-            from: featureAnnotation,
-            circleId: circle.id,
-            notes: notes
-        ) { [weak self] result in
-            switch result {
-            case .success(let place):
-                // Add place to circle using PlaceService
-                PlaceService.shared.addPlaceFromPOI(
-                    name: place.name,
-                    address: place.address,
-                    location: place.location,
-                    category: place.category,
-                    website: place.website,
-                    phone: place.phone,
-                    description: place.description,
-                    circleId: circle.id,
-                    notes: place.notes,
-                    googlePlaceId: place.googlePlaceId
-                ) { addResult in
-                    DispatchQueue.main.async {
-                        loadingAlert.dismiss(animated: true) {
-                            switch addResult {
-                            case .success:
-                                self?.showSuccess("Added to \(circle.name)")
-                                self?.mapView.deselectAnnotation(featureAnnotation, animated: true)
-                                // Refresh map to show new place
-                                self?.loadPlacesForCurrentView()
-                            case .failure(let error):
-                                self?.showError("Failed to add place: \(error.localizedDescription)")
-                            }
-                        }
-                    }
-                }
-            case .failure(let error):
-                DispatchQueue.main.async {
-                    loadingAlert.dismiss(animated: true) {
-                        self?.showError("Failed to get place details: \(error.localizedDescription)")
-                    }
-                }
-            }
-        }
-    }
-    
-    @available(iOS 16.0, *)
     private func createNewCircleForPOI(_ featureAnnotation: MKMapFeatureAnnotation) {
         // Navigate to create circle view controller
         let createCircleVC = CreateCircleViewController()
@@ -1553,13 +1502,6 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         present(navController, animated: true)
     }
     
-    private func showSuccess(_ message: String) {
-        let alert = UIAlertController(title: "Success", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-    
-    
     // MARK: - Helper Methods for POI Duplicate Detection
     
     private func checkIfPOIAlreadyExists(name: String, coordinate: CLLocationCoordinate2D) -> Bool {
@@ -1571,17 +1513,6 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         let allPlacesToCheck = viewMode == .allPlaces ? places : filteredPlaces
         return POIDuplicateMatcher.existingPlace(named: name, at: coordinate, in: allPlacesToCheck)
     }
-    
-    private func loadPlacesForCurrentView() {
-        // Reload places based on current view mode
-        if viewMode == .circle {
-            addAnnotationsToMap()
-        } else {
-            // In allPlaces mode, reload from connections
-            // This would need to be implemented based on your data source
-        }
-    }
-    
     
     // MARK: - Actions
     @objc private func closeButtonTapped() {
