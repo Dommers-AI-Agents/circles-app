@@ -785,6 +785,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     // State tracking for other users
     var isFollowing: Bool = false
     var connectionStatus: ConnectionStatus?
+    /// Follow / connect / message flows and status resolution.
+    lazy var relationshipController: ProfileRelationshipController = {
+        let controller = ProfileRelationshipController()
+        controller.delegate = self
+        return controller
+    }()
     
     // Constraint references for dynamic button positioning
     var followButtonLeadingToMessageConstraint: NSLayoutConstraint?
@@ -2045,175 +2051,17 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     @objc func messageButtonTapped() {
-        Logger.debug("🔍 ProfileViewController: messageButtonTapped called")
-        guard let user = user else {
-            Logger.debug("❌ ProfileViewController: messageButtonTapped - user is nil")
-            return
-        }
-        
-        Logger.debug("🔍 ProfileViewController: Creating/getting conversation with user: \(user.displayName) (ID: \(user.id))")
-        
-        // Create or get conversation with this user
-        MessagingManager.shared.createOrGetDirectConversation(with: user.id) { [weak self] result in
-            guard let self = self else { return }
-            
-            switch result {
-            case .success(let conversation):
-                Logger.debug("✅ ProfileViewController: Successfully got conversation:")
-                Logger.debug("   - ID: \(conversation.id)")
-                Logger.debug("   - Type: \(conversation.type)")
-                Logger.debug("   - Participants: \(conversation.participants)")
-                Logger.debug("   - Display Name: \(conversation.displayName ?? "nil")")
-                
-                DispatchQueue.main.async {
-                    Logger.debug("🔍 ProfileViewController: Creating ChatViewController and navigating")
-                    let chatVC = ChatViewController()
-                    chatVC.conversation = conversation
-                    self.navigationController?.pushViewController(chatVC, animated: true)
-                }
-            case .failure(let error):
-                Logger.debug("❌ ProfileViewController: Failed to create/get conversation: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    self.showAlert(title: "Error", message: "Failed to start conversation: \(error.localizedDescription)")
-                }
-            }
-        }
+        relationshipController.messageTapped()
     }
-    
-    @objc func followButtonTapped() {
-        guard let user = user else { return }
-        
-        // Disable button to prevent rapid toggles
-        followButton.isEnabled = false
-        followButton.alpha = 0.6
-        
-        let endpoint = isFollowing ? "users/\(user.id)/unfollow" : "users/\(user.id)/follow"
-        let action = isFollowing ? "unfollow" : "follow"
-        
-        Logger.debug("🔵 Follow button tapped - Action: \(action), User: \(user.displayName)")
-        
-        // Store original states for rollback
-        let originalIsFollowing = isFollowing
-        let originalUser = self.user
-        
-        // Apply optimistic UI updates immediately
-        isFollowing.toggle()
-        updateButtonVisibility()
-        updateLocalFollowingCount(increment: action == "follow")
-        
-        // Update the user object's isFollowing flag optimistically. The full
-        // copy() preserves followsYou and every other field — the hand-built
-        // User this replaces silently dropped them, so tapping Follow erased
-        // the very "follows you" state that justified the Follow Back label.
-        self.user = self.user?.copy(isFollowing: self.isFollowing)
-        
-        APIService.shared.request(
-            endpoint: endpoint,
-            method: .post,
-            requiresAuth: true
-        ) { [weak self] (result: Result<FollowResponse, APIError>) in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                
-                switch result {
-                case .success(let response):
-                    Logger.debug("✅ Successfully \(action)ed user: \(user.displayName)")
-                    AuthService.shared.recordFollowChange(userId: user.id, isFollowing: action == "follow")
-                    // First-ever follow earns a dime (nil on unfollow)
-                    PiggyBankDepositView.play(credit: response.piggyBank)
 
-                    // Re-enable button after successful action
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        self.followButton.isEnabled = true
-                        self.followButton.alpha = 1.0
-                    }
-                    
-                case .failure(let error):
-                    Logger.debug("❌ Failed to \(action) user: \(error)")
-                    
-                    // Rollback optimistic updates on failure
-                    self.isFollowing = originalIsFollowing
-                    self.user = originalUser
-                    self.updateButtonVisibility()
-                    self.updateLocalFollowingCount(increment: action == "unfollow") // Reverse the action
-                    
-                    self.showAlert(title: "Error", message: "Failed to \(action) user: \(error.localizedDescription)")
-                    
-                    // Re-enable button immediately on error
-                    self.followButton.isEnabled = true
-                    self.followButton.alpha = 1.0
-                }
-            }
-        }
+    @objc func followButtonTapped() {
+        relationshipController.followTapped()
     }
-    
+
     @objc func connectButtonTapped() {
-        guard let user = user else { return }
-        
-        // Check if this is an incoming request to accept
-        if connectionStatus == .pending && user.connectionDirection == "incoming" {
-            // Find the connection to accept (check both accepted and pending connections)
-            let allConnections = NetworkManager.shared.connections + NetworkManager.shared.pendingConnections
-            guard let connection = allConnections.first(where: { 
-                $0.otherUserId(currentUserId: AuthService.shared.getUserId() ?? "") == user.id 
-            }) else {
-                showAlert(title: "Error", message: "Connection request not found")
-                return
-            }
-            
-            // Accept the incoming request
-            NetworkManager.shared.acceptConnection(connection.id) { [weak self] result in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    
-                    switch result {
-                    case .success:
-                        // Update connection status
-                        self.connectionStatus = .accepted
-                        self.updateButtonVisibility()
-                        self.showAlert(title: "Success", message: "Connection request accepted!")
-                        
-                        // Refresh connections
-                        NetworkManager.shared.loadConnections()
-                    case .failure(let error):
-                        self.showAlert(title: "Error", message: "Failed to accept connection request: \(error.localizedDescription)")
-                    }
-                }
-            }
-        } else {
-            // Send new connection request
-            NetworkManager.shared.sendConnectionRequest(to: user.id) { [weak self] result in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    
-                    switch result {
-                    case .success:
-                        // Update connection status locally. Connecting implies
-                        // following (the server auto-follows on connect), so
-                        // the Follow button flips to "Following" right away.
-                        self.connectionStatus = .pending
-                        self.isFollowing = true
-                        self.user = self.user?.copy(
-                            connectionStatus: "pending",
-                            connectionDirection: "outgoing",
-                            isFollowing: true
-                        )
-                        self.updateButtonVisibility()
-                        self.showAlert(title: "Success", message: "Connection request sent!")
-                        
-                        // Refresh connections to get updated list
-                        NetworkManager.shared.loadConnections()
-                    case .failure(let error):
-                        // Show the server's own wording ("Cannot connect to
-                        // yourself", "Connection request already sent") rather
-                        // than appending a raw localizedDescription.
-                        self.showError((error as? APIError)?.serverMessage ?? "Failed to send connection request")
-                    }
-                }
-            }
-        }
+        relationshipController.connectTapped()
     }
-    
+
     @objc func expandMapButtonTapped() {
         // Expand with the SAME chips as the small map: pass all places and seed
         // the current selections, so the large view opens showing exactly this
@@ -2384,85 +2232,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     func checkConnectionAndFollowStatus() {
-        guard let user = user else { return }
-        
-        Logger.debug("🔍 Checking connection and follow status for user: \(user.displayName)")
-        
-        // Check if user is in current user's connections (both accepted and pending)
-        let allConnections = NetworkManager.shared.connections + NetworkManager.shared.pendingConnections
-        let currentUserId = AuthService.shared.getUserId() ?? ""
-        let connection = allConnections.first { $0.otherUserId(currentUserId: currentUserId) == user.id }
-        
-        connectionStatus = connection?.status
-        
-        // Set connection direction based on who initiated the request
-        if let connection = connection, connection.status == .pending {
-            // If the current user initiated the request, it's outgoing
-            let direction = connection.userId == currentUserId ? "outgoing" : "incoming"
-            
-            // Create new user instance with updated connection direction
-            if let currentUser = self.user {
-                self.user = User(
-                    id: currentUser.id,
-                    email: currentUser.email,
-                    displayName: currentUser.displayName,
-                    firstName: currentUser.firstName,
-                    lastName: currentUser.lastName,
-                    phoneNumber: currentUser.phoneNumber,
-                    profilePicture: currentUser.profilePicture,
-                    bio: currentUser.bio,
-                    location: currentUser.location,
-                    friends: currentUser.friends,
-                    friendRequests: currentUser.friendRequests,
-                    circleOrder: currentUser.circleOrder,
-                    preferences: currentUser.preferences,
-                    createdAt: currentUser.createdAt,
-                    connectionStatus: currentUser.connectionStatus,
-                    connectionDirection: direction,
-                    connectionId: currentUser.connectionId,
-                    followers: currentUser.followers,
-                    following: currentUser.following,
-                    followersCount: currentUser.followersCount,
-                    followingCount: currentUser.followingCount,
-                    connectionsCount: currentUser.connectionsCount,
-                    pinnedPlaces: currentUser.pinnedPlaces,
-                    isFollowing: currentUser.isFollowing
-                )
-            }
-        }
-        
-        // First, check if the user object has isFollowing property (from backend)
-        if let userIsFollowing = user.isFollowing {
-            let wasFollowing = isFollowing
-            isFollowing = userIsFollowing
-            Logger.debug("📊 Follow status from backend - Was: \(wasFollowing), Now: \(isFollowing)")
-        } else {
-            // Fallback: Check follow status from current user's following list
-            if let currentUser = AuthService.shared.currentUser,
-               let following = currentUser.following {
-                let wasFollowing = isFollowing
-                isFollowing = following.contains(user.id)
-                Logger.debug("📊 Follow status from local - Was: \(wasFollowing), Now: \(isFollowing), Following array: \(following.count) users")
-            } else {
-                isFollowing = false
-                Logger.debug("📊 No following data available")
-            }
-            
-            // If we're viewing another user and don't have current user data, fetch it
-            if AuthService.shared.currentUser == nil && user.id != AuthService.shared.getUserId() {
-                AuthService.shared.fetchCurrentUser { [weak self] _ in
-                    DispatchQueue.main.async {
-                        guard let self = self else { return }
-                        // Re-check follow status after fetching current user
-                        self.checkConnectionAndFollowStatus()
-                    }
-                }
-            }
-        }
-        
-        updateButtonVisibility()
+        relationshipController.checkConnectionAndFollowStatus()
     }
-    
+
     func updateLocalFollowingCount(increment: Bool) {
         guard let currentUserId = AuthService.shared.getUserId(),
               let user = self.user else { return }
@@ -3596,3 +3368,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
     }
 }
+
+// MARK: - ProfileRelationshipControllerDelegate
+
+/// `user`, `isFollowing`, `connectionStatus`, `followButton`, the button
+/// renderer and the alert helpers already satisfy the requirements by name.
+extension ProfileViewController: ProfileRelationshipControllerDelegate {}
