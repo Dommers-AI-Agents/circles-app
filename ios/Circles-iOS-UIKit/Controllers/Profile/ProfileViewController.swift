@@ -638,10 +638,17 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     var momentsTabHeightConstraint: NSLayoutConstraint?
     var uploadsTabHeightConstraint: NSLayoutConstraint?
 
-    var logoutButtonTopToCollectionConstraint: NSLayoutConstraint?
-    var logoutButtonTopToMapConstraint: NSLayoutConstraint?
-    var logoutButtonTopToVideosConstraint: NSLayoutConstraint?
-    var logoutButtonTopToUploadsConstraint: NSLayoutConstraint?
+    /// The log-out button sits under whichever tab content is showing
+    /// (circles grid, map, Moments grid, Uploads grid) — one slot, re-pinned
+    /// on every tab/view-mode change.
+    var logoutButtonTopConstraint: NSLayoutConstraint?
+
+    func pinLogoutButton(below anchor: NSLayoutYAxisAnchor) {
+        logoutButtonTopConstraint?.isActive = false
+        let constraint = logoutButton.topAnchor.constraint(equalTo: anchor, constant: Constants.Spacing.xlarge)
+        constraint.isActive = true
+        logoutButtonTopConstraint = constraint
+    }
     
     // Floating add button for creating circles
     lazy var floatingAddButton: UIButton = {
@@ -1329,15 +1336,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         uploadsTabHeightConstraint?.isActive = true
         
         // Create switchable constraints for logout button
-        logoutButtonTopToCollectionConstraint = logoutButton.topAnchor.constraint(equalTo: circlesCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
-        logoutButtonTopToMapConstraint = logoutButton.topAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: Constants.Spacing.xlarge)
-        logoutButtonTopToVideosConstraint = logoutButton.topAnchor.constraint(equalTo: momentsTab.view.bottomAnchor, constant: Constants.Spacing.xlarge)
-        logoutButtonTopToUploadsConstraint = logoutButton.topAnchor.constraint(equalTo: uploadsTab.view.bottomAnchor, constant: Constants.Spacing.xlarge)
         
         // Initially show collection view
-        logoutButtonTopToCollectionConstraint?.isActive = true
-        logoutButtonTopToMapConstraint?.isActive = false
-        logoutButtonTopToVideosConstraint?.isActive = false
+        pinLogoutButton(below: circlesCollectionView.bottomAnchor)
         
         // Create dynamic constraints for search bar container
         searchBarContainerTopToSegmentedConstraint = searchBarContainer.topAnchor.constraint(
@@ -1691,10 +1692,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             updateCollectionViewHeight()
             
             // Update logout button constraint
-            logoutButtonTopToCollectionConstraint?.isActive = !isShowingMap
-            logoutButtonTopToMapConstraint?.isActive = isShowingMap
-            logoutButtonTopToVideosConstraint?.isActive = false
-            logoutButtonTopToUploadsConstraint?.isActive = false
+            pinLogoutButton(below: isShowingMap ? mapContainerView.bottomAnchor : circlesCollectionView.bottomAnchor)
 
             // Force layout update
             view.setNeedsLayout()
@@ -1728,10 +1726,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             momentsTab.setActive(true)
             
             // Update logout button constraint to videos collection
-            logoutButtonTopToCollectionConstraint?.isActive = false
-            logoutButtonTopToMapConstraint?.isActive = false
-            logoutButtonTopToVideosConstraint?.isActive = true
-            logoutButtonTopToUploadsConstraint?.isActive = false
+            pinLogoutButton(below: momentsTab.view.bottomAnchor)
         } else {
             // Show uploads (tab index 2)
             Logger.debug("📷 Switching to Uploads tab")
@@ -1749,10 +1744,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             uploadsTab.setActive(true)
             
             // Update logout button constraint to uploads collection
-            logoutButtonTopToCollectionConstraint?.isActive = false
-            logoutButtonTopToMapConstraint?.isActive = false
-            logoutButtonTopToVideosConstraint?.isActive = false
-            logoutButtonTopToUploadsConstraint?.isActive = true
+            pinLogoutButton(below: uploadsTab.view.bottomAnchor)
         }
 
         // Keep the sticky mirror (selection + add-button visibility) in step
@@ -1812,8 +1804,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         updateOrganizeButtonVisibility()
         mapContainerView.isHidden = (mode != .map)
 
-        logoutButtonTopToCollectionConstraint?.isActive = (mode == .circles)
-        logoutButtonTopToMapConstraint?.isActive = (mode == .map)
+        pinLogoutButton(below: mode == .map ? mapContainerView.bottomAnchor : circlesCollectionView.bottomAnchor)
 
         if mode == .map {
             if allPlaces.isEmpty {
