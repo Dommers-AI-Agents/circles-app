@@ -6,15 +6,21 @@ import CoreLocation
 class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocationManagerDelegate, UIGestureRecognizerDelegate, CircleSelectionWithPlaceDelegate {
     
     // MARK: - Properties
-    private var circle: Circle
-    private var places: [Place] = []
-    private var filteredPlaces: [Place] = []
+    var circle: Circle
+    var places: [Place] = []
+    var filteredPlaces: [Place] = []
     private var annotationPlaceMap: [ObjectIdentifier: Place] = [:]
     private let locationManager = CLLocationManager()
     private var userLocation: CLLocation?
-    private var selectedCategory: PlaceCategory?
-    private var selectedTag: String? // Raw tag value from place.tags; nil = All
+    var selectedCategory: PlaceCategory?
+    var selectedTag: String? // Raw tag value from place.tags; nil = All
     private var isSharedViaLink: Bool = false
+    private lazy var shareController = CircleShareController(presenter: self)
+    private lazy var placesLoader: CirclePlacesLoader = {
+        let loader = CirclePlacesLoader()
+        loader.delegate = self
+        return loader
+    }()
     private var editors: [User] = []
     
     // Dynamic constraints for managing spacing when editors are hidden/shown
@@ -264,7 +270,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         return button
     }()
     
-    private let tableView: UITableView = {
+    let tableView: UITableView = {
         let tableView = UITableView()
         tableView.backgroundColor = .systemGroupedBackground
         tableView.separatorStyle = .none
@@ -957,401 +963,11 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         fetchPlaces()
     }
     
-    private func fetchPlaces() {
-        Logger.debug("🔍 CircleDetailViewController: About to fetch places for circle: \(circle.name) (ID: \(circle.id))")
-        Logger.debug("   - Circle privacy: \(circle.privacy)")
-        Logger.debug("   - Is shared via link: \(isSharedViaLink)")
-        
-        // Use public endpoint for public circles accessed via share link
-        if circle.privacy == .public && isSharedViaLink {
-            PlaceService.shared.fetchPlacesByCircleIdPublic(circleId: circle.id) { [weak self] result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success(let places):
-                        Logger.info("Fetched \(places.count) places for public circle: \(self?.circle.name ?? "")")
-                        
-                        // Places are already ordered by the backend based on the circle's places array
-                        self?.places = places
-                        self?.updateTagChips()
-                        self?.applyFilter()
-                        self?.updateAddPlaceButtonTitle()
-                    case .failure(let error):
-                        Logger.error("Failed to fetch places for public circle: \(error.localizedDescription)")
-                        // Don't use sample places - show empty state instead
-                        self?.places = []
-                        self?.filteredPlaces = []
-                        self?.updateTagChips()
-                        self?.updateAddPlaceButtonTitle()
-                    }
-                    
-                    self?.tableView.reloadData()
-                    
-                    // End refresh animation
-                    self?.scrollView.refreshControl?.endRefreshing()
-                    
-                    // Force layout update to calculate correct content size
-                    DispatchQueue.main.async {
-                        self?.tableView.layoutIfNeeded()
-                        self?.updateTableViewHeight()
-                    }
-                    
-                    self?.addAnnotationsToMap()
-                }
-            }
-        } else {
-            // Use authenticated endpoint for private circles or authenticated users
-            PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success(let places):
-                        Logger.info("Fetched \(places.count) places for circle: \(self?.circle.name ?? "")")
-                        
-                        // Places are already ordered by the backend based on the circle's places array
-                        self?.places = places
-                        self?.updateTagChips()
-                        self?.applyFilter()
-                        self?.updateAddPlaceButtonTitle()
-                    case .failure(let error):
-                        Logger.error("Failed to fetch places: \(error.localizedDescription)")
-                        // Don't use sample places - show empty state instead
-                        self?.places = []
-                        self?.filteredPlaces = []
-                        self?.updateTagChips()
-                        self?.updateAddPlaceButtonTitle()
-                    }
-                    
-                    self?.tableView.reloadData()
-                    
-                    // End refresh animation
-                    self?.scrollView.refreshControl?.endRefreshing()
-                    
-                    // Force layout update to calculate correct content size
-                    DispatchQueue.main.async {
-                        self?.tableView.layoutIfNeeded()
-                        self?.updateTableViewHeight()
-                    }
-                    
-                    self?.addAnnotationsToMap()
-                }
-            }
-        }
+    func fetchPlaces() {
+        placesLoader.fetchPlaces(for: circle, isSharedViaLink: isSharedViaLink)
     }
-    
-    // COMMENTED OUT: This method was creating test data but the Place struct no longer has a direct initializer
-    // If sample data is needed in the future, it should be created using proper JSON decoding
-    /*
-    private func createSamplePlaces() -> [Place] {
-        // Create sample places based on the circle's category
-        
-        let userId = AuthService.shared.getUserId() ?? "user123"
-        let date = Date()
-        
-        var samplePlaces: [Place] = []
-        
-        switch circle.category {
-        case .travel:
-            // New York travel places
-            let place1 = Place(
-                id: "place1",
-                name: "Central Park",
-                description: "Urban park in Manhattan",
-                address: "Central Park, New York, NY",
-                location: GeoLocation(type: "Point", coordinates: [-73.9665, 40.7812]),
-                website: nil,
-                phone: nil,
-                googlePlaceId: nil,
-                photos: nil,
-                category: .attraction,
-                rating: 4.8,
-                userRatingsTotal: 432,
-                notes: "Beautiful park to walk around",
-                privateNotes: nil,
-                publicNotes: nil,
-                tags: ["park", "nature", "walking"],
-                reviews: nil,
-                openingHours: nil,
-                priceLevel: nil,
-                circleId: circle.id,
-                addedBy: userId,
-                addedByUser: nil,
-                privacy: .followCirclePrivacy,
-                createdAt: date.addingTimeInterval(-86400 * 5),
-                updatedAt: date
-            )
-            
-            let place2 = Place(
-                id: "place2",
-                name: "Empire State Building",
-                description: "Historic 102-story skyscraper",
-                address: "20 W 34th St, New York, NY 10001",
-                location: GeoLocation(type: "Point", coordinates: [-73.9857, 40.7484]),
-                website: nil,
-                phone: nil,
-                googlePlaceId: nil,
-                photos: nil,
-                category: .attraction,
-                rating: 4.7,
-                userRatingsTotal: 289,
-                notes: "Great views from the observation deck",
-                privateNotes: nil,
-                publicNotes: nil,
-                tags: ["landmark", "skyscraper", "view"],
-                reviews: nil,
-                openingHours: nil,
-                priceLevel: nil,
-                circleId: circle.id,
-                addedBy: userId,
-                addedByUser: nil,
-                privacy: .followCirclePrivacy,
-                createdAt: date.addingTimeInterval(-86400 * 4),
-                updatedAt: date
-            )
-            
-            let place3 = Place(
-                id: "place3",
-                name: "The Metropolitan Museum of Art",
-                description: "Art museum on the east side of Central Park",
-                address: "1000 5th Ave, New York, NY 10028",
-                location: GeoLocation(type: "Point", coordinates: [-73.9632, 40.7794]),
-                website: nil,
-                phone: nil,
-                googlePlaceId: nil,
-                photos: nil,
-                category: .attraction,
-                rating: 4.8,
-                userRatingsTotal: 376,
-                notes: "Amazing collection of art",
-                privateNotes: nil,
-                publicNotes: nil,
-                tags: ["museum", "art", "culture"],
-                reviews: nil,
-                openingHours: nil,
-                priceLevel: nil,
-                circleId: circle.id,
-                addedBy: userId,
-                addedByUser: nil,
-                privacy: .followCirclePrivacy,
-                createdAt: date.addingTimeInterval(-86400 * 3),
-                updatedAt: date
-            )
-            
-            samplePlaces = [place1, place2, place3]
-            
-        case .food:
-            // Restaurant places
-            let place1 = Place(
-                id: "place4",
-                name: "Le Bernardin",
-                description: "Upscale French seafood restaurant",
-                address: "155 W 51st St, New York, NY 10019",
-                location: GeoLocation(type: "Point", coordinates: [-73.9819, 40.7614]),
-                website: nil,
-                phone: nil,
-                googlePlaceId: nil,
-                photos: nil,
-                category: .restaurant,
-                rating: 4.9,
-                userRatingsTotal: 156,
-                notes: "Amazing seafood, get the chef's tasting menu",
-                privateNotes: nil,
-                publicNotes: nil,
-                tags: ["seafood", "french", "fine dining"],
-                reviews: nil,
-                openingHours: nil,
-                priceLevel: nil,
-                circleId: circle.id,
-                addedBy: userId,
-                addedByUser: nil,
-                privacy: .followCirclePrivacy,
-                createdAt: date.addingTimeInterval(-86400 * 5),
-                updatedAt: date
-            )
-            
-            let place2 = Place(
-                id: "place5",
-                name: "Gramercy Tavern",
-                description: "Upscale American restaurant",
-                address: "42 E 20th St, New York, NY 10003",
-                location: GeoLocation(type: "Point", coordinates: [-73.9880, 40.7387]),
-                website: nil,
-                phone: nil,
-                googlePlaceId: nil,
-                photos: nil,
-                category: .restaurant,
-                rating: 4.8,
-                userRatingsTotal: 223,
-                notes: "Seasonal American cuisine, great atmosphere",
-                privateNotes: nil,
-                publicNotes: nil,
-                tags: ["american", "seasonal", "tavern"],
-                reviews: nil,
-                openingHours: nil,
-                priceLevel: nil,
-                circleId: circle.id,
-                addedBy: userId,
-                addedByUser: nil,
-                privacy: .followCirclePrivacy,
-                createdAt: date.addingTimeInterval(-86400 * 4),
-                updatedAt: date
-            )
-            
-            samplePlaces = [place1, place2]
-            
-        case .shopping:
-            // Shopping places
-            let place1 = Place(
-                id: "place6",
-                name: "Fifth Avenue",
-                description: "Famous shopping street",
-                address: "5th Ave, New York, NY",
-                location: GeoLocation(type: "Point", coordinates: [-73.9745, 40.7636]),
-                website: nil,
-                phone: nil,
-                googlePlaceId: nil,
-                photos: nil,
-                category: .retail,
-                rating: 4.7,
-                userRatingsTotal: 498,
-                notes: "Luxury shopping district",
-                privateNotes: nil,
-                publicNotes: nil,
-                tags: ["luxury", "fashion", "shopping district"],
-                reviews: nil,
-                openingHours: nil,
-                priceLevel: nil,
-                circleId: circle.id,
-                addedBy: userId,
-                addedByUser: nil,
-                privacy: .followCirclePrivacy,
-                createdAt: date.addingTimeInterval(-86400 * 5),
-                updatedAt: date
-            )
-            
-            let place2 = Place(
-                id: "place7",
-                name: "Bloomingdale's",
-                description: "Upscale department store",
-                address: "1000 3rd Ave, New York, NY 10022",
-                location: GeoLocation(type: "Point", coordinates: [-73.9668, 40.7621]),
-                website: nil,
-                phone: nil,
-                googlePlaceId: nil,
-                photos: nil,
-                category: .retail,
-                rating: 4.5,
-                userRatingsTotal: 187,
-                notes: "Great selection of designer clothes",
-                privateNotes: nil,
-                publicNotes: nil,
-                tags: ["department store", "fashion", "luxury"],
-                reviews: nil,
-                openingHours: nil,
-                priceLevel: nil,
-                circleId: circle.id,
-                addedBy: userId,
-                addedByUser: nil,
-                privacy: .followCirclePrivacy,
-                createdAt: date.addingTimeInterval(-86400 * 4),
-                updatedAt: date
-            )
-            
-            let place3 = Place(
-                id: "place8",
-                name: "Chelsea Market",
-                description: "Food hall and shopping center",
-                address: "75 9th Ave, New York, NY 10011",
-                location: GeoLocation(type: "Point", coordinates: [-74.0048, 40.7420]),
-                website: nil,
-                phone: nil,
-                googlePlaceId: nil,
-                photos: nil,
-                category: .retail,
-                rating: 4.7,
-                userRatingsTotal: 334,
-                notes: "Great mix of food vendors and shopping",
-                privateNotes: nil,
-                publicNotes: nil,
-                tags: ["market", "food hall", "shopping"],
-                reviews: nil,
-                openingHours: nil,
-                priceLevel: nil,
-                circleId: circle.id,
-                addedBy: userId,
-                addedByUser: nil,
-                privacy: .followCirclePrivacy,
-                createdAt: date.addingTimeInterval(-86400 * 3),
-                updatedAt: date
-            )
-            
-            let place4 = Place(
-                id: "place9",
-                name: "SoHo Shopping District",
-                description: "Trendy shopping area",
-                address: "SoHo, New York, NY",
-                location: GeoLocation(type: "Point", coordinates: [-74.0023, 40.7248]),
-                website: nil,
-                phone: nil,
-                googlePlaceId: nil,
-                photos: nil,
-                category: .retail,
-                rating: 4.8,
-                userRatingsTotal: 421,
-                notes: "Trendy shops and boutiques",
-                privateNotes: nil,
-                publicNotes: nil,
-                tags: ["trendy", "boutiques", "shopping district"],
-                reviews: nil,
-                openingHours: nil,
-                priceLevel: nil,
-                circleId: circle.id,
-                addedBy: userId,
-                addedByUser: nil,
-                privacy: .followCirclePrivacy,
-                createdAt: date.addingTimeInterval(-86400 * 2),
-                updatedAt: date
-            )
-            
-            samplePlaces = [place1, place2, place3, place4]
-            
-        default:
-            // Create a generic place for other categories
-            let place = Place(
-                id: "place10",
-                name: "Sample Place",
-                description: "A sample place for this circle",
-                address: "123 Main St, New York, NY 10001",
-                location: GeoLocation(type: "Point", coordinates: [-73.9857, 40.7484]),
-                website: nil,
-                phone: nil,
-                googlePlaceId: nil,
-                photos: nil,
-                category: .other,
-                rating: 4.5,
-                userRatingsTotal: 92,
-                notes: "This is a sample place",
-                privateNotes: nil,
-                publicNotes: nil,
-                tags: ["sample"],
-                reviews: nil,
-                openingHours: nil,
-                priceLevel: nil,
-                circleId: circle.id,
-                addedBy: userId,
-                addedByUser: nil,
-                privacy: .followCirclePrivacy,
-                createdAt: date.addingTimeInterval(-86400),
-                updatedAt: date
-            )
-            
-            samplePlaces = [place]
-        }
-        
-        // Sort sample places by createdAt date, most recent first
-        return samplePlaces.sorted { $0.createdAt > $1.createdAt }
-    }
-    */
-    
-    private func updateTableViewHeight() {
+
+    func updateTableViewHeight() {
         // Force layout to calculate proper content size
         tableView.layoutIfNeeded()
         
@@ -1366,7 +982,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         }
     }
     
-    private func addAnnotationsToMap() {
+    func addAnnotationsToMap() {
         // Remove existing annotations
         mapView.removeAnnotations(mapView.annotations)
         annotationPlaceMap.removeAll()
@@ -1585,118 +1201,11 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     }
 
     @objc private func shareButtonTapped() {
-        // Show loading indicator
-        let loadingAlert = UIAlertController(title: nil, message: "Creating share link...", preferredStyle: .alert)
-        let loadingIndicator = UIActivityIndicatorView(style: .large)
-        loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
-        loadingIndicator.startAnimating()
-        loadingAlert.view.addSubview(loadingIndicator)
-        NSLayoutConstraint.activate([
-            loadingIndicator.centerXAnchor.constraint(equalTo: loadingAlert.view.centerXAnchor),
-            loadingIndicator.centerYAnchor.constraint(equalTo: loadingAlert.view.centerYAnchor, constant: 30)
-        ])
-        present(loadingAlert, animated: true)
-        
-        // Create share link via API
-        CircleService.shared.createShareLink(
-            circleId: circle.id,
-            shareType: .link,
-            accessLevel: .viewOnly,
-            expiresIn: 30 // 30 days expiration
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success(let share):
-                        self?.presentShareSheet(with: share)
-                    case .failure(let error):
-                        self?.showShareError(error)
-                    }
-                }
-            }
+        shareController.shareCircle(circle, placeCount: places.count) { [weak self] in
+            self?.navigationItem.rightBarButtonItems?.first { $0.action == #selector(self?.shareButtonTapped) }
         }
     }
-    
-    private func presentShareSheet(with share: CircleShare) {
-        // Create formatted text to share
-        var shareText = "🟦 \(circle.name)"
-        if let description = circle.description {
-            shareText += "\n\(description)"
-        }
-        
-        let memberCount = (circle.sharedWith?.count ?? 0) + (circle.followers?.count ?? 0)
-        if memberCount > 0 {
-            shareText += "\n👥 \(memberCount) member\(memberCount != 1 ? "s" : "")"
-        }
-        
-        let placeCount = places.count
-        shareText += "\n📍 \(placeCount) place\(placeCount != 1 ? "s" : "")"
-        
-        // Add privacy emoji
-        switch circle.privacy {
-        case .public:
-            shareText += " 🌐"
-        case .myNetwork:
-            shareText += " 👥"
-        case .private:
-            shareText += " 🔒"
-        }
-        
-        shareText += "\n\nJoin me on Circles:"
 
-        var activityItems: [Any] = [shareText]
-
-        // The share link is a separate item so messengers render one clean,
-        // tappable rich preview (opens in-app when installed, public circle
-        // page + App Store fallback otherwise) — never embed the raw URL in
-        // the text
-        if let shareLink = share.shareLink, let url = URL(string: shareLink) {
-            activityItems.append(url)
-        } else {
-            activityItems.append(ShareLinks.circle(id: circle.id))
-        }
-        
-        // Function to present the share sheet
-        let presentShareSheet = { [weak self] in
-            let activityViewController = UIActivityViewController(
-                activityItems: activityItems,
-                applicationActivities: nil
-            )
-            
-            // For iPad
-            if let popover = activityViewController.popoverPresentationController {
-                popover.barButtonItem = self?.navigationItem.rightBarButtonItems?.first { $0.action == #selector(self?.shareButtonTapped) }
-            }
-            
-            self?.present(activityViewController, animated: true)
-        }
-        
-        // Add cover image if available (load asynchronously)
-        if let coverImageUrl = circle.coverImage,
-           let url = URL(string: coverImageUrl) {
-            URLSession.shared.dataTask(with: url) { data, _, _ in
-                DispatchQueue.main.async {
-                    if let data = data, let image = UIImage(data: data) {
-                        activityItems.append(image)
-                    }
-                    presentShareSheet()
-                }
-            }.resume()
-        } else {
-            presentShareSheet()
-        }
-    }
-    
-    private func showShareError(_ error: Error) {
-        let alert = UIAlertController(
-            title: "Share Failed",
-            message: "Unable to create share link. Please try again.",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-    
     @objc private func editButtonTapped() {
         let editCircleVC = EditCircleViewController(circle: circle)
         editCircleVC.delegate = self
@@ -1817,7 +1326,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         presentFullScreenMap()
     }
     
-    @objc private func exportButtonTapped() {
+    @objc func exportButtonTapped() {
         // Check premium status
         if !SubscriptionManager.shared.checkExportAccess(from: self) {
             return
@@ -1881,12 +1390,8 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             self?.applyFilter()
         })
         
-        // Get unique categories from places
-        let categories = Set(places.map { $0.category })
-        let sortedCategories = categories.sorted { $0.displayName < $1.displayName }
-        
-        // Add action for each category
-        for category in sortedCategories {
+        // Add action for each category present in the circle
+        for category in CirclePlaceFilter.categoryOptions(for: places) {
             actionSheet.addAction(UIAlertAction(title: category.displayName, style: .default) { [weak self] _ in
                 self?.selectedCategory = category
                 self?.categoryFilterButton.setTitle(category.displayName, for: .normal)
@@ -1915,28 +1420,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         // hook as the chips — every fetchPlaces path lands here
         updateUnlocatedBanner()
 
-        // Count tags case-insensitively, keeping the first-seen raw spelling
-        var counts: [String: Int] = [:] // lowercased -> count
-        var rawSpelling: [String: String] = [:] // lowercased -> raw value
-        for place in places {
-            guard let tags = place.tags else { continue }
-            // De-dupe within a single place so one place can't inflate a tag
-            let uniqueTags = Set(tags.map { $0.lowercased() })
-            for lowered in uniqueTags {
-                let trimmed = lowered.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { continue }
-                counts[trimmed, default: 0] += 1
-                if rawSpelling[trimmed] == nil {
-                    rawSpelling[trimmed] = tags.first { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == trimmed }
-                }
-            }
-        }
-
-        // Most common first, alphabetical tie-break; cap at 12 chips
-        let orderedTags = counts
-            .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
-            .prefix(12)
-            .compactMap { rawSpelling[$0.key] }
+        let orderedTags = CirclePlaceFilter.tagChips(for: places)
 
         let hasTags = !orderedTags.isEmpty
         tagChipBar.isHidden = !hasTags
@@ -1944,10 +1428,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         tagChipBarTopConstraint?.constant = hasTags ? Constants.Spacing.medium : 0
 
         // Reset selection to All if the selected tag disappeared
-        if let selected = selectedTag,
-           !orderedTags.contains(where: { $0.caseInsensitiveCompare(selected) == .orderedSame }) {
-            selectedTag = nil
-        }
+        selectedTag = CirclePlaceFilter.selectionAfterRebuild(selected: selectedTag, chips: orderedTags)
         tagChipBar.setTags(orderedTags, selected: selectedTag)
     }
 
@@ -1979,18 +1460,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     }
 
     private func applyFilter() {
-        filteredPlaces = places.filter { place in
-            if let category = selectedCategory, place.category != category {
-                return false
-            }
-            if let tag = selectedTag {
-                let placeTags = place.tags ?? []
-                guard placeTags.contains(where: { $0.caseInsensitiveCompare(tag) == .orderedSame }) else {
-                    return false
-                }
-            }
-            return true
-        }
+        filteredPlaces = CirclePlaceFilter.apply(places, category: selectedCategory, tag: selectedTag)
 
         tableView.reloadData()
         
@@ -2073,7 +1543,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         present(navController, animated: true)
     }
     
-    private func sharePlace(_ place: Place) {
+    func sharePlace(_ place: Place) {
         // Create a formatted string with place name prominently displayed
         var shareText = "Check out \(place.name)!"
         
@@ -2127,7 +1597,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         present(activityViewController, animated: true)
     }
     
-    private func openPlaceInMaps(_ place: Place) {
+    func openPlaceInMaps(_ place: Place) {
         guard let location = place.location?.clLocation else { 
             // Show alert if no location available
             let alert = UIAlertController(
@@ -2153,7 +1623,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         mapItem.openInMaps(launchOptions: launchOptions)
     }
     
-    private func likePlace(_ place: Place) {
+    func likePlace(_ place: Place) {
         // Disable interaction while processing
         view.isUserInteractionEnabled = false
         
@@ -2183,496 +1653,41 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         }
     }
     
-    private func showComments(for place: Place) {
+    func showComments(for place: Place) {
         let commentsVC = PlaceCommentsViewController(place: place)
         let navController = UINavigationController(rootViewController: commentsVC)
         present(navController, animated: true)
     }
 }
 
-// MARK: - UITableViewDelegate & UITableViewDataSource
-extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource, UITableViewDragDelegate, UITableViewDropDelegate {
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return filteredPlaces.count
-    }
-    
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        guard let cell = tableView.dequeueReusableCell(withIdentifier: "PlaceCell", for: indexPath) as? PlaceTableViewCell else {
-            return UITableViewCell()
-        }
-        
-        let place = filteredPlaces[indexPath.row]
-        cell.configure(with: place)
-        
-        // Set up share button action
-        cell.onShareTapped = { [weak self] place in
-            self?.sharePlace(place)
-        }
-        
-        // Set up directions button action
-        cell.onDirectionsTapped = { [weak self] place in
-            self?.openPlaceInMaps(place)
-        }
-        
-        // Set up like button action
-        cell.onLikeTapped = { [weak self] place in
-            self?.likePlace(place)
-        }
-        
-        // Set up comment button action
-        cell.onCommentTapped = { [weak self] place in
-            self?.showComments(for: place)
-        }
-        
-        return cell
-    }
-    
-    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return UITableView.automaticDimension
-    }
-    
-    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        tableView.deselectRow(at: indexPath, animated: true)
-        
-        let place = filteredPlaces[indexPath.row]
-        
-        // Debug logging
-        Logger.debug("🔍 CircleDetailViewController - Selected place:")
-        Logger.debug("  - Place name: \(place.name)")
-        Logger.debug("  - Place ID: \(place.id)")
-        Logger.debug("  - Has photos: \(place.hasPhotos)")
-        Logger.debug("  - Photos array: \(place.photos ?? [])")
-        Logger.debug("  - Photos count: \(place.photos?.count ?? 0)")
-        
-        // Mark place as viewed if it's new
-        if place.isNew == true {
-            NetworkManager.shared.markPlaceAsViewed(placeId: place.id, circleId: circle.id) { error in
-                if let error = error {
-                    Logger.debug("Error marking place as viewed: \(error)")
-                } else {
-                    Logger.debug("Successfully marked place as viewed")
-                }
-            }
-        }
-        
-        let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
-        navigationController?.pushViewController(placeDetailVC, animated: true)
-    }
-    
-    // MARK: - Swipe Actions
-    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        // Only allow actions if user can edit
-        guard circle.canEdit else { return nil }
-        
-        let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
-            self?.confirmDeletePlace(at: indexPath, completion: completion)
-        }
-        deleteAction.image = UIImage(systemName: "trash")
-        
-        let moveAction = UIContextualAction(style: .normal, title: "Move") { [weak self] _, _, completion in
-            self?.movePlaceToCircle(at: indexPath)
-            completion(true)
-        }
-        moveAction.image = UIImage(systemName: "arrow.right.circle")
-        moveAction.backgroundColor = .systemBlue
-        
-        let configuration = UISwipeActionsConfiguration(actions: [deleteAction, moveAction])
-        configuration.performsFirstActionWithFullSwipe = false
-
-        return configuration
+extension CircleDetailViewController: CirclePlacesLoaderDelegate {
+    func loaderDidLoadPlaces(_ loadedPlaces: [Place]) {
+        places = loadedPlaces
+        updateTagChips()
+        applyFilter()
+        updateAddPlaceButtonTitle()
     }
 
-    func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
-        // Long-press menu mirroring the swipe actions
-        guard circle.canEdit else { return nil }
-        let place = filteredPlaces[indexPath.row]
-
-        return UIContextMenuConfiguration(identifier: indexPath as NSCopying, previewProvider: nil) { [weak self] _ in
-            let moveAction = UIAction(
-                title: "Move to Another Circle",
-                image: UIImage(systemName: "arrow.right.circle")
-            ) { _ in
-                self?.movePlaceToCircle(at: indexPath)
-            }
-
-            let deleteAction = UIAction(
-                title: "Delete",
-                image: UIImage(systemName: "trash"),
-                attributes: .destructive
-            ) { _ in
-                self?.confirmDeletePlace(at: indexPath) { _ in }
-            }
-
-            return UIMenu(title: place.name, children: [moveAction, deleteAction])
-        }
+    func loaderDidFailToLoadPlaces(_ error: Error) {
+        places = []
+        filteredPlaces = []
+        updateTagChips()
+        updateAddPlaceButtonTitle()
     }
 
-    private func confirmDeletePlace(at indexPath: IndexPath, completion: @escaping (Bool) -> Void) {
-        let place = filteredPlaces[indexPath.row]
-        
-        let alert = UIAlertController(
-            title: "Delete Place",
-            message: "Are you sure you want to remove \"\(place.name)\" from this circle?",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
-            completion(false)
-        })
-        
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
-            self?.deletePlace(at: indexPath)
-            completion(true)
-        })
-        
-        present(alert, animated: true)
-    }
-    
-    private func deletePlace(at indexPath: IndexPath) {
-        let place = filteredPlaces[indexPath.row]
-        
-        // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Deleting", message: "Removing place...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        PlaceService.shared.deletePlace(id: place.id) { [weak self] result in
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success:
-                        // Remove from local arrays
-                        if let originalIndex = self?.places.firstIndex(where: { $0.id == place.id }) {
-                            self?.places.remove(at: originalIndex)
-                        }
-                        if let filteredIndex = self?.filteredPlaces.firstIndex(where: { $0.id == place.id }) {
-                            self?.filteredPlaces.remove(at: filteredIndex)
-                        }
-                        
-                        // Update table view
-                        self?.tableView.deleteRows(at: [indexPath], with: .fade)
-                        
-                        // Update map
-                        self?.addAnnotationsToMap()
-                        
-                        // Update table view height after deletion
-                        self?.updateTableViewHeight()
-                        
-                    case .failure(let error):
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: "Failed to delete place: \(error.localizedDescription)",
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(errorAlert, animated: true)
-                    }
-                }
-            }
+    func loaderDidFinishLoadingPlaces() {
+        tableView.reloadData()
+
+        // End refresh animation
+        scrollView.refreshControl?.endRefreshing()
+
+        // Force layout update to calculate correct content size
+        DispatchQueue.main.async { [weak self] in
+            self?.tableView.layoutIfNeeded()
+            self?.updateTableViewHeight()
         }
-    }
-    
-    private func movePlaceToCircle(at indexPath: IndexPath) {
-        let place = filteredPlaces[indexPath.row]
-        
-        // Create and present circle selection view controller
-        let circleSelectionVC = CircleSelectionViewController(excludedCircleId: circle.id)
-        circleSelectionVC.delegate = self
-        circleSelectionVC.placeToMove = place
-        
-        let navController = UINavigationController(rootViewController: circleSelectionVC)
-        present(navController, animated: true)
-    }
-    
-    // MARK: - CircleSelectionWithPlaceDelegate
-    func circleSelectionViewController(_ controller: CircleSelectionViewController, didSelectCircle circle: Circle, forPlace place: Place) {
-        controller.dismiss(animated: true) {
-            self.performMovePlace(place, to: circle)
-        }
-    }
-    
-    // MARK: - CircleSelectionDelegate (base protocol)
-    func circleSelectionViewController(_ controller: CircleSelectionViewController, didSelectCircle circle: Circle) {
-        // This shouldn't be called when using placeToMove, but implement for protocol compliance
-        controller.dismiss(animated: true)
-    }
-    
-    func circleSelectionViewControllerDidCancel(_ controller: CircleSelectionViewController) {
-        controller.dismiss(animated: true)
-    }
-    
-    func circleSelectionViewController(_ controller: CircleSelectionViewController, didCreateNewCircle circle: Circle, forPlace place: Place) {
-        controller.dismiss(animated: true) {
-            self.performMovePlace(place, to: circle)
-        }
-    }
-    
-    private func performMovePlace(_ place: Place, to targetCircle: Circle) {
-        // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Moving Place", message: "Moving \(place.name) to \(targetCircle.name)...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        // Perform the move
-        PlaceService.shared.movePlaceToCircle(placeId: place.id, targetCircleId: targetCircle.id) { [weak self] result in
-            guard let self = self else { return }
-            
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success:
-                        // Remove from local arrays
-                        if let originalIndex = self.places.firstIndex(where: { $0.id == place.id }) {
-                            self.places.remove(at: originalIndex)
-                        }
-                        if let filteredIndex = self.filteredPlaces.firstIndex(where: { $0.id == place.id }) {
-                            self.filteredPlaces.remove(at: filteredIndex)
-                            
-                            // Update table view
-                            if filteredIndex < self.tableView.numberOfRows(inSection: 0) {
-                                self.tableView.deleteRows(at: [IndexPath(row: filteredIndex, section: 0)], with: .fade)
-                            } else {
-                                self.tableView.reloadData()
-                            }
-                        }
-                        
-                        // Update map
-                        self.addAnnotationsToMap()
-                        
-                        // Update table view height after removal
-                        self.updateTableViewHeight()
-                        
-                        // Show success message
-                        let successAlert = UIAlertController(
-                            title: "Success",
-                            message: "\(place.name) has been moved to \(targetCircle.name)",
-                            preferredStyle: .alert
-                        )
-                        successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(successAlert, animated: true)
-                        
-                    case .failure(let error):
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: "Failed to move place: \(error.localizedDescription)",
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(errorAlert, animated: true)
-                    }
-                }
-            }
-        }
-    }
-    
-    // MARK: - Drag Delegate
-    func tableView(_ tableView: UITableView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
-        // Disable drag when filtering (category or tag) — row indexes would
-        // not map back to the circle's true place order
-        guard selectedCategory == nil, selectedTag == nil else { return [] }
-        
-        // Only allow drag if user can edit the circle
-        guard circle.canEdit else { return [] }
-        
-        let place = filteredPlaces[indexPath.row]
-        let itemProvider = NSItemProvider(object: place.id as NSString)
-        let dragItem = UIDragItem(itemProvider: itemProvider)
-        dragItem.localObject = place
-        return [dragItem]
-    }
-    
-    // MARK: - Drop Delegate
-    func tableView(_ tableView: UITableView, canHandle session: UIDropSession) -> Bool {
-        return session.hasItemsConforming(toTypeIdentifiers: [UTType.text.identifier])
-    }
-    
-    func tableView(_ tableView: UITableView, dropSessionDidUpdate session: UIDropSession, withDestinationIndexPath destinationIndexPath: IndexPath?) -> UITableViewDropProposal {
-        if tableView.hasActiveDrag {
-            if session.items.count > 1 {
-                return UITableViewDropProposal(operation: .cancel)
-            } else {
-                return UITableViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
-            }
-        } else {
-            return UITableViewDropProposal(operation: .forbidden)
-        }
-    }
-    
-    func tableView(_ tableView: UITableView, performDropWith coordinator: UITableViewDropCoordinator) {
-        guard let destinationIndexPath = coordinator.destinationIndexPath else { return }
-        
-        for item in coordinator.items {
-            guard let sourceIndexPath = item.sourceIndexPath else { continue }
-            
-            tableView.performBatchUpdates({
-                let movedPlace = places.remove(at: sourceIndexPath.row)
-                places.insert(movedPlace, at: destinationIndexPath.row)
-                tableView.moveRow(at: sourceIndexPath, to: destinationIndexPath)
-            })
-            
-            coordinator.drop(item.dragItem, toRowAt: destinationIndexPath)
-            
-            // Update the order in the backend
-            updatePlaceOrder()
-        }
-    }
-    
-    // MARK: - Export Methods
-    
-    private func exportAsPDF() {
-        // Create PDF data
-        let pdfMetaData = [
-            kCGPDFContextCreator: "Circles App",
-            kCGPDFContextTitle: circle.name
-        ]
-        let format = UIGraphicsPDFRendererFormat()
-        format.documentInfo = pdfMetaData as [String: Any]
-        
-        let pageWidth = 8.5 * 72.0
-        let pageHeight = 11 * 72.0
-        let pageRect = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
-        
-        let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
-        
-        let data = renderer.pdfData { (context) in
-            context.beginPage()
-            
-            // Title
-            let titleAttributes = [
-                NSAttributedString.Key.font: UIFont.boldSystemFont(ofSize: 24)
-            ]
-            let title = circle.name
-            title.draw(at: CGPoint(x: 20, y: 20), withAttributes: titleAttributes)
-            
-            // Places
-            var yPosition: CGFloat = 80
-            let placeAttributes = [
-                NSAttributedString.Key.font: UIFont.systemFont(ofSize: 14)
-            ]
-            
-            for (index, place) in places.enumerated() {
-                let placeText = "\(index + 1). \(place.name)"
-                placeText.draw(at: CGPoint(x: 20, y: yPosition), withAttributes: placeAttributes)
-                
-                if !place.address.isEmpty {
-                    let addressText = "   \(place.address)"
-                    let addressAttributes = [
-                        NSAttributedString.Key.font: UIFont.systemFont(ofSize: 12),
-                        NSAttributedString.Key.foregroundColor: UIColor.gray
-                    ]
-                    addressText.draw(at: CGPoint(x: 20, y: yPosition + 20), withAttributes: addressAttributes)
-                    yPosition += 40
-                } else {
-                    yPosition += 25
-                }
-                
-                // Start new page if needed
-                if yPosition > pageHeight - 100 {
-                    context.beginPage()
-                    yPosition = 20
-                }
-            }
-        }
-        
-        shareExportedFile(data: data, filename: "\(circle.name).pdf", mimeType: "application/pdf")
-    }
-    
-    private func exportAsCSV() {
-        var csvText = "Name,Category,Address,Phone,Website,Notes\n"
-        
-        for place in places {
-            let name = place.name.replacingOccurrences(of: ",", with: ";")
-            let category = place.category.rawValue
-            let address = (place.address ?? "").replacingOccurrences(of: ",", with: ";")
-            let phone = (place.phone ?? "").replacingOccurrences(of: ",", with: ";")
-            let website = (place.website ?? "").replacingOccurrences(of: ",", with: ";")
-            let notes = (place.notes ?? "").replacingOccurrences(of: ",", with: ";").replacingOccurrences(of: "\n", with: " ")
-            
-            csvText += "\(name),\(category),\(address),\(phone),\(website),\(notes)\n"
-        }
-        
-        if let data = csvText.data(using: .utf8) {
-            shareExportedFile(data: data, filename: "\(circle.name).csv", mimeType: "text/csv")
-        }
-    }
-    
-    private func exportAsText() {
-        var textContent = "\(circle.name)\n"
-        textContent += String(repeating: "=", count: circle.name.count) + "\n\n"
-        
-        for (index, place) in places.enumerated() {
-            textContent += "\(index + 1). \(place.name)\n"
-            if !place.address.isEmpty {
-                textContent += "   Address: \(place.address)\n"
-            }
-            if let phone = place.phone {
-                textContent += "   Phone: \(phone)\n"
-            }
-            if let website = place.website {
-                textContent += "   Website: \(website)\n"
-            }
-            if let notes = place.notes, !notes.isEmpty {
-                textContent += "   Notes: \(notes)\n"
-            }
-            textContent += "\n"
-        }
-        
-        if let data = textContent.data(using: .utf8) {
-            shareExportedFile(data: data, filename: "\(circle.name).txt", mimeType: "text/plain")
-        }
-    }
-    
-    private func shareExportedFile(data: Data, filename: String, mimeType: String) {
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-        
-        do {
-            try data.write(to: tempURL)
-            
-            let activityViewController = UIActivityViewController(
-                activityItems: [tempURL],
-                applicationActivities: nil
-            )
-            
-            // Exclude some activities
-            activityViewController.excludedActivityTypes = [
-                .assignToContact,
-                .addToReadingList,
-                .openInIBooks
-            ]
-            
-            // For iPad
-            if let popover = activityViewController.popoverPresentationController {
-                popover.barButtonItem = navigationItem.rightBarButtonItems?.first { $0.action == #selector(exportButtonTapped) }
-            }
-            
-            present(activityViewController, animated: true)
-            
-        } catch {
-            showError("Failed to export file: \(error.localizedDescription)")
-        }
-    }
-    
-    // MARK: - Helper method to update place order
-    private func updatePlaceOrder() {
-        // Update the order of places in the backend
-        Task {
-            do {
-                // Create an array of place IDs in the new order
-                let orderedPlaceIds = places.map { $0.id }
-                
-                // Call the API to update the order
-                try await PlaceService.shared.updatePlaceOrder(circleId: circle.id, placeIds: orderedPlaceIds)
-                
-                // Update map annotations to reflect new order if needed
-                await MainActor.run {
-                    self.addAnnotationsToMap()
-                }
-            } catch {
-                Logger.debug("Failed to update place order: \(error)")
-                // Optionally, revert the changes if the API call fails
-                await MainActor.run {
-                    self.fetchPlaces()
-                }
-            }
-        }
+
+        addAnnotationsToMap()
     }
 }
 
@@ -2751,26 +1766,6 @@ extension CircleDetailViewController: PlaceSearchDelegate {
         }
     }
     
-    private func determinePlaceCategory(from types: [String]) -> PlaceCategory {
-        // Check for specific place types and map to our categories
-        if types.contains("restaurant") { return .restaurant }
-        if types.contains("cafe") { return .cafe }
-        if types.contains("bar") || types.contains("night_club") { return .bar }
-        if types.contains("lodging") || types.contains("hotel") { return .hotel }
-        if types.contains("store") || types.contains("shopping_mall") { return .retail }
-        if types.contains("hospital") || types.contains("doctor") || types.contains("pharmacy") { return .healthcare }
-        if types.contains("gym") || types.contains("health") { return .fitness }
-        if types.contains("school") || types.contains("university") { return .education }
-        if types.contains("park") || types.contains("campground") { return .outdoor }
-        if types.contains("movie_theater") || types.contains("museum") || types.contains("art_gallery") { return .entertainment }
-        if types.contains("bus_station") || types.contains("subway_station") || types.contains("train_station") { return .transport }
-        if types.contains("bank") || types.contains("atm") { return .finance }
-        if types.contains("tourist_attraction") || types.contains("point_of_interest") { return .attraction }
-        
-        // Default to service or other
-        if types.contains("establishment") { return .service }
-        return .other
-    }
 }
 
 // MARK: - Helper Methods
