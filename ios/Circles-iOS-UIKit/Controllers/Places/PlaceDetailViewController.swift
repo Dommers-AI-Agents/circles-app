@@ -58,81 +58,19 @@ class PlaceDetailViewController: BaseViewController {
     
     private func updateMediaCarousel() {
         Logger.debug("📸 [PlaceDetailViewController] updateMediaCarousel() called for place: \(place.name)")
-        var mediaItems: [MediaItem] = []
-        
-        // Merge all photo sources, deduped by URL. Attributed GlobalPlace photos
-        // come first (they carry uploader attribution), then legacy place.photos
-        // not represented there, then freshly captured local images. The old
-        // exclusive-priority logic hid legacy photos whenever the GlobalPlace
-        // doc had any photos at all.
-        var seenUrls = Set<String>()
+        // Merge rules (attributed venue photos first with the cover leading,
+        // legacy URLs once each, local captures reused, videos after photos,
+        // placeholder when empty) live in PlaceMediaAssembler — unit tested.
+        var assembler = PlaceMediaAssembler()
+        assembler.attributedPhotos = globalPlace?.photos
+        assembler.coverPhotoUrl = globalPlace?.coverPhotoUrl
+        assembler.legacyPhotoUrls = place.photos
+        assembler.localPhotos = placePhotos.map { PlaceMediaAssembler.LocalPhoto(image: $0.image, url: $0.url) }
+        assembler.videoUrls = place.videos
+        let mediaItems = assembler.assemble()
 
-        if var attributedPhotos = globalPlace?.photos {
-            // Owner-curated cover photo leads the carousel
-            if let coverUrl = globalPlace?.coverPhotoUrl,
-               let coverIndex = attributedPhotos.firstIndex(where: { $0.url == coverUrl }),
-               coverIndex != 0 {
-                attributedPhotos.insert(attributedPhotos.remove(at: coverIndex), at: 0)
-            }
-            Logger.debug("📸 [PlaceDetailViewController] GlobalPlace attributed photos: \(attributedPhotos.count)")
-            for attributedPhoto in attributedPhotos {
-                mediaItems.append(.attributedPhoto(photo: attributedPhoto))
-                seenUrls.insert(attributedPhoto.url)
-            }
-        }
-
-        if let photos = place.photos {
-            for photoUrl in photos where !seenUrls.contains(photoUrl) {
-                seenUrls.insert(photoUrl)
-                // Prefer an already-downloaded image over re-fetching the URL
-                if let local = placePhotos.first(where: { $0.url == photoUrl }) {
-                    mediaItems.append(.photoImage(image: local.image))
-                } else {
-                    mediaItems.append(.photo(url: photoUrl))
-                }
-            }
-        }
-
-        // Local images not yet reflected in either server list (e.g. an upload
-        // whose refresh hasn't landed)
-        for local in placePhotos {
-            if let url = local.url {
-                guard !seenUrls.contains(url) else { continue }
-                seenUrls.insert(url)
-            }
-            mediaItems.append(.photoImage(image: local.image))
-        }
-
-        if mediaItems.isEmpty {
-            Logger.debug("📸 DEBUG: No photos available, will use placeholder")
-        }
-        
-        // Add videos
-        if let videos = place.videos, !videos.isEmpty {
-            for videoUrl in videos {
-                // For now, use video URL as both thumbnail and video
-                // In production, you'd have separate thumbnail URLs
-                mediaItems.append(.video(thumbnailUrl: videoUrl, videoUrl: videoUrl))
-            }
-        }
-        
-        // If no media, add a placeholder
-        if mediaItems.isEmpty {
-            mediaItems.append(.photo(url: nil))
-        }
-        
-        // Configure carousel
         Logger.debug("📸 [PlaceDetailViewController] Configuring MediaCarouselView with \(mediaItems.count) items")
-        let attributedCount = mediaItems.filter { 
-            if case .attributedPhoto = $0 { return true }
-            return false
-        }.count
-        if attributedCount > 0 {
-            Logger.debug("✅ [PlaceDetailViewController] \(attributedCount) items have attribution - should show 'Photo by [Name]'")
-        }
-        
         mediaCarouselView.configure(with: mediaItems)
-        Logger.debug("📸 [PlaceDetailViewController] MediaCarouselView configured with \(mediaItems.count) items")
     }
     
     private let streetViewToggleButton: UIButton = {
