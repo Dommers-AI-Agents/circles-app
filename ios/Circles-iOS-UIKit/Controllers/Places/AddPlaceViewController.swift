@@ -1513,24 +1513,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// duplicate places while a create flow is in progress.
     var isSaving = false
 
-    /// Full-screen working overlay shown for the entire save flow. The staged
-    /// alerts ("Checking...", "Creating Place") block while presented, but the
-    /// transitions between them leave brief windows where taps land on the form
-    /// — this covers the whole window (nav bar included) from the instant Save
-    /// is tapped until the flow ends, with a spinner so it reads as "working".
-    private let savingSpinner = UIActivityIndicatorView(style: .large)
-    private lazy var savingOverlay: UIView = {
-        let overlay = UIView()
-        overlay.backgroundColor = UIColor.black.withAlphaComponent(0.35)
-        savingSpinner.color = .white
-        savingSpinner.translatesAutoresizingMaskIntoConstraints = false
-        overlay.addSubview(savingSpinner)
-        NSLayoutConstraint.activate([
-            savingSpinner.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
-            savingSpinner.centerYAnchor.constraint(equalTo: overlay.centerYAnchor)
-        ])
-        return overlay
-    }()
+    /// Full-screen working overlay shown for the entire save flow — from the
+    /// instant Save is tapped until the flow ends (see SavingOverlayView).
+    private let savingOverlay = SavingOverlayView()
 
     func beginSaving() {
         isSaving = true
@@ -1539,17 +1524,13 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // while the save is in flight. Added before any alert is presented, so
         // presented alerts (duplicate prompt, errors) still land on top of it.
         let host: UIView = view.window ?? view
-        savingOverlay.frame = host.bounds
-        savingOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        savingSpinner.startAnimating()
-        host.addSubview(savingOverlay)
+        savingOverlay.show(in: host)
     }
 
     func endSaving() {
         isSaving = false
         addPlaceButton.isEnabled = true
-        savingSpinner.stopAnimating()
-        savingOverlay.removeFromSuperview()
+        savingOverlay.hide()
     }
 
     @objc func addPlaceButtonTapped() {
@@ -2241,11 +2222,13 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// stay editable. Super-users and the venue's verified owner (approved
     /// ownership claim) keep full edit access.
     func applyVenueSourceLockIfNeeded() {
-        guard let googlePlaceId = selectedGooglePlaceDetails?.placeID, !googlePlaceId.isEmpty else {
-            setVenueFieldsLocked(false)
-            return
-        }
-        if isSuperUserForVenueEdits == true || ownedGooglePlaceIds.contains(googlePlaceId) {
+        let googlePlaceId = selectedGooglePlaceDetails?.placeID
+        let verdict = VenueSourceLock.verdict(
+            googlePlaceId: googlePlaceId,
+            isSuperUser: isSuperUserForVenueEdits,
+            ownedGooglePlaceIds: ownedGooglePlaceIds
+        )
+        guard verdict == .locked, let googlePlaceId = googlePlaceId else {
             setVenueFieldsLocked(false)
             return
         }
