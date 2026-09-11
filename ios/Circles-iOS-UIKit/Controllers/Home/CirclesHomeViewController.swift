@@ -7,21 +7,34 @@ import SafariServices
 
 class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEServiceDelegate {
     
-    // MARK: - Properties
-    var circles: [Circle] = []
-    var networkCircles: [Circle] = []
-    var isShowingNetworkCircles = false
-    var allPlaces: [Place] = []
+    // MARK: - State
+    /// Loaded circles/places, the people/category selection and the search
+    /// overlay's working set live in `HomeState` (pure, unit tested). The
+    /// properties below forward to it so call sites read unchanged; the
+    /// data loader (Phase 4 step 3) will write into the same instance.
+    lazy var state: HomeState = {
+        let state = HomeState()
+        state.onUserOwnPlacesChanged = { [weak self] places in
+            // Keep the embedded map informed so it can center on the user's favorites
+            self?.mapViewController?.ownPlaceIds = Set(places.map { $0.id })
+        }
+        return state
+    }()
+
+    var circles: [Circle] { get { state.circles } set { state.circles = newValue } }
+    var networkCircles: [Circle] { get { state.networkCircles } set { state.networkCircles = newValue } }
+    var isShowingNetworkCircles: Bool { get { state.isShowingNetworkCircles } set { state.isShowingNetworkCircles = newValue } }
+    var allPlaces: [Place] { get { state.allPlaces } set { state.allPlaces = newValue } }
     /// While isSearching, this is the SEARCH-RESULTS array the overlay table
     /// renders and indexes into. Map-refresh paths must never write it during
     /// a search (see mapRefreshDidFilter) — a background load swapping it
     /// under the visible rows made taps open the wrong place.
-    var filteredPlaces: [Place] = []
-    var isSearching = false
+    var filteredPlaces: [Place] { get { state.filteredPlaces } set { state.filteredPlaces = newValue } }
+    var isSearching: Bool { get { state.isSearching } set { state.isSearching = newValue } }
     /// User tapped Done/the map to drop the people/suggested dropdown — it
     /// stays down until they edit the query or refocus the bar.
-    var isSearchOverlayDismissed = false
-    var selectedCategory: UnifiedCategory?
+    var isSearchOverlayDismissed: Bool { get { state.isSearchOverlayDismissed } set { state.isSearchOverlayDismissed = newValue } }
+    var selectedCategory: UnifiedCategory? { get { state.selectedCategory } set { state.selectedCategory = newValue } }
     var mapUpdateTimer: Timer? // Debounce timer for map updates
     var notificationBadgeTimer: Timer? // Periodic refresh timer for notification badge
     var isReturningFromFullScreenMap = false // Prevent map updates when returning from full screen
@@ -41,15 +54,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     // MARK: - Enhanced Performance Properties
     var skeletonLoadingView: HomeScreenSkeletonView? // Progressive loading skeleton
     
-    // Instance-based cache with expiry
-    var placesCacheExpiry: Date?
-    var cachedPlaces: [Place] = []
-    var userOwnPlaces: [Place] = [] { // Separate array for user's own places only
-        didSet {
-            // Keep the embedded map informed so it can center on the user's favorites
-            mapViewController?.ownPlaceIds = Set(userOwnPlaces.map { $0.id })
-        }
-    }
+    // Instance-based cache with expiry (rules in HomeState)
+    var placesCacheExpiry: Date? { get { state.placesCacheExpiry } set { state.placesCacheExpiry = newValue } }
+    var cachedPlaces: [Place] { get { state.cachedPlaces } set { state.cachedPlaces = newValue } }
+    /// The user's own places only. Writes notify the embedded map (see `state`).
+    var userOwnPlaces: [Place] { get { state.userOwnPlaces } set { state.userOwnPlaces = newValue } }
     
     // MARK: - Helper Methods
     /// Helper function to create a type-safe completion handler for API requests
@@ -65,7 +74,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             }
         }
     }
-    let cacheExpiryMinutes: TimeInterval = 5 // 5 minutes cache expiry
+    var cacheExpiryMinutes: TimeInterval { state.cacheExpiryMinutes }
     var loadDebounceTimer: Timer? // Debounce timer to prevent rapid successive loads
     var preloadedData: PreloadedData? // Store preloaded data from splash screen
     var preloadedConnections: [Connection]? // Store preloaded connections for userListView
@@ -75,31 +84,31 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     var rewardsBarButton: UIBarButtonItem? // Store reference to rewards ($) button
     
     // Search scope properties
-    var currentSearchScope: SearchScope = .myPlaces
-    var networkPlaces: [Place] = [] // Cache for network places
+    var currentSearchScope: SearchScope { get { state.currentSearchScope } set { state.currentSearchScope = newValue } }
+    var networkPlaces: [Place] { get { state.networkPlaces } set { state.networkPlaces = newValue } } // Cache for network places
     var isLoadingNetworkPlaces = false
 
     // Unified search: places (local, instant) + people (server, debounced).
     // People results are the PEOPLE section of the search overlay; tapping one
     // filters the map to a connection/followee, or opens a stranger's profile.
-    var searchedUsers: [User] = []
+    var searchedUsers: [User] { get { state.searchedUsers } set { state.searchedUsers = newValue } }
     var userSearchWorkItem: DispatchWorkItem?
     // Search overlay distance/suggested state: distances (meters) keyed by
     // place id for the PLACES rows, plus the SUGGESTED fallback — global
     // venues fetched when the query matches nothing you or your network saved
-    var searchDistances: [String: CLLocationDistance] = [:]
-    var suggestedPlaces: [GlobalPlace] = []
-    var suggestedDistances: [String: CLLocationDistance] = [:]
+    var searchDistances: [String: CLLocationDistance] { get { state.searchDistances } set { state.searchDistances = newValue } }
+    var suggestedPlaces: [GlobalPlace] { get { state.suggestedPlaces } set { state.suggestedPlaces = newValue } }
+    var suggestedDistances: [String: CLLocationDistance] { get { state.suggestedDistances } set { state.suggestedDistances = newValue } }
     var suggestedSearchWorkItem: DispatchWorkItem?
 
     // MARK: - Viewport-Based Network Place Loading
     // Guards the disk-cache paint so it happens at most once per instance
-    var hasPaintedPlacesFromDiskCache = false
-    var fetchedViewportCircles: [(center: CLLocationCoordinate2D, radiusM: Double)] = []
+    var hasPaintedPlacesFromDiskCache: Bool { get { state.hasPaintedPlacesFromDiskCache } set { state.hasPaintedPlacesFromDiskCache = newValue } }
+    var fetchedViewportCircles: [(center: CLLocationCoordinate2D, radiusM: Double)] { get { state.fetchedViewportCircles } set { state.fetchedViewportCircles = newValue } }
     var isFetchingViewport = false
     // Connections whose FULL place set has been loaded (not viewport-bounded),
     // so the All Connections prefetch doesn't refetch on every selection
-    var prefetchedConnectionIds = Set<String>()
+    var prefetchedConnectionIds: Set<String> { get { state.prefetchedConnectionIds } set { state.prefetchedConnectionIds = newValue } }
     
     // Suggested users overlay
     var suggestedUsersOverlay: SuggestedUsersOverlayView?
@@ -437,8 +446,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     // new user still lands on a map with pins (they auto-follow from day one).
     // "My Places" / "My Connections" / a specific person are all one tap away in
     // the Connection dropdown.
-    var selectedConnectionId: String? = nil
-    var selectedConnectionUser: User? = nil // Set only when a specific connection is filtered
+    var selectedConnectionId: String? { get { state.selectedConnectionId } set { state.selectedConnectionId = newValue } }
+    var selectedConnectionUser: User? { get { state.selectedConnectionUser } set { state.selectedConnectionUser = newValue } } // Set only when a specific connection is filtered
 
     /// Whose places are on the map: the selected connection's avatar shown as
     /// the first chip beside the map controls (hidden when no connection
@@ -560,7 +569,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return view
     }()
     
-    var availableCategories: [UnifiedCategory] = []
+    var availableCategories: [UnifiedCategory] { get { state.availableCategories } set { state.availableCategories = newValue } }
     var mapHeightConstraint: NSLayoutConstraint?
     
     // Search scope dropdown properties
@@ -2031,15 +2040,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     // MARK: - Cache Management
     
-    func isCacheValid() -> Bool {
-        guard let expiry = placesCacheExpiry else { return false }
-        return Date() < expiry && !cachedPlaces.isEmpty
-    }
+    func isCacheValid() -> Bool { state.isCacheValid }
     
     func invalidateCache() {
-        cachedPlaces.removeAll()
-        userOwnPlaces.removeAll()
-        placesCacheExpiry = nil
+        state.invalidateCache()
         Logger.debug("🗑️ Places cache invalidated")
     }
     
@@ -3100,8 +3104,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 }
                 
                 // Cache the final places data
-                self.cachedPlaces = uniquePlaces
-                self.placesCacheExpiry = Date().addingTimeInterval(5 * 60) // 5 minutes
+                self.state.cache(uniquePlaces)
 
                 // Persist own places for the next cold start's instant paint —
                 // only from a COMPLETE fetch (partial sets must never hit disk)
@@ -3752,8 +3755,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self.userOwnPlaces = userPlacesAfterDedup
             
             // Cache the deduplicated places with expiry time
-            self.cachedPlaces = deduplicatedPlaces
-            self.placesCacheExpiry = Date().addingTimeInterval(self.cacheExpiryMinutes * 60)
+            self.state.cache(deduplicatedPlaces)
 
             // Persist the user's own places for the next cold start's instant
             // paint — ONLY when every own-place request succeeded (a partial
@@ -4456,61 +4458,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         updateMapPlaces()
     }
     
+    /// Own places win over network copies of the same id (rules in HomeState).
     func deduplicatePlaces(userPlaces: [Place], networkPlaces: [Place]) -> [Place] {
-        var seenPlaceIds = Set<String>()
-        var deduplicatedPlaces: [Place] = []
-        
-        // First, add all user places (these take priority)
-        for place in userPlaces {
-            if !seenPlaceIds.contains(place.id) {
-                seenPlaceIds.insert(place.id)
-                deduplicatedPlaces.append(place)
-            } else {
-                Logger.debug("🔍 Skipping duplicate user place: '\(place.name)' (ID: \(place.id))")
-            }
-        }
-        
-        // Then, add network places only if we haven't seen their ID
-        var duplicatesFound = 0
-        for place in networkPlaces {
-            if !seenPlaceIds.contains(place.id) {
-                seenPlaceIds.insert(place.id)
-                deduplicatedPlaces.append(place)
-            } else {
-                duplicatesFound += 1
-                Logger.debug("🔍 Skipping duplicate network place: '\(place.name)' (ID: \(place.id)) - already exists in user places")
-            }
-        }
-        
-        if duplicatesFound > 0 {
-            Logger.debug("⚠️ Found and removed \(duplicatesFound) duplicate places from network data")
-        }
-        
-        Logger.debug("📍 Deduplication summary: \(userPlaces.count) user + \(networkPlaces.count) network = \(deduplicatedPlaces.count) unique places")
-        return deduplicatedPlaces
+        let merged = HomeState.merge(userPlaces: userPlaces, networkPlaces: networkPlaces)
+        Logger.debug("📍 Deduplication summary: \(userPlaces.count) user + \(networkPlaces.count) network = \(merged.count) unique places")
+        return merged
     }
     
+    /// First occurrence of each place id wins (rules in HomeState). No
+    /// per-place logging — this runs on the main thread on every place merge.
     func removeDuplicatePlaces(_ places: [Place]) -> [Place] {
-        var seenPlaceIds = Set<String>()
-        var deduplicatedPlaces: [Place] = []
-        var duplicatesFound = 0
-        
-        for place in places {
-            if !seenPlaceIds.contains(place.id) {
-                seenPlaceIds.insert(place.id)
-                deduplicatedPlaces.append(place)
-            } else {
-                // No per-place logging here — this runs on the main thread on
-                // every place merge, and a line per duplicate flooded the
-                // console (hundreds per avatar tap on large place sets).
-                duplicatesFound += 1
-            }
+        let deduplicated = HomeState.dedupe(places)
+        if deduplicated.count < places.count {
+            Logger.debug("⚠️ Removed \(places.count - deduplicated.count) duplicate places (\(places.count) → \(deduplicated.count))")
         }
-
-        if duplicatesFound > 0 {
-            Logger.debug("⚠️ Removed \(duplicatesFound) duplicate places (\(places.count) → \(deduplicatedPlaces.count))")
-        }
-        return deduplicatedPlaces
+        return deduplicated
     }
     
     func fetchNetworkPlacesAndCombineWithCached() {
@@ -4578,23 +4540,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// loaded locally pass through — the server already excludes hidden
     /// circles from network viewport results.
     func excludingHiddenCircles(_ places: [Place]) -> [Place] {
-        HomePlaceFilter.excludingHiddenCircles(places, hiddenIds: HomePlaceFilter.hiddenCircleIds(in: circles + networkCircles))
+        state.excludingHiddenCircles(places)
     }
 
-    /// Everything `HomePlaceFilter` needs, read once per filter pass.
+    /// Everything `HomePlaceFilter` needs, read once per filter pass: the
+    /// state's selection + circles, plus who counts as "everyone" from the
+    /// auth/network services.
     func placeFilterContext() -> HomePlaceFilter.Context {
-        var context = HomePlaceFilter.Context()
-        context.selectedConnectionId = selectedConnectionId
-        context.selectedCategory = selectedCategory
-        context.currentUserId = AuthService.shared.getUserId() ?? ""
-        context.ownCircleIds = Set(circles.map { $0.id })
-        var owners: [String: String] = [:]
-        for circle in networkCircles where owners[circle.id] == nil { owners[circle.id] = circle.owner }
-        context.networkCircleOwners = owners
-        context.hiddenCircleIds = HomePlaceFilter.hiddenCircleIds(in: circles + networkCircles)
-        context.acceptedConnectionUserIds = acceptedConnectionUserIds
-        context.everyoneAuthorIds = everyoneAuthorIds
-        return context
+        state.placeFilterContext(currentUserId: AuthService.shared.getUserId() ?? "",
+                                 acceptedConnectionUserIds: acceptedConnectionUserIds,
+                                 everyoneAuthorIds: everyoneAuthorIds)
     }
 
     /// People selection + category chip scoping. Rules live in `HomePlaceFilter`
@@ -4643,38 +4598,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// using circle-owner mapping — the owner id is authoritative here, since
     /// place.addedBy can carry a connection's legacy account id.
     func buildConnectionPlaceBuckets() -> (userPlaces: [Place], connectionPlaces: [String: [Place]]) {
-        var userPlaces: [Place] = []
-        var connectionPlacesMap: [String: [Place]] = [:]
-        let currentUserId = AuthService.shared.getUserId() ?? ""
-        let userCircleIds = Set(circles.map { $0.id })
-        let connections = NetworkManager.shared.connections
-
-        // Map circle owner IDs to connection otherUserIds — handles the ID
-        // normalization and connection data issues
-        var ownerToConnectionId: [String: String] = [:]
-        for connection in connections {
-            let otherUserId = connection.otherUserId(currentUserId: currentUserId)
-            for circle in networkCircles {
-                if IDNormalizer.isSameUser(circle.owner, otherUserId) {
-                    ownerToConnectionId[circle.owner] = otherUserId
-                }
-            }
-        }
-
-        for place in excludingHiddenCircles(allPlaces) {
-            if let circleId = place.circleId, userCircleIds.contains(circleId) {
-                userPlaces.append(place)
-            } else if let circleId = place.circleId, let circle = networkCircles.first(where: { $0.id == circleId }) {
-                if IDNormalizer.isSameUser(circle.owner, currentUserId) {
-                    userPlaces.append(place)
-                } else {
-                    let mapKey = ownerToConnectionId[circle.owner] ?? circle.owner
-                    connectionPlacesMap[mapKey, default: []].append(place)
-                }
-            }
-        }
-
-        return (userPlaces, connectionPlacesMap)
+        state.connectionPlaceBuckets(currentUserId: AuthService.shared.getUserId() ?? "",
+                                     connectionUserIds: acceptedConnectionUserIds)
     }
 
     /// One-time nudge for accounts created before the all-public default
@@ -4798,13 +4723,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         radiusM = min(max(radiusM, 100), 100_000) // match server clamp
 
         // Skip if an earlier fetch already fully covered this area
-        let center = CLLocation(latitude: region.center.latitude, longitude: region.center.longitude)
-        for fetched in fetchedViewportCircles {
-            let prevCenter = CLLocation(latitude: fetched.center.latitude, longitude: fetched.center.longitude)
-            if prevCenter.distance(from: center) + radiusM <= fetched.radiusM {
-                Logger.debug("🗺️ [Viewport] Region already covered, skipping fetch")
-                return
-            }
+        if state.isViewportCovered(center: region.center, radiusM: radiusM) {
+            Logger.debug("🗺️ [Viewport] Region already covered, skipping fetch")
+            return
         }
 
         guard !isFetchingViewport else { return }
@@ -4829,10 +4750,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
                     // Record coverage only when the result wasn't truncated by the limit
                     if places.count < requestLimit {
-                        self.fetchedViewportCircles.append((center: region.center, radiusM: radiusM))
-                        if self.fetchedViewportCircles.count > 50 {
-                            self.fetchedViewportCircles.removeFirst()
-                        }
+                        self.state.recordFetchedViewport(center: region.center, radiusM: radiusM)
                     }
 
                     guard !places.isEmpty else { return }
@@ -4842,8 +4760,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     self.allPlaces = self.removeDuplicatePlaces(self.allPlaces + places)
                     guard self.allPlaces.count > countBefore else { return }
 
-                    self.cachedPlaces = self.allPlaces
-                    self.placesCacheExpiry = Date().addingTimeInterval(self.cacheExpiryMinutes * 60)
+                    self.state.cache(self.allPlaces)
                     self.updateAvailableCategories()
 
                     // Refresh pins without moving the map (prevents a fetch
@@ -5110,34 +5027,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
 
     func updateAvailableCategories() {
-        Logger.debug("🏷️ [Categories] Updating available categories with connection filter: \(selectedConnectionId ?? "none")")
-        Logger.debug("🏷️ [Categories] Total allPlaces count: \(allPlaces.count)")
-        
-        // Apply connection filter first to get only visible places
+        // Category chips reflect only the places visible under the people selection
         let visiblePlaces = applyConnectionFilterToPlaces(allPlaces)
-        Logger.debug("🏷️ [Categories] Visible places after connection filter: \(visiblePlaces.count)")
-        
-        // Get unique categories from visible places only
-        var categoriesSet = Set<UnifiedCategory>()
-        for place in visiblePlaces {
-            let category = UnifiedCategory.from(place: place)
-            categoriesSet.insert(category)
-            
-            // Debug logging for custom categories
-            if case .custom(let customName) = category {
-                Logger.debug("🏷️ [Categories] Found custom category: '\(customName)' for place: \(place.name)")
-            }
+        if let cleared = state.refreshAvailableCategories(visiblePlaces: visiblePlaces) {
+            Logger.debug("🏷️ [Categories] Previously selected category '\(cleared.displayName)' no longer available, clearing selection")
         }
-        availableCategories = Array(categoriesSet).sorted { $0.displayName < $1.displayName }
-        
-        Logger.debug("🏷️ [Categories] Available categories after connection filter (\(visiblePlaces.count) places): \(availableCategories.map { $0.displayName })")
-        
-        // Check if the currently selected category is still available
-        if let selectedCategory = self.selectedCategory,
-           !availableCategories.contains(selectedCategory) {
-            Logger.debug("🏷️ [Categories] Previously selected category '\(selectedCategory.displayName)' no longer available, clearing selection")
-            self.selectedCategory = nil
-        }
+        Logger.debug("🏷️ [Categories] \(selectedConnectionId ?? "everyone"): \(availableCategories.count) categories from \(visiblePlaces.count)/\(allPlaces.count) places")
     }
     
     // Helper method to apply only connection filtering (without category filter)

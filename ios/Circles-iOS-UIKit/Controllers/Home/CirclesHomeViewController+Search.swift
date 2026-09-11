@@ -150,16 +150,19 @@ extension CirclesHomeViewController {
         // Nearest first, with the distance shown on each row ("looking for
         // pizza NEAR ME" is the whole query) — same reference the places
         // list uses: real location, else the map's center.
-        searchDistances = [:]
+        // Built locally, then assigned once — `searchDistances` forwards to
+        // HomeState, so per-key writes would copy the dictionary each time.
+        var distances: [String: CLLocationDistance] = [:]
         if let reference = searchReferenceLocation() {
             for place in filteredPlaces {
                 if let location = place.location?.clLocation {
-                    searchDistances[place.id] = reference.distance(from: location)
+                    distances[place.id] = reference.distance(from: location)
                 }
             }
         }
-        filteredPlaces.sort { lhs, rhs in
-            switch (searchDistances[lhs.id], searchDistances[rhs.id]) {
+        searchDistances = distances
+        filteredPlaces = filteredPlaces.sorted { lhs, rhs in
+            switch (distances[lhs.id], distances[rhs.id]) {
             case let (l?, r?): return l < r
             case (_?, nil): return true
             case (nil, _?): return false
@@ -252,13 +255,15 @@ extension CirclesHomeViewController {
                 }
 
                 // Server sorts nearest-first when given a location
-                self.suggestedPlaces = Array(places.prefix(8))
-                self.suggestedDistances = [:]
-                for place in self.suggestedPlaces {
+                let suggested = Array(places.prefix(8))
+                var distances: [String: CLLocationDistance] = [:]
+                for place in suggested {
                     if let location = place.location?.clLocation {
-                        self.suggestedDistances[place.id] = reference.distance(from: location)
+                        distances[place.id] = reference.distance(from: location)
                     }
                 }
+                self.suggestedPlaces = suggested
+                self.suggestedDistances = distances
                 self.refreshSearchOverlay()
                 self.updateEmptyState()
             }
