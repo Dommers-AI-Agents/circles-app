@@ -241,6 +241,13 @@ class PlaceDetailViewController: BaseViewController {
     private var partnerActionsTopConstraint: NSLayoutConstraint?
 
     private var placeVenueData: PlaceVenueData?
+    /// Partner chips, the venue rewards/claim card and the GlobalPlace record;
+    /// results land in the VenueRewardsLoaderDelegate extension below.
+    private lazy var venueLoader: VenueRewardsLoader = {
+        let loader = VenueRewardsLoader()
+        loader.delegate = self
+        return loader
+    }()
     /// Verified-owner state and the tap-to-edit flows (see
     /// PlaceOwnerEditController); this page keeps the views and re-renders
     /// through PlaceOwnerEditControllerDelegate.
@@ -1912,133 +1919,15 @@ class PlaceDetailViewController: BaseViewController {
     // MARK: - Venue rewards (offers + announcements for this place)
 
     private func loadPartnerActions() {
-        PartnerActionsService.shared.getCatalog { [weak self] catalog in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                let groups = PartnerActionsService.shared.eligibleGroups(for: self.place, from: catalog)
-                self.partnerActionsRowView.configure(with: groups)
-                let show = !groups.isEmpty
-                self.partnerActionsHeightConstraint?.constant = show ? 44 : 0
-                self.partnerActionsTopConstraint?.constant = show ? Constants.Spacing.medium : 0
-                self.view.layoutIfNeeded()
-            }
-        }
+        venueLoader.loadPartnerActions()
     }
 
     private func loadVenueRewards() {
-        RewardsService.shared.getVenueByPlace(
-            placeId: place.globalPlaceId ?? place.id,
-            googlePlaceId: place.googlePlaceId
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                switch result {
-                case .success(let data):
-                    self.placeVenueData = data
-                    self.venueRewardsView.configure(with: data)
-                    // The card shows for enrolled venues AND for the venue-less
-                    // "Is this your store?" claim states — collapsing on
-                    // !hasVenue alone clipped the claim card to zero height
-                    let hasVenue = data.venue != nil
-                    let showsClaimCard = (data.claim?.canClaim == true) || (data.claim?.myClaimStatus != nil)
-                    let showCard = hasVenue || showsClaimCard
-                    self.venueRewardsHeightConstraint?.isActive = !showCard
-                    // Docks tight under the map — the claim card and the map
-                    // both describe the physical location, so they read as one
-                    self.venueRewardsTopConstraint?.constant = showCard ? Constants.Spacing.small : 0
-                    self.view.layoutIfNeeded()
-
-                    // Owners get ONE nav affordance: the eye that previews the
-                    // page as customers see it. Managing and editing live on
-                    // the Your Store card itself — the page IS the owner's
-                    // surface, so a toolbar of duplicate entry points just
-                    // read as clutter.
-                    self.ownerEdit.isVenueOwner = data.isOwner == true
-                    if hasVenue && data.isOwner == true {
-                        self.addOwnerPreviewNavButtonIfNeeded()
-                        // The page IS the owner's editor: arm the fields
-                        self.ownerEdit.decorateIfNeeded()
-                    }
-                case .failure:
-                    // Additive section — a failed lookup just leaves it collapsed
-                    self.venueRewardsView.configure(with: nil)
-                }
-            }
-        }
+        venueLoader.loadVenueRewards()
     }
 
     private func loadGlobalPlaceData() {
-        // Try to load global place data if available
-        // This provides better photo attribution and user tags
-        Logger.debug("🔍 [PlaceDetailViewController] Starting loadGlobalPlaceData for place: \(place.name)")
-
-        // Same id preference as the upload path (MediaStorageService), so reads
-        // and writes resolve to the same GlobalPlace doc
-        GlobalPlaceService.shared.getGlobalPlace(id: place.globalPlaceId ?? place.id) { [weak self] result in
-            switch result {
-            case .success(let globalPlaceResponse):
-                DispatchQueue.main.async {
-                    Logger.debug("✅ [PlaceDetailViewController] GlobalPlace data loaded successfully")
-                    Logger.debug("📍 [PlaceDetailViewController] GlobalPlace name: \(globalPlaceResponse.globalPlace.name)")
-                    Logger.debug("🆔 [PlaceDetailViewController] GlobalPlace ID: \(globalPlaceResponse.globalPlace.id)")
-                    
-                    self?.globalPlace = globalPlaceResponse.globalPlace
-                    let photoCount = globalPlaceResponse.globalPlace.photos?.count ?? 0
-                    Logger.debug("📷 [PlaceDetailViewController] Loaded GlobalPlace with \(photoCount) attributed photos")
-                    
-                    if let photos = globalPlaceResponse.globalPlace.photos, !photos.isEmpty {
-                        let firstPhoto = photos[0]
-                        Logger.debug("📸 [PlaceDetailViewController] First photo by: '\(firstPhoto.uploadedByName ?? "Unknown")'")
-                    }
-                    
-                    // Refresh media carousel with attribution data
-                    Logger.debug("🔄 [PlaceDetailViewController] Calling updateMediaCarousel() with GlobalPlace data")
-                    self?.updateMediaCarousel()
-                }
-            case .failure(let error):
-                Logger.debug("❌ [PlaceDetailViewController] Could not load GlobalPlace data: \(error)")
-                Logger.debug("📍 [PlaceDetailViewController] Continuing with legacy Place model for: \(self?.place.name ?? "Unknown")")
-                
-                DispatchQueue.main.async {
-                    // Try to add retry logic for common failures
-                    if case APIError.noInternet = error {
-                        Logger.debug("🔄 [PlaceDetailViewController] No internet detected, will retry GlobalPlace lookup once")
-                        // Retry once after a short delay
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            self?.retryGlobalPlaceDataLoad()
-                        }
-                    } else if case APIError.requestFailed = error {
-                        Logger.debug("🔄 [PlaceDetailViewController] Request failed, will retry GlobalPlace lookup once")
-                        // Retry once after a short delay
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            self?.retryGlobalPlaceDataLoad()
-                        }
-                    }
-                    
-                    // Continue with legacy Place model - no attribution data
-                    // But update media carousel to ensure photos are shown
-                    self?.updateMediaCarousel()
-                }
-            }
-        }
-    }
-    
-    private func retryGlobalPlaceDataLoad() {
-        Logger.debug("🔄 [PlaceDetailViewController] Retrying GlobalPlace data load...")
-
-        GlobalPlaceService.shared.getGlobalPlace(id: place.globalPlaceId ?? place.id) { [weak self] result in
-            switch result {
-            case .success(let globalPlaceResponse):
-                DispatchQueue.main.async {
-                    Logger.debug("✅ [PlaceDetailViewController] GlobalPlace data loaded on retry")
-                    self?.globalPlace = globalPlaceResponse.globalPlace
-                    self?.updateMediaCarousel()
-                }
-            case .failure(let error):
-                Logger.debug("❌ [PlaceDetailViewController] GlobalPlace retry failed: \(error)")
-                // Give up and continue with legacy data
-            }
-        }
+        venueLoader.loadGlobalPlaceData()
     }
     
     // MARK: - Actions
@@ -4084,5 +3973,64 @@ extension PlaceDetailViewController: PlaceOwnerEditControllerDelegate {
         aboutCardView.isHidden = aboutIsEmpty
         aboutTopConstraint?.constant = aboutIsEmpty ? 0 : Constants.Spacing.medium
         aboutHeightConstraint?.isActive = aboutIsEmpty
+    }
+}
+
+// MARK: - VenueRewardsLoaderDelegate
+
+extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
+    func currentPlace(for loader: VenueRewardsLoader) -> Place { place }
+
+    func loader(_ loader: VenueRewardsLoader, didLoadPartnerActionGroups groups: [PartnerActionGroup]) {
+        partnerActionsRowView.configure(with: groups)
+        let show = !groups.isEmpty
+        partnerActionsHeightConstraint?.constant = show ? 44 : 0
+        partnerActionsTopConstraint?.constant = show ? Constants.Spacing.medium : 0
+        view.layoutIfNeeded()
+    }
+
+    func loader(_ loader: VenueRewardsLoader, didLoadVenueData data: PlaceVenueData) {
+        placeVenueData = data
+        venueRewardsView.configure(with: data)
+        // The card shows for enrolled venues AND for the venue-less
+        // "Is this your store?" claim states — collapsing on
+        // !hasVenue alone clipped the claim card to zero height
+        let hasVenue = data.venue != nil
+        let showsClaimCard = (data.claim?.canClaim == true) || (data.claim?.myClaimStatus != nil)
+        let showCard = hasVenue || showsClaimCard
+        venueRewardsHeightConstraint?.isActive = !showCard
+        // Docks tight under the map — the claim card and the map
+        // both describe the physical location, so they read as one
+        venueRewardsTopConstraint?.constant = showCard ? Constants.Spacing.small : 0
+        view.layoutIfNeeded()
+
+        // Owners get ONE nav affordance: the eye that previews the
+        // page as customers see it. Managing and editing live on
+        // the Your Store card itself — the page IS the owner's
+        // surface, so a toolbar of duplicate entry points just
+        // read as clutter.
+        ownerEdit.isVenueOwner = data.isOwner == true
+        if hasVenue && data.isOwner == true {
+            addOwnerPreviewNavButtonIfNeeded()
+            // The page IS the owner's editor: arm the fields
+            ownerEdit.decorateIfNeeded()
+        }
+    }
+
+    func loaderVenueLookupFailed(_ loader: VenueRewardsLoader) {
+        // Additive section — a failed lookup just leaves it collapsed
+        venueRewardsView.configure(with: nil)
+    }
+
+    func loader(_ loader: VenueRewardsLoader, didLoadGlobalPlace globalPlace: GlobalPlace) {
+        self.globalPlace = globalPlace
+        // Refresh media carousel with attribution data
+        updateMediaCarousel()
+    }
+
+    func loaderGlobalPlaceLookupFailed(_ loader: VenueRewardsLoader) {
+        // Continue with legacy Place model - no attribution data
+        // But update media carousel to ensure photos are shown
+        updateMediaCarousel()
     }
 }
