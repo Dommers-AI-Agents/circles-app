@@ -583,6 +583,21 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
   into a core + focused sibling files. Backend controllers were split by domain
   in Sept 2026 (see "Backend controller layout" below); iOS controllers were
   regrouped by feature (`Controllers/Home`, `Map`, `Venue`, `Rewards`).
+- **iOS extraction layout (Sept 2026)** — put new logic in the matching place:
+  - `Logic/` — pure, unit-tested rules (`HomePlaceFilter`, `PinTierPlanner`,
+    `PlaceMediaAssembler`, `DeepLinkRouter`). No UIKit, no services.
+  - `State/` — controller-owned state + loading (`HomeState`, `HomeDataLoader`);
+    the controller talks to them through delegate protocols.
+  - `Controllers/Home/Tabs/` — the home segment contents (Activity, Moments,
+    Specials) are child view controllers behind `HomeContentTab`; the host
+    protocol is in `HomeContentTab.swift`. Tabs are switched with `isHidden`,
+    so appearance callbacks don't fire — use the tab hooks.
+  - `Controllers/Profile/Tabs/` — Moments/Uploads grids as child VCs on
+    `ProfileGridTabViewController` (reports height to the profile's scroll view).
+  - `Controllers/Places/PlaceOwnerEditController.swift` — venue-owner
+    tap-to-edit for the place page, driven by a delegate on `PlaceDetailViewController`.
+  - Tests live in `Circles-iOSTests` (Swift Testing); every extraction above ships
+    with a suite.
 
 ### Backend controller layout (Sept 2026)
 The former 3–5k-line controllers are split by domain; handlers are unchanged
