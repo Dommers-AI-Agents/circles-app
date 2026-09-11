@@ -321,8 +321,6 @@ extension PlaceVideo {
     }
     
     var timeAgo: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: createdAt, relativeTo: Date())
+        MomentTimestampFormatter.string(for: createdAt)
     }
 }

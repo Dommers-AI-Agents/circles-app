@@ -127,6 +127,15 @@ class VideoReelCell: UICollectionViewCell {
         return label
     }()
     
+    /// How long ago the moment was posted ("2 hours ago", then the date)
+    private let timestampLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 12)
+        label.textColor = UIColor.white.withAlphaComponent(0.7)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    
     private let likeButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "heart"), for: .normal)
@@ -271,6 +280,7 @@ class VideoReelCell: UICollectionViewCell {
         videoContainerView.addSubview(followButton)
         videoContainerView.addSubview(placeNameLabel)
         videoContainerView.addSubview(descriptionLabel)
+        videoContainerView.addSubview(timestampLabel)
         videoContainerView.addSubview(likeButton)
         videoContainerView.addSubview(likeCountLabel)
         videoContainerView.addSubview(commentButton)
@@ -344,7 +354,11 @@ class VideoReelCell: UICollectionViewCell {
             // Bottom info
             descriptionLabel.leadingAnchor.constraint(equalTo: videoContainerView.leadingAnchor, constant: 16),
             descriptionLabel.trailingAnchor.constraint(equalTo: shareButton.leadingAnchor, constant: -16),
-            descriptionLabel.bottomAnchor.constraint(equalTo: videoContainerView.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            descriptionLabel.bottomAnchor.constraint(equalTo: timestampLabel.topAnchor, constant: -6),
+            
+            timestampLabel.leadingAnchor.constraint(equalTo: descriptionLabel.leadingAnchor),
+            timestampLabel.trailingAnchor.constraint(equalTo: descriptionLabel.trailingAnchor),
+            timestampLabel.bottomAnchor.constraint(equalTo: videoContainerView.safeAreaLayoutGuide.bottomAnchor, constant: -20),
             
             placeNameLabel.leadingAnchor.constraint(equalTo: descriptionLabel.leadingAnchor),
             placeNameLabel.trailingAnchor.constraint(equalTo: descriptionLabel.trailingAnchor),
@@ -623,6 +637,7 @@ class VideoReelCell: UICollectionViewCell {
         }
         placeNameLabel.text = "📍 \(reel.placeName)"
         descriptionLabel.text = reel.description.isEmpty ? reel.title : reel.description
+        timestampLabel.text = MomentTimestampFormatter.string(for: reel.createdAt)
         likeCountLabel.text = formatCount(reel.likeCount)
         commentCountLabel.text = formatCount(reel.commentCount)
         
@@ -984,6 +999,7 @@ class VideoReelCell: UICollectionViewCell {
         usernameLabel.text = ""
         placeNameLabel.text = ""
         descriptionLabel.text = ""
+        timestampLabel.text = ""
         likeCountLabel.text = "0"
         commentCountLabel.text = "0"
         reactionCountLabel.text = ""
