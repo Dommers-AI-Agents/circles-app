@@ -2204,108 +2204,22 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
     // MARK: - Export Methods
     
     private func exportAsPDF() {
-        // Create PDF data
-        let pdfMetaData = [
-            kCGPDFContextCreator: "Circles App",
-            kCGPDFContextTitle: circle.name
-        ]
-        let format = UIGraphicsPDFRendererFormat()
-        format.documentInfo = pdfMetaData as [String: Any]
-        
-        let pageWidth = 8.5 * 72.0
-        let pageHeight = 11 * 72.0
-        let pageRect = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
-        
-        let renderer = UIGraphicsPDFRenderer(bounds: pageRect, format: format)
-        
-        let data = renderer.pdfData { (context) in
-            context.beginPage()
-            
-            // Title
-            let titleAttributes = [
-                NSAttributedString.Key.font: UIFont.boldSystemFont(ofSize: 24)
-            ]
-            let title = circle.name
-            title.draw(at: CGPoint(x: 20, y: 20), withAttributes: titleAttributes)
-            
-            // Places
-            var yPosition: CGFloat = 80
-            let placeAttributes = [
-                NSAttributedString.Key.font: UIFont.systemFont(ofSize: 14)
-            ]
-            
-            for (index, place) in places.enumerated() {
-                let placeText = "\(index + 1). \(place.name)"
-                placeText.draw(at: CGPoint(x: 20, y: yPosition), withAttributes: placeAttributes)
-                
-                if !place.address.isEmpty {
-                    let addressText = "   \(place.address)"
-                    let addressAttributes = [
-                        NSAttributedString.Key.font: UIFont.systemFont(ofSize: 12),
-                        NSAttributedString.Key.foregroundColor: UIColor.gray
-                    ]
-                    addressText.draw(at: CGPoint(x: 20, y: yPosition + 20), withAttributes: addressAttributes)
-                    yPosition += 40
-                } else {
-                    yPosition += 25
-                }
-                
-                // Start new page if needed
-                if yPosition > pageHeight - 100 {
-                    context.beginPage()
-                    yPosition = 20
-                }
-            }
-        }
-        
+        let data = CircleExporter.pdf(circleName: circle.name, places: places)
         shareExportedFile(data: data, filename: "\(circle.name).pdf", mimeType: "application/pdf")
     }
-    
+
     private func exportAsCSV() {
-        var csvText = "Name,Category,Address,Phone,Website,Notes\n"
-        
-        for place in places {
-            let name = place.name.replacingOccurrences(of: ",", with: ";")
-            let category = place.category.rawValue
-            let address = (place.address ?? "").replacingOccurrences(of: ",", with: ";")
-            let phone = (place.phone ?? "").replacingOccurrences(of: ",", with: ";")
-            let website = (place.website ?? "").replacingOccurrences(of: ",", with: ";")
-            let notes = (place.notes ?? "").replacingOccurrences(of: ",", with: ";").replacingOccurrences(of: "\n", with: " ")
-            
-            csvText += "\(name),\(category),\(address),\(phone),\(website),\(notes)\n"
-        }
-        
-        if let data = csvText.data(using: .utf8) {
+        if let data = CircleExporter.csv(places: places).data(using: .utf8) {
             shareExportedFile(data: data, filename: "\(circle.name).csv", mimeType: "text/csv")
         }
     }
-    
+
     private func exportAsText() {
-        var textContent = "\(circle.name)\n"
-        textContent += String(repeating: "=", count: circle.name.count) + "\n\n"
-        
-        for (index, place) in places.enumerated() {
-            textContent += "\(index + 1). \(place.name)\n"
-            if !place.address.isEmpty {
-                textContent += "   Address: \(place.address)\n"
-            }
-            if let phone = place.phone {
-                textContent += "   Phone: \(phone)\n"
-            }
-            if let website = place.website {
-                textContent += "   Website: \(website)\n"
-            }
-            if let notes = place.notes, !notes.isEmpty {
-                textContent += "   Notes: \(notes)\n"
-            }
-            textContent += "\n"
-        }
-        
-        if let data = textContent.data(using: .utf8) {
+        if let data = CircleExporter.text(circleName: circle.name, places: places).data(using: .utf8) {
             shareExportedFile(data: data, filename: "\(circle.name).txt", mimeType: "text/plain")
         }
     }
-    
+
     private func shareExportedFile(data: Data, filename: String, mimeType: String) {
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         
