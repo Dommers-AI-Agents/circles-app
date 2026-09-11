@@ -2158,62 +2158,15 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         didSet { if oldValue != isConnectionFetchPending { updateConnectionCoverageBanner() } }
     }
 
-    private lazy var coverageBannerLabel: UILabel = {
-        let label = UILabel()
-        label.font = .systemFont(ofSize: 14, weight: .medium)
-        label.textColor = .white
-        label.numberOfLines = 2
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-
-    private lazy var coverageBannerActionButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
-        button.setTitleColor(UIColor(red: 0.36, green: 0.65, blue: 1.0, alpha: 1.0), for: .normal)
-        button.contentEdgeInsets = .zero
-        button.contentHorizontalAlignment = .leading
-        button.addTarget(self, action: #selector(coverageBannerActionTapped), for: .touchUpInside)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-
-    private lazy var coverageBannerDismissButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
-        button.tintColor = UIColor.white.withAlphaComponent(0.55)
-        button.addTarget(self, action: #selector(coverageBannerDismissTapped), for: .touchUpInside)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-
-    lazy var coverageBanner: UIView = {
-        let container = UIView()
-        container.backgroundColor = UIColor.black.withAlphaComponent(0.85)
-        container.layer.cornerRadius = 12
-        container.translatesAutoresizingMaskIntoConstraints = false
-        container.isHidden = true
-
-        let stack = UIStackView(arrangedSubviews: [coverageBannerLabel, coverageBannerActionButton])
-        stack.axis = .vertical
-        stack.spacing = 4
-        stack.alignment = .leading
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(stack)
-        container.addSubview(coverageBannerDismissButton)
-
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -10),
-            stack.trailingAnchor.constraint(equalTo: coverageBannerDismissButton.leadingAnchor, constant: -8),
-
-            coverageBannerDismissButton.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
-            coverageBannerDismissButton.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
-            coverageBannerDismissButton.widthAnchor.constraint(equalToConstant: 24),
-            coverageBannerDismissButton.heightAnchor.constraint(equalToConstant: 24)
-        ])
-        return container
+    lazy var coverageBanner: MapCoverageBannerView = {
+        let banner = MapCoverageBannerView()
+        banner.onAction = { [weak self] in self?.coverageBannerAction?() }
+        banner.onDismiss = { [weak self] in
+            guard let self = self else { return }
+            self.coverageBannerDismissedForId = self.selectedConnectionId ?? ""
+            self.hideCoverageBanner()
+        }
+        return banner
     }()
 
     /// Reset the dismiss so the banner can re-evaluate for a new selection.
@@ -2277,13 +2230,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
 
     private func showCoverageBanner(message: String, actionTitle: String?, action: (() -> Void)?) {
-        coverageBannerLabel.text = message
-        if let title = actionTitle {
-            coverageBannerActionButton.setTitle(title, for: .normal)
-            coverageBannerActionButton.isHidden = false
-        } else {
-            coverageBannerActionButton.isHidden = true
-        }
+        coverageBanner.configure(message: message, actionTitle: actionTitle)
         coverageBannerAction = action
         view.bringSubviewToFront(coverageBanner)
         coverageBanner.isHidden = false
@@ -2292,15 +2239,6 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private func hideCoverageBanner() {
         coverageBanner.isHidden = true
         coverageBannerAction = nil
-    }
-
-    @objc private func coverageBannerActionTapped() {
-        coverageBannerAction?()
-    }
-
-    @objc private func coverageBannerDismissTapped() {
-        coverageBannerDismissedForId = selectedConnectionId ?? ""
-        hideCoverageBanner()
     }
 
     /// Clear the category chip while keeping the current camera.
