@@ -37,7 +37,6 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     // MARK: - Properties
     private var places: [Place]
     private var initialRegion: MKCoordinateRegion
-    private var annotationPlaceMap: [ObjectIdentifier: Place] = [:]
     private var selectedCategory: UnifiedCategory?
     private var filteredPlaces: [Place] = []
     private var availableCategories: [UnifiedCategory] = []
@@ -63,10 +62,13 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     // Every place renders at its true location; the places nearest the user
     // (or map center) hold full category pins until pins would overlap, and
     // the rest render as small category-colored dots that promote to full
-    // pins on zoom-in. No numbered cluster bubbles, ever.
-    private var promotedPlaceIds = Set<String>()
-    private var pinTierRecomputeTimer: Timer?
-    private let maxFullPins = 45
+    // pins on zoom-in. No numbered cluster bubbles, ever. The differential
+    // annotation update and the tiering live in MapAnnotationManager.
+    private lazy var annotationManager: MapAnnotationManager = {
+        let manager = MapAnnotationManager(mapView: mapView)
+        manager.adjustRegion = { [weak self] in self?.adjustMapRegion() }
+        return manager
+    }()
     
     weak var delegate: FullScreenMapViewControllerDelegate?
     var viewMode: MapViewMode = .circle
@@ -1119,149 +1121,13 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     
     // MARK: - Map Annotations
     private func addAnnotationsToMap(adjustRegion: Bool = true) {
-        // Use smooth differential update instead of clearing everything
-        updateMapAnnotationsSmooth(adjustRegion: adjustRegion)
+        // Differential update: only what changed is removed or added
+        annotationManager.update(with: filteredPlaces, adjustRegion: adjustRegion)
     }
 
-    // MARK: - Smooth Map Loading Implementation
-
-    private func updateMapAnnotationsSmooth(adjustRegion: Bool = true) {
-        let startTime = CFAbsoluteTimeGetCurrent()
-        Logger.debug("🗺️ [SmoothMap] Starting smooth annotation update...")
-        
-        // Get places that should be on the map
-        let placesWithLocation = filteredPlaces.filter { $0.location?.clLocation != nil }
-        let newPlaceIds = Set(placesWithLocation.map { $0.id })
-        
-        // Get current annotations and their place IDs
-        let currentAnnotations = mapView.annotations.compactMap { $0 as? PlaceAnnotation }
-        let currentPlaceIds = Set(currentAnnotations.compactMap { annotationPlaceMap[ObjectIdentifier($0)]?.id })
-        
-        // Calculate differences
-        let placesToAdd = placesWithLocation.filter { !currentPlaceIds.contains($0.id) }
-        let annotationsToRemove = currentAnnotations.filter { 
-            guard let place = annotationPlaceMap[ObjectIdentifier($0)] else { return true }
-            return !newPlaceIds.contains(place.id)
-        }
-        
-        Logger.debug("🗺️ [SmoothMap] Differential update:")
-        Logger.debug("   Current: \(currentAnnotations.count) annotations")
-        Logger.debug("   To add: \(placesToAdd.count) places")
-        Logger.debug("   To remove: \(annotationsToRemove.count) annotations")
-        
-        // Remove obsolete annotations smoothly
-        if !annotationsToRemove.isEmpty {
-            // Clean up annotation mapping
-            for annotation in annotationsToRemove {
-                annotationPlaceMap.removeValue(forKey: ObjectIdentifier(annotation))
-            }
-            
-            // Remove with animation
-            mapView.removeAnnotations(annotationsToRemove)
-        }
-        
-        // Add new annotations in batches for smooth loading
-        if !placesToAdd.isEmpty {
-            addAnnotationsBatched(placesToAdd, adjustRegion: adjustRegion)
-        } else if adjustRegion {
-            // If no new places to add, just adjust region
-            adjustMapRegion()
-        } else if !annotationsToRemove.isEmpty {
-            // Removal-only update (e.g. narrower filter): freed space may let
-            // remaining dots promote to full pins
-            schedulePinTierRecompute()
-        }
-        
-        let loadTime = CFAbsoluteTimeGetCurrent() - startTime
-        Logger.debug("🗺️ [SmoothMap] Update completed in \(String(format: "%.3f", loadTime))s")
-    }
-    
-    private func addAnnotationsBatched(_ places: [Place], adjustRegion: Bool = true) {
-        // Add all annotations in one pass. The previous 15-at-a-time staggering
-        // (0.05s between batches + a 0.1s tail) delayed the camera by up to
-        // ~0.75s on a filter change — the map felt slow to settle. MapKit
-        // handles a bulk add fine, and the zoom can happen immediately after.
-        let annotations = places.compactMap { place -> PlaceAnnotation? in
-            guard place.location?.clLocation != nil else { return nil }
-            let annotation = PlaceAnnotation(place: place)
-            annotationPlaceMap[ObjectIdentifier(annotation)] = place
-            return annotation
-        }
-
-        mapView.addAnnotations(annotations)
-        Logger.debug("🗺️ [SmoothMap] Added \(annotations.count) annotations in one pass")
-
-        schedulePinTierRecompute()
-
-        if adjustRegion {
-            adjustMapRegion()
-        }
-    }
-
-    // MARK: - Pin Tiering (full pins near the user, dots elsewhere)
-
-    /// Debounced recompute — region changes and annotation churn both land here.
+    /// Debounced pin-tier recompute — region changes land here.
     func schedulePinTierRecompute(delay: TimeInterval = 0.25) {
-        pinTierRecomputeTimer?.invalidate()
-        pinTierRecomputeTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
-            self?.recomputePinTiers()
-        }
-    }
-
-    /// Decide which places get full category pins vs. small dots.
-    ///
-    /// The controller's job is projection: anchor choice (you, when on screen,
-    /// else the map center), screen points and distances. The greedy
-    /// collision pass itself lives in `PinTierPlanner` (pure, unit tested).
-    private func recomputePinTiers() {
-        let placeAnnotations = mapView.annotations.compactMap { $0 as? PlaceAnnotation }
-        guard !placeAnnotations.isEmpty else {
-            promotedPlaceIds.removeAll()
-            return
-        }
-
-        // Anchor: pins should bloom around YOU when you're on screen
-        let anchor: CLLocationCoordinate2D
-        if let userCoord = mapView.userLocation.location?.coordinate,
-           mapView.visibleMapRect.contains(MKMapPoint(userCoord)) {
-            anchor = userCoord
-        } else {
-            anchor = mapView.centerCoordinate
-        }
-        let anchorLocation = CLLocation(latitude: anchor.latitude, longitude: anchor.longitude)
-
-        let candidates = placeAnnotations.map { annotation -> PinTierPlanner.Candidate in
-            let c = annotation.coordinate
-            return PinTierPlanner.Candidate(
-                id: annotation.place.id,
-                point: mapView.convert(c, toPointTo: mapView),
-                distance: anchorLocation.distance(from: CLLocation(latitude: c.latitude, longitude: c.longitude))
-            )
-        }
-
-        // The selected annotation keeps its full pin no matter what —
-        // demoting it would yank the callout out from under the user
-        let selectedIds = Set(mapView.selectedAnnotations.compactMap { ($0 as? PlaceAnnotation)?.place.id })
-
-        var planner = PinTierPlanner()
-        planner.maxFullPins = maxFullPins
-        let newPromoted = planner.fullPinIds(for: candidates, in: mapView.bounds, pinned: selectedIds)
-
-        guard newPromoted != promotedPlaceIds else { return }
-        let changedIds = newPromoted.symmetricDifference(promotedPlaceIds)
-        promotedPlaceIds = newPromoted
-
-        // Changed annotations must re-dequeue for their new tier; remove+add
-        // is the reliable way to force that. Skip the selected annotation so
-        // its open callout survives.
-        let changed = placeAnnotations.filter {
-            changedIds.contains($0.place.id) && !selectedIds.contains($0.place.id)
-        }
-        if !changed.isEmpty {
-            mapView.removeAnnotations(changed)
-            mapView.addAnnotations(changed)
-        }
-        Logger.debug("🗺️ [PinTiers] \(newPromoted.count) full pins, \(placeAnnotations.count - newPromoted.count) dots (\(changed.count) retiered)")
+        annotationManager.schedulePinTierRecompute(delay: delay)
     }
 
     // MARK: - Helper Extensions
@@ -1421,7 +1287,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
         // Demoted tier: small category-colored dot at the true location
         // (promotes to a full pin when decluttering frees up space on zoom)
-        if !promotedPlaceIds.contains(placeAnnotation.place.id) {
+        if !annotationManager.promotedPlaceIds.contains(placeAnnotation.place.id) {
             let dotView = (mapView.dequeueReusableAnnotationView(withIdentifier: PlaceDotAnnotationView.reuseIdentifier) as? PlaceDotAnnotationView)
                 ?? PlaceDotAnnotationView(annotation: annotation, reuseIdentifier: PlaceDotAnnotationView.reuseIdentifier)
             dotView.annotation = annotation
