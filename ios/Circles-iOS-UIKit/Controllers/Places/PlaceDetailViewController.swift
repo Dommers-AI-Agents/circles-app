@@ -1668,51 +1668,7 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     private func formatOpeningHours(_ hours: [OpeningHour]) -> String {
-        let calendar = Calendar.current
-        let today = calendar.component(.weekday, from: Date()) - 1 // 0 for Sunday, 1 for Monday, etc.
-        
-        // Find today's hours
-        if let todayHours = hours.first(where: { $0.day == today }) {
-            var hoursText = ""
-            
-            // Check if it's closed
-            if todayHours.isClosed == true || (todayHours.open == "00:00" && todayHours.close == "00:00") {
-                hoursText = "Closed today"
-            } else if todayHours.open == "00:00" && todayHours.close == "23:59" {
-                hoursText = "Open 24 hours"
-            } else if let open = todayHours.open, let close = todayHours.close {
-                // Format the hours
-                let openTime = formatTime(open)
-                let closeTime = formatTime(close)
-                hoursText = "Open today: \(openTime) - \(closeTime)"
-            } else if let hoursString = todayHours.hours {
-                // Fallback to legacy hours string
-                hoursText = hoursString
-            }
-            
-            return hoursText
-        }
-        
-        return "Hours not available"
-    }
-    
-    private func formatTime(_ time: String) -> String {
-        // Convert 24-hour format to 12-hour format
-        let components = time.split(separator: ":")
-        guard components.count == 2,
-              let hour = Int(components[0]),
-              let minute = Int(components[1]) else {
-            return time
-        }
-        
-        let period = hour >= 12 ? "PM" : "AM"
-        let displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour)
-        
-        if minute == 0 {
-            return "\(displayHour) \(period)"
-        } else {
-            return String(format: "%d:%02d %@", displayHour, minute, period)
-        }
+        OpeningHoursFormatter.todaySummary(hours)
     }
     
     private func setupMap() {
@@ -1857,7 +1813,7 @@ class PlaceDetailViewController: BaseViewController {
         // 2. Place is already in one of user's circles
         // 3. User doesn't have any circles to add to
         
-        if place.addedBy == currentUserId {
+        if AddToCircleGate.isOwnSave(place, currentUserId: currentUserId) {
             // User created this place
             setAddToCircleVisible(false)
             return
@@ -1873,24 +1829,18 @@ class PlaceDetailViewController: BaseViewController {
 
                 switch result {
                 case .success(let userCircles):
-                    guard !userCircles.isEmpty else {
-                        // User has no circles to add to
+                    // No circles to add to, or a circle already holds this doc
+                    guard case .checkVenueMatch(let circleIds) = AddToCircleGate.verdict(for: self.place, in: userCircles) else {
                         self.setAddToCircleVisible(false)
                         return
                     }
 
-                    // Same doc id in a circle = definitely already saved
-                    if userCircles.contains(where: { $0.places?.contains(self.place.id) ?? false }) {
-                        self.setAddToCircleVisible(false)
-                        return
-                    }
-
-                    PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: userCircles.map(\.id)) { [weak self] placesResult in
+                    PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: circleIds) { [weak self] placesResult in
                         DispatchQueue.main.async {
                             guard let self = self else { return }
                             switch placesResult {
                             case .success(let myPlaces):
-                                if myPlaces.contains(where: { self.isSameVenue(as: $0) }) {
+                                if AddToCircleGate.verdictAfterVenueCheck(for: self.place, myPlaces: myPlaces) == .hide {
                                     self.setAddToCircleVisible(false)
                                 } else {
                                     self.setAddToCircleVisible(true)
@@ -1912,26 +1862,6 @@ class PlaceDetailViewController: BaseViewController {
         }
     }
 
-    /// Is `other` (one of the current user's saved places) the same real-world
-    /// venue as the place on this screen? Ids first, then name+address.
-    private func isSameVenue(as other: Place) -> Bool {
-        if let gpid = place.googlePlaceId, !gpid.isEmpty, other.googlePlaceId == gpid {
-            return true
-        }
-        if let globalId = place.globalPlaceId, !globalId.isEmpty,
-           other.globalPlaceId == globalId || other.id == globalId {
-            return true
-        }
-        // The screen may hold a converted GlobalPlace whose id IS the global id
-        if other.globalPlaceId == place.id {
-            return true
-        }
-        let normalize = { (s: String) in s.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
-        return normalize(other.name) == normalize(place.name)
-            && !place.address.isEmpty
-            && normalize(other.address) == normalize(place.address)
-    }
-    
     private func updateAddressTitleConstraint() {
         // No need to update constraints dynamically anymore
         // The constraint is set in setupUI to always anchor to addToCircleButton
