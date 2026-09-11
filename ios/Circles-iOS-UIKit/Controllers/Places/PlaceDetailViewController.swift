@@ -43,9 +43,25 @@ class PlaceDetailViewController: BaseViewController {
         return view
     }()
     
-    private var streetViewImage: UIImage?
-    private var isStreetViewAvailable = false
-    private var showingStreetView = false
+    /// Apple Look Around: availability, snapshot and shown/hidden live in
+    /// the controller; these forwarders keep the page's call sites unchanged.
+    private lazy var lookAround: PlaceLookAroundController = {
+        let controller = PlaceLookAroundController()
+        controller.delegate = self
+        return controller
+    }()
+    private var streetViewImage: UIImage? {
+        get { lookAround.image }
+        set { lookAround.image = newValue }
+    }
+    private var isStreetViewAvailable: Bool {
+        get { lookAround.isAvailable }
+        set { lookAround.isAvailable = newValue }
+    }
+    private var showingStreetView: Bool {
+        get { lookAround.isShowing }
+        set { lookAround.isShowing = newValue }
+    }
     private var customImage: UIImage?
     private var isHomeOrWorkPlace: Bool {
         return (place.circleId == nil || place.circleId?.isEmpty == true) && (place.id == "home-place" || place.id == "work-place")
@@ -2371,98 +2387,15 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     private func checkStreetViewAvailability() {
-        guard let location = place.location?.clLocation else { 
-            Logger.debug("⚠️ PlaceDetailViewController: No location available for street view check")
-            return 
-        }
-        
-        if #available(iOS 16.0, *) {
-            Logger.debug("🔍 PlaceDetailViewController: Checking Look Around availability for \(place.name)")
-            Task {
-                let available = await AppleLookAroundService.shared.checkLookAroundAvailability(at: location.coordinate)
-                await MainActor.run {
-                    Logger.debug("📍 PlaceDetailViewController: Look Around available: \(available)")
-                    self.isStreetViewAvailable = available
-                    self.updateToggleButtonVisibility()
-                }
-            }
-        } else {
-            // Look Around not available on iOS < 16
-            Logger.debug("⚠️ PlaceDetailViewController: iOS < 16.0, Look Around not available")
-            isStreetViewAvailable = false
-            updateToggleButtonVisibility()
-        }
+        lookAround.checkAvailability()
     }
     
     private func loadStreetViewImage() {
-        guard let location = place.location?.clLocation else { return }
-        
-        if #available(iOS 16.0, *) {
-            let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 200)
-            
-            Task {
-                do {
-                    let image = try await AppleLookAroundService.shared.getLookAroundSnapshot(
-                        at: location.coordinate,
-                        size: imageSize
-                    )
-                    await MainActor.run {
-                        self.streetViewImage = image
-                        if self.showingStreetView == true {
-                            self.updateImageView()
-                        }
-                    }
-                } catch {
-                    Logger.debug("Failed to load Look Around: \(error)")
-                }
-            }
-        }
+        lookAround.loadImage()
     }
     
     private func autoLoadStreetView() {
-        // Idempotent: configureUI re-runs on server refresh; one fetch is enough
-        guard streetViewImage == nil else { return }
-        guard let location = place.location?.clLocation else { return }
-        
-        if #available(iOS 16.0, *) {
-            Task {
-                // Check if Look Around is available first
-                let available = await AppleLookAroundService.shared.checkLookAroundAvailability(at: location.coordinate)
-                guard available else { return }
-                
-                let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 300)
-                
-                do {
-                    let image = try await AppleLookAroundService.shared.getLookAroundSnapshot(
-                        at: location.coordinate,
-                        size: imageSize
-                    )
-                    await MainActor.run {
-                        self.streetViewImage = image
-                        self.isStreetViewAvailable = true
-
-                        // Only show street view automatically if there are no photos
-                        let hasPhotos = (self.place.photos != nil && !self.place.photos!.isEmpty) || self.customImage != nil
-                        
-                        if !hasPhotos {
-                            // No photos available, show street view
-                            self.showingStreetView = true
-                            self.updateImageView()
-                            self.streetViewToggleButton.isHidden = true // Hide toggle when street view is the only option
-                            // Hide update info button since we now have street view
-                            // self.updateInfoButton.isHidden = true // Commented - automatic migration
-                            Logger.debug("PlaceDetailViewController: Auto-showing street view for place without photos")
-                        } else {
-                            // Has photos, just store street view for toggle option
-                            self.updateToggleButtonVisibility()
-                            Logger.debug("PlaceDetailViewController: Street view loaded but not shown (place has photos)")
-                        }
-                    }
-                } catch {
-                    Logger.error("Failed to auto-load Look Around: \(error)")
-                }
-            }
-        }
+        lookAround.autoLoad()
     }
     
     private func updateImageView() {
@@ -4032,5 +3965,40 @@ extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
         // Continue with legacy Place model - no attribution data
         // But update media carousel to ensure photos are shown
         updateMediaCarousel()
+    }
+}
+
+// MARK: - PlaceLookAroundControllerDelegate
+
+extension PlaceDetailViewController: PlaceLookAroundControllerDelegate {
+    func currentPlace(for controller: PlaceLookAroundController) -> Place { place }
+
+    func lookAroundAvailabilityDidChange(_ controller: PlaceLookAroundController) {
+        updateToggleButtonVisibility()
+    }
+
+    func lookAroundImageDidLoad(_ controller: PlaceLookAroundController) {
+        if showingStreetView == true {
+            updateImageView()
+        }
+    }
+
+    func lookAroundDidAutoLoad(_ controller: PlaceLookAroundController) {
+        // Only show street view automatically if there are no photos
+        let hasPhotos = (place.photos != nil && !place.photos!.isEmpty) || customImage != nil
+
+        if !hasPhotos {
+            // No photos available, show street view
+            showingStreetView = true
+            updateImageView()
+            streetViewToggleButton.isHidden = true // Hide toggle when street view is the only option
+            // Hide update info button since we now have street view
+            // self.updateInfoButton.isHidden = true // Commented - automatic migration
+            Logger.debug("PlaceDetailViewController: Auto-showing street view for place without photos")
+        } else {
+            // Has photos, just store street view for toggle option
+            updateToggleButtonVisibility()
+            Logger.debug("PlaceDetailViewController: Street view loaded but not shown (place has photos)")
+        }
     }
 }
