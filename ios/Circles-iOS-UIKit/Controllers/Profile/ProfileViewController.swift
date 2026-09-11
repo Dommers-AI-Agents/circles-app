@@ -6,7 +6,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     // MARK: - Properties
     var user: User? {
-        didSet { updateOrganizeButtonVisibility() }
+        didSet {
+            updateOrganizeButtonVisibility()
+            momentsTab.userId = user?.id
+            uploadsTab.userId = user?.id
+        }
     }
     var circles: [Circle] = []
     var displayItems: [CircleDisplayItem] = []
@@ -59,7 +63,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 
     var isSearching = false
     var searchResultsHeightConstraint: NSLayoutConstraint?
-    var videos: [PlaceVideo] = []
     
     // MARK: - Drag & Drop Properties
     var dragAndDropEnabled = false
@@ -647,88 +650,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     var circlesCollectionHeightConstraint: NSLayoutConstraint?
     
-    // Videos collection view - Instagram-style 3-column grid
-    let videosCollectionView: UICollectionView = {
-        let layout = UICollectionViewFlowLayout()
-        layout.scrollDirection = .vertical
-        layout.minimumInteritemSpacing = 2
-        layout.minimumLineSpacing = 2
-        layout.sectionInset = UIEdgeInsets.zero
-        
-        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
-        collectionView.backgroundColor = .systemBackground
-        collectionView.isPagingEnabled = false
-        collectionView.showsVerticalScrollIndicator = true
-        collectionView.contentInsetAdjustmentBehavior = .automatic
-        collectionView.translatesAutoresizingMaskIntoConstraints = false
-        collectionView.isScrollEnabled = true
-        collectionView.isHidden = true
-        return collectionView
-    }()
-    
-    var videosCollectionHeightConstraint: NSLayoutConstraint?
-    
-    let videosEmptyLabel: UILabel = {
-        let label = UILabel()
-        label.text = "No moments yet"
-        label.font = UIFont.systemFont(ofSize: 16)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.isHidden = true
-        return label
-    }()
-    
-    let videosLoadingIndicator: UIActivityIndicatorView = {
-        let indicator = UIActivityIndicatorView(style: .medium)
-        indicator.hidesWhenStopped = true
-        indicator.translatesAutoresizingMaskIntoConstraints = false
-        return indicator
-    }()
-    
-    var isLoadingVideos = false
-    
-    // Uploads collection view - Instagram-style 3-column grid
-    let uploadsCollectionView: UICollectionView = {
-        let layout = UICollectionViewFlowLayout()
-        layout.scrollDirection = .vertical
-        layout.minimumInteritemSpacing = 2
-        layout.minimumLineSpacing = 2
-        
-        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
-        collectionView.backgroundColor = .clear
-        collectionView.translatesAutoresizingMaskIntoConstraints = false
-        collectionView.isHidden = true
-        collectionView.showsVerticalScrollIndicator = false
-        return collectionView
-    }()
-    
-    var uploads: [UserUploadedPhoto] = [] {
-        didSet { uploadGroups = uploads.groupedByPlace() }
-    }
-    /// Uploads collapsed to one entry per place (the grid renders these).
-    var uploadGroups: [UploadPlaceGroup] = []
-    var uploadsCollectionHeightConstraint: NSLayoutConstraint?
-    
-    let uploadsEmptyLabel: UILabel = {
-        let label = UILabel()
-        label.text = "No uploads yet"
-        label.font = UIFont.systemFont(ofSize: 16)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.isHidden = true
-        return label
-    }()
-    
-    let uploadsLoadingIndicator: UIActivityIndicatorView = {
-        let indicator = UIActivityIndicatorView(style: .medium)
-        indicator.hidesWhenStopped = true
-        indicator.translatesAutoresizingMaskIntoConstraints = false
-        return indicator
-    }()
-    
-    var isLoadingUploads = false
+    // Moments and Uploads are child view controllers (Controllers/Profile/Tabs)
+    // sharing the circles grid's slot; they report their grid height and the
+    // profile sizes them.
+    lazy var momentsTab = ProfileMomentsTabViewController()
+    lazy var uploadsTab = ProfileUploadsTabViewController()
+    var momentsTabHeightConstraint: NSLayoutConstraint?
+    var uploadsTabHeightConstraint: NSLayoutConstraint?
+
     var logoutButtonTopToCollectionConstraint: NSLayoutConstraint?
     var logoutButtonTopToMapConstraint: NSLayoutConstraint?
     var logoutButtonTopToVideosConstraint: NSLayoutConstraint?
@@ -1005,9 +934,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             updateCollectionViewHeight()
         }
         
-        if !videos.isEmpty && contentTypeSegmentedControl.selectedSegmentIndex == 1 && !videosCollectionView.isHidden {
-            updateVideosCollectionHeight()
-        }
     }
     
     // MARK: - BaseViewController Data Loading
@@ -1094,12 +1020,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         contentView.addSubview(circlesHeaderView)
         circlesHeaderView.addSubview(circlesHeaderLabel)
         contentView.addSubview(circlesCollectionView)
-        contentView.addSubview(videosCollectionView)
-        contentView.addSubview(videosEmptyLabel)
-        contentView.addSubview(videosLoadingIndicator)
-        contentView.addSubview(uploadsCollectionView)
-        contentView.addSubview(uploadsEmptyLabel)
-        contentView.addSubview(uploadsLoadingIndicator)
+        embedGridTabs()
         
         // Add map container (initially hidden)
         contentView.addSubview(mapContainerView)
@@ -1347,35 +1268,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             circlesCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             circlesCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             
-            // Videos collection view
-            videosCollectionView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
-            videosCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            videosCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            
-            // Videos empty label
-            videosEmptyLabel.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor, constant: 100),
-            videosEmptyLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            videosEmptyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            videosEmptyLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
-            
-            // Uploads collection view
-            uploadsCollectionView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
-            uploadsCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            uploadsCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            
-            // Uploads empty label
-            uploadsEmptyLabel.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor, constant: 100),
-            uploadsEmptyLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            uploadsEmptyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            uploadsEmptyLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
-            
-            // Videos loading indicator
-            videosLoadingIndicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            videosLoadingIndicator.centerYAnchor.constraint(equalTo: videosEmptyLabel.centerYAnchor),
-            
-            // Uploads loading indicator
-            uploadsLoadingIndicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            uploadsLoadingIndicator.centerYAnchor.constraint(equalTo: uploadsEmptyLabel.centerYAnchor),
+            // Moments / Uploads tabs (same slot as the circles collection)
+            momentsTab.view.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
+            momentsTab.view.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            momentsTab.view.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            uploadsTab.view.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
+            uploadsTab.view.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            uploadsTab.view.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             
             // Map container (same position as circles collection)
             mapContainerView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
@@ -1443,17 +1342,17 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         circlesCollectionHeightConstraint = circlesCollectionView.heightAnchor.constraint(equalToConstant: 400)
         circlesCollectionHeightConstraint?.isActive = true
         
-        videosCollectionHeightConstraint = videosCollectionView.heightAnchor.constraint(equalToConstant: 200)
-        videosCollectionHeightConstraint?.isActive = true
+        momentsTabHeightConstraint = momentsTab.view.heightAnchor.constraint(equalToConstant: 200)
+        momentsTabHeightConstraint?.isActive = true
         
-        uploadsCollectionHeightConstraint = uploadsCollectionView.heightAnchor.constraint(equalToConstant: 200)
-        uploadsCollectionHeightConstraint?.isActive = true
+        uploadsTabHeightConstraint = uploadsTab.view.heightAnchor.constraint(equalToConstant: 200)
+        uploadsTabHeightConstraint?.isActive = true
         
         // Create switchable constraints for logout button
         logoutButtonTopToCollectionConstraint = logoutButton.topAnchor.constraint(equalTo: circlesCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
         logoutButtonTopToMapConstraint = logoutButton.topAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: Constants.Spacing.xlarge)
-        logoutButtonTopToVideosConstraint = logoutButton.topAnchor.constraint(equalTo: videosCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
-        logoutButtonTopToUploadsConstraint = logoutButton.topAnchor.constraint(equalTo: uploadsCollectionView.bottomAnchor, constant: Constants.Spacing.xlarge)
+        logoutButtonTopToVideosConstraint = logoutButton.topAnchor.constraint(equalTo: momentsTab.view.bottomAnchor, constant: Constants.Spacing.xlarge)
+        logoutButtonTopToUploadsConstraint = logoutButton.topAnchor.constraint(equalTo: uploadsTab.view.bottomAnchor, constant: Constants.Spacing.xlarge)
         
         // Initially show collection view
         logoutButtonTopToCollectionConstraint?.isActive = true
@@ -1516,30 +1415,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         circlesCollectionView.register(CircleCell.self, forCellWithReuseIdentifier: "CircleCell")
         
         // Drag and drop disabled for now
-        
-        videosCollectionView.delegate = self
-        videosCollectionView.dataSource = self
-        videosCollectionView.register(VideoThumbnailCell.self, forCellWithReuseIdentifier: "VideoThumbnailCell")
-        
-        uploadsCollectionView.delegate = self
-        uploadsCollectionView.dataSource = self
-        uploadsCollectionView.register(UploadThumbnailCell.self, forCellWithReuseIdentifier: "UploadThumbnailCell")
-        
-        // Configure videos collection view layout for 3-column grid
-        if let flowLayout = videosCollectionView.collectionViewLayout as? UICollectionViewFlowLayout {
-            flowLayout.scrollDirection = .vertical
-            flowLayout.minimumInteritemSpacing = 2
-            flowLayout.minimumLineSpacing = 2
-            flowLayout.sectionInset = .zero
-        }
-        
-        // Configure uploads collection view layout for 3-column grid
-        if let flowLayout = uploadsCollectionView.collectionViewLayout as? UICollectionViewFlowLayout {
-            flowLayout.scrollDirection = .vertical
-            flowLayout.minimumInteritemSpacing = 2
-            flowLayout.minimumLineSpacing = 2
-            flowLayout.sectionInset = .zero
-        }
         
         // Drag and drop will be configured conditionally in configureDragAndDrop()
         
@@ -1821,15 +1696,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         if contentTypeSegmentedControl.selectedSegmentIndex == 0 {
             // Show circles
             circlesCollectionView.isHidden = isShowingMap
-            videosCollectionView.isHidden = true
-            videosEmptyLabel.isHidden = true
-            videosLoadingIndicator.stopAnimating()
-            // Hide the Uploads views too — the Circles branch previously only
-            // hid the Moments views, so switching from Uploads → Circles left
-            // the uploads grid on screen.
-            uploadsCollectionView.isHidden = true
-            uploadsEmptyLabel.isHidden = true
-            uploadsLoadingIndicator.stopAnimating()
+            momentsTab.setActive(false)
+            uploadsTab.setActive(false)
             searchBar.placeholder = "Search places..."
             mapToggleButton.isHidden = false
             
@@ -1872,9 +1740,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             Logger.debug("🧹 Cleared all image caches for debugging")
             
             circlesCollectionView.isHidden = true
-            videosCollectionView.isHidden = false
-            uploadsCollectionView.isHidden = true
-            uploadsEmptyLabel.isHidden = true
+            uploadsTab.setActive(false)
             mapContainerView.isHidden = true
             searchBar.placeholder = "Search videos..."
             mapToggleButton.isHidden = true
@@ -1882,24 +1748,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             // Hide floating add button on Moments tab
             floatingAddButton.isHidden = true
             
-            // Check cache first before fetching
-            if videos.isEmpty && !isLoadingVideos {
-                // Show loading state
-                videosEmptyLabel.isHidden = true
-                videosLoadingIndicator.startAnimating()
-                
-                // Try to load from cache first
-                loadCachedVideos()
-                
-                // Fetch from network
-                fetchUserVideos()
-            } else if !videos.isEmpty {
-                // Update UI if we have videos
-                videosCollectionView.reloadData()
-                updateVideosCollectionHeight()
-                videosEmptyLabel.isHidden = true
-                videosLoadingIndicator.stopAnimating()
-            }
+            // Loads on first visit, re-renders after
+            momentsTab.setActive(true)
             
             // Update logout button constraint to videos collection
             logoutButtonTopToCollectionConstraint?.isActive = false
@@ -1911,9 +1761,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             Logger.debug("📷 Switching to Uploads tab")
             
             circlesCollectionView.isHidden = true
-            videosCollectionView.isHidden = true
-            videosEmptyLabel.isHidden = true
-            uploadsCollectionView.isHidden = false
+            momentsTab.setActive(false)
             mapContainerView.isHidden = true
             searchBar.placeholder = "Search uploads..."
             mapToggleButton.isHidden = true
@@ -1921,21 +1769,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             // Hide floating add button on Uploads tab
             floatingAddButton.isHidden = true
             
-            // Check if we need to fetch uploads
-            if uploads.isEmpty && !isLoadingUploads {
-                // Show loading state
-                uploadsEmptyLabel.isHidden = true
-                uploadsLoadingIndicator.startAnimating()
-                
-                // Fetch uploads from network
-                fetchUserUploads()
-            } else if !uploads.isEmpty {
-                // Update UI if we have uploads
-                uploadsCollectionView.reloadData()
-                updateUploadsCollectionHeight()
-                uploadsEmptyLabel.isHidden = true
-                uploadsLoadingIndicator.stopAnimating()
-            }
+            // Loads on first visit, re-renders after
+            uploadsTab.setActive(true)
             
             // Update logout button constraint to uploads collection
             logoutButtonTopToCollectionConstraint?.isActive = false
@@ -3065,168 +2900,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
     }
     
-    func loadCachedVideos() {
-        guard let userId = user?.id ?? AuthService.shared.getUserId() else { return }
-        let isCurrentUser = userId == AuthService.shared.getUserId()
-        
-        // Only load cached videos for current user
-        if isCurrentUser {
-            Logger.debug("💾 ProfileViewController: Checking for cached videos...")
-            // For now, we'll just rely on network fetch
-            // TODO: Implement actual cache retrieval from VideoStorageService
-        }
-    }
-    
+    // MARK: - Moments (forwarded to the Moments tab)
+
+    /// Fetched alongside the profile so the Moments grid is ready when the
+    /// tab is switched to; the tab only re-renders while visible.
     func fetchUserVideos() {
-        guard let userId = user?.id ?? AuthService.shared.getUserId() else {
-            Logger.debug("⚠️ ProfileViewController: No user ID available for fetching videos")
-            isLoadingVideos = false
-            videosLoadingIndicator.stopAnimating()
-            return
-        }
-        
-        // Prevent multiple simultaneous fetches
-        guard !isLoadingVideos else { return }
-        
-        isLoadingVideos = true
-        
-        let isCurrentUser = userId == AuthService.shared.getUserId()
-        
-        Logger.debug("📹 ProfileViewController: Starting to fetch videos for user: \(userId)")
-        Logger.debug("   - Is current user: \(isCurrentUser)")
-        Logger.debug("   - Email: \(user?.email ?? "unknown")")
-        
-        APIService.shared.getUserVideos(userId: userId) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                
-                switch result {
-                case .success(let response):
-                    self.isLoadingVideos = false
-                    // Filter out failed uploads and videos without URLs
-                    self.videos = response.data.filter { video in
-                        let hasValidUrl = video.contentType == "photo" ? video.thumbnailUrl != nil : video.videoUrl != nil
-                        return video.uploadStatus == .ready && hasValidUrl
-                    }
-                    
-                    // Debug: Log thumbnail URLs to check for duplicates
-                    Logger.debug("📹 ProfileViewController: Fetched \(response.data.count) videos, showing \(self.videos.count) valid ones")
-                    for (index, video) in self.videos.enumerated() {
-                        let thumbnailPreview = video.thumbnailUrl?.suffix(50) ?? "none"
-                        Logger.debug("   [\(index)] ID: \(video.id.prefix(8))... Type: \(video.contentType ?? "video") Thumbnail: ...\(thumbnailPreview)")
-                    }
-                    
-                    // Log video details
-                    for (index, video) in response.data.enumerated() {
-                        Logger.debug("   Video \(index + 1):")
-                        Logger.debug("     - Title: \(video.title)")
-                        Logger.debug("     - ID: \(video.id)")
-                        Logger.debug("     - Has video URL: \(video.videoUrl != nil)")
-                        Logger.debug("     - Has preview URL: \(video.previewUrl != nil)")
-                        Logger.debug("     - Has thumbnail URL: \(video.thumbnailUrl != nil)")
-                        Logger.debug("     - Upload status: \(video.uploadStatus.rawValue)")
-                        Logger.debug("     - Content type: \(video.contentType ?? "video")")
-                        Logger.debug("     - Video type: \(video.videoType ?? "uploaded")")
-                    }
-                    
-                    // Cache user's own videos for permanent storage
-                    if isCurrentUser && !response.data.isEmpty {
-                        Logger.debug("💾 ProfileViewController: Caching \(response.data.count) user videos for offline access")
-                        VideoStorageService.shared.cacheUserVideos(response.data)
-                    }
-                    
-                    // Update videos collection view
-                    if self.contentTypeSegmentedControl.selectedSegmentIndex == 1 {
-                        self.videosLoadingIndicator.stopAnimating()
-                        self.videosCollectionView.reloadData()
-                        self.updateVideosCollectionHeight()
-                        
-                        // Show/hide empty state
-                        self.videosEmptyLabel.isHidden = !self.videos.isEmpty
-                        
-                        if self.videos.isEmpty {
-                            Logger.debug("📭 ProfileViewController: No videos to display - showing empty state")
-                        }
-                    }
-                    
-                case .failure(let error):
-                    self.isLoadingVideos = false
-                    Logger.debug("❌ ProfileViewController: Failed to fetch videos: \(error)")
-                    Logger.debug("   - Error details: \(error.localizedDescription)")
-                    
-                    // Don't show error to user, just leave videos empty
-                    self.videos = []
-                    if self.contentTypeSegmentedControl.selectedSegmentIndex == 1 {
-                        self.videosLoadingIndicator.stopAnimating()
-                        self.videosEmptyLabel.isHidden = false
-                    }
-                }
-            }
-        }
+        momentsTab.fetchVideos()
     }
-    
-    // MARK: - User Uploads Data Loading
-    
-    func fetchUserUploads() {
-        guard let userId = user?.id ?? AuthService.shared.getUserId() else {
-            Logger.debug("⚠️ ProfileViewController: No user ID available for fetching uploads")
-            isLoadingUploads = false
-            uploadsLoadingIndicator.stopAnimating()
-            return
-        }
-        
-        Logger.debug("📷 ProfileViewController: Fetching uploads for user: \(userId)")
-        isLoadingUploads = true
-        
-        GlobalPlaceService.shared.getUserUploads(userId: userId) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                
-                self.isLoadingUploads = false
-                
-                switch result {
-                case .success(let response):
-                    Logger.debug("✅ ProfileViewController: Successfully fetched \(response.data.count) uploads")
-                    self.uploads = response.data
-                    
-                    // Log upload details for debugging
-                    if !response.data.isEmpty {
-                        Logger.debug("📸 ProfileViewController: Upload details:")
-                        for (index, upload) in response.data.prefix(3).enumerated() {
-                            Logger.debug("     Upload \(index + 1): \(upload.placeName) - \(upload.imageUrl)")
-                        }
-                    }
-                    
-                    // Update uploads collection view
-                    if self.contentTypeSegmentedControl.selectedSegmentIndex == 2 {
-                        self.uploadsLoadingIndicator.stopAnimating()
-                        self.uploadsCollectionView.reloadData()
-                        self.updateUploadsCollectionHeight()
-                        
-                        // Show/hide empty state
-                        self.uploadsEmptyLabel.isHidden = !self.uploads.isEmpty
-                        
-                        if self.uploads.isEmpty {
-                            Logger.debug("📭 ProfileViewController: No uploads to display - showing empty state")
-                        }
-                    }
-                    
-                case .failure(let error):
-                    self.isLoadingUploads = false
-                    Logger.debug("❌ ProfileViewController: Failed to fetch uploads: \(error)")
-                    Logger.debug("   - Error details: \(error.localizedDescription)")
-                    
-                    // Don't show error to user, just leave uploads empty
-                    self.uploads = []
-                    if self.contentTypeSegmentedControl.selectedSegmentIndex == 2 {
-                        self.uploadsLoadingIndicator.stopAnimating()
-                        self.uploadsEmptyLabel.isHidden = false
-                    }
-                }
-            }
-        }
-    }
-    
+
     // MARK: - Storefront card (brand accounts)
 
     /// Loads the profile user's public storefront and expands the card when
@@ -3930,70 +3611,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
     }
     
-    // MARK: - Video Methods
-    
-    func updateVideosCollectionHeight() {
-        // For 3-column grid layout, calculate height based on number of rows
-        guard !videos.isEmpty else {
-            videosCollectionHeightConstraint?.constant = 100 // Minimum height for empty state
-            return
-        }
-        
-        // Calculate grid dimensions
-        let spacing: CGFloat = 2
-        let numberOfColumns: CGFloat = 3
-        let totalSpacing = spacing * (numberOfColumns - 1)
-        let collectionWidth = videosCollectionView.bounds.width > 0 ? videosCollectionView.bounds.width : UIScreen.main.bounds.width
-        let itemWidth = (collectionWidth - totalSpacing) / numberOfColumns
-        let itemHeight = itemWidth // Square items
-        
-        // Calculate number of rows
-        let numberOfRows = ceil(Double(videos.count) / Double(numberOfColumns))
-        let totalRowSpacing = spacing * (CGFloat(numberOfRows) - 1)
-        let totalHeight = (CGFloat(numberOfRows) * itemHeight) + totalRowSpacing + 20 // Add some padding
-        
-        videosCollectionHeightConstraint?.isActive = true
-        videosCollectionHeightConstraint?.constant = totalHeight
-        
-        // Force layout update
-        UIView.animate(withDuration: 0.3) {
-            self.view.layoutIfNeeded()
-        }
-        
-        Logger.debug("📐 ProfileViewController: Updated videos collection height to \(totalHeight) for \(videos.count) videos in \(numberOfRows) rows")
-    }
-    
-    func updateUploadsCollectionHeight() {
-        // For 3-column grid layout, calculate height based on number of rows
-        guard !uploads.isEmpty else {
-            uploadsCollectionHeightConstraint?.constant = 100 // Minimum height for empty state
-            return
-        }
-        
-        // Calculate grid dimensions
-        let spacing: CGFloat = 2
-        let numberOfColumns: CGFloat = 3
-        let totalSpacing = spacing * (numberOfColumns - 1)
-        let collectionWidth = uploadsCollectionView.bounds.width > 0 ? uploadsCollectionView.bounds.width : UIScreen.main.bounds.width
-        let itemWidth = (collectionWidth - totalSpacing) / numberOfColumns
-        let itemHeight = itemWidth // Square items
-        
-        // Calculate number of rows (one tile per place group, not per photo)
-        let numberOfRows = ceil(Double(uploadGroups.count) / Double(numberOfColumns))
-        let totalRowSpacing = spacing * (CGFloat(numberOfRows) - 1)
-        let totalHeight = (CGFloat(numberOfRows) * itemHeight) + totalRowSpacing + 20 // Add some padding
-        
-        uploadsCollectionHeightConstraint?.isActive = true
-        uploadsCollectionHeightConstraint?.constant = totalHeight
-        
-        // Force layout update
-        UIView.animate(withDuration: 0.3) {
-            self.view.layoutIfNeeded()
-        }
-        
-        Logger.debug("📐 ProfileViewController: Updated uploads collection height to \(totalHeight) for \(uploads.count) uploads in \(numberOfRows) rows")
-    }
-    
     // MARK: - Sticky tab bar
 
     private func setupStickyTabBar() {
@@ -4070,237 +3687,27 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         setStickyTabBar(visible: controlFrame.minY <= view.safeAreaInsets.top)
     }
 
-    // MARK: - Navigation Helpers
+    // MARK: - Grid tab hosting
 
-    /// Expand a place's uploaded photos into a gallery. Deleting a photo there
-    /// removes it server-side and keeps both the gallery and the grouped grid
-    /// in sync (the `uploads` didSet re-groups automatically).
-    func openUploadsGallery(for group: UploadPlaceGroup) {
-        weak var galleryRef: PlaceUploadsGalleryViewController?
-        let galleryVC = PlaceUploadsGalleryViewController(
-            placeName: group.placeName,
-            photos: group.photos,
-            onDelete: { [weak self] photo in
-                guard let self = self, let gallery = galleryRef else { return }
-                let confirm = UIAlertController(
-                    title: "Delete Photo",
-                    message: "Delete this photo from \(photo.placeName)? This can't be undone.",
-                    preferredStyle: .alert
-                )
-                confirm.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                confirm.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in
-                    let loading = AlertPresenter.showLoading(message: "Deleting photo...", from: gallery)
-                    GlobalPlaceService.shared.deleteUpload(photo) { result in
-                        DispatchQueue.main.async {
-                            loading.dismiss(animated: true) {
-                                switch result {
-                                case .success:
-                                    self.uploads.removeAll { $0.id == photo.id } // didSet re-groups
-                                    if self.contentTypeSegmentedControl.selectedSegmentIndex == 2 {
-                                        self.uploadsCollectionView.reloadData()
-                                        self.updateUploadsCollectionHeight()
-                                        self.uploadsEmptyLabel.isHidden = !self.uploads.isEmpty
-                                    }
-                                    gallery.remove(photo)
-                                case .failure(let error):
-                                    gallery.showError(error)
-                                }
-                            }
-                        }
-                    }
-                })
-                gallery.present(confirm, animated: true)
-            }
-        )
-        galleryRef = galleryVC
-        navigationController?.pushViewController(galleryVC, animated: true)
-    }
-
-    func navigateToPlaceDetail(from upload: UserUploadedPhoto) {
-        // Show loading indicator
-        let loadingAlert = AlertPresenter.showLoading(message: "Loading place details...", from: self)
-        
-        // Fetch complete global place data
-        GlobalPlaceService.shared.getGlobalPlace(id: upload.placeId) { [weak self] result in
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    guard let self = self else { return }
-                    
-                    switch result {
-                    case .success(let globalPlaceResponse):
-                        // Convert GlobalPlace to Place for PlaceDetailViewController
-                        let legacyPlace = globalPlaceResponse.bestDetailPlace()
-                        
-                        let placeDetailVC = PlaceDetailViewController(place: legacyPlace)
-                        self.navigationController?.pushViewController(placeDetailVC, animated: true)
-                        
-                    case .failure(let error):
-                        Logger.debug("❌ ProfileViewController: Failed to load place details: \(error)")
-                        
-                        // Fallback: Create minimal Place object and still navigate
-                        let tempPlace = Place(
-                            id: upload.placeId,
-                            name: upload.placeName,
-                            description: nil,
-                            address: upload.placeAddress ?? "",
-                            location: nil,
-                            website: nil,
-                            phone: nil,
-                            googlePlaceId: nil,
-                            photos: [upload.imageUrl],
-                            videos: nil,
-                            category: upload.placeCategory,
-                            customCategoryId: nil,
-                            subcategory: nil,
-                            rating: nil,
-                            userRatingsTotal: nil,
-                            notes: nil,
-                            privateNotes: nil,
-                            publicNotes: nil,
-                            tags: [],
-                            reviews: nil,
-                            openingHours: nil,
-                            priceLevel: nil,
-                            likes: nil,
-                            likesCount: nil,
-                            commentsCount: nil,
-                            circleId: nil,
-                            addedBy: "",
-                            addedByUser: nil,
-                            privacy: .followCirclePrivacy,
-                            createdAt: upload.uploadedAt,
-                            updatedAt: upload.uploadedAt,
-                            isNew: false
-                        )
-                        
-                        let placeDetailVC = PlaceDetailViewController(place: tempPlace)
-                        self.navigationController?.pushViewController(placeDetailVC, animated: true)
-                        
-                        // Show error message as a toast
-                        self.showError("Could not load complete place details")
-                    }
-                }
-            }
+    /// Adds the Moments and Uploads tabs as child view controllers in the
+    /// circles grid's slot. Both start hidden; contentTypeChanged shows the
+    /// selected one. Each reports its grid height; the profile animates the
+    /// slot to fit (the old inline updateXCollectionHeight behaviour).
+    private func embedGridTabs() {
+        for tab in [momentsTab, uploadsTab] as [ProfileGridTabViewController] {
+            addChild(tab)
+            tab.view.translatesAutoresizingMaskIntoConstraints = false
+            tab.view.isHidden = true
+            contentView.addSubview(tab.view)
+            tab.didMove(toParent: self)
+        }
+        momentsTab.onContentHeightChanged = { [weak self] height in
+            self?.momentsTabHeightConstraint?.constant = height
+            UIView.animate(withDuration: 0.3) { self?.view.layoutIfNeeded() }
+        }
+        uploadsTab.onContentHeightChanged = { [weak self] height in
+            self?.uploadsTabHeightConstraint?.constant = height
+            UIView.animate(withDuration: 0.3) { self?.view.layoutIfNeeded() }
         }
     }
-    
-    func confirmDeleteVideo(_ video: PlaceVideo, at indexPath: IndexPath) {
-        let alert = UIAlertController(
-            title: "Delete Content",
-            message: "Are you sure you want to delete this \(video.contentType == "photo" ? "photo" : "video")? This action cannot be undone.",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
-            self?.deleteVideo(video, at: indexPath)
-        })
-        
-        present(alert, animated: true)
-    }
-    
-    func deleteVideo(_ video: PlaceVideo, at indexPath: IndexPath) {
-        // Show loading
-        let loadingAlert = AlertPresenter.showLoading(message: "Deleting...", from: self)
-        
-        APIService.shared.deleteVideo(videoId: video.id) { [weak self] result in
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    guard let self = self else { return }
-                    
-                    switch result {
-                    case .success:
-                        // Clear video from cache
-                        if let videoUrl = video.videoUrl {
-                            MediaCacheService.shared.clearImage(for: videoUrl)
-                        }
-                        if let thumbnailUrl = video.thumbnailUrl {
-                            MediaCacheService.shared.clearImage(for: thumbnailUrl)
-                        }
-                        if let previewUrl = video.previewUrl {
-                            MediaCacheService.shared.clearImage(for: previewUrl)
-                        }
-                        
-                        // Remove from array
-                        self.videos.remove(at: indexPath.item)
-                        
-                        // Update collection view
-                        self.videosCollectionView.deleteItems(at: [indexPath])
-                        self.updateVideosCollectionHeight()
-                        
-                        // Update empty state
-                        self.videosEmptyLabel.isHidden = !self.videos.isEmpty
-                        
-                        // Show success
-                        self.showSuccess("Content deleted successfully")
-                        
-                        // Post notification for activity feed cleanup
-                        NotificationCenter.default.post(
-                            name: Notification.Name("MomentDeleted"),
-                            object: nil,
-                            userInfo: [
-                                "videoId": video.id,
-                                "userId": video.userId
-                            ]
-                        )
-                        Logger.debug("📢 Posted MomentDeleted notification for video: \(video.id)")
-                        
-                    case .failure(let error):
-                        self.showError(error)
-                    }
-                }
-            }
-        }
-    }
-    
-    func confirmDeleteUpload(_ upload: UserUploadedPhoto, at indexPath: IndexPath) {
-        let alert = UIAlertController(
-            title: "Delete Photo",
-            message: "Are you sure you want to delete this photo from \(upload.placeName)? This action cannot be undone.",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
-            self?.deleteUpload(upload, at: indexPath)
-        })
-        
-        present(alert, animated: true)
-    }
-    
-    func deleteUpload(_ upload: UserUploadedPhoto, at indexPath: IndexPath) {
-        // Show loading
-        let loadingAlert = AlertPresenter.showLoading(message: "Deleting photo...", from: self)
-        
-        GlobalPlaceService.shared.deleteUpload(upload) { [weak self] result in
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    guard let self = self else { return }
-                    
-                    switch result {
-                    case .success:
-                        // Clear image from cache
-                        ImageService.shared.clearCacheForUrl(upload.imageUrl)
-                        
-                        // Remove from local array
-                        self.uploads.remove(at: indexPath.item)
-                        
-                        // Update collection view with animation
-                        self.uploadsCollectionView.deleteItems(at: [indexPath])
-                        self.updateUploadsCollectionHeight()
-                        
-                        // Show/hide empty state if needed
-                        self.uploadsEmptyLabel.isHidden = !self.uploads.isEmpty
-                        
-                        // Show success
-                        self.showSuccess("Photo deleted successfully")
-                        
-                    case .failure(let error):
-                        self.showError(error)
-                    }
-                }
-            }
-        }
-    }
-    
 }

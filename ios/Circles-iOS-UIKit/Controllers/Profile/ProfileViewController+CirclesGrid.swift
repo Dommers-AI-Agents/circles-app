@@ -8,26 +8,10 @@ import PhotosUI
 // MARK: - UICollectionViewDataSource
 extension ProfileViewController: UICollectionViewDataSource {
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        if collectionView == videosCollectionView {
-            return videos.count
-        } else if collectionView == uploadsCollectionView {
-            return uploadGroups.count // one tile per place
-        }
         return circles.count
     }
     
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        if collectionView == videosCollectionView {
-            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "VideoThumbnailCell", for: indexPath) as! VideoThumbnailCell
-            let video = videos[indexPath.item]
-            cell.configure(with: video)
-            return cell
-        } else if collectionView == uploadsCollectionView {
-            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "UploadThumbnailCell", for: indexPath) as! UploadThumbnailCell
-            cell.configure(with: uploadGroups[indexPath.item])
-            return cell
-        }
-        
         let circle = circles[indexPath.item]
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "CircleCell", for: indexPath) as! CircleCell
         cell.configure(with: circle)
@@ -38,57 +22,12 @@ extension ProfileViewController: UICollectionViewDataSource {
 // MARK: - UICollectionViewDelegate
 extension ProfileViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        if collectionView == videosCollectionView {
-            // Open full-screen reels viewer
-            let reelsVC = VideoReelsViewController(reels: videos, startIndex: indexPath.item)
-            reelsVC.modalPresentationStyle = .fullScreen
-            present(reelsVC, animated: true)
-        } else if collectionView == uploadsCollectionView {
-            // Open the place's page — its media carousel scrolls through all of
-            // the place's photos (the uploads included). Long-press the tile to
-            // manage/delete individual uploads.
-            navigateToPlaceDetail(from: uploadGroups[indexPath.item].cover)
-        } else {
-            let circle = circles[indexPath.item]
-            let detailVC = CircleDetailViewController(circle: circle)
-            navigationController?.pushViewController(detailVC, animated: true)
-        }
+        let circle = circles[indexPath.item]
+        let detailVC = CircleDetailViewController(circle: circle)
+        navigationController?.pushViewController(detailVC, animated: true)
     }
     
     func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
-        // Handle context menu for videos
-        if collectionView == videosCollectionView {
-            let video = videos[indexPath.item]
-            
-            // Only show delete for user's own videos
-            guard video.userId == AuthService.shared.getUserId() else { return nil }
-            
-            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-                guard let self = self else { return UIMenu(title: "", children: []) }
-                
-                let deleteAction = UIAction(
-                    title: "Delete",
-                    image: UIImage(systemName: "trash"),
-                    attributes: .destructive
-                ) { _ in
-                    self.confirmDeleteVideo(video, at: indexPath)
-                }
-                
-                return UIMenu(title: "", children: [deleteAction])
-            }
-        } else if collectionView == uploadsCollectionView {
-            // Tap opens the place page; long-press manages this place's photos
-            // in a gallery where individual uploads can be deleted.
-            guard indexPath.item < uploadGroups.count else { return nil }
-            let group = uploadGroups[indexPath.item]
-            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-                let manage = UIAction(title: "View / manage photos", image: UIImage(systemName: "photo.on.rectangle")) { _ in
-                    self?.openUploadsGallery(for: group)
-                }
-                return UIMenu(children: [manage])
-            }
-        }
-        
         // Handle context menu for circles
         let circle = circles[indexPath.item]
         
@@ -197,37 +136,21 @@ extension ProfileViewController: UICollectionViewDelegate {
 // MARK: - UICollectionViewDelegateFlowLayout
 extension ProfileViewController: UICollectionViewDelegateFlowLayout {
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
-        if collectionView == videosCollectionView {
-            // Instagram-style 3-column grid with square items
-            let spacing: CGFloat = 2
-            let numberOfColumns: CGFloat = 3
-            let totalSpacing = spacing * (numberOfColumns - 1)
-            let itemWidth = (collectionView.bounds.width - totalSpacing) / numberOfColumns
-            return CGSize(width: itemWidth, height: itemWidth) // Square items
-        } else if collectionView == uploadsCollectionView {
-            // Instagram-style 3-column grid with square items (same as videos)
-            let spacing: CGFloat = 2
-            let numberOfColumns: CGFloat = 3
-            let totalSpacing = spacing * (numberOfColumns - 1)
-            let itemWidth = (collectionView.bounds.width - totalSpacing) / numberOfColumns
-            return CGSize(width: itemWidth, height: itemWidth) // Square items
-        } else {
-            // Circular grid with 3 columns
-            let spacing: CGFloat = 12
-            let numberOfColumns: CGFloat = 3
-            let totalSpacing = spacing * (numberOfColumns - 1)
-            let itemWidth = (collectionView.bounds.width - totalSpacing) / numberOfColumns
-            let itemHeight = itemWidth + 50 // Extra height for labels below circles
-            return CGSize(width: itemWidth, height: itemHeight)
-        }
+        // Circular grid with 3 columns
+        let spacing: CGFloat = 12
+        let numberOfColumns: CGFloat = 3
+        let totalSpacing = spacing * (numberOfColumns - 1)
+        let itemWidth = (collectionView.bounds.width - totalSpacing) / numberOfColumns
+        let itemHeight = itemWidth + 50 // Extra height for labels below circles
+        return CGSize(width: itemWidth, height: itemHeight)
     }
     
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumLineSpacingForSectionAt section: Int) -> CGFloat {
-        return (collectionView == videosCollectionView || collectionView == uploadsCollectionView) ? 2 : 16
+        return 16
     }
     
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, minimumInteritemSpacingForSectionAt section: Int) -> CGFloat {
-        return (collectionView == videosCollectionView || collectionView == uploadsCollectionView) ? 2 : 12
+        return 12
     }
 }
 
