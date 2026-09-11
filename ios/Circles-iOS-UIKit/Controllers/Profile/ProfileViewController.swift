@@ -68,32 +68,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     var dragAndDropEnabled = false
     
     // Request deduplication
-    var isFetchingOtherUserCircles = false
-    /// One quiet retry when another user's profile fails to load. Reset on
-    /// each successful fetch so a later pull-to-refresh gets its own retry.
-    var hasRetriedOtherUserCircles = false
-    
     // MARK: - BaseViewController Configuration
     override var showsLoadingIndicator: Bool { true }
     override var enablesPullToRefresh: Bool { true }
     override var emptyStateMessage: String? { "No circles found" }
     override var loadsDataOnViewDidLoad: Bool { true }
     override var reloadsDataOnAppear: Bool { true }
-    
-    // MARK: - Helper Methods
-    /// Helper function to create a type-safe completion handler for API requests
-    func createAPICompletion<T>(_ completion: @escaping (Result<T, Error>) -> Void) -> (Result<T, APIError>) -> Void {
-        return { [weak self] result in
-            guard let self = self else { return }
-            
-            switch result {
-            case .success(let response):
-                completion(.success(response))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
     
     // MARK: - Public Methods
     func configureWith(user: User) {
@@ -785,6 +765,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     // State tracking for other users
     var isFollowing: Bool = false
     var connectionStatus: ConnectionStatus?
+    /// Profile, stats, circles and map-places loading.
+    lazy var dataLoader: ProfileDataLoader = {
+        let loader = ProfileDataLoader()
+        loader.delegate = self
+        return loader
+    }()
     /// Follow / connect / message flows and status resolution.
     lazy var relationshipController: ProfileRelationshipController = {
         let controller = ProfileRelationshipController()
@@ -2198,39 +2184,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         present(alert, animated: true)
     }
     
-    func refreshCurrentUserData() {
-        // Fetch updated user data for the current user
-        guard let currentUserId = AuthService.shared.getUserId() else { return }
-        
-        // Force fetch fresh data from server to get updated following array
-        AuthService.shared.fetchCurrentUser { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                
-                switch result {
-                case .success(let updatedUser):
-                    // Only update stats if viewing own profile
-                    if self.user?.id == currentUserId {
-                        // Update all stats with fresh data
-                        let followingCount = updatedUser.followingCount ?? 0
-                        let followersCount = updatedUser.followersCount ?? 0
-                        self.followingStatView.configure(number: "\(followingCount)", title: "Following")
-                        self.followersStatView.configure(number: "\(followersCount)", title: "Followers")
-                        
-                        // Update cached user data for own profile
-                        self.user = updatedUser
-                    }
-                    
-                    // Don't re-check follow status here as it would reset the local state
-                    // The SSE event will handle updating the following array
-                case .failure:
-                    // Ignore errors for refresh
-                    break
-                }
-            }
-        }
-    }
-    
     func checkConnectionAndFollowStatus() {
         relationshipController.checkConnectionAndFollowStatus()
     }
@@ -2394,24 +2347,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     func loadAllPlaces() {
         // Load places from all circles
         allPlaces.removeAll()
-        
-        for circle in circles {
-            PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in
-                guard let self = self else { return }
-                
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success(let places):
-                        self.allPlaces.append(contentsOf: places)
-                        self.filterPlaces()
-                    case .failure(let error):
-                        Logger.debug("Failed to load places for circle \(circle.name): \(error)")
-                    }
-                }
-            }
-        }
+        dataLoader.loadAllPlaces()
     }
-    
+
     func filterPlaces() {
         // Use centralized filtering extensions
         let unifiedCategory = selectedCategory.map { UnifiedCategory.standard($0) }
@@ -2487,95 +2425,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     
     func loadUserProfile(completion: (() -> Void)? = nil) {
-        Logger.debug("🚀 ProfileViewController: loadUserProfile called")
-        Logger.debug("🚀 ProfileViewController: Has existing user? \(self.user != nil)")
-        
-        // The OWN profile always refetches — re-rendering the held snapshot
-        // meant Edit Profile changes (location, zipcode, ...) never appeared
-        // until app restart. Other users' profiles render what they were given.
-        let currentUserId = AuthService.shared.getUserId() ?? ""
-        let isOwnProfile = self.user == nil || IDNormalizer.isSameUser(self.user!.id, currentUserId)
+        dataLoader.loadUserProfile(completion: completion)
+    }
 
-        if let user = self.user, !isOwnProfile {
-            // Another user's profile — render the provided snapshot instantly,
-            // then refetch so relationship state is CURRENT. The snapshot's
-            // isFollowing/connectionStatus are frozen at list-fetch time, which
-            // is how a profile kept showing "Follow" after Connect (connect
-            // auto-follows server-side, but the stale snapshot didn't know).
-            Logger.debug("✅ ProfileViewController: Using existing user: \(user.id)")
-            displayUser(user)
-            fetchUserStats(userId: user.id)
-            UserService.shared.fetchUserProfile(userId: user.id) { [weak self] result in
-                DispatchQueue.main.async {
-                    guard let self = self, case .success(let fresh) = result,
-                          self.user?.id == fresh.id else { return }
-                    // Merge fresh relationship flags over the snapshot
-                    self.user = fresh
-                    if let freshFollowing = fresh.isFollowing {
-                        self.isFollowing = freshFollowing
-                    }
-                    if let freshStatus = ConnectionStatus(rawValue: fresh.connectionStatus ?? "") {
-                        self.connectionStatus = freshStatus
-                    }
-                    self.updateButtonVisibility()
-                }
-            }
-            completion?()
-        } else {
-            // Own profile — always get fresh data
-            Logger.debug("🔄 ProfileViewController: Own profile, fetching fresh data")
-            fetchFreshUserData(completion: completion)
-        }
-    }
-    
     func fetchFreshUserData(completion: (() -> Void)? = nil) {
-        Logger.debug("🚀 ProfileViewController: fetchFreshUserData called")
-        
-        // Always fetch fresh user data from the server
-        UserService.shared.fetchUserProfile { [weak self] result in
-            Logger.debug("📡 ProfileViewController: fetchUserProfile callback received")
-            guard let self = self else {
-                Logger.debug("⚠️ ProfileViewController: Self deallocated during fetch")
-                completion?()
-                return
-            }
-            
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let user):
-                    Logger.debug("✅ ProfileViewController: Successfully fetched user profile")
-                    Logger.debug("✅ ProfileViewController: User ID: \(user.id)")
-                    Logger.debug("✅ ProfileViewController: User name: \(user.displayName)")
-                    self.user = user
-                    self.displayUser(user)
-                    self.fetchUserStats(userId: user.id)
-                    
-                    // Update the cached user in AuthService
-                    AuthService.shared.updateCurrentUser(user)
-                    
-                case .failure(let error):
-                    Logger.debug("❌ ProfileViewController: Failed to fetch user profile: \(error)")
-                    Logger.debug("❌ ProfileViewController: Error type: \(type(of: error))")
-                    
-                    // If we have cached data, use it as fallback
-                    if let cachedUser = AuthService.shared.currentUser {
-                        Logger.debug("⚠️ ProfileViewController: Using cached user as fallback: \(cachedUser.id)")
-                        self.user = cachedUser
-                        self.displayUser(cachedUser)
-                        self.fetchUserStats(userId: cachedUser.id)
-                    } else {
-                        Logger.debug("❌ ProfileViewController: No cached user available, showing default profile")
-                        // Show error or default values
-                        self.displayDefaultProfile()
-                    }
-                }
-                
-                // Call completion after all data loading is done
-                completion?()
-            }
-        }
+        dataLoader.fetchFreshUserData(completion: completion)
     }
-    
+
     // MARK: - Moments (forwarded to the Moments tab)
 
     /// Fetched alongside the profile so the Moments grid is ready when the
@@ -2918,176 +2774,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
 
     func fetchUserStats(userId: String) {
-        Logger.debug("🚀 ProfileViewController: fetchUserStats called for userId: \(userId)")
-        Logger.debug("🚀 ProfileViewController: Current user ID: \(AuthService.shared.getUserId() ?? "nil")")
-        
-        // For current user, fetch their circles
-        if userId == AuthService.shared.getUserId() {
-            Logger.debug("✅ ProfileViewController: Fetching stats for current user")
-            // Fetch circles
-            CircleService.shared.fetchUserCircles { [weak self] result in
-                Logger.debug("📡 ProfileViewController: fetchUserCircles callback received")
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    
-                    switch result {
-                    case .success(let circles):
-                        self.circles = circles
-                        Logger.debug("🔍 ProfileViewController - Fetched \(circles.count) circles")
-                        
-                        // Calculate total places from the same fetch
-                        var totalPlaces = 0
-                        for circle in self.circles {
-                            let placeCount = circle.placesCount ?? circle.places?.count ?? 0
-                            totalPlaces += placeCount
-                            Logger.debug("   Circle '\(circle.name)': placesCount=\(circle.placesCount ?? -1), places array=\(circle.places?.count ?? 0)")
-                        }
-                        
-                        // Update both stats
-                        self.circlesStatView.configure(number: "\(self.circles.count)", title: "Circles")
-                        self.placesStatView.configure(number: "\(totalPlaces)", title: "Places")
-                        self.updateMilestoneBadge(placeCount: totalPlaces)
-                        Logger.debug("   Total places calculated: \(totalPlaces)")
-                        
-                        self.circlesCollectionView.reloadData()
-                        self.updateCollectionViewHeight()
-                        
-                        // Also fetch videos
-                        self.fetchUserVideos()
-                        
-                        // Load all places for search functionality
-                        self.loadAllPlacesFromCircles(circles)
-                    case .failure(let error):
-                        self.circles = []
-                        self.circlesStatView.configure(number: "0", title: "Circles")
-                        self.placesStatView.configure(number: "0", title: "Places")
-                        self.updateMilestoneBadge(placeCount: 0)
-                        self.circlesCollectionView.reloadData()
-                        self.updateCollectionViewHeight()
-                        
-                        // Also fetch videos
-                        self.fetchUserVideos()
-                        self.showErrorWithRetry(error) {
-                            self.loadUserProfile(completion: nil)
-                        }
-                    }
-                }
-            }
-            
-            // Fetch connections count
-            let connectionsCount = NetworkManager.shared.connections.count
-            Logger.debug("🔍 ProfileViewController - Connections count: \(connectionsCount)")
-            connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")
-            
-            // Add followers/following stats from user data
-            if let user = self.user {
-                let followersCount = user.followersCount ?? 0
-                let followingCount = user.followingCount ?? 0
-                followersStatView.configure(number: "\(followersCount)", title: "Followers")
-                followingStatView.configure(number: "\(followingCount)", title: "Following")
-                Logger.debug("🔍 ProfileViewController - Followers: \(followersCount), Following: \(followingCount)")
-            } else {
-                followersStatView.configure(number: "0", title: "Followers")
-                followingStatView.configure(number: "0", title: "Following")
-            }
-        } else {
-            // For other users, fetch their public circles
-            fetchOtherUserCircles(userId: userId)
-        }
+        dataLoader.fetchUserStats(userId: userId)
     }
-    
+
     func fetchOtherUserCircles(userId: String) {
-        // Prevent multiple simultaneous requests for the same user
-        guard !isFetchingOtherUserCircles else {
-            Logger.debug("🔍 Already fetching circles for user \(userId), skipping duplicate request")
-            return
-        }
-        
-        isFetchingOtherUserCircles = true
-        
-        // Fetch circles from network endpoint for other users
-        let endpoint = "network/user-circles/\(userId)"
-        let completion = createAPICompletion { (result: Result<UserCirclesResponse, Error>) in
-            DispatchQueue.main.async {
-                // Reset the flag when request completes
-                self.isFetchingOtherUserCircles = false
-                
-                switch result {
-                case .success(let response):
-                    self.hasRetriedOtherUserCircles = false
-                    self.circles = response.data.circles
-
-                    // Calculate total places
-                    var totalPlaces = 0
-                    for circle in response.data.circles {
-                        let placeCount = circle.placesCount ?? circle.places?.count ?? 0
-                        totalPlaces += placeCount
-                    }
-                    
-                    // Update stats
-                    self.circlesStatView.configure(number: "\(response.data.circles.count)", title: "Circles")
-                    self.placesStatView.configure(number: "\(totalPlaces)", title: "Places")
-                    self.updateMilestoneBadge(placeCount: totalPlaces)
-                
-                    // Use user data for followers/following/connections
-                    let user = response.data.user
-                    let connectionsCount = user.connectionsCount ?? 0
-                    let followersCount = user.followersCount ?? 0
-                    let followingCount = user.followingCount ?? 0
-                    
-                    self.connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")
-                    self.followersStatView.configure(number: "\(followersCount)", title: "Followers")
-                    self.followingStatView.configure(number: "\(followingCount)", title: "Following")
-                    
-                    // Update user data to get latest info
-                    self.user = user
-                    
-                    // Re-check connection and follow status with fresh data
-                    self.checkConnectionAndFollowStatus()
-                    
-                    self.circlesCollectionView.reloadData()
-                    self.updateCollectionViewHeight()
-                    
-                    // Load all places for search functionality
-                    self.loadAllPlacesFromCircles(response.data.circles)
-                    
-                case .failure(let error):
-                    Logger.debug("Failed to load other user circles: \(error)")
-
-                    // A failed fetch is not information about the profile — it
-                    // must never overwrite data we're already showing. This
-                    // branch used to write zeros into every stat and clear the
-                    // grid, so one transient error made a real profile look
-                    // empty until a pull-to-refresh happened to succeed.
-                    if !self.circles.isEmpty { return }
-
-                    // Nothing shown yet: retry once, quietly. Covers cold
-                    // starts and rate-limit blips without anyone having to
-                    // know the swipe-down gesture exists.
-                    if !self.hasRetriedOtherUserCircles {
-                        self.hasRetriedOtherUserCircles = true
-                        let delay: TimeInterval
-                        if case APIError.rateLimited(let retryAfter) = error {
-                            delay = retryAfter ?? 3
-                        } else {
-                            delay = 2
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                            self?.fetchOtherUserCircles(userId: userId)
-                        }
-                    }
-                }
-            }
-        }
-        
-        APIService.shared.request(
-            endpoint: endpoint,
-            method: .get,
-            requiresAuth: true,
-            completion: completion
-        )
+        dataLoader.fetchOtherUserCircles(userId: userId)
     }
-    
+
     func displayDefaultProfile() {
         // Fallback default display
         profileImageView.image = UIImage(systemName: "person.circle.fill")
@@ -3374,3 +3067,107 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 /// `user`, `isFollowing`, `connectionStatus`, `followButton`, the button
 /// renderer and the alert helpers already satisfy the requirements by name.
 extension ProfileViewController: ProfileRelationshipControllerDelegate {}
+
+
+// MARK: - ProfileDataLoaderDelegate
+
+extension ProfileViewController: ProfileDataLoaderDelegate {
+    func loaderDidLoadPlaces(_ places: [Place]) {
+        allPlaces.append(contentsOf: places)
+        filterPlaces()
+    }
+
+    func loaderDidLoadOwnCircles(_ circles: [Circle]) {
+        // Calculate total places from the same fetch
+        var totalPlaces = 0
+        for circle in self.circles {
+            let placeCount = circle.placesCount ?? circle.places?.count ?? 0
+            totalPlaces += placeCount
+            Logger.debug("   Circle '\(circle.name)': placesCount=\(circle.placesCount ?? -1), places array=\(circle.places?.count ?? 0)")
+        }
+
+        // Update both stats
+        circlesStatView.configure(number: "\(self.circles.count)", title: "Circles")
+        placesStatView.configure(number: "\(totalPlaces)", title: "Places")
+        updateMilestoneBadge(placeCount: totalPlaces)
+        Logger.debug("   Total places calculated: \(totalPlaces)")
+
+        circlesCollectionView.reloadData()
+        updateCollectionViewHeight()
+
+        // Also fetch videos
+        fetchUserVideos()
+
+        // Load all places for search functionality
+        loadAllPlacesFromCircles(circles)
+    }
+
+    func loaderDidFailOwnCircles(_ error: Error) {
+        circlesStatView.configure(number: "0", title: "Circles")
+        placesStatView.configure(number: "0", title: "Places")
+        updateMilestoneBadge(placeCount: 0)
+        circlesCollectionView.reloadData()
+        updateCollectionViewHeight()
+
+        // Also fetch videos
+        fetchUserVideos()
+        showErrorWithRetry(error) {
+            self.loadUserProfile(completion: nil)
+        }
+    }
+
+    func presentLocalOwnProfileCounts() {
+        // Fetch connections count
+        let connectionsCount = NetworkManager.shared.connections.count
+        Logger.debug("🔍 ProfileViewController - Connections count: \(connectionsCount)")
+        connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")
+
+        // Add followers/following stats from user data
+        if let user = self.user {
+            let followersCount = user.followersCount ?? 0
+            let followingCount = user.followingCount ?? 0
+            followersStatView.configure(number: "\(followersCount)", title: "Followers")
+            followingStatView.configure(number: "\(followingCount)", title: "Following")
+            Logger.debug("🔍 ProfileViewController - Followers: \(followersCount), Following: \(followingCount)")
+        } else {
+            followersStatView.configure(number: "0", title: "Followers")
+            followingStatView.configure(number: "0", title: "Following")
+        }
+    }
+
+    func loaderDidLoadOtherUserCircles(_ data: UserCirclesData) {
+        // Calculate total places
+        var totalPlaces = 0
+        for circle in data.circles {
+            let placeCount = circle.placesCount ?? circle.places?.count ?? 0
+            totalPlaces += placeCount
+        }
+
+        // Update stats
+        circlesStatView.configure(number: "\(data.circles.count)", title: "Circles")
+        placesStatView.configure(number: "\(totalPlaces)", title: "Places")
+        updateMilestoneBadge(placeCount: totalPlaces)
+
+        // Use user data for followers/following/connections
+        let user = data.user
+        let connectionsCount = user.connectionsCount ?? 0
+        let followersCount = user.followersCount ?? 0
+        let followingCount = user.followingCount ?? 0
+
+        connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")
+        followersStatView.configure(number: "\(followersCount)", title: "Followers")
+        followingStatView.configure(number: "\(followingCount)", title: "Following")
+
+        // Update user data to get latest info
+        self.user = user
+
+        // Re-check connection and follow status with fresh data
+        checkConnectionAndFollowStatus()
+
+        circlesCollectionView.reloadData()
+        updateCollectionViewHeight()
+
+        // Load all places for search functionality
+        loadAllPlacesFromCircles(data.circles)
+    }
+}
