@@ -1496,12 +1496,8 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             self?.applyFilter()
         })
         
-        // Get unique categories from places
-        let categories = Set(places.map { $0.category })
-        let sortedCategories = categories.sorted { $0.displayName < $1.displayName }
-        
-        // Add action for each category
-        for category in sortedCategories {
+        // Add action for each category present in the circle
+        for category in CirclePlaceFilter.categoryOptions(for: places) {
             actionSheet.addAction(UIAlertAction(title: category.displayName, style: .default) { [weak self] _ in
                 self?.selectedCategory = category
                 self?.categoryFilterButton.setTitle(category.displayName, for: .normal)
@@ -1530,28 +1526,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         // hook as the chips — every fetchPlaces path lands here
         updateUnlocatedBanner()
 
-        // Count tags case-insensitively, keeping the first-seen raw spelling
-        var counts: [String: Int] = [:] // lowercased -> count
-        var rawSpelling: [String: String] = [:] // lowercased -> raw value
-        for place in places {
-            guard let tags = place.tags else { continue }
-            // De-dupe within a single place so one place can't inflate a tag
-            let uniqueTags = Set(tags.map { $0.lowercased() })
-            for lowered in uniqueTags {
-                let trimmed = lowered.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { continue }
-                counts[trimmed, default: 0] += 1
-                if rawSpelling[trimmed] == nil {
-                    rawSpelling[trimmed] = tags.first { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == trimmed }
-                }
-            }
-        }
-
-        // Most common first, alphabetical tie-break; cap at 12 chips
-        let orderedTags = counts
-            .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
-            .prefix(12)
-            .compactMap { rawSpelling[$0.key] }
+        let orderedTags = CirclePlaceFilter.tagChips(for: places)
 
         let hasTags = !orderedTags.isEmpty
         tagChipBar.isHidden = !hasTags
@@ -1559,10 +1534,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         tagChipBarTopConstraint?.constant = hasTags ? Constants.Spacing.medium : 0
 
         // Reset selection to All if the selected tag disappeared
-        if let selected = selectedTag,
-           !orderedTags.contains(where: { $0.caseInsensitiveCompare(selected) == .orderedSame }) {
-            selectedTag = nil
-        }
+        selectedTag = CirclePlaceFilter.selectionAfterRebuild(selected: selectedTag, chips: orderedTags)
         tagChipBar.setTags(orderedTags, selected: selectedTag)
     }
 
@@ -1594,18 +1566,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     }
 
     private func applyFilter() {
-        filteredPlaces = places.filter { place in
-            if let category = selectedCategory, place.category != category {
-                return false
-            }
-            if let tag = selectedTag {
-                let placeTags = place.tags ?? []
-                guard placeTags.contains(where: { $0.caseInsensitiveCompare(tag) == .orderedSame }) else {
-                    return false
-                }
-            }
-            return true
-        }
+        filteredPlaces = CirclePlaceFilter.apply(places, category: selectedCategory, tag: selectedTag)
 
         tableView.reloadData()
         
