@@ -4578,151 +4578,32 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// loaded locally pass through — the server already excludes hidden
     /// circles from network viewport results.
     func excludingHiddenCircles(_ places: [Place]) -> [Place] {
-        var hiddenIds = Set<String>()
-        for circle in self.circles where circle.showOnMap == false {
-            hiddenIds.insert(circle.id)
-        }
-        for circle in self.networkCircles where circle.showOnMap == false {
-            hiddenIds.insert(circle.id)
-        }
-        guard !hiddenIds.isEmpty else { return places }
-        return places.filter { place in
-            guard let circleId = place.circleId else { return true }
-            return !hiddenIds.contains(circleId)
-        }
+        HomePlaceFilter.excludingHiddenCircles(places, hiddenIds: HomePlaceFilter.hiddenCircleIds(in: circles + networkCircles))
     }
 
+    /// Everything `HomePlaceFilter` needs, read once per filter pass.
+    func placeFilterContext() -> HomePlaceFilter.Context {
+        var context = HomePlaceFilter.Context()
+        context.selectedConnectionId = selectedConnectionId
+        context.selectedCategory = selectedCategory
+        context.currentUserId = AuthService.shared.getUserId() ?? ""
+        context.ownCircleIds = Set(circles.map { $0.id })
+        var owners: [String: String] = [:]
+        for circle in networkCircles where owners[circle.id] == nil { owners[circle.id] = circle.owner }
+        context.networkCircleOwners = owners
+        context.hiddenCircleIds = HomePlaceFilter.hiddenCircleIds(in: circles + networkCircles)
+        context.acceptedConnectionUserIds = acceptedConnectionUserIds
+        context.everyoneAuthorIds = everyoneAuthorIds
+        return context
+    }
+
+    /// People selection + category chip scoping. Rules live in `HomePlaceFilter`
+    /// (unit tested); this just supplies the current state.
     func applyFiltersToPlaces(_ places: [Place]) -> [Place] {
-        Logger.debug("📍 Connection filter - selectedConnectionId: \(self.selectedConnectionId ?? "nil")")
-
-        // Hide circles the owner toggled off the home map
-        let places = excludingHiddenCircles(places)
-
-        // Apply connection filter if selected
-        var mapFilteredPlaces = places
-        
-        if let connectionId = self.selectedConnectionId {
-            if connectionId == "my_places_only" {
-                // Show only places from user's own circles
-                let currentUserId = AuthService.shared.getUserId() ?? ""
-                let userCircleIds = self.circles.map { $0.id }
-                Logger.debug("📍 FILTER: my_places_only selected")
-                Logger.debug("📍 Total places to filter: \(places.count)")
-                Logger.debug("📍 User has \(self.circles.count) circles")
-                Logger.debug("📍 Current user ID: \(currentUserId)")
-                
-                if userCircleIds.isEmpty && networkCircles.isEmpty {
-                    Logger.debug("⚠️ Warning: No circles loaded, showing empty results")
-                    mapFilteredPlaces = []
-                } else {
-                    // Filter to only include places from user's circles
-                    var filteredPlaces: [Place] = []
-                    var excludedCount = 0
-                    var networkCircleUserPlaces = 0
-                    
-                    for place in places {
-                        var isUserPlace = false
-                        
-                        // First check if circleId is in user's circles
-                        if let circleId = place.circleId, userCircleIds.contains(circleId) {
-                            isUserPlace = true
-                        } else {
-                            // Check if this place's circle is owned by the current user
-                            // (handles case where user's circles might be in networkCircles)
-                            if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
-                                if IDNormalizer.isSameUser(circle.owner, currentUserId) {
-                                    isUserPlace = true
-                                    networkCircleUserPlaces += 1
-                                    Logger.debug("📍 Found user place in network circle: '\(place.name)' from circle '\(circle.name)'")
-                                }
-                            }
-                        }
-                        
-                        if isUserPlace {
-                            filteredPlaces.append(place)
-                        } else {
-                            excludedCount += 1
-                        }
-                    }
-                    
-                    mapFilteredPlaces = filteredPlaces
-                    Logger.debug("📍 FILTER RESULT: Kept \(mapFilteredPlaces.count) places, excluded \(excludedCount) places")
-                    Logger.debug("📍 Found \(networkCircleUserPlaces) user places that were in network circles")
-                    Logger.debug("📍 User should have 124 places total according to user")
-                }
-            } else if connectionId == "my_connections_only" {
-                // Accepted connections' places only — the narrower cut of the
-                // default "Following" view (which also includes followed
-                // non-connections)
-                let connectedIds = acceptedConnectionUserIds
-                mapFilteredPlaces = places.filter { place in
-                    if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
-                        return connectedIds.contains { IDNormalizer.isSameUser(circle.owner, $0) }
-                    }
-                    return connectedIds.contains { IDNormalizer.isSameUser(place.addedBy, $0) }
-                }
-                Logger.debug("📍 FILTER: my_connections_only → \(mapFilteredPlaces.count) places from \(connectedIds.count) connections")
-            } else {
-                // Show only places from the selected connection
-                // Get all places from circles owned by this connection
-                Logger.debug("📍 FILTER: Specific connection selected: \(connectionId)")
-                var connectionFilteredPlaces: [Place] = []
-                var debugCircleOwners = Set<String>()
-                
-                for place in places {
-                    // Find the circle this place belongs to
-                    if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
-                        debugCircleOwners.insert(circle.owner)
-                        // Use IDNormalizer to compare IDs properly
-                        if IDNormalizer.isSameUser(circle.owner, connectionId) {
-                            connectionFilteredPlaces.append(place)
-                            Logger.debug("   ✅ Found place '\(place.name)' from circle '\(circle.name)' owned by connection")
-                        }
-                    } else if IDNormalizer.isSameUser(place.addedBy, connectionId) {
-                        // Circle metadata not loaded (e.g. viewport-fetched
-                        // place) — match by who added it instead of dropping it
-                        connectionFilteredPlaces.append(place)
-                    }
-                }
-                
-                mapFilteredPlaces = connectionFilteredPlaces
-                Logger.debug("   Available circle owners: \(debugCircleOwners)")
-                Logger.debug("   Looking for connectionId: \(connectionId)")
-                Logger.debug("   Filtered to connection '\(connectionId)': \(mapFilteredPlaces.count) places")
-            }
-        } else {
-            // "Everyone" (nil) — the default map scope: your own places, your
-            // accepted connections', and everyone you follow. Scoped to your
-            // network rather than the whole world, but non-empty from day one
-            // because new users auto-follow, so pins show immediately.
-            let authorIds = everyoneAuthorIds
-            mapFilteredPlaces = places.filter { place in
-                if let circle = self.networkCircles.first(where: { $0.id == place.circleId }) {
-                    return authorIds.contains { IDNormalizer.isSameUser(circle.owner, $0) }
-                }
-                return authorIds.contains { IDNormalizer.isSameUser(place.addedBy, $0) }
-            }
-            Logger.debug("   Everyone filter → \(mapFilteredPlaces.count) places from \(authorIds.count) authors")
-        }
-        
-        // Apply category filter
-        if let category = self.selectedCategory {
-            let beforeCategoryFilter = mapFilteredPlaces.count
-            mapFilteredPlaces = mapFilteredPlaces.filter { place in
-                let matches = category.matches(place: place)
-                
-                // Debug logging for filter matching
-                if !matches {
-                    Logger.debug("   🚫 Place '\(place.name)' does not match filter '\(category.displayName)' - place category: \(place.category), customCategoryId: \(place.customCategoryId ?? "none")")
-                }
-                
-                return matches
-            }
-            Logger.debug("   Category filter '\(category.displayName)' applied: \(beforeCategoryFilter) → \(mapFilteredPlaces.count) places")
-        }
-        
-        Logger.debug("   Final places after filtering: \(mapFilteredPlaces.count)")
-        return mapFilteredPlaces
+        let context = placeFilterContext()
+        let filtered = HomePlaceFilter.apply(places, context: context)
+        Logger.debug("📍 Filter (\(context.selectedConnectionId ?? "everyone"), \(context.selectedCategory.map { "\($0)" } ?? "all categories")) → \(filtered.count)/\(places.count) places")
+        return filtered
     }
     
     
