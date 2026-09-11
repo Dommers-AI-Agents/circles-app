@@ -1614,12 +1614,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
     /// Decide which places get full category pins vs. small dots.
     ///
-    /// Greedy pass in priority order (distance from the user's location when
-    /// it's on screen, else from the map center): a place keeps its full pin
-    /// if the pin's screen rect doesn't collide with an already-accepted pin,
-    /// up to `maxFullPins`. Everything else renders as a dot at its true
-    /// coordinate. Zooming in frees space, so dots promote automatically on
-    /// the next region-change recompute.
+    /// The controller's job is projection: anchor choice (you, when on screen,
+    /// else the map center), screen points and distances. The greedy
+    /// collision pass itself lives in `PinTierPlanner` (pure, unit tested).
     private func recomputePinTiers() {
         let placeAnnotations = mapView.annotations.compactMap { $0 as? PlaceAnnotation }
         guard !placeAnnotations.isEmpty else {
@@ -1637,40 +1634,22 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         }
         let anchorLocation = CLLocation(latitude: anchor.latitude, longitude: anchor.longitude)
 
-        let byDistance = placeAnnotations
-            .map { annotation -> (PlaceAnnotation, CLLocationDistance) in
-                let c = annotation.coordinate
-                let distance = anchorLocation.distance(from: CLLocation(latitude: c.latitude, longitude: c.longitude))
-                return (annotation, distance)
-            }
-            .sorted { $0.1 < $1.1 }
-
-        // Approximate on-screen footprint of a full MKMarkerAnnotationView
-        // (marker balloon is bottom-anchored at the coordinate)
-        let pinSize = CGSize(width: 34, height: 42)
-        let visibleBounds = mapView.bounds.insetBy(dx: -40, dy: -50)
-        var acceptedRects: [CGRect] = []
-        var newPromoted = Set<String>()
+        let candidates = placeAnnotations.map { annotation -> PinTierPlanner.Candidate in
+            let c = annotation.coordinate
+            return PinTierPlanner.Candidate(
+                id: annotation.place.id,
+                point: mapView.convert(c, toPointTo: mapView),
+                distance: anchorLocation.distance(from: CLLocation(latitude: c.latitude, longitude: c.longitude))
+            )
+        }
 
         // The selected annotation keeps its full pin no matter what —
         // demoting it would yank the callout out from under the user
         let selectedIds = Set(mapView.selectedAnnotations.compactMap { ($0 as? PlaceAnnotation)?.place.id })
 
-        for (annotation, _) in byDistance {
-            if newPromoted.count >= maxFullPins { break }
-            let point = mapView.convert(annotation.coordinate, toPointTo: mapView)
-            guard visibleBounds.contains(point) else { continue }
-            let rect = CGRect(
-                x: point.x - pinSize.width / 2,
-                y: point.y - pinSize.height,
-                width: pinSize.width,
-                height: pinSize.height
-            )
-            if acceptedRects.contains(where: { $0.intersects(rect) }) { continue }
-            acceptedRects.append(rect)
-            newPromoted.insert(annotation.place.id)
-        }
-        newPromoted.formUnion(selectedIds)
+        var planner = PinTierPlanner()
+        planner.maxFullPins = maxFullPins
+        let newPromoted = planner.fullPinIds(for: candidates, in: mapView.bounds, pinned: selectedIds)
 
         guard newPromoted != promotedPlaceIds else { return }
         let changedIds = newPromoted.symmetricDifference(promotedPlaceIds)
