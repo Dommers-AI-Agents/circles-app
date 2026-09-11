@@ -105,8 +105,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// matches outside the view are offered through the tappable
     /// searchEmptyLabel instead.
     func setSearchFilter(_ query: String?) {
-        let normalized = query?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let newValue = (normalized?.isEmpty ?? true) ? nil : normalized
+        let newValue = MapChipFilter.normalizedQuery(query)
         // Invalidate BEFORE the equality check: typing "p" then deleting it
         // makes the second call a no-op by value, but the "p" timer must die
         // with it or stale text filters an empty bar.
@@ -130,8 +129,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// same reason as applyChipFilters: the home page's list sits beside the
     /// pins and must show the same set.
     func applySearchFilter(_ list: [Place]) -> [Place] {
-        guard let query = searchQuery else { return list }
-        return list.filter { $0.matches(searchQuery: query) }
+        MapChipFilter.applySearch(list, query: searchQuery)
     }
 
     /// Returns the chip filters to their load state (All Categories · All
@@ -166,52 +164,14 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private func connectionScopedPlaces() -> [Place] {
         guard viewMode == .allPlaces, isPresentedModally else { return places }
 
-        let currentUserIdForScope = AuthService.shared.getUserId() ?? ""
-        guard let connectionId = selectedConnectionId else {
-            // "Everyone" (nil) — yourself + accepted connections + everyone you
-            // follow. Union of the pre-bucketed connection lists and an addedBy
-            // sweep (covers viewport-fetched places that were never bucketed).
-            var authorIds = Set(connections.map { $0.otherUserId(currentUserId: currentUserIdForScope) })
-            authorIds.formUnion(NetworkManager.shared.followingUsers.map { $0.id })
-            authorIds.insert(currentUserIdForScope)
-            authorIds = authorIds.filter { !$0.isEmpty }
-            var scoped = authorIds.flatMap { connectionPlaces[$0] ?? [] }
-            let scopedIds = Set(scoped.map { $0.id })
-            scoped += places.filter { place in
-                !scopedIds.contains(place.id) &&
-                authorIds.contains { IDNormalizer.isSameUser(place.addedBy, $0) }
-            }
-            return scoped
-        }
-
-        if connectionId == "my_places_only" {
-            let currentUserId = AuthService.shared.getUserId() ?? ""
-            return places.filter { IDNormalizer.isSameUser($0.addedBy, currentUserId) }
-        }
-        if connectionId == "my_connections_only" {
-            // Accepted connections only (the narrower cut of the default
-            // "Following" view): union of every connection's bucket plus an
-            // addedBy sweep for viewport places that were never bucketed
-            let currentUserId = AuthService.shared.getUserId() ?? ""
-            let connectedIds = connections.map { $0.otherUserId(currentUserId: currentUserId) }
-            var scoped = connectedIds.flatMap { connectionPlaces[$0] ?? [] }
-            let scopedIds = Set(scoped.map { $0.id })
-            scoped += places.filter { place in
-                !scopedIds.contains(place.id) &&
-                connectedIds.contains { IDNormalizer.isSameUser(place.addedBy, $0) }
-            }
-            return scoped
-        }
-        // Union of the pre-bucketed list (covers circle-owner semantics) and an
-        // added-by match over the CURRENT places (covers viewport-fetched
-        // places that were never bucketed, and missing buckets). Never fall
-        // through to showing everyone's places.
-        var connectionScoped = connectionPlaces[connectionId] ?? []
-        let bucketedIds = Set(connectionScoped.map { $0.id })
-        connectionScoped += places.filter {
-            !bucketedIds.contains($0.id) && IDNormalizer.isSameUser($0.addedBy, connectionId)
-        }
-        return connectionScoped
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        var context = MapPlaceScope.Context()
+        context.currentUserId = currentUserId
+        context.selectedConnectionId = selectedConnectionId
+        context.acceptedConnectionUserIds = connections.map { $0.otherUserId(currentUserId: currentUserId) }
+        context.followingUserIds = NetworkManager.shared.followingUsers.map { $0.id }
+        context.bucketedPlaces = connectionPlaces
+        return MapPlaceScope.apply(places, context: context)
     }
 
     /// Applies the current chip selections (category group + region) to any
@@ -219,15 +179,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// through the exact same filter the pins use — the chips live in this
     /// controller, and a list that ignores them contradicts the map beside it.
     func applyChipFilters(_ list: [Place]) -> [Place] {
-        var result = applyOriginFilter(list)
-        if selectedChipGroup != .all {
-            result = result.filter { selectedChipGroup.matches($0.category.rawValue) }
-        }
-        if let regionId = selectedChipRegionId,
-           let region = chipRegionGroups.first(where: { $0.id == regionId }) {
-            result = result.filter { region.contains($0) }
-        }
-        return result
+        var context = MapChipFilter.Context()
+        context.group = selectedChipGroup
+        context.regionId = selectedChipRegionId
+        context.regionGroups = chipRegionGroups
+        context.importOrigin = selectedImportOrigin
+        return MapChipFilter.apply(list, context: context)
     }
 
     /// Anchor for the "Near me" chip. Resolved once, quietly; nil (no
@@ -252,21 +209,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
     /// Applies the My Places origin sub-filter (no-op when none selected).
     private func applyOriginFilter(_ list: [Place]) -> [Place] {
-        guard let origin = selectedImportOrigin else { return list }
-        return list.filter { origin == "in_app" ? $0.importSource == nil : $0.importSource == origin }
-    }
-
-    /// Display name for an origin row: the source itself ("FavCircles",
-    /// "Google Places") — the menu marks these as sub-rows of My Places, so
-    /// the label doesn't restate it.
-    private static func originTitle(_ origin: String) -> String {
-        switch origin {
-        case "in_app": return "FavCircles"
-        case "google_maps": return "Google Places"
-        case "mapstr": return "Mapstr"
-        case "swarm": return "Swarm"
-        default: return origin.capitalized
-        }
+        MapChipFilter.applyOrigin(list, origin: selectedImportOrigin)
     }
 
     /// Zooms to enclose exactly the filtered places (tap NJ → the camera frames
@@ -424,10 +367,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         let connectionTitle: String
         switch selectedConnectionId {
         case nil: connectionTitle = "Everyone"
-        case "my_connections_only": connectionTitle = "My Connections"
-        case "my_places_only":
+        case HomePlaceFilter.myConnectionsOnlyId: connectionTitle = "My Connections"
+        case HomePlaceFilter.myPlacesOnlyId:
             if let origin = selectedImportOrigin {
-                connectionTitle = "My Places › \(Self.originTitle(origin))"
+                connectionTitle = "My Places › \(MapChipFilter.originTitle(origin))"
             } else {
                 connectionTitle = "My Places"
             }
@@ -490,8 +433,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         actions.append(
             UIAction(title: "My Connections",
                      image: myConnectionsIcon,
-                     state: selectedConnectionId == "my_connections_only" ? .on : .off) { [weak self] _ in
-                self?.selectConnectionFromHeader(id: "my_connections_only", user: nil)
+                     state: selectedConnectionId == HomePlaceFilter.myConnectionsOnlyId ? .on : .off) { [weak self] _ in
+                self?.selectConnectionFromHeader(id: HomePlaceFilter.myConnectionsOnlyId, user: nil)
             }
         )
 
@@ -500,9 +443,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         actions.append(
             UIAction(title: "My Places",
                      image: myAvatar,
-                     state: selectedConnectionId == "my_places_only" && selectedImportOrigin == nil ? .on : .off) { [weak self] _ in
+                     state: selectedConnectionId == HomePlaceFilter.myPlacesOnlyId && selectedImportOrigin == nil ? .on : .off) { [weak self] _ in
                 self?.selectedImportOrigin = nil
-                self?.selectConnectionFromHeader(id: "my_places_only", user: nil)
+                self?.selectConnectionFromHeader(id: HomePlaceFilter.myPlacesOnlyId, user: nil)
             }
         )
 
@@ -521,16 +464,16 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 let icon = UIImage(systemName: origin == "in_app" ? "plus.app.fill" : "square.and.arrow.down.fill")?
                     .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
                 actions.append(UIAction(
-                    title: "›  \(Self.originTitle(origin))",
+                    title: "›  \(MapChipFilter.originTitle(origin))",
                     image: icon,
-                    state: selectedConnectionId == "my_places_only" && selectedImportOrigin == origin ? .on : .off
+                    state: selectedConnectionId == HomePlaceFilter.myPlacesOnlyId && selectedImportOrigin == origin ? .on : .off
                 ) { [weak self] _ in
                     guard let self = self else { return }
                     self.selectedImportOrigin = origin
-                    if self.selectedConnectionId == "my_places_only" {
+                    if self.selectedConnectionId == HomePlaceFilter.myPlacesOnlyId {
                         self.chipFiltersChanged()
                     } else {
-                        self.selectConnectionFromHeader(id: "my_places_only", user: nil)
+                        self.selectConnectionFromHeader(id: HomePlaceFilter.myPlacesOnlyId, user: nil)
                         // Embedded: the scope change round-trips through the
                         // home controller; re-run the chip pipeline so the
                         // origin cut applies to whatever it hands back
@@ -826,7 +769,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         selectedConnectionId = id
         selectedConnectionUser = user
         // The origin sub-filter only makes sense under My Places
-        if id != "my_places_only" { selectedImportOrigin = nil }
+        if id != HomePlaceFilter.myPlacesOnlyId { selectedImportOrigin = nil }
         updateFilterHeaderTitles()
     }
 
@@ -981,7 +924,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private func updateConnectionAvatarChip() {
         guard isViewLoaded else { return }
         guard let user = selectedConnectionUser,
-              selectedConnectionId != nil, selectedConnectionId != "my_places_only" else {
+              selectedConnectionId != nil, selectedConnectionId != HomePlaceFilter.myPlacesOnlyId else {
             connectionAvatarChip.isHidden = true
             return
         }
@@ -1088,7 +1031,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         let changed = selectedConnectionId != connectionId
         selectedConnectionId = connectionId
         if changed { resetCoverageBannerDismissal() }
-        if connectionId == nil || connectionId == "my_places_only" || connectionId == "my_connections_only" {
+        if connectionId == nil || connectionId == HomePlaceFilter.myPlacesOnlyId || connectionId == HomePlaceFilter.myConnectionsOnlyId {
             selectedConnectionUser = nil
         }
         updateConnectionAvatarChip()
@@ -1323,7 +1266,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 row.translatesAutoresizingMaskIntoConstraints = false
                 row.backgroundColor = .clear
                 row.delegate = self
-                if let selected = selectedConnectionId, selected != "my_places_only" {
+                if let selected = selectedConnectionId, selected != HomePlaceFilter.myPlacesOnlyId {
                     row.selectedUserId = selected
                 }
                 view.addSubview(row)
@@ -1696,7 +1639,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // fitAllPlacesOnLoad forces the same worldwide fit for the My Places
         // scope, which otherwise centers on the user's current location.
         let shouldZoomToFilteredPlaces = fitAllPlacesOnLoad ||
-                                        (selectedConnectionId != nil && selectedConnectionId != "my_places_only") ||
+                                        (selectedConnectionId != nil && selectedConnectionId != HomePlaceFilter.myPlacesOnlyId) ||
                                         selectedCategory != nil
         
         Logger.debug("  - shouldZoomToFilteredPlaces: \(shouldZoomToFilteredPlaces)")
@@ -2234,11 +2177,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 UIAction(title: "Everyone", state: selectedConnectionId == nil ? .on : .off) { [weak self] _ in
                     self?.selectConnection(nil)
                 },
-                UIAction(title: "My Connections", state: selectedConnectionId == "my_connections_only" ? .on : .off) { [weak self] _ in
-                    self?.selectConnection("my_connections_only")
+                UIAction(title: "My Connections", state: selectedConnectionId == HomePlaceFilter.myConnectionsOnlyId ? .on : .off) { [weak self] _ in
+                    self?.selectConnection(HomePlaceFilter.myConnectionsOnlyId)
                 },
-                UIAction(title: "My Places Only", state: selectedConnectionId == "my_places_only" ? .on : .off) { [weak self] _ in
-                    self?.selectConnection("my_places_only")
+                UIAction(title: "My Places Only", state: selectedConnectionId == HomePlaceFilter.myPlacesOnlyId ? .on : .off) { [weak self] _ in
+                    self?.selectConnection(HomePlaceFilter.myPlacesOnlyId)
                 }
             ]
             var listedIds = Set<String>()
@@ -2270,9 +2213,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
             let connectionSubtitle: String
             if let connectionId = selectedConnectionId {
-                if connectionId == "my_places_only" {
+                if connectionId == HomePlaceFilter.myPlacesOnlyId {
                     connectionSubtitle = "My Places Only"
-                } else if connectionId == "my_connections_only" {
+                } else if connectionId == HomePlaceFilter.myConnectionsOnlyId {
                     connectionSubtitle = "My Connections"
                 } else {
                     connectionSubtitle = connections
@@ -2321,7 +2264,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Omitted on profile maps — you're already looking at the profile.
         if viewMode == .allPlaces && showsConnectionFilter {
             let profileTitle: String
-            if let connectionId = selectedConnectionId, connectionId != "my_places_only",
+            if let connectionId = selectedConnectionId, connectionId != HomePlaceFilter.myPlacesOnlyId,
                let name = connections.first(where: { $0.otherUserId(currentUserId: AuthService.shared.getUserId() ?? "") == connectionId })?.connectedUser?.displayName,
                !name.isEmpty {
                 profileTitle = "View \(name)'s Profile"
@@ -2339,7 +2282,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private func presentProfileFromMenu() {
         // Without a configured user, ProfileViewController shows the current user's own profile
         var user: User?
-        if let connectionId = selectedConnectionId, connectionId != "my_places_only" {
+        if let connectionId = selectedConnectionId, connectionId != HomePlaceFilter.myPlacesOnlyId {
             let currentUserId = AuthService.shared.getUserId() ?? ""
             user = connections.first(where: { $0.otherUserId(currentUserId: currentUserId) == connectionId })?.connectedUser
         }
@@ -2357,12 +2300,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
 
     @objc private func myPlacesChipTapped() {
-        selectConnection(selectedConnectionId == "my_places_only" ? nil : "my_places_only")
+        selectConnection(selectedConnectionId == HomePlaceFilter.myPlacesOnlyId ? nil : HomePlaceFilter.myPlacesOnlyId)
     }
 
     private func updateMyPlacesChipAppearance() {
         guard isPresentedModally && showFilters && viewMode == .allPlaces else { return }
-        let isActive = selectedConnectionId == "my_places_only"
+        let isActive = selectedConnectionId == HomePlaceFilter.myPlacesOnlyId
         var config = myPlacesChipButton.configuration ?? .plain()
         config.image = UIImage(
             systemName: isActive ? "person.fill" : "person",
@@ -2527,11 +2470,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private func selectConnection(_ connectionId: String?) {
         Logger.debug("🔍 FullScreenMap: selectConnection called with: \(connectionId ?? "nil")")
         selectedConnectionId = connectionId
-        if connectionId == nil || connectionId == "my_places_only" || connectionId == "my_connections_only" {
+        if connectionId == nil || connectionId == HomePlaceFilter.myPlacesOnlyId || connectionId == HomePlaceFilter.myConnectionsOnlyId {
             selectedConnectionUser = nil
         }
         // The origin sub-filter only makes sense under My Places
-        if connectionId != "my_places_only" { selectedImportOrigin = nil }
+        if connectionId != HomePlaceFilter.myPlacesOnlyId { selectedImportOrigin = nil }
         updateConnectionAvatarChip()
         updateMyPlacesChipAppearance()
         // The dropdown header narrates this selection too — every path that
@@ -2540,7 +2483,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         updateFilterHeaderTitles()
         // Keep the avatar row's highlight ring in sync (also covers changes
         // made through the hamburger menu)
-        userListView?.selectedUserId = (connectionId == nil || connectionId == "my_places_only" || connectionId == "my_connections_only") ? nil : connectionId
+        userListView?.selectedUserId = (connectionId == nil || connectionId == HomePlaceFilter.myPlacesOnlyId || connectionId == HomePlaceFilter.myConnectionsOnlyId) ? nil : connectionId
         // Let the presenter mirror the selection so it survives dismissal
         delegate?.mapViewController(self, didChangeConnectionFilter: connectionId)
         // Switching connections keeps the current camera — you're comparing
@@ -2737,8 +2680,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Hold the verdict until the tapped connection's places have arrived.
         guard !isConnectionFetchPending else { hideCoverageBanner(); return }
         let id = selectedConnectionId
-        let isSelf = (id == "my_places_only")
-        let isPerson = (id != nil && id != "my_places_only" && id != "my_connections_only")
+        let isSelf = (id == HomePlaceFilter.myPlacesOnlyId)
+        let isPerson = (id != nil && id != HomePlaceFilter.myPlacesOnlyId && id != HomePlaceFilter.myConnectionsOnlyId)
         guard isSelf || isPerson else { hideCoverageBanner(); return }
 
         // Honor a dismiss until the selection changes.
@@ -3005,7 +2948,7 @@ extension FullScreenMapViewController: HorizontalUserListViewDelegate {
 
         // Same behavior as the home row: tapping the already-selected avatar
         // opens the profile; otherwise switch the filter to that connection
-        if let selected = selectedConnectionId, selected != "my_places_only",
+        if let selected = selectedConnectionId, selected != HomePlaceFilter.myPlacesOnlyId,
            IDNormalizer.isSameUser(selected, targetId) {
             presentProfile(for: user)
         } else {
