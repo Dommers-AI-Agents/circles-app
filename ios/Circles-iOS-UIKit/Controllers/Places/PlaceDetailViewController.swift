@@ -11,6 +11,12 @@ class PlaceDetailViewController: BaseViewController {
     // Our OWN save of this venue when `place` is another user's copy —
     // private notes read from and write to this record
     private var mySaveOfVenue: Place?
+    /// Private notes editor and save (notes live on our OWN save record).
+    private lazy var notesEdit: PlaceNotesEditController = {
+        let controller = PlaceNotesEditController(presenter: self)
+        controller.delegate = self
+        return controller
+    }()
     private var circle: Circle?
     private var creatorUser: User? // Store the creator user for navigation
     private var userCircles: [Circle] = [] // Store user's circles for check-in detection
@@ -43,9 +49,25 @@ class PlaceDetailViewController: BaseViewController {
         return view
     }()
     
-    private var streetViewImage: UIImage?
-    private var isStreetViewAvailable = false
-    private var showingStreetView = false
+    /// Apple Look Around: availability, snapshot and shown/hidden live in
+    /// the controller; these forwarders keep the page's call sites unchanged.
+    private lazy var lookAround: PlaceLookAroundController = {
+        let controller = PlaceLookAroundController()
+        controller.delegate = self
+        return controller
+    }()
+    private var streetViewImage: UIImage? {
+        get { lookAround.image }
+        set { lookAround.image = newValue }
+    }
+    private var isStreetViewAvailable: Bool {
+        get { lookAround.isAvailable }
+        set { lookAround.isAvailable = newValue }
+    }
+    private var showingStreetView: Bool {
+        get { lookAround.isShowing }
+        set { lookAround.isShowing = newValue }
+    }
     private var customImage: UIImage?
     private var isHomeOrWorkPlace: Bool {
         return (place.circleId == nil || place.circleId?.isEmpty == true) && (place.id == "home-place" || place.id == "work-place")
@@ -241,6 +263,13 @@ class PlaceDetailViewController: BaseViewController {
     private var partnerActionsTopConstraint: NSLayoutConstraint?
 
     private var placeVenueData: PlaceVenueData?
+    /// Partner chips, the venue rewards/claim card and the GlobalPlace record;
+    /// results land in the VenueRewardsLoaderDelegate extension below.
+    private lazy var venueLoader: VenueRewardsLoader = {
+        let loader = VenueRewardsLoader()
+        loader.delegate = self
+        return loader
+    }()
     /// Verified-owner state and the tap-to-edit flows (see
     /// PlaceOwnerEditController); this page keeps the views and re-renders
     /// through PlaceOwnerEditControllerDelegate.
@@ -1668,51 +1697,7 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     private func formatOpeningHours(_ hours: [OpeningHour]) -> String {
-        let calendar = Calendar.current
-        let today = calendar.component(.weekday, from: Date()) - 1 // 0 for Sunday, 1 for Monday, etc.
-        
-        // Find today's hours
-        if let todayHours = hours.first(where: { $0.day == today }) {
-            var hoursText = ""
-            
-            // Check if it's closed
-            if todayHours.isClosed == true || (todayHours.open == "00:00" && todayHours.close == "00:00") {
-                hoursText = "Closed today"
-            } else if todayHours.open == "00:00" && todayHours.close == "23:59" {
-                hoursText = "Open 24 hours"
-            } else if let open = todayHours.open, let close = todayHours.close {
-                // Format the hours
-                let openTime = formatTime(open)
-                let closeTime = formatTime(close)
-                hoursText = "Open today: \(openTime) - \(closeTime)"
-            } else if let hoursString = todayHours.hours {
-                // Fallback to legacy hours string
-                hoursText = hoursString
-            }
-            
-            return hoursText
-        }
-        
-        return "Hours not available"
-    }
-    
-    private func formatTime(_ time: String) -> String {
-        // Convert 24-hour format to 12-hour format
-        let components = time.split(separator: ":")
-        guard components.count == 2,
-              let hour = Int(components[0]),
-              let minute = Int(components[1]) else {
-            return time
-        }
-        
-        let period = hour >= 12 ? "PM" : "AM"
-        let displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour)
-        
-        if minute == 0 {
-            return "\(displayHour) \(period)"
-        } else {
-            return String(format: "%d:%02d %@", displayHour, minute, period)
-        }
+        OpeningHoursFormatter.todaySummary(hours)
     }
     
     private func setupMap() {
@@ -1857,7 +1842,7 @@ class PlaceDetailViewController: BaseViewController {
         // 2. Place is already in one of user's circles
         // 3. User doesn't have any circles to add to
         
-        if place.addedBy == currentUserId {
+        if AddToCircleGate.isOwnSave(place, currentUserId: currentUserId) {
             // User created this place
             setAddToCircleVisible(false)
             return
@@ -1873,24 +1858,18 @@ class PlaceDetailViewController: BaseViewController {
 
                 switch result {
                 case .success(let userCircles):
-                    guard !userCircles.isEmpty else {
-                        // User has no circles to add to
+                    // No circles to add to, or a circle already holds this doc
+                    guard case .checkVenueMatch(let circleIds) = AddToCircleGate.verdict(for: self.place, in: userCircles) else {
                         self.setAddToCircleVisible(false)
                         return
                     }
 
-                    // Same doc id in a circle = definitely already saved
-                    if userCircles.contains(where: { $0.places?.contains(self.place.id) ?? false }) {
-                        self.setAddToCircleVisible(false)
-                        return
-                    }
-
-                    PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: userCircles.map(\.id)) { [weak self] placesResult in
+                    PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: circleIds) { [weak self] placesResult in
                         DispatchQueue.main.async {
                             guard let self = self else { return }
                             switch placesResult {
                             case .success(let myPlaces):
-                                if myPlaces.contains(where: { self.isSameVenue(as: $0) }) {
+                                if AddToCircleGate.verdictAfterVenueCheck(for: self.place, myPlaces: myPlaces) == .hide {
                                     self.setAddToCircleVisible(false)
                                 } else {
                                     self.setAddToCircleVisible(true)
@@ -1912,26 +1891,6 @@ class PlaceDetailViewController: BaseViewController {
         }
     }
 
-    /// Is `other` (one of the current user's saved places) the same real-world
-    /// venue as the place on this screen? Ids first, then name+address.
-    private func isSameVenue(as other: Place) -> Bool {
-        if let gpid = place.googlePlaceId, !gpid.isEmpty, other.googlePlaceId == gpid {
-            return true
-        }
-        if let globalId = place.globalPlaceId, !globalId.isEmpty,
-           other.globalPlaceId == globalId || other.id == globalId {
-            return true
-        }
-        // The screen may hold a converted GlobalPlace whose id IS the global id
-        if other.globalPlaceId == place.id {
-            return true
-        }
-        let normalize = { (s: String) in s.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
-        return normalize(other.name) == normalize(place.name)
-            && !place.address.isEmpty
-            && normalize(other.address) == normalize(place.address)
-    }
-    
     private func updateAddressTitleConstraint() {
         // No need to update constraints dynamically anymore
         // The constraint is set in setupUI to always anchor to addToCircleButton
@@ -1982,133 +1941,15 @@ class PlaceDetailViewController: BaseViewController {
     // MARK: - Venue rewards (offers + announcements for this place)
 
     private func loadPartnerActions() {
-        PartnerActionsService.shared.getCatalog { [weak self] catalog in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                let groups = PartnerActionsService.shared.eligibleGroups(for: self.place, from: catalog)
-                self.partnerActionsRowView.configure(with: groups)
-                let show = !groups.isEmpty
-                self.partnerActionsHeightConstraint?.constant = show ? 44 : 0
-                self.partnerActionsTopConstraint?.constant = show ? Constants.Spacing.medium : 0
-                self.view.layoutIfNeeded()
-            }
-        }
+        venueLoader.loadPartnerActions()
     }
 
     private func loadVenueRewards() {
-        RewardsService.shared.getVenueByPlace(
-            placeId: place.globalPlaceId ?? place.id,
-            googlePlaceId: place.googlePlaceId
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                switch result {
-                case .success(let data):
-                    self.placeVenueData = data
-                    self.venueRewardsView.configure(with: data)
-                    // The card shows for enrolled venues AND for the venue-less
-                    // "Is this your store?" claim states — collapsing on
-                    // !hasVenue alone clipped the claim card to zero height
-                    let hasVenue = data.venue != nil
-                    let showsClaimCard = (data.claim?.canClaim == true) || (data.claim?.myClaimStatus != nil)
-                    let showCard = hasVenue || showsClaimCard
-                    self.venueRewardsHeightConstraint?.isActive = !showCard
-                    // Docks tight under the map — the claim card and the map
-                    // both describe the physical location, so they read as one
-                    self.venueRewardsTopConstraint?.constant = showCard ? Constants.Spacing.small : 0
-                    self.view.layoutIfNeeded()
-
-                    // Owners get ONE nav affordance: the eye that previews the
-                    // page as customers see it. Managing and editing live on
-                    // the Your Store card itself — the page IS the owner's
-                    // surface, so a toolbar of duplicate entry points just
-                    // read as clutter.
-                    self.ownerEdit.isVenueOwner = data.isOwner == true
-                    if hasVenue && data.isOwner == true {
-                        self.addOwnerPreviewNavButtonIfNeeded()
-                        // The page IS the owner's editor: arm the fields
-                        self.ownerEdit.decorateIfNeeded()
-                    }
-                case .failure:
-                    // Additive section — a failed lookup just leaves it collapsed
-                    self.venueRewardsView.configure(with: nil)
-                }
-            }
-        }
+        venueLoader.loadVenueRewards()
     }
 
     private func loadGlobalPlaceData() {
-        // Try to load global place data if available
-        // This provides better photo attribution and user tags
-        Logger.debug("🔍 [PlaceDetailViewController] Starting loadGlobalPlaceData for place: \(place.name)")
-
-        // Same id preference as the upload path (MediaStorageService), so reads
-        // and writes resolve to the same GlobalPlace doc
-        GlobalPlaceService.shared.getGlobalPlace(id: place.globalPlaceId ?? place.id) { [weak self] result in
-            switch result {
-            case .success(let globalPlaceResponse):
-                DispatchQueue.main.async {
-                    Logger.debug("✅ [PlaceDetailViewController] GlobalPlace data loaded successfully")
-                    Logger.debug("📍 [PlaceDetailViewController] GlobalPlace name: \(globalPlaceResponse.globalPlace.name)")
-                    Logger.debug("🆔 [PlaceDetailViewController] GlobalPlace ID: \(globalPlaceResponse.globalPlace.id)")
-                    
-                    self?.globalPlace = globalPlaceResponse.globalPlace
-                    let photoCount = globalPlaceResponse.globalPlace.photos?.count ?? 0
-                    Logger.debug("📷 [PlaceDetailViewController] Loaded GlobalPlace with \(photoCount) attributed photos")
-                    
-                    if let photos = globalPlaceResponse.globalPlace.photos, !photos.isEmpty {
-                        let firstPhoto = photos[0]
-                        Logger.debug("📸 [PlaceDetailViewController] First photo by: '\(firstPhoto.uploadedByName ?? "Unknown")'")
-                    }
-                    
-                    // Refresh media carousel with attribution data
-                    Logger.debug("🔄 [PlaceDetailViewController] Calling updateMediaCarousel() with GlobalPlace data")
-                    self?.updateMediaCarousel()
-                }
-            case .failure(let error):
-                Logger.debug("❌ [PlaceDetailViewController] Could not load GlobalPlace data: \(error)")
-                Logger.debug("📍 [PlaceDetailViewController] Continuing with legacy Place model for: \(self?.place.name ?? "Unknown")")
-                
-                DispatchQueue.main.async {
-                    // Try to add retry logic for common failures
-                    if case APIError.noInternet = error {
-                        Logger.debug("🔄 [PlaceDetailViewController] No internet detected, will retry GlobalPlace lookup once")
-                        // Retry once after a short delay
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            self?.retryGlobalPlaceDataLoad()
-                        }
-                    } else if case APIError.requestFailed = error {
-                        Logger.debug("🔄 [PlaceDetailViewController] Request failed, will retry GlobalPlace lookup once")
-                        // Retry once after a short delay
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            self?.retryGlobalPlaceDataLoad()
-                        }
-                    }
-                    
-                    // Continue with legacy Place model - no attribution data
-                    // But update media carousel to ensure photos are shown
-                    self?.updateMediaCarousel()
-                }
-            }
-        }
-    }
-    
-    private func retryGlobalPlaceDataLoad() {
-        Logger.debug("🔄 [PlaceDetailViewController] Retrying GlobalPlace data load...")
-
-        GlobalPlaceService.shared.getGlobalPlace(id: place.globalPlaceId ?? place.id) { [weak self] result in
-            switch result {
-            case .success(let globalPlaceResponse):
-                DispatchQueue.main.async {
-                    Logger.debug("✅ [PlaceDetailViewController] GlobalPlace data loaded on retry")
-                    self?.globalPlace = globalPlaceResponse.globalPlace
-                    self?.updateMediaCarousel()
-                }
-            case .failure(let error):
-                Logger.debug("❌ [PlaceDetailViewController] GlobalPlace retry failed: \(error)")
-                // Give up and continue with legacy data
-            }
-        }
+        venueLoader.loadGlobalPlaceData()
     }
     
     // MARK: - Actions
@@ -2552,98 +2393,15 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     private func checkStreetViewAvailability() {
-        guard let location = place.location?.clLocation else { 
-            Logger.debug("⚠️ PlaceDetailViewController: No location available for street view check")
-            return 
-        }
-        
-        if #available(iOS 16.0, *) {
-            Logger.debug("🔍 PlaceDetailViewController: Checking Look Around availability for \(place.name)")
-            Task {
-                let available = await AppleLookAroundService.shared.checkLookAroundAvailability(at: location.coordinate)
-                await MainActor.run {
-                    Logger.debug("📍 PlaceDetailViewController: Look Around available: \(available)")
-                    self.isStreetViewAvailable = available
-                    self.updateToggleButtonVisibility()
-                }
-            }
-        } else {
-            // Look Around not available on iOS < 16
-            Logger.debug("⚠️ PlaceDetailViewController: iOS < 16.0, Look Around not available")
-            isStreetViewAvailable = false
-            updateToggleButtonVisibility()
-        }
+        lookAround.checkAvailability()
     }
     
     private func loadStreetViewImage() {
-        guard let location = place.location?.clLocation else { return }
-        
-        if #available(iOS 16.0, *) {
-            let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 200)
-            
-            Task {
-                do {
-                    let image = try await AppleLookAroundService.shared.getLookAroundSnapshot(
-                        at: location.coordinate,
-                        size: imageSize
-                    )
-                    await MainActor.run {
-                        self.streetViewImage = image
-                        if self.showingStreetView == true {
-                            self.updateImageView()
-                        }
-                    }
-                } catch {
-                    Logger.debug("Failed to load Look Around: \(error)")
-                }
-            }
-        }
+        lookAround.loadImage()
     }
     
     private func autoLoadStreetView() {
-        // Idempotent: configureUI re-runs on server refresh; one fetch is enough
-        guard streetViewImage == nil else { return }
-        guard let location = place.location?.clLocation else { return }
-        
-        if #available(iOS 16.0, *) {
-            Task {
-                // Check if Look Around is available first
-                let available = await AppleLookAroundService.shared.checkLookAroundAvailability(at: location.coordinate)
-                guard available else { return }
-                
-                let imageSize = CGSize(width: UIScreen.main.bounds.width, height: 300)
-                
-                do {
-                    let image = try await AppleLookAroundService.shared.getLookAroundSnapshot(
-                        at: location.coordinate,
-                        size: imageSize
-                    )
-                    await MainActor.run {
-                        self.streetViewImage = image
-                        self.isStreetViewAvailable = true
-
-                        // Only show street view automatically if there are no photos
-                        let hasPhotos = (self.place.photos != nil && !self.place.photos!.isEmpty) || self.customImage != nil
-                        
-                        if !hasPhotos {
-                            // No photos available, show street view
-                            self.showingStreetView = true
-                            self.updateImageView()
-                            self.streetViewToggleButton.isHidden = true // Hide toggle when street view is the only option
-                            // Hide update info button since we now have street view
-                            // self.updateInfoButton.isHidden = true // Commented - automatic migration
-                            Logger.debug("PlaceDetailViewController: Auto-showing street view for place without photos")
-                        } else {
-                            // Has photos, just store street view for toggle option
-                            self.updateToggleButtonVisibility()
-                            Logger.debug("PlaceDetailViewController: Street view loaded but not shown (place has photos)")
-                        }
-                    }
-                } catch {
-                    Logger.error("Failed to auto-load Look Around: \(error)")
-                }
-            }
-        }
+        lookAround.autoLoad()
     }
     
     private func updateImageView() {
@@ -2724,37 +2482,8 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     @objc private func descriptionLabelTapped(_ gesture: UITapGestureRecognizer) {
-        guard let attributedText = descriptionLabel.attributedText else { return }
-        
-        let location = gesture.location(in: descriptionLabel)
-        
-        // Create text container
-        let textContainer = NSTextContainer(size: descriptionLabel.bounds.size)
-        textContainer.lineFragmentPadding = 0
-        textContainer.maximumNumberOfLines = descriptionLabel.numberOfLines
-        textContainer.lineBreakMode = descriptionLabel.lineBreakMode
-        
-        // Create layout manager
-        let layoutManager = NSLayoutManager()
-        layoutManager.addTextContainer(textContainer)
-        
-        // Create text storage
-        let textStorage = NSTextStorage(attributedString: attributedText)
-        textStorage.addLayoutManager(layoutManager)
-        
-        // Find the character index at tap location
-        let characterIndex = layoutManager.characterIndex(
-            for: location,
-            in: textContainer,
-            fractionOfDistanceBetweenInsertionPoints: nil
-        )
-        
-        // Check if tap is on a URL
-        attributedText.enumerateAttribute(.link, in: NSRange(location: 0, length: attributedText.length), options: []) { (value, range, stop) in
-            if let url = value as? URL, NSLocationInRange(characterIndex, range) {
-                UIApplication.shared.open(url)
-                stop.pointee = true
-            }
+        if let url = descriptionLabel.link(at: gesture.location(in: descriptionLabel)) {
+            UIApplication.shared.open(url)
         }
     }
     
@@ -2768,124 +2497,26 @@ class PlaceDetailViewController: BaseViewController {
         ]
         attributedString.addAttributes(defaultAttributes, range: NSRange(location: 0, length: text.count))
         
-        // Find "Website: " patterns and make URLs clickable
-        let websitePattern = "Website: (https?://[^\\s\\n]+)"
-        let regex = try? NSRegularExpression(pattern: websitePattern, options: [])
-        let matches = regex?.matches(in: text, options: [], range: NSRange(location: 0, length: text.count)) ?? []
-        
-        for match in matches {
-            // Get the URL part (capture group 1)
-            if match.numberOfRanges > 1 {
-                let urlRange = match.range(at: 1)
-                let urlString = (text as NSString).substring(with: urlRange)
-                
-                if let url = URL(string: urlString) {
-                    // Style the URL as clickable
-                    let urlAttributes: [NSAttributedString.Key: Any] = [
-                        .link: url,
-                        .foregroundColor: UIColor.systemBlue,
-                        .underlineStyle: NSUnderlineStyle.single.rawValue
-                    ]
-                    attributedString.addAttributes(urlAttributes, range: urlRange)
-                }
-            }
+        // "Website: https://…" lines: style the URL as clickable
+        for link in PlaceDescriptionLinks.websiteLinks(in: text) {
+            let urlAttributes: [NSAttributedString.Key: Any] = [
+                .link: link.url,
+                .foregroundColor: UIColor.systemBlue,
+                .underlineStyle: NSUnderlineStyle.single.rawValue
+            ]
+            attributedString.addAttributes(urlAttributes, range: link.range)
         }
         
         return attributedString
     }
     
-    /// When this screen shows ANOTHER user's copy of a venue, our private
-    /// note (if any) lives on OUR save record. Resolve it so the notes
-    /// section shows and edits the right thing.
+    /// Our private note may live on our OWN save record (see PlaceNotesEditController).
     func loadMySaveOfVenueIfNeeded() {
-        guard !place.isAddedByCurrentUser,
-              let globalPlaceId = place.globalPlaceId ?? place.googlePlaceId else { return }
-        PlaceService.shared.fetchMySaveOfVenue(globalPlaceId: globalPlaceId) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self, case .success(let mine) = result else { return }
-                self.mySaveOfVenue = mine
-                // Refresh just the notes section with our own note
-                if let myNotes = mine.privateNotes, !myNotes.isEmpty {
-                    self.notesLabel.text = myNotes
-                    self.notesLabel.isHidden = false
-                    self.addNotesButton.isHidden = true
-                    self.notesEditButton.isHidden = false
-                }
-            }
-        }
-    }
-
-    /// The save record private notes belong to: our own save when the screen
-    /// shows someone else's copy of the venue
-    private var notesTargetPlace: Place? {
-        if place.isAddedByCurrentUser { return place }
-        return mySaveOfVenue
+        notesEdit.loadMySaveOfVenueIfNeeded()
     }
 
     private func showNotesEditor() {
-        let notesEditorVC = NotesEditorViewController(
-            privateNotes: notesTargetPlace?.privateNotes ?? "",
-            isPrivateNotesEnabled: notesTargetPlace != nil
-        )
-
-        notesEditorVC.onSave = { [weak self] privateNotes in
-            self?.updatePlaceNotes(privateNotes: privateNotes)
-        }
-
-        let navController = UINavigationController(rootViewController: notesEditorVC)
-        present(navController, animated: true)
-    }
-
-    private func updatePlaceNotes(privateNotes: String) {
-        guard let target = notesTargetPlace else { return }
-
-        // Show loading indicator
-        let loadingAlert = AlertPresenter.showLoading(message: "Saving Notes...", from: self)
-
-        // Call PlaceService to update notes on Firebase
-        PlaceService.shared.updatePlace(
-            id: target.id,
-            privateNotes: privateNotes
-        ) { [weak self] result in
-            guard let self = self else { return }
-
-            // Ensure all UI updates happen on the main thread
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success(let updatedPlace):
-                        // Keep the in-memory model in sync — the notes editor
-                        // seeds from the target record, so a stale copy would
-                        // show (and then re-save) the old text
-                        if updatedPlace.id == self.place.id {
-                            self.place = updatedPlace
-                        } else {
-                            self.mySaveOfVenue = updatedPlace
-                        }
-
-                        // Only the saver has a note, and only they ever see it
-                        let notesText = privateNotes
-
-                        if !notesText.isEmpty {
-                            self.notesLabel.text = notesText
-                            self.notesLabel.textColor = Constants.Colors.gray
-                            self.notesLabel.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-                            self.notesLabel.isHidden = false
-                            self.addNotesButton.isHidden = true
-                            self.notesEditButton.isHidden = false
-                        } else {
-                            self.notesLabel.isHidden = true
-                            self.addNotesButton.isHidden = false
-                            self.notesEditButton.isHidden = true
-                        }
-                        
-                    case .failure(let error):
-                        // Show error alert
-                        self.showError("Failed to save notes: \(error.localizedDescription)")
-                    }
-                }
-            }
-        }
+        notesEdit.presentEditor()
     }
     
     // MARK: - Photo Loading
@@ -3700,146 +3331,22 @@ extension PlaceDetailViewController {
     }
     
     private func createInlineCommentView(_ comment: PlaceComment) -> UIView {
-        let containerView = UIView()
-        containerView.backgroundColor = Constants.Colors.background
-        containerView.layer.cornerRadius = 8
-        containerView.translatesAutoresizingMaskIntoConstraints = false
-        
-        // User info stack (avatar + name + time)
-        let userInfoStack = UIStackView()
-        userInfoStack.axis = .horizontal
-        userInfoStack.spacing = 8
-        userInfoStack.alignment = .center
-        userInfoStack.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Avatar
-        let avatarImageView = UIImageView()
-        avatarImageView.contentMode = .scaleAspectFill
-        avatarImageView.clipsToBounds = true
-        avatarImageView.layer.cornerRadius = 16
-        avatarImageView.backgroundColor = Constants.Colors.tertiaryBackground
-        avatarImageView.image = UIImage(systemName: "person.circle.fill")
-        avatarImageView.tintColor = Constants.Colors.secondaryLabel
-        avatarImageView.translatesAutoresizingMaskIntoConstraints = false
-        avatarImageView.widthAnchor.constraint(equalToConstant: 32).isActive = true
-        avatarImageView.heightAnchor.constraint(equalToConstant: 32).isActive = true
-        
-        // Load avatar if available
-        if let urlString = comment.user?.profilePicture, let url = URL(string: urlString) {
-            URLSession.shared.dataTask(with: url) { data, _, _ in
-                if let data = data, let image = UIImage(data: data) {
-                    DispatchQueue.main.async {
-                        avatarImageView.image = image
-                    }
-                }
-            }.resume()
+        let row = PlaceCommentRowView(comment: comment)
+        row.onLikeTapped = { [weak self, weak row] button in
+            guard let self = self, let row = row else { return }
+            self.toggleInlineCommentLike(commentId: comment.id, sender: button, row: row)
         }
-        
-        // Name and time stack
-        let nameTimeStack = UIStackView()
-        nameTimeStack.axis = .vertical
-        nameTimeStack.spacing = 2
-        
-        let nameLabel = UILabel()
-        nameLabel.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-        nameLabel.textColor = Constants.Colors.label
-        let commentAuthorName = comment.user?.displayName ?? "Unknown User"
-        if comment.isVenueOwner == true {
-            // The store speaking on its own page — badge the name
-            let attributed = NSMutableAttributedString(string: commentAuthorName)
-            attributed.append(NSAttributedString(
-                string: "  OWNER",
-                attributes: [
-                    .font: UIFont.systemFont(ofSize: 10, weight: .bold),
-                    .foregroundColor: Constants.Colors.primary,
-                    .baselineOffset: 1
-                ]
-            ))
-            nameLabel.attributedText = attributed
-        } else {
-            nameLabel.text = commentAuthorName
-        }
-
-        let timeLabel = UILabel()
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        timeLabel.text = formatter.localizedString(for: comment.createdAt, relativeTo: Date())
-        timeLabel.font = UIFont.systemFont(ofSize: 12)
-        timeLabel.textColor = Constants.Colors.secondaryLabel
-        
-        nameTimeStack.addArrangedSubview(nameLabel)
-        nameTimeStack.addArrangedSubview(timeLabel)
-        
-        userInfoStack.addArrangedSubview(avatarImageView)
-        userInfoStack.addArrangedSubview(nameTimeStack)
-        
-        // Like button
-        let likeButton = UIButton(type: .system)
-        let isLiked = comment.isLikedByCurrentUser
-        likeButton.setImage(UIImage(systemName: isLiked ? "heart.fill" : "heart"), for: .normal)
-        likeButton.tintColor = isLiked ? .systemRed : Constants.Colors.secondaryLabel
-        likeButton.translatesAutoresizingMaskIntoConstraints = false
-        likeButton.widthAnchor.constraint(equalToConstant: 24).isActive = true
-        likeButton.heightAnchor.constraint(equalToConstant: 24).isActive = true
-        likeButton.tag = displayedComments.firstIndex(where: { $0.id == comment.id }) ?? 0
-        likeButton.addTarget(self, action: #selector(inlineCommentLikeButtonTapped(_:)), for: .touchUpInside)
-        
-        // Like count label. Tagged so the like handler can find THIS label —
-        // it used to hunt by "first UILabel that isn't subviews[2]", which
-        // matched the COMMENT TEXT label and overwrote the comment with the
-        // like count (a hearted comment visibly "disappeared").
-        let likeCountLabel = UILabel()
-        likeCountLabel.tag = Self.inlineCommentLikeCountTag
-        likeCountLabel.text = comment.displayLikesCount > 0 ? "\(comment.displayLikesCount)" : ""
-        likeCountLabel.font = UIFont.systemFont(ofSize: 12)
-        likeCountLabel.textColor = Constants.Colors.secondaryLabel
-        likeCountLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Comment text
-        let commentLabel = UILabel()
-        commentLabel.text = comment.text
-        commentLabel.font = UIFont.systemFont(ofSize: 14)
-        commentLabel.textColor = Constants.Colors.label
-        commentLabel.numberOfLines = 0
-        commentLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Add subviews
-        containerView.addSubview(userInfoStack)
-        containerView.addSubview(likeButton)
-        containerView.addSubview(likeCountLabel)
-        containerView.addSubview(commentLabel)
-        
-        // Constraints
-        NSLayoutConstraint.activate([
-            userInfoStack.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
-            userInfoStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
-            
-            likeButton.centerYAnchor.constraint(equalTo: userInfoStack.centerYAnchor),
-            likeButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
-            
-            likeCountLabel.centerYAnchor.constraint(equalTo: likeButton.centerYAnchor),
-            likeCountLabel.trailingAnchor.constraint(equalTo: likeButton.leadingAnchor, constant: -4),
-            
-            commentLabel.topAnchor.constraint(equalTo: userInfoStack.bottomAnchor, constant: 8),
-            commentLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
-            commentLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
-            commentLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12)
-        ])
-        
-        return containerView
+        return row
     }
     
     private func updateCommentCount(_ count: Int) {
         commentCountLabel.text = count > 0 ? "\(count)" : ""
     }
     
-    private static let inlineCommentLikeCountTag = 9101
-
-    @objc private func inlineCommentLikeButtonTapped(_ sender: UIButton) {
-        let index = sender.tag
-        guard index < displayedComments.count else { return }
-        
-        let comment = displayedComments[index]
+    private func toggleInlineCommentLike(commentId: String, sender: UIButton, row: PlaceCommentRowView) {
+        // Look the comment up fresh — the list can have been reloaded since
+        // this row was built
+        guard let comment = displayedComments.first(where: { $0.id == commentId }) else { return }
         
         // Haptic feedback
         let generator = UIImpactFeedbackGenerator(style: .light)
@@ -3855,19 +3362,11 @@ extension PlaceDetailViewController {
                 
                 switch result {
                 case .success(let (liked, likesCount, piggyBank)):
-                    // Update button appearance
-                    sender.setImage(UIImage(systemName: liked ? "heart.fill" : "heart"), for: .normal)
-                    sender.tintColor = liked ? .systemRed : Constants.Colors.secondaryLabel
+                    // Update heart and count
+                    row.setLiked(liked, count: likesCount)
 
                     // FavCoins for the heart (leprechaun for the fraction)
                     PiggyBankDepositView.play(credit: piggyBank)
-                    
-                    // Update the like count label (looked up by tag — the old
-                    // sibling-position heuristic matched the comment text
-                    // label and clobbered the comment body)
-                    if let likeCountLabel = sender.superview?.viewWithTag(Self.inlineCommentLikeCountTag) as? UILabel {
-                        likeCountLabel.text = likesCount > 0 ? "\(likesCount)" : ""
-                    }
                     
                     // Show animation
                     UIView.animate(withDuration: 0.1, animations: {
@@ -4154,5 +3653,144 @@ extension PlaceDetailViewController: PlaceOwnerEditControllerDelegate {
         aboutCardView.isHidden = aboutIsEmpty
         aboutTopConstraint?.constant = aboutIsEmpty ? 0 : Constants.Spacing.medium
         aboutHeightConstraint?.isActive = aboutIsEmpty
+    }
+}
+
+// MARK: - VenueRewardsLoaderDelegate
+
+extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
+    func currentPlace(for loader: VenueRewardsLoader) -> Place { place }
+
+    func loader(_ loader: VenueRewardsLoader, didLoadPartnerActionGroups groups: [PartnerActionGroup]) {
+        partnerActionsRowView.configure(with: groups)
+        let show = !groups.isEmpty
+        partnerActionsHeightConstraint?.constant = show ? 44 : 0
+        partnerActionsTopConstraint?.constant = show ? Constants.Spacing.medium : 0
+        view.layoutIfNeeded()
+    }
+
+    func loader(_ loader: VenueRewardsLoader, didLoadVenueData data: PlaceVenueData) {
+        placeVenueData = data
+        venueRewardsView.configure(with: data)
+        // The card shows for enrolled venues AND for the venue-less
+        // "Is this your store?" claim states — collapsing on
+        // !hasVenue alone clipped the claim card to zero height
+        let hasVenue = data.venue != nil
+        let showsClaimCard = (data.claim?.canClaim == true) || (data.claim?.myClaimStatus != nil)
+        let showCard = hasVenue || showsClaimCard
+        venueRewardsHeightConstraint?.isActive = !showCard
+        // Docks tight under the map — the claim card and the map
+        // both describe the physical location, so they read as one
+        venueRewardsTopConstraint?.constant = showCard ? Constants.Spacing.small : 0
+        view.layoutIfNeeded()
+
+        // Owners get ONE nav affordance: the eye that previews the
+        // page as customers see it. Managing and editing live on
+        // the Your Store card itself — the page IS the owner's
+        // surface, so a toolbar of duplicate entry points just
+        // read as clutter.
+        ownerEdit.isVenueOwner = data.isOwner == true
+        if hasVenue && data.isOwner == true {
+            addOwnerPreviewNavButtonIfNeeded()
+            // The page IS the owner's editor: arm the fields
+            ownerEdit.decorateIfNeeded()
+        }
+    }
+
+    func loaderVenueLookupFailed(_ loader: VenueRewardsLoader) {
+        // Additive section — a failed lookup just leaves it collapsed
+        venueRewardsView.configure(with: nil)
+    }
+
+    func loader(_ loader: VenueRewardsLoader, didLoadGlobalPlace globalPlace: GlobalPlace) {
+        self.globalPlace = globalPlace
+        // Refresh media carousel with attribution data
+        updateMediaCarousel()
+    }
+
+    func loaderGlobalPlaceLookupFailed(_ loader: VenueRewardsLoader) {
+        // Continue with legacy Place model - no attribution data
+        // But update media carousel to ensure photos are shown
+        updateMediaCarousel()
+    }
+}
+
+// MARK: - PlaceLookAroundControllerDelegate
+
+extension PlaceDetailViewController: PlaceLookAroundControllerDelegate {
+    func currentPlace(for controller: PlaceLookAroundController) -> Place { place }
+
+    func lookAroundAvailabilityDidChange(_ controller: PlaceLookAroundController) {
+        updateToggleButtonVisibility()
+    }
+
+    func lookAroundImageDidLoad(_ controller: PlaceLookAroundController) {
+        if showingStreetView == true {
+            updateImageView()
+        }
+    }
+
+    func lookAroundDidAutoLoad(_ controller: PlaceLookAroundController) {
+        // Only show street view automatically if there are no photos
+        let hasPhotos = (place.photos != nil && !place.photos!.isEmpty) || customImage != nil
+
+        if !hasPhotos {
+            // No photos available, show street view
+            showingStreetView = true
+            updateImageView()
+            streetViewToggleButton.isHidden = true // Hide toggle when street view is the only option
+            // Hide update info button since we now have street view
+            // self.updateInfoButton.isHidden = true // Commented - automatic migration
+            Logger.debug("PlaceDetailViewController: Auto-showing street view for place without photos")
+        } else {
+            // Has photos, just store street view for toggle option
+            updateToggleButtonVisibility()
+            Logger.debug("PlaceDetailViewController: Street view loaded but not shown (place has photos)")
+        }
+    }
+}
+
+// MARK: - PlaceNotesEditControllerDelegate
+
+extension PlaceDetailViewController: PlaceNotesEditControllerDelegate {
+    func currentPlace(for controller: PlaceNotesEditController) -> Place { place }
+    func mySaveOfVenue(for controller: PlaceNotesEditController) -> Place? { mySaveOfVenue }
+
+    func notesEdit(_ controller: PlaceNotesEditController, didLoadMySave mine: Place) {
+        mySaveOfVenue = mine
+        // Refresh just the notes section with our own note
+        if let myNotes = mine.privateNotes, !myNotes.isEmpty {
+            notesLabel.text = myNotes
+            notesLabel.isHidden = false
+            addNotesButton.isHidden = true
+            notesEditButton.isHidden = false
+        }
+    }
+
+    func notesEdit(_ controller: PlaceNotesEditController, didSave privateNotes: String, updatedPlace: Place) {
+        // Keep the in-memory model in sync — the notes editor
+        // seeds from the target record, so a stale copy would
+        // show (and then re-save) the old text
+        if updatedPlace.id == place.id {
+            place = updatedPlace
+        } else {
+            mySaveOfVenue = updatedPlace
+        }
+
+        // Only the saver has a note, and only they ever see it
+        let notesText = privateNotes
+
+        if !notesText.isEmpty {
+            notesLabel.text = notesText
+            notesLabel.textColor = Constants.Colors.gray
+            notesLabel.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
+            notesLabel.isHidden = false
+            addNotesButton.isHidden = true
+            notesEditButton.isHidden = false
+        } else {
+            notesLabel.isHidden = true
+            addNotesButton.isHidden = false
+            notesEditButton.isHidden = true
+        }
     }
 }
