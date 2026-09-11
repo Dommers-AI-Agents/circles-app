@@ -157,6 +157,20 @@ final class HomeMomentsViewController: BaseViewController, HomeContentTab {
         }
     }
 
+    /// The home came back on screen with this tab showing (e.g. back from a
+    /// place page): resume the current moment where it was paused, without
+    /// counting a new view.
+    func resumePlaybackIfVisible() {
+        guard isActiveTab, !view.isHidden, currentReelIndex < reels.count else { return }
+        guard reels[currentReelIndex].contentType != "photo" else { return }
+        if let player = reelPlayers[currentReelIndex] {
+            AudioSessionManager.shared.beginPlayback()
+            player.play()
+        } else {
+            playVideo(at: currentReelIndex)
+        }
+    }
+
     /// Drops every moment by `userId` (the user just blocked them).
     func removeReels(by userId: String) {
         reels.removeAll { $0.userId == userId }

@@ -879,11 +879,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Check for daily summary data
         checkForDailySummary()
         
-        // Ensure Activity tab is selected when returning to home
-        if contentSegmentedControl.selectedSegmentIndex != 0 {
-            contentSegmentedControl.selectedSegmentIndex = 0
-            contentSegmentChanged()
-        }
+        // The content segment survives navigation: coming back from a place
+        // page (or any push/modal) lands on the tab you left. Only the
+        // tab-bar Home re-tap resets to Activity (resetContentTabToActivity).
+        // A moment that was paused on the way out resumes.
+        momentsTab.resumePlaybackIfVisible()
 
         // If the map was left in list view, flip it back to the map (filters
         // are intentionally preserved across a tab switch — the Home re-tap
