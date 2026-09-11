@@ -150,9 +150,9 @@ extension CirclesHomeViewController {
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 if self.contentSegmentedControl.selectedSegmentIndex == 2 {
-                    self.fetchSpecials(force: true)
+                    self.specialsTab.refreshTab()
                 } else {
-                    self.specials = []
+                    self.specialsTab.invalidate()
                 }
             }
 

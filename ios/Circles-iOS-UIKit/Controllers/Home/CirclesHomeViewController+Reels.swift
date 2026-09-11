@@ -255,8 +255,8 @@ extension CirclesHomeViewController {
         // Show the Moments segment. Setting selectedSegmentIndex in code does
         // not fire .valueChanged, so mirror contentSegmentChanged's case 1.
         contentSegmentedControl.selectedSegmentIndex = 1
+        specialsTab.setTabVisible(false)
         activityTableView.isHidden = true
-        specialsTableView.isHidden = true
         reelsCollectionView.isHidden = false
         momentsCameraButton.isHidden = false
         activityHeaderLabel.text = "Moments"

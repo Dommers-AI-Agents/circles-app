@@ -600,7 +600,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     var isLoadingActivities = false
-    var activityTableHeightConstraint: NSLayoutConstraint?
+    var contentTabHeightConstraint: NSLayoutConstraint?
     
     // Daily Summary Properties
     var dailySummaryCard: DailySummaryCardView?
@@ -679,22 +679,22 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return tableView
     }()
 
-    // Specials tab: live offers and announcements from participating venues,
-    // one row per deal in the server's order (saved venues first, then nearest)
-    let specialsTableView: UITableView = {
-        let tableView = UITableView()
-        tableView.backgroundColor = Constants.Colors.background
-        tableView.separatorStyle = .none
-        tableView.rowHeight = UITableView.automaticDimension
-        tableView.estimatedRowHeight = 92
-        tableView.showsVerticalScrollIndicator = true
-        tableView.translatesAutoresizingMaskIntoConstraints = false
-        tableView.isHidden = true // Hidden until the Specials tab is selected
-        return tableView
+    // MARK: - Content tabs
+    // The segment bar switches between child view controllers whose views
+    // fill `tabContentContainer` (see HomeContentTab). Activity and Moments
+    // are still inline below; Specials is the first extracted tab.
+    let tabContentContainer: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.background
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
     }()
 
-    var specials: [SpecialItem] = []
-    var isLoadingSpecials = false
+    lazy var specialsTab: HomeSpecialsViewController = {
+        let tab = HomeSpecialsViewController()
+        tab.host = self
+        return tab
+    }()
 
     // Reels collection view for vertical video feed
     let reelsCollectionView: UICollectionView = {
@@ -1634,14 +1634,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityFeedSection.addSubview(activityHeaderLabel)
         activityFeedSection.addSubview(contentSegmentedControl)
         activityFeedSection.addSubview(momentsCameraButton)
+        activityFeedSection.addSubview(tabContentContainer)
         activityFeedSection.addSubview(activityTableView)
         activityFeedSection.addSubview(reelsCollectionView)
-        activityFeedSection.addSubview(specialsTableView)
         activityFeedSection.addSubview(activityEmptyStateLabel)
         activityFeedSection.addSubview(activityLoadingContainer)
         
         // Ensure loading container is on top
         activityFeedSection.bringSubviewToFront(activityLoadingContainer)
+        embedContentTabs()
         // Ensure camera button is on top of segmented control
         activityFeedSection.bringSubviewToFront(momentsCameraButton)
         
@@ -1858,11 +1859,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             reelsCollectionView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
             reelsCollectionView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
 
-            // Specials table (same slot as the other content views)
-            specialsTableView.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
-            specialsTableView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
-            specialsTableView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
-            specialsTableView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
+            // Content tabs (same slot as the inline content views)
+            tabContentContainer.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
+            tabContentContainer.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
+            tabContentContainer.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
+            tabContentContainer.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
 
             // Activity empty state
             activityEmptyStateLabel.centerXAnchor.constraint(equalTo: activityFeedSection.centerXAnchor),
@@ -1887,9 +1888,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         mapHeightConstraint = mapContainerView.heightAnchor.constraint(equalToConstant: 320)
         mapHeightConstraint?.isActive = true
         
-        // Set a reasonable height for the activity table to allow scrolling
-        activityTableHeightConstraint = activityTableView.heightAnchor.constraint(equalToConstant: 600)
-        activityTableHeightConstraint?.isActive = true
+        // The content area is a fixed 600pt; the tabs scroll inside it. This
+        // one constraint sizes the whole activity section.
+        contentTabHeightConstraint = tabContentContainer.heightAnchor.constraint(equalToConstant: 600)
+        contentTabHeightConstraint?.isActive = true
         
         // Search results table view constraints
         NSLayoutConstraint.activate([
@@ -2010,10 +2012,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         reelsCollectionView.delegate = self
         reelsCollectionView.dataSource = self
         reelsCollectionView.register(VideoReelCell.self, forCellWithReuseIdentifier: "VideoReelCell")
-
-        specialsTableView.delegate = self
-        specialsTableView.dataSource = self
-        specialsTableView.register(SpecialItemCell.self, forCellReuseIdentifier: SpecialItemCell.identifier)
 
         // Setup segmented control
         contentSegmentedControl.addTarget(self, action: #selector(contentSegmentChanged), for: .valueChanged)
@@ -2171,7 +2169,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         case 1:
             fetchReels()
         default:
-            fetchSpecials(force: true)
+            specialsTab.refreshTab()
         }
         
         // Also refresh circles data for consistency
@@ -2188,9 +2186,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         switch selectedIndex {
         case 0:
             // Show Activity feed
+            specialsTab.setTabVisible(false)
             activityTableView.isHidden = false
             reelsCollectionView.isHidden = true
-            specialsTableView.isHidden = true
             momentsCameraButton.isHidden = true
             activityHeaderLabel.text = "Recent Activity"
 
@@ -2203,9 +2201,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             }
         case 1:
             // Show Reels feed
+            specialsTab.setTabVisible(false)
             activityTableView.isHidden = true
             reelsCollectionView.isHidden = false
-            specialsTableView.isHidden = true
 
             // Reset to first video
             currentReelIndex = 0
@@ -2236,178 +2234,35 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // Show Specials (live offers + announcements from participating venues)
             activityTableView.isHidden = true
             reelsCollectionView.isHidden = true
-            specialsTableView.isHidden = false
             momentsCameraButton.isHidden = true
             activityHeaderLabel.text = "Specials"
 
             // Pause any playing videos (may be arriving from Moments)
             pauseAllVideos()
 
-            // Load once; pull-to-refresh refetches
-            if specials.isEmpty {
-                fetchSpecials()
-            }
+            specialsTab.setTabVisible(true)
         }
     }
 
-    // MARK: - Specials Methods
+    // MARK: - Content tab hosting
 
-    /// Loads live deals from participating venues and flattens them into one
-    /// row per offer/announcement, preserving the server's venue order
-    /// (saved venues first, then nearest).
-    func fetchSpecials(force: Bool = false) {
-        guard !isLoadingSpecials else { return }
-        isLoadingSpecials = true
-
-        if specials.isEmpty {
-            activityLoadingContainer.isHidden = false
-            activityLoadingIndicator.startAnimating()
-            activityEmptyStateLabel.isHidden = true
+    /// Adds the extracted tabs as child view controllers filling
+    /// `tabContentContainer`. Every tab starts hidden; the segment switch
+    /// (`contentSegmentChanged`) shows the selected one.
+    func embedContentTabs() {
+        for tab in [specialsTab] as [UIViewController & HomeContentTab] {
+            addChild(tab)
+            tab.view.translatesAutoresizingMaskIntoConstraints = false
+            tab.view.isHidden = true
+            tabContentContainer.addSubview(tab.view)
+            NSLayoutConstraint.activate([
+                tab.view.topAnchor.constraint(equalTo: tabContentContainer.topAnchor),
+                tab.view.leadingAnchor.constraint(equalTo: tabContentContainer.leadingAnchor),
+                tab.view.trailingAnchor.constraint(equalTo: tabContentContainer.trailingAnchor),
+                tab.view.bottomAnchor.constraint(equalTo: tabContentContainer.bottomAnchor)
+            ])
+            tab.didMove(toParent: self)
         }
-
-        // Location improves ordering but is optional — denied/unavailable
-        // falls back to the server's alphabetical order
-        LocationService.shared.getCurrentLocation { [weak self] location in
-            RewardsService.shared.getOffers(
-                lat: location?.coordinate.latitude,
-                lng: location?.coordinate.longitude
-            ) { result in
-                DispatchQueue.main.async {
-                    guard let self = self else { return }
-                    self.isLoadingSpecials = false
-                    self.activityLoadingIndicator.stopAnimating()
-                    self.activityLoadingContainer.isHidden = true
-                    self.scrollView.refreshControl?.endRefreshing()
-
-                    // Only touch shared UI if Specials is still the visible tab
-                    let onSpecialsTab = self.contentSegmentedControl.selectedSegmentIndex == 2
-
-                    switch result {
-                    case .success(let data):
-                        self.specials = data.venues.flatMap { venue -> [SpecialItem] in
-                            let offerItems = venue.offers.map {
-                                SpecialItem(venue: venue, kind: .offer($0))
-                            }
-                            let announcementItems = (venue.announcements ?? []).map {
-                                SpecialItem(venue: venue, kind: .announcement($0))
-                            }
-                            return offerItems + announcementItems
-                        }
-                        self.specialsTableView.reloadData()
-
-                        if onSpecialsTab {
-                            if self.specials.isEmpty {
-                                self.activityEmptyStateLabel.text = "No specials right now — check back soon"
-                                self.activityEmptyStateLabel.isHidden = false
-                            } else {
-                                self.activityEmptyStateLabel.isHidden = true
-                            }
-                        }
-
-                    case .failure:
-                        if self.specials.isEmpty && onSpecialsTab {
-                            self.activityEmptyStateLabel.text = "Couldn't load specials — pull to refresh"
-                            self.activityEmptyStateLabel.isHidden = false
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// Opens the tapped deal's place page — same resolution as the Rewards
-    /// screen: canonical global place by id, venue-built fallback otherwise.
-    func openSpecialPlace(_ venue: OfferVenue) {
-        guard let placeId = venue.globalPlaceId ?? venue.googlePlaceId else {
-            pushSpecialPlaceFallback(venue)
-            return
-        }
-
-        let loading = AlertPresenter.showLoading(message: "Loading place...", from: self)
-        GlobalPlaceService.shared.getGlobalPlace(id: placeId) { [weak self] result in
-            DispatchQueue.main.async {
-                loading.dismiss(animated: true) {
-                    guard let self = self else { return }
-                    switch result {
-                    case .success(let response):
-                        let place = response.bestDetailPlace()
-                        let detailVC = PlaceDetailViewController(place: place)
-                        self.navigationController?.pushViewController(detailVC, animated: true)
-                    case .failure:
-                        self.pushSpecialPlaceFallback(venue)
-                    }
-                }
-            }
-        }
-    }
-
-    /// Long-press share on a Specials row: the deal's text plus the venue's
-    /// place link (or the App Store link when the venue has no linked place)
-    func shareSpecial(_ item: SpecialItem) {
-        var shareText: String
-        switch item.kind {
-        case .offer(let offer):
-            shareText = "🎁 \(offer.title) at \(item.venue.venueName) — redeem it with points on Circles!"
-        case .announcement(let announcement):
-            shareText = "📣 \(announcement.title) at \(item.venue.venueName)"
-            if !announcement.message.isEmpty {
-                shareText += "\n\(announcement.message)"
-            }
-            shareText += "\nSeen on Circles:"
-        }
-
-        // The /place page resolves both save-doc and globalPlaces ids — a
-        // googlePlaceId won't resolve, so fall back to the App Store link
-        let url: URL = item.venue.globalPlaceId.map { ShareLinks.place(id: $0) } ?? ShareLinks.appStoreURL
-
-        let activityVC = UIActivityViewController(activityItems: [shareText, url], applicationActivities: nil)
-        activityVC.popoverPresentationController?.sourceView = specialsTableView
-        present(activityVC, animated: true)
-    }
-
-    func pushSpecialPlaceFallback(_ venue: OfferVenue) {
-        var location: GeoLocation?
-        if let coordinate = venue.location {
-            // GeoJSON order: [longitude, latitude]
-            location = GeoLocation(type: "Point", coordinates: [coordinate.lng, coordinate.lat])
-        }
-
-        let place = Place(
-            id: venue.globalPlaceId ?? venue.googlePlaceId ?? venue.venueId,
-            globalPlaceId: venue.globalPlaceId,
-            name: venue.placeName ?? venue.venueName,
-            description: nil,
-            address: venue.placeAddress ?? "",
-            location: location,
-            website: nil,
-            phone: nil,
-            googlePlaceId: venue.googlePlaceId,
-            photos: nil,
-            videos: nil,
-            category: PlaceCategory(rawValue: venue.category ?? "") ?? .restaurant,
-            customCategoryId: nil,
-            subcategory: nil,
-            rating: nil,
-            userRatingsTotal: nil,
-            notes: nil,
-            privateNotes: nil,
-            publicNotes: nil,
-            tags: nil,
-            reviews: nil,
-            openingHours: nil,
-            priceLevel: nil,
-            likes: nil,
-            likesCount: nil,
-            commentsCount: nil,
-            circleId: nil,
-            addedBy: "",
-            addedByUser: nil,
-            privacy: .public,
-            createdAt: Date(),
-            updatedAt: Date()
-        )
-        let detailVC = PlaceDetailViewController(place: place)
-        navigationController?.pushViewController(detailVC, animated: true)
     }
 
     func fetchActivities(loadMore: Bool = false, completion: ((Bool) -> Void)? = nil) {
@@ -4993,5 +4848,12 @@ extension CirclesHomeViewController: HomeDataLoaderDelegate {
         // the canonical id its added-by match finds nothing
         presentedFullScreenMap?.setConnectionFilterContext(canonicalId)
         userListView.selectedUserId = canonicalId
+    }
+}
+
+// MARK: - HomeContentTabHost
+extension CirclesHomeViewController: HomeContentTabHost {
+    func endRefreshing() {
+        scrollView.refreshControl?.endRefreshing()
     }
 }

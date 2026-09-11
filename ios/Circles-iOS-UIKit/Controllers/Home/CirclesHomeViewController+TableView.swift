@@ -40,8 +40,6 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             }
         } else if tableView == activityTableView {
             return feedItems.count
-        } else if tableView == specialsTableView {
-            return specials.count
         }
         return 0
     }
@@ -247,11 +245,6 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 cell.setGroupChildStyle(false)
             }
             return cell
-        } else if tableView == specialsTableView {
-            let cell = tableView.dequeueReusableCell(withIdentifier: SpecialItemCell.identifier, for: indexPath) as! SpecialItemCell
-            guard indexPath.row < specials.count else { return cell }
-            cell.configure(with: specials[indexPath.row])
-            return cell
         }
 
         return UITableViewCell()
@@ -304,30 +297,12 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         }
     }
 
-    // Long-press a Specials row to share the deal (with the place link)
-    func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
-        guard tableView == specialsTableView, indexPath.row < specials.count else { return nil }
-        let item = specials[indexPath.row]
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
-            let share = UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
-                self?.shareSpecial(item)
-            }
-            return UIMenu(children: [share])
-        }
-    }
-
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
 
         if tableView == placesListTableView {
             guard indexPath.row < distanceSortedPlaces.count else { return }
             presentDetailForPlace(distanceSortedPlaces[indexPath.row].place)
-            return
-        }
-
-        if tableView == specialsTableView {
-            guard indexPath.row < specials.count else { return }
-            openSpecialPlace(specials[indexPath.row].venue)
             return
         }
 
