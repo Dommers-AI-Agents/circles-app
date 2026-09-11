@@ -11,6 +11,12 @@ class PlaceDetailViewController: BaseViewController {
     // Our OWN save of this venue when `place` is another user's copy —
     // private notes read from and write to this record
     private var mySaveOfVenue: Place?
+    /// Private notes editor and save (notes live on our OWN save record).
+    private lazy var notesEdit: PlaceNotesEditController = {
+        let controller = PlaceNotesEditController(presenter: self)
+        controller.delegate = self
+        return controller
+    }()
     private var circle: Circle?
     private var creatorUser: User? // Store the creator user for navigation
     private var userCircles: [Circle] = [] // Store user's circles for check-in detection
@@ -2476,37 +2482,8 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     @objc private func descriptionLabelTapped(_ gesture: UITapGestureRecognizer) {
-        guard let attributedText = descriptionLabel.attributedText else { return }
-        
-        let location = gesture.location(in: descriptionLabel)
-        
-        // Create text container
-        let textContainer = NSTextContainer(size: descriptionLabel.bounds.size)
-        textContainer.lineFragmentPadding = 0
-        textContainer.maximumNumberOfLines = descriptionLabel.numberOfLines
-        textContainer.lineBreakMode = descriptionLabel.lineBreakMode
-        
-        // Create layout manager
-        let layoutManager = NSLayoutManager()
-        layoutManager.addTextContainer(textContainer)
-        
-        // Create text storage
-        let textStorage = NSTextStorage(attributedString: attributedText)
-        textStorage.addLayoutManager(layoutManager)
-        
-        // Find the character index at tap location
-        let characterIndex = layoutManager.characterIndex(
-            for: location,
-            in: textContainer,
-            fractionOfDistanceBetweenInsertionPoints: nil
-        )
-        
-        // Check if tap is on a URL
-        attributedText.enumerateAttribute(.link, in: NSRange(location: 0, length: attributedText.length), options: []) { (value, range, stop) in
-            if let url = value as? URL, NSLocationInRange(characterIndex, range) {
-                UIApplication.shared.open(url)
-                stop.pointee = true
-            }
+        if let url = descriptionLabel.link(at: gesture.location(in: descriptionLabel)) {
+            UIApplication.shared.open(url)
         }
     }
     
@@ -2520,124 +2497,26 @@ class PlaceDetailViewController: BaseViewController {
         ]
         attributedString.addAttributes(defaultAttributes, range: NSRange(location: 0, length: text.count))
         
-        // Find "Website: " patterns and make URLs clickable
-        let websitePattern = "Website: (https?://[^\\s\\n]+)"
-        let regex = try? NSRegularExpression(pattern: websitePattern, options: [])
-        let matches = regex?.matches(in: text, options: [], range: NSRange(location: 0, length: text.count)) ?? []
-        
-        for match in matches {
-            // Get the URL part (capture group 1)
-            if match.numberOfRanges > 1 {
-                let urlRange = match.range(at: 1)
-                let urlString = (text as NSString).substring(with: urlRange)
-                
-                if let url = URL(string: urlString) {
-                    // Style the URL as clickable
-                    let urlAttributes: [NSAttributedString.Key: Any] = [
-                        .link: url,
-                        .foregroundColor: UIColor.systemBlue,
-                        .underlineStyle: NSUnderlineStyle.single.rawValue
-                    ]
-                    attributedString.addAttributes(urlAttributes, range: urlRange)
-                }
-            }
+        // "Website: https://…" lines: style the URL as clickable
+        for link in PlaceDescriptionLinks.websiteLinks(in: text) {
+            let urlAttributes: [NSAttributedString.Key: Any] = [
+                .link: link.url,
+                .foregroundColor: UIColor.systemBlue,
+                .underlineStyle: NSUnderlineStyle.single.rawValue
+            ]
+            attributedString.addAttributes(urlAttributes, range: link.range)
         }
         
         return attributedString
     }
     
-    /// When this screen shows ANOTHER user's copy of a venue, our private
-    /// note (if any) lives on OUR save record. Resolve it so the notes
-    /// section shows and edits the right thing.
+    /// Our private note may live on our OWN save record (see PlaceNotesEditController).
     func loadMySaveOfVenueIfNeeded() {
-        guard !place.isAddedByCurrentUser,
-              let globalPlaceId = place.globalPlaceId ?? place.googlePlaceId else { return }
-        PlaceService.shared.fetchMySaveOfVenue(globalPlaceId: globalPlaceId) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self, case .success(let mine) = result else { return }
-                self.mySaveOfVenue = mine
-                // Refresh just the notes section with our own note
-                if let myNotes = mine.privateNotes, !myNotes.isEmpty {
-                    self.notesLabel.text = myNotes
-                    self.notesLabel.isHidden = false
-                    self.addNotesButton.isHidden = true
-                    self.notesEditButton.isHidden = false
-                }
-            }
-        }
-    }
-
-    /// The save record private notes belong to: our own save when the screen
-    /// shows someone else's copy of the venue
-    private var notesTargetPlace: Place? {
-        if place.isAddedByCurrentUser { return place }
-        return mySaveOfVenue
+        notesEdit.loadMySaveOfVenueIfNeeded()
     }
 
     private func showNotesEditor() {
-        let notesEditorVC = NotesEditorViewController(
-            privateNotes: notesTargetPlace?.privateNotes ?? "",
-            isPrivateNotesEnabled: notesTargetPlace != nil
-        )
-
-        notesEditorVC.onSave = { [weak self] privateNotes in
-            self?.updatePlaceNotes(privateNotes: privateNotes)
-        }
-
-        let navController = UINavigationController(rootViewController: notesEditorVC)
-        present(navController, animated: true)
-    }
-
-    private func updatePlaceNotes(privateNotes: String) {
-        guard let target = notesTargetPlace else { return }
-
-        // Show loading indicator
-        let loadingAlert = AlertPresenter.showLoading(message: "Saving Notes...", from: self)
-
-        // Call PlaceService to update notes on Firebase
-        PlaceService.shared.updatePlace(
-            id: target.id,
-            privateNotes: privateNotes
-        ) { [weak self] result in
-            guard let self = self else { return }
-
-            // Ensure all UI updates happen on the main thread
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success(let updatedPlace):
-                        // Keep the in-memory model in sync — the notes editor
-                        // seeds from the target record, so a stale copy would
-                        // show (and then re-save) the old text
-                        if updatedPlace.id == self.place.id {
-                            self.place = updatedPlace
-                        } else {
-                            self.mySaveOfVenue = updatedPlace
-                        }
-
-                        // Only the saver has a note, and only they ever see it
-                        let notesText = privateNotes
-
-                        if !notesText.isEmpty {
-                            self.notesLabel.text = notesText
-                            self.notesLabel.textColor = Constants.Colors.gray
-                            self.notesLabel.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-                            self.notesLabel.isHidden = false
-                            self.addNotesButton.isHidden = true
-                            self.notesEditButton.isHidden = false
-                        } else {
-                            self.notesLabel.isHidden = true
-                            self.addNotesButton.isHidden = false
-                            self.notesEditButton.isHidden = true
-                        }
-                        
-                    case .failure(let error):
-                        // Show error alert
-                        self.showError("Failed to save notes: \(error.localizedDescription)")
-                    }
-                }
-            }
-        }
+        notesEdit.presentEditor()
     }
     
     // MARK: - Photo Loading
@@ -3999,6 +3878,51 @@ extension PlaceDetailViewController: PlaceLookAroundControllerDelegate {
             // Has photos, just store street view for toggle option
             updateToggleButtonVisibility()
             Logger.debug("PlaceDetailViewController: Street view loaded but not shown (place has photos)")
+        }
+    }
+}
+
+// MARK: - PlaceNotesEditControllerDelegate
+
+extension PlaceDetailViewController: PlaceNotesEditControllerDelegate {
+    func currentPlace(for controller: PlaceNotesEditController) -> Place { place }
+    func mySaveOfVenue(for controller: PlaceNotesEditController) -> Place? { mySaveOfVenue }
+
+    func notesEdit(_ controller: PlaceNotesEditController, didLoadMySave mine: Place) {
+        mySaveOfVenue = mine
+        // Refresh just the notes section with our own note
+        if let myNotes = mine.privateNotes, !myNotes.isEmpty {
+            notesLabel.text = myNotes
+            notesLabel.isHidden = false
+            addNotesButton.isHidden = true
+            notesEditButton.isHidden = false
+        }
+    }
+
+    func notesEdit(_ controller: PlaceNotesEditController, didSave privateNotes: String, updatedPlace: Place) {
+        // Keep the in-memory model in sync — the notes editor
+        // seeds from the target record, so a stale copy would
+        // show (and then re-save) the old text
+        if updatedPlace.id == place.id {
+            place = updatedPlace
+        } else {
+            mySaveOfVenue = updatedPlace
+        }
+
+        // Only the saver has a note, and only they ever see it
+        let notesText = privateNotes
+
+        if !notesText.isEmpty {
+            notesLabel.text = notesText
+            notesLabel.textColor = Constants.Colors.gray
+            notesLabel.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
+            notesLabel.isHidden = false
+            addNotesButton.isHidden = true
+            notesEditButton.isHidden = false
+        } else {
+            notesLabel.isHidden = true
+            addNotesButton.isHidden = false
+            notesEditButton.isHidden = true
         }
     }
 }

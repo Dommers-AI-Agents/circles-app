@@ -18,6 +18,7 @@ protocol PlaceLookAroundControllerDelegate: AnyObject {
 /// Apple Look Around for the place page: availability, the street-level
 /// snapshot, and whether it is currently shown in the carousel. The page
 /// owns the UI; this owns the fetches and the three flags.
+@MainActor
 final class PlaceLookAroundController {
     weak var delegate: PlaceLookAroundControllerDelegate?
 
