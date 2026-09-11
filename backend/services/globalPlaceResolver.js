@@ -463,6 +463,7 @@ async function flagForCategoryReview(globalPlaceId, venueData) {
 }
 
 module.exports = {
+  haversineMeters,
   resolveGlobalPlace,
   createGlobalPlaceFromLegacy,
   createGlobalPlaceFromDetails,

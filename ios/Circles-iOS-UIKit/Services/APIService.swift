@@ -1182,7 +1182,7 @@ class APIService {
     
     // MARK: - Check-In API
     
-    func createCheckIn(_ checkInData: [String: Any], completion: @escaping (Result<CheckIn, APIError>) -> Void) {
+    func createCheckIn(_ checkInData: [String: Any], completion: @escaping (Result<(checkIn: CheckIn, stats: CheckInStats?), APIError>) -> Void) {
         request(
             endpoint: "check-ins",
             method: .post,
@@ -1193,7 +1193,11 @@ class APIService {
             case .success(let response):
                 // A check-in earns a coin (once per venue per day)
                 PiggyBankDepositView.play(credit: response.piggyBank)
-                completion(.success(response.data))
+                var info: [String: Any] = [:]
+                if let placeId = response.data.placeId { info["placeId"] = placeId }
+                if let stats = response.myCheckInStats { info["stats"] = stats }
+                NotificationCenter.default.post(name: .checkInCreated, object: nil, userInfo: info)
+                completion(.success((checkIn: response.data, stats: response.myCheckInStats)))
             case .failure(let error):
                 completion(.failure(error))
             }

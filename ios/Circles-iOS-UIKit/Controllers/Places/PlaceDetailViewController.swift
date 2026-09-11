@@ -287,6 +287,19 @@ class PlaceDetailViewController: BaseViewController {
         return button
     }()
 
+    // Personal history under the quick actions: "Checked in 7 times · last
+    // Sep 5". Collapsed (zero height, no gap) until the viewer has checked in.
+    private let checkInHistoryLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+    private var checkInHistoryTopConstraint: NSLayoutConstraint?
+    private var checkInHistoryHeightConstraint: NSLayoutConstraint?
+
     // Add to Circle: compact pill in the action row, left of Follow — same
     // size and style family (they're sibling actions; this one also picks
     // the circle)
@@ -744,6 +757,7 @@ class PlaceDetailViewController: BaseViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        NotificationCenter.default.addObserver(self, selector: #selector(handleCheckInCreated(_:)), name: .checkInCreated, object: nil)
         Logger.debug("PlaceDetailViewController viewDidLoad")
         
         // Set up media capture service
@@ -996,6 +1010,7 @@ class PlaceDetailViewController: BaseViewController {
         savedByView.addGestureRecognizer(savedByTapGesture)
 
         infoContainerView.addSubview(practicalButtonsStackView)
+        infoContainerView.addSubview(checkInHistoryLabel)
         infoContainerView.addSubview(addressLabel)
         infoContainerView.addSubview(hoursLabel)
         infoContainerView.addSubview(mapView)
@@ -1277,7 +1292,18 @@ class PlaceDetailViewController: BaseViewController {
             partnerActionsRowView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             partnerActionsRowView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium)
         ])
-        let partnerTop = partnerActionsRowView.topAnchor.constraint(equalTo: practicalButtonsStackView.bottomAnchor, constant: 0)
+        let historyTop = checkInHistoryLabel.topAnchor.constraint(equalTo: practicalButtonsStackView.bottomAnchor, constant: 0)
+        let historyHeight = checkInHistoryLabel.heightAnchor.constraint(equalToConstant: 0)
+        NSLayoutConstraint.activate([
+            historyTop,
+            historyHeight,
+            checkInHistoryLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            checkInHistoryLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium)
+        ])
+        checkInHistoryTopConstraint = historyTop
+        checkInHistoryHeightConstraint = historyHeight
+
+        let partnerTop = partnerActionsRowView.topAnchor.constraint(equalTo: checkInHistoryLabel.bottomAnchor, constant: 0)
         let partnerHeight = partnerActionsRowView.heightAnchor.constraint(equalToConstant: 0)
         partnerTop.isActive = true
         partnerHeight.isActive = true
@@ -1414,6 +1440,7 @@ class PlaceDetailViewController: BaseViewController {
     private func configureUI() {
         // Set place details
         nameLabel.text = place.name
+        updateCheckInHistory()
         
         // Creator info
         configureCreatorInfo()
@@ -2203,6 +2230,26 @@ class PlaceDetailViewController: BaseViewController {
     
     @objc private func checkInRowButtonTapped() {
         CheckInViewController.present(from: self, prefilledPlace: place)
+    }
+
+    private func updateCheckInHistory() {
+        let line = CheckInHistoryFormatter.line(for: place.myCheckInStats)
+        checkInHistoryLabel.text = line
+        let show = line != nil
+        checkInHistoryHeightConstraint?.constant = show ? 18 : 0
+        checkInHistoryTopConstraint?.constant = show ? Constants.Spacing.small : 0
+    }
+
+    /// A check-in just landed (from this page or anywhere else). Apply the
+    /// server's updated history immediately when it's this save, then refetch
+    /// so a venue-level match (same place saved in another circle) shows too.
+    @objc private func handleCheckInCreated(_ note: Notification) {
+        if let placeId = note.userInfo?["placeId"] as? String, placeId == place.id,
+           let stats = note.userInfo?["stats"] as? CheckInStats {
+            place.myCheckInStats = stats
+            updateCheckInHistory()
+        }
+        refreshPlaceFromServer()
     }
 
     @objc private func directionsButtonTapped() {
