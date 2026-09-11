@@ -38,8 +38,6 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             case .people: return searchedUsers.count
             case .none: return 0
             }
-        } else if tableView == activityTableView {
-            return feedItems.count
         }
         return 0
     }
@@ -224,27 +222,6 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             cell.accessoryType = .detailDisclosureButton
 
             return cell
-        } else if tableView == activityTableView {
-            let cell = tableView.dequeueReusableCell(withIdentifier: ActivityFeedCell.identifier, for: indexPath) as! ActivityFeedCell
-
-            guard let item = activityFeedItem(at: indexPath.row) else {
-                return cell
-            }
-
-            cell.delegate = self
-            switch item {
-            case .single(let activity):
-                cell.configure(with: activity)
-                cell.setGroupChildStyle(false)
-            case .groupChild(let activity):
-                cell.configure(with: activity)
-                cell.setGroupChildStyle(true)
-            case .group(let groupActivities):
-                cell.configure(withGroup: groupActivities,
-                               isExpanded: expandedGroupKeys.contains(groupActivities[0].id))
-                cell.setGroupChildStyle(false)
-            }
-            return cell
         }
 
         return UITableViewCell()
@@ -358,65 +335,6 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 guard indexPath.row < filteredPlaces.count else { return }
                 mapViewController?.setSearchFilter(nil)
                 handleSearchResultSelection(at: indexPath)
-            }
-        } else if tableView == activityTableView {
-            guard let item = activityFeedItem(at: indexPath.row) else { return }
-
-            // Group summary rows expand/collapse in place
-            let activity: Activity
-            switch item {
-            case .single(let a), .groupChild(let a):
-                activity = a
-            case .group(let groupActivities):
-                toggleActivityGroup(withKey: groupActivities[0].id)
-                return
-            }
-
-            // Navigate based on activity type
-            switch activity.type {
-            case .placeAdded, .placeLiked, .photoUploaded, .placeDiscovered:
-                // Navigate to the place
-                navigateToPlace(withId: activity.targetId)
-            case .placeCommented:
-                // A comment activity lands IN the comments, not at the page top
-                navigateToPlace(withId: activity.targetId, showComments: true)
-            case .commentLiked:
-                // targetId is the COMMENT id for these; the place lives in metadata
-                if let placeId = activity.metadata?.placeId {
-                    navigateToPlace(withId: placeId, showComments: true)
-                } else if let globalPlaceId = activity.metadata?.globalPlaceId {
-                    navigateToGlobalPlace(withId: globalPlaceId, showComments: true)
-                }
-            case .circleCreated, .circleLiked, .circleCommented:
-                // Navigate to the circle
-                navigateToCircle(withId: activity.targetId)
-            case .checkIn:
-                // Navigate to the check-in place
-                navigateToCheckInPlace(activity: activity)
-            case .videoUploaded, .videoLiked:
-                // Navigate to the video (targetId is the video ID for video activities)
-                navigateToVideo(withId: activity.targetId)
-            case .commentAdded:
-                // Target varies (place, circle, moment) - only navigate when it's a known kind
-                if activity.targetType == "circle" {
-                    navigateToCircle(withId: activity.targetId)
-                } else if activity.targetType == "place" {
-                    navigateToPlace(withId: activity.targetId)
-                }
-            case .venueAnnouncement, .venueOffer:
-                // targetId is the venue's canonical globalPlaces id — open the
-                // place page the same way the Specials tab does
-                navigateToGlobalPlace(withId: activity.targetId)
-            case .globalPlaceLiked:
-                // A photo like: targetId is the PHOTO id — the venue is
-                // metadata.globalPlaceId (backfilled onto older activities)
-                if let globalPlaceId = activity.metadata?.globalPlaceId {
-                    navigateToGlobalPlace(withId: globalPlaceId)
-                }
-            case .suggestionSent, .suggestionAccepted,
-                 .profileUpdated, .userActivity, .reactionAdded, .unknown:
-                // No reliable local destination for these
-                break
             }
         }
     }

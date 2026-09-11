@@ -128,9 +128,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     // Welcome tour tracking
     var isShowingWelcomeTour = false
     
-    // Reaction picker tracking
-    var currentReactionActivity: Activity?
-    
     // MARK: - BaseViewController Configuration (DISABLED for debugging)
     override var loadsDataOnViewDidLoad: Bool { false } // Disable auto-loading to prevent conflicts
     override var reloadsDataOnAppear: Bool { false } // We handle this manually
@@ -586,20 +583,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     var isSearchScopeDropdownOpen = false
     var searchScopeDropdownHeightConstraint: NSLayoutConstraint?
     
-    // Activity Feed Properties
-    // Any mutation re-derives the grouped feed rows — several load paths
-    // (cache apply, fast-path load) reload the table without going through
-    // updateActivityFeed(), and the table renders from feedItems
-    var activities: [Activity] = [] {
-        didSet {
-            regroupActivities()
-            // Runs for EVERY load path (cache/fast-API/preload set activities
-            // then reloadData directly, bypassing updateActivityFeed) so the
-            // viewport-fill isn't tied to one code path.
-            fillActivityViewportIfNeeded()
-        }
-    }
-    var isLoadingActivities = false
+    // Activity tab (child); `activities` forwards for the loader/preload/blocked-user paths
+    lazy var activityTab: HomeActivityFeedViewController = {
+        let tab = HomeActivityFeedViewController()
+        tab.host = self
+        return tab
+    }()
+    var activities: [Activity] { get { activityTab.activities } set { activityTab.activities = newValue } }
     var contentTabHeightConstraint: NSLayoutConstraint?
     
     // Daily Summary Properties
@@ -619,11 +609,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     var hasCheckedTutorialAndOverlay = false
     var tutorialCheckRetryCount = 0
     let maxTutorialCheckRetries = 3
-    
-    // Pagination properties
-    var currentOffset = 0
-    var hasMoreActivities = true
-    var isLoadingMoreActivities = false
     
     // Activity Feed UI Elements
     let activityFeedSection: UIView = {
@@ -668,18 +653,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return button
     }()
     
-    let activityTableView: UITableView = {
-        let tableView = UITableView()
-        tableView.backgroundColor = Constants.Colors.background
-        tableView.separatorStyle = .none
-        tableView.rowHeight = UITableView.automaticDimension
-        tableView.estimatedRowHeight = 60
-        tableView.isScrollEnabled = true // Enable scrolling for proper display
-        tableView.showsVerticalScrollIndicator = true
-        tableView.translatesAutoresizingMaskIntoConstraints = false
-        return tableView
-    }()
-
     // MARK: - Content tabs
     // The segment bar switches between child view controllers whose views
     // fill `tabContentContainer` (see HomeContentTab). Activity and Moments
@@ -697,52 +670,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return tab
     }()
 
-    let activityEmptyStateLabel: UILabel = {
-        let label = UILabel()
-        label.text = "No recent activity from your network"
-        label.font = UIFont.systemFont(ofSize: 16)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.textAlignment = .center
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.isHidden = true
-        return label
-    }()
-    
-    let activityLoadingContainer: UIView = {
-        let container = UIView()
-        container.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.95)
-        container.layer.cornerRadius = 12
-        container.layer.shadowColor = UIColor.black.cgColor
-        container.layer.shadowOpacity = 0.1
-        container.layer.shadowOffset = CGSize(width: 0, height: 2)
-        container.layer.shadowRadius = 4
-        container.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Add loading indicator as subview
-        let indicator = UIActivityIndicatorView(style: .large)
-        indicator.color = Constants.Colors.primary
-        indicator.translatesAutoresizingMaskIntoConstraints = false
-        indicator.hidesWhenStopped = false
-        container.addSubview(indicator)
-        
-        // Center indicator in container
-        NSLayoutConstraint.activate([
-            indicator.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            indicator.centerYAnchor.constraint(equalTo: container.centerYAnchor)
-        ])
-        
-        // Store reference to indicator for later access
-        container.tag = 999 // Use tag to retrieve indicator later
-        
-        return container
-    }()
-    
-    var activityLoadingIndicator: UIActivityIndicatorView {
-        // Get the indicator from the container using the tag
-        return activityLoadingContainer.subviews.first(where: { $0 is UIActivityIndicatorView }) as? UIActivityIndicatorView ?? UIActivityIndicatorView()
-    }
-    
     // Floating record button for Reels tab
     let floatingRecordButton: UIButton = {
         let button = UIButton(type: .system)
@@ -759,25 +686,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return button
     }()
     
-    let loadMoreIndicatorView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.background
-        view.translatesAutoresizingMaskIntoConstraints = false
-        
-        let indicator = UIActivityIndicatorView(style: .medium)
-        indicator.color = Constants.Colors.primary
-        indicator.translatesAutoresizingMaskIntoConstraints = false
-        indicator.startAnimating()
-        
-        view.addSubview(indicator)
-        NSLayoutConstraint.activate([
-            indicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            indicator.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            view.heightAnchor.constraint(equalToConstant: 60)
-        ])
-        
-        return view
-    }()
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -816,9 +724,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Start with empty state hidden until data loads
         emptyStateView.isHidden = true
-        
-        // Hide activity loading container initially - will be shown when fetchActivities is called
-        activityLoadingContainer.isHidden = true
         
         // Store cached places but don't display them yet
         // Wait for circles to load before displaying any places to ensure consistency
@@ -908,7 +813,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Hide main content initially
         mapContainerView.alpha = 0.3 // Keep slightly visible
-        activityTableView.alpha = 0.3
+        tabContentContainer.alpha = 0.3
         userListView.alpha = 0.3
     }
     
@@ -923,7 +828,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Animate content in and skeleton out
         UIView.animate(withDuration: 0.4, animations: {
             self.mapContainerView.alpha = 1.0
-            self.activityTableView.alpha = 1.0
+            self.tabContentContainer.alpha = 1.0
             self.userListView.alpha = 1.0
         })
         
@@ -1580,12 +1485,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityFeedSection.addSubview(contentSegmentedControl)
         activityFeedSection.addSubview(momentsCameraButton)
         activityFeedSection.addSubview(tabContentContainer)
-        activityFeedSection.addSubview(activityTableView)
-        activityFeedSection.addSubview(activityEmptyStateLabel)
-        activityFeedSection.addSubview(activityLoadingContainer)
-        
-        // Ensure loading container is on top
-        activityFeedSection.bringSubviewToFront(activityLoadingContainer)
         embedContentTabs()
         // Ensure camera button is on top of segmented control
         activityFeedSection.bringSubviewToFront(momentsCameraButton)
@@ -1791,30 +1690,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             momentsCameraButton.widthAnchor.constraint(equalToConstant: 56),
             momentsCameraButton.heightAnchor.constraint(equalToConstant: 56),
             
-            // Activity table view
-            activityTableView.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
-            activityTableView.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
-            activityTableView.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
-            activityTableView.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
-            
             // Content tabs (same slot as the inline content views)
             tabContentContainer.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
             tabContentContainer.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
             tabContentContainer.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
             tabContentContainer.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
 
-            // Activity empty state
-            activityEmptyStateLabel.centerXAnchor.constraint(equalTo: activityFeedSection.centerXAnchor),
-            activityEmptyStateLabel.centerYAnchor.constraint(equalTo: activityTableView.centerYAnchor),
-            activityEmptyStateLabel.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor, constant: Constants.Spacing.large),
-            activityEmptyStateLabel.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor, constant: -Constants.Spacing.large),
-            
-            // Activity loading container
-            activityLoadingContainer.centerXAnchor.constraint(equalTo: activityFeedSection.centerXAnchor),
-            activityLoadingContainer.centerYAnchor.constraint(equalTo: activityTableView.centerYAnchor),
-            activityLoadingContainer.widthAnchor.constraint(equalToConstant: 80),
-            activityLoadingContainer.heightAnchor.constraint(equalToConstant: 80),
-            
             // Floating record button - positioned at top left
             floatingRecordButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
             floatingRecordButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 60),
@@ -1937,15 +1818,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     func setupActivityFeed() {
-        // Setup activity table view
-        activityTableView.delegate = self
-        activityTableView.dataSource = self
-        activityTableView.register(ActivityFeedCell.self, forCellReuseIdentifier: ActivityFeedCell.identifier)
-        
-        // Enable automatic row height calculation
-        activityTableView.rowHeight = UITableView.automaticDimension
-        activityTableView.estimatedRowHeight = 120
-        
         // Setup segmented control
         contentSegmentedControl.addTarget(self, action: #selector(contentSegmentChanged), for: .valueChanged)
         
@@ -2057,9 +1929,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             
             // Reload activity and moments UI if we have data
             if !self.activities.isEmpty {
-                self.activityTableView.reloadData()
-                self.activityLoadingContainer.isHidden = true
-                self.activityEmptyStateLabel.isHidden = true
+                self.activityTab.showLoadedActivities()
             }
             
             if !self.reels.isEmpty {
@@ -2098,7 +1968,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Refresh content based on selected tab
         switch contentSegmentedControl.selectedSegmentIndex {
         case 0:
-            fetchActivities()
+            activityTab.refreshTab()
         case 1:
             momentsTab.refreshTab()
         default:
@@ -2118,29 +1988,24 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
         switch selectedIndex {
         case 0:
-            // Show Activity feed
+            // Show Activity feed (loads if empty)
             momentsTab.setTabVisible(false) // pauses any playing moment
             specialsTab.setTabVisible(false)
-            activityTableView.isHidden = false
             momentsCameraButton.isHidden = true
             activityHeaderLabel.text = "Recent Activity"
-
-            // Load activities if needed
-            if activities.isEmpty {
-                fetchActivities()
-            }
+            activityTab.setTabVisible(true)
         case 1:
             // Show Moments feed; the tab resets to the first video, refreshes
             // and autoplays once loaded
+            activityTab.setTabVisible(false)
             specialsTab.setTabVisible(false)
-            activityTableView.isHidden = true
             momentsCameraButton.isHidden = false
             activityHeaderLabel.text = "Moments"
             momentsTab.setTabVisible(true)
         default:
             // Show Specials (live offers + announcements from participating venues)
+            activityTab.setTabVisible(false)
             momentsTab.setTabVisible(false) // pauses any playing moment
-            activityTableView.isHidden = true
             momentsCameraButton.isHidden = true
             activityHeaderLabel.text = "Specials"
             specialsTab.setTabVisible(true)
@@ -2153,7 +2018,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// `tabContentContainer`. Every tab starts hidden; the segment switch
     /// (`contentSegmentChanged`) shows the selected one.
     func embedContentTabs() {
-        for tab in [momentsTab, specialsTab] as [UIViewController & HomeContentTab] {
+        for tab in [activityTab, momentsTab, specialsTab] as [UIViewController & HomeContentTab] {
             addChild(tab)
             tab.view.translatesAutoresizingMaskIntoConstraints = false
             tab.view.isHidden = true
@@ -2166,307 +2031,30 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             ])
             tab.didMove(toParent: self)
         }
+        // Activity is the default segment. Mark it active directly (not via
+        // setTabVisible) so it doesn't fetch here — the initial load brings
+        // the feed — but does react to that load as the visible tab.
+        activityTab.isActiveTab = true
+        activityTab.view.isHidden = false
     }
 
+    // MARK: - Activity feed (forwarded to the Activity tab)
     func fetchActivities(loadMore: Bool = false, completion: ((Bool) -> Void)? = nil) {
-        guard !isLoadingActivities && !isLoadingMoreActivities else { 
-            Logger.debug("🔄 Already loading activities, skipping...")
-            completion?(false)
-            return 
-        }
-        
-        // Don't load more if we've reached the end
-        if loadMore && !hasMoreActivities {
-            Logger.debug("📊 No more activities to load")
-            completion?(false)
-            return
-        }
-        
-        Logger.debug("📊 Starting to fetch activities... (loadMore: \(loadMore))")
-        Logger.debug("📊 activityLoadingContainer.isHidden before: \(activityLoadingContainer.isHidden)")
-        Logger.debug("📊 activityLoadingIndicator.isAnimating before: \(activityLoadingIndicator.isAnimating)")
-        
-        // Check if user needs notification prompt when viewing activity feed
-        if !loadMore && activities.isEmpty {
-            NotificationPromptManager.shared.checkAndPromptIfNeeded(in: self, context: .activityFeed)
-        }
-        
-        if loadMore {
-            isLoadingMoreActivities = true
-            // Show loading footer
-            activityTableView.tableFooterView = loadMoreIndicatorView
-        } else {
-            isLoadingActivities = true
-            activityLoadingContainer.isHidden = false
-            activityLoadingIndicator.startAnimating()
-            activityEmptyStateLabel.isHidden = true
-            
-            // Hide the table view while loading initial activities
-            if activities.isEmpty {
-                activityTableView.isHidden = true
-            }
-            
-            Logger.debug("📊 activityLoadingContainer.isHidden after: \(activityLoadingContainer.isHidden)")
-            Logger.debug("📊 activityLoadingIndicator.isAnimating after: \(activityLoadingIndicator.isAnimating)")
-            Logger.debug("📊 activityTableView.isHidden: \(activityTableView.isHidden)")
-            currentOffset = 0 // Reset offset for fresh load
-            hasMoreActivities = true
-        }
-        
-        let offset = loadMore ? currentOffset : 0
-        
-        ActivityService.shared.getNetworkActivities(limit: 20, offset: offset) { [weak self] result in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                if loadMore {
-                    self.isLoadingMoreActivities = false
-                } else {
-                    self.isLoadingActivities = false
-                    self.activityLoadingIndicator.stopAnimating()
-                    self.activityLoadingContainer.isHidden = true
-                }
-                
-                switch result {
-                case .success(let response):
-                    Logger.debug("✅ Successfully fetched \(response.activities.count) activities")
-                    
-                    if loadMore {
-                        // Append to existing activities, skipping any already
-                        // shown — SSE prepends shift the pagination offset, so
-                        // the next page can overlap what's on screen
-                        let existingIds = Set(self.activities.map { $0.id })
-                        let newActivities = response.activities.filter { !existingIds.contains($0.id) }
-                        self.activities.append(contentsOf: newActivities)
-                    } else {
-                        // Replace activities
-                        self.activities = response.activities
-                    }
-                    
-                    // Update pagination state
-                    self.currentOffset = self.activities.count ?? 0
-                    self.hasMoreActivities = response.hasMore
-                    
-                    Logger.debug("📊 Total activities: \(self.activities.count ?? 0), hasMore: \(response.hasMore)")
-                    
-                    self.updateActivityFeed()
-                    
-                case .failure(let error):
-                    Logger.debug("❌ Error fetching activities: \(error)")
-                    Logger.debug("🔍 Error details: \(error.localizedDescription)")
-                    
-                    if !loadMore {
-                        self.activities = []
-                        self.updateActivityFeed()
-                    }
-                }
-                
-                self.scrollView.refreshControl?.endRefreshing()
-                completion?(true)
-            }
-        }
-    }
-    
-    // MARK: - Activity Feed Grouping
-
-    /// A feed row: either one activity, or a burst of activities by the same
-    /// actor within an hour, collapsed into a summary row.
-    enum ActivityFeedItem {
-        case single(Activity)
-        case group([Activity])
-        // An expanded group's member row — rendered indented under its
-        // summary header so the burst reads as one nested block
-        case groupChild(Activity)
-    }
-
-    /// Derived render model for the activity table. Rebuilt from `activities`
-    /// in updateActivityFeed() — never mutated directly.
-    var feedItems: [ActivityFeedItem] = []
-    /// Groups the user has expanded inline, keyed by the group's first activity id
-    var expandedGroupKeys: Set<String> = []
-
-    /// Place-added rows are the feed's core content — never grouped
-    func isStandaloneActivity(_ activity: Activity) -> Bool {
-        // Only check-ins stay ungrouped. Place-adds DO group now: a burst of
-        // same-actor adds (e.g. someone importing many places at once) would
-        // otherwise flood the feed — the exact case grouping exists to collapse.
-        return activity.type == .checkIn
-    }
-
-    /// Collapses consecutive same-actor activities (rolling 60-minute window)
-    /// into groups of ≥2. Standalone rows interleaved in a burst don't break
-    /// the surrounding group: the group is inserted back at the position of
-    /// its newest member.
-    func regroupActivities() {
-        var items: [ActivityFeedItem] = []
-        var pendingGroup: [Activity] = []
-        var pendingStartIndex: Int?
-
-        func flushGroup() {
-            guard !pendingGroup.isEmpty else { return }
-            let insertAt = min(pendingStartIndex ?? items.count, items.count)
-            if pendingGroup.count >= 2 {
-                var groupRows: [ActivityFeedItem] = [.group(pendingGroup)]
-                if expandedGroupKeys.contains(pendingGroup[0].id) {
-                    groupRows.append(contentsOf: pendingGroup.map { .groupChild($0) })
-                }
-                items.insert(contentsOf: groupRows, at: insertAt)
-            } else {
-                items.insert(.single(pendingGroup[0]), at: insertAt)
-            }
-            pendingGroup = []
-            pendingStartIndex = nil
-        }
-
-        for activity in activities {
-            if isStandaloneActivity(activity) {
-                items.append(.single(activity))
-                continue
-            }
-            if let last = pendingGroup.last {
-                // Feed is newest-first: `activity` is older than `last`
-                let sameActor = activity.actorId == pendingGroup[0].actorId
-                let withinWindow = last.timestamp.timeIntervalSince(activity.timestamp) <= 3600
-                if sameActor && withinWindow {
-                    pendingGroup.append(activity)
-                    continue
-                }
-                flushGroup()
-            }
-            pendingStartIndex = items.count
-            pendingGroup.append(activity)
-        }
-        flushGroup()
-
-        feedItems = items
-    }
-
-    func activityFeedItem(at row: Int) -> ActivityFeedItem? {
-        return row < feedItems.count ? feedItems[row] : nil
-    }
-
-    /// The single activity backing a row, or nil for group summary rows
-    func singleActivity(at row: Int) -> Activity? {
-        switch activityFeedItem(at: row) {
-        case .single(let activity), .groupChild(let activity):
-            return activity
-        default:
-            return nil
-        }
-    }
-
-    func toggleActivityGroup(withKey key: String) {
-        let expanding = !expandedGroupKeys.contains(key)
-        if expanding {
-            expandedGroupKeys.insert(key)
-        } else {
-            expandedGroupKeys.remove(key)
-        }
-
-        // Animate the member rows in/out under their header so it's obvious
-        // what the tap revealed (vs. the untouched rows below the group)
-        let itemsBefore = feedItems
-        regroupActivities()
-        func headerIndex(in items: [ActivityFeedItem]) -> Int? {
-            return items.firstIndex {
-                if case .group(let g) = $0 { return g.first?.id == key }
-                return false
-            }
-        }
-        guard let header = headerIndex(in: feedItems),
-              headerIndex(in: itemsBefore) == header,
-              case .group(let group) = feedItems[header] else {
-            activityTableView.reloadData()
-            return
-        }
-        let childPaths = (1...group.count).map { IndexPath(row: header + $0, section: 0) }
-        activityTableView.performBatchUpdates {
-            if expanding {
-                activityTableView.insertRows(at: childPaths, with: .fade)
-            } else {
-                activityTableView.deleteRows(at: childPaths, with: .fade)
-            }
-        }
-        // Refresh the header's "Show all / Show less" state
-        activityTableView.reloadRows(at: [IndexPath(row: header, section: 0)], with: .none)
+        activityTab.fetchActivities(loadMore: loadMore, completion: completion)
     }
 
     func updateActivityFeed() {
-        resolveMissingActivityActors()
-        regroupActivities()
-        isLoadingActivities = false
-        activityLoadingIndicator.stopAnimating()
-        activityLoadingContainer.isHidden = true
-        
-        // Only show table view if Activity tab is selected
-        if contentSegmentedControl.selectedSegmentIndex == 0 {
-            activityTableView.isHidden = false
-        }
-        
-        // Update empty state
-        activityEmptyStateLabel.isHidden = !activities.isEmpty
-        
-        // Update table footer for loading more
-        if isLoadingMoreActivities && hasMoreActivities {
-            activityTableView.tableFooterView = loadMoreIndicatorView
-        } else {
-            activityTableView.tableFooterView = nil
-        }
-        
-        // Reload table
-        activityTableView.reloadData()
-
-        // Table view now handles its own scrolling with fixed height
-        view.layoutIfNeeded()
-
-        fillActivityViewportIfNeeded()
+        activityTab.updateActivityFeed()
     }
 
-    /// Patches actorless feed rows from users the app already knows: the
-    /// signed-in user first (your own activity must NEVER render anonymous),
-    /// then actors carried by other rows in the same feed. Rows that still
-    /// can't be resolved keep actor nil and render name-less rather than
-    /// showing a wrong identity.
-    private func resolveMissingActivityActors() {
-        guard activities.contains(where: { $0.actor == nil }) else { return }
-
-        var knownActors: [String: User] = [:]
-        for activity in activities {
-            if let actor = activity.actor {
-                knownActors[activity.actorId] = actor
-            }
-        }
-
-        let me = AuthService.shared.currentUser
-
-        activities = activities.map { activity in
-            guard activity.actor == nil else { return activity }
-            if let me = me, IDNormalizer.isSameUser(activity.actorId, me.id) {
-                return activity.withActor(me)
-            }
-            if let known = knownActors[activity.actorId] {
-                return activity.withActor(known)
-            }
-            return activity
-        }
+    /// SSE: merge just the newest activities so scroll position survives.
+    func refreshActivityFeedWithNewItem() {
+        activityTab.refreshWithNewItems()
     }
 
-    /// Grouping can collapse an entire fetched page into a single row (e.g. one
-    /// actor bulk-adding many places), leaving too few rows to scroll — so the
-    /// scroll-triggered load-more never fires and the rest of the history never
-    /// loads. Auto-load the next page until there's enough to fill the viewport
-    /// (capped so a huge single-actor import can't loop).
-    func fillActivityViewportIfNeeded() {
-        guard contentSegmentedControl.selectedSegmentIndex == 0,
-              feedItems.count < 8,
-              hasMoreActivities,
-              !isLoadingActivities,
-              !isLoadingMoreActivities,
-              activities.count < 300 else { return }
-        // Launch paths populate `activities` without maintaining currentOffset,
-        // so anchor the next page to what's actually loaded — otherwise loadMore
-        // re-fetches page 1 and dedup drops it, stalling the fill.
-        currentOffset = activities.count
-        fetchActivities(loadMore: true)
+    /// Deep link / notification tap: open a moment in the inline Moments tab.
+    func navigateToVideo(withId videoId: String) {
+        activityTab.navigateToVideo(withId: videoId, showsLoading: true)
     }
 
     // MARK: - Moments (forwarded to the Moments tab)
@@ -2487,8 +2075,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// minus its refresh, since present(moment:) loads the feed itself.
     func openMomentInMomentsTab(_ video: PlaceVideo) {
         contentSegmentedControl.selectedSegmentIndex = 1
+        activityTab.setTabVisible(false)
         specialsTab.setTabVisible(false)
-        activityTableView.isHidden = true
         momentsCameraButton.isHidden = false
         activityHeaderLabel.text = "Moments"
         momentsTab.present(moment: video)
@@ -3009,14 +2597,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             object: nil
         )
         
-        // Listen for moment deletion to update activity feed
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMomentDeleted(_:)),
-            name: Notification.Name("MomentDeleted"),
-            object: nil
-        )
-
         // A block anywhere in the app must scrub that user from the home
         // feeds immediately — the server filters on the next fetch, so just
         // refetch
@@ -3034,8 +2614,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             if let blockedId = notification.userInfo?["userId"] as? String {
                 // Drop their content locally right away, then refetch for truth
                 self.momentsTab.removeReels(by: blockedId)
-                self.activities.removeAll { $0.actorId == blockedId }
-                self.activityTableView.reloadData()
+                self.activityTab.removeActivities(by: blockedId)
             }
             self.fetchActivities()
             self.fetchReels()
@@ -3082,49 +2661,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             Logger.debug("📱 App entering foreground - cache expired, will refresh on next load")
             // Don't refresh automatically, just invalidate cache
             // Data will be refreshed when view appears
-        }
-    }
-    
-    @objc func handleMomentDeleted(_ notification: Notification) {
-        guard let videoId = notification.userInfo?["videoId"] as? String else { return }
-        
-        Logger.debug("📢 Received MomentDeleted notification for video: \(videoId)")
-        
-        // Find the indices of activities to remove
-        var indexPathsToRemove: [IndexPath] = []
-        var indicesToRemove: [Int] = []
-        
-        for (index, activity) in activities.enumerated() {
-            if activity.targetType == "place_video" && activity.targetId == videoId {
-                Logger.debug("🗑️ Found activity to remove at index \(index) for video: \(videoId)")
-                indexPathsToRemove.append(IndexPath(row: index, section: 0))
-                indicesToRemove.append(index)
-            }
-        }
-        
-        // Remove from data source (in reverse order to maintain indices)
-        for index in indicesToRemove.reversed() {
-            activities.remove(at: index)
-        }
-        
-        if !indexPathsToRemove.isEmpty {
-            Logger.debug("✅ Removing \(indexPathsToRemove.count) activity(ies) from feed")
-            
-            // Update UI if activity feed is visible
-            if contentSegmentedControl.selectedSegmentIndex == 0 { // Activity tab
-                // Use performBatchUpdates for proper animation and consistency
-                activityTableView.performBatchUpdates({
-                    activityTableView.deleteRows(at: indexPathsToRemove, with: .fade)
-                }) { [weak self] _ in
-                    // Update empty state after animation completes
-                    self?.activityEmptyStateLabel.isHidden = !(self?.activities.isEmpty ?? true)
-                }
-            } else {
-                // Not visible: keep the hidden table's row count in sync with the
-                // shrunk data source so it can't crash when shown again
-                activityTableView.reloadData()
-                activityEmptyStateLabel.isHidden = activities.isEmpty
-            }
         }
     }
     
@@ -4570,6 +4106,16 @@ extension CirclesHomeViewController: HomeContentTabHost {
 
     func layoutContentIfNeeded() {
         view.layoutIfNeeded()
+    }
+
+    func attachFullScreenOverlay(_ overlay: UIView) {
+        view.addSubview(overlay)
+        NSLayoutConstraint.activate([
+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
     }
 }
 

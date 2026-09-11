@@ -42,4 +42,16 @@ protocol HomeContentTabHost: AnyObject {
     /// Lay out the whole home tree now (a tab's own `view.layoutIfNeeded()`
     /// only covers its subtree, which may not be positioned yet).
     func layoutContentIfNeeded()
+    /// Pin `overlay` over the whole home screen (pickers that dim and capture
+    /// everything, not just the tab's slot).
+    func attachFullScreenOverlay(_ overlay: UIView)
+
+    // Destinations shared with deep links; they depend on the home's loaded
+    // circles/places, so the home resolves them.
+    func navigateToPlace(withId placeId: String, showComments: Bool)
+    func navigateToGlobalPlace(withId globalPlaceId: String, showComments: Bool)
+    func navigateToCircle(withId circleId: String)
+    func navigateToCheckInPlace(activity: Activity)
+    /// Switch to the Moments tab and land on `video`.
+    func openMomentInMomentsTab(_ video: PlaceVideo)
 }

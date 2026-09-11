@@ -6,24 +6,9 @@ import CoreLocation
 // CirclesHomeViewController (suggested users, content upload, tutorials,
 // permission prompts). Extracted from the main controller (Wave 4).
 
-extension CirclesHomeViewController: UIScrollViewDelegate {
-    func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        // Handle activity table view scrolling for pagination
-        if scrollView == activityTableView {
-            let offsetY = scrollView.contentOffset.y
-            let contentHeight = scrollView.contentSize.height
-            let scrollViewHeight = scrollView.frame.height
-            
-            // Check if we're near the bottom (within 100 points)
-            if offsetY > contentHeight - scrollViewHeight - 100 {
-                if !activities.isEmpty && hasMoreActivities && !isLoadingMoreActivities {
-                    Logger.debug("📊 Reached bottom of activity table, loading more...")
-                    fetchActivities(loadMore: true)
-                }
-            }
-        }
-    }
-}
+// The outer scroll view's delegate. Each content tab paginates its own
+// list; nothing is needed here beyond the conformance.
+extension CirclesHomeViewController: UIScrollViewDelegate {}
 
 // MARK: - UIGestureRecognizerDelegate
 extension CirclesHomeViewController: UIGestureRecognizerDelegate {
@@ -156,63 +141,6 @@ extension CirclesHomeViewController {
                     
                 default:
                     break
-                }
-            }
-        }
-    }
-    
-    func refreshActivityFeedWithNewItem() {
-        // Smart refresh - only load new items without full reload
-        // This prevents scroll position loss and provides better UX
-        
-        // If we don't have any activities yet, do a full load
-        if activities.isEmpty {
-            fetchActivities()
-            return
-        }
-        
-        // Otherwise, fetch just the newest activities
-        ActivityService.shared.getNetworkActivities(limit: 5, offset: 0) { [weak self] result in
-            guard let self = self else { return }
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    let newActivities = response.activities
-
-                    // Find activities that aren't already in our list
-                    var addedActivities: [Activity] = []
-                    for activity in newActivities {
-                        if !self.activities.contains(where: { $0.id == activity.id }) {
-                            addedActivities.append(activity)
-                        }
-                    }
-
-                    // Prune rows deleted server-side: anything we hold that's
-                    // newer than the oldest fetched activity should have been
-                    // in this newest-first fetch — if it wasn't, it's gone
-                    // (e.g. the actor swiped their activity away).
-                    var removedCount = 0
-                    if let oldestFetched = newActivities.last?.timestamp {
-                        let fetchedIds = Set(newActivities.map { $0.id })
-                        let before = self.activities.count
-                        self.activities.removeAll {
-                            $0.timestamp > oldestFetched && !fetchedIds.contains($0.id)
-                        }
-                        removedCount = before - self.activities.count
-                    }
-
-                    if !addedActivities.isEmpty || removedCount > 0 {
-                        // Insert new activities at the beginning, then go
-                        // through the grouped-feed pipeline — a direct
-                        // insertRows would desync rows from feedItems
-                        self.activities.insert(contentsOf: addedActivities, at: 0)
-                        self.updateActivityFeed()
-
-                        Logger.info("SSE feed refresh: +\(addedActivities.count) new, -\(removedCount) stale")
-                    }
-                    
-                case .failure(let error):
-                    Logger.error("Failed to fetch new activities via SSE: \(error)")
                 }
             }
         }
