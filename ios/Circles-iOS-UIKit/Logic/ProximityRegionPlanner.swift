@@ -51,6 +51,10 @@ struct ProximityRegionPlanner {
     ///   - places: the user's own saved places (the disk cache set).
     ///   - around: where the user is; nil means no plan (keep whatever is scheduled).
     ///   - excludedPlaceIds: places already prompted today, so they are not rescheduled.
+    ///
+    /// Places whose region already contains `around` are skipped: the banner
+    /// is for arriving somewhere, and "you're here right now" is the in-app
+    /// chip's job. It also keeps a region from firing the moment it's added.
     static func plan(places: [Place],
                      around: CLLocation?,
                      excludedPlaceIds: Set<String> = [],
@@ -61,7 +65,8 @@ struct ProximityRegionPlanner {
         let located: [(Place, CLLocation)] = places.compactMap { place in
             guard !excludedPlaceIds.contains(place.id),
                   !place.name.trimmingCharacters(in: .whitespaces).isEmpty,
-                  let location = place.location?.clLocation else { return nil }
+                  let location = place.location?.clLocation,
+                  location.distance(from: around) > radius else { return nil }
             return (place, location)
         }
         .sorted { $0.1.distance(from: around) < $1.1.distance(from: around) }
