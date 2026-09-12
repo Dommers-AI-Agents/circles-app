@@ -308,6 +308,40 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             name: Notification.Name("NavigateToActivity"),
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(navigateToCheckInNotification(_:)),
+            name: .navigateToCheckIn,
+            object: nil
+        )
+    }
+
+    /// "You're near <saved place>" banner tap → the check-in sheet with that
+    /// place pre-filled. The place comes from the disk cache (it was planned
+    /// from there), with a network fetch as the fallback.
+    @objc private func navigateToCheckInNotification(_ note: Notification) {
+        guard let placeId = note.object as? String, !placeId.isEmpty,
+              let userId = AuthService.shared.getUserId() else { return }
+
+        func present(_ place: Place) {
+            var top: UIViewController = self
+            while let presented = top.presentedViewController { top = presented }
+            guard !(top is CheckInViewController),
+                  !((top as? UINavigationController)?.viewControllers.first is CheckInViewController) else { return }
+            CheckInViewController.present(from: top, prefilledPlace: place)
+        }
+
+        PlacesDiskCache.shared.load(userId: userId) { cached in
+            if let place = cached?.first(where: { $0.id == placeId }) {
+                present(place)
+                return
+            }
+            PlaceService.shared.fetchPlaceById(id: placeId) { result in
+                DispatchQueue.main.async {
+                    if case .success(let place) = result { present(place) }
+                }
+            }
+        }
     }
     
     private func updateMessagesBadge() {

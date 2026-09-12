@@ -29,7 +29,7 @@ class NotificationPreferencesViewController: BaseTableViewController {
         var footer: String? {
             switch self {
             case .dailySummary: return "Get a daily summary of activity in your network"
-            case .activityNotifications: return "Notifications about places and circles"
+            case .activityNotifications: return "Notifications about places and circles. Nearby check-in reminders use the location access you already granted and only fire at places you saved."
             case .socialNotifications: return "Notifications about connections and messages"
             case .quietHours: return "Pause notifications during specific hours"
             }
@@ -44,6 +44,7 @@ class NotificationPreferencesViewController: BaseTableViewController {
     private enum ActivityRow: Int, CaseIterable {
         case newPlaces
         case circleInvites
+        case nearbyCheckIns
         case discoveryPrompts
         case weekendRecommendations
     }
@@ -116,6 +117,7 @@ class NotificationPreferencesViewController: BaseTableViewController {
                     switch result {
                     case .success(let user):
                         self.preferences = user.notificationPreferences ?? NotificationPreferences()
+                        ProximityNotificationScheduler.isEnabled = self.preferences.locationPrompts
                         self.updateTimePickerDate()
                         self.tableView.reloadData()
                     case .failure(let error):
@@ -298,6 +300,19 @@ extension NotificationPreferencesViewController {
                     isOn: preferences.circleInvites,
                     onToggle: { [weak self] isOn in
                         self?.preferences.circleInvites = isOn
+                        self?.markAsChanged()
+                    }
+                )
+            case .nearbyCheckIns:
+                // Local banner when you arrive at a saved place (app closed).
+                // Takes effect on the device immediately; the account record
+                // saves with the rest.
+                cell.configure(
+                    title: "Nearby Check-in Reminders",
+                    isOn: preferences.locationPrompts,
+                    onToggle: { [weak self] isOn in
+                        self?.preferences.locationPrompts = isOn
+                        ProximityNotificationScheduler.shared.setEnabled(isOn)
                         self?.markAsChanged()
                     }
                 )

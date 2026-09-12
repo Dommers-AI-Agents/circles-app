@@ -238,6 +238,7 @@ final class HomeDataLoader {
                 if placesFetchComplete, !self.state.userOwnPlaces.isEmpty,
                    let cacheUserId = AuthService.shared.getUserId() {
                     PlacesDiskCache.shared.save(places: self.state.userOwnPlaces, userId: cacheUserId)
+                    ProximityNotificationScheduler.shared.replan(places: self.state.userOwnPlaces, around: LocationService.shared.lastKnownLocation, force: true)
                 }
 
                 // Final map update with complete data
@@ -508,6 +509,7 @@ final class HomeDataLoader {
             if ownPlacesFetchComplete, !userPlacesAfterDedup.isEmpty,
                let cacheUserId = AuthService.shared.getUserId() {
                 PlacesDiskCache.shared.save(places: userPlacesAfterDedup, userId: cacheUserId)
+                ProximityNotificationScheduler.shared.replan(places: userPlacesAfterDedup, around: LocationService.shared.lastKnownLocation, force: true)
             }
 
             // Apply filtering to fetched places. Unlocated places (unresolved

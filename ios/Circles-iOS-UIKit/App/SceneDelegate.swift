@@ -1324,6 +1324,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case .connect(let fromUserId): self.handleConnectionInvite(from: fromUserId)
             case .video(let id): self.navigateToVideo(videoId: id)
             case .notificationSettings: self.navigateToNotificationSettings()
+            case .checkIn(let id):
+                // Cold-start tap on the "you're near <place>" banner
+                NotificationCenter.default.post(name: .navigateToCheckIn, object: id)
             }
         }
     }

@@ -597,6 +597,8 @@ class AuthService {
             case .success(let response):
                 Logger.debug("🔐 Successfully fetched current user: \(response.user.displayName)")
                 self?._currentUser = response.user
+                // Account-level toggle → device-local gate for the nearby check-in banner
+                ProximityNotificationScheduler.isEnabled = response.user.notificationPreferences?.locationPrompts ?? true
                 completion(.success(response.user))
             case .failure(let error):
                 Logger.debug("🔐 Failed to fetch current user: \(error)")
