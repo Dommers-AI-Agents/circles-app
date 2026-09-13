@@ -2358,10 +2358,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         
         return addressComponents.joined(separator: ", ")
     }
-    
-    func getCategoryDescription(for category: MKPointOfInterestCategory) -> String {
-        category.placeDescription
-    }
+
 }
 
 // MARK: - PlaceAssetLoaderDelegate
