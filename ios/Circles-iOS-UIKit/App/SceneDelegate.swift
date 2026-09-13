@@ -1303,67 +1303,27 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Clear the pending link
         UserDefaults.standard.removeObject(forKey: "pendingDeepLink")
 
-        // Single-token links carry no colon-separated payload and would be
-        // dropped by the components.count >= 2 parse below
-        if pendingLink == "network" || pendingLink == "daily-summary"
-            || pendingLink == "all-places-map" || pendingLink == "create-wallet"
-            || pendingLink == "add-place" || pendingLink == "me" {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                switch pendingLink {
-                case "network": self.navigateToMyNetwork()
-                case "daily-summary": self.navigateToDailySummary()
-                case "all-places-map": self.navigateToAllPlacesMap()
-                case "create-wallet": self.navigateToCreateWallet()
-                case "add-place", "me":
-                    if let destination = DeepLinkRouter().openPathDestination(pendingLink) { self.route(destination) }
-                default: break
-                }
-            }
-            return
-        }
+        // Malformed or unknown links navigate nowhere (see PendingLinkParser)
+        guard let link = PendingLinkParser.parse(pendingLink) else { return }
 
-        // Parse and handle the link
-        let components = pendingLink.split(separator: ":")
-        if components.count >= 2 {
-            let type = String(components[0])
-            
-            // Add a delay to ensure the UI is fully loaded
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                switch type {
-                case "shareToken":
-                    // Format: shareToken:circleId:shareToken
-                    if components.count >= 3 {
-                        let circleId = String(components[1])
-                        let shareToken = String(components[2])
-                        self.handleSharedCircleWithToken(circleId: circleId, shareToken: shareToken)
-                    }
-                case "circle":
-                    let id = String(components[1])
-                    self.navigateToCircle(circleId: id)
-                case "place":
-                    let id = String(components[1])
-                    self.navigateToPlace(placeId: id)
-                case "user":
-                    let id = String(components[1])
-                    self.navigateToUserProfile(userId: id)
-                case "share":
-                    let id = String(components[1])
-                    self.handleSharedCircle(shareId: id)
-                case "connect":
-                    let id = String(components[1])
-                    self.handleConnectionInvite(from: id)
-                case "video":
-                    let id = String(components[1])
-                    self.navigateToVideo(videoId: id)
-                case "daily-summary":
-                    self.navigateToDailySummary()
-                case "settings":
-                    if components.count >= 2 && components[1] == "notifications" {
-                        self.navigateToNotificationSettings()
-                    }
-                default:
-                    break
-                }
+        // Add a delay to ensure the UI is fully loaded
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            switch link {
+            case .network: self.navigateToMyNetwork()
+            case .dailySummary: self.navigateToDailySummary()
+            case .allPlacesMap: self.navigateToAllPlacesMap()
+            case .createWallet: self.navigateToCreateWallet()
+            case .openPath(let path):
+                if let destination = DeepLinkRouter().openPathDestination(path) { self.route(destination) }
+            case .shareToken(let circleId, let shareToken):
+                self.handleSharedCircleWithToken(circleId: circleId, shareToken: shareToken)
+            case .circle(let id): self.navigateToCircle(circleId: id)
+            case .place(let id): self.navigateToPlace(placeId: id)
+            case .user(let id): self.navigateToUserProfile(userId: id)
+            case .share(let id): self.handleSharedCircle(shareId: id)
+            case .connect(let fromUserId): self.handleConnectionInvite(from: fromUserId)
+            case .video(let id): self.navigateToVideo(videoId: id)
+            case .notificationSettings: self.navigateToNotificationSettings()
             }
         }
     }
