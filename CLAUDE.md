@@ -623,5 +623,9 @@ and routes import from the new files. Put new handlers in the matching file:
   `redemptionCodeController`, `venueManagersController`.
 - Shared helpers live in `services/` (`placeReadService`, `placeVenueSync`, `venueHelpers`,
   `connectionMap`). **Controllers must not import from other controllers.**
+- `services/activity/` — activity trackers by domain (`core` = logActivity + resolvePlacePhoto,
+  `circles`, `places`, `media`, `social`, `stats`); `services/activityService.js` is a barrel that
+  re-exports all of them, so existing imports keep working. Put new trackers in the matching
+  submodule; never require the barrel from inside one (Phase 6, Sept 2026).
 - ⚠️ The earlier "74% reduction / 7,562 lines / all 49 refactored" claims were
   inaccurate and have been corrected throughout this doc.
