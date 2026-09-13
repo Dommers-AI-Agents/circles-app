@@ -59,7 +59,8 @@ describe('activityService barrel', () => {
         seen.set(name, m);
       }
     }
-    expect([...seen.keys()].sort()).toEqual(EXPECTED);
+    // core also exports resolvePlacePhoto for its siblings; the barrel strips it
+    expect([...seen.keys()].sort()).toEqual([...EXPECTED, 'resolvePlacePhoto'].sort());
   });
 
   test('cross-module helpers resolve to functions (a missing export would fail silently at runtime)', () => {
