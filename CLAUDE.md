@@ -596,6 +596,16 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
     `ProfileGridTabViewController` (reports height to the profile's scroll view).
   - `Controllers/Places/PlaceOwnerEditController.swift` — venue-owner
     tap-to-edit for the place page, driven by a delegate on `PlaceDetailViewController`.
+  - Phase 5–6 additions (Sept 2026), same layout: `Logic/` MapPlaceScope, MapChipFilter,
+    MapRegionFitter, POIDuplicateMatcher, DistancePlaceSorter, OpeningHoursFormatter,
+    AddToCircleGate, PlaceCategoryMapper, BareAddressHeuristic, VenueSourceLock,
+    CircleExporter, CirclePlaceFilter, PendingLinkParser, AppleMapItemFormFill;
+    `State/` PlaceAssetLoader, VenueRewardsLoader, CirclePlacesLoader, ProfileDataLoader;
+    helpers next to their screen (`Controllers/Map/MapFilterMenuBuilder`,
+    `Controllers/Circles/CircleShareController`, `Controllers/Profile/ProfileRelationshipController`,
+    `ProfileStorefrontController`); big verbatim moves live in sibling extensions
+    (`AddPlaceViewController+Save`, `CircleDetailViewController+Table`); view factories in
+    `Views/Places/PlaceDetailViewFactory`.
   - Tests live in `Circles-iOSTests` (Swift Testing); every extraction above ships
     with a suite.
 
