@@ -1206,7 +1206,7 @@
 			repositoryURL = "https://github.com/Dommers-AI-Agents/favcircles-widgets";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.1.0;
+				minimumVersion = 0.2.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

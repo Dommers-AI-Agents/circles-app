@@ -88,6 +88,109 @@ final class AppWidgetHost: FavWidgetHost {
     /// the current venue once visit detection exposes it.
     func nearbyOrCurrentPlace() async -> WidgetPlaceRef? { nil }
 
+    // MARK: - Places (NextBar)
+
+    /// Places handed to widgets, kept so `openPlace` can push the real
+    /// detail page without a refetch.
+    private var placeCache: [String: Place] = [:]
+
+    func currentLocation() async -> WidgetCoordinate? {
+        await withCheckedContinuation { continuation in
+            LocationService.shared.getCurrentLocation { location in
+                continuation.resume(returning: location.map {
+                    WidgetCoordinate(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude)
+                })
+            }
+        }
+    }
+
+    /// The user's own saved places plus the network's places around the
+    /// query origin (connections and followed people, per the same viewport
+    /// endpoint the map and check-in "Nearby" use), filtered by category.
+    func fetchPlaces(_ query: WidgetPlaceQuery) async throws -> [WidgetPlaceCandidate] {
+        async let mine: [Place] = query.sources.contains(.mine) ? fetchMyPlaces() : []
+        async let network: [Place] = (query.near != nil && !query.sources.isDisjoint(with: [.connection, .following]))
+            ? fetchNetworkPlaces(near: query.near!, radiusMeters: query.radiusMeters) : []
+        let (minePlaces, networkPlaces) = try await (mine, network)
+
+        let connectionIds = Set(NetworkManager.shared.connections
+            .filter { $0.relationshipType != "following" }
+            .map { $0.connectedUserId })
+        let followingIds = Set(NetworkManager.shared.followingUsers.map(\.id))
+        let myId = userId
+        let wantsCategory: (Place) -> Bool = { query.categories.isEmpty || query.categories.contains($0.category.rawValue) }
+
+        var candidates: [WidgetPlaceCandidate] = []
+        var seenVenues = Set<String>()
+        func append(_ place: Place, source: WidgetPlaceSource) {
+            guard wantsCategory(place), let location = place.location?.clLocation else { return }
+            let key = PlaceService.venueKey(place)
+            guard !seenVenues.contains(key) else { return }
+            seenVenues.insert(key)
+            let id = place.globalPlaceId ?? place.id
+            placeCache[id] = place
+            candidates.append(WidgetPlaceCandidate(
+                id: id,
+                name: place.name,
+                address: place.address,
+                coordinate: WidgetCoordinate(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude),
+                category: place.category.rawValue,
+                source: source,
+                savedByName: source == .mine ? nil : place.addedByUser?.displayName,
+                photoURL: place.photos?.first.flatMap { URL(string: $0) },
+                isGlobal: place.globalPlaceId != nil
+            ))
+        }
+
+        for place in minePlaces { append(place, source: .mine) }
+        for place in networkPlaces {
+            if place.addedBy == myId { continue }
+            let source: WidgetPlaceSource
+            if connectionIds.contains(place.addedBy) { source = .connection }
+            else if followingIds.contains(place.addedBy) { source = .following }
+            else { source = .connection }   // network endpoint only returns people in the network
+            guard query.sources.contains(source) else { continue }
+            append(place, source: source)
+        }
+        return candidates
+    }
+
+    func openPlace(_ place: WidgetPlaceRef) {
+        guard let presenter = presentingViewController else { return }
+        let navigation = presenter.navigationController ?? presenter as? UINavigationController
+        if let cached = placeCache[place.id] {
+            navigation?.pushViewController(PlaceDetailViewController(place: cached), animated: true)
+            return
+        }
+        let loading = AlertPresenter.showLoading(message: "Loading place...", from: presenter)
+        GlobalPlaceService.shared.getGlobalPlace(id: place.id) { result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    switch result {
+                    case .success(let response):
+                        navigation?.pushViewController(PlaceDetailViewController(place: response.bestDetailPlace()), animated: true)
+                    case .failure(let error):
+                        AlertPresenter.showError(error, from: presenter)
+                    }
+                }
+            }
+        }
+    }
+
+    private func fetchMyPlaces() async throws -> [Place] {
+        try await withCheckedThrowingContinuation { continuation in
+            PlaceService.shared.getMyPlacesForCheckIn { continuation.resume(with: $0) }
+        }
+    }
+
+    private func fetchNetworkPlaces(near origin: WidgetCoordinate, radiusMeters: Double) async throws -> [Place] {
+        try await withCheckedThrowingContinuation { continuation in
+            PlaceService.shared.fetchNetworkPlacesInViewport(
+                centerLat: origin.latitude, centerLng: origin.longitude, radiusM: radiusMeters, limit: 500
+            ) { continuation.resume(with: $0) }
+        }
+    }
+
     /// The package's theme built from the app's palette so the tab matches
     /// the rest of FavCircles in light and dark mode.
     static func makeTheme() -> WidgetTheme {
