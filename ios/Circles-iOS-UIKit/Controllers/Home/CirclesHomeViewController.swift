@@ -141,12 +141,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         super.init(coder: coder)
     }
     
-    // Define response structure for network circles
-    struct NetworkCirclesResponse: Codable {
-        let success: Bool
-        let data: [Circle]
-    }
-    
     // MARK: - UI Elements
     let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
