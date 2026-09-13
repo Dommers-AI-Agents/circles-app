@@ -7,8 +7,17 @@ import FavWidgetsCore
 /// haptics, sharing, alerts, connections, and postcard delivery. One per
 /// signed-in user; the Widgets tab owns it.
 final class AppWidgetHost: FavWidgetHost {
-    /// The view controller sheets and share sheets present from.
+    /// The Widgets tab; sheets and alerts present from whatever is on
+    /// screen above it (a pushed full view, the Manage sheet), resolved at
+    /// call time — the tab itself leaves the window while a page is pushed.
     weak var presenter: UIViewController?
+
+    private var presentingViewController: UIViewController? {
+        guard let presenter else { return nil }
+        var top = presenter.navigationController?.visibleViewController ?? presenter
+        while let presented = top.presentedViewController { top = presented }
+        return top
+    }
 
     let dataStore: WidgetDataStore
     let userId: String
@@ -48,14 +57,14 @@ final class AppWidgetHost: FavWidgetHost {
             case .imageJPEG(let data): return UIImage(data: data)
             }
         }
-        guard let presenter, !activityItems.isEmpty else { return }
+        guard let presenter = presentingViewController, !activityItems.isEmpty else { return }
         let activityVC = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
         activityVC.popoverPresentationController?.sourceView = presenter.view
         presenter.present(activityVC, animated: true)
     }
 
     func presentAlert(_ alert: WidgetAlert) {
-        guard let presenter else { return }
+        guard let presenter = presentingViewController else { return }
         AlertPresenter.showInfo(title: alert.title, message: alert.message, from: presenter)
     }
 
