@@ -120,29 +120,31 @@ final class AppWidgetHost: FavWidgetHost {
         let myId = userId
         let wantsCategory: (Place) -> Bool = { query.categories.isEmpty || query.categories.contains($0.category.rawValue) }
 
-        var candidates: [WidgetPlaceCandidate] = []
-        var seenVenues = Set<String>()
-        func append(_ place: Place, source: WidgetPlaceSource) {
+        // One entry per venue, remembering everyone who saved it: "You"
+        // first, then each connection / followed person by name.
+        struct Venue {
+            var place: Place
+            var source: WidgetPlaceSource
+            var savers: [String]
+            var coordinate: WidgetCoordinate
+        }
+        var venues: [String: Venue] = [:]
+        var order: [String] = []
+        func note(_ place: Place, source: WidgetPlaceSource, saver: String) {
             guard wantsCategory(place), let location = place.location?.clLocation else { return }
             let key = PlaceService.venueKey(place)
-            guard !seenVenues.contains(key) else { return }
-            seenVenues.insert(key)
-            let id = place.globalPlaceId ?? place.id
-            placeCache[id] = place
-            candidates.append(WidgetPlaceCandidate(
-                id: id,
-                name: place.name,
-                address: place.address,
-                coordinate: WidgetCoordinate(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude),
-                category: place.category.rawValue,
-                source: source,
-                savedByName: source == .mine ? nil : place.addedByUser?.displayName,
-                photoURL: place.photos?.first.flatMap { URL(string: $0) },
-                isGlobal: place.globalPlaceId != nil
-            ))
+            if var venue = venues[key] {
+                if !venue.savers.contains(saver) { venue.savers.append(saver) }
+                if source == .mine { venue.source = .mine; venue.place = place; venue.savers.removeAll { $0 == "You" }; venue.savers.insert("You", at: 0) }
+                venues[key] = venue
+            } else {
+                venues[key] = Venue(place: place, source: source, savers: [saver],
+                                    coordinate: WidgetCoordinate(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude))
+                order.append(key)
+            }
         }
 
-        for place in minePlaces { append(place, source: .mine) }
+        for place in minePlaces { note(place, source: .mine, saver: "You") }
         for place in networkPlaces {
             if place.addedBy == myId { continue }
             let source: WidgetPlaceSource
@@ -150,9 +152,59 @@ final class AppWidgetHost: FavWidgetHost {
             else if followingIds.contains(place.addedBy) { source = .following }
             else { source = .connection }   // network endpoint only returns people in the network
             guard query.sources.contains(source) else { continue }
-            append(place, source: source)
+            note(place, source: source, saver: place.addedByUser?.displayName ?? "A connection")
         }
-        return candidates
+
+        return order.compactMap { key -> WidgetPlaceCandidate? in
+            guard let venue = venues[key] else { return nil }
+            let place = venue.place
+            let id = place.globalPlaceId ?? place.id
+            placeCache[id] = place
+            return WidgetPlaceCandidate(
+                id: id,
+                name: place.name,
+                address: place.address,
+                coordinate: venue.coordinate,
+                category: place.category.rawValue,
+                source: venue.source,
+                savedByName: venue.savers.first { $0 != "You" },
+                savers: venue.savers,
+                photoURL: place.photos?.first.flatMap { URL(string: $0) },
+                isGlobal: place.globalPlaceId != nil
+            )
+        }
+    }
+
+    // MARK: - Widget API channel
+
+    /// Authenticated raw call for widget-owned endpoints. Only `widgets/`
+    /// paths are allowed; the widget package never sees the token.
+    func request(_ request: WidgetAPIRequest) async throws -> Data {
+        guard request.path.hasPrefix("widgets/"), !request.path.contains("..") else {
+            throw WidgetAPIError(status: 403, message: "Path not allowed")
+        }
+        guard let token = KeychainService.shared.getAuthToken(), !token.isEmpty else {
+            throw WidgetAPIError(status: 401, message: "Sign in to continue")
+        }
+        guard let url = URL(string: "\(APIEnvironment.current.baseURL)/\(request.path)") else {
+            throw WidgetAPIError(status: 400, message: "Bad request")
+        }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = request.method.rawValue
+        urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let body = request.body {
+            urlRequest.httpBody = body
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let message = (body?["message"] as? String) ?? (body?["error"] as? String) ?? "Request failed (\(status))"
+            throw WidgetAPIError(status: status, code: body?["code"] as? String, message: message)
+        }
+        return data
     }
 
     func openPlace(_ place: WidgetPlaceRef) {

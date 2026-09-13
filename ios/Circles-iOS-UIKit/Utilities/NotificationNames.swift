@@ -40,6 +40,8 @@ extension Notification.Name {
     /// Engagement-tip deep links (observed in CirclesTabBarController).
     static let navigateToAllPlacesMap = Notification.Name("NavigateToAllPlacesMap")
     static let navigateToCreateWallet = Notification.Name("NavigateToCreateWallet")
+    /// object = widget id (e.g. "nextbar"); opens the home Widgets segment on that widget
+    static let navigateToHomeWidget = Notification.Name("NavigateToHomeWidget")
     
     // Suggestions notifications
     static let clearSuggestionsBadge = Notification.Name("clearSuggestionsBadge")

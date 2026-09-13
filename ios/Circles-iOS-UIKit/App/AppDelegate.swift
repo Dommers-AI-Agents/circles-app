@@ -747,6 +747,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 NotificationCenter.default.post(name: Notification.Name("NavigateToMessages"), object: nil)
             }
             
+        case "nextbar_round", "nextbar_result":
+            // A NextBar vote started or finished: open that widget on the home Widgets tab
+            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "nextbar")
+
         case "new_suggestion":
             // Navigate to suggestions with optional placeId
             var suggestionInfo: [String: Any] = [:]

@@ -106,6 +106,17 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
 
     // MARK: - Navigation
 
+    /// Opens one widget's full page by id (push taps, deep links).
+    func open(widgetId: String) {
+        guard ensureModel(), let model,
+              let descriptor = model.descriptors.first(where: { $0.id == widgetId }),
+              let widget = model.widget(for: descriptor) else { return }
+        if navigationController?.topViewController is HomeWidgetDetailViewController {
+            navigationController?.popViewController(animated: false)
+        }
+        open(widget, context: model.context(for: descriptor))
+    }
+
     private func open(_ widget: any FavWidget, context: WidgetContext) {
         guard let model else { return }
         let detail = HomeWidgetDetailViewController(widget: widget, context: context, model: model)

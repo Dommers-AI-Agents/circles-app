@@ -2005,6 +2005,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         contentTab(for: segment).setTabVisible(true)
     }
 
+    /// Deep link / push: switch to the Widgets segment and optionally open one widget's page.
+    func showWidgetsTab(openingWidget widgetId: String?) {
+        contentSegmentedControl.selectedSegmentIndex = HomeContentSegment.widgets.rawValue
+        showContentTab(.widgets)
+        scrollView.scrollRectToVisible(activityFeedSection.frame, animated: false)
+        if let widgetId {
+            widgetsTab.open(widgetId: widgetId)
+        }
+    }
+
     // MARK: - Content tab hosting
 
     /// Adds the extracted tabs as child view controllers filling

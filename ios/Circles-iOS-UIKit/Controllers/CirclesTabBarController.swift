@@ -269,6 +269,13 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
 
         NotificationCenter.default.addObserver(
             self,
+            selector: #selector(navigateToHomeWidget(_:)),
+            name: .navigateToHomeWidget,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
             selector: #selector(navigateToPiggyBank),
             name: Notification.Name("NavigateToPiggyBank"),
             object: nil
@@ -425,6 +432,18 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         let focus = focusRaw.flatMap { PlaceCategory(rawValue: $0) }.map { UnifiedCategory.standard($0) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             circlesVC.presentFullScreenMapShowingAllMyPlaces(focusCategory: focus)
+        }
+    }
+
+    /// Push tap into a widget (e.g. a NextBar vote): Home tab → Widgets segment → that widget's page.
+    @objc private func navigateToHomeWidget(_ note: Notification) {
+        selectedIndex = 0
+        guard let navController = viewControllers?[0] as? UINavigationController,
+              let circlesVC = navController.viewControllers.first as? CirclesHomeViewController else { return }
+        navController.popToRootViewController(animated: false)
+        let widgetId = note.object as? String
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            circlesVC.showWidgetsTab(openingWidget: widgetId)
         }
     }
 
