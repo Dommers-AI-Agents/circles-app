@@ -70,6 +70,7 @@ class OnboardingManager {
     private let hasShownAddPlaceTutorialKey = "hasShownAddPlaceTutorial"
     private let hasShownAddPlaceMapHintKey = "hasShownAddPlaceMapHint"
     private let hasShownConnectionAvatarHintKey = "hasShownConnectionAvatarHint"
+    private let hasShownHomeWidgetsHintKey = "hasShownHomeWidgetsHint"
     
     // Current tutorial state
     private var completedSteps: Set<String> {
@@ -328,6 +329,16 @@ class OnboardingManager {
     func markAddPlaceMapHintShown() {
         UserDefaults.standard.set(true, forKey: hasShownAddPlaceMapHintKey)
         Logger.info("Add place map hint marked as shown")
+    }
+
+    /// Check if user should see the one-time hint bubble on the home Widgets tab
+    func shouldShowHomeWidgetsHint() -> Bool {
+        return !UserDefaults.standard.bool(forKey: hasShownHomeWidgetsHintKey)
+    }
+
+    func markHomeWidgetsHintShown() {
+        UserDefaults.standard.set(true, forKey: hasShownHomeWidgetsHintKey)
+        Logger.info("Home widgets hint marked as shown")
     }
 
     /// Re-arm the one-time Add Place hints so a replayed welcome tour shows them again

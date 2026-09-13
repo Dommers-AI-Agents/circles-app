@@ -41,7 +41,9 @@ const COLLECTIONS = {
   // Passkeys (WebAuthn): credentials keyed by credentialId; challenges keyed
   // by the challenge itself (single-use, 5-min TTL)
   WEBAUTHN_CREDENTIALS: 'webauthnCredentials',
-  WEBAUTHN_CHALLENGES: 'webauthnChallenges'
+  WEBAUTHN_CHALLENGES: 'webauthnChallenges',
+  // Home Widgets tab: opaque per-user JSON docs keyed `${uid}_${widgetId}`
+  WIDGET_DATA: 'widgetData'
 };
 
 // User model structure

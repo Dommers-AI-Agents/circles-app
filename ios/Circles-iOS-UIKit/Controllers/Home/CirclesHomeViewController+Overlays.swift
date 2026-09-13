@@ -77,7 +77,7 @@ extension CirclesHomeViewController {
                 self?.updateNotificationBadge()
                 
                 // Also refresh activity feed if on Activity tab
-                if self?.contentSegmentedControl.selectedSegmentIndex == 0 {
+                if self?.selectedContentSegment == .activity {
                     self?.refreshActivityFeedWithNewItem()
                 }
             }
@@ -92,7 +92,7 @@ extension CirclesHomeViewController {
                 self.updateNotificationBadge()
                 
                 // Only refresh if Activity tab is selected
-                if self.contentSegmentedControl.selectedSegmentIndex == 0 {
+                if self.selectedContentSegment == .activity {
                     self.refreshActivityFeedWithNewItem()
                 }
             }
@@ -104,7 +104,7 @@ extension CirclesHomeViewController {
             Logger.info("Received specials updated event")
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
-                if self.contentSegmentedControl.selectedSegmentIndex == 2 {
+                if self.selectedContentSegment == .specials {
                     self.specialsTab.refreshTab()
                 } else {
                     self.specialsTab.invalidate()
@@ -120,11 +120,11 @@ extension CirclesHomeViewController {
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
                         // Refresh activity feed if on Activity tab
-                        if self.contentSegmentedControl.selectedSegmentIndex == 0 {
+                        if self.selectedContentSegment == .activity {
                             self.refreshActivityFeedWithNewItem()
                         }
                         // Refresh moments feed if on Moments tab
-                        if self.contentSegmentedControl.selectedSegmentIndex == 1 {
+                        if self.selectedContentSegment == .moments {
                             self.fetchReels()
                         }
                     }
@@ -134,7 +134,7 @@ extension CirclesHomeViewController {
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
                         // Refresh activity feed if on Activity tab
-                        if self.contentSegmentedControl.selectedSegmentIndex == 0 {
+                        if self.selectedContentSegment == .activity {
                             self.refreshActivityFeedWithNewItem()
                         }
                     }

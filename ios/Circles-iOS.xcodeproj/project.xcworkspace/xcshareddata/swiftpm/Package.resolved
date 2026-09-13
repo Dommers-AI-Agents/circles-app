@@ -1,5 +1,5 @@
 {
-  "originHash" : "b255d535b1c47661420a18c479e2d332065e8de02d1034472c82119e7061c07f",
+  "originHash" : "65546556337da564ff3efa88de70d69b2ff139b9245aeb13bee25201ba7e8fd2",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -35,6 +35,15 @@
       "state" : {
         "revision" : "c19607d535864533523d1f437c84035e5fb101cf",
         "version" : "14.1.0"
+      }
+    },
+    {
+      "identity" : "favcircles-widgets",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Dommers-AI-Agents/favcircles-widgets",
+      "state" : {
+        "revision" : "08646c3c22e9e5ef7c31ab48e5b3c781a6a8f298",
+        "version" : "0.1.1"
       }
     },
     {

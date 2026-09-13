@@ -33,7 +33,12 @@ module.exports = {
   // 10-coin bonus on top of the action's own earn. Deliberately weekly, not a
   // daily streak: the app's job is episodic, and a daily streak would only
   // train people to ignore it. Once per week via weekly_goal:<uid>:<isoWeek>.
-  RULE_VERSION: '2026.08-g',
+  // 2026.09-a: Widgets tab — the first widget save of each UTC day pays half
+  // a coin (showing up, priced like a check-in), and sending a digital
+  // postcard to a connection pays 2 (creating something for someone, priced
+  // like a moment). Both flag-gated by WIDGET_PIGGY_ENABLED=1 in the
+  // controllers; off by default.
+  RULE_VERSION: '2026.09-a',
   CLEARING_WINDOW_HOURS: 24,
   COINS: {
     ADD_PLACE: 3,
@@ -58,7 +63,9 @@ module.exports = {
     BRAND_CODE_REDEEMED: 2,     // scanning the card that shipped in an order
     FIRST_PLACE_ADDED: 25,      // welcome gift — first place ever, once per user
     CLIP_SIGNUP: 50,            // generic App Clip signup (no store), once per user
-    WEEKLY_GOAL: 10             // first qualifying place action of the ISO week
+    WEEKLY_GOAL: 10,            // first qualifying place action of the ISO week
+    WIDGET_DAILY_USE: 0.5,      // first widget save of the UTC day (Widgets tab)
+    POSTCARD_SENT: 2            // digital postcard delivered to a connection's chat
   },
   DAILY_CAPS: {              // earns past the cap: action still succeeds, pays 0
     ADD_PLACE: 20,
@@ -85,7 +92,9 @@ module.exports = {
     BRAND_CODE_REDEEMED: 5,
     FIRST_PLACE_ADDED: 1,       // structurally once-ever via first_place:{uid}
     CLIP_SIGNUP: 1,             // structurally once-ever via clip_signup:{uid}
-    WEEKLY_GOAL: 1              // structurally once-a-week via weekly_goal:{uid}:{isoWeek}
+    WEEKLY_GOAL: 1,             // structurally once-a-week via weekly_goal:{uid}:{isoWeek}
+    WIDGET_DAILY_USE: 1,        // structurally once-a-day via widget_daily_use:{uid}:{day}
+    POSTCARD_SENT: 2
   },
   CREATE_CIRCLE_MIN_PLACES: 3,   // enforced at CLEARING time, not earn time
   CLAIM: {

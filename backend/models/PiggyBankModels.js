@@ -39,7 +39,10 @@ const PIGGY_EVENT_TYPES = [
   // 2026.08-e: welcome gift — first place a user ever adds
   'first_place_added',
   // 2026.08-f: generic App Clip signup (no store scanned)
-  'clip_signup'
+  'clip_signup',
+  // 2026.09-a: Widgets tab
+  'widget_daily_use',
+  'postcard_sent'
 ];
 
 // Earn statuses and claim statuses are disjoint vocabularies on the same
@@ -196,6 +199,18 @@ function derivePiggyDedupKey(eventType, parts = {}) {
       // Owner earns once per distinct liker per moment.
       if (!parts.userId || !parts.videoId || !parts.likerUserId) return null;
       return `moment_like_recv:${s(parts.userId)}:${s(parts.videoId)}:${s(parts.likerUserId)}`;
+    case 'widget_daily_use': {
+      // Once per UTC day across ALL widgets — the day segment IS the repeat
+      // rule (same trick as check_in), so which widget was saved is irrelevant.
+      if (!parts.userId) return null;
+      const day = new Date().toISOString().slice(0, 10);
+      return `widget_daily_use:${s(parts.userId)}:${day}`;
+    }
+    case 'postcard_sent':
+      // One row per delivered message; a resend is a new message, a replay
+      // of the same send is not.
+      if (!parts.userId || !parts.messageId) return null;
+      return `postcard_sent:${s(parts.userId)}:${s(parts.messageId)}`;
     case 'claim':
       // seq comes from bank.claimCount + 1, read inside the claim transaction:
       // two concurrent claims compute the same seq and the loser's create()

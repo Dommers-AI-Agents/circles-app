@@ -706,3 +706,77 @@ describe('reconcile with claim rows', () => {
     expect(computed.settledOnChain).toBe(0);
   });
 });
+
+// 2026.09-a: Widgets tab — daily-use half coin and postcard sends.
+describe('widgets tab events (2026.09-a)', () => {
+  const today = new Date().toISOString().slice(0, 10);
+
+  test('dedup key shapes', () => {
+    expect(derivePiggyDedupKey('widget_daily_use', { userId: 'u1', widgetId: 'water' }))
+      .toBe(`widget_daily_use:u1:${today}`);
+    expect(derivePiggyDedupKey('widget_daily_use', {})).toBeNull();
+    expect(derivePiggyDedupKey('postcard_sent', { userId: 'u1', messageId: 'm/1' }))
+      .toBe('postcard_sent:u1:m_1');
+    expect(derivePiggyDedupKey('postcard_sent', { userId: 'u1' })).toBeNull();
+  });
+
+  test('widget_daily_use pays half a coin once per UTC day, whichever widget saved', async () => {
+    const first = await piggyBank.credit({
+      userId: 'u1', eventType: 'widget_daily_use', sourceRef: { docId: 'u1_water', widgetId: 'water' }
+    });
+    expect(first).toMatchObject({ credited: true, coins: config.COINS.WIDGET_DAILY_USE });
+    expect(bankOf('u1').pendingCoins).toBe(0.5);
+
+    const again = await piggyBank.credit({
+      userId: 'u1', eventType: 'widget_daily_use', sourceRef: { docId: 'u1_habits', widgetId: 'habits' }
+    });
+    // Cap (1/day) trips before the dedup key would; either way: no second row
+    expect(again.credited).toBe(false);
+    expect(ledgerRows()).toHaveLength(1);
+    expect(bankOf('u1').pendingCoins).toBe(0.5);
+  });
+
+  test('postcard_sent: one row per message, replay blocked, capped at 2/day', async () => {
+    const a = await piggyBank.credit({ userId: 'u1', eventType: 'postcard_sent', sourceRef: { messageId: 'm1' } });
+    const replay = await piggyBank.credit({ userId: 'u1', eventType: 'postcard_sent', sourceRef: { messageId: 'm1' } });
+    const b = await piggyBank.credit({ userId: 'u1', eventType: 'postcard_sent', sourceRef: { messageId: 'm2' } });
+    const c = await piggyBank.credit({ userId: 'u1', eventType: 'postcard_sent', sourceRef: { messageId: 'm3' } });
+    expect(a).toMatchObject({ credited: true, coins: config.COINS.POSTCARD_SENT });
+    expect(replay).toMatchObject({ credited: false, duplicate: true });
+    expect(b.credited).toBe(true);
+    expect(c).toMatchObject({ credited: false, reason: 'daily_cap' });
+    expect(ledgerRows()).toHaveLength(2);
+    expect(bankOf('u1').pendingCoins).toBe(2 * config.COINS.POSTCARD_SENT);
+  });
+
+  test('clearing: widget_daily_use confirms while the widget doc exists, reverses once it is gone', async () => {
+    store('widgetData').set('u1_water', { userId: 'u1', widgetId: 'water', version: 1 });
+    await piggyBank.credit({ userId: 'u1', eventType: 'widget_daily_use', sourceRef: { docId: 'u1_water' } });
+    await piggyBank.credit({ userId: 'u2', eventType: 'widget_daily_use', sourceRef: { docId: 'u2_water' } });
+    backdateAll();
+
+    const summary = await piggyBank.runClearing();
+    expect(summary).toMatchObject({ scanned: 2, confirmed: 1, reversed: 1 });
+    const byUser = Object.fromEntries(ledgerRows().map(r => [r.userId, r]));
+    expect(byUser.u1.status).toBe('confirmed');
+    expect(bankOf('u1').confirmedCoins).toBe(config.COINS.WIDGET_DAILY_USE);
+    expect(byUser.u2).toMatchObject({ status: 'reversed', reverseReason: 'widget_doc_deleted' });
+    expect(bankOf('u2').confirmedCoins || 0).toBe(0);
+  });
+
+  test('clearing: postcard_sent reverses when the message was deleted or never existed', async () => {
+    store('messages').set('m_live', { type: 'image', deletedAt: null });
+    store('messages').set('m_gone', { type: 'image', deletedAt: '2026-09-13T00:00:00Z' });
+    await piggyBank.credit({ userId: 'u1', eventType: 'postcard_sent', sourceRef: { messageId: 'm_live' } });
+    await piggyBank.credit({ userId: 'u2', eventType: 'postcard_sent', sourceRef: { messageId: 'm_gone' } });
+    await piggyBank.credit({ userId: 'u3', eventType: 'postcard_sent', sourceRef: { messageId: 'm_missing' } });
+    backdateAll();
+
+    const summary = await piggyBank.runClearing();
+    expect(summary).toMatchObject({ scanned: 3, confirmed: 1, reversed: 2 });
+    const byUser = Object.fromEntries(ledgerRows().map(r => [r.userId, r]));
+    expect(byUser.u1.status).toBe('confirmed');
+    expect(byUser.u2).toMatchObject({ status: 'reversed', reverseReason: 'message_deleted' });
+    expect(byUser.u3).toMatchObject({ status: 'reversed', reverseReason: 'message_deleted' });
+  });
+});

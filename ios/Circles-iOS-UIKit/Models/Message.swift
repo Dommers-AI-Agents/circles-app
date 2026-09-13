@@ -135,6 +135,23 @@ struct Message: Codable, Identifiable {
     var isDeleted: Bool {
         return deletedAt != nil
     }
+
+    // MARK: Postcards (Widgets tab)
+    // A postcard rides the existing `image` type so older builds still show
+    // it as a photo; `metadata.kind` marks it for the richer bubble.
+    var isPostcard: Bool {
+        type == .image && (metadata?["kind"] as? String) == "postcard"
+    }
+
+    var postcardPlaceName: String? {
+        metadata?["placeName"] as? String
+    }
+
+    /// The photo/postcard to show in the bubble, when the message has one.
+    var displayImageURL: String? {
+        guard type == .image, let mediaUrl, !mediaUrl.isEmpty else { return nil }
+        return mediaUrl
+    }
     
     var displayContent: String {
         if isDeleted {
@@ -145,6 +162,10 @@ struct Message: Codable, Identifiable {
         case .text:
             return content ?? ""
         case .image:
+            if isPostcard {
+                if let place = postcardPlaceName, !place.isEmpty { return "📮 Postcard from \(place)" }
+                return "📮 Postcard"
+            }
             return "📷 Photo"
         case .location:
             return "📍 Location"

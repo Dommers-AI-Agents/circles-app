@@ -589,9 +589,20 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
   - `State/` — controller-owned state + loading (`HomeState`, `HomeDataLoader`);
     the controller talks to them through delegate protocols.
   - `Controllers/Home/Tabs/` — the home segment contents (Activity, Moments,
-    Specials) are child view controllers behind `HomeContentTab`; the host
+    Specials, Widgets) are child view controllers behind `HomeContentTab`; the host
     protocol is in `HomeContentTab.swift`. Tabs are switched with `isHidden`,
-    so appearance callbacks don't fire — use the tab hooks.
+    so appearance callbacks don't fire — use the tab hooks. Segment indices go
+    through the `HomeContentSegment` enum (never raw ints).
+  - **Widgets tab (Sept 2026)** — the mini-apps (water, habits, calories,
+    workouts, bill split, postcard) live in a separate Swift package repo,
+    `Dommers-AI-Agents/favcircles-widgets` (product `FavWidgets`, SwiftUI inside,
+    hosted by `HomeWidgetsViewController` via `UIHostingController`). The app
+    implements the package's `FavWidgetHost`/`WidgetDataStore` in
+    `Services/Widgets/`. Backend: `/api/widgets/data/:widgetId` generic
+    versioned JSON documents (`widgetData` collection, payload is an opaque
+    JSON string, 409 on version conflict). Adding a widget = one folder + one
+    registry line in the package; no app or backend change. User data in
+    widgets is never pruned — entry logs shard by month.
   - `Controllers/Profile/Tabs/` — Moments/Uploads grids as child VCs on
     `ProfileGridTabViewController` (reports height to the profile's scroll view).
   - `Controllers/Places/PlaceOwnerEditController.swift` — venue-owner

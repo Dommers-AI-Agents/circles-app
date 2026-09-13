@@ -82,7 +82,7 @@ fi
 # disabled (cactusWalletService.isEnabled() is false) and the piggy bank
 # behaves exactly as before. Certs/CA travel as base64 (comma-safe); the
 # bearer token is required by the broker on every request.
-for var in PIGGY_CLAIMS_ENABLED CACTUS_BROKER_URL CACTUS_BROKER_TOKEN CACTUS_BROKER_CA_B64 CACTUS_ASSET_ID CACTUS_RPC_CERT_B64 CACTUS_RPC_KEY_B64 CACTUS_EXPLORER_BASE_URL; do
+for var in PIGGY_CLAIMS_ENABLED WIDGET_PIGGY_ENABLED CACTUS_BROKER_URL CACTUS_BROKER_TOKEN CACTUS_BROKER_CA_B64 CACTUS_ASSET_ID CACTUS_RPC_CERT_B64 CACTUS_RPC_KEY_B64 CACTUS_EXPLORER_BASE_URL; do
     value="${!var}"
     if [ ! -z "$value" ]; then
         ENV_VARS="$ENV_VARS,$var=$value"

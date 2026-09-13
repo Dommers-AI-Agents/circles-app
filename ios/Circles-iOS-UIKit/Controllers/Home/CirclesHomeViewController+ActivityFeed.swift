@@ -19,8 +19,8 @@ extension CirclesHomeViewController {
     /// Tab-bar Home re-tap: return the content segment to the Activity tab
     /// (from Moments/Specials) so Home always opens on Activity.
     func resetContentTabToActivity() {
-        guard contentSegmentedControl.selectedSegmentIndex != 0 else { return }
-        contentSegmentedControl.selectedSegmentIndex = 0
+        guard selectedContentSegment != .activity else { return }
+        contentSegmentedControl.selectedSegmentIndex = HomeContentSegment.activity.rawValue
         contentSegmentChanged()
     }
     
