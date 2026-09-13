@@ -43,7 +43,9 @@ const COLLECTIONS = {
   WEBAUTHN_CREDENTIALS: 'webauthnCredentials',
   WEBAUTHN_CHALLENGES: 'webauthnChallenges',
   // Home Widgets tab: opaque per-user JSON docs keyed `${uid}_${widgetId}`
-  WIDGET_DATA: 'widgetData'
+  WIDGET_DATA: 'widgetData',
+  // NextBar widget social rounds: shared docs, participantIds array-contains
+  NEXTBAR_ROUNDS: 'nextbarRounds'
 };
 
 // User model structure

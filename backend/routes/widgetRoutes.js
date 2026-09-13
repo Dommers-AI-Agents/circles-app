@@ -8,6 +8,7 @@ const { protect } = require('../middleware/firebaseAuth');
 const { messageLimiter } = require('../middleware/security');
 const widgetData = require('../controllers/widgets/widgetDataController');
 const postcard = require('../controllers/widgets/postcardController');
+const nextBarRounds = require('../controllers/widgets/nextBarRoundController');
 
 const router = express.Router();
 router.use(protect);
@@ -19,5 +20,12 @@ router.delete('/data/:widgetId', widgetData.deleteData);
 
 // A postcard is a chat message, so it shares the messaging rate limit
 router.post('/postcard/send', messageLimiter, postcard.sendPostcard);
+
+// NextBar voting rounds: shared docs (host + tagged connections vote)
+router.post('/nextbar/rounds', nextBarRounds.createRound);
+router.get('/nextbar/rounds', nextBarRounds.listRounds);
+router.get('/nextbar/rounds/:id', nextBarRounds.getRound);
+router.post('/nextbar/rounds/:id/vote', nextBarRounds.vote);
+router.post('/nextbar/rounds/:id/close', nextBarRounds.closeRound);
 
 module.exports = router;

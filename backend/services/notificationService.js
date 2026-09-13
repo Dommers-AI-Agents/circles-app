@@ -266,7 +266,9 @@ class NotificationService {
       'new_follower': 'newFollowers',
       'engagement_reminder': 'reengagement',
       'milestone': 'milestones',
-      'did_you_know': 'tips'
+      'did_you_know': 'tips',
+      'nextbar_round': 'socialActivity',
+      'nextbar_result': 'socialActivity'
     };
 
     const preferencesKey = typeMap[type];
