@@ -377,6 +377,19 @@ class PiggyBankService {
           }
           return { valid: false, reason: 'missing_trigger_ref' };
         }
+        case 'widget_daily_use': {
+          // The widget doc that was saved must still exist (a delete inside
+          // the window reverses the earn).
+          if (!ref.docId) return { valid: false, reason: 'missing_widget_ref' };
+          const doc = await this.db.collection(COLLECTIONS.WIDGET_DATA).doc(ref.docId).get();
+          return doc.exists ? { valid: true } : { valid: false, reason: 'widget_doc_deleted' };
+        }
+        case 'postcard_sent': {
+          if (!ref.messageId) return { valid: false, reason: 'missing_message_ref' };
+          const doc = await this.db.collection(COLLECTIONS.MESSAGES).doc(ref.messageId).get();
+          if (!doc.exists || doc.data().deletedAt) return { valid: false, reason: 'message_deleted' };
+          return { valid: true };
+        }
         default:
           return { valid: false, reason: 'unknown_event_type' };
       }
