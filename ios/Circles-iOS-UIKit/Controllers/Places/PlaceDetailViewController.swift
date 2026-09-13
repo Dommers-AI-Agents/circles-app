@@ -30,24 +30,11 @@ class PlaceDetailViewController: BaseViewController {
     override var loadsDataOnViewDidLoad: Bool { false }
     
     // MARK: - UI Elements
-    private let scrollView: UIScrollView = {
-        let scrollView = UIScrollView()
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        return scrollView
-    }()
+    private let scrollView: UIScrollView = PlaceDetailViewFactory.scrollView()
     
-    private let contentView: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
+    private let contentView: UIView = PlaceDetailViewFactory.contentView()
     
-    private let mediaCarouselView: MediaCarouselView = {
-        let view = MediaCarouselView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.clipsToBounds = true
-        return view
-    }()
+    private let mediaCarouselView: MediaCarouselView = PlaceDetailViewFactory.mediaCarouselView()
     
     /// Apple Look Around: availability, snapshot and shown/hidden live in
     /// the controller; these forwarders keep the page's call sites unchanged.
@@ -95,152 +82,34 @@ class PlaceDetailViewController: BaseViewController {
         mediaCarouselView.configure(with: mediaItems)
     }
     
-    private let streetViewToggleButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Street View", for: .normal)
-        button.setImage(UIImage(systemName: "person.and.arrow.left.and.arrow.right"), for: .normal)
-        button.backgroundColor = UIColor.black.withAlphaComponent(0.8)
-        button.setTitleColor(.white, for: .normal)
-        button.tintColor = .white
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .medium)
-        button.layer.cornerRadius = 16
-        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.isHidden = true
-        // Add shadow for better visibility
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.5
-        button.layer.shadowOffset = CGSize(width: 0, height: 3)
-        button.layer.shadowRadius = 6
-        return button
-    }()
+    private let streetViewToggleButton: UIButton = PlaceDetailViewFactory.streetViewToggleButton()
     
-    private let editImageButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Add Photo or Video", for: .normal)
-        button.setImage(UIImage(systemName: "camera.fill"), for: .normal)
-        button.backgroundColor = UIColor.black.withAlphaComponent(0.8)
-        button.setTitleColor(.white, for: .normal)
-        button.tintColor = .white
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .medium)
-        button.layer.cornerRadius = 14
-        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.isHidden = false  // Show by default
-        // Add shadow for better visibility
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.5
-        button.layer.shadowOffset = CGSize(width: 0, height: 3)
-        button.layer.shadowRadius = 6
-        return button
-    }()
+    private let editImageButton: UIButton = PlaceDetailViewFactory.editImageButton()
     
     // Commented out - automatic photo migration now handles this
     /*
-    private let updateInfoButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Update Place Info", for: .normal)
-        button.setImage(UIImage(systemName: "arrow.clockwise"), for: .normal)
-        button.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.9)
-        button.setTitleColor(.white, for: .normal)
-        button.tintColor = .white
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 12, weight: .medium)
-        button.layer.cornerRadius = 14
-        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.isHidden = true  // Hidden by default
-        // Add shadow for better visibility
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.5
-        button.layer.shadowOffset = CGSize(width: 0, height: 3)
-        button.layer.shadowRadius = 6
-        return button
-    }()
+    private let updateInfoButton: UIButton = PlaceDetailViewFactory.updateInfoButton()
     */
     
-    private let infoContainerView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.background
-        view.layer.cornerRadius = 16
-        view.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        view.clipsToBounds = true
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
+    private let infoContainerView: UIView = PlaceDetailViewFactory.infoContainerView()
     
-    private let nameLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 24, weight: .bold)
-        label.textColor = Constants.Colors.label
-        label.numberOfLines = 2
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private let nameLabel: UILabel = PlaceDetailViewFactory.nameLabel()
     
-    private let categoryLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.white
-        label.textAlignment = .center
-        label.layer.cornerRadius = 8
-        label.clipsToBounds = true
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private let categoryLabel: UILabel = PlaceDetailViewFactory.categoryLabel()
     
-    private let categoryEditButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "pencil"), for: .normal)
-        button.tintColor = Constants.Colors.primary
-        button.backgroundColor = .clear
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private let categoryEditButton: UIButton = PlaceDetailViewFactory.categoryEditButton()
     
-    private let ratingView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.3)
-        view.layer.cornerRadius = 8
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.isUserInteractionEnabled = true
-        return view
-    }()
+    private let ratingView: UIView = PlaceDetailViewFactory.ratingView()
     
     // Merged social-proof row text: "Added by X · saved by N people".
     // The name is tappable (profile); the row itself opens the savers list.
-    private let creatorLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.isUserInteractionEnabled = true
-        return label
-    }()
+    private let creatorLabel: UILabel = PlaceDetailViewFactory.creatorLabel()
 
-    private let savedByView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.secondaryBackground
-        view.layer.cornerRadius = 8
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.isUserInteractionEnabled = true
-        return view
-    }()
+    private let savedByView: UIView = PlaceDetailViewFactory.savedByView()
 
-    private let savedByFacepileView: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .horizontal
-        stackView.spacing = -8 // Overlapping avatars
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        return stackView
-    }()
+    private let savedByFacepileView: UIStackView = PlaceDetailViewFactory.savedByFacepileView()
 
-    private let savedByChevron: UIImageView = {
-        let imageView = UIImageView(image: UIImage(systemName: "chevron.right"))
-        imageView.tintColor = Constants.Colors.gray
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
+    private let savedByChevron: UIImageView = PlaceDetailViewFactory.savedByChevron()
 
     private var savedByHeightConstraint: NSLayoutConstraint?
 
@@ -282,16 +151,9 @@ class PlaceDetailViewController: BaseViewController {
         host: self)
 
     // Practical actions row: Directions / Website / Call / Edit
-    private let practicalButtonsStackView: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .horizontal
-        stackView.distribution = .fillEqually
-        stackView.spacing = 10
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        return stackView
-    }()
+    private let practicalButtonsStackView: UIStackView = PlaceDetailViewFactory.practicalButtonsStackView()
 
-    private static func practicalButton(title: String, systemName: String) -> UIButton {
+    static func practicalButton(title: String, systemName: String) -> UIButton {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: systemName), for: .normal)
         button.setTitle(" \(title)", for: .normal)
@@ -310,84 +172,33 @@ class PlaceDetailViewController: BaseViewController {
     private let directionsRowButton = PlaceDetailViewController.practicalButton(title: "Directions", systemName: "location.north.line")
     // Check In leads the row: it's the engagement action, the rest are utilities.
     // Same icon as every check-in surface (UIImage.checkInIcon).
-    private let checkInRowButton: UIButton = {
-        let button = PlaceDetailViewController.practicalButton(title: "Check In", systemName: "checkmark.circle")
-        button.setImage(.checkInIcon, for: .normal)
-        return button
-    }()
+    private let checkInRowButton: UIButton = PlaceDetailViewFactory.checkInRowButton()
 
     // Add to Circle: compact pill in the action row, left of Follow — same
     // size and style family (they're sibling actions; this one also picks
     // the circle)
-    private lazy var addToCircleButton: UIButton = {
-        let button = UIButton.smallActionButton(title: "Add to My Circle", style: .primary)
-        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
-        button.isHidden = true // Hidden until eligibility is known
-        return button
-    }()
+    private lazy var addToCircleButton: UIButton = PlaceDetailViewFactory.addToCircleButton()
     
     // MARK: - Action Buttons Container
-    private let actionButtonsContainer: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.background
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
+    private let actionButtonsContainer: UIView = PlaceDetailViewFactory.actionButtonsContainer()
     
     // Bold, larger config so the like / comment / send icons read as prominent
     // action buttons rather than thin hairline glyphs.
     static let actionIconConfig = UIImage.SymbolConfiguration(pointSize: 22, weight: .bold)
 
-    private let likeButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "heart", withConfiguration: PlaceDetailViewController.actionIconConfig), for: .normal)
-        button.tintColor = .label
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private let likeButton: UIButton = PlaceDetailViewFactory.likeButton()
     
-    private let likeCountLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.gray
-        label.text = ""
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.isUserInteractionEnabled = true
-        return label
-    }()
+    private let likeCountLabel: UILabel = PlaceDetailViewFactory.likeCountLabel()
     
-    private let commentButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "bubble.left", withConfiguration: PlaceDetailViewController.actionIconConfig), for: .normal)
-        button.tintColor = .label
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private let commentButton: UIButton = PlaceDetailViewFactory.commentButton()
 
-    private let commentCountLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.gray
-        label.text = ""
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private let commentCountLabel: UILabel = PlaceDetailViewFactory.commentCountLabel()
 
     // Send-arrow: fires the same standard share as the nav-bar share button
     // (shareButtonTapped), sitting inline with like/comment like Instagram.
-    private let sendButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "paperplane.fill", withConfiguration: PlaceDetailViewController.actionIconConfig), for: .normal)
-        button.tintColor = .label
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private let sendButton: UIButton = PlaceDetailViewFactory.sendButton()
 
-    private lazy var followButton: UIButton = {
-        let button = UIButton.smallActionButton(title: "Follow", style: .primary)
-        button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
-        return button
-    }()
+    private lazy var followButton: UIButton = PlaceDetailViewFactory.followButton()
 
     // Follow state survives place reassignment (like/refresh responses may not
     // carry isFollowing) — seeded from the server copy, updated optimistically
@@ -395,126 +206,37 @@ class PlaceDetailViewController: BaseViewController {
     private var placeFollowersCount = 0
     
     // MARK: - Comments Section UI
-    private let commentsSection: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.secondaryBackground
-        view.layer.cornerRadius = 12
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.isHidden = true // Initially hidden until comments are loaded
-        return view
-    }()
+    private let commentsSection: UIView = PlaceDetailViewFactory.commentsSection()
     
-    private let commentsSectionTitle: UILabel = {
-        let label = UILabel()
-        label.text = "Comments"
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = Constants.Colors.label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private let commentsSectionTitle: UILabel = PlaceDetailViewFactory.commentsSectionTitle()
     
-    private let viewAllCommentsButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("View all", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14)
-        button.setTitleColor(Constants.Colors.primary, for: .normal)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private let viewAllCommentsButton: UIButton = PlaceDetailViewFactory.viewAllCommentsButton()
     
-    private let commentsStackView: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .vertical
-        stackView.spacing = 8
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        return stackView
-    }()
+    private let commentsStackView: UIStackView = PlaceDetailViewFactory.commentsStackView()
     
     private var displayedComments: [PlaceComment] = []
     
-    private let ratingImageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.image = UIImage(systemName: "star.fill")
-        imageView.tintColor = UIColor(hex: "#F6E05E") // Yellow
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
+    private let ratingImageView: UIImageView = PlaceDetailViewFactory.ratingImageView()
     
-    private let ratingLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
-        label.textColor = Constants.Colors.label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private let ratingLabel: UILabel = PlaceDetailViewFactory.ratingLabel()
     
-    private let descriptionLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.gray
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.isUserInteractionEnabled = true
-        return label
-    }()
+    private let descriptionLabel: UILabel = PlaceDetailViewFactory.descriptionLabel()
 
     /// The saver's personal 0–10 score ("Your rating: 8/10" / "Wes's rating:
     /// 8/10") — distinct from the Google rating chip above
-    private let userRatingLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
-        label.textColor = Constants.Colors.primary
-        label.numberOfLines = 1
-        label.isHidden = true
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private let userRatingLabel: UILabel = PlaceDetailViewFactory.userRatingLabel()
     
-    private let addressLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.label
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private let addressLabel: UILabel = PlaceDetailViewFactory.addressLabel()
     
-    private let hoursLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        label.textColor = Constants.Colors.gray
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private let hoursLabel: UILabel = PlaceDetailViewFactory.hoursLabel()
 
     // About card: description + hours in one grouped card (phone/website live
     // only in the quick-action chips, not repeated as text)
-    private let aboutCardView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.secondaryBackground
-        view.layer.cornerRadius = 12
-        view.clipsToBounds = true
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
+    private let aboutCardView: UIView = PlaceDetailViewFactory.aboutCardView()
 
-    private let aboutStackView: UIStackView = {
-        let stack = UIStackView()
-        stack.axis = .vertical
-        stack.spacing = 6
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        return stack
-    }()
+    private let aboutStackView: UIStackView = PlaceDetailViewFactory.aboutStackView()
 
-    private let aboutTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "ABOUT"
-        label.font = UIFont.systemFont(ofSize: 11, weight: .bold)
-        label.textColor = Constants.Colors.secondaryLabel
-        return label
-    }()
+    private let aboutTitleLabel: UILabel = PlaceDetailViewFactory.aboutTitleLabel()
 
     private var aboutTopConstraint: NSLayoutConstraint?
     private var aboutHeightConstraint: NSLayoutConstraint?
@@ -546,199 +268,41 @@ class PlaceDetailViewController: BaseViewController {
         return nil
     }
 
-    private let mapView: MKMapView = {
-        let mapView = MKMapView()
-        mapView.isScrollEnabled = false
-        mapView.isZoomEnabled = false
-        mapView.isPitchEnabled = false
-        mapView.isRotateEnabled = false
-        mapView.layer.cornerRadius = 12
-        mapView.clipsToBounds = true
-        mapView.translatesAutoresizingMaskIntoConstraints = false
-        return mapView
-    }()
+    private let mapView: MKMapView = PlaceDetailViewFactory.mapView()
     
-    private let notesTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Notes"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private let notesTitleLabel: UILabel = PlaceDetailViewFactory.notesTitleLabel()
     
-    private let notesButtonsStackView: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .horizontal
-        stackView.spacing = Constants.Spacing.small
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        return stackView
-    }()
+    private let notesButtonsStackView: UIStackView = PlaceDetailViewFactory.notesButtonsStackView()
     
-    private let notesEditButton: UIButton = {
-        let button = UIButton(type: .system)
-        
-        // Create configuration for button with icon
-        var config = UIButton.Configuration.plain()
-        config.image = UIImage(systemName: "pencil.circle")
-        config.title = "Edit"
-        config.imagePadding = 4
-        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-        
-        button.configuration = config
-        button.configurationUpdateHandler = { button in
-            var config = button.configuration
-            config?.baseForegroundColor = Constants.Colors.primary
-            button.configuration = config
-        }
-        
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private let notesEditButton: UIButton = PlaceDetailViewFactory.notesEditButton()
     
-    private let notesLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
-        label.textColor = Constants.Colors.gray
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private let notesLabel: UILabel = PlaceDetailViewFactory.notesLabel()
     
-    private let addNotesButton: UIButton = {
-        let button = UIButton(type: .system)
-        
-        // Create configuration for button with icon
-        var config = UIButton.Configuration.plain()
-        config.image = UIImage(systemName: "plus.circle")
-        config.title = "Add Note"
-        config.imagePadding = 4
-        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-        
-        button.configuration = config
-        button.configurationUpdateHandler = { button in
-            var config = button.configuration
-            config?.baseForegroundColor = Constants.Colors.primary
-            button.configuration = config
-        }
-        
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.isHidden = true
-        return button
-    }()
+    private let addNotesButton: UIButton = PlaceDetailViewFactory.addNotesButton()
     
     // MARK: - Photos Section UI Elements
-    private let photosTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Photos"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private let photosTitleLabel: UILabel = PlaceDetailViewFactory.photosTitleLabel()
     
-    private let photosButtonsStackView: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .horizontal
-        stackView.spacing = Constants.Spacing.small
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        return stackView
-    }()
+    private let photosButtonsStackView: UIStackView = PlaceDetailViewFactory.photosButtonsStackView()
     
-    private let photosEditButton: UIButton = {
-        let button = UIButton(type: .system)
-        
-        // Create configuration for button with icon
-        var config = UIButton.Configuration.plain()
-        config.image = UIImage(systemName: "pencil.circle")
-        config.title = "Add Photo or Video"
-        config.imagePadding = 4
-        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-        
-        button.configuration = config
-        button.configurationUpdateHandler = { button in
-            var config = button.configuration
-            config?.baseForegroundColor = Constants.Colors.primary
-            button.configuration = config
-        }
-        
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private let photosEditButton: UIButton = PlaceDetailViewFactory.photosEditButton()
     
-    private let addPhotoButton: UIButton = {
-        let button = UIButton(type: .system)
-        
-        // Create configuration for button with icon
-        var config = UIButton.Configuration.plain()
-        config.image = UIImage(systemName: "camera.fill")
-        config.title = "Add Photo"
-        config.imagePadding = 4
-        config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
-        
-        button.configuration = config
-        button.configurationUpdateHandler = { button in
-            var config = button.configuration
-            config?.baseForegroundColor = Constants.Colors.primary
-            button.configuration = config
-        }
-        
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private let addPhotoButton: UIButton = PlaceDetailViewFactory.addPhotoButton()
     
-    private let tagsTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Tags"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private let tagsTitleLabel: UILabel = PlaceDetailViewFactory.tagsTitleLabel()
     
-    private let tagsStackView: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .horizontal
-        stackView.spacing = Constants.Spacing.small
-        stackView.alignment = .leading
-        stackView.distribution = .fillProportionally
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        return stackView
-    }()
+    private let tagsStackView: UIStackView = PlaceDetailViewFactory.tagsStackView()
     
     
     private let websiteButton = PlaceDetailViewController.practicalButton(title: "Website", systemName: "globe")
 
     private let phoneButton = PlaceDetailViewController.practicalButton(title: "Call", systemName: "phone")
     
-    private let circleInfoView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.lightGray.withAlphaComponent(0.3)
-        view.layer.cornerRadius = 8
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
+    private let circleInfoView: UIView = PlaceDetailViewFactory.circleInfoView()
     
-    private let circleNameLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
-        label.textColor = Constants.Colors.darkGray
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private let circleNameLabel: UILabel = PlaceDetailViewFactory.circleNameLabel()
     
-    private let circleButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("View Circle", for: .normal)
-        button.setTitleColor(Constants.Colors.primary, for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private let circleButton: UIButton = PlaceDetailViewFactory.circleButton()
     
     // MARK: - Init
     
