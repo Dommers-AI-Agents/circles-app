@@ -1,5 +1,6 @@
 // backend/services/sseService.js
 const { getFirestore } = require('../config/firebase');
+const { chunk } = require('../utils/firestoreChunks');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 
 const db = getFirestore();
@@ -252,9 +253,15 @@ class SSEService {
                   data: { count: unreadSnapshot.size },
                   timestamp: new Date().toISOString()
                 });
-              });
+              })
+              .catch(error => console.error(`📡 SSE: unread count failed for ${userId}:`, error.message));
           }
         });
+      }, (error) => {
+        // Needs the (read, userId, createdAt) composite index; without it
+        // this logs once per SSE session instead of surfacing as an
+        // unhandled stream error.
+        console.error(`📡 SSE: notification listener failed for ${userId}:`, error.message);
       });
     unsubscribers.push(notificationListener);
 
@@ -276,29 +283,37 @@ class SSEService {
             connectedUserIds.add(userId); // Include self
             
             if (connectedUserIds.size > 0) {
-              const userIdsArray = Array.from(connectedUserIds);
-              
-              // Listen for new activities from network
-              const activityListener = db.collection(COLLECTIONS.ACTIVITIES)
-                .where('actorId', 'in', userIdsArray)
-                .orderBy('timestamp', 'desc')
-                .limit(5)
-                .onSnapshot((snapshot) => {
-                  snapshot.docChanges().forEach(change => {
-                    if (change.type === 'added') {
-                      const activity = { id: change.doc.id, ...change.doc.data() };
-                      this.sendEvent(userId, {
-                        type: 'new_activity',
-                        data: activity,
-                        timestamp: new Date().toISOString()
-                      });
-                    }
+              // Firestore caps 'in' at 30 values and a listener can't be
+              // paged, so a well-connected user gets one listener per chunk
+              // of connections (same chunking as the one-shot feed queries).
+              // A listener error is logged, not thrown: an unhandled error
+              // here used to take the whole SSE session's watches down.
+              for (const idsChunk of chunk(Array.from(connectedUserIds))) {
+                const activityListener = db.collection(COLLECTIONS.ACTIVITIES)
+                  .where('actorId', 'in', idsChunk)
+                  .orderBy('timestamp', 'desc')
+                  .limit(5)
+                  .onSnapshot((snapshot) => {
+                    snapshot.docChanges().forEach(change => {
+                      if (change.type === 'added') {
+                        const activity = { id: change.doc.id, ...change.doc.data() };
+                        this.sendEvent(userId, {
+                          type: 'new_activity',
+                          data: activity,
+                          timestamp: new Date().toISOString()
+                        });
+                      }
+                    });
+                  }, (error) => {
+                    console.error(`📡 SSE: activity listener failed for ${userId}:`, error.message);
                   });
-                });
-              unsubscribers.push(activityListener);
+                unsubscribers.push(activityListener);
+              }
             }
-          });
-      });
+          })
+          .catch(error => console.error(`📡 SSE: connection lookup failed for ${userId}:`, error.message));
+      })
+      .catch(error => console.error(`📡 SSE: connection lookup failed for ${userId}:`, error.message));
 
     // Store unsubscribe functions
     this.listeners.set(userId, unsubscribers);
