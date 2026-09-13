@@ -176,23 +176,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return mapView
     }()
     
-    // Category buttons scroll view
-    let categoryScrollView: UIScrollView = {
-        let scrollView = UIScrollView()
-        scrollView.showsHorizontalScrollIndicator = false
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.backgroundColor = .clear
-        return scrollView
-    }()
-    
-    let categoryStackView: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .horizontal
-        stackView.spacing = 10
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        return stackView
-    }()
-    
     // Search results overlay
     let searchResultsTableView: UITableView = {
         let tableView = UITableView()
@@ -812,8 +795,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         contentView.addSubview(hintLabel)
         contentView.addSubview(searchContainer)
         searchContainer.addSubview(searchBar)
-        contentView.addSubview(categoryScrollView)
-        categoryScrollView.addSubview(categoryStackView)
         contentView.addSubview(mapContainer)
         mapContainer.addSubview(mapView)
         mapContainer.addSubview(zoomToMeButton)
@@ -881,20 +862,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             searchBar.bottomAnchor.constraint(equalTo: searchContainer.bottomAnchor),
             
             // Category scroll view
-            categoryScrollView.topAnchor.constraint(equalTo: searchContainer.bottomAnchor, constant: Constants.Spacing.small),
-            categoryScrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            categoryScrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            categoryScrollView.heightAnchor.constraint(equalToConstant: 36),
             
             // Category stack view
-            categoryStackView.topAnchor.constraint(equalTo: categoryScrollView.topAnchor),
-            categoryStackView.leadingAnchor.constraint(equalTo: categoryScrollView.leadingAnchor),
-            categoryStackView.trailingAnchor.constraint(equalTo: categoryScrollView.trailingAnchor),
-            categoryStackView.bottomAnchor.constraint(equalTo: categoryScrollView.bottomAnchor),
-            categoryStackView.heightAnchor.constraint(equalTo: categoryScrollView.heightAnchor),
             
             // Map container
-            mapContainer.topAnchor.constraint(equalTo: categoryScrollView.bottomAnchor, constant: Constants.Spacing.small),
+            mapContainer.topAnchor.constraint(equalTo: searchContainer.bottomAnchor, constant: Constants.Spacing.small),
             mapContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             mapContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             mapContainer.heightAnchor.constraint(equalToConstant: 300),
@@ -1042,48 +1014,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         addressTextView.alpha = 1.0
         categoryButton.alpha = 1.0
         
-        // Setup category buttons
-        setupCategoryButtons()
-        
         // Add dropdowns to main view last to ensure they're on top
         view.addSubview(circleDropdownTableView)
         view.addSubview(categoryDropdownTableView)
         view.bringSubviewToFront(circleDropdownTableView)
         view.bringSubviewToFront(categoryDropdownTableView)
-    }
-    
-    func setupCategoryButtons() {
-        let categories = [
-            ("🍽", "Restaurants"),
-            ("☕️", "Coffee"),
-            ("🏨", "Hotels"),
-            ("⛽️", "Gas"),
-            ("🛒", "Groceries"),
-            ("🏞", "Parks"),
-            ("🍺", "Bars"),
-            ("🛍", "Shopping"),
-            ("💊", "Pharmacy"),
-            ("🏦", "Banks")
-        ]
-        
-        for (emoji, title) in categories {
-            let button = UIButton(type: .system)
-            button.setTitle("\(emoji) \(title)", for: .normal)
-            button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-            button.backgroundColor = .white
-            button.setTitleColor(UIColor.systemBlue, for: .normal)
-            button.layer.cornerRadius = 18
-            button.layer.borderWidth = 1
-            button.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
-            button.layer.shadowColor = UIColor.black.cgColor
-            button.layer.shadowOpacity = 0.1
-            button.layer.shadowOffset = CGSize(width: 0, height: 1)
-            button.layer.shadowRadius = 2
-            button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
-            button.addTarget(self, action: #selector(searchCategoryButtonTapped(_:)), for: .touchUpInside)
-            
-            categoryStackView.addArrangedSubview(button)
-        }
     }
     
     func setupMap() {
@@ -1449,22 +1384,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                 self.categoryButton.imageView?.transform = .identity
             }
         }
-    }
-    
-    @objc func searchCategoryButtonTapped(_ sender: UIButton) {
-        guard let buttonTitle = sender.title(for: .normal) else { return }
-        
-        // Extract the category name (remove emoji and trim)
-        let category = buttonTitle.components(separatedBy: " ").dropFirst().joined(separator: " ")
-        
-        Logger.debug("Category button tapped: \(category)")
-        
-        // Clear search bar
-        searchBar.text = ""
-        searchResultsTableView.isHidden = true
-        
-        // Search for this category
-        searchForCategory(category)
     }
     
     @objc func circleButtonTapped() {
@@ -2245,68 +2164,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default, handler: completion))
         present(alert, animated: true)
-    }
-    
-    func searchForNearbyPlaces(around coordinate: CLLocationCoordinate2D) {
-        // Don't automatically search when location is first obtained
-        // Let user choose a category instead
-    }
-    
-    func searchForCategory(_ category: String) {
-        Logger.debug("Searching for category: \(category)")
-        
-        // Mark that we've searched for a category
-        hasSearchedCategory = true
-        
-        // Create search request using Apple Maps (cost-efficient)
-        // NOTE: Always use MKLocalSearch for place discovery, not Google Places
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = category
-        request.region = mapView.region
-        
-        let search = MKLocalSearch(request: request)
-        search.start { [weak self] response, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                Logger.debug("Search error: \(error.localizedDescription)")
-                return
-            }
-            
-            guard let response = response else { return }
-            
-            Logger.debug("Found \(response.mapItems.count) items")
-            
-            DispatchQueue.main.async {
-                // Remove existing annotations (except user location)
-                let nonUserAnnotations = self.mapView.annotations.filter { !($0 is MKUserLocation) }
-                self.mapView.removeAnnotations(nonUserAnnotations)
-                self.annotations.removeAll()
-                self.annotationToPlaceIdMap.removeAll()
-                self.placeIdsByCoordinate.removeAll()
-                
-                // Add annotations for each result
-                for mapItem in response.mapItems {
-                    let annotation = PlaceSearchAnnotation()
-                    annotation.coordinate = mapItem.placemark.coordinate
-                    annotation.title = mapItem.name ?? "Unknown Place"
-                    annotation.subtitle = self.formatAddress(for: mapItem.placemark)
-                    annotation.mapItem = mapItem
-                    
-                    self.mapView.addAnnotation(annotation)
-                    self.annotations.append(annotation)
-                    
-                    Logger.debug("📍 Added annotation: \(annotation.title ?? "Unknown") at \(annotation.coordinate)")
-                    
-                    // Store by coordinate for lookup
-                    let coordKey = "\(mapItem.placemark.coordinate.latitude),\(mapItem.placemark.coordinate.longitude)"
-                    // We'll need to get Google Place ID later if user selects this
-                }
-                
-                // Show all annotations
-                self.showAllAnnotations()
-            }
-        }
     }
     
     func showAllAnnotations() {
