@@ -321,8 +321,14 @@ class CheckInRecipientSelectionViewController: BaseViewController {
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
-                    case .success:
-                        self?.showSuccess("Check-in created successfully!") {
+                    case .success(let created):
+                        // "That's your 3rd time here" — the personal history
+                        // is the reason to keep checking in
+                        var message = "Check-in created successfully!"
+                        if let count = created.stats?.count, count > 1 {
+                            message = "You're checked in. That's your \(CheckInHistoryFormatter.ordinal(count)) time here!"
+                        }
+                        self?.showSuccess(message) {
                             self?.delegate?.didCompleteCheckIn()
                         }
                         

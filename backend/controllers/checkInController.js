@@ -17,6 +17,8 @@ const sseService = require('../services/sseService');
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
 const { indexSavedPlace } = require('../services/circleLocationSummary');
+const { ensureGlobalPlaceLink, findCanonicalByNameAndLocation, haversineMeters } = require('../services/globalPlaceResolver');
+const checkInStats = require('../services/checkInStatsService');
 
 const db = getFirestore();
 const googleMapsClient = new Client({});
@@ -192,6 +194,61 @@ async function enrichPlaceWithGoogleData(placeName, location, options = {}) {
     return {};
   }
 }
+// Has this user already saved this VENUE? By canonical venue id when the
+// check-in resolved to one; otherwise by exact name — but only within
+// SAME_VENUE_RADIUS_METERS of the check-in when both sides have coordinates,
+// so a second Crunch Fitness across town is a new place, not the old save
+// (name-only matching attached every chain location to the first one saved).
+const SAME_VENUE_RADIUS_METERS = 200;
+const coordsOf = (location) => {
+  if (!location) return null;
+  if (Array.isArray(location.coordinates) && location.coordinates.length === 2) {
+    return { lng: location.coordinates[0], lat: location.coordinates[1] };
+  }
+  if (typeof location.latitude === 'number' && typeof location.longitude === 'number') {
+    return { lng: location.longitude, lat: location.latitude };
+  }
+  return null;
+};
+
+async function findExistingSaveOfVenue({ userId, globalPlaceId, placeName, location }) {
+  if (globalPlaceId) {
+    const byVenue = await db.collection(COLLECTIONS.PLACES)
+      .where('addedBy', '==', userId)
+      .where('globalPlaceId', '==', globalPlaceId)
+      .where('deletedAt', '==', null)
+      .limit(1)
+      .get();
+    if (!byVenue.empty) return byVenue.docs[0];
+  }
+  if (!placeName) return null;
+  const byName = await db.collection(COLLECTIONS.PLACES)
+    .where('name', '==', placeName)
+    .where('addedBy', '==', userId)
+    .where('deletedAt', '==', null)
+    .limit(10)
+    .get();
+  if (byName.empty) return null;
+  const here = coordsOf(location);
+  let best = null;
+  let bestDistance = Infinity;
+  let unlocated = null; // legacy exact-name fallback when distance can't be judged
+  byName.docs.forEach((doc) => {
+    const there = coordsOf(doc.data().location);
+    if (!here || !there) {
+      if (!unlocated) unlocated = doc;
+      return;
+    }
+    const distance = haversineMeters(here.lat, here.lng, there.lat, there.lng);
+    if (distance <= SAME_VENUE_RADIUS_METERS && distance < bestDistance) {
+      best = doc;
+      bestDistance = distance;
+    }
+  });
+  return best || unlocated;
+}
+exports.findExistingSaveOfVenue = findExistingSaveOfVenue;
+
 // Shared with createPlace (share-extension saves use the same
 // canonical-first-then-Google enrichment)
 exports.enrichPlaceWithGoogleData = enrichPlaceWithGoogleData;
@@ -335,150 +392,195 @@ exports.createCheckIn = async (req, res) => {
       }
     }
     
-    // Add to activity feed if enabled
-    if (checkIn.showInActivityFeed) {
-      // Ensure place exists in database for all check-ins
-      let finalPlaceId = checkIn.placeId;
-      let placePhoto = null;
-      let circleIdForActivity = checkIn.circleId;
-      
-      if (checkIn.placeId) {
-        // Check if place exists in database
-        try {
-          const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(checkIn.placeId).get();
-          if (placeDoc.exists) {
-            const placeData = placeDoc.data();
-            if (placeData.photos && placeData.photos.length > 0) {
-              placePhoto = placeData.photos[0];
-            }
-            circleIdForActivity = placeData.circleId || circleIdForActivity;
-          } else {
-            // Place ID provided but doesn't exist - clear it to create new
-            finalPlaceId = null;
+    // Every check-in is remembered as a saved place — regardless of whether
+    // it's broadcast to the feed. The feed toggle only gates the activity row
+    // below (it used to gate this whole block, so a quiet check-in at a new
+    // venue was never saved anywhere).
+    let finalPlaceId = checkIn.placeId;
+    let placePhoto = null;
+    let circleIdForActivity = checkIn.circleId;
+    let globalPlaceId = null;
+    // Venue id carried over from another user's save, when that's what the
+    // client referenced — lets the match skip the name lookup
+    let checkInVenueHint = null;
+
+    if (checkIn.placeId) {
+      // Check if place exists in database (a trashed save doesn't count —
+      // the picker can still hand us one, and the venue must be re-saved)
+      try {
+        const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(checkIn.placeId).get();
+        if (placeDoc.exists && !placeDoc.data().deletedAt && placeDoc.data().addedBy === userId) {
+          const placeData = placeDoc.data();
+          if (placeData.photos && placeData.photos.length > 0) {
+            placePhoto = placeData.photos[0];
           }
-        } catch (error) {
-          console.error('Error fetching existing place for activity:', error);
+          circleIdForActivity = placeData.circleId || circleIdForActivity;
+          globalPlaceId = placeData.globalPlaceId || await ensureGlobalPlaceLink(placeDoc);
+        } else {
+          // Missing, trashed, or SOMEONE ELSE's save (Check In from a
+          // connection's place page): clear it so the venue is matched
+          // against this user's own saves or added to their check-in circle
+          if (placeDoc.exists && !placeDoc.data().deletedAt) {
+            checkInVenueHint = placeDoc.data().globalPlaceId || null;
+            if (!checkIn.location && placeDoc.data().location && Array.isArray(placeDoc.data().location.coordinates)) {
+              const [lng, lat] = placeDoc.data().location.coordinates;
+              checkIn.location = new GeoPoint(lat, lng);
+            }
+          }
           finalPlaceId = null;
+          circleIdForActivity = null;
         }
+      } catch (error) {
+        console.error('Error fetching existing place for activity:', error);
+        finalPlaceId = null;
       }
-      
-      // If no valid place ID, create a new place in the check-in circle
-      if (!finalPlaceId) {
-        try {
+    }
+
+    // If no valid place ID, reuse an existing save of this VENUE or create one
+    // in the check-in circle
+    if (!finalPlaceId) {
+      try {
+        // Canonical venue first — if anyone on the platform has saved this
+        // place, the globalPlaces record already carries the venue data and
+        // Google isn't consulted at all. Google runs only for venues new to
+        // the whole platform (the once-per-venue purchase).
+        let canonicalDoc = null;
+        let canonicalData = null;
+        if (checkIn.location) {
+          try {
+            canonicalDoc = await findCanonicalByNameAndLocation(checkIn.placeName, {
+              coordinates: [checkIn.location.longitude, checkIn.location.latitude]
+            });
+            if (canonicalDoc) {
+              canonicalData = canonicalDoc.data();
+              console.log(`✅ Check-in matched canonical venue ${canonicalDoc.id} — skipping Google enrichment`);
+            }
+          } catch (canonicalError) {
+            console.error('⚠️ Canonical venue lookup failed, falling back to Google:', canonicalError.message);
+          }
+        }
+
+        const existingSave = await findExistingSaveOfVenue({
+          userId,
+          globalPlaceId: (canonicalDoc ? canonicalDoc.id : null) || checkInVenueHint,
+          placeName: checkIn.placeName,
+          location: checkIn.location
+        });
+
+        if (existingSave) {
+          // Use existing place
+          finalPlaceId = existingSave.id;
+          const existingPlace = existingSave.data();
+          if (existingPlace.photos && existingPlace.photos.length > 0) {
+            placePhoto = existingPlace.photos[0];
+          }
+          circleIdForActivity = existingPlace.circleId || circleIdForActivity;
+          globalPlaceId = existingPlace.globalPlaceId || (canonicalDoc ? canonicalDoc.id : null)
+            || checkInVenueHint || await ensureGlobalPlaceLink(existingSave);
+          console.log(`✅ Using existing place for check-in: ${checkIn.placeName} (ID: ${finalPlaceId})`);
+        } else {
           // Get or create the user's check-in circle
           const checkInCircle = await findOrCreateCheckInCircle(userId);
           circleIdForActivity = checkInCircle.id;
-          
-          // First check if a place with same name already exists in any of user's circles
-          const existingPlacesQuery = await db.collection(COLLECTIONS.PLACES)
-            .where('name', '==', checkIn.placeName)
-            .where('addedBy', '==', userId)
-            .where('deletedAt', '==', null)
-            .limit(1)
-            .get();
-          
-          if (!existingPlacesQuery.empty) {
-            // Use existing place
-            finalPlaceId = existingPlacesQuery.docs[0].id;
-            const existingPlace = existingPlacesQuery.docs[0].data();
-            if (existingPlace.photos && existingPlace.photos.length > 0) {
-              placePhoto = existingPlace.photos[0];
-            }
-            console.log(`✅ Using existing place for check-in: ${checkIn.placeName} (ID: ${finalPlaceId})`);
-          } else {
-            // Canonical venue first — if anyone on the platform has saved
-            // this place, the globalPlaces record already carries the venue
-            // data and Google isn't consulted at all. Google runs only for
-            // venues new to the whole platform (the once-per-venue purchase).
-            const { findCanonicalByNameAndLocation } = require('../services/globalPlaceResolver');
-            let canonicalData = null;
-            if (checkIn.location) {
-              try {
-                const canonicalDoc = await findCanonicalByNameAndLocation(checkIn.placeName, {
-                  coordinates: [checkIn.location.longitude, checkIn.location.latitude]
-                });
-                if (canonicalDoc) {
-                  canonicalData = canonicalDoc.data();
-                  console.log(`✅ Check-in matched canonical venue ${canonicalDoc.id} — skipping Google enrichment`);
-                }
-              } catch (canonicalError) {
-                console.error('⚠️ Canonical venue lookup failed, falling back to Google:', canonicalError.message);
-              }
-            }
 
-            const googleData = canonicalData ? {} : await enrichPlaceWithGoogleData(
-              checkIn.placeName,
-              checkIn.location
-            );
+          const googleData = canonicalData ? {} : await enrichPlaceWithGoogleData(
+            checkIn.placeName,
+            checkIn.location
+          );
 
-            // Create new place in check-in circle with enriched data. When a
-            // canonical venue matched, only identity fields are stamped here —
-            // rating/hours/etc. overlay from the venue record on every read.
-            const placeData = {
-              name: (canonicalData && canonicalData.name) || googleData.name || checkIn.placeName,
-              address: (canonicalData && canonicalData.address) || googleData.address || checkIn.placeAddress,
-              location: checkIn.location ? {
-                coordinates: [checkIn.location.longitude, checkIn.location.latitude]
-              } : null,
-              // Arrives as 'other' unless the client sent one; the cascade
-              // derives the real category from googleTypes when the venue
-              // record is created, and ensureGlobalPlaceLink stamps it back.
-              category: checkIn.placeCategory || (canonicalData && canonicalData.category) || 'other',
-              googleTypes: googleData.googleTypes || (canonicalData && canonicalData.googleTypes) || [],
-              photos: googleData.photos || [],
-              googlePlaceId: (canonicalData && canonicalData.googlePlaceId) || googleData.googlePlaceId || null,
-              rating: googleData.rating || null,
-              priceLevel: googleData.priceLevel || null,
-              website: googleData.website || null,
-              phoneNumber: googleData.phoneNumber || null,
-              openingHours: googleData.openingHours || null,
-              delivery: googleData.delivery ?? null,
-              dineIn: googleData.dineIn ?? null,
-              reservable: googleData.reservable ?? null,
-              takeout: googleData.takeout ?? null,
-              curbsidePickup: googleData.curbsidePickup ?? null,
-              addedViaCheckIn: true
-            };
-            
-            // Create the place document in the check-in circle
-            const place = createPlace(placeData, checkInCircle.id, userId);
-            const placeRef = await db.collection(COLLECTIONS.PLACES).add(place);
-            finalPlaceId = placeRef.id;
+          // Create new place in check-in circle with enriched data. When a
+          // canonical venue matched, only identity fields are stamped here —
+          // rating/hours/etc. overlay from the venue record on every read.
+          const placeData = {
+            name: (canonicalData && canonicalData.name) || googleData.name || checkIn.placeName,
+            address: (canonicalData && canonicalData.address) || googleData.address || checkIn.placeAddress,
+            location: checkIn.location ? {
+              coordinates: [checkIn.location.longitude, checkIn.location.latitude]
+            } : null,
+            // Arrives as 'other' unless the client sent one; the cascade
+            // derives the real category from googleTypes when the venue
+            // record is created, and ensureGlobalPlaceLink stamps it back.
+            category: checkIn.placeCategory || (canonicalData && canonicalData.category) || 'other',
+            googleTypes: googleData.googleTypes || (canonicalData && canonicalData.googleTypes) || [],
+            photos: googleData.photos || [],
+            googlePlaceId: (canonicalData && canonicalData.googlePlaceId) || googleData.googlePlaceId || null,
+            rating: googleData.rating || null,
+            priceLevel: googleData.priceLevel || null,
+            website: googleData.website || null,
+            phoneNumber: googleData.phoneNumber || null,
+            openingHours: googleData.openingHours || null,
+            delivery: googleData.delivery ?? null,
+            dineIn: googleData.dineIn ?? null,
+            reservable: googleData.reservable ?? null,
+            takeout: googleData.takeout ?? null,
+            curbsidePickup: googleData.curbsidePickup ?? null,
+            addedViaCheckIn: true
+          };
 
-            // Link the save to its canonical venue record (best-effort)
-            const { ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
-            await ensureGlobalPlaceLink(await placeRef.get());
+          // Create the place document in the check-in circle
+          const place = createPlace(placeData, checkInCircle.id, userId);
+          const placeRef = await db.collection(COLLECTIONS.PLACES).add(place);
+          finalPlaceId = placeRef.id;
 
-            // Keep the browse location tree fresh (best-effort)
-            indexSavedPlace(checkInCircle.id, placeData);
+          // Link the save to its canonical venue record (best-effort)
+          globalPlaceId = await ensureGlobalPlaceLink(await placeRef.get());
 
+          // Keep the browse location tree fresh (best-effort)
+          indexSavedPlace(checkInCircle.id, placeData);
 
-            // Update the circle's places array
-            await db.collection(COLLECTIONS.CIRCLES).doc(checkInCircle.id).update({
-              places: FieldValue.arrayUnion(finalPlaceId),
-              placesCount: FieldValue.increment(1),
-              updatedAt: new Date().toISOString()
-            });
-            
-            // Use the first photo for activity thumbnail; canonical venues
-            // contribute theirs (never a raw googleapis URL — those bill per
-            // render)
-            if (placeData.photos && placeData.photos.length > 0) {
-              placePhoto = placeData.photos[0];
-            } else if (canonicalData && Array.isArray(canonicalData.photos)) {
-              placePhoto = canonicalData.photos.find(
-                (p) => typeof p === 'string' && !p.includes('maps.googleapis.com')
-              ) || null;
-            }
-            
-            console.log(`✅ Created enriched place in check-in circle: ${placeData.name} (ID: ${finalPlaceId})`);
+          // Update the circle's places array
+          await db.collection(COLLECTIONS.CIRCLES).doc(checkInCircle.id).update({
+            places: FieldValue.arrayUnion(finalPlaceId),
+            placesCount: FieldValue.increment(1),
+            updatedAt: new Date().toISOString()
+          });
+
+          // Use the first photo for activity thumbnail; canonical venues
+          // contribute theirs (never a raw googleapis URL — those bill per
+          // render)
+          if (placeData.photos && placeData.photos.length > 0) {
+            placePhoto = placeData.photos[0];
+          } else if (canonicalData && Array.isArray(canonicalData.photos)) {
+            placePhoto = canonicalData.photos.find(
+              (p) => typeof p === 'string' && !p.includes('maps.googleapis.com')
+            ) || null;
           }
-        } catch (error) {
-          console.error('Error creating place from check-in:', error);
-          // Continue without place ID if creation fails
+
+          console.log(`✅ Created enriched place in check-in circle: ${placeData.name} (ID: ${finalPlaceId})`);
         }
+      } catch (error) {
+        console.error('Error creating place from check-in:', error);
+        // Continue without place ID if creation fails
       }
-      
+    }
+
+    // Personal history: "checked in 7 times, last Sep 5". Keyed by venue so
+    // every save/typed variant of the same place shares one bucket. Also
+    // stamps the resolved ids on the check-in doc so the backfill and any
+    // later reader can key it without re-resolving.
+    let myCheckInStats = null;
+    if (globalPlaceId) {
+      const stats = await checkInStats.recordCheckIn({
+        userId,
+        globalPlaceId,
+        checkInId,
+        placeId: finalPlaceId,
+        placeName: checkIn.placeName,
+        at: checkIn.createdAt
+      });
+      myCheckInStats = checkInStats.toApi(stats);
+    }
+    const stamp = {};
+    if (globalPlaceId && !checkIn.globalPlaceId) stamp.globalPlaceId = globalPlaceId;
+    if (finalPlaceId && finalPlaceId !== checkIn.placeId) stamp.placeId = finalPlaceId;
+    if (Object.keys(stamp).length > 0) {
+      await checkInRef.update(stamp).catch((error) =>
+        console.error('⚠️ Failed to stamp venue ids on check-in:', error.message));
+      Object.assign(checkIn, stamp);
+    }
+
+    // Add to activity feed if enabled
+    if (checkIn.showInActivityFeed) {
       await createActivity(
         'check_in',
         userId,
@@ -505,7 +607,8 @@ exports.createCheckIn = async (req, res) => {
     
     res.status(201).json({
       success: true,
-      data: serializeDoc(checkInDoc),
+      data: { ...serializeDoc(checkInDoc), placeId: checkIn.placeId, globalPlaceId: checkIn.globalPlaceId || null },
+      myCheckInStats,
       piggyBank
     });
   } catch (error) {

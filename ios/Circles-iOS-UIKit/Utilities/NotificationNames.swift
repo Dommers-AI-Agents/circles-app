@@ -5,6 +5,9 @@ extension Notification.Name {
     // Network notifications
     static let pendingConnectionsCountChanged = Notification.Name("PendingConnectionsCountChanged")
     static let connectionsLoaded = Notification.Name("ConnectionsLoaded")
+    /// A check-in was created (userInfo: "placeId", "globalPlaceId" when known).
+    /// Place pages refresh their check-in history line on it.
+    static let checkInCreated = Notification.Name("CheckInCreated")
     /// Asks the Network tab to switch to its Discover segment. Posted by child
     /// lists that want to hand off rather than push a duplicate screen.
     static let showDiscoverSegment = Notification.Name("ShowDiscoverSegment")

@@ -7,6 +7,8 @@ struct APIResponse<T: Codable>: Codable {
     // Earn-triggering endpoints (check-ins, likes, follows) ride the piggy
     // credit stub on the response so the coin-drop can play
     let piggyBank: PiggyBankCredit?
+    // Check-in creation: the caller's updated history at that venue
+    let myCheckInStats: CheckInStats?
 }
 
 // Simple response for endpoints that don't return data

@@ -19,6 +19,7 @@ const subscriptionLimitService = require('../../services/subscriptionLimitServic
 const rewardService = require('../../services/rewardService');
 const piggyBankService = require('../../services/piggyBankService');
 const { normalizePhotosArray, overlayVenuePhotos, VENUE_GOOGLE_FIELDS, overlayVenueFields, getGlobalSocial, fetchGlobalSocialMap, buildAddedByUserMap, isPlaceVisibleToViewer } = require('../../services/placeReadService');
+const { getMyCheckInStats } = require('../../services/checkInStatsService');
 const db = getFirestore();
 const googleMapsClient = new Client({});
 const { propagateVenueUpdates } = require('../../services/placeVenueSync.js');
@@ -762,9 +763,14 @@ exports.getPlace = async (req, res, next) => {
     ]);
 
     // Filter privateNotes - only visible to the user who added the place
+    // Viewer's own check-in history at this venue (null when none)
+    const myCheckInStats = await getMyCheckInStats(
+      req.user.uid, social.globalPlaceId || place.globalPlaceId || null);
+
     let placeData = {
       ...place,
       globalPlaceId: social.globalPlaceId || place.globalPlaceId || null,
+      myCheckInStats,
       addedByUser: addedByUserMap.get(place.addedBy) || null,
       likes: social.likes,
       likesCount: social.likes.length,
@@ -2717,6 +2723,9 @@ exports.getMyPlacesForCheckIn = async (req, res, next) => {
     placesSnapshots.forEach(snapshot => {
       snapshot.forEach(placeDoc => {
         const place = serializeDoc(placeDoc);
+        // Trashed saves stay out of the picker: checking in via one pinned
+        // the check-in to a deleted doc and skipped the re-save
+        if (place.deletedAt) return;
         const circle = circleMap.get(place.circleId);
         
         // Filter privateNotes - only visible to the user who added the place

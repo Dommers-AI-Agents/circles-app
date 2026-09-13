@@ -26,6 +26,9 @@ const COLLECTIONS = {
   PLACE_VISITS: 'placeVisits',
   VISIT_DRAFTS: 'visitDrafts',
   CHECK_INS: 'checkIns',
+  // Subcollection under users/{uid}: per-venue check-in aggregate (see
+  // services/checkInStatsService.js)
+  CHECK_IN_STATS: 'checkInStats',
   ACTIVITY_REACTIONS: 'activityReactions',
   ACTIVITY_COMMENTS: 'activityComments',
   PLACE_VIDEOS: 'placeVideos',
