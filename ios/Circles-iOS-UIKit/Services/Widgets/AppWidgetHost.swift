@@ -68,9 +68,11 @@ final class AppWidgetHost: FavWidgetHost {
         AlertPresenter.showInfo(title: alert.title, message: alert.message, from: presenter)
     }
 
+    /// Accepted connections (the `connections` collection — not the legacy
+    /// `users/me/friends` array, which is empty for most accounts).
     func fetchConnections() async throws -> [WidgetContact] {
         let users: [User] = try await withCheckedThrowingContinuation { continuation in
-            UserService.shared.getFriends { result in
+            NetworkManager.shared.getConnections { result in
                 continuation.resume(with: result)
             }
         }
