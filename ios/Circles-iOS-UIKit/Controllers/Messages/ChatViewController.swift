@@ -3,6 +3,8 @@ import UIKit
 // MARK: - MessageCellDelegate
 protocol MessageCellDelegate: AnyObject {
     func didTapProfileImage(for userId: String)
+    /// A photo/postcard bubble was tapped.
+    func didTapMessageImage(urlString: String)
 }
 
 class ChatViewController: BaseViewController {
@@ -867,6 +869,24 @@ class MessageCell: UITableViewCell {
         label.numberOfLines = 0
         return label
     }()
+
+    // Photo / postcard bubbles: the image sits between the caption and the
+    // time. Zero height (and hidden) for text messages so nothing moves.
+    private let mediaImageView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = 12
+        imageView.backgroundColor = Constants.Colors.tertiaryBackground
+        imageView.isUserInteractionEnabled = true
+        imageView.isHidden = true
+        return imageView
+    }()
+    private var mediaHeightConstraint: NSLayoutConstraint!
+    private var mediaWidthConstraint: NSLayoutConstraint!
+    private var mediaTopConstraint: NSLayoutConstraint!
+    private var currentImageURL: String?
     
     private let timeLabel: UILabel = {
         let label = UILabel()
@@ -920,11 +940,17 @@ class MessageCell: UITableViewCell {
         contentView.addSubview(bubbleView)
         bubbleView.addSubview(senderLabel)
         bubbleView.addSubview(messageLabel)
+        bubbleView.addSubview(mediaImageView)
         bubbleView.addSubview(timeLabel)
         
         // Add tap gesture to avatar
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(avatarTapped))
         avatarImageView.addGestureRecognizer(tapGesture)
+        mediaImageView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(mediaTapped)))
+
+        mediaHeightConstraint = mediaImageView.heightAnchor.constraint(equalToConstant: 0)
+        mediaWidthConstraint = mediaImageView.widthAnchor.constraint(equalToConstant: 240)
+        mediaTopConstraint = mediaImageView.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 0)
         
         leadingConstraint = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
         trailingConstraint = bubbleView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
@@ -956,7 +982,11 @@ class MessageCell: UITableViewCell {
             messageLabel.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 12),
             messageLabel.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -12),
             
-            timeLabel.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 4),
+            mediaTopConstraint,
+            mediaHeightConstraint,
+            mediaImageView.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 8),
+            mediaImageView.trailingAnchor.constraint(lessThanOrEqualTo: bubbleView.trailingAnchor, constant: -8),
+            timeLabel.topAnchor.constraint(equalTo: mediaImageView.bottomAnchor, constant: 4),
             timeLabel.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 12),
             timeLabel.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -12),
             timeLabel.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor, constant: -8)
@@ -966,6 +996,7 @@ class MessageCell: UITableViewCell {
     func configure(with message: Message, conversation: Conversation?) {
         messageLabel.text = message.displayContent
         timeLabel.text = message.formattedTime
+        configureMedia(for: message)
         
         // Store user ID for tap handling (only for received messages)
         if !message.isCurrentUserMessage {
@@ -1066,6 +1097,46 @@ class MessageCell: UITableViewCell {
         }
     }
     
+    /// Shows the photo for image/postcard messages; collapses for text.
+    private func configureMedia(for message: Message) {
+        guard let urlString = message.displayImageURL else {
+            mediaImageView.isHidden = true
+            mediaImageView.image = nil
+            currentImageURL = nil
+            mediaHeightConstraint.constant = 0
+            mediaWidthConstraint.isActive = false
+            mediaTopConstraint.constant = 0
+            return
+        }
+        mediaImageView.isHidden = false
+        mediaHeightConstraint.constant = message.isPostcard ? 160 : 200
+        mediaWidthConstraint.isActive = true
+        mediaTopConstraint.constant = 6
+        // Caption: the sender's note plus where the postcard is from.
+        if message.isPostcard {
+            var caption = message.content ?? ""
+            if let place = message.postcardPlaceName, !place.isEmpty {
+                caption = caption.isEmpty ? "📮 Postcard from \(place)" : "\(caption)\n📮 From \(place)"
+            }
+            messageLabel.text = caption.isEmpty ? "📮 Postcard" : caption
+        } else {
+            messageLabel.text = (message.content ?? "").isEmpty ? "📷 Photo" : message.content
+        }
+        currentImageURL = urlString
+        mediaImageView.image = nil
+        ImageService.shared.loadImage(from: urlString) { [weak self] image in
+            DispatchQueue.main.async {
+                guard let self, self.currentImageURL == urlString else { return }
+                self.mediaImageView.image = image
+            }
+        }
+    }
+
+    @objc private func mediaTapped() {
+        guard let currentImageURL else { return }
+        delegate?.didTapMessageImage(urlString: currentImageURL)
+    }
+
     @objc private func avatarTapped() {
         guard let userId = currentUserId else { return }
         delegate?.didTapProfileImage(for: userId)
@@ -1104,6 +1175,12 @@ class MessageCell: UITableViewCell {
 
 // MARK: - MessageCellDelegate
 extension ChatViewController: MessageCellDelegate {
+    func didTapMessageImage(urlString: String) {
+        let viewer = FullScreenImageViewController(imageURL: urlString)
+        viewer.modalPresentationStyle = .fullScreen
+        present(viewer, animated: true)
+    }
+
     func didTapProfileImage(for userId: String) {
         Logger.debug("🔍 Profile image tapped for userId: \(userId)")
         

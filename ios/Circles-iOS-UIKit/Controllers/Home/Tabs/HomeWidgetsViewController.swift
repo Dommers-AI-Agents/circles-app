@@ -1,0 +1,151 @@
+import UIKit
+import SwiftUI
+import FavWidgets
+import FavWidgetsCore
+
+/// The home screen's Widgets tab: daily-use mini-apps (water, habits,
+/// calories, workouts, bill split, postcards) from the FavWidgets package.
+/// UIKit owns the tab, navigation and sheets; the package's SwiftUI views
+/// are hosted inside.
+final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
+    weak var host: HomeContentTabHost?
+    var isActiveTab = false
+
+    private var widgetHost: AppWidgetHost?
+    private var model: WidgetsTabModel?
+    private var hostingController: UIHostingController<WidgetsTabRootView>?
+    private let statusView = HomeTabStatusView()
+    private var hintBubble: BubbleView?
+
+    // The host's segment switch drives loading; nothing loads on its own.
+    override var loadsDataOnViewDidLoad: Bool { false }
+    override var reloadsDataOnAppear: Bool { false }
+    override var showsLoadingIndicator: Bool { false }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = Constants.Colors.background
+        view.addSubview(statusView)
+        NSLayoutConstraint.activate([
+            statusView.topAnchor.constraint(equalTo: view.topAnchor),
+            statusView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            statusView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            statusView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+
+    // MARK: - HomeContentTab
+
+    func tabDidBecomeVisible() {
+        guard ensureModel() else { return }
+        AnalyticsService.shared.logEvent("widgets_tab_viewed")
+        maybeShowHint()
+    }
+
+    func tabWillHide() {
+        hintBubble?.dismiss { [weak self] in
+            self?.hintBubble?.removeFromSuperview()
+            self?.hintBubble = nil
+        }
+        guard let model else { return }
+        Task { await model.flushAll() }
+    }
+
+    func refreshTab() {
+        guard let model else {
+            host?.endRefreshing()
+            return
+        }
+        Task { [weak self] in
+            await model.refreshAll()
+            self?.host?.endRefreshing()
+        }
+    }
+
+    // MARK: - Model
+
+    /// Builds the package model for the signed-in user (rebuilding after an
+    /// account switch). Returns false when nobody is signed in.
+    @discardableResult
+    private func ensureModel() -> Bool {
+        guard let userId = KeychainService.shared.getUserId(), !userId.isEmpty else {
+            statusView.message = "Sign in to use widgets"
+            return false
+        }
+        if let widgetHost, widgetHost.userId == userId, model != nil { return true }
+
+        hostingController?.willMove(toParent: nil)
+        hostingController?.view.removeFromSuperview()
+        hostingController?.removeFromParent()
+
+        let widgetHost = AppWidgetHost(userId: userId)
+        widgetHost.presenter = self
+        let model = WidgetsTabModel(host: widgetHost, theme: AppWidgetHost.makeTheme())
+        model.onOpen = { [weak self] widget, context in self?.open(widget, context: context) }
+        model.onManage = { [weak self] in self?.presentManage() }
+
+        let hosting = UIHostingController(rootView: WidgetsTabRootView(model: model))
+        hosting.view.backgroundColor = Constants.Colors.background
+        addChild(hosting)
+        hosting.view.translatesAutoresizingMaskIntoConstraints = false
+        view.insertSubview(hosting.view, belowSubview: statusView)
+        NSLayoutConstraint.activate([
+            hosting.view.topAnchor.constraint(equalTo: view.topAnchor),
+            hosting.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hosting.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            hosting.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        hosting.didMove(toParent: self)
+
+        self.widgetHost = widgetHost
+        self.model = model
+        self.hostingController = hosting
+        statusView.message = nil
+        return true
+    }
+
+    // MARK: - Navigation
+
+    private func open(_ widget: any FavWidget, context: WidgetContext) {
+        guard let model else { return }
+        let detail = HomeWidgetDetailViewController(widget: widget, context: context, model: model)
+        context.closeFullView = { [weak detail] in
+            detail?.navigationController?.popViewController(animated: true)
+        }
+        navigationController?.pushViewController(detail, animated: true)
+    }
+
+    private func presentManage() {
+        guard let model else { return }
+        let manage = HomeWidgetsManageViewController(model: model)
+        let nav = UINavigationController(rootViewController: manage)
+        nav.modalPresentationStyle = .pageSheet
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
+    }
+
+    // MARK: - First-use hint
+
+    private func maybeShowHint() {
+        guard OnboardingManager.shared.shouldShowHomeWidgetsHint(), hintBubble == nil,
+              let target = hostingController?.view else { return }
+        OnboardingManager.shared.markHomeWidgetsHintShown()
+        let bubble = BubbleView()
+        bubble.configureHint(
+            title: "Your daily widgets",
+            description: "Track water, habits, workouts and more — right here. Tap Manage to choose and reorder them.",
+            arrowDirection: .top
+        )
+        bubble.onNext = { [weak self, weak bubble] in
+            bubble?.dismiss { bubble?.removeFromSuperview() }
+            self?.hintBubble = nil
+        }
+        view.addSubview(bubble)
+        bubble.pointTo(target, in: view)
+        bubble.show()
+        hintBubble = bubble
+    }
+}
