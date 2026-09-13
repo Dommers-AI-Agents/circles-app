@@ -627,11 +627,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return label
     }()
     
-    // Segmented control for Activity/Moments/Specials tabs
+    // Segmented control for the content tabs (see HomeContentSegment)
     let contentSegmentedControl: UISegmentedControl = {
-        let items = ["Activity", "Moments", "Specials"]
-        let control = UISegmentedControl(items: items)
-        control.selectedSegmentIndex = 0
+        let control = UISegmentedControl(items: HomeContentSegment.allCases.map(\.title))
+        control.selectedSegmentIndex = HomeContentSegment.activity.rawValue
         control.translatesAutoresizingMaskIntoConstraints = false
         return control
     }()
@@ -642,7 +641,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         button.backgroundColor = Constants.Colors.primary
         button.tintColor = .white
         button.setImage(UIImage(systemName: "video.fill"), for: .normal)
-        button.layer.cornerRadius = 28
+        button.layer.cornerRadius = 20
         button.isHidden = true // Hidden by default, shown when Moments tab is selected
         button.translatesAutoresizingMaskIntoConstraints = false
         // Add shadow for better visibility over the segment
@@ -655,8 +654,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     // MARK: - Content tabs
     // The segment bar switches between child view controllers whose views
-    // fill `tabContentContainer` (see HomeContentTab). Activity and Moments
-    // are still inline below; Specials is the first extracted tab.
+    // fill `tabContentContainer` (see HomeContentTab / HomeContentSegment).
     let tabContentContainer: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.background
@@ -669,6 +667,25 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         tab.host = self
         return tab
     }()
+
+    lazy var widgetsTab: HomeWidgetsViewController = {
+        let tab = HomeWidgetsViewController()
+        tab.host = self
+        return tab
+    }()
+
+    /// Every content tab, in segment order.
+    var contentTabs: [UIViewController & HomeContentTab] {
+        [activityTab, momentsTab, specialsTab, widgetsTab]
+    }
+
+    var selectedContentSegment: HomeContentSegment {
+        HomeContentSegment(rawValue: contentSegmentedControl.selectedSegmentIndex) ?? .activity
+    }
+
+    func contentTab(for segment: HomeContentSegment) -> UIViewController & HomeContentTab {
+        contentTabs[segment.rawValue]
+    }
 
     // Floating record button for Reels tab
     let floatingRecordButton: UIButton = {
@@ -1684,11 +1701,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             contentSegmentedControl.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor, constant: Constants.Spacing.medium),
             contentSegmentedControl.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor, constant: -Constants.Spacing.medium),
             
-            // Camera button for Moments - overlay on the right side of Moments segment
-            momentsCameraButton.centerYAnchor.constraint(equalTo: contentSegmentedControl.centerYAnchor),
-            momentsCameraButton.trailingAnchor.constraint(equalTo: contentSegmentedControl.trailingAnchor, constant: -5),
-            momentsCameraButton.widthAnchor.constraint(equalToConstant: 56),
-            momentsCameraButton.heightAnchor.constraint(equalToConstant: 56),
+            // Camera button for Moments — sits on the header row (which reads
+            // "Moments" when it shows), not over the segmented control: with
+            // four segments it would otherwise cover the last one's tap area.
+            momentsCameraButton.centerYAnchor.constraint(equalTo: activityHeaderLabel.centerYAnchor),
+            momentsCameraButton.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor, constant: -Constants.Spacing.medium),
+            momentsCameraButton.widthAnchor.constraint(equalToConstant: 40),
+            momentsCameraButton.heightAnchor.constraint(equalToConstant: 40),
             
             // Content tabs (same slot as the inline content views)
             tabContentContainer.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
@@ -1966,14 +1985,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         checkForDailySummary()
         
         // Refresh content based on selected tab
-        switch contentSegmentedControl.selectedSegmentIndex {
-        case 0:
-            activityTab.refreshTab()
-        case 1:
-            momentsTab.refreshTab()
-        default:
-            specialsTab.refreshTab()
-        }
+        contentTab(for: selectedContentSegment).refreshTab()
         
         // Also refresh circles data for consistency
         if isShowingNetworkCircles {
@@ -1984,32 +1996,19 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }
     
     @objc func contentSegmentChanged() {
-        let selectedIndex = contentSegmentedControl.selectedSegmentIndex
+        showContentTab(selectedContentSegment)
+    }
 
-        switch selectedIndex {
-        case 0:
-            // Show Activity feed (loads if empty)
-            momentsTab.setTabVisible(false) // pauses any playing moment
-            specialsTab.setTabVisible(false)
-            momentsCameraButton.isHidden = true
-            activityHeaderLabel.text = "Recent Activity"
-            activityTab.setTabVisible(true)
-        case 1:
-            // Show Moments feed; the tab resets to the first video, refreshes
-            // and autoplays once loaded
-            activityTab.setTabVisible(false)
-            specialsTab.setTabVisible(false)
-            momentsCameraButton.isHidden = false
-            activityHeaderLabel.text = "Moments"
-            momentsTab.setTabVisible(true)
-        default:
-            // Show Specials (live offers + announcements from participating venues)
-            activityTab.setTabVisible(false)
-            momentsTab.setTabVisible(false) // pauses any playing moment
-            momentsCameraButton.isHidden = true
-            activityHeaderLabel.text = "Specials"
-            specialsTab.setTabVisible(true)
+    /// Shows one content tab and hides the rest. Hiding runs first so the
+    /// Moments tab pauses any playing video before the next tab appears;
+    /// each tab's `tabDidBecomeVisible` decides whether it needs to load.
+    func showContentTab(_ segment: HomeContentSegment) {
+        for other in HomeContentSegment.allCases where other != segment {
+            contentTab(for: other).setTabVisible(false)
         }
+        momentsCameraButton.isHidden = !segment.showsCameraButton
+        activityHeaderLabel.text = segment.headerTitle
+        contentTab(for: segment).setTabVisible(true)
     }
 
     // MARK: - Content tab hosting
@@ -2018,7 +2017,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// `tabContentContainer`. Every tab starts hidden; the segment switch
     /// (`contentSegmentChanged`) shows the selected one.
     func embedContentTabs() {
-        for tab in [activityTab, momentsTab, specialsTab] as [UIViewController & HomeContentTab] {
+        for tab in contentTabs {
             addChild(tab)
             tab.view.translatesAutoresizingMaskIntoConstraints = false
             tab.view.isHidden = true
@@ -2074,11 +2073,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// .valueChanged, so this mirrors contentSegmentChanged's Moments case —
     /// minus its refresh, since present(moment:) loads the feed itself.
     func openMomentInMomentsTab(_ video: PlaceVideo) {
-        contentSegmentedControl.selectedSegmentIndex = 1
-        activityTab.setTabVisible(false)
-        specialsTab.setTabVisible(false)
+        contentSegmentedControl.selectedSegmentIndex = HomeContentSegment.moments.rawValue
+        for other in HomeContentSegment.allCases where other != .moments {
+            contentTab(for: other).setTabVisible(false)
+        }
         momentsCameraButton.isHidden = false
-        activityHeaderLabel.text = "Moments"
+        activityHeaderLabel.text = HomeContentSegment.moments.headerTitle
         momentsTab.present(moment: video)
     }
 

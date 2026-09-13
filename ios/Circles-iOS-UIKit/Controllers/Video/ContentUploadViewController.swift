@@ -786,7 +786,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                     // Ensure we're showing the Moments tab
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         // This will trigger the moments tab to be selected
-                        homeVC.contentSegmentedControl.selectedSegmentIndex = 1 // Moments is at index 1 (Activity is 0, Moments is 1)
+                        homeVC.contentSegmentedControl.selectedSegmentIndex = HomeContentSegment.moments.rawValue
                         homeVC.contentSegmentChanged()
                     }
                 }
