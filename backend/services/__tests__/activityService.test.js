@@ -61,4 +61,14 @@ describe('activityService barrel', () => {
     }
     expect([...seen.keys()].sort()).toEqual(EXPECTED);
   });
+
+  test('cross-module helpers resolve to functions (a missing export would fail silently at runtime)', () => {
+    const core = require('../activity/core');
+    expect(typeof core.resolvePlacePhoto).toBe('function');
+    expect(typeof core.logActivity).toBe('function');
+    const places = require('../activity/places');
+    expect(typeof places.trackPlaceAdded).toBe('function');
+    expect(typeof places.trackPlaceLiked).toBe('function');
+    expect(require('../activityService').resolvePlacePhoto).toBeUndefined();
+  });
 });

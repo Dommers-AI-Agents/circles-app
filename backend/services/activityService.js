@@ -3,8 +3,12 @@
 // (Phase 6). Every existing import site keeps working; put new trackers in
 // the matching submodule, and never require this barrel from inside one.
 
+// resolvePlacePhoto is an internal helper shared between submodules, not
+// part of the service's public surface.
+const { resolvePlacePhoto: _internal, ...core } = require('./activity/core');
+
 module.exports = {
-  ...require('./activity/core'),
+  ...core,
   ...require('./activity/circles'),
   ...require('./activity/places'),
   ...require('./activity/media'),

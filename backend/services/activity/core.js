@@ -101,4 +101,6 @@ const logActivity = async (activityData) => {
 
 module.exports = {
   logActivity,
+  // Shared with the sibling submodules only; the barrel keeps it private.
+  resolvePlacePhoto,
 };
