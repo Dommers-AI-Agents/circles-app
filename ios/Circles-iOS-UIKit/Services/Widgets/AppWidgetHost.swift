@@ -177,6 +177,17 @@ final class AppWidgetHost: FavWidgetHost {
         }
     }
 
+    // MARK: - Media
+
+    /// Same pipeline as place/profile photos (compresses, returns a public URL).
+    func uploadImage(_ jpeg: Data) async throws -> URL {
+        let urlString: String = try await withCheckedThrowingContinuation { continuation in
+            PlaceService.shared.uploadImage(jpeg) { continuation.resume(with: $0) }
+        }
+        guard let url = URL(string: urlString) else { throw WidgetAPIError(status: 500, message: "Bad upload URL") }
+        return url
+    }
+
     // MARK: - Widget API channel
 
     /// Authenticated raw call for widget-owned endpoints. Only `widgets/`
