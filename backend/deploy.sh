@@ -92,6 +92,8 @@ done
 # Printed postcards (Lob print-and-mail + Stripe Apple Pay). All optional:
 # without POSTCARD_MAIL_ENABLED=1 and both vendor keys the endpoints return
 # 503 and the app hides the option, so the feature ships dark.
+# POSTCARD_RETURN_ADDRESS_* are optional even when the feature is on — cards
+# currently print with no return address.
 for var in POSTCARD_MAIL_ENABLED POSTCARD_PRICE_CENTS_US \
            STRIPE_SECRET_KEY STRIPE_PUBLISHABLE_KEY STRIPE_WEBHOOK_SECRET APPLE_PAY_MERCHANT_ID \
            LOB_API_KEY LOB_WEBHOOK_SECRET \

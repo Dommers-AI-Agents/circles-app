@@ -68,11 +68,11 @@ const ID = (name) => `11111111-2222-3333-4444-${name.padStart(12, '0')}`;
 function setEnv() {
   process.env.POSTCARD_MAIL_ENABLED = '1';
   process.env.POSTCARD_PRICE_CENTS_US = '399';
-  process.env.POSTCARD_RETURN_ADDRESS_NAME = 'FavCircles';
-  process.env.POSTCARD_RETURN_ADDRESS_LINE1 = 'PO Box 1';
-  process.env.POSTCARD_RETURN_ADDRESS_CITY = 'Charlotte';
-  process.env.POSTCARD_RETURN_ADDRESS_STATE = 'NC';
-  process.env.POSTCARD_RETURN_ADDRESS_ZIP = '28202';
+  // Deliberately no POSTCARD_RETURN_ADDRESS_*: printed cards go out with no
+  // return address, so that is the configuration the suite runs against.
+  for (const key of ['NAME', 'LINE1', 'LINE2', 'CITY', 'STATE', 'ZIP']) {
+    delete process.env[`POSTCARD_RETURN_ADDRESS_${key}`];
+  }
 }
 
 async function placeOrder(name = 'o1') {
@@ -490,5 +490,56 @@ describe('the reconciler respects the same status rules', () => {
 
     await service.reconcile();
     expect(rowOf(ID('o1')).status).toBe(STATUS.SUBMITTED);
+  });
+});
+
+
+describe('the return address', () => {
+  it('is omitted entirely, not sent as null', async () => {
+    // Lob treats a null `from` differently from an absent one, so the key has
+    // to be gone rather than empty.
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+
+    const sent = lobClient.createPostcard.mock.calls[0][0];
+    expect(sent.from).toBeUndefined();
+    expect(Object.keys(sent)).not.toContain('from');
+  });
+
+  it('still prints one when a full address is configured', async () => {
+    // Turning it back on must stay an env change, never a code change.
+    process.env.POSTCARD_RETURN_ADDRESS_NAME = 'FavCircles';
+    process.env.POSTCARD_RETURN_ADDRESS_LINE1 = 'PO Box 1';
+    process.env.POSTCARD_RETURN_ADDRESS_CITY = 'Charlotte';
+    process.env.POSTCARD_RETURN_ADDRESS_STATE = 'NC';
+    process.env.POSTCARD_RETURN_ADDRESS_ZIP = '28202';
+
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+
+    expect(lobClient.createPostcard.mock.calls[0][0].from).toMatchObject({
+      name: 'FavCircles', address_city: 'Charlotte', address_country: 'US'
+    });
+  });
+
+  it('ignores a half-filled address rather than printing part of one', async () => {
+    process.env.POSTCARD_RETURN_ADDRESS_NAME = 'FavCircles';
+    process.env.POSTCARD_RETURN_ADDRESS_LINE1 = 'PO Box 1';
+    // city/state/zip missing
+
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+
+    expect(lobClient.createPostcard.mock.calls[0][0].from).toBeUndefined();
+  });
+
+  it('keeps the sender signature on the back', () => {
+    // The signature is not the return address. With no return address it is
+    // the only thing telling the recipient who sent the card.
+    const html = service.buildBackHtml({ message: 'Hello', senderName: 'Wes', pageUrl: '', qrUrl: '' });
+    expect(html).toContain('Wes');
   });
 });

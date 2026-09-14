@@ -60,22 +60,34 @@ function requireEnabled() {
   }
 }
 
-/** The return address printed on every card. Lob requires a real one. */
+/**
+ * The return address, or null when we aren't printing one.
+ *
+ * Wes's decision (2026-09-14): no return address on printed postcards. Lob
+ * accepts a postcard with no `from` for `use_type: "operational"`, verified
+ * against their test API. The consequence is that USPS discards an
+ * undeliverable card instead of returning it, so `postcard.returned_to_sender`
+ * will never fire — the handler keeps that branch, but nothing depends on it.
+ *
+ * Kept configurable rather than deleted: setting all of POSTCARD_RETURN_ADDRESS_*
+ * turns it back on with no code change. A partial address is ignored rather
+ * than half-printed.
+ */
 function returnAddress() {
   const env = process.env;
-  const address = {
+  const required = {
     name: env.POSTCARD_RETURN_ADDRESS_NAME,
     address_line1: env.POSTCARD_RETURN_ADDRESS_LINE1,
-    address_line2: env.POSTCARD_RETURN_ADDRESS_LINE2 || '',
     address_city: env.POSTCARD_RETURN_ADDRESS_CITY,
     address_state: env.POSTCARD_RETURN_ADDRESS_STATE,
-    address_zip: env.POSTCARD_RETURN_ADDRESS_ZIP,
+    address_zip: env.POSTCARD_RETURN_ADDRESS_ZIP
+  };
+  if (Object.values(required).some((value) => !value)) return null;
+  return {
+    ...required,
+    address_line2: env.POSTCARD_RETURN_ADDRESS_LINE2 || '',
     address_country: 'US'
   };
-  for (const key of ['name', 'address_line1', 'address_city', 'address_state', 'address_zip']) {
-    if (!address[key]) throw new MailError(503, 'mail_unconfigured', 'Mailing printed postcards isn\'t available yet.');
-  }
-  return address;
 }
 
 // ---------------------------------------------------------------- validation
@@ -403,6 +415,7 @@ class PostcardMailService {
 
     try {
       const page = await this.ensurePublicPage(orderId, row);
+      const from = returnAddress();
       const lob = await lobClient.createPostcard({
         idempotencyKey: orderId,
         description: `FavCircles postcard ${orderId}`,
@@ -415,7 +428,10 @@ class PostcardMailService {
           address_zip: row.recipient.zip,
           address_country: 'US'
         },
-        from: returnAddress(),
+        // Omitted entirely when no return address is configured, which is the
+        // norm. `from: null` is not the same as an absent `from` to Lob, so
+        // the key must not be present at all — lobClient guards this too.
+        ...(from ? { from } : {}),
         frontUrl: row.imageUrl,
         backHtml: buildBackHtml({
           message: row.message,

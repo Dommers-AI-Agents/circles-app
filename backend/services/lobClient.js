@@ -100,13 +100,18 @@ async function verifyUSAddress({ line1, line2, city, state, zip }) {
  * Prints and mails the card. `idempotencyKey` is the order id, so a retried
  * release tick can never produce a second postcard.
  */
+/**
+ * `from` is optional. With no return address USPS discards an undeliverable
+ * card rather than returning it, which is the tradeoff we've accepted; sending
+ * `from: null` is not the same as omitting it, so the key is dropped entirely.
+ */
 async function createPostcard({ idempotencyKey, description, to, from, frontUrl, backHtml, mergeVariables }) {
   const result = await call('POST', '/postcards', {
     idempotencyKey,
     body: {
       description,
       to,
-      from,
+      ...(from ? { from } : {}),
       front: frontUrl,
       back: backHtml,
       size: '4x6',
