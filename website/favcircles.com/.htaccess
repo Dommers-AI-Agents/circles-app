@@ -8,3 +8,12 @@
     Header set Cache-Control "public, max-age=86400"
   </FilesMatch>
 </IfModule>
+
+# Digital postcards (Widgets tab → Postcard): friendly share links live on
+# favcircles.com, the page itself is served by the API. Previews and
+# browsers follow the redirect.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^postcard/([A-Za-z0-9_-]+)/?$ https://api.favcircles.com/postcard/$1 [R=302,L]
+  RewriteRule ^postcard/([A-Za-z0-9_-]+)/(image|download)$ https://api.favcircles.com/postcard/$1/$2 [R=302,L]
+</IfModule>
