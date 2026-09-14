@@ -57,7 +57,15 @@ class PostcardShareService {
   get col() { return this.db.collection(COLLECTIONS.POSTCARD_SHARES); }
 
   async create(input) {
-    const data = normalizeShare(input);
+    // req.user may not carry the display name; read it from the user doc.
+    let senderName = input.senderName;
+    if (!senderName && input.senderId) {
+      try {
+        const doc = await this.db.collection(COLLECTIONS.USERS).doc(input.senderId).get();
+        if (doc.exists) senderName = doc.data().displayName;
+      } catch (_) { /* fall back to the generic name */ }
+    }
+    const data = normalizeShare({ ...input, senderName });
     const token = newToken();
     await this.col.doc(token).set(data);
     return { token, url: `${PUBLIC_BASE_URL}/postcard/${token}`, ...data };

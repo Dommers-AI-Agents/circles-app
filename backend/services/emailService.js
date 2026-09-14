@@ -275,6 +275,42 @@ class EmailService {
     }
   }
 
+  // Widgets tab → Postcard → "Send by email": the card, the note, a link to
+  // the public postcard page, and the app pitch. Recipients need not be
+  // FavCircles users.
+  async sendPostcardEmail(toEmail, { senderName, imageUrl, message, pageUrl, placeName, placeCity }) {
+    const esc = (v) => String(v || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const where = placeName ? `${placeName}${placeCity ? `, ${placeCity}` : ''}` : null;
+    const subject = where ? `📮 A postcard from ${where} — from ${senderName}` : `📮 ${senderName} sent you a postcard`;
+    const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+    const html = `<!DOCTYPE html><html><body style="margin:0;background:#0f1b2d;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#fff">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:32px 16px">
+<table role="presentation" width="600" style="max-width:600px" cellspacing="0" cellpadding="0">
+<tr><td align="center" style="font-size:13px;letter-spacing:.04em;text-transform:uppercase;opacity:.75;padding-bottom:12px">${where ? `Greetings from ${esc(where)}` : 'A digital postcard'}</td></tr>
+<tr><td><a href="${esc(pageUrl)}"><img src="${esc(imageUrl)}" alt="Your postcard" width="600" style="width:100%;max-width:600px;border-radius:14px;display:block"></a></td></tr>
+${message ? `<tr><td align="center" style="font-size:19px;line-height:1.5;padding:26px 8px 6px;white-space:pre-wrap">${esc(message)}</td></tr>` : ''}
+<tr><td align="center" style="padding:6px 8px 0;opacity:.8">— ${esc(senderName)}</td></tr>
+<tr><td align="center" style="padding:20px 0 0"><a href="${esc(pageUrl)}" style="color:#4FD1C5">View your postcard online</a></td></tr>
+<tr><td style="padding-top:40px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:rgba(255,255,255,.06);border-radius:14px"><tr><td align="center" style="padding:24px">
+<div style="font-size:21px;font-weight:700;padding-bottom:6px">Create your own digital postcards with FavCircles.</div>
+<div style="opacity:.8;padding-bottom:18px">Snap a photo from wherever you are, pick a card, and send it to friends — plus the places you love, all in one app.</div>
+<a href="${appStoreUrl}" style="background:#4FD1C5;color:#0f1b2d;padding:14px 30px;border-radius:10px;text-decoration:none;font-weight:700;display:inline-block">Get it here</a>
+<div style="padding-top:16px;font-size:12px;opacity:.6"><a href="https://favcircles.com" style="color:#fff">favcircles.com</a></div>
+</td></tr></table></td></tr>
+</table></td></tr></table></body></html>`;
+    const text = [
+      where ? `Greetings from ${where}` : 'A digital postcard',
+      message || '',
+      `— ${senderName}`,
+      '',
+      `View your postcard: ${pageUrl}`,
+      '',
+      'Create your own digital postcards with FavCircles. Get it here:',
+      appStoreUrl
+    ].filter((line, i, arr) => !(line === '' && arr[i - 1] === '')).join('\n');
+    await this.sendEmail({ to: toEmail, subject, html, text });
+  }
+
   // Website email-capture flow: visitor left their email on favcircles.com
   // with the FavCoins promise. Walks them from download → signup (SAME email)
   // → first place = 25 FavCoins → piggy bank → Cactus wallet claim.

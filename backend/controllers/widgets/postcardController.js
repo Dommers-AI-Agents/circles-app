@@ -131,3 +131,58 @@ exports.createShareLink = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to create the postcard link' });
   }
 };
+
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const MAX_EMAILS_PER_SEND = 5;
+
+// @desc    Email a postcard to addresses the sender typed in (non-users welcome)
+// @route   POST /api/widgets/postcard/email
+// @access  Private
+exports.emailPostcard = async (req, res) => {
+  try {
+    const postcardShareService = require('../../services/postcardShareService');
+    const emailService = require('../../services/emailService');
+    const { imageUrl, message, templateId, placeRef, emails } = req.body || {};
+
+    const list = Array.isArray(emails) ? emails.map(e => String(e || '').trim().toLowerCase()).filter(Boolean) : [];
+    const unique = [...new Set(list)];
+    if (unique.length === 0 || unique.length > MAX_EMAILS_PER_SEND) {
+      return res.status(400).json({ success: false, code: 'invalid_emails', message: `Enter 1–${MAX_EMAILS_PER_SEND} email addresses` });
+    }
+    const bad = unique.find(e => !EMAIL_RE.test(e) || e.length > 254);
+    if (bad) {
+      return res.status(400).json({ success: false, code: 'invalid_emails', message: `"${bad}" doesn't look like an email address` });
+    }
+
+    // One public page backs every copy, so the email can link to it.
+    const share = await postcardShareService.create({
+      senderId: req.user.uid, senderName: req.user.displayName, imageUrl, message, templateId, placeRef
+    });
+
+    const sent = [];
+    const failed = [];
+    for (const to of unique) {
+      try {
+        await emailService.sendPostcardEmail(to, {
+          senderName: share.senderName, imageUrl: share.imageUrl, message: share.message,
+          pageUrl: share.url, placeName: share.placeName, placeCity: share.placeCity
+        });
+        sent.push(to);
+      } catch (error) {
+        console.error(`🧩 postcard email to ${to} failed:`, error.message);
+        failed.push(to);
+      }
+    }
+    if (sent.length === 0) {
+      return res.status(502).json({ success: false, code: 'email_failed', message: 'Couldn\'t send the email right now', url: share.url });
+    }
+    return res.status(201).json({ success: true, url: share.url, sent, failed });
+  } catch (error) {
+    if (error && error.status) {
+      return res.status(error.status).json({ success: false, code: error.code, message: error.message });
+    }
+    console.error('🧩 emailPostcard failed:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to email the postcard' });
+  }
+};
