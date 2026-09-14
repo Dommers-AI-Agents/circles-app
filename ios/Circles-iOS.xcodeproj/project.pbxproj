@@ -22,9 +22,10 @@
 		6FE8F0B92DF7C291007CB88E /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 6FE8F0B82DF7C291007CB88E /* FirebaseAuth */; };
 		AC10C11B000000000000000B /* Circles-Clip.app in Embed App Clips */ = {isa = PBXBuildFile; fileRef = AC10C11B0000000000000002 /* Circles-Clip.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CF10CRA50000000000000001 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = CF10CRA50000000000000002 /* FirebaseCrashlytics */; };
-		FAB6000000000000000000C1 /* FavWidgets in Frameworks */ = {isa = PBXBuildFile; productRef = FAB6000000000000000000C2 /* FavWidgets */; };
 		FAB5000000000000000000AB /* Circles-Widget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FAB5000000000000000000A2 /* Circles-Widget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FAB5100000000000000000BB /* Circles-Share.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FAB5100000000000000000B2 /* Circles-Share.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FAB6000000000000000000C1 /* FavWidgets in Frameworks */ = {isa = PBXBuildFile; productRef = FAB6000000000000000000C2 /* FavWidgets */; };
+		FAB6000000000000000000D1 /* StripeApplePay in Frameworks */ = {isa = PBXBuildFile; productRef = FAB6000000000000000000D2 /* StripeApplePay */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -204,6 +205,7 @@
 				6F2DD4FD2E302B9E0051A043 /* FirebaseMessaging in Frameworks */,
 				6F545FB92DE6021A00EC377D /* FacebookCore in Frameworks */,
 				FAB6000000000000000000C1 /* FavWidgets in Frameworks */,
+				FAB6000000000000000000D1 /* StripeApplePay in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -320,6 +322,7 @@
 				6F2DD4FC2E302B9E0051A043 /* FirebaseMessaging */,
 				6F2DD4FE2E302B9E0051A043 /* FirebaseStorage */,
 				FAB6000000000000000000C2 /* FavWidgets */,
+				FAB6000000000000000000D2 /* StripeApplePay */,
 			);
 			productName = "Circles-iOS-UIKit";
 			productReference = 6F9360972DD9725A0065A440 /* Circles-iOS.app */;
@@ -489,6 +492,7 @@
 				6FE8F0B42DF7BFA7007CB88E /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				6F2850052DF86D25006E99CA /* XCRemoteSwiftPackageReference "ios-places-sdk" */,
 				FAB6000000000000000000C0 /* XCRemoteSwiftPackageReference "favcircles-widgets" */,
+				FAB6000000000000000000D0 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6F9360982DD9725A0065A440 /* Products */;
@@ -1206,7 +1210,15 @@
 			repositoryURL = "https://github.com/Dommers-AI-Agents/favcircles-widgets";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.4.0;
+				minimumVersion = 0.5.1;
+			};
+		};
+		FAB6000000000000000000D0 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stripe/stripe-ios-spm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 24.0.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -1281,6 +1293,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = FAB6000000000000000000C0 /* XCRemoteSwiftPackageReference "favcircles-widgets" */;
 			productName = FavWidgets;
+		};
+		FAB6000000000000000000D2 /* StripeApplePay */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FAB6000000000000000000D0 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */;
+			productName = StripeApplePay;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

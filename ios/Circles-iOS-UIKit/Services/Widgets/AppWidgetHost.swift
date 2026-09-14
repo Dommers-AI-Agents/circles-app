@@ -2,6 +2,7 @@ import UIKit
 import SwiftUI
 import FavWidgets
 import FavWidgetsCore
+import StripeApplePay
 
 /// The app's side of the FavWidgets host contract: data sync, analytics,
 /// haptics, sharing, alerts, connections, and postcard delivery. One per
@@ -203,6 +204,24 @@ final class AppWidgetHost: FavWidgetHost {
             throw WidgetAPIError(status: 500, message: "Bad upload URL")
         }
         return url
+    }
+
+    // MARK: - Payment
+
+    /// Apple Pay only. Anyone without a card in Wallet can't buy, so paid
+    /// options are hidden rather than shown as buttons that do nothing.
+    var supportsPayment: Bool { StripeAPI.deviceSupportsApplePay() }
+
+    /// Presents the wallet and waits for the person to finish with it. Must
+    /// be reached straight from their tap — Apple won't present the sheet
+    /// after asynchronous work, which is why the order is created inside it.
+    @MainActor
+    func collectPayment(_ request: WidgetPaymentRequest) async throws -> WidgetPaymentResult {
+        guard let presenter = presentingViewController else {
+            throw WidgetAPIError(status: 500, code: "no_presenter", message: "Couldn't show Apple Pay.")
+        }
+        let coordinator = ApplePayCoordinator(clientSecret: request.clientSecret)
+        return try await coordinator.present(request, from: presenter)
     }
 
     // MARK: - Widget API channel

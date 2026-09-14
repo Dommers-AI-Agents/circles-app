@@ -1,5 +1,5 @@
 {
-  "originHash" : "65546556337da564ff3efa88de70d69b2ff139b9245aeb13bee25201ba7e8fd2",
+  "originHash" : "788c5dcd17b251ea603d9551df5731cbb3481a1c17be8605ebdd54bdfd943897",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Dommers-AI-Agents/favcircles-widgets",
       "state" : {
-        "revision" : "32ace0f467467fa0108c13b770cf3026d838f8a1",
-        "version" : "0.4.1"
+        "revision" : "793061a2512927bc515065474ff02d4522555331",
+        "version" : "0.5.1"
       }
     },
     {
@@ -170,6 +170,15 @@
       "state" : {
         "revision" : "540318ecedd63d883069ae7f1ed811a2df00b6ac",
         "version" : "2.4.0"
+      }
+    },
+    {
+      "identity" : "stripe-ios-spm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stripe/stripe-ios-spm",
+      "state" : {
+        "revision" : "f4f28a0b358011089e4538059d443eccff183382",
+        "version" : "24.25.0"
       }
     },
     {
