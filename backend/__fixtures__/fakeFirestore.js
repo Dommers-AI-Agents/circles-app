@@ -1,0 +1,121 @@
+// A small in-memory Firestore stand-in: enough for single-collection document
+// CRUD, compare-and-set transactions, and the equality/range queries the
+// postcard order machine runs. Deliberately not general — it exists so money
+// transitions can be tested for real instead of being mocked away.
+class FakeQuery {
+  constructor(store, filters = [], order = null, max = null) {
+    this.store = store;
+    this.filters = filters;
+    this.order = order;
+    this.max = max;
+  }
+  where(field, op, value) { return new FakeQuery(this.store, [...this.filters, { field, op, value }], this.order, this.max); }
+  orderBy(field, direction = 'asc') { return new FakeQuery(this.store, this.filters, { field, direction }, this.max); }
+  limit(n) { return new FakeQuery(this.store, this.filters, this.order, n); }
+
+  async get() {
+    let rows = [...this.store.docs.entries()].map(([id, data]) => ({ id, data }));
+    for (const f of this.filters) {
+      rows = rows.filter(({ data }) => {
+        const v = data[f.field];
+        switch (f.op) {
+          case '==': return v === f.value;
+          case '<=': return v !== null && v !== undefined && v <= f.value;
+          case '>=': return v !== null && v !== undefined && v >= f.value;
+          default: throw new Error(`FakeQuery: unsupported operator ${f.op}`);
+        }
+      });
+    }
+    if (this.order) {
+      const { field, direction } = this.order;
+      rows.sort((a, b) => (a.data[field] > b.data[field] ? 1 : -1) * (direction === 'desc' ? -1 : 1));
+    }
+    if (this.max !== null) rows = rows.slice(0, this.max);
+    const docs = rows.map(({ id, data }) => this.store.snapshot(id, data));
+    return { docs, empty: docs.length === 0, size: docs.length };
+  }
+}
+
+class FakeCollection {
+  constructor(store) { this.store = store; }
+  doc(id) { return this.store.ref(id); }
+  where(...args) { return new FakeQuery(this.store).where(...args); }
+  orderBy(...args) { return new FakeQuery(this.store).orderBy(...args); }
+  limit(n) { return new FakeQuery(this.store).limit(n); }
+}
+
+class FakeFirestore {
+  constructor() {
+    this.docs = new Map();
+    this.collections = new Map();
+  }
+
+  collection(name) {
+    if (!this.collections.has(name)) this.collections.set(name, new FakeCollection(this));
+    return this.collections.get(name);
+  }
+
+  snapshot(id, data) {
+    const store = this;
+    return {
+      id,
+      exists: data !== undefined,
+      data: () => (data === undefined ? undefined : { ...data }),
+      ref: store.ref(id)
+    };
+  }
+
+  ref(id) {
+    const store = this;
+    return {
+      id,
+      async get() { return store.snapshot(id, store.docs.get(id)); },
+      async set(data) { store.docs.set(id, { ...data }); },
+      async create(data) {
+        if (store.docs.has(id)) throw new Error('ALREADY_EXISTS');
+        store.docs.set(id, { ...data });
+      },
+      async update(patch) {
+        const current = store.docs.get(id);
+        if (!current) throw new Error('NOT_FOUND');
+        store.docs.set(id, applyPatch(current, patch));
+      }
+    };
+  }
+
+  /**
+   * Runs the body once. Real Firestore retries on contention; tests drive
+   * conflicts deterministically instead, by mutating between calls.
+   */
+  async runTransaction(body) {
+    const store = this;
+    const writes = [];
+    const tx = {
+      async get(ref) { return store.snapshot(ref.id, store.docs.get(ref.id)); },
+      update(ref, patch) { writes.push([ref.id, patch]); },
+      set(ref, data) { writes.push([ref.id, data]); }
+    };
+    const result = await body(tx);
+    for (const [id, patch] of writes) {
+      store.docs.set(id, applyPatch(store.docs.get(id) || {}, patch));
+    }
+    return result;
+  }
+}
+
+// Mirrors FieldValue.increment, the only sentinel the order machine uses.
+function applyPatch(current, patch) {
+  const next = { ...current };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value && typeof value === 'object' && value.__increment !== undefined) {
+      next[key] = (next[key] || 0) + value.__increment;
+    } else {
+      next[key] = value;
+    }
+  }
+  return next;
+}
+
+const FakeFieldValue = { increment: (n) => ({ __increment: n }) };
+
+module.exports = { FakeFirestore, FakeFieldValue };

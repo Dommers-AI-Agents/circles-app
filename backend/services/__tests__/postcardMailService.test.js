@@ -2,14 +2,14 @@
 // a card mailed that nobody paid for, or a customer charged for a card that
 // was never printed. Stripe and Lob are mocked; Firestore is a real in-memory
 // fake so the compare-and-set transitions are actually exercised.
-const { FakeFirestore, FakeFieldValue } = require('../../test-helpers/fakeFirestore');
+const { FakeFirestore, FakeFieldValue } = require('../../__fixtures__/fakeFirestore');
 
 // jest.mock factories are hoisted above the file, so anything they close over
 // must be named with a `mock` prefix.
 const mockDb = new FakeFirestore();
 jest.mock('../../config/firebase', () => ({
   getFirestore: () => mockDb,
-  FieldValue: require('../../test-helpers/fakeFirestore').FakeFieldValue
+  FieldValue: require('../../__fixtures__/fakeFirestore').FakeFieldValue
 }));
 
 jest.mock('../stripeClient', () => ({
