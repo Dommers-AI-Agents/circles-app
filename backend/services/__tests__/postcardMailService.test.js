@@ -543,3 +543,63 @@ describe('the return address', () => {
     expect(html).toContain('Wes');
   });
 });
+
+
+describe('Lob refuses the card after accepting it', () => {
+  async function mailedOrder() {
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+    return ID('o1');
+  }
+
+  it('refunds when the money was already captured', async () => {
+    // Capture follows Lob's acceptance, so by the time this event arrives the
+    // charge has gone through. There is no hold left to void — only a refund
+    // stops us keeping money for a card that will never exist.
+    const id = await mailedOrder();
+    expect(rowOf(id).capturedAt).toBeTruthy();
+
+    await service.handleLobEvent({ event_type: { id: 'postcard.rejected' }, body: { id: 'psc_1' } });
+
+    expect(stripeClient.refund).toHaveBeenCalledWith(`pi_${id}`);
+    expect(rowOf(id).status).toBe(STATUS.REFUNDED);
+  });
+
+  it('voids instead of refunding when capture never landed', async () => {
+    stripeClient.capture.mockRejectedValueOnce(new Error('temporary'));
+    const id = await mailedOrder();
+    expect(rowOf(id).capturedAt).toBeNull();
+
+    await service.handleLobEvent({ event_type: { id: 'postcard.failed' }, body: { id: 'psc_1' } });
+
+    expect(stripeClient.voidAuthorization).toHaveBeenCalledWith(`pi_${id}`);
+    expect(stripeClient.refund).not.toHaveBeenCalled();
+    expect(rowOf(id).status).toBe(STATUS.REJECTED);
+  });
+
+  it('tells the sender, and says whether they were charged', async () => {
+    const id = await mailedOrder();
+    await service.handleLobEvent({ event_type: { id: 'postcard.failed' }, body: { id: 'psc_1' } });
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(USER, expect.objectContaining({
+      body: expect.stringContaining('refunded')
+    }));
+  });
+
+  it('does not refund twice when the webhook is redelivered', async () => {
+    const id = await mailedOrder();
+    await service.handleLobEvent({ event_type: { id: 'postcard.rejected' }, body: { id: 'psc_1' } });
+    await service.handleLobEvent({ event_type: { id: 'postcard.rejected' }, body: { id: 'psc_1' } });
+    expect(stripeClient.refund).toHaveBeenCalledTimes(1);
+  });
+
+  it('flags for review rather than looking fine when the refund itself fails', async () => {
+    stripeClient.refund.mockRejectedValueOnce(new Error('refund unavailable'));
+    const id = await mailedOrder();
+    await service.handleLobEvent({ event_type: { id: 'postcard.rejected' }, body: { id: 'psc_1' } });
+
+    const row = rowOf(id);
+    expect(row.needsReview).toBe(true);
+    expect(row.error).toContain('refund_failed');
+  });
+});

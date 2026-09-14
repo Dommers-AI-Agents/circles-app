@@ -698,26 +698,90 @@ class PostcardMailService {
 
     const TERMINAL = ['postcard.processed_for_delivery', 'postcard.delivered'];
     const IN_TRANSIT = ['postcard.mailed', 'postcard.in_transit', 'postcard.in_local_area', 'postcard.re-routed'];
+    // Lob accepted the card over the API and then refused the mailpiece.
+    // By this point we have already captured, because capture follows Lob's
+    // acceptance — so this is the one event that can leave someone charged
+    // for a card that will never exist.
+    const PRINT_FAILED = ['postcard.failed', 'postcard.rejected'];
+
+    if (!TERMINAL.includes(type) && !IN_TRANSIT.includes(type)
+        && !PRINT_FAILED.includes(type) && type !== 'postcard.returned_to_sender') {
+      return { ignored: true };
+    }
+
+    const snapshot = await this.col.where('lobPostcardId', '==', lobId).limit(1).get();
+    if (snapshot.empty) return { ignored: true };
+    const doc = snapshot.docs[0];
+    const row = doc.data();
+
+    if (PRINT_FAILED.includes(type)) {
+      return this.unwindPrintFailure(doc, row, type);
+    }
 
     const patch = { updatedAt: new Date().toISOString(), lobLastEvent: type };
     if (TERMINAL.includes(type)) {
       patch.status = STATUS.DELIVERED;
     } else if (IN_TRANSIT.includes(type)) {
       patch.status = STATUS.IN_TRANSIT;
-    } else if (type === 'postcard.returned_to_sender') {
+    } else {
       // The card came back. Not a refund decision we make automatically, but
       // never silent either — someone should look.
       patch.status = STATUS.RETURNED;
       patch.needsReview = true;
       console.warn(`[postcard-mail] Lob postcard ${lobId} was returned to sender`);
-    } else {
-      return { ignored: true };
+    }
+    await doc.ref.update(patch);
+    return { handled: patch.status };
+  }
+
+  /**
+   * The printer took the job and then refused it. Give the money back.
+   *
+   * This is the only path where a refund is the right answer rather than a
+   * void: the capture already happened, so there is no hold left to release.
+   * It costs us Stripe's fee, which is the correct trade — the alternative is
+   * keeping someone's money for a postcard that will never be printed.
+   */
+  async unwindPrintFailure(doc, row, type) {
+    const now = new Date().toISOString();
+    if (row.status === STATUS.REFUNDED || row.status === STATUS.REJECTED) {
+      return { handled: row.status }; // a repeated webhook must not refund twice
     }
 
-    const snapshot = await this.col.where('lobPostcardId', '==', lobId).limit(1).get();
-    if (snapshot.empty) return { ignored: true };
-    await snapshot.docs[0].ref.update(patch);
-    return { handled: patch.status };
+    let status = STATUS.REJECTED;
+    try {
+      if (row.capturedAt) {
+        await stripeClient.refund(row.stripePaymentIntentId);
+        status = STATUS.REFUNDED;
+      } else {
+        // Capture never landed, so the hold is still open and voiding is free.
+        await stripeClient.voidAuthorization(row.stripePaymentIntentId);
+      }
+    } catch (error) {
+      // Never leave the order looking fine. Flag it so a human settles up.
+      console.error(`[postcard-mail] refund after ${type} failed for ${doc.id}: ${error.message}`);
+      await doc.ref.update({
+        status: STATUS.REJECTED, needsReview: true, lobLastEvent: type,
+        error: `refund_failed: ${error.message}`.slice(0, 300), updatedAt: now
+      });
+      this.notify(row.userId, {
+        title: "We couldn't print that postcard",
+        body: `Your card to ${row.recipient?.name || 'your recipient'} couldn't be printed. We're sorting out your refund.`,
+        data: { orderId: doc.id, status: STATUS.REJECTED }
+      });
+      return { handled: STATUS.REJECTED, refundFailed: true };
+    }
+
+    await doc.ref.update({ status, lobLastEvent: type, refundedAt: row.capturedAt ? now : null, updatedAt: now });
+    this.notify(row.userId, {
+      title: "We couldn't print that postcard",
+      body: row.capturedAt
+        ? `Your card to ${row.recipient?.name || 'your recipient'} couldn't be printed, so we've refunded you.`
+        : `Your card to ${row.recipient?.name || 'your recipient'} couldn't be printed, so you weren't charged.`,
+      data: { orderId: doc.id, status }
+    });
+    console.error(`[postcard-mail] ${doc.id} ${type} — money returned (${status})`);
+    return { handled: status };
   }
 }
 
