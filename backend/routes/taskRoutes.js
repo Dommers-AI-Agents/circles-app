@@ -8,6 +8,7 @@ const milestoneService = require('../services/milestoneService');
 const suggestionEngine = require('../services/suggestionEngine');
 const { runCategorySweep } = require('../services/categorySweep');
 const { verifyScheduler } = require('../middleware/verifyScheduler');
+const postcardMail = require('../controllers/widgets/postcardMailController');
 
 const router = express.Router();
 
@@ -19,6 +20,15 @@ const router = express.Router();
 // User-Agent string. Both are set by the caller, so anyone could trigger a
 // push-notification blast to the whole user base with a single curl.
 const verifyCloudScheduler = verifyScheduler;
+
+// Printed postcards. The release job closes cancel windows: it submits each
+// due order to the printer and only then captures the money, so a card that
+// can't be printed costs the customer nothing. Every 10 minutes, because that
+// interval is the slack on the advertised cancel window.
+router.post('/postcard-orders-release', verifyCloudScheduler, postcardMail.releaseDue);
+// Hourly cleanup: retry captures for cards already at the printer, unstick
+// claims from a job that died mid-flight, expire holds nobody completed.
+router.post('/postcard-orders-reconcile', verifyCloudScheduler, postcardMail.reconcile);
 
 // Daily summary endpoint
 router.post('/daily-summary', verifyCloudScheduler, async (req, res) => {

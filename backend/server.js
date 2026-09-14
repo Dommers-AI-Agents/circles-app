@@ -143,6 +143,17 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// Vendor webhooks for printed postcards. These MUST be mounted above the
+// JSON parser below: both Stripe and Lob sign the raw request body, and a
+// parsed-then-restringified body no longer matches the signature. They also
+// arrive with no JWT, which is why they can't live on the widget router.
+{
+  const postcardMail = require('./controllers/widgets/postcardMailController');
+  const rawJson = express.raw({ type: 'application/json' });
+  app.post('/api/widgets/postcard/mail/stripe-webhook', rawJson, postcardMail.stripeWebhook);
+  app.post('/api/widgets/postcard/mail/lob-webhook', rawJson, postcardMail.lobWebhook);
+}
+
 app.use(express.json({ limit: '50mb' })); // Increased limit for image uploads
 // Mirror message<->error keys on all error responses (see middleware file)
 app.use(require('./middleware/responseNormalizer'));
@@ -318,6 +329,27 @@ app.get('/postcard/:token/:mode(image|download)', async (req, res) => {
     return res.send(bytes);
   } catch (e) {
     console.error('postcard image proxy failed:', e.message);
+    return res.status(502).end();
+  }
+});
+
+// The QR printed on the back of a mailed postcard, pointing at that card's
+// public page. Served as a URL rather than an inline data URI because Lob
+// caps the HTML it renders at roughly 10k characters.
+app.get('/postcard/:token/qr.png', async (req, res) => {
+  try {
+    const share = await require('./services/postcardShareService').get(req.params.token);
+    if (!share) return res.status(404).end();
+    const QRCode = require('qrcode');
+    const png = await QRCode.toBuffer(
+      `${require('./services/postcardShareService').PUBLIC_BASE_URL}/postcard/${req.params.token}`,
+      { type: 'png', width: 600, margin: 1, errorCorrectionLevel: 'M' }
+    );
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.send(png);
+  } catch (e) {
+    console.error('postcard qr failed:', e.message);
     return res.status(502).end();
   }
 });

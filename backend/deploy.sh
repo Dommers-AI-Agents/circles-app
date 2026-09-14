@@ -89,6 +89,20 @@ for var in PIGGY_CLAIMS_ENABLED WIDGET_PIGGY_ENABLED CACTUS_BROKER_URL CACTUS_BR
     fi
 done
 
+# Printed postcards (Lob print-and-mail + Stripe Apple Pay). All optional:
+# without POSTCARD_MAIL_ENABLED=1 and both vendor keys the endpoints return
+# 503 and the app hides the option, so the feature ships dark.
+for var in POSTCARD_MAIL_ENABLED POSTCARD_PRICE_CENTS_US \
+           STRIPE_SECRET_KEY STRIPE_PUBLISHABLE_KEY STRIPE_WEBHOOK_SECRET APPLE_PAY_MERCHANT_ID \
+           LOB_API_KEY LOB_WEBHOOK_SECRET \
+           POSTCARD_RETURN_ADDRESS_NAME POSTCARD_RETURN_ADDRESS_LINE1 POSTCARD_RETURN_ADDRESS_LINE2 \
+           POSTCARD_RETURN_ADDRESS_CITY POSTCARD_RETURN_ADDRESS_STATE POSTCARD_RETURN_ADDRESS_ZIP; do
+    value="${!var}"
+    if [ ! -z "$value" ]; then
+        ENV_VARS="$ENV_VARS,$var=$value"
+    fi
+done
+
 # SMTP email configuration (QR emails, venue reports, welcome emails)
 if [ ! -z "$SMTP_HOST" ]; then
     ENV_VARS="$ENV_VARS,EMAIL_SERVICE=${EMAIL_SERVICE:-custom}"
