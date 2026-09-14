@@ -2,6 +2,13 @@
 // physical card in someone's mailbox. A print mistake costs money and can't
 // be undone, unlike a soft image on a screen.
 jest.mock('../../services/storage', () => ({ uploadImage: jest.fn() }));
+// The controller pulls in the order service, which reaches Firestore at
+// require time. Nothing here touches it.
+jest.mock('../../config/firebase', () => ({
+  getFirestore: () => ({ collection: () => ({}) }),
+  FieldValue: { increment: (n) => n }
+}));
+jest.mock('../../services/notificationService', () => ({ sendToUser: jest.fn() }));
 
 const { checkPrintDimensions, PRINT_WIDTH, PRINT_HEIGHT } = require('../widgets/postcardMailController');
 
