@@ -7,7 +7,9 @@ const crypto = require('crypto');
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 
-const PUBLIC_BASE_URL = 'https://api.favcircles.com';
+// Share links use the friendly domain; favcircles.com's .htaccess forwards
+// /postcard/* to the API page (website/favcircles.com/.htaccess).
+const PUBLIC_BASE_URL = 'https://favcircles.com';
 const MAX_MESSAGE_CHARS = 500;
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,32}$/;
 

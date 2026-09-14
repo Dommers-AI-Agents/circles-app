@@ -299,6 +299,29 @@ ${address ? `<p style="margin:0 0 16px;opacity:.85">${esc(address)}</p>` : ''}
 </body></html>`);
 });
 
+// The postcard image, served from our own host so it can be saved with a
+// real filename (the storage URL is a token soup). `download` forces the
+// save dialog; `image` shows it inline (the lightbox).
+app.get('/postcard/:token/:mode(image|download)', async (req, res) => {
+  try {
+    const share = await require('./services/postcardShareService').get(req.params.token);
+    if (!share) return res.status(404).end();
+    const upstream = await fetch(share.imageUrl);
+    if (!upstream.ok) return res.status(502).end();
+    const bytes = Buffer.from(await upstream.arrayBuffer());
+    const slug = (share.placeName || 'favcircles').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'favcircles';
+    res.setHeader('Content-Type', upstream.headers.get('content-type') || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    if (req.params.mode === 'download') {
+      res.setHeader('Content-Disposition', `attachment; filename="postcard-${slug}.jpg"`);
+    }
+    return res.send(bytes);
+  } catch (e) {
+    console.error('postcard image proxy failed:', e.message);
+    return res.status(502).end();
+  }
+});
+
 // Public postcard page (Widgets tab → Postcard → "Share by text or email").
 // Deliberately NOT a universal link: a non-user opens it in the browser,
 // sees the card, and gets the pitch underneath.
@@ -328,13 +351,23 @@ app.get('/postcard/:token', async (req, res) => {
 <meta property="og:site_name" content="FavCircles">
 <meta property="og:type" content="website">
 <meta property="og:image" content="${esc(share.imageUrl)}">
-<meta property="og:url" content="https://api.favcircles.com/postcard/${esc(share.token)}">
+<meta property="og:url" content="https://favcircles.com/postcard/${esc(share.token)}">
 <meta name="twitter:card" content="summary_large_image">
+<style>
+  #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.94);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:10;padding:16px}
+  #lightbox.open{display:flex}
+  #lightbox img{max-width:100%;max-height:78vh;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+  .lb-actions{display:flex;gap:12px;margin-top:18px;flex-wrap:wrap;justify-content:center}
+  .lb-btn{background:#4FD1C5;color:#0f1b2d;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:700;border:0;font-size:15px;cursor:pointer}
+  .lb-btn.ghost{background:rgba(255,255,255,.12);color:#fff}
+  .lb-hint{margin-top:12px;font-size:13px;opacity:.7;text-align:center}
+</style>
 </head>
 <body style="margin:0;background:#0f1b2d;color:#fff;font-family:-apple-system,Helvetica,Arial,sans-serif">
 <main style="max-width:640px;margin:0 auto;padding:32px 20px 48px;text-align:center">
   <p style="margin:0 0 12px;opacity:.7;font-size:14px;letter-spacing:.04em;text-transform:uppercase">${where ? `Greetings from ${where}` : 'A digital postcard'}</p>
-  <img src="${esc(share.imageUrl)}" alt="${esc(title)}" style="width:100%;max-width:600px;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.45);display:block;margin:0 auto">
+  <img id="card" src="/postcard/${esc(share.token)}/image" alt="${esc(title)}" style="width:100%;max-width:600px;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.45);display:block;margin:0 auto;cursor:zoom-in">
+  <p style="margin:10px 0 0;font-size:13px;opacity:.6">Tap the postcard to view it full size or save it</p>
   ${share.message ? `<p style="font-size:20px;line-height:1.5;margin:28px 0 8px;white-space:pre-wrap">${esc(share.message)}</p>` : ''}
   <p style="margin:8px 0 0;opacity:.75">— ${from}${sent ? ` · ${esc(sent)}` : ''}</p>
   <section style="margin-top:44px;padding:24px;border-radius:14px;background:rgba(255,255,255,.06)">
@@ -344,6 +377,26 @@ app.get('/postcard/:token', async (req, res) => {
     <p style="margin:16px 0 0;font-size:13px;opacity:.6"><a href="https://favcircles.com" style="color:#fff">favcircles.com</a></p>
   </section>
 </main>
+<div id="lightbox" role="dialog" aria-label="Postcard">
+  <img src="/postcard/${esc(share.token)}/image" alt="${esc(title)}">
+  <div class="lb-actions">
+    <a class="lb-btn" href="/postcard/${esc(share.token)}/download" download="postcard.jpg">Save postcard</a>
+    <button class="lb-btn ghost" type="button" id="lb-close">Close</button>
+  </div>
+  <p class="lb-hint" id="lb-hint">On iPhone: press and hold the postcard, then choose “Save to Photos”.</p>
+</div>
+<script>
+  (function () {
+    var lb = document.getElementById('lightbox');
+    var open = function () { lb.classList.add('open'); document.body.style.overflow = 'hidden'; };
+    var close = function () { lb.classList.remove('open'); document.body.style.overflow = ''; };
+    document.getElementById('card').addEventListener('click', open);
+    document.getElementById('lb-close').addEventListener('click', close);
+    lb.addEventListener('click', function (e) { if (e.target === lb) close(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    if (!/iPhone|iPad/.test(navigator.userAgent)) document.getElementById('lb-hint').textContent = 'Save downloads the full-size postcard.';
+  })();
+</script>
 </body></html>`);
 });
 

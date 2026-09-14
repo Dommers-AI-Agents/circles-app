@@ -21,7 +21,7 @@ describe('postcardShareService', () => {
 
   test('creates an unguessable link and reads it back', async () => {
     const share = await service.create({ senderId: 'u1', senderName: 'Wes', imageUrl: good, message: ' hi ', placeRef: { name: 'Paris' } });
-    expect(share.url).toBe(`https://api.favcircles.com/postcard/${share.token}`);
+    expect(share.url).toBe(`https://favcircles.com/postcard/${share.token}`);
     expect(service.TOKEN_RE.test(share.token)).toBe(true);
     const read = await service.get(share.token);
     expect(read.message).toBe('hi');
