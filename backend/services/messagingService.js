@@ -16,6 +16,16 @@ const {
 const { isSameUser } = require('./idService');
 const sseService = require('./sseService');
 
+// What the conversation list shows for the latest message. Postcards say
+// so (with the place) instead of falling back to "[image]".
+function messagePreview({ type, content, metadata }) {
+  if (metadata && metadata.kind === 'postcard') {
+    const place = metadata.placeName ? ` from ${metadata.placeName}` : '';
+    return content ? `📮 Postcard${place}: ${content}` : `📮 Postcard${place}`;
+  }
+  return content || `[${type}]`;
+}
+
 const db = getFirestore();
 
 class MessagingService {
@@ -79,7 +89,7 @@ class MessagingService {
 
     const now = new Date().toISOString();
     const conversationUpdate = {
-      lastMessage: content || `[${type}]`,
+      lastMessage: messagePreview({ type, content, metadata }),
       lastMessageTime: now,
       lastMessageSenderId: senderId,
       updatedAt: now

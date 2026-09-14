@@ -337,6 +337,11 @@ class NotificationService {
       notificationBody = '📍 Sent a place suggestion';
     } else if (message.type === 'connection_request') {
       notificationBody = '👋 Wants to connect with you';
+    } else if (message.metadata && message.metadata.kind === 'postcard') {
+      // Widgets-tab postcard: rides the image type, but the alert should
+      // say what it is, not "a photo".
+      const place = message.metadata.placeName;
+      notificationBody = place ? `📮 Sent you a postcard from ${place}` : '📮 Sent you a postcard';
     } else if (message.mediaUrl) {
       notificationBody = '📷 Sent a photo';
     }
