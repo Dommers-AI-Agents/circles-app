@@ -50,7 +50,7 @@ class CheckInRecipientSelectionViewController: BaseViewController {
     
     private let instructionLabel: UILabel = {
         let label = UILabel()
-        label.text = "Select groups or people to notify about your check-in"
+        label.text = "Select groups or people to notify — or keep this check-in to yourself"
         label.font = UIFont.systemFont(ofSize: 14)
         label.textColor = Constants.Colors.secondaryLabel
         label.numberOfLines = 0
@@ -85,6 +85,9 @@ class CheckInRecipientSelectionViewController: BaseViewController {
     }()
     
     private lazy var checkInButton = UIButton.primaryButton(title: "Check In")
+    /// Personal check-in: nobody is notified and nothing is posted to the
+    /// feed; it still counts toward the user's own history and stats.
+    private lazy var privateCheckInButton = UIButton.secondaryButton(title: "Just me — check in privately")
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -116,6 +119,7 @@ class CheckInRecipientSelectionViewController: BaseViewController {
         view.addSubview(recipientTabBar)
         view.addSubview(recipientTableView)
         view.addSubview(selectedCountLabel)
+        view.addSubview(privateCheckInButton)
         view.addSubview(checkInButton)
         
         // Setup constraints
@@ -150,7 +154,11 @@ class CheckInRecipientSelectionViewController: BaseViewController {
             
             selectedCountLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             selectedCountLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            selectedCountLabel.bottomAnchor.constraint(equalTo: checkInButton.topAnchor, constant: -16),
+            selectedCountLabel.bottomAnchor.constraint(equalTo: privateCheckInButton.topAnchor, constant: -12),
+            
+            privateCheckInButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            privateCheckInButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            privateCheckInButton.bottomAnchor.constraint(equalTo: checkInButton.topAnchor, constant: -12),
             
             checkInButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             checkInButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
@@ -166,6 +174,7 @@ class CheckInRecipientSelectionViewController: BaseViewController {
         // Setup actions
         recipientTabBar.addTarget(self, action: #selector(tabChanged), for: .valueChanged)
         checkInButton.addTarget(self, action: #selector(checkInButtonTapped), for: .touchUpInside)
+        privateCheckInButton.addTarget(self, action: #selector(privateCheckInTapped), for: .touchUpInside)
         
         // Initially disable check-in button
         updateCheckInButton()
@@ -221,6 +230,10 @@ class CheckInRecipientSelectionViewController: BaseViewController {
         }
     }
     
+    @objc private func privateCheckInTapped() {
+        createCheckIn(isPrivate: true)
+    }
+
     private func checkForExistingGroup() {
         // Check if selected users are already in a group together
         let sortedUsers = Array(selectedUsers).sorted()
@@ -310,12 +323,15 @@ class CheckInRecipientSelectionViewController: BaseViewController {
         }
     }
     
-    private func createCheckIn() {
+    private func createCheckIn(isPrivate: Bool = false) {
         let loadingAlert = showLoading(message: "Creating check-in...")
         
-        // Add notification settings to check-in data
-        checkInData["notifiedGroups"] = Array(selectedGroups)
-        checkInData["notifiedUsers"] = Array(selectedUsers)
+        // Add notification settings to check-in data. Private = notify no one
+        // and stay off the feed, whatever was picked on the previous step.
+        checkInData["isPrivate"] = isPrivate
+        checkInData["notifiedGroups"] = isPrivate ? [] : Array(selectedGroups)
+        checkInData["notifiedUsers"] = isPrivate ? [] : Array(selectedUsers)
+        if isPrivate { checkInData["showInActivityFeed"] = false }
         
         APIService.shared.createCheckIn(checkInData) { [weak self] result in
             DispatchQueue.main.async {
@@ -324,9 +340,9 @@ class CheckInRecipientSelectionViewController: BaseViewController {
                     case .success(let created):
                         // "That's your 3rd time here" — the personal history
                         // is the reason to keep checking in
-                        var message = "Check-in created successfully!"
+                        var message = isPrivate ? "Checked in privately — no one was notified." : "Check-in created successfully!"
                         if let count = created.stats?.count, count > 1 {
-                            message = "You're checked in. That's your \(CheckInHistoryFormatter.ordinal(count)) time here!"
+                            message = "You're checked in\(isPrivate ? " privately" : ""). That's your \(CheckInHistoryFormatter.ordinal(count)) time here!"
                         }
                         self?.showSuccess(message) {
                             self?.delegate?.didCompleteCheckIn()
@@ -348,8 +364,8 @@ class CheckInRecipientSelectionViewController: BaseViewController {
         // Update count label
         let totalCount = selectedGroups.count + selectedUsers.count
         if totalCount == 0 {
-            selectedCountLabel.text = "No recipients selected"
-            selectedCountLabel.textColor = Constants.Colors.danger
+            selectedCountLabel.text = "No one selected — pick recipients, or check in just for you"
+            selectedCountLabel.textColor = Constants.Colors.secondaryLabel
         } else if currentTab == 0 {
             selectedCountLabel.text = "\(selectedGroups.count) group\(selectedGroups.count == 1 ? "" : "s") selected"
             selectedCountLabel.textColor = Constants.Colors.primary

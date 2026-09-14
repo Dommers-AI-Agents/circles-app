@@ -13,6 +13,7 @@ const {
 } = require('../models/FirestoreModels');
 const { createActivity } = require('./activityController');
 const notificationService = require('../services/notificationService');
+const { isCheckInVisibleTo } = require('../services/checkInVisibility');
 const sseService = require('../services/sseService');
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
@@ -628,20 +629,7 @@ exports.getActiveCheckIns = async (req, res) => {
     const now = new Date();
     
     // Get user's connections
-    const [connections1, connections2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
-    
-    const connectionIds = new Set([userId]); // Include self
-    connections1.docs.forEach(doc => connectionIds.add(doc.data().connectedUserId));
-    connections2.docs.forEach(doc => connectionIds.add(doc.data().userId));
+    const connectionIds = await acceptedConnectionIds(userId);
     
     // Get active check-ins from connections
     const checkInsQuery = await db.collection(COLLECTIONS.CHECK_INS)
@@ -651,18 +639,12 @@ exports.getActiveCheckIns = async (req, res) => {
       .orderBy('createdAt', 'desc')
       .get();
     
-    // Filter check-ins based on visibility
+    // Filter check-ins based on visibility (owner / notified / group /
+    // connection-with-feed; private check-ins are owner-only)
     const visibleCheckIns = [];
+    const ctx = { connectionIds, isInAnyGroup: isUserInAnyGroup };
     for (const doc of checkInsQuery.docs) {
-      const checkIn = doc.data();
-      
-      // Check if user should see this check-in
-      const isOwner = checkIn.userId === userId;
-      const isNotified = checkIn.notifiedUsers.includes(userId);
-      const isInNotifiedGroup = await isUserInAnyGroup(userId, checkIn.notifiedGroups);
-      const isConnection = connectionIds.has(checkIn.userId) && checkIn.showInActivityFeed;
-      
-      if (isOwner || isNotified || isInNotifiedGroup || isConnection) {
+      if (await isCheckInVisibleTo(doc.data(), userId, ctx)) {
         visibleCheckIns.push(serializeDoc(doc));
       }
     }
@@ -861,6 +843,7 @@ exports.endCheckIn = async (req, res) => {
 exports.getCheckInsAtPlace = async (req, res) => {
   try {
     const placeId = req.params.placeId;
+    const userId = req.user.uid;
     const now = new Date();
     
     const checkInsQuery = await db.collection(COLLECTIONS.CHECK_INS)
@@ -871,7 +854,14 @@ exports.getCheckInsAtPlace = async (req, res) => {
       .orderBy('createdAt', 'desc')
       .get();
     
-    const checkIns = serializeQuerySnapshot(checkInsQuery);
+    // Same visibility rule as the active feed — this used to return every
+    // check-in at the place to any signed-in user
+    const connectionIds = await acceptedConnectionIds(userId);
+    const ctx = { connectionIds, isInAnyGroup: isUserInAnyGroup };
+    const checkIns = [];
+    for (const doc of checkInsQuery.docs) {
+      if (await isCheckInVisibleTo(doc.data(), userId, ctx)) checkIns.push(serializeDoc(doc));
+    }
     
     res.json({
       success: true,
@@ -887,6 +877,24 @@ exports.getCheckInsAtPlace = async (req, res) => {
     });
   }
 };
+
+// Accepted connections of a user (both directions), plus the user
+async function acceptedConnectionIds(userId) {
+  const [connections1, connections2] = await Promise.all([
+    db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', userId)
+      .where('status', '==', 'accepted')
+      .get(),
+    db.collection(COLLECTIONS.CONNECTIONS)
+      .where('connectedUserId', '==', userId)
+      .where('status', '==', 'accepted')
+      .get()
+  ]);
+  const connectionIds = new Set([userId]); // Include self
+  connections1.docs.forEach(doc => connectionIds.add(doc.data().connectedUserId));
+  connections2.docs.forEach(doc => connectionIds.add(doc.data().userId));
+  return connectionIds;
+}
 
 // Helper function to check if user is in any of the notified groups
 async function isUserInAnyGroup(userId, groupIds) {

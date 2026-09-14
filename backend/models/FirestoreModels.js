@@ -983,12 +983,14 @@ const createCheckIn = (checkInData, userId, userData) => {
     endTime: endTime,
     duration: checkInData.duration, // '30', '60', '120', 'until_leave'
     
-    // Notification settings
-    notifiedGroups: checkInData.notifiedGroups || [], // conversation IDs
-    notifiedUsers: checkInData.notifiedUsers || [], // individual user IDs
+    // Notification settings. A private check-in notifies no one and stays
+    // off the feed — it exists only for the owner's own history/stats.
+    isPrivate: checkInData.isPrivate === true,
+    notifiedGroups: checkInData.isPrivate === true ? [] : (checkInData.notifiedGroups || []), // conversation IDs
+    notifiedUsers: checkInData.isPrivate === true ? [] : (checkInData.notifiedUsers || []), // individual user IDs
     
     // Activity feed visibility
-    showInActivityFeed: checkInData.showInActivityFeed !== false, // default true
+    showInActivityFeed: checkInData.isPrivate === true ? false : checkInData.showInActivityFeed !== false, // default true
     
     // Responses
     responses: [],

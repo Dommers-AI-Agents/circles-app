@@ -19,6 +19,8 @@ struct CheckIn: Codable, Identifiable {
     let notifiedGroups: [String]
     let notifiedUsers: [String]
     let showInActivityFeed: Bool
+    /// Notified no one and stayed off the feed — visible to the owner only.
+    let isPrivate: Bool?
     let responses: [CheckInResponse]
     let active: Bool
     let createdAt: Date
@@ -28,7 +30,7 @@ struct CheckIn: Codable, Identifiable {
         case id = "_id"
         case userId, userName, userPhoto, placeId, placeName, placeAddress, location
         case placeCategory, circleId, message, startTime, endTime, duration
-        case notifiedGroups, notifiedUsers, showInActivityFeed, responses
+        case notifiedGroups, notifiedUsers, showInActivityFeed, isPrivate, responses
         case active, createdAt, updatedAt
     }
     
