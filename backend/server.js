@@ -299,6 +299,54 @@ ${address ? `<p style="margin:0 0 16px;opacity:.85">${esc(address)}</p>` : ''}
 </body></html>`);
 });
 
+// Public postcard page (Widgets tab → Postcard → "Share by text or email").
+// Deliberately NOT a universal link: a non-user opens it in the browser,
+// sees the card, and gets the pitch underneath.
+app.get('/postcard/:token', async (req, res) => {
+  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+  const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let share = null;
+  try {
+    share = await require('./services/postcardShareService').get(req.params.token);
+  } catch (e) {
+    console.error('postcard page lookup failed:', e.message);
+  }
+  if (!share) {
+    return res.status(404).send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Postcard not found</title></head>
+<body style="font-family:-apple-system,Helvetica,Arial,sans-serif;text-align:center;padding:48px 24px;color:#1a202c"><h1>This postcard isn't here</h1><p>The link may be incomplete.</p>
+<p><a href="https://favcircles.com" style="color:#3182CE">Create your own digital postcards with FavCircles</a></p></body></html>`);
+  }
+  const from = esc(share.senderName || 'A FavCircles member');
+  const where = share.placeName ? esc(share.placeName) + (share.placeCity ? `, ${esc(share.placeCity)}` : '') : null;
+  const title = where ? `A postcard from ${where}` : `A postcard from ${from}`;
+  const sent = share.createdAt ? new Date(share.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${share.message ? esc(share.message.slice(0, 160)) : `${from} sent you a digital postcard on FavCircles.`}">
+<meta property="og:site_name" content="FavCircles">
+<meta property="og:type" content="website">
+<meta property="og:image" content="${esc(share.imageUrl)}">
+<meta property="og:url" content="https://api.favcircles.com/postcard/${esc(share.token)}">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+<body style="margin:0;background:#0f1b2d;color:#fff;font-family:-apple-system,Helvetica,Arial,sans-serif">
+<main style="max-width:640px;margin:0 auto;padding:32px 20px 48px;text-align:center">
+  <p style="margin:0 0 12px;opacity:.7;font-size:14px;letter-spacing:.04em;text-transform:uppercase">${where ? `Greetings from ${where}` : 'A digital postcard'}</p>
+  <img src="${esc(share.imageUrl)}" alt="${esc(title)}" style="width:100%;max-width:600px;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.45);display:block;margin:0 auto">
+  ${share.message ? `<p style="font-size:20px;line-height:1.5;margin:28px 0 8px;white-space:pre-wrap">${esc(share.message)}</p>` : ''}
+  <p style="margin:8px 0 0;opacity:.75">— ${from}${sent ? ` · ${esc(sent)}` : ''}</p>
+  <section style="margin-top:44px;padding:24px;border-radius:14px;background:rgba(255,255,255,.06)">
+    <p style="margin:0 0 6px;font-size:22px;font-weight:700">Create your own digital postcards with FavCircles.</p>
+    <p style="margin:0 0 18px;opacity:.8">Snap a photo from wherever you are, pick a card, and send it to friends — plus the places you love, all in one app.</p>
+    <a href="${appStoreUrl}" style="background:#4FD1C5;color:#0f1b2d;padding:14px 30px;border-radius:10px;text-decoration:none;font-weight:700;display:inline-block">Get it here</a>
+    <p style="margin:16px 0 0;font-size:13px;opacity:.6"><a href="https://favcircles.com" style="color:#fff">favcircles.com</a></p>
+  </section>
+</main>
+</body></html>`);
+});
+
 // Email/universal-link targets with no page of their own: installed devices
 // never reach these (iOS intercepts); browsers get the marketing site
 // instead of a 404 JSON blob.

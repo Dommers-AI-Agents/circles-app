@@ -108,3 +108,26 @@ exports.sendPostcard = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to send postcard' });
   }
 };
+
+
+// @desc    Turn a rendered postcard into a public page anyone can open
+// @route   POST /api/widgets/postcard/share
+// @access  Private
+exports.createShareLink = async (req, res) => {
+  try {
+    const postcardShareService = require('../../services/postcardShareService');
+    const { imageUrl, message, templateId, placeRef } = req.body || {};
+    const share = await postcardShareService.create({
+      senderId: req.user.uid,
+      senderName: req.user.displayName,
+      imageUrl, message, templateId, placeRef
+    });
+    return res.status(201).json({ success: true, url: share.url, token: share.token });
+  } catch (error) {
+    if (error && error.status) {
+      return res.status(error.status).json({ success: false, code: error.code, message: error.message });
+    }
+    console.error('🧩 createShareLink failed:', error.message);
+    return res.status(500).json({ success: false, message: 'Failed to create the postcard link' });
+  }
+};

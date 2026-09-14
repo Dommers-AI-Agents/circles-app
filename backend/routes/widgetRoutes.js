@@ -20,6 +20,7 @@ router.delete('/data/:widgetId', widgetData.deleteData);
 
 // A postcard is a chat message, so it shares the messaging rate limit
 router.post('/postcard/send', messageLimiter, postcard.sendPostcard);
+router.post('/postcard/share', messageLimiter, postcard.createShareLink);
 
 // NextBar voting rounds: shared docs (host + tagged connections vote)
 router.post('/nextbar/rounds', nextBarRounds.createRound);

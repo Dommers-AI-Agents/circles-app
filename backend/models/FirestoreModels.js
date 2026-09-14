@@ -45,7 +45,8 @@ const COLLECTIONS = {
   // Home Widgets tab: opaque per-user JSON docs keyed `${uid}_${widgetId}`
   WIDGET_DATA: 'widgetData',
   // NextBar widget social rounds: shared docs, participantIds array-contains
-  NEXTBAR_ROUNDS: 'nextbarRounds'
+  NEXTBAR_ROUNDS: 'nextbarRounds',
+  POSTCARD_SHARES: 'postcardShares' // public postcard pages, doc id = share token
 };
 
 // User model structure
