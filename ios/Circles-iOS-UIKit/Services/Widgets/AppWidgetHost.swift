@@ -188,6 +188,23 @@ final class AppWidgetHost: FavWidgetHost {
         return url
     }
 
+    /// Print artwork goes to its own endpoint, never through `uploadImage`.
+    /// That path targets 750KB and downsizes to 1280px on its second attempt,
+    /// which would quietly turn a 300 DPI card into a blurry one.
+    func uploadPrintImage(_ jpeg: Data) async throws -> URL {
+        let payload: [String: String] = [
+            "image": jpeg.base64EncodedString(),
+            "filename": "postcard-print.jpg"
+        ]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let data = try await request(WidgetAPIRequest(.post, "widgets/postcard/mail/upload", body: body))
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        guard let urlString = json?["imageUrl"] as? String, let url = URL(string: urlString) else {
+            throw WidgetAPIError(status: 500, message: "Bad upload URL")
+        }
+        return url
+    }
+
     // MARK: - Widget API channel
 
     /// Authenticated raw call for widget-owned endpoints. Only `widgets/`

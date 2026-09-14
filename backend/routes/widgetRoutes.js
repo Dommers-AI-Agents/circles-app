@@ -9,6 +9,7 @@ const { messageLimiter } = require('../middleware/security');
 const widgetData = require('../controllers/widgets/widgetDataController');
 const postcard = require('../controllers/widgets/postcardController');
 const nextBarRounds = require('../controllers/widgets/nextBarRoundController');
+const postcardMail = require('../controllers/widgets/postcardMailController');
 
 const router = express.Router();
 router.use(protect);
@@ -22,6 +23,10 @@ router.delete('/data/:widgetId', widgetData.deleteData);
 router.post('/postcard/send', messageLimiter, postcard.sendPostcard);
 router.post('/postcard/share', messageLimiter, postcard.createShareLink);
 router.post('/postcard/email', messageLimiter, postcard.emailPostcard);
+
+// Printed-and-mailed postcards. Print art bypasses /api/upload/image, which
+// caps at 1MB and would downsize below print resolution.
+router.post('/postcard/mail/upload', messageLimiter, postcardMail.uploadPrintImage);
 
 // NextBar voting rounds: shared docs (host + tagged connections vote)
 router.post('/nextbar/rounds', nextBarRounds.createRound);

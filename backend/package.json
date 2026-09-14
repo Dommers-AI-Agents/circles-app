@@ -33,6 +33,7 @@
     "geofire-common": "^6.0.0",
     "google-auth-library": "^9.15.1",
     "helmet": "^8.1.0",
+    "image-size": "^1.2.1",
     "iso-3166-1": "^2.1.1",
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^3.2.0",
