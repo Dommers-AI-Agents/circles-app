@@ -16,6 +16,7 @@ const { COLLECTIONS } = require('../models/FirestoreModels');
 const stripeClient = require('./stripeClient');
 const lobClient = require('./lobClient');
 const postcardShareService = require('./postcardShareService');
+const notificationService = require('./notificationService');
 
 const STATUS = {
   CREATED: 'created',        // order written, hold not yet placed
@@ -25,6 +26,7 @@ const STATUS = {
   SUBMITTED: 'submitted',    // Lob accepted and the money is captured
   IN_TRANSIT: 'in_transit',
   DELIVERED: 'delivered',
+  RETURNED: 'returned_to_sender', // came back; a human decides what to do
   REJECTED: 'rejected',      // Lob permanently refused, hold voided — free
   EXPIRED: 'expired',        // never authorized, or the hold lapsed
   REFUNDED: 'refunded'       // manual support action only
@@ -103,6 +105,13 @@ function normalizeMessage(message) {
     throw new MailError(400, 'message_too_long', `The back of a postcard fits ${MESSAGE_MAX_CHARS} characters.`);
   }
   return text;
+}
+
+/** "2026-09-20" -> "Sep 20", for a push that has to read at a glance. */
+function formatDate(iso) {
+  const d = new Date(`${iso}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
 const escapeHtml = (s) => String(s || '')
@@ -437,6 +446,13 @@ class PostcardMailService {
         error: capturedAt ? null : 'capture_pending',
         updatedAt: new Date().toISOString()
       });
+      this.notify(row.userId, {
+        title: 'Your postcard is printing',
+        body: lob.expectedDeliveryDate
+          ? `On its way to ${row.recipient.name} — arriving around ${formatDate(lob.expectedDeliveryDate)}.`
+          : `On its way to ${row.recipient.name}.`,
+        data: { orderId, status: STATUS.SUBMITTED }
+      });
       return 'released';
     } catch (error) {
       const permanent = error instanceof lobClient.LobError
@@ -475,7 +491,30 @@ class PostcardMailService {
       rejectedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
+    // The one notification that must not be skipped: without it the sender
+    // assumes their card is in the mail and only finds out when it never
+    // arrives. Says plainly that no money was taken.
+    this.notify(row.userId, {
+      title: "We couldn't print that postcard",
+      body: `Your card to ${row.recipient?.name || 'your recipient'} couldn't be printed, so you weren't charged.`,
+      data: { orderId, status: STATUS.REJECTED }
+    });
     console.error(`[postcard-mail] ${orderId} rejected (no charge): ${reason}`);
+  }
+
+  /**
+   * Fire-and-forget push. An order's status is the record of truth; a failed
+   * notification must never fail or retry the order it is describing.
+   */
+  notify(userId, { title, body, data }) {
+    notificationService.sendToUser(userId, {
+      type: 'postcard_order',
+      title,
+      body,
+      data: { type: 'postcard_order', ...data }
+    }).catch((error) => {
+      console.error(`[postcard-mail] push failed for ${userId}: ${error.message}`);
+    });
   }
 
   /**
@@ -525,7 +564,13 @@ class PostcardMailService {
     for (const doc of unpaid.docs) {
       const row = doc.data();
       try {
-        await stripeClient.capture(row.stripePaymentIntentId);
+        // The capture carries a fixed idempotency key, so a replay returns the
+        // original response — including the original error. Ask Stripe what
+        // actually happened first; a lost response looks like `succeeded`.
+        const intent = await stripeClient.getPaymentIntent(row.stripePaymentIntentId);
+        if (intent.status !== 'succeeded') {
+          await stripeClient.capture(row.stripePaymentIntentId);
+        }
         await doc.ref.update({ capturedAt: new Date().toISOString(), error: null, updatedAt: new Date().toISOString() });
         summary.captured++;
       } catch (error) {
@@ -544,9 +589,22 @@ class PostcardMailService {
     const stuck = await this.col.where('status', '==', STATUS.SUBMITTING)
       .where('updatedAt', '<=', staleIso).limit(25).get();
     for (const doc of stuck.docs) {
-      await doc.ref.update({ status: STATUS.AUTHORIZED, updatedAt: new Date().toISOString() });
-      summary.unstuck++;
-      console.warn(`[postcard-mail] ${doc.id} was stuck submitting — returned to authorized`);
+      // Compare-and-set, not a plain update: a merely slow release tick may
+      // have finished between the scan and this write, and forcing a printed,
+      // captured order back to `authorized` would show the user a Cancel
+      // button on a card already in the mail.
+      //
+      // Retrying is safe rather than double-mailing because both vendor calls
+      // carry idempotency keys — Lob keyed on the order id, Stripe on the
+      // payment intent — and 15 minutes stale plus an hourly sweep sits well
+      // inside Lob's key window.
+      const moved = await this.transition(doc.ref, STATUS.SUBMITTING, {
+        status: STATUS.AUTHORIZED, updatedAt: new Date().toISOString()
+      });
+      if (moved) {
+        summary.unstuck++;
+        console.warn(`[postcard-mail] ${doc.id} was stuck submitting — returned to authorized`);
+      }
     }
 
     // 3. Orders that never got a hold, and holds Stripe has since released.
@@ -554,16 +612,20 @@ class PostcardMailService {
     const abandoned = await this.col.where('status', '==', STATUS.CREATED)
       .where('createdAt', '<=', abandonedIso).limit(50).get();
     for (const doc of abandoned.docs) {
-      await doc.ref.update({ status: STATUS.EXPIRED, updatedAt: new Date().toISOString() });
-      summary.expired++;
+      const moved = await this.transition(doc.ref, STATUS.CREATED, {
+        status: STATUS.EXPIRED, updatedAt: new Date().toISOString()
+      });
+      if (moved) summary.expired++;
     }
 
     const lapsedIso = new Date(now - AUTHORIZATION_LIFETIME_DAYS * 24 * 3600000).toISOString();
     const lapsed = await this.col.where('status', '==', STATUS.AUTHORIZED)
       .where('authorizedAt', '<=', lapsedIso).limit(25).get();
     for (const doc of lapsed.docs) {
-      await doc.ref.update({ status: STATUS.EXPIRED, error: 'authorization_lapsed', updatedAt: new Date().toISOString() });
-      summary.expired++;
+      const moved = await this.transition(doc.ref, STATUS.AUTHORIZED, {
+        status: STATUS.EXPIRED, error: 'authorization_lapsed', updatedAt: new Date().toISOString()
+      });
+      if (moved) summary.expired++;
     }
 
     return summary;
@@ -602,21 +664,44 @@ class PostcardMailService {
     }
   }
 
-  /** Lob delivery tracking. Purely informational — no money moves here. */
+  /**
+   * Lob delivery tracking. Purely informational — no money moves here.
+   *
+   * Note the event vocabulary: Lob's postcard events are mailed, in_transit,
+   * in_local_area, processed_for_delivery, re-routed and returned_to_sender.
+   * USPS does not scan First Class postcards on delivery, so
+   * `processed_for_delivery` ("loaded on the delivery vehicle") is the
+   * terminal event in practice. Treating it as anything less would leave
+   * every order stuck in transit forever. `postcard.delivered` is still
+   * mapped in case Lob ever emits it.
+   */
   async handleLobEvent(event) {
     const lobId = event?.body?.id || event?.object_id;
     const type = event?.event_type?.id || event?.event_type;
     if (!lobId || !type) return { ignored: true };
 
-    const status = type === 'postcard.delivered' ? STATUS.DELIVERED
-      : (type === 'postcard.processed_for_delivery' || type === 'postcard.in_transit') ? STATUS.IN_TRANSIT
-        : null;
-    if (!status) return { ignored: true };
+    const TERMINAL = ['postcard.processed_for_delivery', 'postcard.delivered'];
+    const IN_TRANSIT = ['postcard.mailed', 'postcard.in_transit', 'postcard.in_local_area', 'postcard.re-routed'];
+
+    const patch = { updatedAt: new Date().toISOString(), lobLastEvent: type };
+    if (TERMINAL.includes(type)) {
+      patch.status = STATUS.DELIVERED;
+    } else if (IN_TRANSIT.includes(type)) {
+      patch.status = STATUS.IN_TRANSIT;
+    } else if (type === 'postcard.returned_to_sender') {
+      // The card came back. Not a refund decision we make automatically, but
+      // never silent either — someone should look.
+      patch.status = STATUS.RETURNED;
+      patch.needsReview = true;
+      console.warn(`[postcard-mail] Lob postcard ${lobId} was returned to sender`);
+    } else {
+      return { ignored: true };
+    }
 
     const snapshot = await this.col.where('lobPostcardId', '==', lobId).limit(1).get();
     if (snapshot.empty) return { ignored: true };
-    await snapshot.docs[0].ref.update({ status, updatedAt: new Date().toISOString() });
-    return { handled: status };
+    await snapshot.docs[0].ref.update(patch);
+    return { handled: patch.status };
   }
 }
 

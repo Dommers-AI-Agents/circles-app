@@ -42,6 +42,8 @@ jest.mock('../lobClient', () => ({
   getPostcard: jest.fn()
 }));
 
+jest.mock('../notificationService', () => ({ sendToUser: jest.fn(async () => ({ success: true })) }));
+
 jest.mock('../postcardShareService', () => ({
   PUBLIC_BASE_URL: 'https://favcircles.com',
   isAllowedImageUrl: (url) => typeof url === 'string' && url.startsWith('https://storage.googleapis.com/bucket/'),
@@ -50,6 +52,7 @@ jest.mock('../postcardShareService', () => ({
 }));
 
 const stripeClient = require('../stripeClient');
+const notificationService = require('../notificationService');
 const lobClient = require('../lobClient');
 const service = require('../postcardMailService');
 const { STATUS } = service;
@@ -112,6 +115,7 @@ function resetVendorMocks() {
     token: 'tok123', url: 'https://favcircles.com/postcard/tok123', senderName: 'Wes'
   }));
   require('../postcardShareService').get.mockImplementation(async () => null);
+  notificationService.sendToUser.mockImplementation(async () => ({ success: true }));
 }
 
 beforeEach(() => {
@@ -402,5 +406,89 @@ describe('the printed back of the card', () => {
     const html = service.buildBackHtml({ message: '<script>x</script>', senderName: 'Wes', pageUrl: '', qrUrl: '' });
     expect(html).not.toContain('<script>x</script>');
     expect(html).toContain('&lt;script&gt;');
+  });
+});
+
+
+describe('telling the customer what happened', () => {
+  it('says plainly that nobody was charged when printing fails', async () => {
+    // Without this the sender assumes the card is in the mail and only finds
+    // out when it never arrives.
+    lobClient.createPostcard.mockRejectedValueOnce(new MockLobError(422, 'undeliverable', true));
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(USER, expect.objectContaining({
+      body: expect.stringContaining("weren't charged")
+    }));
+  });
+
+  it('confirms the card is printing, with the arrival date', async () => {
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(USER, expect.objectContaining({
+      body: expect.stringContaining('Sep 20')
+    }));
+  });
+
+  it('never lets a failed push fail the order it describes', async () => {
+    notificationService.sendToUser.mockRejectedValue(new Error('APNs down'));
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    const summary = await service.releaseDue();
+    expect(summary.released).toBe(1);
+    expect(rowOf(ID('o1')).status).toBe(STATUS.SUBMITTED);
+  });
+});
+
+describe('Lob tracking events', () => {
+  async function submitted() {
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+    return ID('o1');
+  }
+
+  it('treats processed_for_delivery as the end of the line', async () => {
+    // USPS does not scan First Class postcards on delivery, so waiting for a
+    // `delivered` event would leave every order in transit forever.
+    const id = await submitted();
+    await service.handleLobEvent({ event_type: { id: 'postcard.processed_for_delivery' }, body: { id: 'psc_1' } });
+    expect(rowOf(id).status).toBe(STATUS.DELIVERED);
+  });
+
+  it('tracks the intermediate stops', async () => {
+    const id = await submitted();
+    await service.handleLobEvent({ event_type: { id: 'postcard.in_local_area' }, body: { id: 'psc_1' } });
+    expect(rowOf(id).status).toBe(STATUS.IN_TRANSIT);
+  });
+
+  it('flags a returned card for a human instead of swallowing it', async () => {
+    const id = await submitted();
+    await service.handleLobEvent({ event_type: { id: 'postcard.returned_to_sender' }, body: { id: 'psc_1' } });
+    expect(rowOf(id).status).toBe(STATUS.RETURNED);
+    expect(rowOf(id).needsReview).toBe(true);
+  });
+
+  it('ignores an event for a postcard we don\'t know', async () => {
+    await submitted();
+    const result = await service.handleLobEvent({ event_type: { id: 'postcard.in_transit' }, body: { id: 'psc_other' } });
+    expect(result.ignored).toBe(true);
+  });
+});
+
+describe('the reconciler respects the same status rules', () => {
+  it('will not drag a released order back into the cancel window', async () => {
+    // A slow release tick that finished between the scan and the write. A
+    // plain update here would show Cancel on a card already in the mail.
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+    mockDb.docs.set(ID('o1'), { ...rowOf(ID('o1')), updatedAt: new Date(Date.now() - 30 * 60000).toISOString() });
+
+    await service.reconcile();
+    expect(rowOf(ID('o1')).status).toBe(STATUS.SUBMITTED);
   });
 });

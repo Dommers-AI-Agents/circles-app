@@ -136,8 +136,13 @@ function verifyWebhook(rawBody, signature, timestamp, toleranceSeconds = 300) {
   if (!secret) throw new Error('LOB_WEBHOOK_SECRET is not configured');
   if (!signature || !timestamp) return false;
 
-  const age = Math.abs(Date.now() - Number(timestamp));
-  if (!Number.isFinite(age) || age > toleranceSeconds * 1000) return false;
+  // Lob sends epoch milliseconds, but accept seconds too rather than reject
+  // every webhook on a units mismatch: a 10-digit value can only be seconds
+  // (13 digits is milliseconds for any date this century).
+  const raw = Number(timestamp);
+  if (!Number.isFinite(raw)) return false;
+  const millis = String(Math.trunc(raw)).length <= 10 ? raw * 1000 : raw;
+  if (Math.abs(Date.now() - millis) > toleranceSeconds * 1000) return false;
 
   const payload = `${timestamp}.${Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : rawBody}`;
   const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
