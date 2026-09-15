@@ -83,6 +83,12 @@ class MessagingService {
       throw err;
     }
 
+    // Fetched before the write so the sender's name can be denormalised onto
+    // the conversation: the list endpoint doesn't load group participants, so
+    // this is how a group row can show "Alex: ..." without extra reads.
+    const senderDoc = await db.collection(COLLECTIONS.USERS).doc(senderId).get();
+    const senderDetails = senderDoc.exists ? serializeDoc(senderDoc) : null;
+
     const batch = db.batch();
     const messageRef = db.collection(COLLECTIONS.MESSAGES).doc();
     batch.set(messageRef, messageData);
@@ -92,6 +98,7 @@ class MessagingService {
       lastMessage: messagePreview({ type, content, metadata }),
       lastMessageTime: now,
       lastMessageSenderId: senderId,
+      lastMessageSenderName: senderDetails?.displayName || null,
       updatedAt: now
     };
     const recipientIds = conversation.participants.filter(id => id !== senderId);
@@ -103,9 +110,8 @@ class MessagingService {
     await batch.commit();
 
     const message = serializeDoc(await messageRef.get());
-    const senderDoc = await db.collection(COLLECTIONS.USERS).doc(senderId).get();
-    if (senderDoc.exists) {
-      message.senderDetails = serializeDoc(senderDoc);
+    if (senderDetails) {
+      message.senderDetails = senderDetails;
     }
 
     // Lazy require: notificationService pulls in a lot at load and the

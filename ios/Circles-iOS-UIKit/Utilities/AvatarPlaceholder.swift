@@ -87,6 +87,43 @@ enum AvatarPlaceholder {
         image(name: user.displayName, seed: user.id, diameter: diameter)
     }
 
+    /// Corner radius that makes a group avatar read as a rounded square at any
+    /// size. Shared by the renderer and the image views that clip group photos,
+    /// so a custom group photo and a placeholder have the same silhouette.
+    static func groupCornerRadius(for side: CGFloat) -> CGFloat { side * 0.25 }
+
+    /// A rounded-square avatar for a group with no photo of its own.
+    ///
+    /// People are circles; groups are rounded squares. Shape is what separates
+    /// the two in a list at a glance, before anyone reads the name — a grey
+    /// `person.2.circle.fill` next to a grey `person.circle.fill` did not.
+    static func groupImage(seed: String, side: CGFloat = 80) -> UIImage {
+        let colour = palette[paletteIndex(for: seed.isEmpty ? "group" : seed)]
+        let size = CGSize(width: side, height: side)
+
+        return UIGraphicsImageRenderer(size: size).image { context in
+            let rect = CGRect(origin: .zero, size: size)
+            UIBezierPath(roundedRect: rect, cornerRadius: groupCornerRadius(for: side)).addClip()
+            let colours = [colour.lightened(by: 0.12).cgColor, colour.cgColor] as CFArray
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                         colors: colours, locations: [0, 1]) {
+                context.cgContext.drawLinearGradient(
+                    gradient, start: .zero, end: CGPoint(x: 0, y: side), options: []
+                )
+            } else {
+                colour.setFill()
+                UIBezierPath(rect: rect).fill()
+            }
+
+            let config = UIImage.SymbolConfiguration(pointSize: side * 0.42, weight: .medium)
+            if let glyph = UIImage(systemName: "person.2.fill", withConfiguration: config)?
+                .withTintColor(.white, renderingMode: .alwaysOriginal) {
+                glyph.draw(at: CGPoint(x: (side - glyph.size.width) / 2,
+                                       y: (side - glyph.size.height) / 2))
+            }
+        }
+    }
+
     /// The gradient disc both avatar styles sit on. A flat circle reads as a
     /// placeholder; a shaded one reads as intentional.
     fileprivate static func drawDisc(colour: UIColor, diameter: CGFloat, in context: UIGraphicsImageRendererContext) {

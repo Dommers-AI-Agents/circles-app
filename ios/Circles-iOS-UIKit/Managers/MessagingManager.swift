@@ -307,6 +307,7 @@ class MessagingManager {
                         conversation?.lastMessage = message.displayContent
                         conversation?.lastMessageTime = message.createdAt
                         conversation?.lastMessageSenderId = message.senderId
+                        conversation?.lastMessageSenderName = message.senderDetails?.displayName
                         
                         if let updatedConversation = conversation {
                             self?.conversations[index] = updatedConversation

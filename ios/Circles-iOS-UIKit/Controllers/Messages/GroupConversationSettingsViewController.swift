@@ -26,7 +26,9 @@ class GroupConversationSettingsViewController: BaseViewController {
         let imageView = UIImageView()
         imageView.translatesAutoresizingMaskIntoConstraints = false
         imageView.contentMode = .scaleAspectFill
-        imageView.layer.cornerRadius = 50
+        // Groups are rounded squares everywhere; people are circles
+        imageView.layer.cornerRadius = AvatarPlaceholder.groupCornerRadius(for: 100)
+        imageView.layer.cornerCurve = .continuous
         imageView.clipsToBounds = true
         imageView.backgroundColor = Constants.Colors.lightGray
         imageView.isUserInteractionEnabled = true
@@ -198,17 +200,14 @@ class GroupConversationSettingsViewController: BaseViewController {
         // Set group name
         nameTextField.text = conversation.name
         
-        // Load avatar
+        // Load avatar over the same placeholder the list and chat header use
+        avatarImageView.image = AvatarPlaceholder.groupImage(seed: conversation.id, side: 100)
         if let avatar = conversation.avatar, !avatar.isEmpty {
             ImageService.shared.loadImage(from: avatar) { [weak self] image in
                 DispatchQueue.main.async {
-                    self?.avatarImageView.image = image
+                    if let image = image { self?.avatarImageView.image = image }
                 }
             }
-        } else {
-            // Set default group avatar
-            avatarImageView.image = UIImage(systemName: "person.3.fill")
-            avatarImageView.tintColor = Constants.Colors.lightGray
         }
         
         // Load participant details if not already loaded

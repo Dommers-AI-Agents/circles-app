@@ -333,6 +333,7 @@ exports.createCheckIn = async (req, res) => {
         lastMessage: messageData.content,
         lastMessageTime: new Date().toISOString(),
         lastMessageSenderId: userId,
+        lastMessageSenderName: null, // list endpoint resolves it; never leave a previous sender's name
         updatedAt: new Date().toISOString()
       });
     }

@@ -41,6 +41,20 @@ const getConversations = async (req, res) => {
         return timeB.localeCompare(timeA); // Descending order
       });
 
+    // Older group conversations predate lastMessageSenderName. Resolve it once
+    // per distinct sender across the whole list rather than once per row.
+    const senderNameCache = new Map();
+    const resolveSenderName = async (senderId) => {
+      if (!senderId) return null;
+      if (!senderNameCache.has(senderId)) {
+        senderNameCache.set(senderId, (async () => {
+          const doc = await db.collection(COLLECTIONS.USERS).doc(senderId).get();
+          return doc.exists ? (doc.data().displayName || null) : null;
+        })());
+      }
+      return senderNameCache.get(senderId);
+    };
+
     // Populate participant details for each conversation
     const populatedConversations = await Promise.all(
       conversations.map(async (conversation) => {
@@ -117,13 +131,19 @@ const getConversations = async (req, res) => {
             conversation.lastMessageTime = visibleMessage.createdAt;
             conversation.lastMessageType = visibleMessage.type;
             conversation.lastMessageSenderId = visibleMessage.senderId;
+            conversation.lastMessageSenderName = null; // re-resolved below
           } else {
             // No visible messages, clear the last message info
             conversation.lastMessage = null;
             conversation.lastMessageTime = conversation.createdAt;
             conversation.lastMessageType = null;
             conversation.lastMessageSenderId = null;
+            conversation.lastMessageSenderName = null;
           }
+        }
+
+        if (conversation.type === 'group' && conversation.lastMessageSenderId && !conversation.lastMessageSenderName) {
+          conversation.lastMessageSenderName = await resolveSenderName(conversation.lastMessageSenderId);
         }
 
         return conversation;
@@ -556,6 +576,11 @@ const sendMessage = async (req, res) => {
       });
     }
 
+    // Fetched before the write so the sender's name lands on the conversation
+    // (the list endpoint doesn't load group participants).
+    const senderDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    const senderDetails = senderDoc.exists ? serializeDoc(senderDoc) : null;
+
     // Use a batch write for atomicity
     const batch = db.batch();
 
@@ -569,6 +594,7 @@ const sendMessage = async (req, res) => {
       lastMessage: content || `[${type}]`,
       lastMessageTime: now,
       lastMessageSenderId: userId,
+      lastMessageSenderName: senderDetails?.displayName || null,
       updatedAt: now
     };
 
@@ -593,9 +619,8 @@ const sendMessage = async (req, res) => {
     const message = serializeDoc(newMessageDoc);
 
     // Populate sender details
-    const senderDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-    if (senderDoc.exists) {
-      message.senderDetails = serializeDoc(senderDoc);
+    if (senderDetails) {
+      message.senderDetails = senderDetails;
     }
 
     // Send push notifications to other participants

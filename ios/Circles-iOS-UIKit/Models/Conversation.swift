@@ -10,6 +10,7 @@ struct Conversation: Codable, Identifiable {
     var lastMessage: String?
     var lastMessageTime: String?
     var lastMessageSenderId: String?
+    var lastMessageSenderName: String?
     var unreadCounts: [String: Int]?
     var notificationSettings: [String: Bool]?
     let createdAt: String
@@ -28,6 +29,7 @@ struct Conversation: Codable, Identifiable {
         case lastMessage
         case lastMessageTime
         case lastMessageSenderId
+        case lastMessageSenderName
         case unreadCounts
         case notificationSettings
         case createdAt
@@ -54,6 +56,23 @@ struct Conversation: Codable, Identifiable {
         }
     }
     
+    /// What the messages list shows under a group's name: "You: ..." or
+    /// "Alex: ..." so it is clear who spoke last. Direct chats only ever
+    /// have one other voice, so they return the message unchanged.
+    var lastMessagePreview: String? {
+        guard let lastMessage = lastMessage else { return nil }
+        guard type == .group else { return lastMessage }
+
+        if let senderId = lastMessageSenderId, senderId == AuthService.shared.getUserId() {
+            return "You: \(lastMessage)"
+        }
+        let firstName = (lastMessageSenderName ?? "")
+            .components(separatedBy: .whitespaces)
+            .first(where: { !$0.isEmpty })
+        guard let name = firstName else { return lastMessage }
+        return "\(name): \(lastMessage)"
+    }
+
     var displayAvatar: String? {
         switch type {
         case .direct:
@@ -99,6 +118,7 @@ struct Conversation: Codable, Identifiable {
     // Convenience initializer for creating updated conversations
     init(id: String, type: ConversationType, participants: [String], name: String?, avatar: String?, 
          lastMessage: String?, lastMessageTime: String?, lastMessageSenderId: String?, 
+         lastMessageSenderName: String? = nil,
          unreadCounts: [String: Int]?, notificationSettings: [String: Bool]?, 
          createdAt: String, updatedAt: String, createdBy: String?, participantDetails: [User]? = nil) {
         self.id = id
@@ -109,6 +129,7 @@ struct Conversation: Codable, Identifiable {
         self.lastMessage = lastMessage
         self.lastMessageTime = lastMessageTime
         self.lastMessageSenderId = lastMessageSenderId
+        self.lastMessageSenderName = lastMessageSenderName
         self.unreadCounts = unreadCounts
         self.notificationSettings = notificationSettings
         self.createdAt = createdAt

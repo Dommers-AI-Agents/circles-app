@@ -189,23 +189,24 @@ class ChatViewController: BaseViewController {
         titleButton.frame = CGRect(x: 0, y: 0, width: 250, height: 44)
         
         // Create group avatar image view
+        // Rounded square, same silhouette as the group row in the messages list
+        let avatarSide: CGFloat = 32
         let avatarImageView = UIImageView()
         avatarImageView.contentMode = .scaleAspectFill
         avatarImageView.clipsToBounds = true
-        avatarImageView.layer.cornerRadius = 16
+        avatarImageView.layer.cornerRadius = AvatarPlaceholder.groupCornerRadius(for: avatarSide)
+        avatarImageView.layer.cornerCurve = .continuous
         avatarImageView.backgroundColor = Constants.Colors.tertiaryBackground
         avatarImageView.translatesAutoresizingMaskIntoConstraints = false
+        avatarImageView.image = AvatarPlaceholder.groupImage(seed: conversation?.id ?? "", side: avatarSide)
         
-        // Load group avatar
+        // Load group avatar over the placeholder
         if let groupAvatar = conversation?.avatar, !groupAvatar.isEmpty {
             ImageService.shared.loadImage(from: groupAvatar) { image in
                 DispatchQueue.main.async {
-                    avatarImageView.image = image ?? UIImage(systemName: "person.3.fill")
+                    if let image = image { avatarImageView.image = image }
                 }
             }
-        } else {
-            avatarImageView.image = UIImage(systemName: "person.3.fill")
-            avatarImageView.tintColor = Constants.Colors.label
         }
         
         // Create title label

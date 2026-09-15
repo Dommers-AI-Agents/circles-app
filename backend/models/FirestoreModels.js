@@ -654,6 +654,7 @@ const createConversation = (conversationData) => {
     lastMessage: conversationData.lastMessage || null,
     lastMessageTime: conversationData.lastMessageTime || now, // Initialize with current time if not provided
     lastMessageSenderId: conversationData.lastMessageSenderId || null,
+    lastMessageSenderName: conversationData.lastMessageSenderName || null,
     unreadCounts: conversationData.unreadCounts || {}, // Map of userId to unread count
     notificationSettings: conversationData.notificationSettings || {}, // Map of userId to boolean (true = notifications on)
     createdAt: now,
