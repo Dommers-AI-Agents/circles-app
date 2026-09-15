@@ -8,6 +8,11 @@ yarn-error.log*
 .env.local
 .env.production
 .env.*.local
+# Backups made by scripts/set-live-keys.sh — these hold LIVE vendor secrets
+# and were previously untracked-but-committable, so `git add -A` would have
+# published them.
+.env.bak
+.env.bak.*
 
 # Firebase
 firebase-service-account.json
