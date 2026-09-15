@@ -5,6 +5,8 @@ protocol VideoReelCellDelegate: AnyObject {
     func videoReelCellDidTapLike(_ cell: VideoReelCell)
     func videoReelCellDidTapComment(_ cell: VideoReelCell)
     func videoReelCellDidTapShare(_ cell: VideoReelCell)
+    /// Photo moments only: send this photo as a postcard.
+    func videoReelCellDidTapPostcard(_ cell: VideoReelCell)
     func videoReelCellDidTapProfile(_ cell: VideoReelCell)
     func videoReelCellDidTapPlace(_ cell: VideoReelCell)
     func videoReelCellDidTapReaction(_ cell: VideoReelCell)
@@ -178,6 +180,23 @@ class VideoReelCell: UICollectionViewCell {
         return button
     }()
     
+    /// Photo moments only — opens the postcard composer with this photo.
+    private let postcardButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: "envelope"), for: .normal)
+        button.tintColor = .white
+        button.accessibilityLabel = "Send as postcard"
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+    /// Collapsed to zero for videos so the action column closes up.
+    private var postcardHeightConstraint: NSLayoutConstraint?
+    private var postcardSpacingConstraint: NSLayoutConstraint?
+
+    /// The photo currently on screen (photo moments), so a postcard can
+    /// start from the already-loaded image.
+    var currentPhoto: UIImage? { photoImageView.image }
+
     private let reactionButton: UIButton = {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: "face.smiling"), for: .normal)
@@ -286,6 +305,7 @@ class VideoReelCell: UICollectionViewCell {
         videoContainerView.addSubview(commentButton)
         videoContainerView.addSubview(commentCountLabel)
         videoContainerView.addSubview(shareButton)
+        videoContainerView.addSubview(postcardButton)
         videoContainerView.addSubview(reactionButton)
         videoContainerView.addSubview(reactionCountLabel)
         videoContainerView.addSubview(reactionSummaryView)
@@ -330,8 +350,11 @@ class VideoReelCell: UICollectionViewCell {
             shareButton.widthAnchor.constraint(equalToConstant: 44),
             shareButton.heightAnchor.constraint(equalToConstant: 44),
             
+            postcardButton.trailingAnchor.constraint(equalTo: shareButton.trailingAnchor),
+            postcardButton.bottomAnchor.constraint(equalTo: shareButton.topAnchor, constant: -20),
+            postcardButton.widthAnchor.constraint(equalToConstant: 44),
+
             commentButton.trailingAnchor.constraint(equalTo: shareButton.trailingAnchor),
-            commentButton.bottomAnchor.constraint(equalTo: shareButton.topAnchor, constant: -20),
             commentButton.widthAnchor.constraint(equalToConstant: 44),
             commentButton.heightAnchor.constraint(equalToConstant: 44),
             
@@ -397,6 +420,14 @@ class VideoReelCell: UICollectionViewCell {
         likeButton.addTarget(self, action: #selector(likeTapped), for: .touchUpInside)
         commentButton.addTarget(self, action: #selector(commentTapped), for: .touchUpInside)
         shareButton.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
+        postcardButton.addTarget(self, action: #selector(postcardTapped), for: .touchUpInside)
+
+        // Postcard slot: 44pt + 20pt gap for photos, collapsed for videos
+        let postcardHeight = postcardButton.heightAnchor.constraint(equalToConstant: 44)
+        let postcardSpacing = commentButton.bottomAnchor.constraint(equalTo: postcardButton.topAnchor, constant: -20)
+        NSLayoutConstraint.activate([postcardHeight, postcardSpacing])
+        postcardHeightConstraint = postcardHeight
+        postcardSpacingConstraint = postcardSpacing
         reactionButton.addTarget(self, action: #selector(reactionTapped), for: .touchUpInside)
         soundButton.addTarget(self, action: #selector(soundTapped), for: .touchUpInside)
         moreButton.addTarget(self, action: #selector(moreTapped), for: .touchUpInside)
@@ -501,6 +532,11 @@ class VideoReelCell: UICollectionViewCell {
         }
         
         // Setup display based on content type
+        let isPhoto = reel.contentType == "photo"
+        postcardButton.isHidden = !isPhoto
+        postcardHeightConstraint?.constant = isPhoto ? 44 : 0
+        postcardSpacingConstraint?.constant = isPhoto ? -20 : 0
+
         if reel.contentType == "photo" {
             // Display photo
             soundButton.isHidden = true // Hide sound button for photos
@@ -703,6 +739,10 @@ class VideoReelCell: UICollectionViewCell {
         delegate?.videoReelCellDidTapComment(self)
     }
     
+    @objc private func postcardTapped() {
+        delegate?.videoReelCellDidTapPostcard(self)
+    }
+
     @objc private func shareTapped() {
         delegate?.videoReelCellDidTapShare(self)
     }

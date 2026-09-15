@@ -1,4 +1,5 @@
 import UIKit
+import FavWidgetsCore
 import CoreLocation
 import UniformTypeIdentifiers
 import MapKit
@@ -2013,6 +2014,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         if let widgetId {
             widgetsTab.open(widgetId: widgetId)
         }
+    }
+
+    /// Moments → postcard: switch to the Widgets segment and open the
+    /// postcard page with `photo` already chosen.
+    func openPostcardComposer(photo: UIImage, place: WidgetPlaceRef?) {
+        contentSegmentedControl.selectedSegmentIndex = HomeContentSegment.widgets.rawValue
+        showContentTab(.widgets)
+        scrollView.scrollRectToVisible(activityFeedSection.frame, animated: false)
+        widgetsTab.openPostcard(photo: photo, place: place)
     }
 
     // MARK: - Content tab hosting

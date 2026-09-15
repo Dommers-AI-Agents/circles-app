@@ -465,6 +465,11 @@ extension VideoReelsViewController: VideoReelCellDelegate {
         }
     }
     
+    func videoReelCellDidTapPostcard(_ cell: VideoReelCell) {
+        guard let indexPath = collectionView.indexPath(for: cell) else { return }
+        PostcardComposerRouter.open(reel: reels[indexPath.item], cachedPhoto: cell.currentPhoto, from: self)
+    }
+
     func videoReelCellDidTapShare(_ cell: VideoReelCell) {
         guard let indexPath = collectionView.indexPath(for: cell) else { return }
         let reel = reels[indexPath.item]

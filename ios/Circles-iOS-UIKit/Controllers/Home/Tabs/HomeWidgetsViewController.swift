@@ -117,6 +117,21 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         open(widget, context: model.context(for: descriptor))
     }
 
+    /// Moments → postcard: open the postcard page with `photo` already chosen
+    /// (and the moment's place as the caption place). The photo is handed to
+    /// the widget through its context right before the page appears.
+    func openPostcard(photo: UIImage, place: WidgetPlaceRef?) {
+        guard ensureModel(), let model,
+              let descriptor = model.descriptors.first(where: { $0.id == "postcard" }),
+              let widget = model.widget(for: descriptor) else { return }
+        if navigationController?.topViewController is HomeWidgetDetailViewController {
+            navigationController?.popViewController(animated: false)
+        }
+        let context = model.context(for: descriptor)
+        context.launchPhoto = WidgetLaunchPhoto(image: photo, place: place)
+        open(widget, context: context)
+    }
+
     private func open(_ widget: any FavWidget, context: WidgetContext) {
         guard let model else { return }
         let detail = HomeWidgetDetailViewController(widget: widget, context: context, model: model)
