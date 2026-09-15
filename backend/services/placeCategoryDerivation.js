@@ -155,22 +155,31 @@ function deriveCategory(signals = {}) {
 // next person to save it usually brings the signal that classifies it.
 function categoryUpgradeForOther(venueData = {}, saveData = {}) {
   if ((venueData.category || 'other') !== 'other') return null;
+  const stamp = (category, source, confidence) => ({
+    category,
+    categorySource: source,
+    categoryConfidence: confidence,
+    categoryBefore: 'other',
+    categoryClassifiedAt: new Date().toISOString()
+  });
+
+  // A category the saver chose (validatePlace already enforced the enum)
+  // beats any inference — and must not be clobbered by the venue's 'other'.
+  if (AUTO_CATEGORIES.includes(saveData.category) && saveData.category !== 'other') {
+    return stamp(saveData.category, 'client', 1);
+  }
+
+  // Name only, no description: the backend name rules are substring matches
+  // and descriptions carry "Website: https://tomsbarbershop.com" lines.
   const googleData = venueData.googleData || {};
   const derived = deriveCategory({
     googlePrimaryType: saveData.googlePrimaryType || venueData.googlePrimaryType || googleData.primaryType,
     googleTypes: firstNonEmptyArray(saveData.googleTypes, venueData.googleTypes, googleData.types),
     applePoiCategory: saveData.applePoiCategory || venueData.applePoiCategory,
-    name: saveData.name || venueData.name,
-    description: saveData.description || venueData.description
+    name: saveData.name || venueData.name
   });
   if (derived.category === 'other') return null;
-  return {
-    category: derived.category,
-    categorySource: derived.source,
-    categoryConfidence: derived.confidence,
-    categoryBefore: 'other',
-    categoryClassifiedAt: new Date().toISOString()
-  };
+  return stamp(derived.category, derived.source, derived.confidence);
 }
 
 function firstNonEmptyArray(...candidates) {

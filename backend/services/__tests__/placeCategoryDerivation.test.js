@@ -112,4 +112,19 @@ describe('categoryUpgradeForOther (existing venue still at other)', () => {
     expect(categoryUpgradeForOther({ category: 'other', name: 'Acme Widgets' }, { name: 'Acme Widgets' })).toBeNull();
     expect(categoryUpgradeForOther({}, {})).toBeNull();
   });
+
+  test('a category the saver chose wins over inference and is never clobbered', () => {
+    const r = categoryUpgradeForOther({ category: 'other', name: 'The Anchor' }, { category: 'bar' });
+    expect(r).toMatchObject({ category: 'bar', categorySource: 'client', categoryBefore: 'other' });
+    // ...but a save that itself says 'other' falls through to the signals
+    expect(categoryUpgradeForOther({ category: 'other', name: 'The Anchor' }, { category: 'other' })).toBeNull();
+    // home/work are personal labels, never a venue's category
+    expect(categoryUpgradeForOther({ category: 'other', name: 'The Anchor' }, { category: 'home' })).toBeNull();
+  });
+
+  test('descriptions are not consulted (substring rules would misfire on URLs)', () => {
+    expect(categoryUpgradeForOther(
+      { category: 'other', name: 'Acme', description: 'Website: https://tomsbarbershop.com' }, {}
+    )).toBeNull();
+  });
 });

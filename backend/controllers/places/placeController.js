@@ -65,7 +65,8 @@ const anchorVenueFieldsToSource = async (placeData) => {
     ['name', 'address', 'category', 'subcategory'].forEach((field) => {
       if (canonical[field] !== undefined && canonical[field] !== null && canonical[field] !== '') {
         // A canonical still at 'other' has nothing to anchor: keep the
-        // client's real category (the link step upgrades the venue from it)
+        // client's real category (ensureGlobalPlaceLink then upgrades the
+        // venue to it via categoryUpgradeForOther, source 'client')
         if (field === 'category' && canonical.category === 'other') return;
         placeData[field] = canonical[field];
       }

@@ -76,6 +76,7 @@ async function runCategorySweep({
     skippedByCap: 0,
     calls: 0,
     freeTierResolved: 0,
+    freeTierSample: [],   // dry run: what the free tiers would assign
     resolved: 0,
     unresolved: 0,
     failed: 0,
@@ -125,7 +126,12 @@ async function runCategorySweep({
       continue;
     }
     report.freeTierResolved++;
-    if (dryRun) continue;
+    if (dryRun) {
+      if (report.freeTierSample.length < 50) {
+        report.freeTierSample.push({ id: doc.id, name: doc.data().name || 'Unnamed', to: upgrade.category, via: upgrade.categorySource });
+      }
+      continue;
+    }
     try {
       await doc.ref.update({ ...upgrade, needsCategoryReview: false, updatedAt: now });
       report.cacheSynced += await syncCacheToPlaces(doc.id, upgrade.category, now);
