@@ -132,7 +132,7 @@ class AppleMapsService {
         ].compactMap { $0 }.joined(separator: ", ")
         
         // Map POI category to our PlaceCategory
-        let category = mapPointOfInterestCategoryToPlaceCategory(mapItem.pointOfInterestCategory)
+        let category = mapPointOfInterestCategoryToPlaceCategory(mapItem.pointOfInterestCategory, name: mapItem.name)
         
         return PlaceDetails(
             name: mapItem.name ?? "",
@@ -156,7 +156,7 @@ class AppleMapsService {
         // Extract basic information
         let name = featureAnnotation.title ?? "Unknown Place"
         let coordinate = featureAnnotation.coordinate
-        let category = mapPointOfInterestCategoryToPlaceCategory(featureAnnotation.pointOfInterestCategory)
+        let category = mapPointOfInterestCategoryToPlaceCategory(featureAnnotation.pointOfInterestCategory, name: featureAnnotation.title)
         
         // First, try to get more details using MKLocalSearch
         searchForPOIDetails(name: name, coordinate: coordinate) { [weak self] detailedItem in
@@ -230,7 +230,7 @@ class AppleMapsService {
         // Extract basic information
         let name = featureAnnotation.title ?? "Unknown Place"
         let coordinate = featureAnnotation.coordinate
-        let category = mapPointOfInterestCategoryToPlaceCategory(featureAnnotation.pointOfInterestCategory)
+        let category = mapPointOfInterestCategoryToPlaceCategory(featureAnnotation.pointOfInterestCategory, name: featureAnnotation.title)
         
         // First, try to get more details using MKLocalSearch
         searchForPOIDetails(name: name, coordinate: coordinate) { [weak self] detailedItem in
@@ -432,35 +432,11 @@ class AppleMapsService {
         }
     }
     
-    func mapPointOfInterestCategoryToPlaceCategory(_ poiCategory: MKPointOfInterestCategory?) -> PlaceCategory {
-        guard let poiCategory = poiCategory else { return .other }
-        
-        switch poiCategory {
-        case .restaurant: return .restaurant
-        case .cafe: return .cafe
-        case .nightlife, .brewery, .winery: return .bar
-        case .hotel: return .hotel
-        case .store: return .retail
-        case .hospital, .pharmacy: return .healthcare
-        case .fitnessCenter: return .fitness
-        case .school, .university: return .education
-        case .park, .nationalPark, .campground: return .outdoor
-        case .gasStation, .evCharger, .publicTransport: return .transport
-        case .bank, .atm: return .finance
-        case .movieTheater, .theater, .museum, .stadium: return .entertainment
-        case .beach, .amusementPark, .zoo, .aquarium: return .attraction
-        default:
-            // iOS 18 specific categories
-            if #available(iOS 18.0, *) {
-                switch poiCategory {
-                case .miniGolf: return .entertainment
-                case .castle, .landmark: return .attraction
-                default: return .other
-                }
-            } else {
-                return .other
-            }
-        }
+    /// One mapper for every Apple result — the add-place form's rules
+    /// (POI category first, then the name), so a search result, a tapped map
+    /// POI and the form agree on the pin category.
+    func mapPointOfInterestCategoryToPlaceCategory(_ poiCategory: MKPointOfInterestCategory?, name: String? = nil) -> PlaceCategory {
+        AppleMapItemFormFill.categoryMapping(poiCategory: poiCategory, name: name).category
     }
     
     func getCategoryDescription(for poiCategory: MKPointOfInterestCategory?) -> String {

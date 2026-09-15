@@ -13,7 +13,7 @@ const {
   calculateQualityScore,
   generatePlaceKey
 } = require('../models/GlobalPlace');
-const { deriveCategory } = require('./placeCategoryDerivation');
+const { deriveCategory, categoryUpgradeForOther } = require('./placeCategoryDerivation');
 const { deriveLocation } = require('./placeLocationDerivation');
 
 const db = getFirestore();
@@ -404,6 +404,24 @@ async function ensureGlobalPlaceLink(placeDoc) {
       }
     }
 
+    if (globalPlaceId && resolvedData) {
+      // An EXISTING venue still sitting at 'other': this save may carry the
+      // signal (Apple POI category, Google types, a telling name) that the
+      // cascade can classify for free. Do it now — the save's cache below and
+      // the map pin pick it up immediately, instead of waiting on the sweep.
+      const upgrade = categoryUpgradeForOther(resolvedData, placeDoc.data());
+      if (upgrade) {
+        await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId).update({
+          ...upgrade,
+          needsCategoryReview: admin.firestore.FieldValue.delete(),
+          updatedAt: new Date().toISOString()
+        });
+        resolvedData = { ...resolvedData, ...upgrade };
+        console.log(`🏷️ [GlobalPlace] "${resolvedData.name}" ${globalPlaceId}: other → ${upgrade.category} (${upgrade.categorySource}) from a new save`);
+        syncCategoryToOtherSaves(globalPlaceId, placeDoc.id, upgrade.category);
+      }
+    }
+
     if (!globalPlaceId) {
       const created = await createGlobalPlaceFromLegacy(placeDoc);
       globalPlaceId = created.resolvedId;
@@ -442,6 +460,27 @@ async function ensureGlobalPlaceLink(placeDoc) {
     console.error(`⚠️ [GlobalPlace] Failed to link place ${placeDoc.id} to a global place:`, error.message);
     return null;
   }
+}
+
+// The venue's other saved copies carry a denormalized `category` for list /
+// geo / browse queries; keep them in step with an upgraded canonical category.
+// Fire-and-forget: the current save is stamped inline by the caller.
+function syncCategoryToOtherSaves(globalPlaceId, currentPlaceId, category) {
+  db.collection('places')
+    .where('globalPlaceId', '==', globalPlaceId)
+    .get()
+    .then(siblings => {
+      const batch = db.batch();
+      let pending = 0;
+      siblings.docs.forEach(doc => {
+        if (doc.id !== currentPlaceId && doc.data().category !== category) {
+          batch.update(doc.ref, { category, updatedAt: new Date().toISOString() });
+          pending++;
+        }
+      });
+      return pending > 0 ? batch.commit() : null;
+    })
+    .catch(e => console.warn(`⚠️ [GlobalPlace] Could not sync category to copies of ${globalPlaceId}:`, e.message));
 }
 
 // Mark a venue as needing the LLM category tier. Best-effort and idempotent:

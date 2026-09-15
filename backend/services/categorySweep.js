@@ -20,6 +20,7 @@
 
 const { getFirestore } = require('../config/firebase');
 const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
+const { categoryUpgradeForOther } = require('./placeCategoryDerivation');
 const classifier = require('./categoryClassifier');
 
 const db = getFirestore();
@@ -74,6 +75,7 @@ async function runCategorySweep({
     capped: false,
     skippedByCap: 0,
     calls: 0,
+    freeTierResolved: 0,
     resolved: 0,
     unresolved: 0,
     failed: 0,
@@ -82,8 +84,6 @@ async function runCategorySweep({
     costUSD: 0,
     sample: []
   };
-
-  if (!enabled && !dryRun) return report;
 
   const snap = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
     .where('needsCategoryReview', '==', true)
@@ -95,7 +95,7 @@ async function runCategorySweep({
   //   tail-only      — the venue is still uncategorized
   //   once-per-venue — it has never been sent to the model
   const now = new Date().toISOString();
-  const eligible = [];
+  let eligible = [];
   const stale = [];
   for (const doc of snap.docs) {
     const d = doc.data();
@@ -114,6 +114,29 @@ async function runCategorySweep({
     report.staleFlagsCleared = stale.length;
   }
 
+  // Free tiers first. Venues flagged before the cascade existed, or whose
+  // signals arrived with a later save, usually resolve without a model call —
+  // and this runs whether or not the LLM tier is enabled.
+  const stillUncategorized = [];
+  for (const doc of eligible) {
+    const upgrade = categoryUpgradeForOther(doc.data(), {});
+    if (!upgrade) {
+      stillUncategorized.push(doc);
+      continue;
+    }
+    report.freeTierResolved++;
+    if (dryRun) continue;
+    try {
+      await doc.ref.update({ ...upgrade, needsCategoryReview: false, updatedAt: now });
+      report.cacheSynced += await syncCacheToPlaces(doc.id, upgrade.category, now);
+    } catch (e) {
+      report.failed++;
+      console.error(`   ❌ [categorySweep] free tier ${doc.id}: ${e.message}`);
+    }
+  }
+  eligible = stillUncategorized;
+
+  if (!enabled && !dryRun) return report;
   if (!eligible.length) return report;
 
   const targets = eligible.slice(0, maxPlaces);

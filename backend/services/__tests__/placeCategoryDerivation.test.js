@@ -73,3 +73,43 @@ describe('categoryFromApplePoi', () => {
     expect(categoryFromApplePoi(null)).toBe('other');
   });
 });
+
+describe('categoryUpgradeForOther (existing venue still at other)', () => {
+  const { categoryUpgradeForOther } = require('../placeCategoryDerivation');
+
+  test('a real category on the venue is never touched', () => {
+    expect(categoryUpgradeForOther({ category: 'cafe' }, { name: 'Atrium Health Urgent Care' })).toBeNull();
+  });
+
+  test('the new save name classifies a venue nobody could before', () => {
+    const r = categoryUpgradeForOther(
+      { category: 'other', name: 'Atrium Health Urgent Care', needsCategoryReview: true },
+      { category: 'other', name: 'Atrium Health Urgent Care' }
+    );
+    expect(r).toMatchObject({ category: 'healthcare', categorySource: 'text', categoryBefore: 'other' });
+    expect(typeof r.categoryClassifiedAt).toBe('string');
+  });
+
+  test('the new save Apple POI category outranks the text tier', () => {
+    const r = categoryUpgradeForOther(
+      { category: 'other', name: 'Joe Bar' },
+      { applePoiCategory: 'MKPOICategoryFitnessCenter', name: 'Joe Bar' }
+    );
+    expect(r.category).toBe('fitness');
+    expect(r.categorySource).toBe('apple');
+  });
+
+  test('falls back to the venue own signals when the save carries none', () => {
+    const r = categoryUpgradeForOther(
+      { category: 'other', name: 'X', googleData: { types: ['dentist'] } },
+      {}
+    );
+    expect(r.category).toBe('healthcare');
+    expect(r.categorySource).toBe('google');
+  });
+
+  test('nothing to say stays null', () => {
+    expect(categoryUpgradeForOther({ category: 'other', name: 'Acme Widgets' }, { name: 'Acme Widgets' })).toBeNull();
+    expect(categoryUpgradeForOther({}, {})).toBeNull();
+  });
+});
