@@ -94,6 +94,8 @@ final class NearbyPlaceSearch: NSObject {
     /// marks it as "new" so both flows know to send creation data on submit.
     static func newPlace(from item: MKMapItem, name: String, address: String) -> Place {
         let coord = item.placemark.coordinate
+        // Same rules as the add-place form: Apple POI category, else the name
+        let mapping = AppleMapItemFormFill.categoryMapping(poiCategory: item.pointOfInterestCategory, name: name)
         return Place(
             id: UUID().uuidString,
             name: name,
@@ -103,7 +105,7 @@ final class NearbyPlaceSearch: NSObject {
             website: item.url?.absoluteString,
             phone: item.phoneNumber,
             googlePlaceId: nil, photos: nil, videos: nil,
-            category: .other, customCategoryId: nil, subcategory: nil,
+            category: mapping.category, customCategoryId: nil, subcategory: mapping.subcategory,
             rating: nil, userRatingsTotal: nil, notes: nil, privateNotes: nil, publicNotes: nil,
             tags: nil, reviews: nil, openingHours: nil, priceLevel: nil,
             likes: nil, likesCount: nil, commentsCount: nil,

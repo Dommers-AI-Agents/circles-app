@@ -423,12 +423,34 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             options: [.customDismissAction, .hiddenPreviewsShowTitle]
         )
         
+        // "You're near <saved place>" local banner (ProximityNotificationScheduler).
+        // Check In opens the pre-filled sheet — the backend needs a recipient,
+        // so a background one-tap check-in isn't possible. Not Now runs in the
+        // background and stamps the once-per-day gate.
+        let checkInAction = UNNotificationAction(
+            identifier: ProximityNotificationScheduler.checkInAction,
+            title: "Check In",
+            options: [.foreground]
+        )
+        let notNowAction = UNNotificationAction(
+            identifier: ProximityNotificationScheduler.notNowAction,
+            title: "Not Now",
+            options: []
+        )
+        let checkInPromptCategory = UNNotificationCategory(
+            identifier: ProximityNotificationScheduler.categoryIdentifier,
+            actions: [checkInAction, notNowAction],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+
         // Set categories
         UNUserNotificationCenter.current().setNotificationCategories([
             connectionCategory,
             messageCategory,
             suggestionCategory,
-            activityCategory
+            activityCategory,
+            checkInPromptCategory
         ])
     }
     
@@ -437,7 +459,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         // Show notification even when app is in foreground
         let userInfo = notification.request.content.userInfo
-        
+
+        // The proximity banner is for a closed app; in the foreground the
+        // home chip covers it. Swallow it here (the request is consumed and
+        // the next replan reschedules the place).
+        if let type = userInfo["type"] as? String,
+           type == ProximityNotificationScheduler.notificationType,
+           UIApplication.shared.applicationState == .active {
+            completionHandler([])
+            return
+        }
+
         // Special handling for connection_accepted notifications
         if let type = userInfo["type"] as? String, type == "connection_accepted" {
             // Show a custom in-app alert for connection accepted
@@ -680,11 +712,24 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case "VIEW_ACTIVITY":
             // Navigate based on activity type
             handleViewActivity(userInfo: userInfo)
-            
+
+        case ProximityNotificationScheduler.checkInAction:
+            // Same as tapping the banner: open the pre-filled check-in sheet
+            handleNotificationTap(userInfo: userInfo)
+
+        case ProximityNotificationScheduler.notNowAction, UNNotificationDismissActionIdentifier:
+            // Don't offer this place again today; free its region slot
+            if let type = userInfo["type"] as? String,
+               type == ProximityNotificationScheduler.notificationType,
+               let placeId = userInfo["placeId"] as? String {
+                ProximityNotificationScheduler.markPromptedToday(placeId: placeId)
+                ProximityNotificationScheduler.shared.replanFromCache(force: true)
+            }
+
         default:
             break
         }
-        
+
         completionHandler()
     }
     
@@ -695,7 +740,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     /// to replay once the interface is up. A cold-start tap posts before any
     /// observer exists and would otherwise be dropped unheard — same pattern the
     /// daily-summary tap uses.
-    private func postOrStashDeepLink(navName: String, pending: String) {
+    private func postOrStashDeepLink(navName: String, pending: String, object: Any? = nil) {
         DispatchQueue.main.async {
             let mainUIReady = UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
@@ -703,7 +748,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 .contains { $0.rootViewController is CirclesTabBarController }
 
             if mainUIReady {
-                NotificationCenter.default.post(name: Notification.Name(navName), object: nil)
+                NotificationCenter.default.post(name: Notification.Name(navName), object: object)
             } else {
                 UserDefaults.standard.set(pending, forKey: "pendingDeepLink")
             }
@@ -894,6 +939,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             // hub's Piggy Bank tab with a coach-mark pointing at the wallet
             // create/link button.
             postOrStashDeepLink(navName: "NavigateToCreateWallet", pending: "create-wallet")
+
+        case ProximityNotificationScheduler.notificationType:
+            // "You're near <saved place>" local banner → check-in sheet with
+            // the place pre-filled. Stashed on cold start like the tips are.
+            if let placeId = userInfo["placeId"] as? String, !placeId.isEmpty {
+                ProximityNotificationScheduler.markPromptedToday(placeId: placeId)
+                postOrStashDeepLink(navName: Notification.Name.navigateToCheckIn.rawValue,
+                                    pending: "check-in:\(placeId)",
+                                    object: placeId)
+            }
 
         case "favcoin_claim_settled":
             // Body says "Open your Piggy Bank" — so open the Piggy Bank

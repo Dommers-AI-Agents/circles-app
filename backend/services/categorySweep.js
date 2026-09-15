@@ -20,6 +20,7 @@
 
 const { getFirestore } = require('../config/firebase');
 const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
+const { categoryUpgradeForOther } = require('./placeCategoryDerivation');
 const classifier = require('./categoryClassifier');
 
 const db = getFirestore();
@@ -74,6 +75,9 @@ async function runCategorySweep({
     capped: false,
     skippedByCap: 0,
     calls: 0,
+    stillOther: 0,        // venues at 'other' before this run
+    freeTierResolved: 0,
+    freeTierSample: [],   // dry run: what the free tiers would assign
     resolved: 0,
     unresolved: 0,
     failed: 0,
@@ -83,7 +87,37 @@ async function runCategorySweep({
     sample: []
   };
 
-  if (!enabled && !dryRun) return report;
+  const now = new Date().toISOString();
+
+  // Free tiers first, over EVERY venue still at 'other' — flagged or not.
+  // Venues that predate the cascade, or that the model once gave up on
+  // (categoryClassifiedAt stamped, flag cleared), resolve deterministically
+  // once a later save has added a signal. In-memory rules, a write only on a
+  // hit, and it runs whether or not the LLM tier is enabled.
+  const otherSnap = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+    .where('category', '==', 'other')
+    .get();
+  report.stillOther = otherSnap.size;
+  const upgradedIds = new Set();
+  for (const doc of otherSnap.docs) {
+    const upgrade = categoryUpgradeForOther(doc.data(), {});
+    if (!upgrade) continue;
+    report.freeTierResolved++;
+    upgradedIds.add(doc.id);
+    if (dryRun) {
+      if (report.freeTierSample.length < 200) {
+        report.freeTierSample.push({ id: doc.id, name: doc.data().name || 'Unnamed', to: upgrade.category, via: upgrade.categorySource });
+      }
+      continue;
+    }
+    try {
+      await doc.ref.update({ ...upgrade, needsCategoryReview: false, updatedAt: now });
+      report.cacheSynced += await syncCacheToPlaces(doc.id, upgrade.category, now);
+    } catch (e) {
+      report.failed++;
+      console.error(`   ❌ [categorySweep] free tier ${doc.id}: ${e.message}`);
+    }
+  }
 
   const snap = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
     .where('needsCategoryReview', '==', true)
@@ -94,12 +128,11 @@ async function runCategorySweep({
   // hint written at save time; these two conditions are the actual contract:
   //   tail-only      — the venue is still uncategorized
   //   once-per-venue — it has never been sent to the model
-  const now = new Date().toISOString();
   const eligible = [];
   const stale = [];
   for (const doc of snap.docs) {
     const d = doc.data();
-    const isTail = (d.category || 'other') === 'other';
+    const isTail = (d.category || 'other') === 'other' && !upgradedIds.has(doc.id);
     const neverClassified = !d.categoryClassifiedAt;
     if (isTail && neverClassified) eligible.push(doc);
     else stale.push(doc);   // resolved some other way since it was flagged
@@ -114,6 +147,7 @@ async function runCategorySweep({
     report.staleFlagsCleared = stale.length;
   }
 
+  if (!enabled && !dryRun) return report;
   if (!eligible.length) return report;
 
   const targets = eligible.slice(0, maxPlaces);

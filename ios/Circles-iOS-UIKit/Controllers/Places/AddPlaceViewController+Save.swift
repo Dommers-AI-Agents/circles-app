@@ -441,6 +441,7 @@ extension AddPlaceViewController {
                             self?.postPendingReviewIfNeeded(for: place)
                             // Rare, GPS-gated: user saved a place while standing in it
                             CheckInViewController.offerIfAtPlace(place)
+                            ProximityNotificationScheduler.shared.replanFromCache(force: true)
 
                             // No success popup — the piggy-bank coin drop IS
                             // the success feedback; an alert here covered it up
@@ -584,6 +585,7 @@ extension AddPlaceViewController {
                         self?.postPendingReviewIfNeeded(for: place)
                         // Rare, GPS-gated: user saved a place while standing in it
                         CheckInViewController.offerIfAtPlace(place)
+                        ProximityNotificationScheduler.shared.replanFromCache(force: true)
 
                         // No success popup — the piggy-bank coin drop IS the
                         // success feedback; an alert here covered it up
@@ -660,6 +662,7 @@ extension AddPlaceViewController {
                         self?.postPendingReviewIfNeeded(for: place)
                         // Rare, GPS-gated: user saved a place while standing in it
                         CheckInViewController.offerIfAtPlace(place)
+                        ProximityNotificationScheduler.shared.replanFromCache(force: true)
 
                         // No success popup — the piggy-bank coin drop IS the
                         // success feedback; an alert here covered it up

@@ -170,7 +170,10 @@ class NotificationService {
     func handleUserLogout() {
         // Unregister device token from backend
         unregisterDeviceToken()
-        
+
+        // Location-triggered check-in banners are per account
+        ProximityNotificationScheduler.shared.cancelAll()
+
         // Clear badge
         clearBadge()
     }

@@ -42,6 +42,9 @@ extension Notification.Name {
     static let navigateToCreateWallet = Notification.Name("NavigateToCreateWallet")
     /// object = widget id (e.g. "nextbar"); opens the home Widgets segment on that widget
     static let navigateToHomeWidget = Notification.Name("NavigateToHomeWidget")
+    /// "You're near <saved place>" banner tap: open the check-in sheet with
+    /// that place pre-filled. `object` is the place id.
+    static let navigateToCheckIn = Notification.Name("NavigateToCheckIn")
     
     // Suggestions notifications
     static let clearSuggestionsBadge = Notification.Name("clearSuggestionsBadge")

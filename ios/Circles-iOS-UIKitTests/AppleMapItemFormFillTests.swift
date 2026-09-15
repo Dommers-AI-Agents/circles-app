@@ -31,9 +31,45 @@ struct AppleMapItemFormFillTests {
         #expect(f(.aquarium, nil) == M(.attraction, "Aquarium"))
         #expect(f(.amusementPark, nil) == M(.attraction, "Theme Park"))
         #expect(f(.stadium, nil) == M(.entertainment))
-        // A POI category wins over any name hint
+        #expect(f(.fitnessCenter, nil) == M(.fitness, "Gym"))
+        #expect(f(.bakery, nil) == M(.cafe, "Bakery"))
+        #expect(f(.airport, nil) == M(.transport, "Airport"))
+        // A mapped POI category wins over any name hint
         #expect(f(.marina, "Harbor Grill") == M(.outdoor))
-        #expect(f(MKPointOfInterestCategory(rawValue: "MKPOICategoryUnknownThing"), "Joe's Grill") == M(.other))
+        // An unmapped one falls through to the name instead of "Other"
+        #expect(f(MKPointOfInterestCategory(rawValue: "MKPOICategoryUnknownThing"), "Joe's Grill") == M(.restaurant))
+        #expect(f(MKPointOfInterestCategory(rawValue: "MKPOICategoryUnknownThing"), "Acme Widgets") == M(.other))
+    }
+
+    /// Apple has no clinic/dentist/gym-studio categories, so these arrive
+    /// with no POI category and the name has to carry them — the map pin icon
+    /// depends on it.
+    @Test func healthcareAndOtherBusinessesAreRecognizedByName() {
+        let f = AppleMapItemFormFill.categoryMapping
+        #expect(f(nil, "Atrium Health Urgent Care") == M(.healthcare))
+        #expect(f(nil, "Novant Health Pediatrics") == M(.healthcare))
+        #expect(f(nil, "SouthPark Family Dental") == M(.healthcare))
+        #expect(f(nil, "CVS Pharmacy") == M(.healthcare))
+        #expect(f(nil, "Charlotte Animal Hospital") == M(.healthcare))
+        #expect(f(nil, "Orangetheory Fitness") == M(.fitness))
+        #expect(f(nil, "CorePower Yoga") == M(.fitness))
+        #expect(f(nil, "Sycamore Brewing") == M(.bar))
+        #expect(f(nil, "Amélie's French Bakery") == M(.cafe))
+        #expect(f(nil, "Sal's Pizzeria") == M(.restaurant))
+        #expect(f(nil, "Great Clips Salon") == M(.service))
+        #expect(f(nil, "Freedom Park") == M(.outdoor))
+        #expect(f(nil, "Mint Museum") == M(.attraction))
+    }
+
+    /// Whole words only, and specific rules before generic ones.
+    @Test func nameRulesDoNotMisfireOnSubstrings() {
+        let f = AppleMapItemFormFill.categoryMapping
+        #expect(f(nil, "Barnes & Noble") == M(.other))       // not a bar
+        #expect(f(nil, "Finnegan's Wake") == M(.other))    // not an inn
+        #expect(f(nil, "Public Storage") == M(.other))       // not a pub
+        #expect(f(nil, "Tom's Barbershop") == M(.service)) // barber, not bar
+        #expect(f(nil, "Urgent Care Pharmacy") == M(.healthcare))
+        #expect(f(nil, "Pub Burger") == M(.bar))             // first rule wins
     }
 
     @Test func nameInferenceWhenAppleGivesNoCategory() {

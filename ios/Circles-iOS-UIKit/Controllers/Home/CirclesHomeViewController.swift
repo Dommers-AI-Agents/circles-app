@@ -962,8 +962,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         promptForDuplicateAccountsIfNeeded()
 
         // "At Beach Haus? Check in" — one-tap check-in when opening the app
-        // at a saved place (CirclesHomeViewController+ProximityCheckIn)
-        maybeShowProximityCheckInChip()
+        // at a saved place, plus the closed-app banner plan for the nearest
+        // saved places (CirclesHomeViewController+ProximityCheckIn)
+        refreshProximityFeatures()
 
         // New accounts: the first-session chain (SceneDelegate) normally
         // presents the first-people sheet; this is the fallback for launches

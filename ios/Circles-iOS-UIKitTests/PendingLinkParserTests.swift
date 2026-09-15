@@ -21,6 +21,7 @@ struct PendingLinkParserTests {
         #expect(PendingLinkParser.parse("video:v1") == .video(id: "v1"))
         #expect(PendingLinkParser.parse("shareToken:c1:tok") == .shareToken(circleId: "c1", shareToken: "tok"))
         #expect(PendingLinkParser.parse("settings:notifications") == .notificationSettings)
+        #expect(PendingLinkParser.parse("check-in:abc123") == .checkIn(placeId: "abc123"))
         #expect(PendingLinkParser.parse("daily-summary:anything") == .dailySummary)
     }
 

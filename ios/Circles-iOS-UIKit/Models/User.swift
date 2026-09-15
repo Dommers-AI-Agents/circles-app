@@ -31,6 +31,9 @@ struct NotificationPreferences: Codable {
     var weekendRecommendations: Bool = true
     var reengagement: Bool = true
     var frequency: String = "normal" // "minimal", "normal", "all"
+    /// Location-triggered "you're near <saved place>, check in?" banners
+    /// (scheduled on-device; this is the account-level record of the toggle)
+    var locationPrompts: Bool = true
     
     // Quiet hours
     var quietHoursEnabled: Bool = false
@@ -46,7 +49,7 @@ struct NotificationPreferences: Codable {
     enum CodingKeys: String, CodingKey {
         case newMessages, newSuggestions, newPlaces, connectionRequests, circleInvites, newFollowers, dailyDigest
         case dailySummary, summaryTime, timezone
-        case socialActivity, discoveryPrompts, milestones, weekendRecommendations, reengagement, frequency
+        case socialActivity, discoveryPrompts, milestones, weekendRecommendations, reengagement, frequency, locationPrompts
         case quietHoursEnabled, quietHoursStart, quietHoursEnd
     }
     
@@ -74,6 +77,7 @@ struct NotificationPreferences: Codable {
         weekendRecommendations = try container.decodeIfPresent(Bool.self, forKey: .weekendRecommendations) ?? true
         reengagement = try container.decodeIfPresent(Bool.self, forKey: .reengagement) ?? true
         frequency = try container.decodeIfPresent(String.self, forKey: .frequency) ?? "normal"
+        locationPrompts = try container.decodeIfPresent(Bool.self, forKey: .locationPrompts) ?? true
         
         // Quiet hours
         quietHoursEnabled = try container.decodeIfPresent(Bool.self, forKey: .quietHoursEnabled) ?? false

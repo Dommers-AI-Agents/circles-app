@@ -5,43 +5,51 @@ import CoreLocation
 // user's saved places, a dismissible pill offers a one-tap check-in with the
 // place pre-filled. Shown at most once per place per day; never during the
 // first-session onboarding chain.
+//
+// The same location fix and cached place set also feed
+// ProximityNotificationScheduler, which plans the system banner for when the
+// app is closed. Both share the once-per-place-per-day gate.
 extension CirclesHomeViewController {
 
     private static let proximityRadiusMeters: CLLocationDistance = 50
     private static let chipTag = 99_431
 
-    func maybeShowProximityCheckInChip() {
-        guard view.viewWithTag(Self.chipTag) == nil,
-              presentedViewController == nil,
-              !OnboardingManager.shared.isFirstSessionFlowActive,
-              [.authorizedWhenInUse, .authorizedAlways].contains(CLLocationManager().authorizationStatus),
+    /// One location fix + one cache read for both proximity features. The
+    /// chip has extra presentation guards; the banner plan does not.
+    func refreshProximityFeatures() {
+        guard [.authorizedWhenInUse, .authorizedAlways].contains(CLLocationManager().authorizationStatus),
               let userId = AuthService.shared.getUserId() else { return }
 
         LocationService.shared.getCurrentLocation { [weak self] location in
             guard let location = location else { return }
             PlacesDiskCache.shared.load(userId: userId) { [weak self] cached in
-                guard let self = self, let places = cached, !places.isEmpty else { return }
-
-                let nearest = places
-                    .compactMap { place -> (Place, CLLocationDistance)? in
-                        guard let placeLocation = place.location?.clLocation else { return nil }
-                        return (place, location.distance(from: placeLocation))
-                    }
-                    .filter { $0.1 <= Self.proximityRadiusMeters }
-                    .min { $0.1 < $1.1 }
-
-                guard let (place, _) = nearest else { return }
-
-                // Once per place per day
-                let dayFormatter = DateFormatter()
-                dayFormatter.dateFormat = "yyyy-MM-dd"
-                let gateKey = "proximityCheckInPrompted.\(place.id).\(dayFormatter.string(from: Date()))"
-                guard !UserDefaults.standard.bool(forKey: gateKey) else { return }
-                UserDefaults.standard.set(true, forKey: gateKey)
-
-                DispatchQueue.main.async { self.showProximityChip(for: place) }
+                guard let places = cached, !places.isEmpty else { return }
+                self?.maybeShowProximityCheckInChip(places: places, at: location)
+                ProximityNotificationScheduler.shared.replan(places: places, around: location)
             }
         }
+    }
+
+    private func maybeShowProximityCheckInChip(places: [Place], at location: CLLocation) {
+        guard view.viewWithTag(Self.chipTag) == nil,
+              presentedViewController == nil,
+              !OnboardingManager.shared.isFirstSessionFlowActive else { return }
+
+        let nearest = places
+            .compactMap { place -> (Place, CLLocationDistance)? in
+                guard let placeLocation = place.location?.clLocation else { return nil }
+                return (place, location.distance(from: placeLocation))
+            }
+            .filter { $0.1 <= Self.proximityRadiusMeters }
+            .min { $0.1 < $1.1 }
+
+        guard let (place, _) = nearest else { return }
+
+        // Once per place per day — shared with the closed-app banner
+        guard !ProximityNotificationScheduler.wasPromptedToday(placeId: place.id) else { return }
+        ProximityNotificationScheduler.markPromptedToday(placeId: place.id)
+
+        DispatchQueue.main.async { self.showProximityChip(for: place) }
     }
 
     private func showProximityChip(for place: Place) {

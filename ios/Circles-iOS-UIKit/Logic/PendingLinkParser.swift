@@ -20,6 +20,8 @@ enum PendingLink: Equatable {
     case connect(fromUserId: String)
     case video(id: String)
     case notificationSettings
+    /// "check-in:<placeId>": the "you're near <saved place>" banner tapped on a cold start.
+    case checkIn(placeId: String)
 }
 
 /// Turns the stored string into a `PendingLink`. Pure; SceneDelegate keeps
@@ -55,6 +57,7 @@ enum PendingLinkParser {
         case "connect": return .connect(fromUserId: payload)
         case "video": return .video(id: payload)
         case "daily-summary": return .dailySummary
+        case "check-in": return .checkIn(placeId: payload)
         case "settings": return payload == "notifications" ? .notificationSettings : nil
         default: return nil
         }

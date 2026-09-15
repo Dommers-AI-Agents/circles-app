@@ -64,6 +64,10 @@ const anchorVenueFieldsToSource = async (placeData) => {
     const canonical = canonicalHit.docs[0].data();
     ['name', 'address', 'category', 'subcategory'].forEach((field) => {
       if (canonical[field] !== undefined && canonical[field] !== null && canonical[field] !== '') {
+        // A canonical still at 'other' has nothing to anchor: keep the
+        // client's real category (ensureGlobalPlaceLink then upgrades the
+        // venue to it via categoryUpgradeForOther, source 'client')
+        if (field === 'category' && canonical.category === 'other') return;
         placeData[field] = canonical[field];
       }
     });
@@ -1149,6 +1153,13 @@ exports.createPlace = async (req, res, next) => {
     const globalPlaceId = await ensureGlobalPlaceLink(createdPlace);
     if (globalPlaceId) {
       place.globalPlaceId = globalPlaceId;
+      // The link stamps the venue's category onto the save (derived from the
+      // name/POI signals when the client sent 'other') — return what the map
+      // pin will actually show rather than the pre-link doc.
+      try {
+        const linkedCategory = (await placeRef.get()).get('category');
+        if (linkedCategory) place.category = linkedCategory;
+      } catch (e) { /* response falls back to the pre-link category */ }
     }
 
     // Keep the browse location tree fresh: bump this circle's summary and drop
