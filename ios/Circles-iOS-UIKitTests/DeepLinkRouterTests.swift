@@ -29,6 +29,14 @@ struct DeepLinkRouterTests {
         #expect(dest("https://api.favcircles.com/app/video") == nil)   // missing id
     }
 
+    @Test func emailOpenPaths() {
+        // Weekly summary email: "See my FavCoins" lands on the Piggy Bank
+        #expect(router.openPathDestination("create-wallet") == .piggyBank)
+        #expect(router.openPathDestination("rewards/piggy-bank") == .piggyBank)
+        #expect(router.openPathDestination("settings/notifications") == .notificationSettings)
+        #expect(router.openPathDestination("nope") == nil)
+    }
+
     @Test func appOpenPathTargets() {
         #expect(dest("https://api.favcircles.com/app/open?path=settings/notifications") == .notificationSettings)
         #expect(dest("https://api.favcircles.com/app/open?path=network") == .network)

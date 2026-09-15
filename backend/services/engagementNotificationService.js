@@ -374,6 +374,11 @@ class EngagementNotificationService {
       
       for (const user of users) {
         try {
+          // Users on the Weekly Summary (push + email, delivered at their own
+          // local time by dailySummaryService) already get a richer recap —
+          // a second Monday push would just be noise.
+          if (user.notificationPreferences && user.notificationPreferences.dailySummary === true) continue;
+
           const stats = await this.gatherWeeklyStats(user.id);
           
           if (this.hasWeeklyActivity(stats)) {

@@ -623,7 +623,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         
         // Create alert
         let alert = UIAlertController(
-            title: "Your Daily Summary",
+            title: "Your Weekly Summary",
             message: "\(dateString)\n\n\(message)",
             preferredStyle: .alert
         )

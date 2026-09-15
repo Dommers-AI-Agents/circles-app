@@ -19,7 +19,7 @@ class NotificationPreferencesViewController: BaseTableViewController {
         
         var title: String {
             switch self {
-            case .dailySummary: return "Daily Summary"
+            case .dailySummary: return "Weekly Summary"
             case .activityNotifications: return "Activity Notifications"
             case .socialNotifications: return "Social Notifications"
             case .quietHours: return "Quiet Hours"
@@ -28,7 +28,7 @@ class NotificationPreferencesViewController: BaseTableViewController {
         
         var footer: String? {
             switch self {
-            case .dailySummary: return "Get a daily summary of activity in your network"
+            case .dailySummary: return "Every Monday: what happened in your network this week, plus your FavCoins 🌵"
             case .activityNotifications: return "Notifications about places and circles. Nearby check-in reminders use the location access you already granted and only fire at places you saved."
             case .socialNotifications: return "Notifications about connections and messages"
             case .quietHours: return "Pause notifications during specific hours"
@@ -261,7 +261,7 @@ extension NotificationPreferencesViewController {
             case .enabled:
                 let cell = tableView.dequeueReusableCell(withIdentifier: "SwitchCell", for: indexPath) as! SwitchTableViewCell
                 cell.configure(
-                    title: "Daily Summary",
+                    title: "Weekly Summary",
                     isOn: preferences.dailySummary,
                     onToggle: { [weak self] isOn in
                         self?.preferences.dailySummary = isOn

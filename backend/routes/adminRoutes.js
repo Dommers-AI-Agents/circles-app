@@ -54,12 +54,14 @@ router.post('/reset-daily-summaries', adminAuth, async (req, res) => {
       const userData = doc.data();
       userNames.push(userData.displayName || doc.id);
       
-      // Set lastDailySummary to yesterday
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
+      // Push the stamp outside the weekly dedupe window so the next
+      // matching local hour sends again
+      const eightDaysAgo = new Date();
+      eightDaysAgo.setDate(eightDaysAgo.getDate() - 8);
       
       batch.update(doc.ref, {
-        lastDailySummary: yesterday.toISOString()
+        lastWeeklySummary: eightDaysAgo.toISOString(),
+        lastDailySummary: eightDaysAgo.toISOString()
       });
       count++;
     });

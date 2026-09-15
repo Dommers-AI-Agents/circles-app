@@ -270,7 +270,8 @@ router.post('/test/daily-summary', protect, async (req, res) => {
       notificationPreferences: { dailySummary: true }
     };
     
-    await dailySummaryService.generateAndSendSummary(user);
+    // Never stamps: a manual test must not suppress the real Monday send
+    await dailySummaryService.generateAndSendSummary(user, { stamp: false });
     
     res.json({
       success: true,
