@@ -237,5 +237,18 @@
 	</array>
 	<key>SKIncludesAppleSignInWithPurchase</key>
 	<true/>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.favcircles.circles.check-in</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Check In</string>
+			<key>UIApplicationShortcutItemSubtitle</key>
+			<string>Let your people know where you are</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>checkmark.circle</string>
+		</dict>
+	</array>
 </dict>
 </plist>

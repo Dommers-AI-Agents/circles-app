@@ -26,6 +26,7 @@ extension CirclesHomeViewController {
                 guard let places = cached, !places.isEmpty else { return }
                 self?.maybeShowProximityCheckInChip(places: places, at: location)
                 ProximityNotificationScheduler.shared.replan(places: places, around: location)
+                QuickCheckInShortcuts.update(places: places, around: location)
             }
         }
     }

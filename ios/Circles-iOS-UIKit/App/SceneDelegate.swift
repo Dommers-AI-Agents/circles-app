@@ -31,6 +31,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         APIService.shared.configure(environment: .production, loggingEnabled: false)
         #endif
         
+        // Home Screen quick action on a cold start: stash it like any other
+        // pending link; runPostLaunchSideEffects replays it once the tab bar
+        // is up
+        if let shortcut = connectionOptions.shortcutItem,
+           let pending = QuickCheckInShortcutPlanner.pendingLink(forShortcutType: shortcut.type,
+                                                                 userInfo: shortcut.userInfo) {
+            UserDefaults.standard.set(pending, forKey: "pendingDeepLink")
+        }
+
         // Check if there's a deep link to handle
         if let url = connectionOptions.urlContexts.first?.url {
             Logger.debug("SceneDelegate: URL received on launch: \(url.absoluteString)")
@@ -1325,8 +1334,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case .video(let id): self.navigateToVideo(videoId: id)
             case .notificationSettings: self.navigateToNotificationSettings()
             case .checkIn(let id):
-                // Cold-start tap on the "you're near <place>" banner
+                // Cold-start tap on the "you're near <place>" banner, or a
+                // "Check in at <place>" quick action
                 NotificationCenter.default.post(name: .navigateToCheckIn, object: id)
+            case .quickCheckIn:
+                // The static "Check In" quick action: no place, the sheet's picker takes over
+                NotificationCenter.default.post(name: .navigateToCheckIn, object: nil)
             }
         }
     }
@@ -1487,6 +1500,24 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Called as the scene transitions from the foreground to the background.
         // Refresh the home-screen widget with whatever the session just saw.
         WidgetSnapshotService.shared.refresh()
+        // And the icon's long-press "Check in at <place>" rows, from wherever
+        // the user ended up during the session
+        QuickCheckInShortcuts.updateFromCache()
+    }
+
+    /// Home Screen quick action while the app is already running (warm
+    /// launch). Same stash format as the cold-start path, replayed at once.
+    func windowScene(_ windowScene: UIWindowScene,
+                     performActionFor shortcutItem: UIApplicationShortcutItem,
+                     completionHandler: @escaping (Bool) -> Void) {
+        guard let pending = QuickCheckInShortcutPlanner.pendingLink(forShortcutType: shortcutItem.type,
+                                                                    userInfo: shortcutItem.userInfo) else {
+            completionHandler(false)
+            return
+        }
+        UserDefaults.standard.set(pending, forKey: "pendingDeepLink")
+        handlePendingDeepLink()
+        completionHandler(true)
     }
     
     /// Cold-launch navigation: the pending-open place can only be pushed once

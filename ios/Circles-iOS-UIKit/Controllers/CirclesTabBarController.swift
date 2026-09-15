@@ -316,19 +316,25 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         )
     }
 
-    /// "You're near <saved place>" banner tap → the check-in sheet with that
-    /// place pre-filled. The place comes from the disk cache (it was planned
-    /// from there), with a network fetch as the fallback.
+    /// "You're near <saved place>" banner tap or a "Check in at <place>" quick
+    /// action → the check-in sheet with that place pre-filled. The place comes
+    /// from the disk cache (it was planned from there), with a network fetch
+    /// as the fallback. No place id (the static "Check In" quick action) →
+    /// the sheet with its place picker.
     @objc private func navigateToCheckInNotification(_ note: Notification) {
-        guard let placeId = note.object as? String, !placeId.isEmpty,
-              let userId = AuthService.shared.getUserId() else { return }
+        guard let userId = AuthService.shared.getUserId() else { return }
 
-        func present(_ place: Place) {
+        func present(_ place: Place?) {
             var top: UIViewController = self
             while let presented = top.presentedViewController { top = presented }
             guard !(top is CheckInViewController),
                   !((top as? UINavigationController)?.viewControllers.first is CheckInViewController) else { return }
             CheckInViewController.present(from: top, prefilledPlace: place)
+        }
+
+        guard let placeId = note.object as? String, !placeId.isEmpty else {
+            present(nil)
+            return
         }
 
         PlacesDiskCache.shared.load(userId: userId) { cached in
