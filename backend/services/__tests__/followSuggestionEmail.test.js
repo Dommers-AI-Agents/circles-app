@@ -23,11 +23,12 @@ describe('selectCandidates', () => {
       user({ id: 'f', createdAt: daysAgo(90) }),                           // old
       user({ id: 'g', emailPreferences: { followSuggestions: false } }),   // unsubscribed
       user({ id: 'h', followSuggestionEmail: { lastSentAt: daysAgo(2) } }), // sent this week
-      user({ id: 'i', followSuggestionEmail: { lastSentAt: daysAgo(8) } })  // sent last week: ok
+      user({ id: 'i', followSuggestionEmail: { lastSentAt: daysAgo(8) } }), // sent last week: ok
+      user({ id: 'j', email: 'AppReview@favcircles.com' })                  // App Review demo account
     ], { now });
     expect(selected.map((u) => u.id)).toEqual(['a', 'b', 'i']);
     expect(selected[1].followingCount).toBe(2);
-    expect(skipped).toEqual({ following_enough: 1, no_usable_email: 2, too_old: 1, opted_out: 1, sent_recently: 1 });
+    expect(skipped).toEqual({ following_enough: 1, no_usable_email: 2, internal: 1, too_old: 1, opted_out: 1, sent_recently: 1 });
   });
 
   test('falls back to followingCount when the array is missing, and honours the age setting', () => {
