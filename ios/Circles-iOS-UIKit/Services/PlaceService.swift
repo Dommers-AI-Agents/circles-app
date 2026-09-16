@@ -1061,7 +1061,8 @@ class PlaceService {
         )
     }
     
-    func updatePlace(id: String, name: String? = nil, description: String? = nil, address: String? = nil, category: PlaceCategory? = nil, customCategory: String? = nil, privacy: PlacePrivacy? = nil, website: String? = nil, phone: String? = nil, tags: [String]? = nil, privateNotes: String? = nil, userRating: Int? = nil, addPhotos: [Data]? = nil, removePhotoUrls: [String]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+    func updatePlace(id: String, name: String? = nil, description: String? = nil, address: String? = nil, category: PlaceCategory? = nil, customCategory: String? = nil, privacy: PlacePrivacy? = nil, website: String? = nil, phone: String? = nil, tags: [String]? = nil, privateNotes: String? = nil, userRating: Int? = nil,
+                     ratingCheckInId: String? = nil, addPhotos: [Data]? = nil, removePhotoUrls: [String]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         
         var locationCoordinate: CLLocationCoordinate2D?
         var photosUrls: [String]?
@@ -1129,6 +1130,9 @@ class PlaceService {
 
             if let userRating = userRating {
                 body["userRating"] = userRating
+            }
+            if let ratingCheckInId = ratingCheckInId {
+                body["ratingCheckInId"] = ratingCheckInId
             }
 
             if let newAddress = address {

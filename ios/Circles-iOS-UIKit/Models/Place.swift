@@ -107,6 +107,10 @@ struct Place: Codable, Identifiable {
     /// been yet"). Per-user data on the save record — distinct from `rating`,
     /// which is Google's venue average.
     var userRating: Int? = nil
+    /// When `userRating` was last set, and every score the saver ever gave
+    /// (oldest first) — "latest wins, history kept".
+    var userRatedAt: Date? = nil
+    var ratingHistory: [RatingHistoryEntry]? = nil
     let notes: String? // Legacy field, will be migrated to publicNotes
     let privateNotes: String? // Only visible to the user who added them
     /// LEGACY (retired 2026-07-30). Public notes became comments on the venue
@@ -159,6 +163,7 @@ struct Place: Codable, Identifiable {
         case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, createdAt, updatedAt, isNew, circleName
         case followersCount, isFollowing
         case myCheckInStats
+        case userRatedAt, ratingHistory
         case city, state, stateCode, neighborhood, country, countryCode
         case importSource
         case needsResolution
@@ -247,6 +252,8 @@ struct Place: Codable, Identifiable {
         self.rating = try container.decodeIfPresent(Double.self, forKey: .rating)
         self.userRatingsTotal = try container.decodeIfPresent(Int.self, forKey: .userRatingsTotal)
         self.userRating = try container.decodeIfPresent(Int.self, forKey: .userRating)
+        self.userRatedAt = try? container.decodeIfPresent(Date.self, forKey: .userRatedAt)
+        self.ratingHistory = try? container.decodeIfPresent([RatingHistoryEntry].self, forKey: .ratingHistory)
         self.delivery = try? container.decodeIfPresent(Bool.self, forKey: .delivery)
         self.dineIn = try? container.decodeIfPresent(Bool.self, forKey: .dineIn)
         self.reservable = try? container.decodeIfPresent(Bool.self, forKey: .reservable)

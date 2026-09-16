@@ -269,6 +269,12 @@ const createPlace = (placeData, circleId, addedBy) => {
     // `rating` (that's the Google venue field, stripped/propagated by
     // globalPlaceResolver). Null = unrated / "haven't been yet".
     userRating: sanitizeUserRating(placeData.userRating),
+    // "Latest wins, history kept": every score the saver ever gave, oldest
+    // first (see utils/ratingHistory.js). Seeded from the save-time rating.
+    userRatedAt: sanitizeUserRating(placeData.userRating) === null ? null : now,
+    ratingHistory: sanitizeUserRating(placeData.userRating) === null
+      ? []
+      : [{ rating: sanitizeUserRating(placeData.userRating), at: now }],
     tags: placeData.tags || [],
     reviews: placeData.reviews || [],
     openingHours: placeData.openingHours || null,

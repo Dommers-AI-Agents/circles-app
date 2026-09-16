@@ -351,6 +351,11 @@ class PlaceDetailViewController: BaseViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         NotificationCenter.default.addObserver(self, selector: #selector(handleCheckInCreated(_:)), name: .checkInCreated, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handlePlaceRatingChanged(_:)), name: .placeRatingChanged, object: nil)
+        // "★ Your rating" / "Been here? Rate it" opens the rating sheet
+        userRatingLabel.numberOfLines = 2
+        userRatingLabel.isUserInteractionEnabled = true
+        userRatingLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(userRatingTapped)))
         Logger.debug("PlaceDetailViewController viewDidLoad")
         
         // Set up media capture service
@@ -1124,14 +1129,9 @@ class PlaceDetailViewController: BaseViewController {
             descriptionLabel.isHidden = true
         }
 
-        // The saver's personal 0–10 score, when they gave one
-        if let userRating = place.userRating {
-            let who = place.isAddedByCurrentUser ? "Your" : "\(place.addedByDisplayName)'s"
-            userRatingLabel.text = "★ \(who) rating: \(userRating)/10"
-            userRatingLabel.isHidden = false
-        } else {
-            userRatingLabel.isHidden = true
-        }
+        // The viewer's own 0–10 score (or a nudge to give one), plus the
+        // saver's when this is someone else's copy
+        updateUserRatingLine()
 
         // Rating - one meta line: rating (count) · price
         if let rating = place.rating, rating > 0 {
@@ -1643,6 +1643,82 @@ class PlaceDetailViewController: BaseViewController {
         let show = line != nil
         checkInHistoryHeightConstraint?.constant = show ? 18 : 0
         checkInHistoryTopConstraint?.constant = show ? Constants.Spacing.small : 0
+    }
+
+    // MARK: - My rating (latest wins, history kept)
+
+    /// The save record that carries MY rating: this place when it's mine,
+    /// otherwise my own copy of the venue (loaded by the notes controller).
+    private var myRatingTarget: Place? {
+        // Nobody rates their own house
+        guard !isHomeOrWorkPlace else { return nil }
+        return place.isAddedByCurrentUser ? place : mySaveOfVenue
+    }
+
+    private func updateUserRatingLine() {
+        var parts: [String] = []
+        if let mine = myRatingTarget {
+            if let summary = RatingHistoryFormatter.summary(current: mine.userRating, history: mine.ratingHistory) {
+                parts.append("★ Your rating: \(summary)")
+            } else {
+                parts.append(RatingHistoryFormatter.nudge)
+            }
+        }
+        if !place.isAddedByCurrentUser, let theirs = place.userRating {
+            parts.append("★ \(place.addedByDisplayName)'s rating: \(theirs)/10")
+        }
+        userRatingLabel.text = parts.joined(separator: "\n")
+        userRatingLabel.isHidden = parts.isEmpty
+    }
+
+    @objc private func userRatingTapped() {
+        guard let target = myRatingTarget else { return }
+        let sheet = PlaceRatingSheetViewController(
+            placeName: place.name,
+            title: target.userRating == nil ? "How was \(place.name)?" : "Change your rating of \(place.name)",
+            subtitle: target.userRating == nil ? "Tap a rating" : "Your rating: \(target.userRating!)/10 — tap to change",
+            currentRating: target.userRating
+        )
+        sheet.onContinue = { [weak self] rating in
+            guard let self = self, let rating = rating else { return }
+            PlaceService.shared.updatePlace(id: target.id, userRating: rating) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let updated):
+                        self.applyRatingUpdate(updated)
+                        NotificationCenter.default.post(name: .placeRatingChanged, object: self,
+                                                        userInfo: ["placeId": updated.id, "place": updated])
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+        PlaceRatingSheetViewController.present(sheet, from: self)
+    }
+
+    /// Keep the in-memory copy that carries my rating in sync and re-render.
+    private func applyRatingUpdate(_ updated: Place) {
+        if updated.id == place.id {
+            place.userRating = updated.userRating
+            place.userRatedAt = updated.userRatedAt
+            place.ratingHistory = updated.ratingHistory
+        } else if updated.id == mySaveOfVenue?.id {
+            mySaveOfVenue = updated
+        } else {
+            return
+        }
+        updateUserRatingLine()
+        updateAboutCardVisibility()
+    }
+
+    /// A rating changed elsewhere (the post-check-in prompt, another copy of
+    /// this page). Only react when it's this save or my save of this venue.
+    @objc private func handlePlaceRatingChanged(_ note: Notification) {
+        guard note.object as? PlaceDetailViewController !== self,
+              let updated = note.userInfo?["place"] as? Place else { return }
+        applyRatingUpdate(updated)
     }
 
     /// A check-in just landed (from this page or anywhere else). Apply the
@@ -3380,6 +3456,9 @@ extension PlaceDetailViewController: PlaceNotesEditControllerDelegate {
 
     func notesEdit(_ controller: PlaceNotesEditController, didLoadMySave mine: Place) {
         mySaveOfVenue = mine
+        // My own rating line appears once my copy of the venue is known
+        updateUserRatingLine()
+        updateAboutCardVisibility()
         // Refresh just the notes section with our own note
         if let myNotes = mine.privateNotes, !myNotes.isEmpty {
             notesLabel.text = myNotes
