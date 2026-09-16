@@ -3,7 +3,7 @@
 // opaque JSON per (user, widgetId) with an optimistic version lock; widget
 // schemas live entirely in the iOS FavWidgets package.
 const widgetDataService = require('../../services/widgetDataService');
-const { ValidationError, VersionConflictError } = require('../../services/widgetDataService');
+const { ValidationError, VersionConflictError, SchemaTooOldError } = require('../../services/widgetDataService');
 const piggyBankService = require('../../services/piggyBankService');
 
 // Read at call time so the flag can flip without a restart in tests.
@@ -75,6 +75,17 @@ exports.putData = async (req, res) => {
       ...(piggyBank && piggyBank.credited ? { piggyBank } : {})
     });
   } catch (error) {
+    if (error instanceof SchemaTooOldError) {
+      // Deliberately NOT a merge-and-retry. This client cannot represent the
+      // document it is holding, so retrying would overwrite fields it silently
+      // dropped on decode. Refusing the write is what protects the data.
+      return res.status(409).json({
+        success: false,
+        code: error.code,
+        message: 'This widget was saved by a newer version of the app — update to make changes here',
+        current: error.current
+      });
+    }
     if (error instanceof VersionConflictError) {
       return res.status(409).json({
         success: false,

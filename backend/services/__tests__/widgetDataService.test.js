@@ -209,3 +209,58 @@ describe('get / getMany / remove', () => {
     expect(r.document.version).toBe(1);
   });
 });
+
+
+// A widget payload is a plain Codable struct, so a client decoding a document
+// it doesn't fully understand drops the unknown fields. Letting it save would
+// delete those fields from the server permanently — not a conflict, just
+// silent data loss caused by a build that already shipped.
+describe('schema downgrade protection', () => {
+  test('an older client cannot overwrite a document written by a newer one', async () => {
+    const saved = await service.save('u1', 'stocks', { version: 0, payload: '{"lists":[{"name":"Tech"}]}', schemaVersion: 2 });
+    expect(saved.document.schemaVersion).toBe(2);
+
+    await expect(
+      service.save('u1', 'stocks', { version: saved.document.version, payload: '{"entries":[]}', schemaVersion: 1 })
+    ).rejects.toMatchObject({ code: 'SCHEMA_TOO_OLD' });
+
+    // The newer document is still intact.
+    const after = await service.get('u1', 'stocks');
+    expect(after.payload).toBe('{"lists":[{"name":"Tech"}]}');
+    expect(after.schemaVersion).toBe(2);
+  });
+
+  test('the rejection carries the stored document so the client can adopt it', async () => {
+    const saved = await service.save('u1', 'stocks', { version: 0, payload: '{"lists":[]}', schemaVersion: 2 });
+    try {
+      await service.save('u1', 'stocks', { version: saved.document.version, payload: '{"entries":[]}', schemaVersion: 1 });
+      throw new Error('should have been refused');
+    } catch (error) {
+      expect(error.code).toBe('SCHEMA_TOO_OLD');
+      expect(error.current.schemaVersion).toBe(2);
+      expect(error.storedSchema).toBe(2);
+      expect(error.incomingSchema).toBe(1);
+    }
+  });
+
+  test('the same schema still saves normally', async () => {
+    const saved = await service.save('u1', 'stocks', { version: 0, payload: '{"lists":[]}', schemaVersion: 2 });
+    const again = await service.save('u1', 'stocks', { version: saved.document.version, payload: '{"lists":[1]}', schemaVersion: 2 });
+    expect(again.document.version).toBe(2);
+  });
+
+  test('a newer schema upgrades the document', async () => {
+    const saved = await service.save('u1', 'stocks', { version: 0, payload: '{"entries":[]}', schemaVersion: 1 });
+    const upgraded = await service.save('u1', 'stocks', { version: saved.document.version, payload: '{"lists":[]}', schemaVersion: 2 });
+    expect(upgraded.document.schemaVersion).toBe(2);
+  });
+
+  test('documents written before schemaVersion existed stay writable', async () => {
+    // Everything already in production carries null. Blocking those would
+    // break every existing widget rather than protect anything.
+    const saved = await service.save('u1', 'water', { version: 0, payload: '{}' });
+    expect(saved.document.schemaVersion).toBeNull();
+    const again = await service.save('u1', 'water', { version: saved.document.version, payload: '{"goalMl":1}', schemaVersion: 1 });
+    expect(again.document.schemaVersion).toBe(1);
+  });
+});

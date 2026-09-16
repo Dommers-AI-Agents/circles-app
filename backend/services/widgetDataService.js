@@ -39,6 +39,30 @@ class VersionConflictError extends Error {
   }
 }
 
+/**
+ * A client running an older schema tried to overwrite a document written by a
+ * newer one.
+ *
+ * Widget payloads are plain Codable structs, so a client decoding a document
+ * it doesn't fully understand silently drops the fields it has never heard of.
+ * If we then let it save, those fields are gone from the server for good — not
+ * a conflict, not a merge, just deletion by a build that shipped months ago.
+ *
+ * This must be enforced here rather than on the device, because the clients
+ * that cause the damage are already in people's hands and cannot be fixed.
+ */
+class SchemaTooOldError extends Error {
+  constructor(current, storedSchema, incomingSchema) {
+    super('Widget document was written by a newer version of the app');
+    this.name = 'SchemaTooOldError';
+    this.status = 409;
+    this.code = 'SCHEMA_TOO_OLD';
+    this.current = current;
+    this.storedSchema = storedSchema;
+    this.incomingSchema = incomingSchema;
+  }
+}
+
 const docIdFor = (userId, widgetId) => `${userId}_${widgetId}`;
 
 function assertWidgetId(widgetId) {
@@ -137,6 +161,14 @@ class WidgetDataService {
       if (storedVersion !== version) {
         throw new VersionConflictError(toClientDoc(stored));
       }
+      // Refuse a downgrade. Documents written before schemaVersion existed
+      // carry null and stay permissive, and an unversioned client can still
+      // write to an unversioned document — only a known-older schema writing
+      // over a known-newer one is blocked.
+      const storedSchema = stored ? stored.schemaVersion : null;
+      if (Number.isInteger(storedSchema) && Number.isInteger(schema) && schema < storedSchema) {
+        throw new SchemaTooOldError(toClientDoc(stored), storedSchema, schema);
+      }
       const now = new Date().toISOString();
       const next = {
         userId,
@@ -167,6 +199,7 @@ module.exports = new WidgetDataService();
 module.exports.WidgetDataService = WidgetDataService;
 module.exports.ValidationError = ValidationError;
 module.exports.VersionConflictError = VersionConflictError;
+module.exports.SchemaTooOldError = SchemaTooOldError;
 module.exports.normalizePayload = normalizePayload;
 module.exports.toClientDoc = toClientDoc;
 module.exports.WIDGET_ID_RE = WIDGET_ID_RE;
