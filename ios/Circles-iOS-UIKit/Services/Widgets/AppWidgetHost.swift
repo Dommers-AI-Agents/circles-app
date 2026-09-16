@@ -108,6 +108,14 @@ final class AppWidgetHost: FavWidgetHost {
                     WidgetCoordinate(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude)
                 })
             }
+            // The mirror-image failure: Core Location never calling back
+            // (authorization limbo, a stalled fix) would leave this await
+            // hanging and the widget waiting forever. "No location" after
+            // 10s is the honest answer instead.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                guard once.claim() else { return }
+                continuation.resume(returning: nil)
+            }
         }
     }
 
