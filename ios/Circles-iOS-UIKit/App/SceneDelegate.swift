@@ -788,6 +788,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         case .meTab:
             // Business/claim emails: venue management lives on the Me tab
             selectTabOrStash(index: 3, pendingKey: "me")
+        case .piggyBank:
+            navigateToCreateWallet()
         case .referral(let code):
             handleReferralCode(code)
         case .sticker(let code):

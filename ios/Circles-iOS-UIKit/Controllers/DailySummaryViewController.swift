@@ -112,7 +112,7 @@ class DailySummaryViewController: UIViewController {
         containerView.addSubview(dismissButton)
         
         // Header
-        headerLabel.text = "Your Daily Summary"
+        headerLabel.text = "Your Weekly Summary"
         headerLabel.font = .systemFont(ofSize: 24, weight: .bold)
         headerLabel.textAlignment = .center
         headerLabel.translatesAutoresizingMaskIntoConstraints = false

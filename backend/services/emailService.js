@@ -28,6 +28,11 @@ class EmailService {
         // Create a dummy transporter that logs instead of sending
         this.createMockTransporter();
       } else {
+        // Pooled: the host (mail.favcircles.com) caps concurrent SMTP
+        // connections per IP and answered "421 Too many concurrent SMTP
+        // connections" to most of a 30-recipient fan-out (every summary email
+        // to Wes, Brittany, Sal… bounced this way from 2026-09-05 on). A pool
+        // of 2 connections queues sends instead of opening one socket each.
         this.transporter = nodemailer.createTransport({
           host: process.env.SMTP_HOST,
           port: parseInt(process.env.SMTP_PORT || '587'),
@@ -36,11 +41,17 @@ class EmailService {
             user: process.env.SMTP_USER,
             pass: process.env.SMTP_PASS
           },
+          pool: true,
+          maxConnections: parseInt(process.env.SMTP_MAX_CONNECTIONS || '2', 10),
+          maxMessages: 100,
+          rateDelta: 1000,
+          rateLimit: parseInt(process.env.SMTP_RATE_LIMIT || '3', 10), // messages per rateDelta
           tls: {
             // Do not fail on invalid certs (useful for self-signed)
             rejectUnauthorized: false
           }
         });
+        this.isConfigured = true;
         
         console.log('📧 Custom SMTP configured:', {
           host: process.env.SMTP_HOST,
@@ -58,6 +69,7 @@ class EmailService {
         
         this.createMockTransporter();
       } else {
+        this.isConfigured = true;
         this.transporter = nodemailer.createTransport({
           service: 'gmail',
           auth: {
@@ -79,6 +91,7 @@ class EmailService {
   }
 
   createMockTransporter() {
+    this.isConfigured = false;
     // Create a dummy transporter that logs instead of sending
     this.transporter = {
       sendMail: async (options) => {
@@ -981,6 +994,30 @@ Rewards redeemed: ${safeStats.redemptions}`;
   }
 
   // Generic email sending method
+  // Transient SMTP failures (connection cap, greeting timeout, reset socket)
+  // get a couple of spaced retries; auth/recipient errors fail immediately.
+  static isTransientSmtpError(error) {
+    const text = `${error && error.responseCode ? error.responseCode + ' ' : ''}${(error && error.message) || ''}`;
+    return /^4\d\d|421|Too many concurrent|Invalid greeting|ECONNRESET|ETIMEDOUT|ECONNREFUSED|EPIPE|Timeout/i.test(text);
+  }
+
+  async sendWithRetry(mailOptions, attempts = 3) {
+    const delays = [2000, 6000];
+    let lastError;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        return await this.transporter.sendMail(mailOptions);
+      } catch (error) {
+        lastError = error;
+        if (attempt === attempts || !EmailService.isTransientSmtpError(error)) throw error;
+        const wait = delays[attempt - 1] || 6000;
+        console.warn(`📧 Transient SMTP error sending to ${mailOptions.to} (attempt ${attempt}/${attempts}): ${error.message} — retrying in ${wait}ms`);
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      }
+    }
+    throw lastError;
+  }
+
   async sendEmail({ to, subject, html, text, attachments }) {
     try {
       // Check if transporter is configured
@@ -999,7 +1036,7 @@ Rewards redeemed: ${safeStats.redemptions}`;
       };
 
       console.log(`📧 Attempting to send email to ${to} with subject: ${subject}`);
-      const result = await this.transporter.sendMail(mailOptions);
+      const result = await this.sendWithRetry(mailOptions);
       console.log(`✅ Email sent successfully to ${to}: ${subject} (Message ID: ${result.messageId})`);
       return { success: true, messageId: result.messageId };
     } catch (error) {

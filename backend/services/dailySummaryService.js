@@ -5,27 +5,35 @@ const { COLLECTIONS } = require('../models/FirestoreModels');
 
 const db = getFirestore();
 
+// WEEKLY since 2026-09-15 (Wes: "daily is too much"). The module, the
+// `dailySummary` preference key, the `daily_summary` push type, the
+// `lastDailySummary` stamp and the /daily-summary routes keep their names so
+// shipped iOS builds keep working; everything they describe is now a
+// once-a-week recap of the last 7 days that also reports the user's FavCoins.
 class DailySummaryService {
   constructor() {
-    this.batchSize = 50; // Process users in batches
+    this.batchSize = 50; // Process users in batches (stats + push fan-out; email is pooled)
+    this.windowDays = 7;
+    // Local weekday the recap goes out (0 = Sunday … 6 = Saturday)
+    this.summaryWeekday = 1; // Monday
   }
 
-  // Send daily summaries to all eligible users.
-  // Runs every hour: each user gets their summary at the hour of their
-  // preferred summaryTime, evaluated in their own timezone (both from
-  // notificationPreferences; defaults 12:00 America/New_York).
+  // Send weekly summaries to all eligible users.
+  // Runs every hour: each user gets their summary on SUMMARY_WEEKDAY at the
+  // hour of their preferred summaryTime, evaluated in their own timezone
+  // (both from notificationPreferences; defaults 12:00 America/New_York).
   async sendDailySummaries() {
-    console.log('📊 Starting daily summary generation...');
+    console.log('📊 Starting weekly summary generation...');
 
     try {
       // Implement distributed lock to prevent concurrent executions
       const lockAcquired = await this.acquireDailySummaryLock();
       if (!lockAcquired) {
-        console.log('⚠️ Daily summary already running for this hour - skipping execution');
+        console.log('⚠️ Weekly summary already running for this hour - skipping execution');
         return;
       }
 
-      console.log('🔒 Acquired daily summary execution lock');
+      console.log('🔒 Acquired weekly summary execution lock');
 
       try {
         // Get all users with daily summary enabled
@@ -34,17 +42,17 @@ class DailySummaryService {
           .get();
 
       if (usersSnapshot.empty) {
-        console.log('No users have daily summary enabled');
+        console.log('No users have the weekly summary enabled');
         return;
       }
 
       const allUsers = [];
       usersSnapshot.forEach(doc => allUsers.push({ id: doc.id, ...doc.data() }));
 
-      // Only users whose local clock is at their chosen summary hour right now
+      // Only users whose local clock is at their chosen summary hour on summary day right now
       const users = allUsers.filter(user => this.isUsersSummaryHour(user));
 
-      console.log(`📊 Processing daily summaries for ${users.length} of ${allUsers.length} enabled users (local-hour match)`);
+      console.log(`📊 Processing weekly summaries for ${users.length} of ${allUsers.length} enabled users (local weekday+hour match)`);
 
       // Process users in batches
       for (let i = 0; i < users.length; i += this.batchSize) {
@@ -52,11 +60,11 @@ class DailySummaryService {
         await Promise.all(batch.map(user => this.generateAndSendSummary(user)));
       }
 
-        console.log('✅ Daily summaries completed');
+        console.log('✅ Weekly summaries completed');
       } finally {
         // Always release the lock, even if there was an error
         await this.releaseDailySummaryLock();
-        console.log('🔓 Released daily summary execution lock');
+        console.log('🔓 Released weekly summary execution lock');
       }
     } catch (error) {
       console.error('❌ Error in sendDailySummaries:', error);
@@ -66,49 +74,61 @@ class DailySummaryService {
     }
   }
 
-  // Generate and send summary for individual user
-  async generateAndSendSummary(user) {
+  // Generate and send summary for individual user. `stamp: false` sends
+  // without marking the week done (test route) so a manual check never
+  // suppresses the real Monday send.
+  async generateAndSendSummary(user, { stamp = true } = {}) {
     try {
       const userId = user.id;
       const stats = await this.gatherUserStats(userId);
       
-      // Check if user has already received today's summary
-      if (await this.hasReceivedTodaysSummary(userId)) {
-        console.log(`⏭️ User ${user.displayName || userId} already received today's summary`);
+      // Check if user has already received this week's summary
+      if (await this.hasReceivedThisWeeksSummary(userId)) {
+        console.log(`⏭️ User ${user.displayName || userId} already received this week's summary`);
         return;
       }
 
-      // Quiet days stay quiet: a summary only goes out when there is real
-      // network activity to report. (The old "engagement prompt" fallback was
-      // retired — the engagement reminder job already covers re-engagement,
-      // and stacking both trained users to mute notifications.)
+      // Quiet weeks stay quiet: a summary only goes out when there is real
+      // network activity (or FavCoins earned) to report. (The old "engagement
+      // prompt" fallback was retired — the engagement reminder job already
+      // covers re-engagement, and stacking both trained users to mute
+      // notifications.)
       if (!this.hasActivity(stats)) {
-        console.log(`⏭️ Skipping summary for ${user.displayName || userId} - no activity`);
+        console.log(`⏭️ Skipping summary for ${user.displayName || userId} - no activity this week`);
         return;
       }
 
       const notification = this.buildSummaryNotification(stats, user);
 
-      // Send push notification
-      await notificationService.sendToUser(userId, notification);
+      // Send push notification (best-effort; the email is the deliverable)
+      try {
+        await notificationService.sendToUser(userId, notification);
+      } catch (pushError) {
+        console.error(`⚠️ Weekly summary push failed for ${userId}:`, pushError.message);
+      }
 
-      // Send email summary
-      await this.sendSummaryEmail(user, stats, notification);
+      // Send email summary. Only a delivered email (or a user with no email
+      // at all) stamps the week as done — a bounced send used to be stamped
+      // too, which silently dropped everyone's summary for the week.
+      const emailed = await this.sendSummaryEmail(user, stats, notification);
+      if (!emailed && user.email) {
+        console.warn(`⚠️ Weekly summary for ${user.displayName || userId} NOT stamped (email failed) — will retry next matching hour`);
+        return;
+      }
 
-      // Record that we sent today's summary
-      await this.recordSummarySent(userId);
+      if (stamp) await this.recordSummarySent(userId);
 
-      console.log(`✅ Sent daily summary to ${user.displayName || userId}`);
+      console.log(`✅ Sent weekly summary to ${user.displayName || userId}${stamp ? '' : ' (not stamped)'}`);
     } catch (error) {
       console.error(`❌ Error sending summary to user ${user.id}:`, error);
     }
   }
 
-  // Gather statistics for user's network activity
+  // Gather statistics for user's network activity over the last windowDays
   async gatherUserStats(userId) {
-    // Short TTL cache: the summary describes "yesterday", which doesn't change
-    // during the day — and the modal fetch usually lands minutes after the
-    // scheduler computed the same stats to build the push.
+    // Short TTL cache: the summary describes the past week, which barely
+    // changes within minutes — and the modal fetch usually lands right after
+    // the scheduler computed the same stats to build the push.
     this._statsCache = this._statsCache || new Map();
     const cached = this._statsCache.get(userId);
     if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.stats;
@@ -123,12 +143,17 @@ class DailySummaryService {
       placeLikes: 0,
       topContributors: [],
       connectionCount: 0,
-      userPlaceCount: 0
+      userPlaceCount: 0,
+      windowDays: this.windowDays,
+      favCoins: null
     };
 
+    // Window start: midnight `windowDays` ago. (Variable kept as `yesterday`
+    // below only to keep the diff of the query code readable.)
     const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setDate(yesterday.getDate() - this.windowDays);
     yesterday.setHours(0, 0, 0, 0);
+    stats.windowStart = yesterday.toISOString();
 
     try {
       // Get user's connections (need to check both userId and connectedUserId fields)
@@ -171,7 +196,7 @@ class DailySummaryService {
       connectionIds.length = 0;
       connectionIds.push(...uniqueConnectionIds);
 
-      // Get new connections from yesterday
+      // New connections in the window
       try {
         const [newConnectionsAsUser, newConnectionsAsConnected] = await Promise.all([
           db.collection(COLLECTIONS.CONNECTIONS)
@@ -294,8 +319,51 @@ class DailySummaryService {
       console.error(`Error gathering stats for user ${userId}:`, error);
     }
 
+    // FavCoins: balance + what the week earned (never fails the summary)
+    try {
+      stats.favCoins = await this.gatherFavCoinStats(userId, yesterday);
+    } catch (error) {
+      console.error(`Error gathering FavCoin stats for user ${userId}:`, error.message);
+    }
+
     this._statsCache.set(userId, { stats, at: Date.now() });
     return stats;
+  }
+
+  // The user's piggy bank: spendable/pending/lifetime balances plus the coins
+  // earned inside the summary window. Earn rows only — claims (coins leaving
+  // for the wallet) and reversals don't count as "earned this week".
+  async gatherFavCoinStats(userId, windowStart) {
+    const { PIGGY_COLLECTIONS } = require('../models/PiggyBankModels');
+    const [bankDoc, weekSnap] = await Promise.all([
+      db.collection(PIGGY_COLLECTIONS.BANKS).doc(userId).get(),
+      db.collection(PIGGY_COLLECTIONS.LEDGER)
+        .where('userId', '==', userId)
+        .where('createdAt', '>=', windowStart.toISOString())
+        .orderBy('createdAt', 'desc')
+        .get()
+    ]);
+    const round2 = (n) => Math.round((n || 0) * 100) / 100;
+    const bank = bankDoc.exists ? bankDoc.data() : {};
+    let earnedThisWeek = 0;
+    let earnEvents = 0;
+    weekSnap.forEach((doc) => {
+      const row = doc.data();
+      if (row.eventType === 'claim' || row.reversedAt || (row.status && row.status.startsWith('claim'))) return;
+      if (typeof row.coins === 'number' && row.coins > 0) {
+        earnedThisWeek += row.coins;
+        earnEvents += 1;
+      }
+    });
+    return {
+      confirmedCoins: round2(bank.confirmedCoins),
+      pendingCoins: round2(bank.pendingCoins),
+      lifetimeCoins: round2(bank.lifetimeCoins),
+      settledOnChain: round2(bank.settledOnChain),
+      hasWallet: !!bank.walletAddress,
+      earnedThisWeek: round2(earnedThisWeek),
+      earnEventsThisWeek: earnEvents
+    };
   }
 
   // Check if user has any activity to report
@@ -305,7 +373,15 @@ class DailySummaryService {
            stats.newConnections > 0 || 
            stats.unreadMessages > 0 || 
            stats.placeComments > 0 ||
-           stats.placeLikes > 0;
+           stats.placeLikes > 0 ||
+           !!(stats.favCoins && stats.favCoins.earnedThisWeek > 0);
+  }
+
+  // "12.5 FavCoins" / "1 FavCoin" — plural is always "FavCoins", never "FavCoin's"
+  formatCoins(n) {
+    const value = Math.round((n || 0) * 100) / 100;
+    const text = Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0$/, '');
+    return `${text} FavCoin${value === 1 ? '' : 's'}`;
   }
 
   // Build the summary notification
@@ -353,9 +429,14 @@ class DailySummaryService {
       parts.push(activityParts.join(' & ') + ' on your places');
     }
 
+    // FavCoins earned this week
+    if (stats.favCoins && stats.favCoins.earnedThisWeek > 0) {
+      emojis.push('🌵');
+      parts.push(`+${this.formatCoins(stats.favCoins.earnedThisWeek)} earned`);
+    }
+
     // Build title and body with more detail
-    const greeting = this.getGreeting(user);
-    const title = `Your Daily Summary`;
+    const title = `Your Weekly Summary`;
     
     // Create a concise but informative body
     let body = '';
@@ -389,14 +470,14 @@ class DailySummaryService {
       day: 'numeric',
       year: 'numeric'
     });
-    const subtitle = dateFormatter.format(today);
+    const subtitle = `Week ending ${dateFormatter.format(today)}`;
 
     return {
       type: 'daily_summary',
       title,
       subtitle, // Add subtitle with formatted date
       body: body + contributorNote,
-      // Daily summaries should not affect badge count - they're informational only
+      // Summaries should not affect badge count - they're informational only
       badge: 0,
       data: {
         // Keep only essential fields to stay under APNS 4KB limit
@@ -416,11 +497,15 @@ class DailySummaryService {
     return '🌙';
   }
 
-  // Record that summary was sent today
+  // Record that this week's summary was sent. `lastWeeklySummary` is the
+  // dedupe key; `lastDailySummary` is still written for older scripts and
+  // the admin reset route that read it.
   async recordSummarySent(userId) {
     try {
+      const now = new Date().toISOString();
       await db.collection(COLLECTIONS.USERS).doc(userId).update({
-        lastDailySummary: new Date().toISOString()
+        lastWeeklySummary: now,
+        lastDailySummary: now
       });
     } catch (error) {
       console.error(`Error recording summary sent for ${userId}:`, error);
@@ -428,45 +513,56 @@ class DailySummaryService {
   }
 
   // True when the user's local clock is currently in the hour of their chosen
-  // summaryTime. Invalid/missing timezone falls back to America/New_York,
-  // which matches the historical noon-ET behavior.
-  isUsersSummaryHour(user) {
+  // summaryTime AND it's summary day (Monday) where they are. Invalid/missing
+  // timezone falls back to America/New_York, which matches the historical
+  // noon-ET behavior.
+  isUsersSummaryHour(user, now = new Date()) {
     const prefs = user.notificationPreferences || {};
     const preferredHour = parseInt(String(prefs.summaryTime || '12:00').split(':')[0], 10);
     if (isNaN(preferredHour)) return false;
 
-    let localHour;
-    try {
-      localHour = parseInt(new Intl.DateTimeFormat('en-US', {
-        timeZone: prefs.timezone || 'America/New_York',
-        hour: 'numeric',
-        hour12: false
-      }).format(new Date()), 10) % 24;
-    } catch (error) {
-      localHour = parseInt(new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York',
-        hour: 'numeric',
-        hour12: false
-      }).format(new Date()), 10) % 24;
-    }
-
-    return localHour === preferredHour;
+    const local = this.localClock(prefs.timezone, now);
+    return local.weekday === this.summaryWeekday && local.hour === preferredHour;
   }
 
-  // Check if user already received summary today. A rolling 20-hour window
-  // instead of a calendar-date compare: it is timezone-proof (the server's
-  // "today" is not the user's "today") and still allows the next day's
-  // summary at the same local hour, including across DST shifts.
-  async hasReceivedTodaysSummary(userId) {
+  // { hour (0-23), weekday (0=Sunday) } in the given IANA zone
+  localClock(timeZone, now = new Date()) {
+    const read = (zone) => {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: zone,
+        hour: 'numeric',
+        hour12: false,
+        weekday: 'short'
+      }).formatToParts(now);
+      const hour = parseInt(parts.find((p) => p.type === 'hour').value, 10) % 24;
+      const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+        .indexOf(parts.find((p) => p.type === 'weekday').value);
+      return { hour, weekday };
+    };
+    try {
+      return read(timeZone || 'America/New_York');
+    } catch (error) {
+      return read('America/New_York');
+    }
+  }
+
+  // Check if user already received this week's summary. A rolling 6-day
+  // window instead of a calendar compare: timezone-proof, and it still lets
+  // next Monday's send through even across DST shifts. Reads ONLY the new
+  // lastWeeklySummary stamp: the retired daily job kept writing
+  // lastDailySummary right up to the deploy, and honoring it would have
+  // silently skipped everyone's first Monday.
+  isWithinWeeklyWindow(userData, now = Date.now()) {
+    if (!userData || !userData.lastWeeklySummary) return false;
+    const hoursSinceLast = (now - new Date(userData.lastWeeklySummary).getTime()) / (1000 * 60 * 60);
+    return hoursSinceLast < 6 * 24;
+  }
+
+  async hasReceivedThisWeeksSummary(userId) {
     try {
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
       if (!userDoc.exists) return false;
-
-      const userData = userDoc.data();
-      if (!userData.lastDailySummary) return false;
-
-      const hoursSinceLast = (Date.now() - new Date(userData.lastDailySummary).getTime()) / (1000 * 60 * 60);
-      return hoursSinceLast < 20;
+      return this.isWithinWeeklyWindow(userDoc.data());
     } catch (error) {
       console.error(`Error checking summary status for ${userId}:`, error);
       return false;
@@ -474,11 +570,14 @@ class DailySummaryService {
   }
 
   // Send summary email
+  // Resolves true when the email was handed to the SMTP server (or the user
+  // has no email address), false on failure — the caller decides whether the
+  // week is done.
   async sendSummaryEmail(user, stats, notification) {
     try {
       if (!user.email) {
         console.log(`⚠️ No email for user ${user.displayName}`);
-        return;
+        return true;
       }
 
       const emailHtml = this.buildSummaryEmailHtml(user, stats, notification);
@@ -490,9 +589,11 @@ class DailySummaryService {
       });
 
       console.log(`📧 Sent summary email to ${user.email}`);
+      return true;
     } catch (error) {
-      console.error(`❌ Error sending summary email to ${user.email}:`, error);
-      // Don't throw - email failure shouldn't stop the process
+      console.error(`❌ Error sending summary email to ${user.email}:`, error.message);
+      // Don't throw - email failure shouldn't stop the batch
+      return false;
     }
   }
 
@@ -546,6 +647,34 @@ class DailySummaryService {
       `);
     }
 
+    // FavCoins card — always present when the user has a piggy bank so the
+    // email doubles as the weekly balance statement
+    if (stats.favCoins && (stats.favCoins.lifetimeCoins > 0 || stats.favCoins.earnedThisWeek > 0)) {
+      const c = stats.favCoins;
+      const growth = c.earnedThisWeek > 0
+        ? `<p style="margin: 0 0 6px 0; color: #2e7d32; font-weight: 600;">+${this.formatCoins(c.earnedThisWeek)} earned this week (${c.earnEventsThisWeek} reward${c.earnEventsThisWeek === 1 ? '' : 's'})</p>`
+        : `<p style="margin: 0 0 6px 0; color: #666;">No new FavCoins this week — add a place, check in, or share a circle to earn more.</p>`;
+      const pending = c.pendingCoins > 0
+        ? ` <span style="color: #999;">(+${this.formatCoins(c.pendingCoins)} clearing)</span>`
+        : '';
+      const walletLine = c.hasWallet
+        ? `${c.settledOnChain > 0 ? `${this.formatCoins(c.settledOnChain)} already sent to your wallet. ` : ''}Claim your balance to your Cactus wallet 🌵 anytime from the Piggy Bank.`
+        : 'Create your wallet in the app and you can claim them to the Cactus blockchain 🌵.';
+      statsHtml.push(`
+        <div style="background: #f1f8e9; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #c5e1a5;">
+          <h3 style="margin: 0 0 10px 0; color: #558b2f;">🌵 Your FavCoins</h3>
+          <p style="margin: 0 0 6px 0; color: #333; font-size: 18px; font-weight: 700;">${this.formatCoins(c.confirmedCoins)} available${pending}</p>
+          ${growth}
+          <p style="margin: 0 0 6px 0; color: #666;">Lifetime earned: ${this.formatCoins(c.lifetimeCoins)}</p>
+          <p style="margin: 10px 0 0 0; color: #666; font-size: 13px; line-height: 1.5;">
+            FavCoins are real crypto coins on the Cactus blockchain 🌵 that you earn for sharing the places you love.
+            ${walletLine}<br>
+            See them in FavCircles: <strong>Rewards → Piggy Bank</strong>.
+          </p>
+        </div>
+      `);
+    }
+
     if (stats.placeComments > 0 || stats.placeLikes > 0) {
       const activities = [];
       if (stats.placeComments > 0) activities.push(`${stats.placeComments} comment${stats.placeComments > 1 ? 's' : ''}`);
@@ -572,7 +701,7 @@ class DailySummaryService {
           <!-- Header -->
           <div style="background-color: #4CAF50; padding: 30px 20px; text-align: center;">
             <h1 style="margin: 0; color: #ffffff; font-size: 24px;">Circles</h1>
-            <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 16px;">Your Daily Summary</p>
+            <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 16px;">Your Weekly Summary</p>
           </div>
           
           <!-- Content -->
@@ -582,16 +711,20 @@ class DailySummaryService {
             </h2>
             
             <p style="color: #666; line-height: 1.6; margin: 0 0 20px 0;">
-              Here's what happened in your Circles network yesterday:
+              Here's what happened in your Circles network this week:
             </p>
             
             ${statsHtml.join('')}
             
-            <!-- CTA Button -->
+            <!-- CTA Buttons -->
             <div style="text-align: center; margin: 30px 0;">
               <a href="https://api.favcircles.com/app/daily-summary" style="display: inline-block; background-color: #4CAF50; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 25px; font-weight: 600;">
                 View in App
               </a>
+              ${stats.favCoins ? `
+              <a href="https://api.favcircles.com/app/open?path=create-wallet" style="display: inline-block; background-color: #558b2f; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 25px; font-weight: 600; margin: 8px 0 0 0;">
+                🌵 See my FavCoins
+              </a>` : ''}
             </div>
             
             <!-- Footer -->
@@ -600,7 +733,7 @@ class DailySummaryService {
                 ${today}
               </p>
               <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
-                You're receiving this because you have daily summaries enabled.<br>
+                You're receiving this because you have the weekly summary enabled.<br>
                 <a href="https://api.favcircles.com/app/open?path=settings/notifications" style="color: #4CAF50;">Manage notification preferences</a>
               </p>
             </div>

@@ -19,7 +19,8 @@ struct NotificationPreferences: Codable {
     var newFollowers: Bool = true
     var dailyDigest: Bool = false
     
-    // Daily summary settings
+    // Weekly summary settings (key kept as dailySummary for server compatibility;
+    // the recap has been weekly since 2026-09)
     var dailySummary: Bool = true
     var summaryTime: String = "12:00"
     var timezone: String = "America/New_York"

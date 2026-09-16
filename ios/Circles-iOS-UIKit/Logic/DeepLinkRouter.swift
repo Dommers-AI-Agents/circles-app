@@ -25,6 +25,8 @@ enum DeepLinkDestination: Equatable {
     case network
     case addPlace
     case meTab
+    /// Rewards hub on the Piggy Bank tab (weekly summary email "See my FavCoins").
+    case piggyBank
     case referral(code: String)
     case sticker(code: String)
     case upgradePaywall
@@ -111,6 +113,8 @@ struct DeepLinkRouter {
         case "network", "network/find-friends": return .network
         case "add-place": return .addPlace
         case "me": return .meTab
+        // Weekly summary email "See my FavCoins" — the Piggy Bank tab
+        case "create-wallet", "rewards/piggy-bank": return .piggyBank
         default: return nil
         }
     }

@@ -692,7 +692,10 @@ exports.getDailySummary = async (req, res, next) => {
       placeLikes: stats.placeLikes,
       topContributors: stats.topContributors,
       connectionCount: stats.connectionCount,
-      userPlaceCount: stats.userPlaceCount
+      userPlaceCount: stats.userPlaceCount,
+      windowDays: stats.windowDays,
+      windowStart: stats.windowStart || null,
+      favCoins: stats.favCoins || null
     };
     
     console.log(`📊 Summary data gathered:`, summaryData);
