@@ -22,6 +22,7 @@ class FakeQuery {
           case '==': return v === f.value;
           case '<=': return v !== null && v !== undefined && v <= f.value;
           case '>=': return v !== null && v !== undefined && v >= f.value;
+          case 'in': return Array.isArray(f.value) && f.value.includes(v);
           default: throw new Error(`FakeQuery: unsupported operator ${f.op}`);
         }
       });
@@ -32,12 +33,17 @@ class FakeQuery {
     }
     if (this.max !== null) rows = rows.slice(0, this.max);
     const docs = rows.map(({ id, data }) => this.store.snapshot(id, data));
-    return { docs, empty: docs.length === 0, size: docs.length };
+    return { docs, empty: docs.length === 0, size: docs.length, forEach: (fn) => docs.forEach(fn) };
   }
 }
 
 class FakeCollection {
   constructor(store) { this.store = store; }
+  add(data) {
+    const id = `auto_${++this.store.autoId}`;
+    this.store.docs.set(id, { ...data });
+    return Promise.resolve(this.store.ref(id));
+  }
   doc(id) { return this.store.ref(id); }
   where(...args) { return new FakeQuery(this.store).where(...args); }
   orderBy(...args) { return new FakeQuery(this.store).orderBy(...args); }
@@ -45,15 +51,26 @@ class FakeCollection {
 }
 
 class FakeFirestore {
-  constructor() {
+  constructor({ namespaced = false } = {}) {
     this.docs = new Map();
     this.collections = new Map();
+    this.autoId = 0;
+    // namespaced: each collection gets its own doc map (multi-collection
+    // services). Default keeps the original single-map behaviour, where
+    // db.docs is inspected directly by the postcard tests.
+    this.namespaced = namespaced;
   }
 
   collection(name) {
-    if (!this.collections.has(name)) this.collections.set(name, new FakeCollection(this));
+    if (!this.collections.has(name)) {
+      const store = this.namespaced ? new FakeFirestore() : this;
+      this.collections.set(name, new FakeCollection(store));
+    }
     return this.collections.get(name);
   }
+
+  // namespaced only: the backing map for one collection.
+  rows(name) { return this.collection(name).store.docs; }
 
   snapshot(id, data) {
     const store = this;
@@ -69,6 +86,7 @@ class FakeFirestore {
     const store = this;
     return {
       id,
+      store,
       async get() { return store.snapshot(id, store.docs.get(id)); },
       async set(data) { store.docs.set(id, { ...data }); },
       async create(data) {
@@ -88,16 +106,18 @@ class FakeFirestore {
    * conflicts deterministically instead, by mutating between calls.
    */
   async runTransaction(body) {
-    const store = this;
+    const fallback = this;
     const writes = [];
+    const storeOf = (ref) => ref.store || fallback;
     const tx = {
-      async get(ref) { return store.snapshot(ref.id, store.docs.get(ref.id)); },
-      update(ref, patch) { writes.push([ref.id, patch]); },
-      set(ref, data) { writes.push([ref.id, data]); }
+      async get(ref) { return storeOf(ref).snapshot(ref.id, storeOf(ref).docs.get(ref.id)); },
+      update(ref, patch) { writes.push([ref, patch]); },
+      set(ref, data) { writes.push([ref, data]); }
     };
     const result = await body(tx);
-    for (const [id, patch] of writes) {
-      store.docs.set(id, applyPatch(store.docs.get(id) || {}, patch));
+    for (const [ref, patch] of writes) {
+      const store = storeOf(ref);
+      store.docs.set(ref.id, applyPatch(store.docs.get(ref.id) || {}, patch));
     }
     return result;
   }

@@ -169,7 +169,10 @@ class TipsService {
     return catalog.find(tip => !seen.has(tip.id) && this.userMatchesRequirement(user, tip)) || null;
   }
 
-  userMatchesRequirement(user, tip) {
+  // `evidence` is optional behavioural context the home-card picker gathers
+  // (homePromptService); the push path never has it, so the predicates that
+  // need it fall through to "allow" there.
+  userMatchesRequirement(user, tip, evidence = {}) {
     if (tip.requires === 'hasPlaces') {
       const count = user.placesCount ?? user.totalPlaces ?? user.placeCount;
       // Only suppress when we can affirmatively see zero saved places; an
@@ -177,13 +180,29 @@ class TipsService {
       // silently mute the whole catalog.
       return count === undefined || count === null || count > 0;
     }
+    // Suppression predicates: these say "the user already knows this", so an
+    // unknown answer must NOT show the tip — the safe failure is silence, not
+    // a "have you seen the Widgets tab?" to someone who uses it daily.
+    if (tip.requires === 'noWidgetData') return evidence.hasWidgetData === false;
+    if (tip.requires === 'noVideoViews') return evidence.hasVideoViews === false;
     return true;
   }
 
-  async loadCatalog() {
+  // Which delivery surface a catalog doc belongs to. Docs written before the
+  // field existed are push tips, so an absent `surfaces` means ["push"] — and
+  // a home-only card (surfaces: ["home"]) can never leak into the push job.
+  static tipMatchesSurface(tip, surface) {
+    const surfaces = Array.isArray(tip.surfaces) && tip.surfaces.length > 0 ? tip.surfaces : ['push'];
+    return surfaces.includes(surface);
+  }
+
+  async loadCatalog(surface = 'push') {
     const snap = await db.collection(CATALOG_COLLECTION).where('enabled', '==', true).get();
     const tips = [];
-    snap.forEach(doc => tips.push({ id: doc.id, ...doc.data() }));
+    snap.forEach(doc => {
+      const tip = { id: doc.id, ...doc.data() };
+      if (TipsService.tipMatchesSurface(tip, surface)) tips.push(tip);
+    });
     tips.sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999)); // missing order sinks last
     return tips;
   }
