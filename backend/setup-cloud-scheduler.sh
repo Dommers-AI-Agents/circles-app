@@ -184,6 +184,22 @@ gcloud scheduler jobs create http piggy-bank-clearing \
   --headers="Content-Type=application/json,X-Cloudscheduler=true" \
   --attempt-deadline=180s
 
+# People-you-may-know email — weekly, Tuesday 10:00 ET. New accounts following
+# fewer than three people get the Discover engine's top suggestions with reasons.
+echo -e "${GREEN}Creating follow-suggestions email job...${NC}"
+gcloud scheduler jobs delete follow-suggestions --location=$REGION --quiet 2>/dev/null || true
+gcloud scheduler jobs create http follow-suggestions \
+  --location=$REGION \
+  --schedule="0 10 * * 2" \
+  --uri="${SERVICE_URL}/api/tasks/follow-suggestions" \
+  --http-method=POST \
+  --oidc-service-account-email=circles-scheduler@circles-app-83b67.iam.gserviceaccount.com \
+  --oidc-token-audience="${SERVICE_URL}" \
+  --time-zone=$TIME_ZONE \
+  --description="Weekly people-you-may-know email to new accounts following fewer than three people" \
+  --headers="Content-Type=application/json,X-Cloudscheduler=true" \
+  --attempt-deadline=600s
+
 echo -e "${GREEN}✅ All scheduler jobs created successfully!${NC}"
 echo ""
 echo "View all jobs:"

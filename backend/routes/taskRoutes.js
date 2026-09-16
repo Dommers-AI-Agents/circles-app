@@ -6,6 +6,7 @@ const engagementNotificationService = require('../services/engagementNotificatio
 const tipsService = require('../services/tipsService');
 const milestoneService = require('../services/milestoneService');
 const suggestionEngine = require('../services/suggestionEngine');
+const followSuggestionEmail = require('../services/followSuggestionEmailService');
 const { runCategorySweep } = require('../services/categorySweep');
 const { verifyScheduler } = require('../middleware/verifyScheduler');
 const postcardMail = require('../controllers/widgets/postcardMailController');
@@ -286,6 +287,28 @@ router.post('/build-suggestions', verifyCloudScheduler, async (req, res) => {
       error: 'Failed to rebuild suggestions',
       details: error.message
     });
+  }
+});
+
+// "People you may know" email (weekly). New accounts following fewer than
+// three people get the top suggestions from the same engine Discover uses,
+// each with its reason. Pass ?dryRun=true to list recipients without sending.
+router.post('/follow-suggestions', verifyCloudScheduler, async (req, res) => {
+  try {
+    console.log('👋 Follow-suggestion email run triggered via API');
+    const dryRun = req.query.dryRun === 'true';
+    const result = await followSuggestionEmail.run({ dryRun });
+    const { recipients, ...summary } = result;
+    res.json({
+      success: true,
+      message: dryRun ? 'Follow-suggestion email dry run completed' : 'Follow-suggestion emails sent',
+      ...summary,
+      recipients: recipients.map(({ sampleHtml, ...r }) => r),
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error in follow-suggestions endpoint:', error);
+    res.status(500).json({ success: false, error: 'Failed to send follow-suggestion emails', details: error.message });
   }
 });
 

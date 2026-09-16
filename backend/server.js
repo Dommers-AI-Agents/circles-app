@@ -524,6 +524,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/sse', sseRoutes);
 app.use('/api', activityRoutes);
 app.use('/api/app', require('./routes/appRoutes'));
+app.use('/api/email', require('./routes/emailPreferenceRoutes')); // one-click unsubscribe, signed links
 app.use('/api/email', emailTestRoutes);
 app.use('/api/contact', require('./routes/contactRoutes')); // Website contact form (public)
 app.use('/api/diagnostics', require('./routes/diagnosticRoutes'));
