@@ -412,7 +412,8 @@ extension AddPlaceViewController {
                 notes: privateNotes,
                 googlePlaceId: nil,
                 preUploadedPhotoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
-                force: force
+                force: force,
+                offersPostSaveNudges: true
             ) { [weak self] result in
                 DispatchQueue.main.async {
                     loadingAlert.dismiss(animated: true) {
@@ -439,8 +440,9 @@ extension AddPlaceViewController {
                             )
 
                             self?.postPendingReviewIfNeeded(for: place)
-                            // Rare, GPS-gated: user saved a place while standing in it
-                            CheckInViewController.offerIfAtPlace(place)
+                            // The post-save offer (check in here / send a
+                            // postcard) is arranged by PlaceService, which
+                            // knows what the coin drop and milestone are doing
                             ProximityNotificationScheduler.shared.replanFromCache(force: true)
 
                             // No success popup — the piggy-bank coin drop IS
@@ -556,7 +558,8 @@ extension AddPlaceViewController {
             neighborhood: selectedNeighborhood,
             applePoiCategory: selectedApplePoiCategory,
             userRating: userRating,
-            force: force
+            force: force,
+            offersPostSaveNudges: true
         ) { [weak self] result in
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
@@ -583,8 +586,9 @@ extension AddPlaceViewController {
                         )
 
                         self?.postPendingReviewIfNeeded(for: place)
-                        // Rare, GPS-gated: user saved a place while standing in it
-                        CheckInViewController.offerIfAtPlace(place)
+                        // The post-save offer (check in here / send a postcard)
+                        // is arranged by PlaceService, which knows what the
+                        // coin drop and milestone are doing
                         ProximityNotificationScheduler.shared.replanFromCache(force: true)
 
                         // No success popup — the piggy-bank coin drop IS the
@@ -631,7 +635,8 @@ extension AddPlaceViewController {
             rating: googleDetails.rating,
             userRatingsTotal: googleDetails.userRatingsTotal,
             userRating: userRating,
-            force: force
+            force: force,
+            offersPostSaveNudges: true
         ) { [weak self] result in
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
@@ -660,8 +665,9 @@ extension AddPlaceViewController {
                         )
 
                         self?.postPendingReviewIfNeeded(for: place)
-                        // Rare, GPS-gated: user saved a place while standing in it
-                        CheckInViewController.offerIfAtPlace(place)
+                        // The post-save offer (check in here / send a postcard)
+                        // is arranged by PlaceService, which knows what the
+                        // coin drop and milestone are doing
                         ProximityNotificationScheduler.shared.replanFromCache(force: true)
 
                         // No success popup — the piggy-bank coin drop IS the

@@ -400,7 +400,7 @@ class PlaceService {
         )
     }
     
-    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, privateNotes: String? = nil, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, privateNotes: String? = nil, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // Use provided location or geocode the address
         if let providedLocation = location {
@@ -422,6 +422,7 @@ class PlaceService {
                     preUploadedPhotoUrls: photoUrls,
                     userRating: userRating,
                     force: force,
+                    offersPostSaveNudges: offersPostSaveNudges,
                     completion: completion
                 )
                 return
@@ -448,6 +449,7 @@ class PlaceService {
                 applePoiCategory: applePoiCategory,
                 userRating: userRating,
                 force: force,
+                offersPostSaveNudges: offersPostSaveNudges,
                 completion: completion
             )
         } else {
@@ -475,6 +477,7 @@ class PlaceService {
                         applePoiCategory: applePoiCategory,
                         userRating: userRating,
                         force: force,
+                        offersPostSaveNudges: offersPostSaveNudges,
                         completion: completion
                     )
                 case .failure(let error):
@@ -484,7 +487,7 @@ class PlaceService {
         }
     }
     
-    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         // If we already have photo URLs, use them directly
         if let urls = photoUrls, !urls.isEmpty {
             Logger.debug("Using \(urls.count) pre-uploaded photo URLs")
@@ -507,6 +510,7 @@ class PlaceService {
                 applePoiCategory: applePoiCategory,
                 userRating: userRating,
                 force: force,
+                offersPostSaveNudges: offersPostSaveNudges,
                 completion: completion
             )
         }
@@ -536,6 +540,7 @@ class PlaceService {
                         applePoiCategory: applePoiCategory,
                         userRating: userRating,
                         force: force,
+                        offersPostSaveNudges: offersPostSaveNudges,
                         completion: completion
                     )
                 case .failure(let error):
@@ -561,6 +566,7 @@ class PlaceService {
                         applePoiCategory: applePoiCategory,
                         userRating: userRating,
                         force: force,
+                        offersPostSaveNudges: offersPostSaveNudges,
                         completion: completion
                     )
                 }
@@ -587,12 +593,13 @@ class PlaceService {
                 applePoiCategory: applePoiCategory,
                 userRating: userRating,
                 force: force,
+                offersPostSaveNudges: offersPostSaveNudges,
                 completion: completion
             )
         }
     }
     
-    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // Validate coordinates before sending to backend
         guard location.latitude >= -90 && location.latitude <= 90 &&
@@ -697,7 +704,19 @@ class PlaceService {
                     // The third create path — manual/geocoded saves and Google
                     // saves with pre-uploaded photos land here, and this was
                     // the one path that never played the deposit
-                    PiggyBankDepositView.play(credit: response.piggyBank)
+                    let coinPlayed = PiggyBankDepositView.play(credit: response.piggyBank)
+                    if offersPostSaveNudges {
+                        // This path has never celebrated milestones, so there
+                        // is nothing to stand down for — only the coin drop to
+                        // wait out.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + (coinPlayed ? PiggyBankDepositView.totalDuration : 0)) {
+                            PostSaveOfferPresenter.offer(
+                                place: response.place,
+                                postcardEligible: response.postcardNudge?.eligible ?? false,
+                                milestoneShown: false
+                            )
+                        }
+                    }
                     completion(.success(response.place))
                 } else if case .failure(let error) = result {
                     completion(.failure(error))
@@ -746,7 +765,7 @@ class PlaceService {
     
     // MARK: - Add Place from POI
     
-    func addPlaceFromPOI(name: String, address: String, location: GeoLocation?, category: PlaceCategory, website: String? = nil, phone: String? = nil, description: String? = nil, circleId: String, notes: String?, googlePlaceId: String? = nil, preUploadedPhotoUrls: [String]? = nil, rating: Double? = nil, userRatingsTotal: Int? = nil, userRating: Int? = nil, force: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    func addPlaceFromPOI(name: String, address: String, location: GeoLocation?, category: PlaceCategory, website: String? = nil, phone: String? = nil, description: String? = nil, circleId: String, notes: String?, googlePlaceId: String? = nil, preUploadedPhotoUrls: [String]? = nil, rating: Double? = nil, userRatingsTotal: Int? = nil, userRating: Int? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         Logger.debug("PlaceService.addPlaceFromPOI called with name: \(name), googlePlaceId: \(googlePlaceId ?? "nil"), photos: \(preUploadedPhotoUrls?.count ?? 0)")
         
         var body: [String: Any] = [
@@ -978,11 +997,15 @@ class PlaceService {
             // Create the place with collected data
             
             // Create the place with collected images (or without if upload failed)
-            self.createPlaceWithBody(body, completion: completion)
+            self.createPlaceWithBody(body, offersPostSaveNudges: offersPostSaveNudges, completion: completion)
         }
     }
     
-    private func createPlaceWithBody(_ body: [String: Any], completion: @escaping (Result<Place, Error>) -> Void) {
+    /// `offersPostSaveNudges` is opt-in per call site: only the add-place
+    /// screen asks for the post-save moment (check in / send a postcard).
+    /// Bulk and background saves — onboarding quick-start, sticker rewards,
+    /// imports — pass nothing and stay silent.
+    private func createPlaceWithBody(_ body: [String: Any], offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         Logger.debug("🚀 PlaceService: Creating place with body containing \(body.keys.count) fields")
         if let photos = body["photos"] as? [String] {
             Logger.debug("  Photos in request: \(photos.count)")
@@ -1011,7 +1034,13 @@ class PlaceService {
                         let coinPlayed = PiggyBankDepositView.play(credit: response.piggyBank)
                         let celebrationDelay = coinPlayed ? PiggyBankDepositView.totalDuration : 0
                         DispatchQueue.main.asyncAfter(deadline: .now() + celebrationDelay) {
-                            PlaceMilestones.celebrateIfNeeded(totalPlaces: response.totalPlaces)
+                            let milestoneShown = PlaceMilestones.celebrateIfNeeded(totalPlaces: response.totalPlaces)
+                            guard offersPostSaveNudges else { return }
+                            PostSaveOfferPresenter.offer(
+                                place: response.place,
+                                postcardEligible: response.postcardNudge?.eligible ?? false,
+                                milestoneShown: milestoneShown
+                            )
                         }
                     }
                     if let photos = response.place.photos {
@@ -1781,6 +1810,15 @@ struct PlaceResponse: Decodable {
     // FavCoin credit for this add (drives the piggy-bank deposit animation).
     // Optional: absent on old servers or when the credit didn't apply.
     let piggyBank: PiggyBankCredit?
+    // Whether the "send a postcard from here?" offer may be made for this
+    // save. Absent when the save had no photo, or on an old server.
+    let postcardNudge: PostcardNudge?
+}
+
+/// The server's answer to "may the post-save postcard offer run?" — it owns
+/// the fortnightly cooldown, shared with the home daily card.
+struct PostcardNudge: Decodable {
+    let eligible: Bool
 }
 
 struct FlagPlaceResponse: Decodable {

@@ -6,6 +6,11 @@ final class HomePromptService {
     static let shared = HomePromptService()
     private init() {}
 
+    /// The one key both postcard nudges share. The server treats it as a
+    /// client-ackable key, so the app's post-save pop-up can spend the
+    /// fortnightly cooldown that also governs the home card.
+    static let postcardNudgeKey = "postcard_nudge"
+
     private struct PromptResponse: Decodable {
         let success: Bool
         let card: HomePromptCard?

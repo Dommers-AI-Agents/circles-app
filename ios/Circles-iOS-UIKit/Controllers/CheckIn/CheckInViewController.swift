@@ -37,43 +37,6 @@ class CheckInViewController: BaseViewController {
         presenter.present(navController, animated: true)
     }
 
-    /// Post-save prompt, GPS-gated: offered ONLY when the user is physically
-    /// at the place they just saved (people often save a place while standing
-    /// in it). The coin drop stays the save flow's feedback — this alert is
-    /// rare and high-signal by construction. Fires after a delay so the
-    /// navigation + coin animation settle first.
-    static func offerIfAtPlace(_ place: Place, delay: TimeInterval = 1.5) {
-        guard let placeLocation = place.location?.clLocation else { return }
-        LocationService.shared.getCurrentLocation { current in
-            guard let current = current,
-                  current.distance(from: placeLocation) <= 50 else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                guard let top = topPresenter(), top.presentedViewController == nil else { return }
-                AlertPresenter.showConfirmation(
-                    title: "You're at \(place.name)",
-                    message: "Check in and let your people know?",
-                    confirmTitle: "Check In",
-                    cancelTitle: "Not Now",
-                    from: top
-                ) {
-                    CheckInViewController.present(from: top, prefilledPlace: place)
-                }
-            }
-        }
-    }
-
-    private static func topPresenter() -> UIViewController? {
-        let keyWindow = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap { $0.windows }
-            .first { $0.isKeyWindow }
-        var top = keyWindow?.rootViewController
-        while let presented = top?.presentedViewController {
-            top = presented
-        }
-        return top
-    }
-
     // MARK: - Properties
     private var myPlaces: [Place] = []
     private var nearbyPlaces: [Place] = []   // network places nearby (not mine), distance-sorted

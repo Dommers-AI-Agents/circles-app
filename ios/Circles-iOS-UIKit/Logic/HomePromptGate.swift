@@ -71,6 +71,9 @@ enum HomePromptValue: Decodable, Equatable {
 enum HomePromptTarget: Equatable {
     case place(id: String)
     case video(id: String)
+    /// A place worth putting on a postcard. The photo travels as a URL — the
+    /// composer needs a picture, so a card with no usable one isn't routable.
+    case postcard(placeId: String, globalPlaceId: String?, placeName: String?, photoUrl: String)
     case addPlace
     case favCoinsIntro
     case widgetsTab
@@ -87,6 +90,16 @@ enum HomePromptTarget: Equatable {
         case "video", "moment":
             if let id = data["videoId"]?.stringValue ?? data["momentId"]?.stringValue {
                 self = .video(id: id)
+            } else { self = .unknown(target) }
+        case "postcard":
+            if let placeId = data["placeId"]?.stringValue,
+               let photo = data["photoUrl"]?.stringValue {
+                self = .postcard(
+                    placeId: placeId,
+                    globalPlaceId: data["globalPlaceId"]?.stringValue,
+                    placeName: data["placeName"]?.stringValue,
+                    photoUrl: photo
+                )
             } else { self = .unknown(target) }
         case "add_place", "add-place": self = .addPlace
         case "favcoins_intro": self = .favCoinsIntro

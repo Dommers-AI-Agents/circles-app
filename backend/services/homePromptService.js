@@ -24,6 +24,8 @@ const { PIGGY_COLLECTIONS } = require('../models/PiggyBankModels');
 const { queryInChunks } = require('../utils/firestoreChunks');
 const { excludedUserIds } = require('./moderationService');
 const tipsService = require('./tipsService');
+const { getAssumedLocation } = require('./userCardEnrichment');
+const { haversineMeters } = require('./globalPlaceResolver');
 
 const CATALOG_COLLECTION = 'notificationTips';
 const HOUR = 60 * 60 * 1000;
@@ -42,17 +44,35 @@ const ACTIVITY_WINDOW_MS = DAY;
 const DYNAMIC_ACK_TTL_MS = 90 * DAY;
 // Personal nudges may repeat, but not more often than this.
 const NUDGE_REPEAT_MS = 7 * DAY;
+// The postcard nudge is rarer than the rest: it asks for effort (and, if the
+// user picks print, money), so a fortnight between asks. Shared with the
+// post-save pop-up in the app — both read and write the `postcard_nudge` ack,
+// so being asked in one place silences the other.
+const POSTCARD_REPEAT_MS = parseInt(process.env.POSTCARD_NUDGE_REPEAT_DAYS || '14', 10) * DAY;
+// Only nudge about places saved recently enough to still feel like news.
+const POSTCARD_PLACE_WINDOW_MS = 7 * DAY;
+// Optional tightener: only nudge when the place is at least this far from
+// where the user usually is, i.e. it reads as a trip. Unset = off (and then
+// the picker never pays for a location lookup).
 // Newest activities scanned per actor chunk.
 const ACTIVITY_SCAN_LIMIT = 10;
 
 const ACTIVITY_TYPES = new Set(['place_added', 'video_uploaded', 'photo_uploaded', 'check_in']);
 const ACTIONS = new Set(['skipped', 'acted', 'shown']);
 
+const METERS_PER_MILE = 1609.344;
+// Recent saves scanned for one with a photo.
+const POSTCARD_PLACE_SCAN_LIMIT = 20;
+
 // Keys that may be acked by the client directly (not derived from a card):
-// the FavCoins explainer records itself when the user finishes it.
-const CLIENT_ACK_KEYS = new Set(['favcoins_intro']);
+// the FavCoins explainer records itself when the user finishes it, and the
+// post-save postcard pop-up records itself so the home card honours the same
+// cooldown (and vice versa).
+const CLIENT_ACK_KEYS = new Set(['favcoins_intro', 'postcard_nudge']);
 
 const isEnabled = () => process.env.HOME_PROMPTS_ENABLED === '1';
+// Read per call, like isEnabled: 0/unset keeps the tightener off.
+const minTripMiles = () => parseFloat(process.env.POSTCARD_NUDGE_MIN_MILES || '0');
 
 // Firestore Timestamp, Date, ISO string, or millis → millis (NaN if unknown).
 function toMillis(value) {
@@ -115,6 +135,7 @@ class HomePromptService {
       () => this.connectionActivityCard(ctx),
       () => this.latestMomentCard(ctx),
       () => this.addPlaceCard(ctx),
+      () => this.postcardCard(ctx),
       () => this.favCoinsCard(ctx),
       () => this.catalogCard(ctx)
     ];
@@ -135,11 +156,11 @@ class HomePromptService {
 
   // A repeating nudge is due when it has never been acked, or the last ack is
   // older than the repeat interval.
-  nudgeDue(ctx, key) {
+  nudgeDue(ctx, key, repeatMs = NUDGE_REPEAT_MS) {
     const ack = ctx.acks[key];
     if (!ack) return true;
     const at = toMillis(ack.at);
-    return !Number.isFinite(at) || ctx.now - at >= NUDGE_REPEAT_MS;
+    return !Number.isFinite(at) || ctx.now - at >= repeatMs;
   }
 
   // ---------------------------------------------------------------- sources
@@ -395,7 +416,70 @@ class HomePromptService {
     };
   }
 
-  // 4. "You have 340 FavCoins in your piggy bank" — once, until the user has
+  // 4. "Send a postcard from Lisbon?" — a place this user saved in the last
+  //    week that has a photo worth putting on a card. Rarer than the other
+  //    nudges, and it shares the `postcard_nudge` ack with the pop-up the app
+  //    shows after a save, so the two surfaces never both ask in the same
+  //    fortnight. The card lands on the composer, which offers both the free
+  //    in-app send and the printed one — so the copy promises neither.
+  async postcardCard(ctx) {
+    const key = 'postcard_nudge';
+    if (!this.nudgeDue(ctx, key, POSTCARD_REPEAT_MS)) return null;
+
+    // Same query shape as addPlaceCard (no orderBy) so it rides the existing
+    // (addedBy, createdAt) index; newest-first is settled in memory.
+    const since = new Date(ctx.now - POSTCARD_PLACE_WINDOW_MS).toISOString();
+    const snap = await this.db.collection(COLLECTIONS.PLACES)
+      .where('addedBy', '==', ctx.user.id)
+      .where('createdAt', '>=', since)
+      .limit(POSTCARD_PLACE_SCAN_LIMIT)
+      .get();
+
+    const places = snap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(place => !place.deletedAt)
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+
+    for (const place of places) {
+      const photo = (place.photos || []).find(url => typeof url === 'string' && url.length > 0);
+      if (!photo) continue; // the composer opens on a picture or not at all
+      if (!place.name) continue;
+      if (!(await this.readsAsTrip(ctx, place))) continue;
+      return {
+        key,
+        type: 'postcard',
+        title: `Send a postcard from ${place.name}?`,
+        body: 'Put your photo on a card and send it to someone.',
+        actionLabel: 'Make one',
+        skipLabel: 'Not now',
+        target: 'postcard',
+        data: {
+          placeId: place.id,
+          globalPlaceId: place.globalPlaceId || null,
+          placeName: place.name,
+          photoUrl: photo
+        },
+        imageUrl: photo
+      };
+    }
+    return null;
+  }
+
+  // Optional tightener (POSTCARD_NUDGE_MIN_MILES). Off by default, and while
+  // it is off nothing here costs a read. Unknown coordinates pass: a nudge we
+  // can't place is better than one we never send.
+  async readsAsTrip(ctx, place) {
+    const minMiles = minTripMiles();
+    if (!(minMiles > 0)) return true;
+    const coords = place.location && place.location.coordinates;
+    if (!Array.isArray(coords) || coords.length !== 2) return true;
+    const home = await getAssumedLocation(ctx.user.id, ctx.user);
+    if (!home || !Number.isFinite(home.latitude) || !Number.isFinite(home.longitude)) return true;
+    const meters = haversineMeters(home.latitude, home.longitude, coords[1], coords[0]);
+    return meters / METERS_PER_MILE >= minMiles;
+  }
+
+  // 5. "You have 340 FavCoins in your piggy bank" — once, until the user has
   //    been through the explainer (favcoins_intro ack) or skipped it.
   async favCoinsCard(ctx) {
     const key = 'favcoins_balance';
@@ -419,7 +503,7 @@ class HomePromptService {
     };
   }
 
-  // 5. Evergreen feature tips from the catalog, home surface only, each at
+  // 6. Evergreen feature tips from the catalog, home surface only, each at
   //    most once ever (ack or tipsSeen), gated by behavioural evidence.
   async catalogCard(ctx) {
     const catalog = await tipsService.loadCatalog('home');
@@ -486,6 +570,23 @@ class HomePromptService {
     await this.db.collection(COLLECTIONS.USERS).doc(userId).update({
       homePrompt: { ...state, lastShownAt: at, lastCardId: key, acks }
     });
+  }
+
+  // Does the app's post-save pop-up get to ask? Same fortnightly
+  // `postcard_nudge` memory the home card uses, so whichever surface asks
+  // first silences the other for a fortnight. Deliberately independent of
+  // HOME_PROMPTS_ENABLED — the pop-up is its own feature, with its own kill
+  // switch (POSTCARD_NUDGE_ENABLED=0) — but it honours the new-account guard,
+  // because a first-week user is being walked through onboarding already.
+  async postcardNudgeEligible(userId, { now = Date.now() } = {}) {
+    if (process.env.POSTCARD_NUDGE_ENABLED === '0') return false;
+    const doc = await this.db.collection(COLLECTIONS.USERS).doc(userId).get();
+    if (!doc.exists) return false;
+    const user = doc.data() || {};
+    const createdAt = toMillis(user.createdAt);
+    if (Number.isFinite(createdAt) && now - createdAt < NEW_ACCOUNT_GUARD_MS) return false;
+    const acks = (user.homePrompt || {}).acks || {};
+    return this.nudgeDue({ acks, now }, 'postcard_nudge', POSTCARD_REPEAT_MS);
   }
 
   // ---------------------------------------------------------------- ack

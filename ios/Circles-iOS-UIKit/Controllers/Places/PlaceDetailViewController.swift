@@ -1791,6 +1791,17 @@ class PlaceDetailViewController: BaseViewController {
             }))
         }
 
+        // Always available, and it never interrupts: this is where someone
+        // goes looking for "can I do something with this place?". Hidden when
+        // there's no photo — the composer opens on a picture or not at all.
+        if !(place.photos ?? []).isEmpty {
+            actions.append((title: "Send a Postcard from Here", style: .default, handler: { [weak self] in
+                guard let self = self else { return }
+                AnalyticsService.shared.logEvent("postcard_nudge_accepted", parameters: ["source": "place_detail"])
+                PostcardComposerRouter.open(place: self.place, from: self)
+            }))
+        }
+
         AlertPresenter.showActionSheet(
             actions: actions,
             from: self,

@@ -228,6 +228,82 @@ describe('add a place', () => {
   });
 });
 
+describe('postcard', () => {
+  // A place saved this week is both what suppresses the add-place nudge and
+  // what the postcard card is about, so these run with one seeded save.
+  const savePlace = (id, extra = {}) => put('places', id, {
+    addedBy: ME, name: 'Cafe Lisboa', createdAt: iso(NOW - 2 * DAY),
+    photos: ['https://img/1.jpg'], ...extra
+  });
+
+  beforeEach(() => {
+    rows('places').clear();
+    delete process.env.POSTCARD_NUDGE_MIN_MILES;
+  });
+
+  test('a recent save with a photo becomes the card, newest first', async () => {
+    savePlace('older', { name: 'Old Spot', createdAt: iso(NOW - 5 * DAY), photos: ['https://img/old.jpg'] });
+    savePlace('newer');
+    const card = await pick();
+    expect(card).toMatchObject({
+      key: 'postcard_nudge',
+      type: 'postcard',
+      title: 'Send a postcard from Cafe Lisboa?',
+      target: 'postcard',
+      imageUrl: 'https://img/1.jpg',
+      data: { placeId: 'newer', placeName: 'Cafe Lisboa', photoUrl: 'https://img/1.jpg' }
+    });
+  });
+
+  test('no photo, no name, deleted, or nothing saved this week → no postcard card', async () => {
+    savePlace('nophoto', { photos: [] });
+    expect(await pick()).toBeNull();
+    savePlace('nophoto', { photos: [''] });
+    expect(await pick()).toBeNull();
+    savePlace('nophoto', { name: '' });
+    expect(await pick()).toBeNull();
+    savePlace('nophoto', { deletedAt: iso(NOW - DAY) });
+    expect(await pick()).toBeNull();
+    savePlace('nophoto', { createdAt: iso(NOW - 9 * DAY) });
+    expect((await pick()).key).toBe('add_place'); // stale save → the other nudge
+  });
+
+  test('asks at most once a fortnight, and the app pop-up ack silences it too', async () => {
+    savePlace('p');
+    expect((await pick()).key).toBe('postcard_nudge');
+    await service.ack(ME, 'postcard_nudge', 'skipped');
+    // Kept fresh so the add-place nudge stays quiet and the only question is
+    // whether the postcard card comes back.
+    savePlace('p', { createdAt: iso(NOW + 12 * DAY) });
+    expect(await service.pick(ME, { now: NOW + 13 * DAY })).toBeNull();
+    savePlace('p', { createdAt: iso(NOW + 14 * DAY) });
+    expect((await service.pick(ME, { now: NOW + 15 * DAY })).key).toBe('postcard_nudge');
+  });
+
+  test('the post-save pop-up can ack the key before any card was shown', async () => {
+    // CLIENT_ACK_KEYS: the app asked first, so the home card must stand down
+    // without the user ever having been shown one.
+    await service.ack(ME, 'postcard_nudge', 'skipped');
+    savePlace('p');
+    expect(await pick()).toBeNull();
+  });
+
+  test('POSTCARD_NUDGE_MIN_MILES only nudges about places far from home', async () => {
+    process.env.POSTCARD_NUDGE_MIN_MILES = '50';
+    seedUser(ME, { assumedLocation: { latitude: 35.2271, longitude: -80.8431, updatedAt: new Date().toISOString() } });
+    savePlace('nearby', { location: { coordinates: [-80.85, 35.23] } }); // Charlotte
+    expect(await pick()).toBeNull();
+    savePlace('nearby', { location: { coordinates: [-9.1393, 38.7223] } }); // Lisbon
+    expect((await pick()).key).toBe('postcard_nudge');
+  });
+
+  test('unknown coordinates or no assumed location still nudge', async () => {
+    process.env.POSTCARD_NUDGE_MIN_MILES = '50';
+    savePlace('p'); // no location at all, and the seeded user has no assumedLocation
+    expect((await pick()).key).toBe('postcard_nudge');
+  });
+});
+
 describe('favcoins', () => {
   test('balance card shows once, never after the explainer was seen', async () => {
     put('piggyBanks', ME, { pendingCoins: 12.5, confirmedCoins: 327.5 });

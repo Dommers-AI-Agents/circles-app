@@ -1,4 +1,5 @@
 import UIKit
+import FavWidgetsCore
 
 // MARK: - Home "daily card"
 //
@@ -110,6 +111,16 @@ extension CirclesHomeViewController {
                 .compactMap { $0.delegate as? SceneDelegate }
                 .first?
                 .navigateToVideo(videoId: id)
+        case .postcard(let placeId, let globalPlaceId, let placeName, let photoUrl):
+            AnalyticsService.shared.logEvent("postcard_nudge_accepted", parameters: ["source": "home_card"])
+            // The card already carries the venue's id and photo, so the
+            // composer opens without re-fetching the place.
+            let ref = WidgetPlaceRef(
+                id: globalPlaceId ?? placeId,
+                name: placeName ?? "",
+                isGlobal: globalPlaceId != nil
+            )
+            PostcardComposerRouter.open(photoUrl: photoUrl, place: ref, from: self)
         case .addPlace:
             quickAddPlaceButtonTapped()
         case .widgetsTab:

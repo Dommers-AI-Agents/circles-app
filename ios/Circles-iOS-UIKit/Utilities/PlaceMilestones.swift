@@ -38,12 +38,17 @@ enum PlaceMilestones {
     /// Presents a one-time celebration when `totalPlaces` reaches a tier the
     /// user hasn't been congratulated for yet. Bulk jumps (e.g. imports)
     /// celebrate only the highest newly reached tier.
-    static func celebrateIfNeeded(totalPlaces: Int?) {
+    ///
+    /// Returns whether a celebration was scheduled, so whatever else wants the
+    /// moment after a save can stand down (`PostSaveOfferPlanner`). It is
+    /// scheduled, not yet on screen, when this returns.
+    @discardableResult
+    static func celebrateIfNeeded(totalPlaces: Int?) -> Bool {
         guard let totalPlaces = totalPlaces,
-              let reached = badge(for: totalPlaces) else { return }
+              let reached = badge(for: totalPlaces) else { return false }
         let key = celebratedKey
         let celebrated = UserDefaults.standard.integer(forKey: key)
-        guard reached.threshold > celebrated else { return }
+        guard reached.threshold > celebrated else { return false }
         UserDefaults.standard.set(reached.threshold, forKey: key)
 
         // Give the add-place flow a beat to finish dismissing its own UI
@@ -54,6 +59,7 @@ enum PlaceMilestones {
             celebrationVC.modalTransitionStyle = .crossDissolve
             presenter.present(celebrationVC, animated: true)
         }
+        return true
     }
 
     private static func topViewController() -> UIViewController? {

@@ -83,4 +83,22 @@ struct HomePromptGateTests {
         #expect(HomePromptTarget(target: "create_wallet", data: [:]) == .createWallet)
         #expect(HomePromptTarget(target: "something_new", data: [:]) == .unknown("something_new"))
     }
+
+    @Test func postcardTargetNeedsBothAPlaceAndAPhoto() {
+        let full = HomePromptTarget(target: "postcard", data: [
+            "placeId": .string("p1"), "globalPlaceId": .string("g1"),
+            "placeName": .string("Cafe Lisboa"), "photoUrl": .string("https://x/1.jpg")
+        ])
+        #expect(full == .postcard(placeId: "p1", globalPlaceId: "g1", placeName: "Cafe Lisboa", photoUrl: "https://x/1.jpg"))
+
+        // A save with no canonical venue yet still routes — it just sends the
+        // card without a globalPlaceId.
+        #expect(HomePromptTarget(target: "postcard", data: [
+            "placeId": .string("p1"), "globalPlaceId": .null, "photoUrl": .string("https://x/1.jpg")
+        ]) == .postcard(placeId: "p1", globalPlaceId: nil, placeName: nil, photoUrl: "https://x/1.jpg"))
+
+        // No photo, no card: the composer has nothing to open on.
+        #expect(HomePromptTarget(target: "postcard", data: ["placeId": .string("p1")]) == .unknown("postcard"))
+        #expect(HomePromptTarget(target: "postcard", data: ["photoUrl": .string("https://x/1.jpg")]) == .unknown("postcard"))
+    }
 }

@@ -20,6 +20,7 @@ const rewardService = require('../../services/rewardService');
 const piggyBankService = require('../../services/piggyBankService');
 const { normalizePhotosArray, overlayVenuePhotos, VENUE_GOOGLE_FIELDS, overlayVenueFields, getGlobalSocial, fetchGlobalSocialMap, buildAddedByUserMap, isPlaceVisibleToViewer } = require('../../services/placeReadService');
 const { getMyCheckInStats } = require('../../services/checkInStatsService');
+const homePromptService = require('../../services/homePromptService');
 const db = getFirestore();
 const googleMapsClient = new Client({});
 const { propagateVenueUpdates } = require('../../services/placeVenueSync.js');
@@ -1278,10 +1279,25 @@ exports.createPlace = async (req, res, next) => {
         }
       : piggyBank;
 
+    // Postcard: the app offers "send a postcard from here?" after a save, but
+    // only when the save brought a photo — the composer opens on a picture or
+    // not at all. Checking eligibility only in that case keeps the ordinary
+    // photo-less save at exactly the cost it had. The fortnightly cooldown is
+    // shared with the home daily card, so the two never both ask.
+    let postcardNudge = null;
+    if ((place.photos || []).length > 0) {
+      try {
+        postcardNudge = { eligible: await homePromptService.postcardNudgeEligible(req.user.uid) };
+      } catch (nudgeError) {
+        console.error('⚠️ Postcard nudge check failed (non-fatal):', nudgeError.message);
+      }
+    }
+
     // Add commentsCount to the response (new places have 0 comments)
     res.status(201).json({
       success: true,
       totalPlaces,
+      postcardNudge,
       piggyBank: combinedPiggyBank,
       place: {
         ...place,
