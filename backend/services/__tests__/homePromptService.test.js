@@ -304,6 +304,41 @@ describe('postcard', () => {
   });
 });
 
+describe('postcard nudge eligibility (the app\'s post-save pop-up)', () => {
+  const eligible = (now = NOW) => service.postcardNudgeEligible(ME, { now });
+
+  beforeEach(() => {
+    rows('places').clear();
+    delete process.env.POSTCARD_NUDGE_ENABLED;
+  });
+
+  test('open by default, and the kill switch closes it', async () => {
+    expect(await eligible()).toBe(true);
+    process.env.POSTCARD_NUDGE_ENABLED = '0';
+    expect(await eligible()).toBe(false);
+  });
+
+  test('never in a new account\'s first 48 hours, and never for a stranger', async () => {
+    seedUser(ME, { createdAt: iso(NOW - 6 * HOUR) });
+    expect(await eligible()).toBe(false);
+    expect(await service.postcardNudgeEligible('nobody', { now: NOW })).toBe(false);
+  });
+
+  test('a home card that already asked closes the pop-up for a fortnight', async () => {
+    // pick() stamps the card as shown, which is what spends the cooldown.
+    put('places', 'p', { addedBy: ME, name: 'Cafe Lisboa', createdAt: iso(NOW - DAY), photos: ['https://img/1.jpg'] });
+    expect((await pick()).key).toBe('postcard_nudge');
+    expect(await eligible()).toBe(false);
+    expect(await eligible(NOW + 13 * DAY)).toBe(false);
+    expect(await eligible(NOW + 15 * DAY)).toBe(true);
+  });
+
+  test('independent of HOME_PROMPTS_ENABLED — the pop-up is its own feature', async () => {
+    process.env.HOME_PROMPTS_ENABLED = '0';
+    expect(await eligible()).toBe(true);
+  });
+});
+
 describe('favcoins', () => {
   test('balance card shows once, never after the explainer was seen', async () => {
     put('piggyBanks', ME, { pendingCoins: 12.5, confirmedCoins: 327.5 });

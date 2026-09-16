@@ -15,17 +15,14 @@ enum PostSaveOfferPresenter {
         // two offers, so start it first and ask once it is in.
         distanceToPlace(place) { distance in
             DispatchQueue.main.asyncAfter(deadline: .now() + offerDelay) {
-                guard let presenter = rootPresenter() else { return }
+                guard let presenter = topPresenter() else { return }
                 let decision = PostSaveOfferPlanner.decide(
                     PostSaveOfferPlanner.Context(
                         placeHasPhoto: !(place.photos ?? []).isEmpty,
                         postcardEligible: postcardEligible,
                         distanceToPlaceMeters: distance,
                         isCelebratingMilestone: milestoneShown,
-                        // Anything presented over the root — a milestone, a
-                        // sheet, the add-place flow still going away — means
-                        // this is not our moment.
-                        screenIsClear: presenter.presentedViewController == nil
+                        screenIsClear: isClear(presenter)
                     )
                 )
                 switch decision {
@@ -55,7 +52,7 @@ enum PostSaveOfferPresenter {
         AnalyticsService.shared.logEvent("postcard_nudge_shown", parameters: ["source": "post_save"])
         AlertPresenter.showConfirmation(
             title: "Send a postcard from \(place.name)?",
-            message: "Put the photo you just added on a card and send it to someone.",
+            message: "Put a photo of \(place.name) on a card and send it to someone.",
             confirmTitle: "Make One",
             cancelTitle: "Not Now",
             from: presenter,
@@ -87,11 +84,28 @@ enum PostSaveOfferPresenter {
         }
     }
 
-    private static func rootPresenter() -> UIViewController? {
-        UIApplication.shared.connectedScenes
+    /// Whatever is frontmost — the add-place flow may still be on screen, and
+    /// presenting from the root while it is would put the alert underneath it.
+    private static func topPresenter() -> UIViewController? {
+        let keyWindow = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
-            .first { $0.isKeyWindow }?
-            .rootViewController
+            .first { $0.isKeyWindow }
+        var top = keyWindow?.rootViewController
+        while let presented = top?.presentedViewController {
+            top = presented
+        }
+        return top
+    }
+
+    /// Named rather than `presentedViewController == nil`, which is always
+    /// true of the topmost controller and so guards nothing. What actually
+    /// matters: don't stack on another question, don't talk over the badge
+    /// celebration, and don't attach an alert to a screen that is leaving.
+    private static func isClear(_ presenter: UIViewController) -> Bool {
+        if presenter is UIAlertController { return false }
+        if presenter is MilestoneCelebrationViewController { return false }
+        if presenter.isBeingDismissed { return false }
+        return true
     }
 }
