@@ -657,6 +657,20 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return view
     }()
 
+    // MARK: - Daily card
+    // Slot between the segment bar and the tab content for the server-picked
+    // "one intriguing thing" card (CirclesHomeViewController+DailyCard).
+    // Collapsed to zero height until a card is on screen.
+    let dailyCardContainer: UIView = {
+        let view = UIView()
+        view.clipsToBounds = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    var dailyCardCollapsedHeight: NSLayoutConstraint?
+    var dailyCardView: HomePromptCardView?
+    var lastHomePromptFetchAt: Date?
+
     lazy var specialsTab: HomeSpecialsViewController = {
         let tab = HomeSpecialsViewController()
         tab.host = self
@@ -992,6 +1006,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Also check after a delay in case connections are already loaded
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.checkTutorialAndOverlay()
+        }
+
+        // Daily card — after the onboarding check above has had its turn, and
+        // only if nothing else is on screen (HomePromptGate).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            self?.refreshDailyCardIfAppropriate()
         }
     }
 
@@ -1497,6 +1517,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityFeedSection.addSubview(activityHeaderLabel)
         activityFeedSection.addSubview(contentSegmentedControl)
         activityFeedSection.addSubview(momentsCameraButton)
+        activityFeedSection.addSubview(dailyCardContainer)
         activityFeedSection.addSubview(tabContentContainer)
         embedContentTabs()
         // Ensure camera button is on top of segmented control
@@ -1705,8 +1726,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             momentsCameraButton.widthAnchor.constraint(equalToConstant: 40),
             momentsCameraButton.heightAnchor.constraint(equalToConstant: 40),
             
+            // Daily card slot (zero height until a card is shown)
+            dailyCardContainer.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor),
+            dailyCardContainer.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
+            dailyCardContainer.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
+
             // Content tabs (same slot as the inline content views)
-            tabContentContainer.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor, constant: Constants.Spacing.small),
+            tabContentContainer.topAnchor.constraint(equalTo: dailyCardContainer.bottomAnchor, constant: Constants.Spacing.small),
             tabContentContainer.leadingAnchor.constraint(equalTo: activityFeedSection.leadingAnchor),
             tabContentContainer.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor),
             tabContentContainer.bottomAnchor.constraint(equalTo: activityFeedSection.bottomAnchor),
@@ -1726,6 +1752,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // one constraint sizes the whole activity section.
         contentTabHeightConstraint = tabContentContainer.heightAnchor.constraint(equalToConstant: 600)
         contentTabHeightConstraint?.isActive = true
+
+        dailyCardCollapsedHeight = dailyCardContainer.heightAnchor.constraint(equalToConstant: 0)
+        dailyCardCollapsedHeight?.isActive = true
         
         // Search results table view constraints
         NSLayoutConstraint.activate([
@@ -2676,6 +2705,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             Logger.debug("📱 App entering foreground - cache expired, will refresh on next load")
             // Don't refresh automatically, just invalidate cache
             // Data will be refreshed when view appears
+        }
+        // First open of the day usually arrives as a foreground, not a fresh
+        // launch — give the daily card a chance (throttled inside).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.refreshDailyCardIfAppropriate()
         }
     }
     
