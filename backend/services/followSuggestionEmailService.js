@@ -24,6 +24,9 @@ const SUGGESTIONS_PER_EMAIL = 5;
 const MIN_DAYS_BETWEEN_EMAILS = 6;   // weekly job + a little slack
 const DEFAULT_MAX_ACCOUNT_AGE_DAYS = 60;
 const PREFERENCE_KEY = 'followSuggestions';
+const SEND_GAP_MS = 3000;            // between messages — the SMTP host dislikes bursts
+const RETRY_DELAY_MS = 8000;         // one retry per address after a failure
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 const BASE_URL = 'https://api.favcircles.com';
 const BRAND_BLUE = '#3478F6';
 
@@ -200,17 +203,28 @@ const run = async ({ dryRun = false, limit = 500, onlyUserId = null, log = conso
       ...(dryRun && results.recipients.length === 0 ? { sampleHtml: email.html } : {})
     });
     if (dryRun) continue;
-    try {
-      await emailService.sendEmail({ to: user.email, subject: email.subject, html: email.html, text: email.text });
+    // One at a time, with a real pause between messages: the SMTP host
+    // rejects bursts, so a batch is a slow orderly queue, never a fan-out.
+    let delivered = false;
+    for (let attempt = 1; attempt <= 2 && !delivered; attempt++) {
+      try {
+        await emailService.sendEmail({ to: user.email, subject: email.subject, html: email.html, text: email.text });
+        delivered = true;
+      } catch (e) {
+        console.error(`👋 Follow suggestions attempt ${attempt} failed for ${user.id}:`, e.message);
+        if (attempt === 1) await sleep(RETRY_DELAY_MS);
+      }
+    }
+    if (delivered) {
       await db().collection(COLLECTIONS.USERS).doc(user.id).set({
         followSuggestionEmail: { lastSentAt: new Date().toISOString(), count: ((user.followSuggestionEmail || {}).count || 0) + 1 }
       }, { merge: true });
       results.sent++;
       log(`👋 Follow suggestions sent to ${user.email} (${suggestions.length} people)`);
-      await new Promise((res) => setTimeout(res, 1200)); // pace the SMTP server
-    } catch (e) {
-      console.error(`👋 Follow suggestions failed for ${user.id}:`, e.message);
+    } else {
+      results.failed = (results.failed || 0) + 1;
     }
+    await sleep(SEND_GAP_MS);
   }
   log(`👋 Follow suggestions ${dryRun ? 'dry run' : 'complete'}: ${results.sent} sent of ${results.candidates} candidates; skipped ${JSON.stringify(skipped)}`);
   return results;
