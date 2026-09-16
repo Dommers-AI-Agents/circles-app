@@ -209,8 +209,9 @@ class HomePromptService {
     }
     // Place-level privacy. A missing doc is allowed through: photo uploads
     // target the canonical globalPlaces id, which has no `places` row.
-    if (activity.targetType === 'place' && activity.targetId) {
-      const placeDoc = await this.db.collection(COLLECTIONS.PLACES).doc(activity.targetId).get();
+    const placeId = this.activityPlaceId(activity);
+    if (placeId) {
+      const placeDoc = await this.db.collection(COLLECTIONS.PLACES).doc(placeId).get();
       if (placeDoc.exists) {
         const place = placeDoc.data();
         if (place.deletedAt) return false;
@@ -218,6 +219,14 @@ class HomePromptService {
       }
     }
     return true;
+  }
+
+  // place_added / photo_uploaded target the place; check_in targets the
+  // check-in row and carries the place in metadata.
+  activityPlaceId(activity) {
+    const meta = activity.metadata || {};
+    if (activity.type === 'check_in') return meta.placeId || null;
+    return activity.targetType === 'place' ? (activity.targetId || null) : null;
   }
 
   // 1. "Ana added Mabel's Kitchen" — newest unseen activity from the network
@@ -240,7 +249,11 @@ class HomePromptService {
       .sort((a, b) => toMillis(b.timestamp) - toMillis(a.timestamp));
 
     for (const activity of rows) {
-      const key = `activity:${activity.id}`;
+      // A moment's activity row and its placeVideos row share one key, so a
+      // Skip on "Ana shared a moment" also silences "Latest moment from Ana".
+      const key = activity.type === 'video_uploaded'
+        ? `moment:${activity.targetId}`
+        : `activity:${activity.id}`;
       if (this.isAcked(ctx, key)) continue;
       if (!(await this.activityVisible(ctx, activity, network))) continue;
       const actor = await this.loadActor(ctx, activity.actorId);
@@ -286,10 +299,10 @@ class HomePromptService {
         return {
           ...base,
           title: `${name} checked in at ${placeName}`,
-          body: activity.circleName ? `In ${activity.circleName}.` : 'See where they went.',
+          body: meta.message || 'See where they went.',
           actionLabel: 'View',
           target: 'place',
-          data: { placeId: activity.targetId, globalPlaceId: meta.globalPlaceId || null }
+          data: { placeId: this.activityPlaceId(activity), globalPlaceId: meta.globalPlaceId || null }
         };
       default: // place_added
         return {

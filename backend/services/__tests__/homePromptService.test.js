@@ -120,7 +120,25 @@ describe('connection activity', () => {
     activity('v1', { actorId: 'bo', type: 'video_uploaded', targetType: 'place_video', targetId: 'vid1',
       metadata: { momentVisibility: 'followers', momentOwnerId: 'bo', videoThumbnail: 'https://x/t.jpg' } });
     const card = await pick();
-    expect(card).toMatchObject({ key: 'activity:v1', title: 'Bo shared a moment', target: 'video', data: { videoId: 'vid1' } });
+    expect(card).toMatchObject({ key: 'moment:vid1', title: 'Bo shared a moment', target: 'video', data: { videoId: 'vid1' } });
+  });
+
+  test('a check-in at a private place never surfaces', async () => {
+    put('places', 'p1', { addedBy: 'ana', privacy: 'private' });
+    activity('c', { type: 'check_in', targetType: 'check_in', targetId: 'ci1', metadata: { placeId: 'p1' } });
+    expect(await pick()).toBeNull();
+  });
+
+  test('skipping a moment\'s activity card also silences it as "latest moment"', async () => {
+    seedUser(ME, { following: ['ana'] });
+    activity('v1', { type: 'video_uploaded', targetType: 'place_video', targetId: 'vid1',
+      metadata: { momentVisibility: 'public', momentOwnerId: 'ana' } });
+    const card = await pick();
+    expect(card.key).toBe('moment:vid1');
+    await service.ack(ME, 'moment:vid1', 'skipped');
+    put('placeVideos', 'vid1', { userId: 'ana', uploadStatus: 'ready', deletedAt: null, visibility: 'public',
+      placeName: 'Pier 9', createdAt: iso(NOW + 20 * HOUR) });
+    expect(await service.pick(ME, { now: NOW + 21 * HOUR })).toBeNull();
   });
 
   test('circle-scoped rows honour circle privacy; private places never surface', async () => {
@@ -141,8 +159,12 @@ describe('connection activity', () => {
   });
 
   test('check_in and photo_uploaded copy', async () => {
-    activity('c', { type: 'check_in', circleName: 'Coffee', timestamp: new Date(NOW - 2 * HOUR) });
-    expect((await pick()).title).toBe("Ana checked in at Mabel's Kitchen");
+    activity('c', { type: 'check_in', targetType: 'check_in', targetId: 'ci1',
+      metadata: { placeId: 'p1', message: 'Best espresso in town' }, timestamp: new Date(NOW - 2 * HOUR) });
+    const checkIn = await pick();
+    expect(checkIn.title).toBe("Ana checked in at Mabel's Kitchen");
+    expect(checkIn.body).toBe('Best espresso in town');
+    expect(checkIn.data.placeId).toBe('p1');
     put('users', ME, { ...rows('users').get(ME), homePrompt: {} });
     activity('ph', { type: 'photo_uploaded', timestamp: new Date(NOW - HOUR) });
     expect((await pick()).title).toBe('Ana added a photo');
