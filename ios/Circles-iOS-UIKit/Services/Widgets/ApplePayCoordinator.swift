@@ -19,6 +19,12 @@ final class ApplePayCoordinator: NSObject, ApplePayContextDelegate {
     private let clientSecret: @Sendable () async throws -> String
     private var continuation: CheckedContinuation<WidgetPaymentResult, Error>?
     private var selfReference: ApplePayCoordinator?
+    /// Resuming a continuation twice traps, and these are delegate callbacks
+    /// we don't control the number of. Every resume goes through this.
+    private let resumeOnce = OnceFlag()
+    /// Converts "the sheet never appeared" into an error instead of an await
+    /// that never returns. See `finish` for why that case is reachable.
+    private var watchdog: Task<Void, Never>?
     /// An error raised while creating the order, kept so the caller is told
     /// what actually went wrong instead of a generic payment failure.
     private var secretError: Error?
@@ -56,11 +62,49 @@ final class ApplePayCoordinator: NSObject, ApplePayContextDelegate {
                                  message: "Apple Pay isn't set up on this device.")
         }
 
+        let window = presenter.viewIfLoaded?.window
         return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
             self.selfReference = self
-            context.presentApplePay(on: presenter)
+            context.presentApplePay(from: window)
+            startWatchdog()
         }
+    }
+
+    /// Stripe presents the wallet through PKPaymentAuthorizationController and
+    /// discards its "did it actually present" result. So when presentation
+    /// fails — a merchant certificate that doesn't match the entitlement is the
+    /// likely cause — no delegate method is ever called and this await would
+    /// never return. The compose screen sits disabled behind a spinner and the
+    /// only way out is force-quitting the app.
+    ///
+    /// The window is deliberately long. Someone can legitimately stare at the
+    /// Apple Pay sheet for minutes, and cutting off a real payment mid-thought
+    /// would be far worse than the hang this exists to prevent.
+    private func startWatchdog() {
+        watchdog = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 5 * 60 * 1_000_000_000)
+            // Bound before use: capturing the weak var itself into the
+            // MainActor closure is an error under Swift 6.
+            guard !Task.isCancelled, let self else { return }
+            await MainActor.run {
+                self.finish(.failure(WidgetAPIError(
+                    status: 500, code: "apple_pay_unavailable",
+                    message: "Apple Pay didn't open. Check that Apple Pay is set up on this device.")))
+            }
+        }
+    }
+
+    /// The single exit. Whichever of the delegate callbacks, or the watchdog,
+    /// gets here first wins; the rest are no-ops.
+    private func finish(_ result: Result<WidgetPaymentResult, Error>) {
+        guard resumeOnce.claim() else { return }
+        watchdog?.cancel()
+        watchdog = nil
+        let continuation = self.continuation
+        self.continuation = nil
+        selfReference = nil
+        continuation?.resume(with: result)
     }
 
     // MARK: - ApplePayContextDelegate
@@ -88,26 +132,22 @@ final class ApplePayCoordinator: NSObject, ApplePayContextDelegate {
         didCompleteWith status: STPApplePayContext.PaymentStatus,
         error: Error?
     ) {
-        let continuation = self.continuation
-        self.continuation = nil
-        defer { selfReference = nil }
-
+        let failed = WidgetAPIError(status: 500, code: "payment_failed",
+                                    message: "The payment didn't go through.")
         switch status {
         case .success:
             // Note this also covers a PaymentIntent left in `requires_capture`
             // rather than `succeeded`: the money is held, not taken, which is
             // exactly what a printed postcard order wants.
-            continuation?.resume(returning: .completed)
+            finish(.success(.completed))
         case .userCancellation:
             // Dismissing the wallet is a choice, not a failure. Nothing was
             // authorized and nothing should be reported as wrong.
-            continuation?.resume(returning: .canceled)
+            finish(.success(.canceled))
         case .error:
-            continuation?.resume(throwing: secretError ?? error ?? WidgetAPIError(
-                status: 500, code: "payment_failed", message: "The payment didn't go through."))
+            finish(.failure(secretError ?? error ?? failed))
         @unknown default:
-            continuation?.resume(throwing: WidgetAPIError(
-                status: 500, code: "payment_failed", message: "The payment didn't go through."))
+            finish(.failure(failed))
         }
     }
 }
