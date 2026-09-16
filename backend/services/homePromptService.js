@@ -416,12 +416,15 @@ class HomePromptService {
     };
   }
 
-  // 4. "Send a postcard from Lisbon?" — a place this user saved in the last
-  //    week that has a photo worth putting on a card. Rarer than the other
-  //    nudges, and it shares the `postcard_nudge` ack with the pop-up the app
-  //    shows after a save, so the two surfaces never both ask in the same
-  //    fortnight. The card lands on the composer, which offers both the free
-  //    in-app send and the printed one — so the copy promises neither.
+  // 4. "Send a postcard from Lisbon?" — a place this user photographed in the
+  //    last week. Their OWN photo, never the venue's stock one: nobody mails a
+  //    postcard of a Google photo, so `hasOwnPhotos` (stamped when the app
+  //    names its uploads on a save, or when a photo is added to an existing
+  //    save) is the whole gate. Shares the `postcard_nudge` ack with the
+  //    pop-up the app shows after a save, so the two surfaces never both ask
+  //    in the same fortnight. The card lands on the composer, which offers
+  //    both the free in-app send and the printed one — so the copy promises
+  //    neither.
   async postcardCard(ctx) {
     const key = 'postcard_nudge';
     if (!this.nudgeDue(ctx, key, POSTCARD_REPEAT_MS)) return null;
@@ -440,8 +443,11 @@ class HomePromptService {
       .filter(place => !place.deletedAt)
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 
+
     for (const place of places) {
-      const photo = (place.photos || []).find(url => typeof url === 'string' && url.length > 0);
+      if (!place.hasOwnPhotos) continue; // their picture, or no card
+      const photo = place.ownPhotoUrl
+        || (place.photos || []).find(url => typeof url === 'string' && url.length > 0);
       if (!photo) continue; // the composer opens on a picture or not at all
       if (!place.name) continue;
       if (!(await this.readsAsTrip(ctx, place))) continue;

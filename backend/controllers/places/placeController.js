@@ -912,6 +912,22 @@ exports.createPlace = async (req, res, next) => {
     // Create place data
     const placeData = createPlace(req.body, circleId, req.user.uid);
 
+    // Which of the photos are the saver's OWN. `photos` is a mixed bag by the
+    // time it arrives — the phone folds Google's stock photo and an Apple Look
+    // Around still in with anything the user picked, and once they are all
+    // plain URLs in one array nothing downstream can tell them apart. The app
+    // names its own uploads separately, and only the add-place screen does, so
+    // this is the one trustworthy signal. Recorded on the save for the home
+    // daily card to read later.
+    const ownPhotoUrls = Array.isArray(req.body.ownPhotoUrls)
+      ? req.body.ownPhotoUrls.filter(url => typeof url === 'string' && url.length > 0)
+      : [];
+    const hasOwnPhotos = ownPhotoUrls.length > 0;
+    if (hasOwnPhotos) {
+      placeData.hasOwnPhotos = true;
+      placeData.ownPhotoUrl = ownPhotoUrls[0];
+    }
+
     // Share-extension saves arrive bare (name/address/coords) with
     // enrichFromGoogle set — the extension can't run the Places SDK. Mirror
     // the check-in pattern exactly: canonical venue first (zero Google spend
@@ -1280,12 +1296,14 @@ exports.createPlace = async (req, res, next) => {
       : piggyBank;
 
     // Postcard: the app offers "send a postcard from here?" after a save, but
-    // only when the save brought a photo — the composer opens on a picture or
-    // not at all. Checking eligibility only in that case keeps the ordinary
-    // photo-less save at exactly the cost it had. The fortnightly cooldown is
+    // only when the user attached a photo of their OWN. A POI save comes back
+    // carrying Google's stock photos, and nobody mails a postcard of a stock
+    // photo — `req.body.photos` is what the phone uploaded, so it is the only
+    // honest signal. Checking eligibility only in that case also keeps the
+    // ordinary save at exactly the cost it had. The fortnightly cooldown is
     // shared with the home daily card, so the two never both ask.
     let postcardNudge = null;
-    if ((place.photos || []).length > 0) {
+    if (hasOwnPhotos) {
       try {
         postcardNudge = { eligible: await homePromptService.postcardNudgeEligible(req.user.uid) };
       } catch (nudgeError) {
@@ -1574,6 +1592,10 @@ exports.updatePlace = async (req, res, next) => {
         console.log('📷 Adding photos:', updateData.addPhotos);
         addedPhotoUrl = updateData.addPhotos[0] || null; // piggy-bank earn ref
         currentPhotos = [...currentPhotos, ...updateData.addPhotos];
+        // Uploaded by this user, by definition — the clearest own-photo signal
+        // in the app, and the one the postcard nudge most wants.
+        updateData.hasOwnPhotos = true;
+        if (addedPhotoUrl) updateData.ownPhotoUrl = addedPhotoUrl;
       }
       
       // Remove specified photos from the array
@@ -1633,6 +1655,18 @@ exports.updatePlace = async (req, res, next) => {
     // Venue-level edits update the canonical record once, for every saver
     await propagateVenueUpdates(req.params.id, place.globalPlaceId, updateData);
 
+    // Adding a photo to a place you already saved is the clearest "own image"
+    // moment there is — better evidence than a save, where the photo may be
+    // the venue's. Same fortnightly cooldown as every other postcard nudge.
+    let postcardNudge = null;
+    if (addedPhotoUrl) {
+      try {
+        postcardNudge = { eligible: await homePromptService.postcardNudgeEligible(req.user.uid) };
+      } catch (nudgeError) {
+        console.error('⚠️ Postcard nudge check failed (non-fatal):', nudgeError.message);
+      }
+    }
+
     // Get updated place. The response must reflect the canonical venue
     // record — phone/website/rating live there and are overlaid on reads; a
     // raw save doc here made a just-saved contact edit look like a no-op.
@@ -1648,7 +1682,8 @@ exports.updatePlace = async (req, res, next) => {
     res.status(200).json({
       success: true,
       place: updatedPlace,
-      piggyBank: photoPiggyBank
+      piggyBank: photoPiggyBank,
+      postcardNudge
     });
   } catch (error) {
     console.error('Error updating place:', error);

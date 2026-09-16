@@ -10,7 +10,10 @@ enum PostSaveOfferPresenter {
     /// the coin drop has already played, so this is measured from there.
     static let offerDelay: TimeInterval = 1.5
 
-    static func offer(place: Place, postcardEligible: Bool, milestoneShown: Bool) {
+    /// `ownPhotoUrl` is the picture the user themselves added with this save,
+    /// when there was one — the composer opens on that rather than whichever
+    /// photo happens to sort first, which is often the venue's stock one.
+    static func offer(place: Place, ownPhotoUrl: String?, postcardEligible: Bool, milestoneShown: Bool) {
         // The location fix is the slow part and it is what decides between the
         // two offers, so start it first and ask once it is in.
         distanceToPlace(place) { distance in
@@ -18,7 +21,7 @@ enum PostSaveOfferPresenter {
                 guard let presenter = topPresenter() else { return }
                 let decision = PostSaveOfferPlanner.decide(
                     PostSaveOfferPlanner.Context(
-                        placeHasPhoto: !(place.photos ?? []).isEmpty,
+                        hasOwnPhoto: !(ownPhotoUrl ?? "").isEmpty,
                         postcardEligible: postcardEligible,
                         distanceToPlaceMeters: distance,
                         isCelebratingMilestone: milestoneShown,
@@ -27,11 +30,40 @@ enum PostSaveOfferPresenter {
                 )
                 switch decision {
                 case .checkIn: presentCheckInOffer(place: place, from: presenter)
-                case .postcard: presentPostcardOffer(place: place, from: presenter)
+                case .postcard: presentPostcardOffer(place: place, photoUrl: ownPhotoUrl, from: presenter)
                 case .none: break
                 }
             }
         }
+    }
+
+    /// The photo-upload moment. No location fix, no milestone to dodge, and
+    /// no doubt about whose picture it is — the user just took or picked it,
+    /// and it is already in memory, so the composer opens on it instantly.
+    /// Returns whether it asked; the caller shows its own confirmation if not.
+    @discardableResult
+    static func offerAfterPhotoUpload(place: Place, photo: UIImage, eligible: Bool,
+                                      from presenter: UIViewController) -> Bool {
+        guard eligible, isClear(presenter) else { return false }
+        let key = HomePromptService.postcardNudgeKey
+        AnalyticsService.shared.logEvent("postcard_nudge_shown", parameters: ["source": "photo_upload"])
+        AlertPresenter.showConfirmation(
+            title: "Photo added to \(place.name)",
+            message: "Want to send it as a postcard?",
+            confirmTitle: "Make One",
+            cancelTitle: "Not Now",
+            from: presenter,
+            onConfirm: {
+                AnalyticsService.shared.logEvent("postcard_nudge_accepted", parameters: ["source": "photo_upload"])
+                HomePromptService.shared.ack(key: key, action: .acted)
+                PostcardComposerRouter.open(photo: photo, place: place, from: presenter)
+            },
+            onCancel: {
+                AnalyticsService.shared.logEvent("postcard_nudge_declined", parameters: ["source": "photo_upload"])
+                HomePromptService.shared.ack(key: key, action: .skipped)
+            }
+        )
+        return true
     }
 
     // MARK: - The two questions
@@ -47,7 +79,7 @@ enum PostSaveOfferPresenter {
         )
     }
 
-    private static func presentPostcardOffer(place: Place, from presenter: UIViewController) {
+    private static func presentPostcardOffer(place: Place, photoUrl: String?, from presenter: UIViewController) {
         let key = HomePromptService.postcardNudgeKey
         AnalyticsService.shared.logEvent("postcard_nudge_shown", parameters: ["source": "post_save"])
         AlertPresenter.showConfirmation(
@@ -61,7 +93,11 @@ enum PostSaveOfferPresenter {
                 // Acked either way: being asked is what spends the fortnight,
                 // and the home card reads the same key.
                 HomePromptService.shared.ack(key: key, action: .acted)
-                PostcardComposerRouter.open(place: place, from: presenter)
+                PostcardComposerRouter.open(
+                    photoUrl: photoUrl,
+                    place: PostcardComposerRouter.widgetPlace(for: place),
+                    from: presenter
+                )
             },
             onCancel: {
                 AnalyticsService.shared.logEvent("postcard_nudge_declined", parameters: ["source": "post_save"])

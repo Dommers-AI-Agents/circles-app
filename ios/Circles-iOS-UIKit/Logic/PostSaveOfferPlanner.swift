@@ -20,9 +20,10 @@ enum PostSaveOfferPlanner {
     static let atPlaceRadiusMeters: Double = 50
 
     struct Context: Equatable {
-        /// The save has a photo to put on a card — the composer opens on a
-        /// picture or not at all.
-        var placeHasPhoto: Bool
+        /// The user brought a photo of their own — not the venue's stock
+        /// photo, which nobody mails a postcard of. The composer also opens on
+        /// a picture or not at all, so this doubles as "we have one".
+        var hasOwnPhoto: Bool
         /// The server's fortnightly cooldown says we may ask.
         var postcardEligible: Bool
         /// Metres from the user to the place; nil when location is unknown,
@@ -43,10 +44,11 @@ enum PostSaveOfferPlanner {
             return .checkIn
         }
 
-        // A postcard needs a picture, an unspent cooldown, and a quiet screen.
+        // A postcard needs a picture of theirs, an unspent cooldown, and a
+        // quiet screen.
         // Yielding to the badge costs nothing: the cooldown is only spent when
         // the question is actually asked, so the nudge comes back another day.
-        guard context.postcardEligible, context.placeHasPhoto, !context.isCelebratingMilestone else {
+        guard context.postcardEligible, context.hasOwnPhoto, !context.isCelebratingMilestone else {
             return .none
         }
         return .postcard

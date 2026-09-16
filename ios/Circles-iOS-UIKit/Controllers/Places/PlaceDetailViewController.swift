@@ -2384,9 +2384,11 @@ class PlaceDetailViewController: BaseViewController {
             }
             
             // Upload to API
+            var postcardNudgeEligible = false
             PlaceService.shared.updatePlace(
                 id: place.id,
-                addPhotos: [imageData]
+                addPhotos: [imageData],
+                onPhotoNudgeEligible: { postcardNudgeEligible = $0 }
             ) { [weak self] result in
                 DispatchQueue.main.async {
                     self?.isLoadingPhoto = false
@@ -2409,8 +2411,21 @@ class PlaceDetailViewController: BaseViewController {
                         self?.addPhotoButton.isHidden = true
                         self?.photosEditButton.isHidden = false
                         
-                        // Show success message
-                        self?.showAlert(title: "Success", message: "Photo uploaded successfully")
+                        // A photo of their own is the best reason to offer a
+                        // postcard, so that offer stands in for the success
+                        // alert when it runs — two alerts in a row would be one
+                        // too many.
+                        let asked = self.map {
+                            PostSaveOfferPresenter.offerAfterPhotoUpload(
+                                place: updatedPlace,
+                                photo: image,
+                                eligible: postcardNudgeEligible,
+                                from: $0
+                            )
+                        } ?? false
+                        if !asked {
+                            self?.showAlert(title: "Success", message: "Photo uploaded successfully")
+                        }
                         
                         // Clear any existing photos array to force reload if view is refreshed
                         self?.placePhotos.removeAll()

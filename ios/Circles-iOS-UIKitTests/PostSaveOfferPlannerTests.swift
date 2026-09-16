@@ -6,14 +6,14 @@ import Testing
 /// rewards (coin drop, milestone badge) are never talked over.
 struct PostSaveOfferPlannerTests {
     private func context(
-        placeHasPhoto: Bool = true,
+        hasOwnPhoto: Bool = true,
         postcardEligible: Bool = true,
         distance: Double? = nil,
         milestone: Bool = false,
         clear: Bool = true
     ) -> PostSaveOfferPlanner.Context {
         PostSaveOfferPlanner.Context(
-            placeHasPhoto: placeHasPhoto,
+            hasOwnPhoto: hasOwnPhoto,
             postcardEligible: postcardEligible,
             distanceToPlaceMeters: distance,
             isCelebratingMilestone: milestone,
@@ -26,8 +26,8 @@ struct PostSaveOfferPlannerTests {
         #expect(PostSaveOfferPlanner.decide(context(distance: 50)) == .checkIn)
         // Check-in wins even when a postcard would also have qualified.
         #expect(PostSaveOfferPlanner.decide(context(postcardEligible: true, distance: 12)) == .checkIn)
-        // ...and is still offered for a place with no photo at all.
-        #expect(PostSaveOfferPlanner.decide(context(placeHasPhoto: false, postcardEligible: false, distance: 12)) == .checkIn)
+        // ...and is still offered for a place they photographed not at all.
+        #expect(PostSaveOfferPlanner.decide(context(hasOwnPhoto: false, postcardEligible: false, distance: 12)) == .checkIn)
     }
 
     @Test func anywhereElseOffersThePostcard() {
@@ -38,8 +38,9 @@ struct PostSaveOfferPlannerTests {
         #expect(PostSaveOfferPlanner.decide(context(distance: nil)) == .postcard)
     }
 
-    @Test func aPostcardNeedsAPhotoAndAnUnspentCooldown() {
-        #expect(PostSaveOfferPlanner.decide(context(placeHasPhoto: false)) == .none)
+    @Test func aPostcardNeedsTheirOwnPhotoAndAnUnspentCooldown() {
+        // A POI save carrying only the venue's stock photos is not a postcard.
+        #expect(PostSaveOfferPlanner.decide(context(hasOwnPhoto: false)) == .none)
         #expect(PostSaveOfferPlanner.decide(context(postcardEligible: false)) == .none)
     }
 

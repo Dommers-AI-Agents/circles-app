@@ -231,9 +231,11 @@ describe('add a place', () => {
 describe('postcard', () => {
   // A place saved this week is both what suppresses the add-place nudge and
   // what the postcard card is about, so these run with one seeded save.
+  // A save carrying the user's OWN photo — hasOwnPhotos/ownPhotoUrl are what
+  // the create and photo-upload paths stamp.
   const savePlace = (id, extra = {}) => put('places', id, {
     addedBy: ME, name: 'Cafe Lisboa', createdAt: iso(NOW - 2 * DAY),
-    photos: ['https://img/1.jpg'], ...extra
+    photos: ['https://img/1.jpg'], hasOwnPhotos: true, ownPhotoUrl: 'https://img/1.jpg', ...extra
   });
 
   beforeEach(() => {
@@ -255,10 +257,24 @@ describe('postcard', () => {
     });
   });
 
-  test('no photo, no name, deleted, or nothing saved this week → no postcard card', async () => {
-    savePlace('nophoto', { photos: [] });
+  test("the venue's stock photos are not a reason to send a postcard", async () => {
+    // A POI save: Google's photo and an Apple Look Around still, none of them
+    // the user's. The app never named an upload, so no card.
+    savePlace('poi', { hasOwnPhotos: false, ownPhotoUrl: null, photos: ['https://google/stock.jpg'] });
     expect(await pick()).toBeNull();
-    savePlace('nophoto', { photos: [''] });
+  });
+
+  test('the card uses their photo, not whichever one sorts first', async () => {
+    savePlace('mixed', { photos: ['https://google/stock.jpg', 'https://img/mine.jpg'], ownPhotoUrl: 'https://img/mine.jpg' });
+    const card = await pick();
+    expect(card.imageUrl).toBe('https://img/mine.jpg');
+    expect(card.data.photoUrl).toBe('https://img/mine.jpg');
+  });
+
+  test('no photo, no name, deleted, or nothing saved this week → no postcard card', async () => {
+    savePlace('nophoto', { photos: [], ownPhotoUrl: null });
+    expect(await pick()).toBeNull();
+    savePlace('nophoto', { photos: [''], ownPhotoUrl: null });
     expect(await pick()).toBeNull();
     savePlace('nophoto', { name: '' });
     expect(await pick()).toBeNull();
@@ -326,7 +342,7 @@ describe('postcard nudge eligibility (the app\'s post-save pop-up)', () => {
 
   test('a home card that already asked closes the pop-up for a fortnight', async () => {
     // pick() stamps the card as shown, which is what spends the cooldown.
-    put('places', 'p', { addedBy: ME, name: 'Cafe Lisboa', createdAt: iso(NOW - DAY), photos: ['https://img/1.jpg'] });
+    put('places', 'p', { addedBy: ME, name: 'Cafe Lisboa', createdAt: iso(NOW - DAY), photos: ['https://img/1.jpg'], hasOwnPhotos: true, ownPhotoUrl: 'https://img/1.jpg' });
     expect((await pick()).key).toBe('postcard_nudge');
     expect(await eligible()).toBe(false);
     expect(await eligible(NOW + 13 * DAY)).toBe(false);

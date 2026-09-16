@@ -672,6 +672,9 @@ class PlaceService {
         
         if let photoUrls = photoUrls, !photoUrls.isEmpty {
             body["photos"] = photoUrls
+            // See addPlaceFromPOI: these are the user's own only when the
+            // add-place screen is the caller.
+            if offersPostSaveNudges { body["ownPhotoUrls"] = photoUrls }
         }
         
         if let privateNotes = privateNotes {
@@ -712,6 +715,7 @@ class PlaceService {
                         DispatchQueue.main.asyncAfter(deadline: .now() + (coinPlayed ? PiggyBankDepositView.totalDuration : 0)) {
                             PostSaveOfferPresenter.offer(
                                 place: response.place,
+                                ownPhotoUrl: (body["ownPhotoUrls"] as? [String])?.first,
                                 postcardEligible: response.postcardNudge?.eligible ?? false,
                                 milestoneShown: false
                             )
@@ -978,6 +982,14 @@ class PlaceService {
             // Add collected images to the body
             if !collectedImageUrls.isEmpty {
                 // Remove duplicates before sending
+                // Only the add-place screen opts into the post-save moment, and
+                // only it hands us photos the user picked — so that is exactly
+                // when the pre-uploaded URLs can be declared as theirs. Google's
+                // stock photo and the Look Around still are in the same array
+                // below and must not be mistaken for them.
+                if offersPostSaveNudges, let ownUrls = preUploadedPhotoUrls, !ownUrls.isEmpty {
+                    body["ownPhotoUrls"] = ownUrls
+                }
                 let uniqueUrls = Array(Set(collectedImageUrls))
                 if uniqueUrls.count != collectedImageUrls.count {
                     Logger.debug("⚠️ PlaceService: Found \(collectedImageUrls.count - uniqueUrls.count) duplicate photo URLs, removing duplicates")
@@ -1038,6 +1050,7 @@ class PlaceService {
                             guard offersPostSaveNudges else { return }
                             PostSaveOfferPresenter.offer(
                                 place: response.place,
+                                ownPhotoUrl: (body["ownPhotoUrls"] as? [String])?.first,
                                 postcardEligible: response.postcardNudge?.eligible ?? false,
                                 milestoneShown: milestoneShown
                             )
@@ -1061,7 +1074,7 @@ class PlaceService {
         )
     }
     
-    func updatePlace(id: String, name: String? = nil, description: String? = nil, address: String? = nil, category: PlaceCategory? = nil, customCategory: String? = nil, privacy: PlacePrivacy? = nil, website: String? = nil, phone: String? = nil, tags: [String]? = nil, privateNotes: String? = nil, userRating: Int? = nil, addPhotos: [Data]? = nil, removePhotoUrls: [String]? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
+    func updatePlace(id: String, name: String? = nil, description: String? = nil, address: String? = nil, category: PlaceCategory? = nil, customCategory: String? = nil, privacy: PlacePrivacy? = nil, website: String? = nil, phone: String? = nil, tags: [String]? = nil, privateNotes: String? = nil, userRating: Int? = nil, addPhotos: [Data]? = nil, removePhotoUrls: [String]? = nil, onPhotoNudgeEligible: ((Bool) -> Void)? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         
         var locationCoordinate: CLLocationCoordinate2D?
         var photosUrls: [String]?
@@ -1205,6 +1218,10 @@ class PlaceService {
                     if case .success(let response) = result {
                         // First photo added to a venue earns a coin
                         PiggyBankDepositView.play(credit: response.piggyBank)
+                        // A photo added here is the user's own by definition —
+                        // the caller holds the image, so it decides what to
+                        // offer; the server only says whether it may ask.
+                        onPhotoNudgeEligible?(response.postcardNudge?.eligible ?? false)
                         completion(.success(response.place))
                     } else if case .failure(let error) = result {
                         completion(.failure(error))
