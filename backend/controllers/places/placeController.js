@@ -1471,8 +1471,9 @@ exports.updatePlace = async (req, res, next) => {
       });
     }
 
-    // Don't allow changing circleId or addedBy
-    const { circleId, addedBy, ...updateData } = req.body;
+    // Don't allow changing circleId or addedBy. ratingCheckInId is a request
+    // hint (which check-in prompted a re-rate), never a doc field.
+    const { circleId, addedBy, ratingCheckInId, ratingHistory: _clientHistory, userRatedAt: _clientRatedAt, ...updateData } = req.body;
     updateData.updatedAt = new Date().toISOString();
 
     // Google-backed places: Google Places is the source of truth for venue
@@ -1525,6 +1526,22 @@ exports.updatePlace = async (req, res, next) => {
         updateData.userRating = (updateData.userRating === null || Number.isNaN(num))
           ? null
           : Math.min(10, Math.max(0, Math.round(num)));
+        // Latest wins, history kept: a new (or check-in-prompted) score is
+        // appended to ratingHistory; clearing the rating leaves history alone.
+        const { appendRating } = require('../../utils/ratingHistory');
+        const nextHistory = appendRating(place.ratingHistory, {
+          rating: updateData.userRating,
+          at: updateData.updatedAt,
+          checkInId: ratingCheckInId || null
+        }, place.userRating === null || place.userRating === undefined ? null : {
+          // Rated before history existed: keep the starting score
+          rating: place.userRating,
+          at: place.userRatedAt || place.updatedAt || place.createdAt || null
+        });
+        if (nextHistory) {
+          updateData.ratingHistory = nextHistory;
+          updateData.userRatedAt = updateData.updatedAt;
+        }
       }
     }
 

@@ -1,20 +1,40 @@
 import UIKit
 
-/// One-tap prompt shown when the user taps Save on the Add Place screen:
-/// tap a 0–10 rating pill and the save continues immediately, or tap Skip
-/// to save without a rating. Nothing else — reviews are written in the
-/// form's Review/Comment field (or later on the place).
-/// Swiping the sheet away cancels the save; tapping Save again re-prompts.
+/// One-tap 0–10 rating sheet: tap a pill and `onContinue` fires with the
+/// score, or Skip for nil. Used on Save (Add Place — the save continues),
+/// from the place page (change your rating) and after a check-in
+/// ("How was it this time?"). Reviews are not collected here — they are
+/// comments on the venue.
 class PlaceRatingSheetViewController: UIViewController {
 
-    /// Called after the sheet dismisses; the presenter continues the save.
+    /// Called after the sheet dismisses.
     var onContinue: ((_ rating: Int?) -> Void)?
 
     private let placeName: String
+    private let titleText: String
+    private let subtitleText: String
+    private let currentRating: Int?
 
-    init(placeName: String) {
+    init(placeName: String, title: String? = nil, subtitle: String? = nil, currentRating: Int? = nil) {
         self.placeName = placeName
+        self.titleText = title ?? "How was \(placeName)?"
+        self.subtitleText = subtitle ?? "Tap a rating to save"
+        self.currentRating = currentRating
         super.init(nibName: nil, bundle: nil)
+    }
+
+    /// Standard presentation: compact page sheet (240pt detent on iOS 16+).
+    static func present(_ sheet: PlaceRatingSheetViewController, from presenter: UIViewController) {
+        sheet.modalPresentationStyle = .pageSheet
+        if let sheetController = sheet.sheetPresentationController {
+            if #available(iOS 16.0, *) {
+                sheetController.detents = [.custom { _ in 240 }]
+            } else {
+                sheetController.detents = [.medium()]
+            }
+            sheetController.prefersGrabberVisible = true
+        }
+        presenter.present(sheet, animated: true)
     }
 
     required init?(coder: NSCoder) {
@@ -25,7 +45,7 @@ class PlaceRatingSheetViewController: UIViewController {
 
     private lazy var titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "How was \(placeName)?"
+        label.text = titleText
         label.font = UIFont.systemFont(ofSize: 20, weight: .bold)
         label.textColor = Constants.Colors.label
         label.numberOfLines = 2
@@ -33,9 +53,9 @@ class PlaceRatingSheetViewController: UIViewController {
         return label
     }()
 
-    private let ratingPromptLabel: UILabel = {
+    private lazy var ratingPromptLabel: UILabel = {
         let label = UILabel()
-        label.text = "Tap a rating to save"
+        label.text = subtitleText
         label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
         label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
@@ -54,6 +74,11 @@ class PlaceRatingSheetViewController: UIViewController {
             button.setTitleColor(Constants.Colors.label, for: .normal)
             button.backgroundColor = Constants.Colors.secondaryBackground
             button.layer.cornerRadius = 8
+            if value == currentRating {
+                // The score they gave last time, outlined so "keep it" is obvious
+                button.layer.borderWidth = 2
+                button.layer.borderColor = Constants.Colors.primary.cgColor
+            }
             button.tag = value
             button.heightAnchor.constraint(equalToConstant: 44).isActive = true
             button.addTarget(self, action: #selector(ratingPillTapped(_:)), for: .touchUpInside)

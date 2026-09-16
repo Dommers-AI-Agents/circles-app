@@ -8,6 +8,8 @@ extension Notification.Name {
     /// A check-in was created (userInfo: "placeId", "globalPlaceId" when known).
     /// Place pages refresh their check-in history line on it.
     static let checkInCreated = Notification.Name("CheckInCreated")
+    /// The viewer changed their rating of a place (userInfo: "placeId", "place").
+    static let placeRatingChanged = Notification.Name("PlaceRatingChanged")
     /// Asks the Network tab to switch to its Discover segment. Posted by child
     /// lists that want to hand off rather than push a duplicate screen.
     static let showDiscoverSegment = Notification.Name("ShowDiscoverSegment")

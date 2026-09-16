@@ -1193,10 +1193,14 @@ class APIService {
             case .success(let response):
                 // A check-in earns a coin (once per venue per day)
                 PiggyBankDepositView.play(credit: response.piggyBank)
-                var info: [String: Any] = [:]
+                var info: [String: Any] = ["checkInId": response.data.id, "placeName": response.data.placeName]
                 if let placeId = response.data.placeId { info["placeId"] = placeId }
                 if let stats = response.myCheckInStats { info["stats"] = stats }
                 NotificationCenter.default.post(name: .checkInCreated, object: nil, userInfo: info)
+                // "How was it this time?" — once the check-in flow is off screen
+                if let placeId = response.data.placeId {
+                    PostCheckInRatePresenter.offer(placeId: placeId, checkInId: response.data.id, placeName: response.data.placeName)
+                }
                 completion(.success((checkIn: response.data, stats: response.myCheckInStats)))
             case .failure(let error):
                 completion(.failure(error))
