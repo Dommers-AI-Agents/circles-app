@@ -99,7 +99,11 @@ final class AppWidgetHost: FavWidgetHost {
 
     func currentLocation() async -> WidgetCoordinate? {
         await withCheckedContinuation { continuation in
+            // Belt and braces: LocationService now fires each completion once,
+            // but a continuation resumed twice is a crash, so guard here too.
+            let once = OnceFlag()
             LocationService.shared.getCurrentLocation { location in
+                guard once.claim() else { return }
                 continuation.resume(returning: location.map {
                     WidgetCoordinate(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude)
                 })
@@ -308,5 +312,18 @@ final class AppWidgetHost: FavWidgetHost {
             warning: Color(uiColor: Constants.Colors.warning),
             danger: Color(uiColor: Constants.Colors.danger)
         )
+    }
+}
+
+/// Thread-safe "first caller wins" flag for one-shot callbacks.
+final class OnceFlag {
+    private let lock = NSLock()
+    private var claimed = false
+    /// True exactly once.
+    func claim() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if claimed { return false }
+        claimed = true
+        return true
     }
 }

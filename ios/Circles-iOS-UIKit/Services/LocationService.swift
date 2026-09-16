@@ -5,7 +5,13 @@ class LocationService: NSObject {
     static let shared = LocationService()
     
     private let locationManager = CLLocationManager()
-    private var locationCompletion: ((CLLocation?) -> Void)?
+    /// Everyone waiting on the next fix. Each completion fires exactly once:
+    /// the array is emptied before delivery. The old single stored closure
+    /// was never cleared, so a later Core Location callback re-invoked it —
+    /// and a caller wrapping it in a CheckedContinuation trapped on the
+    /// second resume (two crashes on Wes's phone, 2026-09-15).
+    private var pendingCompletions: [(CLLocation?) -> Void] = []
+    private let pendingLock = NSLock()
     private(set) var lastKnownLocation: CLLocation?
     
     override init() {
@@ -19,13 +25,25 @@ class LocationService: NSObject {
     }
     
     func getCurrentLocation(completion: @escaping (CLLocation?) -> Void) {
-        locationCompletion = completion
-        
-        if CLLocationManager.locationServicesEnabled() {
-            locationManager.requestLocation()
-        } else {
+        guard CLLocationManager.locationServicesEnabled() else {
             completion(nil)
+            return
         }
+        pendingLock.lock()
+        pendingCompletions.append(completion)
+        let isFirst = pendingCompletions.count == 1
+        pendingLock.unlock()
+        // One in-flight request serves every concurrent caller
+        if isFirst { locationManager.requestLocation() }
+    }
+
+    /// Hands the result to everyone waiting, once, then forgets them.
+    private func deliver(_ location: CLLocation?) {
+        pendingLock.lock()
+        let waiting = pendingCompletions
+        pendingCompletions = []
+        pendingLock.unlock()
+        waiting.forEach { $0(location) }
     }
     
     func getAddress(from location: CLLocation, completion: @escaping (String?) -> Void) {
@@ -55,16 +73,16 @@ class LocationService: NSObject {
 extension LocationService: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.first else {
-            locationCompletion?(nil)
+            deliver(nil)
             return
         }
         
         lastKnownLocation = location
-        locationCompletion?(location)
+        deliver(location)
     }
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Logger.debug("Location manager error: \(error.localizedDescription)")
-        locationCompletion?(nil)
+        deliver(nil)
     }
 }
