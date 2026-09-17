@@ -1838,7 +1838,7 @@ struct PlaceResponse: Decodable {
 
 /// The server's answer to "may the post-save postcard offer run?" — it owns
 /// the fortnightly cooldown, shared with the home daily card.
-struct PostcardNudge: Decodable {
+struct PostcardNudge: Codable {
     let eligible: Bool
 }
 

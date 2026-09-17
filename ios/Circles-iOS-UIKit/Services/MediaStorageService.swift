@@ -14,6 +14,8 @@ struct StorageResult {
     let place: Place
     let storageUrls: [String: String]
     let metadata: [String: Any]
+    /// Server says the postcard offer may be shown for this photo (fortnightly cooldown unspent)
+    var postcardNudgeEligible: Bool = false
 }
 
 // MARK: - Upload Progress
@@ -106,7 +108,8 @@ class MediaStorageService {
                         mediaType: type,
                         place: place,
                         storageUrls: response.storageUrls ?? [:],
-                        metadata: [:] // Empty metadata for now
+                        metadata: [:], // Empty metadata for now
+                        postcardNudgeEligible: response.postcardNudge?.eligible ?? false
                     )
                     completion(.success(storageResult))
                     
@@ -484,6 +487,7 @@ struct PhotoUploadResponse: Codable {
     let success: Bool
     let message: String?
     let storageUrls: [String: String]?
+    let postcardNudge: PostcardNudge?
     // Simplified - remove metadata for now to avoid Codable complexity
 }
 

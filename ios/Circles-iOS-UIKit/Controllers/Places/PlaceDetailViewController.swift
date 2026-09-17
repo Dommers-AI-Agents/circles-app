@@ -2745,60 +2745,71 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
     }
     
     private func uploadProcessedPhoto(_ processedPhoto: ProcessedPhoto) {
-        // Show upload progress feedback
-        showSuccess("Uploading photo...")
-        
+        // One loading alert whose text tracks progress. (This used to present
+        // a fresh "Success"/OK alert per progress step; the first one stayed
+        // up, every later present failed, and the finish — including the
+        // postcard offer — never got the screen.)
+        let loading = showLoading(message: "Uploading photo…")
+
         // Use MediaStorageService for consistent upload handling (same as Moments)
         mediaStorageService.uploadPhoto(
             processedPhoto,
             for: place,
             type: .placePhoto,
             visibility: "public",
-            progress: { [weak self] progress in
-                // Update user with upload progress
+            progress: { progress in
                 DispatchQueue.main.async {
                     let percentage = Int(progress.progress * 100)
                     switch progress.phase {
-                    case .initiating:
-                        self?.showSuccess("Preparing upload...")
-                    case .uploading:
-                        self?.showSuccess("Uploading... \(percentage)%")
-                    case .finalizing:
-                        self?.showSuccess("Finalizing upload...")
-                    case .completed:
-                        break // Will be handled in completion
+                    case .initiating: loading.message = "Preparing upload…"
+                    case .uploading: loading.message = "Uploading… \(percentage)%"
+                    case .finalizing: loading.message = "Finalizing…"
+                    case .completed: break // handled in completion
                     }
                 }
             }
         ) { [weak self] result in
             DispatchQueue.main.async {
-                self?.isLoadingPhoto = false
-                self?.updateImageView()
-                
-                switch result {
-                case .success(let storageResult):
-                    // Update place with new image - add to carousel
-                    self?.customImage = processedPhoto.image
-                    self?.placePhotos.append((image: processedPhoto.image, url: storageResult.storageUrls["photoUrl"]))
+                loading.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    self.isLoadingPhoto = false
+                    self.updateImageView()
 
-                    // Update photo section buttons
-                    self?.addPhotoButton.isHidden = true
-                    self?.photosEditButton.isHidden = false
+                    switch result {
+                    case .success(let storageResult):
+                        // Update place with new image - add to carousel
+                        self.customImage = processedPhoto.image
+                        self.placePhotos.append((image: processedPhoto.image, url: storageResult.storageUrls["photoUrl"]))
 
-                    // Show the new photo immediately; the GlobalPlace refresh below
-                    // replaces it with the attributed server copy when it lands
-                    self?.updateMediaCarousel()
+                        // Update photo section buttons
+                        self.addPhotoButton.isHidden = true
+                        self.photosEditButton.isHidden = false
 
-                    Logger.debug("✅ [PlaceDetailViewController] Photo upload successful, refreshing Global Place data...")
+                        // Show the new photo immediately; the GlobalPlace refresh below
+                        // replaces it with the attributed server copy when it lands
+                        self.updateMediaCarousel()
 
-                    // Clear any cached data and refresh Global Place data
-                    self?.globalPlace = nil
-                    self?.loadGlobalPlaceData()
-                    
-                    self?.showSuccess("Photo uploaded successfully")
-                    
-                case .failure(let error):
-                    self?.showError(error)
+                        Logger.debug("✅ [PlaceDetailViewController] Photo upload successful, refreshing Global Place data...")
+
+                        // Clear any cached data and refresh Global Place data
+                        self.globalPlace = nil
+                        self.loadGlobalPlaceData()
+
+                        // Their own photo is the best reason to offer a postcard;
+                        // the offer stands in for the success alert when it runs
+                        let asked = PostSaveOfferPresenter.offerAfterPhotoUpload(
+                            place: self.place,
+                            photo: processedPhoto.image,
+                            eligible: storageResult.postcardNudgeEligible,
+                            from: self
+                        )
+                        if !asked {
+                            self.showSuccess("Photo uploaded successfully")
+                        }
+
+                    case .failure(let error):
+                        self.showError(error)
+                    }
                 }
             }
         }
