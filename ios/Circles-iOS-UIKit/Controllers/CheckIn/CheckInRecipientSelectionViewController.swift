@@ -9,6 +9,15 @@ class CheckInRecipientSelectionViewController: BaseViewController {
     // MARK: - Properties
     weak var delegate: CheckInRecipientSelectionDelegate?
     var checkInData: [String: Any] = [:]
+
+    /// Picker mode (the one-screen check-in): return the selection to the
+    /// caller instead of creating the check-in here. Step header and the
+    /// private button are hidden; the main button reads "Done".
+    var onPick: ((_ groups: Set<String>, _ users: Set<String>) -> Void)?
+    var initialGroups: Set<String> = []
+    var initialUsers: Set<String> = []
+    private var isPickerMode: Bool { onPick != nil }
+    private var stepIndicatorHeight: NSLayoutConstraint?
     
     private var groups: [Conversation] = []
     private var connections: [Connection] = []
@@ -92,6 +101,8 @@ class CheckInRecipientSelectionViewController: BaseViewController {
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
+        selectedGroups = initialGroups
+        selectedUsers = initialUsers
         setupUI()
         loadData()
     }
@@ -123,12 +134,21 @@ class CheckInRecipientSelectionViewController: BaseViewController {
         view.addSubview(checkInButton)
         
         // Setup constraints
+        let stepIndicatorHeightConstraint = stepIndicatorView.heightAnchor.constraint(equalToConstant: isPickerMode ? 0 : 80)
+        stepIndicatorHeight = stepIndicatorHeightConstraint
+        if isPickerMode {
+            title = "Notify People"
+            stepIndicatorView.isHidden = true
+            privateCheckInButton.isHidden = true
+            checkInButton.setTitle("Done", for: .normal)
+            instructionLabel.text = "Pick groups or people to notify about this check-in"
+        }
         NSLayoutConstraint.activate([
             // Step indicator
             stepIndicatorView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             stepIndicatorView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             stepIndicatorView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            stepIndicatorView.heightAnchor.constraint(equalToConstant: 80),
+            stepIndicatorHeightConstraint,
             
             stepLabel.topAnchor.constraint(equalTo: stepIndicatorView.topAnchor, constant: 16),
             stepLabel.leadingAnchor.constraint(equalTo: stepIndicatorView.leadingAnchor, constant: 16),
@@ -222,6 +242,11 @@ class CheckInRecipientSelectionViewController: BaseViewController {
     }
     
     @objc private func checkInButtonTapped() {
+        if let onPick = onPick {
+            onPick(selectedGroups, selectedUsers)
+            navigationController?.popViewController(animated: true)
+            return
+        }
         // Check if user selected individuals not in a group
         if currentTab == 1 && selectedUsers.count > 1 {
             checkForExistingGroup()
@@ -358,8 +383,9 @@ class CheckInRecipientSelectionViewController: BaseViewController {
     
     private func updateCheckInButton() {
         let hasSelection = !selectedGroups.isEmpty || !selectedUsers.isEmpty
-        checkInButton.isEnabled = hasSelection
-        checkInButton.alpha = hasSelection ? 1.0 : 0.6
+        // Picker mode: Done is always available (an empty pick clears the list)
+        checkInButton.isEnabled = hasSelection || isPickerMode
+        checkInButton.alpha = (hasSelection || isPickerMode) ? 1.0 : 0.6
         
         // Update count label
         let totalCount = selectedGroups.count + selectedUsers.count

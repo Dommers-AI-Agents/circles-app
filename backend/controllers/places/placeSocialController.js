@@ -611,88 +611,16 @@ exports.addPlaceComment = async (req, res, next) => {
       });
     }
     
-    // Create comment using the model function. Comments are keyed by the
-    // canonical venue record (placeId kept for legacy readers like the digest)
-    const { createPlaceComment } = require('../../models/FirestoreModels');
-    const commentGlobalPlaceId = place.globalPlaceId || await ensureGlobalPlaceLink(placeDoc);
-    const commentData = {
-      ...createPlaceComment({
-        placeId: placeId,
-        userId: userId,
-        text: text.trim()
-      }),
-      globalPlaceId: commentGlobalPlaceId || null
-    };
-
-    console.log('💾 Saving comment to placeComments collection');
-    const commentRef = await db.collection('placeComments').add(commentData);
-
-    // Keep the venue's comment counter current
-    if (commentGlobalPlaceId) {
-      await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(commentGlobalPlaceId).update({
-        commentsCount: admin.firestore.FieldValue.increment(1)
-      }).catch(err => console.error('⚠️ Failed to bump commentsCount:', err.message));
-    }
-    const commentDoc = await commentRef.get();
-    const comment = serializeDoc(commentDoc);
+    // Everything after the permission check is shared with check-in notes
+    const { postPlaceComment } = require('../../services/placeCommentService');
+    const { comment, piggyBank } = await postPlaceComment({ placeDoc, userId, text });
     console.log('✅ Comment saved successfully with ID:', comment.id);
 
-    // Piggy bank: 1 FavCoin for your first comment on this venue (not your
-    // own places; thread-padding pays nothing — per-venue dedup). Awaited so
-    // the response carries the credit for the coin-drop; credit() never throws.
-    let piggyBank = null;
-    if (place.addedBy !== userId) {
-      piggyBank = await piggyBankService.credit({
-        userId,
-        eventType: 'place_comment',
-        sourceRef: {
-          commentId: commentRef.id,
-          globalPlaceId: commentGlobalPlaceId || null,
-          placeId
-        }
-      });
-    }
-    
-    // Get user details
-    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-    if (userDoc.exists) {
-      comment.user = projectPublicUser(serializeDoc(userDoc));
-    }
-    
-    // Send notification to place owner if it's not the commenter
-    if (place.addedBy !== userId) {
-      await notificationService.sendPlaceCommentNotification(
-        place.addedBy,
-        userId,
-        placeId,
-        place.name,
-        text.trim()
-      );
-    }
-    
     res.status(201).json({
       success: true,
       data: comment,
       piggyBank
     });
-    
-    // Track comment activity
-    const { createActivity } = require('../activityController');
-    await createActivity(
-      'place_commented',
-      userId,
-      'place',
-      placeId,
-      place.name || 'Unknown Place',
-      {
-        circleId: place.circleId,
-        circleName: circle.name || 'Unknown Circle',
-        comment: text.trim(),
-        commentId: commentRef.id,
-        placePhoto: place.photos && place.photos.length > 0 ? place.photos[0] : null,
-        placeAddress: place.address || null
-      }
-    );
     
   } catch (error) {
     console.error('Error adding place comment:', error);

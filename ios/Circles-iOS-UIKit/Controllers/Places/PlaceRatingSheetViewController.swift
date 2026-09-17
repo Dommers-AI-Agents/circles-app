@@ -62,29 +62,13 @@ class PlaceRatingSheetViewController: UIViewController {
         return label
     }()
 
-    private lazy var ratingStack: UIStackView = {
-        let stack = UIStackView()
-        stack.axis = .horizontal
-        stack.spacing = 4
-        stack.distribution = .fillEqually
-        for value in 0...10 {
-            let button = UIButton(type: .system)
-            button.setTitle("\(value)", for: .normal)
-            button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-            button.setTitleColor(Constants.Colors.label, for: .normal)
-            button.backgroundColor = Constants.Colors.secondaryBackground
-            button.layer.cornerRadius = 8
-            if value == currentRating {
-                // The score they gave last time, outlined so "keep it" is obvious
-                button.layer.borderWidth = 2
-                button.layer.borderColor = Constants.Colors.primary.cgColor
-            }
-            button.tag = value
-            button.heightAnchor.constraint(equalToConstant: 44).isActive = true
-            button.addTarget(self, action: #selector(ratingPillTapped(_:)), for: .touchUpInside)
-            stack.addArrangedSubview(button)
+    private lazy var ratingPills: RatingPillsView = {
+        let pills = RatingPillsView(currentRating: currentRating)
+        pills.onSelect = { [weak self] rating in
+            // Flash reads on its own; continue after a beat
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self?.finish(rating: rating) }
         }
-        return stack
+        return pills
     }()
 
     private lazy var skipButton: UIButton = {
@@ -103,7 +87,7 @@ class PlaceRatingSheetViewController: UIViewController {
         view.backgroundColor = Constants.Colors.background
 
         let stack = UIStackView(arrangedSubviews: [
-            titleLabel, ratingPromptLabel, ratingStack, skipButton
+            titleLabel, ratingPromptLabel, ratingPills, skipButton
         ])
         stack.axis = .vertical
         stack.spacing = 16
@@ -119,15 +103,6 @@ class PlaceRatingSheetViewController: UIViewController {
     }
 
     // MARK: - Actions
-
-    @objc private func ratingPillTapped(_ sender: UIButton) {
-        // Flash the selection so the tap reads, then continue the save
-        sender.backgroundColor = Constants.Colors.primary
-        sender.setTitleColor(.white, for: .normal)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            self?.finish(rating: sender.tag)
-        }
-    }
 
     @objc private func skipTapped() {
         finish(rating: nil)
