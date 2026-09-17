@@ -10,6 +10,17 @@ logs marks, `build.sh` normalizes the take, cuts dead time, lays the narration
 from `beats/`, and wraps it in the house-style navy brand cards (see the
 `demo-video-brand-card-opener` note).
 
+## Two OCR traps on this screen
+
+**The caption.** "Greetings from ___" is printed across the postcard preview
+*and* is the label of the form field below it. OCR finds the preview first, so
+anchoring on those words taps an image and the typing lands in whichever field
+still had focus — it mangled the message field for a whole take before I caught
+it. Anchor on the section header, `CAPTION ON THE CARD`, and tap ~40pt below.
+
+**Typing replaces, never appends.** The draft persists, so every text field
+starts with the last take's content. Each typing step sends Cmd-A first.
+
 ## Known gap: the mail switch does not flip on camera
 
 The finished cut shows the "Mail a printed postcard · $3.99" row, but the

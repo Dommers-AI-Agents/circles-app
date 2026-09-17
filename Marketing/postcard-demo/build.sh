@@ -135,30 +135,58 @@ box-shadow:0 34px 100px rgba(0,0,0,.6);border:2px solid rgba(79,209,197,.28)}
 h1{font-size:150px;font-weight:800;letter-spacing:-3px;line-height:1}
 h1 span{color:#4FD1C5}
 p.tag{font-size:60px;font-weight:600;margin-top:34px;line-height:1.3;opacity:.96}
+p.tag.small{font-size:48px}
+p.kicker{font-size:44px;font-weight:800;letter-spacing:3px;color:#4FD1C5;margin-top:40px}
 .note{margin-top:90px;display:flex;flex-direction:column;align-items:center;gap:26px}
 .pill{background:#fff;color:#0E2A47;font-size:54px;font-weight:800;padding:28px 64px;border-radius:999px}
 .sub{font-size:50px;font-weight:600;opacity:.92}""" % FONT
 LOGO = '<div class=dots><i class=b></i><i class=t></i><i class=t></i><i class=b></i></div><h1><span>Fav</span>Circles</h1>'
-intro_png = render("intro", f'<div class=card>{LOGO}<p class=tag>Never forget your favorite places.</p></div>', CARD_CSS)
+intro_png = render("intro", f'<div class=card>{LOGO}<p class=kicker>NEW FEATURE</p>'
+    '<p class="tag small">Send a digital or physical postcard of your favorite place.</p></div>', CARD_CSS)
 outro_png = render("outro", f'<div class=card>{LOGO}<p class=tag>Never forget your favorite places.</p>'
     '<div class=note><div class=pill>Sign up at favcircles.com</div><div class=sub>Never forget a place.</div></div></div>', CARD_CSS)
-def card_clip(png, mp3, out, lead, tail, reveal):
-    d = dur(mp3) + lead + tail; ms = int(lead * 1000)
+def card_clip(png, mp3, out, lead, tail, reveal, hold=None):
+    # hold: a fixed length for a card with no narration (mp3=None). The opener
+    # is silent — the announcement is on the card, and two seconds of brand is
+    # all a teaser can spare.
+    d = (hold if mp3 is None else dur(mp3)) + lead + tail
+    ms = int(lead * 1000)
     ov = f"[1:v]format=rgba,fade=t=out:st={d-1.1:.2f}:d=0.6:alpha=1[ov]" if reveal else "[1:v]format=rgba,fade=t=in:st=0:d=0.6:alpha=1[ov]"
     post = "" if reveal else f",fade=t=out:st={d-0.6:.2f}:d=0.6"
     subprocess.run(["ffmpeg","-y","-v","error","-loop","1","-t",f"{d:.2f}","-framerate","30","-i",f"{OUT}/home_1080.png",
-        "-loop","1","-t",f"{d:.2f}","-framerate","30","-i",png,"-i",mp3,
+        "-loop","1","-t",f"{d:.2f}","-framerate","30","-i",png,
+        *(["-i", mp3] if mp3 else ["-f","lavfi","-t",f"{d:.2f}","-i","anullsrc=r=44100:cl=stereo"]),
         "-filter_complex",f"{ov};[0:v][ov]overlay=0:0{post}[v];[2:a]adelay={ms}|{ms},apad,aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a]",
         "-map","[v]","-map","[a]","-t",f"{d:.2f}","-c:v","libx264","-preset","medium","-crf","19","-pix_fmt","yuv420p",
         "-c:a","aac","-b:a","192k",out], check=True)
     return d
-card_clip(intro_png, f"{DIR}/beats/s00.mp3", f"{OUT}/intro.mp4", 0.3, 0.7, True)
+card_clip(intro_png, None, f"{OUT}/intro.mp4", 0.15, 0.45, True, hold=1.4)   # ~2s, silent
 card_clip(outro_png, f"{DIR}/beats/s99.mp3", f"{OUT}/outro.mp4", 0.4, 0.8, False)
+
+# ---- ring the Postcard card over the opening beat ----
+# driver.sh writes the card's position (device points) as it parks the stage;
+# the walk is scaled to 1080 wide here, so points convert at 1080/440.
+RING_CSS = """*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1080px;height:2340px;background:transparent;position:relative}
+.ring{position:absolute;border-radius:40px;border:7px solid #4FD1C5;
+background:rgba(79,209,197,.14);
+box-shadow:0 0 0 6px rgba(14,42,71,.45),0 0 46px 10px rgba(79,209,197,.7)}"""
+ring_png, ring_span = None, None
+card_file = f"{OUT}/card_xy.txt"
+if os.path.exists(card_file) and "ring-card" in vt:
+    cx, cy = (float(v) for v in open(card_file).read().split())
+    K = 1080 / 440.0
+    left, width = int(12 * K), int(416 * K)
+    top, height = int((cy - 30) * K), int(84 * K)
+    ring_png = render("ring", f'<div class=ring style="left:{left}px;top:{top}px;'
+                              f'width:{width}px;height:{height}px"></div>', RING_CSS)
+    ring_span = (vt["ring-card"] - 1.1, vt.get("open-postcard", vt["ring-card"] + 1.6) + 0.15)
 
 # ---- main pass ----
 inputs = ["-i", src]
 for _, mp3, _, _ in events: inputs += ["-i", mp3]
 for png in cap_pngs: inputs += ["-i", png]
+if ring_png: inputs += ["-i", ring_png]
 n = len(events); fc, mix = [], []
 for i, (b, mp3, start, d) in enumerate(events):
     ms = int(start * 1000); fc.append(f"[{i+1}:a]adelay={ms}|{ms}[a{i}]"); mix.append(f"[a{i}]")
@@ -166,6 +194,11 @@ fc.append("".join(mix) + f"amix=inputs={len(mix)}:normalize=0,aresample=44100,af
 fc.append("[0:v]scale=1080:2340[v0]"); cur = "v0"
 for i, (b, mp3, start, d) in enumerate(events):
     nxt = f"v{i+1}"; fc.append(f"[{cur}][{1+n+i}:v]overlay=0:0:enable='between(t,{start:.2f},{start+d+0.6:.2f})'[{nxt}]"); cur = nxt
+if ring_png:
+    rs, re = ring_span
+    fc.append(f"[{cur}][{1+2*n}:v]overlay=0:0:enable='between(t,{max(0.0,rs):.2f},{re:.2f})'[vring]")
+    cur = "vring"
+    print(f" ring {max(0.0,rs):.2f}-{re:.2f}s")
 fc.append(f"[{cur}]fade=t=in:st=0:d=0.3,fade=t=out:st={total-0.5:.2f}:d=0.5[vout]")
 subprocess.run(["ffmpeg","-y","-v","error"] + inputs + ["-filter_complex",";".join(fc),"-map","[vout]","-map","[aout]",
     "-c:v","libx264","-preset","medium","-crf","19","-pix_fmt","yuv420p","-c:a","aac","-b:a","192k","-t",f"{total:.2f}",f"{OUT}/main.mp4"], check=True)

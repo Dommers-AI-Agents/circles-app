@@ -76,12 +76,32 @@ for i in $(seq 1 8); do
 done
 sleep 1.6
 normalize
-# Cold relaunch so the take opens on the Activity tab like a first visit.
+# Cold relaunch, then park on the Widgets tab with the Postcard card in view:
+# the cut opens there, so none of this navigation is on camera.
 xcrun simctl terminate $UDID com.favcircles.circles 2>/dev/null
 sleep 1.5
 xcrun simctl launch $UDID com.favcircles.circles >/dev/null 2>&1
 for i in $(seq 1 20); do shot /tmp/_pc.png; [ -n "$(find_txt /tmp/_pc.png "Recent Activity")" ] && break; sleep 1; done
 sleep 3
+for i in $(seq 1 8); do
+  shot /tmp/_pc.png
+  R=$(find_txt /tmp/_pc.png "Widgets") && { "$TOOLS/tap.sh" $(($(echo $R | cut -d' ' -f1)/3)) $(($(echo $R | cut -d' ' -f2)/3)); break; }
+  sleep 0.6
+done
+sleep 2.0
+for i in 1 2 3 4 5; do
+  shot /tmp/_pc.png
+  [ -n "$(find_txt /tmp/_pc.png "Postcard")" ] && break
+  "$TOOLS/flick.sh" 220 780 300; sleep 0.6
+done
+sleep 1.2
+# Where the card sits, so build.sh can ring it. Device points.
+shot /tmp/_pc.png
+CARD=$(find_txt /tmp/_pc.png "Postcard" || true)
+if [ -n "${CARD:-}" ]; then
+  echo "$(($(echo $CARD | cut -d' ' -f1)/3)) $(($(echo $CARD | cut -d' ' -f2)/3))" > "$OUT/card_xy.txt"
+  echo "card at $(cat "$OUT/card_xy.txt")"
+fi
 
 rm -f "$OUT/walk_raw.mp4"
 xcrun simctl io $UDID recordVideo --codec h264 --force "$OUT/walk_raw.mp4" &
@@ -135,81 +155,73 @@ try_tap() {  # like ocr_tap but a miss is not fatal
 type_txt() { cliclick t:"$1"; }
 
 # ---- choreography ----
+# Opens on the Widgets tab with the Postcard card already showing; build.sh
+# rings the card over this first beat.
 rel 0.4 "audio-b01"
-sleep 0.6
-ocr_tap "Widgets" "tab-widgets" 8                  # home segment control
-sleep 1.2                                          # cards land
+sleep 1.6
+mark "ring-card"
+sleep 0.5
 
-# The widget cards sit below the map; scroll the page until Postcard shows.
-for i in 1 2 3 4; do
-  shot /tmp/_pc.png
-  [ -n "$(find_txt /tmp/_pc.png "Postcard")" ] && break
-  "$TOOLS/flick.sh" 220 780 300; sleep 0.55
-done
-mark "scroll-to-postcard"
-sleep 0.4
-
-# The card's TITLE eats taps — "+ New" is the button that opens a fresh card.
+# The card's TITLE eats taps — "+ New" is the control that opens a fresh card.
 ocr_tap "New" "open-postcard" 8
 sleep 1.8
 
 # Photo: the library picker, then the waterfall in the top row.
-# The label flips to "Change photo" once the draft already holds one.
 if ! ocr_tap_soft "Choose photo" "choose-photo" 4; then
   ocr_tap "Change photo" "choose-photo" 4
 fi
 sleep 2.2
 "$TOOLS/tap.sh" 220 388                            # top row, middle thumbnail
-sleep 2.0                                          # picker dismisses, card renders
+sleep 2.2                                          # picker dismisses, card renders
 
 rel 0 "audio-b02"
-# Digital send: scroll to DELIVER TO and pick a connection.
+# Caption: the place name is its own field inside "Greetings from ___".
+#
+# Anchor on the section HEADER, not on the words "Greetings from" — those also
+# appear printed across the postcard preview above, and OCR finds the preview
+# first, which sends the tap to an image and the typing to whatever field still
+# had focus. Cmd-A before typing replaces what is there instead of appending.
+shot /tmp/_pc.png
+CAP=$(find_txt /tmp/_pc.png "CAPTION ON THE CARD" || true)
+if [ -n "${CAP:-}" ]; then
+  "$TOOLS/tap.sh" 250 $(($(echo $CAP | cut -d' ' -f2)/3 + 40))
+  sleep 1.2
+  cliclick kd:cmd t:a ku:cmd
+  sleep 0.3
+  cliclick t:"Waterfalls"
+  mark "type-caption"
+  sleep 1.6
+else
+  die "type-caption"
+fi
+
+# Message: type a short line so the card reads like someone's, not a template.
+shot /tmp/_pc.png
+MSG=$(find_txt /tmp/_pc.png "MESSAGE" || true)
+if [ -n "${MSG:-}" ]; then
+  "$TOOLS/tap.sh" 220 $(($(echo $MSG | cut -d' ' -f2)/3 + 40))
+  sleep 1.0
+  cliclick kd:cmd t:a ku:cmd
+  sleep 0.3
+  cliclick t:"Found this one on the way home."
+  mark "type-message"
+  sleep 1.4
+  "$TOOLS/tap.sh" 220 120                          # dismiss the keyboard
+  sleep 0.8
+fi
+
+rel 0 "audio-b03"
+# Both ways to send, side by side: a connection for the digital card, and the
+# printed option underneath it.
 for i in 1 2 3 4; do
   shot /tmp/_pc.png
   [ -n "$(find_txt /tmp/_pc.png "Mail a printed postcard")" ] && break
   "$TOOLS/flick.sh" 220 780 300; sleep 0.55
 done
 mark "scroll-to-deliver"
-sleep 0.3
-# The draft may already carry a recipient, in which case the row shows their
-# name and there is no "Choose a connection" to tap — the beat still reads as
-# "send it to someone", so a miss is not fatal.
-if ocr_tap_soft "Choose a connection" "open-recipients" 4; then
-  sleep 1.6
-  "$TOOLS/tap.sh" 220 300                          # first contact row
-  sleep 1.2
-else
-  mark "open-recipients"
-  sleep 1.0
-fi
+sleep 2.6
 
-rel 0 "audio-b03"
-# Physical send: the paid option.
-#
-# Tap the toggle's LABEL, not the switch. A synthetic click on the switch
-# itself does nothing to a SwiftUI Toggle — verified repeatedly, with and
-# without a held press — while a click on its label flips it every time.
-# Tap, then confirm the address form actually appeared. The switch is the one
-# control on this screen that intermittently swallows a synthetic tap, and a
-# take where the narration promises a printed card over an OFF switch is worse
-# than no take at all — so this retries until the form is on screen.
-MAILED=0
-for attempt in 1 2 3; do
-  shot /tmp/_pc.png
-  R=$(find_txt /tmp/_pc.png "Mail a printed postcard") || true
-  [ -z "${R:-}" ] && { sleep 0.6; continue; }
-  "$TOOLS/tap.sh" $(($(echo $R | cut -d' ' -f1)/3)) $(($(echo $R | cut -d' ' -f2)/3))
-  sleep 1.2
-  shot /tmp/_pc.png
-  if [ -n "$(find_txt /tmp/_pc.png "Full name")" ]; then MAILED=1; break; fi
-done
-[ "$MAILED" = "1" ] || die "toggle-mail"
-mark "toggle-mail"
-sleep 1.8                                          # the address form opens
-
-# Rest on the form with the price showing. Typing a full address is skipped:
-# it costs seconds this cut does not have, and the $3.99 row is the point.
 rel 0 "end"
-sleep 0.8
+sleep 1.0
 kill -INT $RECPID; wait $RECPID 2>/dev/null
 echo "take done"; cat "$LOG"
