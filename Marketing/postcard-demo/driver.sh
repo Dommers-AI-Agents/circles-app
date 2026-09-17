@@ -94,6 +94,10 @@ for i in 1 2 3 4 5; do
   [ -n "$(find_txt /tmp/_pc.png "Postcard")" ] && break
   "$TOOLS/flick.sh" 220 780 300; sleep 0.6
 done
+# One more nudge so the card sits clear of the caption bar, which is pinned
+# near the bottom of the frame and otherwise covers the very thing being
+# ringed.
+"$TOOLS/flick.sh" 220 700 480; sleep 0.9
 sleep 1.2
 # Where the card sits, so build.sh can ring it. Device points.
 shot /tmp/_pc.png

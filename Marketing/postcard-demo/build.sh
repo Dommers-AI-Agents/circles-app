@@ -101,6 +101,18 @@ for b in beats:
     start = max(vt[f"audio-{b}"], prev_end + 0.25)
     events.append((b, mp3, start, d)); prev_end = start + d
 
+# The take stops when the driver stops moving, which can be before the last
+# line has finished speaking — and the outro card then cuts it off mid-word.
+# Hold the final frame until the narration (plus a beat to breathe) is done.
+need = prev_end + 0.7
+if need > total:
+    subprocess.run(["ffmpeg","-y","-v","error","-i",src,"-vf",
+        f"tpad=stop_mode=clone:stop_duration={need-total:.2f}",
+        "-c:v","libx264","-preset","medium","-crf","18","-pix_fmt","yuv420p",f"{OUT}/walk_hold.mp4"], check=True)
+    src = f"{OUT}/walk_hold.mp4"
+    print(f" held last frame +{need-total:.2f}s so the final line finishes")
+    total = dur(src)
+
 # ---- overlays (HTML -> Chrome -> PNG) ----
 capdir = f"{OUT}/caps"; os.makedirs(capdir, exist_ok=True)
 FONT = '-apple-system,"SF Pro Display","Helvetica Neue",Arial,sans-serif'
@@ -160,8 +172,8 @@ def card_clip(png, mp3, out, lead, tail, reveal, hold=None):
         "-map","[v]","-map","[a]","-t",f"{d:.2f}","-c:v","libx264","-preset","medium","-crf","19","-pix_fmt","yuv420p",
         "-c:a","aac","-b:a","192k",out], check=True)
     return d
-card_clip(intro_png, None, f"{OUT}/intro.mp4", 0.15, 0.45, True, hold=1.4)   # ~2s, silent
-card_clip(outro_png, f"{DIR}/beats/s99.mp3", f"{OUT}/outro.mp4", 0.4, 0.8, False)
+card_clip(intro_png, f"{DIR}/beats/s00.mp3", f"{OUT}/intro.mp4", 0.15, 0.6, True)  # ~2s: "FavCircles."
+card_clip(outro_png, f"{DIR}/beats/s99.mp3", f"{OUT}/outro.mp4", 0.3, 0.55, False)
 
 # ---- ring the Postcard card over the opening beat ----
 # driver.sh writes the card's position (device points) as it parks the stage;
