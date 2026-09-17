@@ -119,7 +119,13 @@ final class CheckInComposeViewController: BaseViewController {
         return toggle
     }()
 
-    private lazy var checkInButton = UIButton.primaryButton(title: "Check In")
+    private lazy var checkInButton: UIButton = {
+        // Same icon as every check-in surface (UIImage.checkInIcon), next to the words
+        let button = UIButton.primaryButton(title: "  Check In")
+        button.setImage(.checkInIcon?.withConfiguration(UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)), for: .normal)
+        button.tintColor = .white
+        return button
+    }()
     private lazy var privateButton = UIButton.secondaryButton(title: "Just me — check in privately")
 
     // MARK: - Lifecycle
