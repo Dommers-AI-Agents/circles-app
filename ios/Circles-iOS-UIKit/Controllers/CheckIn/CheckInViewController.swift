@@ -45,6 +45,12 @@ class CheckInViewController: BaseViewController {
     private var selectedPlace: Place?
     private let locationManager = CLLocationManager()
     private var currentLocation: CLLocation?
+    /// My Places waits for a location fix so the place you're standing in is
+    /// first. If the fix takes longer than this, the list shows alphabetically
+    /// and re-sorts the moment the fix lands.
+    private let locationWaitSeconds: TimeInterval = 4
+    private var locationWaitTimer: Timer?
+    private var isWaitingForLocation = false
     
     // Step tracking
     private var currentStep = 1
@@ -106,6 +112,18 @@ class CheckInViewController: BaseViewController {
     }()
     
     private lazy var nextButton = UIButton.primaryButton(title: "Next")
+
+    /// Under the spinner while we wait for a location fix
+    private let loadingMessageLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Finding your places near you…"
+        label.font = UIFont.systemFont(ofSize: 14)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .center
+        label.isHidden = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -137,13 +155,14 @@ class CheckInViewController: BaseViewController {
             return
         }
 
-        // Load data after view is fully presented
+        // Load data after view is fully presented. Both tabs want a location
+        // fix first: Nearby can't exist without one, and My Places is far more
+        // useful with the place you're standing in at the top.
         if !hasLoadedData {
-            // If we're on Nearby tab and don't have location, request it first
-            if placeSelectionSegmentedControl.selectedSegmentIndex == 1 && currentLocation == nil {
+            if currentLocation == nil {
                 switch locationManager.authorizationStatus {
                 case .authorizedWhenInUse, .authorizedAlways:
-                    showLoadingState()
+                    beginWaitingForLocation()
                     locationManager.requestLocation()
                 case .notDetermined:
                     locationManager.requestWhenInUseAuthorization()
@@ -155,6 +174,73 @@ class CheckInViewController: BaseViewController {
             }
         }
     }
+
+    // MARK: - Location wait (My Places nearest-first)
+
+    private func beginWaitingForLocation() {
+        isWaitingForLocation = true
+        showLoadingState()
+        loadingMessageLabel.isHidden = false
+        locationWaitTimer?.invalidate()
+        locationWaitTimer = Timer.scheduledTimer(withTimeInterval: locationWaitSeconds, repeats: false) { [weak self] _ in
+            guard let self = self, self.isWaitingForLocation else { return }
+            // No fix yet: show the list now (alphabetical) rather than keep
+            // people waiting; didUpdateLocations re-sorts when the fix lands
+            Logger.debug("📍 CheckIn: no location fix after \(self.locationWaitSeconds)s — listing alphabetically for now")
+            self.endWaitingForLocation()
+            if self.placeSelectionSegmentedControl.selectedSegmentIndex == 0 {
+                self.loadData()
+            }
+        }
+    }
+
+    private func endWaitingForLocation() {
+        isWaitingForLocation = false
+        locationWaitTimer?.invalidate()
+        locationWaitTimer = nil
+        loadingMessageLabel.isHidden = true
+    }
+
+    /// Nearest first when we have a fix (alphabetical otherwise), then one
+    /// row per VENUE: the same place saved into two circles (legitimate) or
+    /// duplicate saves must not list twice — you check into the venue, not
+    /// the save. Keeps the first occurrence (nearest, thanks to the sort).
+    private func sortedAndDeduped(_ places: [Place]) -> [Place] {
+        let sortedPlaces: [Place]
+        if let currentLocation = self.currentLocation {
+            sortedPlaces = places.sorted { place1, place2 in
+                let distance1 = self.calculateDistanceToPlace(place1, from: currentLocation)
+                let distance2 = self.calculateDistanceToPlace(place2, from: currentLocation)
+                if let d1 = distance1, let d2 = distance2 {
+                    return d1 < d2
+                } else if distance1 != nil {
+                    return true // Place with distance comes first
+                } else if distance2 != nil {
+                    return false
+                } else {
+                    return place1.name < place2.name
+                }
+            }
+        } else {
+            sortedPlaces = places.sorted { $0.name < $1.name }
+        }
+        var seenVenues = Set<String>()
+        return sortedPlaces.filter { place in
+            let key: String
+            if let globalId = place.globalPlaceId, !globalId.isEmpty {
+                key = "gp:\(globalId)"
+            } else if let googleId = place.googlePlaceId, !googleId.isEmpty {
+                key = "g:\(googleId)"
+            } else {
+                // Name + ~500m coordinate bucket
+                let coords = place.location?.coordinates ?? []
+                let lat = coords.count == 2 ? Int(coords[1] * 200) : 0
+                let lng = coords.count == 2 ? Int(coords[0] * 200) : 0
+                key = "n:\(place.name.lowercased())|\(lat),\(lng)"
+            }
+            return seenVenues.insert(key).inserted
+        }
+    }
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
@@ -164,6 +250,7 @@ class CheckInViewController: BaseViewController {
         
         // Remove keyboard handling observers
         removeKeyboardHandling()
+        locationWaitTimer?.invalidate()
     }
     
     override func viewDidDisappear(_ animated: Bool) {
@@ -196,6 +283,7 @@ class CheckInViewController: BaseViewController {
         
         // Step 2 views
         view.addSubview(nextButton)
+        view.addSubview(loadingMessageLabel)
         
         // Setup constraints
         NSLayoutConstraint.activate([
@@ -227,6 +315,11 @@ class CheckInViewController: BaseViewController {
             placesTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             placesTableView.bottomAnchor.constraint(equalTo: nextButton.topAnchor, constant: -16),
             
+            loadingMessageLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            loadingMessageLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: 32),
+            loadingMessageLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
+            loadingMessageLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+
             // Next button
             nextButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             nextButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
@@ -252,7 +345,9 @@ class CheckInViewController: BaseViewController {
     // MARK: - Location Services
     private func setupLocationServices() {
         locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        // A fix good to ~100 m arrives in a second or two and is plenty for
+        // sorting saved places; "best" often took longer than people waited
+        locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         
         // Check current authorization status
         switch locationManager.authorizationStatus {
@@ -377,51 +472,7 @@ class CheckInViewController: BaseViewController {
                 switch result {
                 case .success(let places):
                     // Sort places by proximity if we have location
-                    let sortedPlaces: [Place]
-                    if let currentLocation = self.currentLocation {
-                        sortedPlaces = places.sorted { place1, place2 in
-                            // Calculate distances
-                            let distance1 = self.calculateDistanceToPlace(place1, from: currentLocation)
-                            let distance2 = self.calculateDistanceToPlace(place2, from: currentLocation)
-                            
-                            // Sort by distance (nearest first)
-                            if let d1 = distance1, let d2 = distance2 {
-                                return d1 < d2
-                            } else if distance1 != nil {
-                                return true // Place with distance comes first
-                            } else if distance2 != nil {
-                                return false
-                            } else {
-                                // Neither has distance, sort alphabetically
-                                return place1.name < place2.name
-                            }
-                        }
-                    } else {
-                        // No location, sort alphabetically
-                        sortedPlaces = places.sorted { $0.name < $1.name }
-                    }
-                    
-                    // One row per VENUE: the same place saved into two circles
-                    // (legitimate) or duplicate saves must not list twice in a
-                    // check-in picker — you check into the venue, not the save.
-                    // Keeps the first occurrence (nearest, thanks to the sort).
-                    var seenVenues = Set<String>()
-                    let dedupedPlaces = sortedPlaces.filter { place in
-                        let key: String
-                        if let globalId = place.globalPlaceId, !globalId.isEmpty {
-                            key = "gp:\(globalId)"
-                        } else if let googleId = place.googlePlaceId, !googleId.isEmpty {
-                            key = "g:\(googleId)"
-                        } else {
-                            // Name + ~500m coordinate bucket
-                            let coords = place.location?.coordinates ?? []
-                            let lat = coords.count == 2 ? Int(coords[1] * 200) : 0
-                            let lng = coords.count == 2 ? Int(coords[0] * 200) : 0
-                            key = "n:\(place.name.lowercased())|\(lat),\(lng)"
-                        }
-                        return seenVenues.insert(key).inserted
-                    }
-
+                    let dedupedPlaces = self.sortedAndDeduped(places)
                     self.myPlaces = dedupedPlaces
                     self.filteredPlaces = dedupedPlaces
                     self.placesTableView.reloadData()
@@ -729,17 +780,33 @@ extension CheckInViewController: CLLocationManagerDelegate {
             longitudinalMeters: 5000
         )
         
-        // If on Nearby tab, populate the distance-sorted network list now that
-        // we have a location fix (only if not already loaded).
+        let wasWaiting = isWaitingForLocation
+        endWaitingForLocation()
+
         if placeSelectionSegmentedControl.selectedSegmentIndex == 1 {
+            // Nearby: populate the distance-sorted network list now that we
+            // have a fix (only if not already loaded).
             searchBar.placeholder = "Search for nearby places..."
             if nearbyPlaces.isEmpty {
                 loadNearbyPlaces()
             }
+        } else if wasWaiting || !hasLoadedData {
+            // My Places: the fix arrived in time — load nearest-first
+            loadData()
+        } else if !myPlaces.isEmpty, (searchBar.text ?? "").isEmpty {
+            // The list was already shown alphabetically; put the place you're
+            // standing in at the top now
+            myPlaces = sortedAndDeduped(myPlaces)
+            filteredPlaces = myPlaces
+            placesTableView.reloadData()
         }
     }
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        if isWaitingForLocation {
+            endWaitingForLocation()
+            loadData()
+        }
         if placeSelectionSegmentedControl.selectedSegmentIndex == 1 {
             showError("Unable to get your location. Please check location permissions.")
         }
@@ -756,6 +823,10 @@ extension CheckInViewController: CLLocationManagerDelegate {
                 searchBar.placeholder = "Search for nearby places..."
             }
         case .denied, .restricted:
+            if isWaitingForLocation {
+                endWaitingForLocation()
+                loadData()
+            }
             if placeSelectionSegmentedControl.selectedSegmentIndex == 1 {
                 showError("Location access is required to find nearby places. Please enable it in Settings.")
                 customEmptyStateMessage = "Location access required. Please enable in Settings."
