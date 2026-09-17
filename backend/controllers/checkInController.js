@@ -581,6 +581,55 @@ exports.createCheckIn = async (req, res) => {
       Object.assign(checkIn, stamp);
     }
 
+    // A rating given on the check-in screen: latest wins, history kept, tied
+    // to this check-in. finalPlaceId is always the user's own save here.
+    let ratingApplied = null;
+    const ratingInput = checkInData.rating;
+    if (finalPlaceId && ratingInput !== undefined && ratingInput !== null && ratingInput !== '') {
+      try {
+        const { appendRating, sanitizeRating } = require('../utils/ratingHistory');
+        const score = sanitizeRating(ratingInput);
+        if (score !== null) {
+          const saveRef = db.collection(COLLECTIONS.PLACES).doc(finalPlaceId);
+          const saveDoc = await saveRef.get();
+          if (saveDoc.exists && saveDoc.data().addedBy === userId) {
+            const save = saveDoc.data();
+            const now = new Date().toISOString();
+            const history = appendRating(save.ratingHistory, { rating: score, at: now, checkInId }, (
+              save.userRating === null || save.userRating === undefined ? null
+                : { rating: save.userRating, at: save.userRatedAt || save.updatedAt || save.createdAt || null }
+            ));
+            const update = { userRating: score, userRatedAt: now, updatedAt: now };
+            if (history) update.ratingHistory = history;
+            await saveRef.update(update);
+            ratingApplied = score;
+          }
+        }
+      } catch (ratingError) {
+        console.error('⚠️ Check-in rating not applied:', ratingError.message);
+      }
+    }
+
+    // The note is also a comment on the place ONLY when the client says so
+    // (postComment:true — older app builds never send it, and their messages
+    // are "here till 8, come by" chatter, not venue commentary). "Just me"
+    // (explicit isPrivate) never posts; the feed switch is a separate choice.
+    let postedCommentId = null;
+    const note = String(checkIn.message || '').trim();
+    if (finalPlaceId && note && checkInData.isPrivate !== true && checkInData.postComment === true) {
+      try {
+        const saveDoc = await db.collection(COLLECTIONS.PLACES).doc(finalPlaceId).get();
+        if (saveDoc.exists) {
+          const { postPlaceComment } = require('../services/placeCommentService');
+          // No place_commented feed row: the check-in row already carries the note
+          const { comment } = await postPlaceComment({ placeDoc: saveDoc, userId, text: note, source: 'check_in', checkInId, trackActivity: false });
+          postedCommentId = comment.id;
+        }
+      } catch (commentError) {
+        console.error('⚠️ Check-in comment not posted:', commentError.message);
+      }
+    }
+
     // Add to activity feed if enabled
     if (checkIn.showInActivityFeed) {
       await createActivity(
@@ -611,6 +660,8 @@ exports.createCheckIn = async (req, res) => {
       success: true,
       data: { ...serializeDoc(checkInDoc), placeId: checkIn.placeId, globalPlaceId: checkIn.globalPlaceId || null },
       myCheckInStats,
+      ratingApplied,
+      postedCommentId,
       piggyBank
     });
   } catch (error) {

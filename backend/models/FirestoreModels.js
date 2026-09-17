@@ -972,7 +972,9 @@ const createCheckIn = (checkInData, userId, userData) => {
     // Max 6 hours for "until I leave" option
     endTime = new Date(new Date(startTime).getTime() + 6 * 60 * 60 * 1000).toISOString();
   } else {
-    const durationMinutes = parseInt(checkInData.duration) || 60;
+    // Optional since 2026-09-16: no pick means "a couple of hours" — the
+    // window only decides how long connections see you as here now
+    const durationMinutes = parseInt(checkInData.duration) || 120;
     endTime = new Date(new Date(startTime).getTime() + durationMinutes * 60 * 1000).toISOString();
   }
   
@@ -989,11 +991,16 @@ const createCheckIn = (checkInData, userId, userData) => {
     message: checkInData.message || '',
     startTime: startTime,
     endTime: endTime,
-    duration: checkInData.duration, // '30', '60', '120', 'until_leave'
+    duration: checkInData.duration || '120', // '30', '60', '120', 'until_leave'; absent = 2h default
     
     // Notification settings. A private check-in notifies no one and stays
     // off the feed — it exists only for the owner's own history/stats.
-    isPrivate: checkInData.isPrivate === true,
+    // Explicitly private, or implicitly: nobody notified and feed off is a
+    // personal record and must never leak through "visible to connections"
+    isPrivate: checkInData.isPrivate === true
+      || (checkInData.showInActivityFeed === false
+          && !(checkInData.notifiedGroups || []).length
+          && !(checkInData.notifiedUsers || []).length),
     notifiedGroups: checkInData.isPrivate === true ? [] : (checkInData.notifiedGroups || []), // conversation IDs
     notifiedUsers: checkInData.isPrivate === true ? [] : (checkInData.notifiedUsers || []), // individual user IDs
     
@@ -1021,17 +1028,12 @@ const validateCheckIn = (checkInData) => {
     errors.push('Place address is required');
   }
   
-  // Must notify at least one group or user
-  const hasNotifications = 
-    (checkInData.notifiedGroups && checkInData.notifiedGroups.length > 0) ||
-    (checkInData.notifiedUsers && checkInData.notifiedUsers.length > 0);
-    
-  if (!hasNotifications) {
-    errors.push('Must select at least one group or person to notify');
-  }
+  // Recipients are optional (2026-09-16): a check-in with nobody notified is
+  // still a feed post, or — with the feed off too — a private record.
   
-  if (checkInData.message && checkInData.message.length > 200) {
-    errors.push('Message must be 200 characters or less');
+  // The note can also be a place comment, so it gets comment-sized room
+  if (checkInData.message && checkInData.message.length > 500) {
+    errors.push('Note must be 500 characters or less');
   }
   
   const validDurations = ['30', '60', '120', 'until_leave'];

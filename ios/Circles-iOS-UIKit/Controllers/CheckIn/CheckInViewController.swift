@@ -24,15 +24,14 @@ class CheckInViewController: BaseViewController {
         super.init(coder: coder)
     }
 
-    private var totalSteps: Int { prefilledPlace != nil ? 2 : 3 }
-
     /// Present the check-in flow the standard way from any entry point.
     static func present(from presenter: UIViewController,
                         prefilledPlace: Place? = nil,
                         restrictedPlaces: [Place]? = nil) {
-        let checkInVC = CheckInViewController(prefilledPlace: prefilledPlace,
-                                              restrictedPlaces: restrictedPlaces)
-        let navController = UINavigationController(rootViewController: checkInVC)
+        // A known place skips the picker entirely: one screen, one tap
+        let root: UIViewController = prefilledPlace.map { CheckInComposeViewController(place: $0) }
+            ?? CheckInViewController(prefilledPlace: nil, restrictedPlaces: restrictedPlaces)
+        let navController = UINavigationController(rootViewController: root)
         navController.modalPresentationStyle = .fullScreen
         presenter.present(navController, animated: true)
     }
@@ -67,7 +66,7 @@ class CheckInViewController: BaseViewController {
     
     private let stepLabel: UILabel = {
         let label = UILabel()
-        label.text = "Step 1 of 3: Choose Place"
+        label.text = "Step 1 of 2: Choose Place"
         label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
         label.textColor = Constants.Colors.label
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -106,101 +105,6 @@ class CheckInViewController: BaseViewController {
         return table
     }()
     
-    // Step 2 UI Elements (hidden initially)
-    private let detailsContainerView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.background
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.isHidden = true
-        return view
-    }()
-    
-    private let selectedPlaceView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.secondaryBackground
-        view.layer.cornerRadius = 12
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let selectedPlaceNameLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
-        label.textColor = Constants.Colors.label
-        label.numberOfLines = 2
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let selectedPlaceAddressLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 14)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.numberOfLines = 2
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let durationLabel: UILabel = {
-        let label = UILabel()
-        label.text = "How long will you be there?"
-        label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
-        label.textColor = Constants.Colors.label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let durationSegmentedControl: UISegmentedControl = {
-        let control = UISegmentedControl(items: ["30 min", "1 hour", "2 hours", "Until I leave"])
-        control.selectedSegmentIndex = 1
-        control.translatesAutoresizingMaskIntoConstraints = false
-        return control
-    }()
-    
-    private let messageTextField: UITextField = {
-        let field = UITextField()
-        field.placeholder = "Add a message (optional)"
-        field.borderStyle = .none  // Remove default border for custom styling
-        field.font = UIFont.systemFont(ofSize: 16)
-        field.backgroundColor = Constants.Colors.secondaryBackground
-        field.layer.cornerRadius = 12
-        field.layer.borderWidth = 1
-        field.layer.borderColor = Constants.Colors.separator.cgColor
-        
-        // Add padding
-        let paddingView = UIView(frame: CGRect(x: 0, y: 0, width: 16, height: field.frame.height))
-        field.leftView = paddingView
-        field.leftViewMode = .always
-        let rightPaddingView = UIView(frame: CGRect(x: 0, y: 0, width: 16, height: field.frame.height))
-        field.rightView = rightPaddingView
-        field.rightViewMode = .always
-        
-        field.translatesAutoresizingMaskIntoConstraints = false
-        return field
-    }()
-    
-    private let activityFeedContainer: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let activityFeedSwitch: UISwitch = {
-        let toggle = UISwitch()
-        toggle.isOn = true
-        toggle.translatesAutoresizingMaskIntoConstraints = false
-        return toggle
-    }()
-    
-    private let activityFeedLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Show in activity feed"
-        label.font = UIFont.systemFont(ofSize: 16)
-        label.textColor = Constants.Colors.label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
     private lazy var nextButton = UIButton.primaryButton(title: "Next")
     
     // MARK: - Lifecycle
@@ -212,19 +116,11 @@ class CheckInViewController: BaseViewController {
         // Setup keyboard handling for tap-to-dismiss
         setupKeyboardHandling(dismissOnTap: true)
 
-        if let place = prefilledPlace {
-            // Context already chose the place — open directly on details. The
-            // picker's selection is what normally enables Next; a prefilled
-            // place counts as selected.
-            selectedPlace = place
-            moveToStep2()
-            nextButton.isEnabled = true
-            nextButton.alpha = 1.0
-        } else if restrictedPlaces != nil {
+        if restrictedPlaces != nil {
             // One known set of places (a circle): no My/Nearby toggle.
             placeSelectionSegmentedControl.isHidden = true
-            stepLabel.text = "Step 1 of 3: Choose Place"
         }
+        stepLabel.text = "Step 1 of 2: Choose Place"
         // Don't load data here - wait for viewDidAppear
     }
 
@@ -299,17 +195,6 @@ class CheckInViewController: BaseViewController {
         view.addSubview(placesTableView)
         
         // Step 2 views
-        view.addSubview(detailsContainerView)
-        detailsContainerView.addSubview(selectedPlaceView)
-        selectedPlaceView.addSubview(selectedPlaceNameLabel)
-        selectedPlaceView.addSubview(selectedPlaceAddressLabel)
-        detailsContainerView.addSubview(durationLabel)
-        detailsContainerView.addSubview(durationSegmentedControl)
-        detailsContainerView.addSubview(messageTextField)
-        detailsContainerView.addSubview(activityFeedContainer)
-        activityFeedContainer.addSubview(activityFeedSwitch)
-        activityFeedContainer.addSubview(activityFeedLabel)
-        
         view.addSubview(nextButton)
         
         // Setup constraints
@@ -341,48 +226,6 @@ class CheckInViewController: BaseViewController {
             placesTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             placesTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             placesTableView.bottomAnchor.constraint(equalTo: nextButton.topAnchor, constant: -16),
-            
-            // Details container (Step 2)
-            detailsContainerView.topAnchor.constraint(equalTo: stepIndicatorView.bottomAnchor, constant: 16),
-            detailsContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            detailsContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            detailsContainerView.bottomAnchor.constraint(equalTo: nextButton.topAnchor, constant: -16),
-            
-            selectedPlaceView.topAnchor.constraint(equalTo: detailsContainerView.topAnchor),
-            selectedPlaceView.leadingAnchor.constraint(equalTo: detailsContainerView.leadingAnchor),
-            selectedPlaceView.trailingAnchor.constraint(equalTo: detailsContainerView.trailingAnchor),
-            selectedPlaceView.heightAnchor.constraint(equalToConstant: 80),
-            
-            selectedPlaceNameLabel.topAnchor.constraint(equalTo: selectedPlaceView.topAnchor, constant: 12),
-            selectedPlaceNameLabel.leadingAnchor.constraint(equalTo: selectedPlaceView.leadingAnchor, constant: 16),
-            selectedPlaceNameLabel.trailingAnchor.constraint(equalTo: selectedPlaceView.trailingAnchor, constant: -16),
-            
-            selectedPlaceAddressLabel.topAnchor.constraint(equalTo: selectedPlaceNameLabel.bottomAnchor, constant: 4),
-            selectedPlaceAddressLabel.leadingAnchor.constraint(equalTo: selectedPlaceView.leadingAnchor, constant: 16),
-            selectedPlaceAddressLabel.trailingAnchor.constraint(equalTo: selectedPlaceView.trailingAnchor, constant: -16),
-            
-            durationLabel.topAnchor.constraint(equalTo: selectedPlaceView.bottomAnchor, constant: 24),
-            durationLabel.leadingAnchor.constraint(equalTo: detailsContainerView.leadingAnchor),
-            
-            durationSegmentedControl.topAnchor.constraint(equalTo: durationLabel.bottomAnchor, constant: 12),
-            durationSegmentedControl.leadingAnchor.constraint(equalTo: detailsContainerView.leadingAnchor),
-            durationSegmentedControl.trailingAnchor.constraint(equalTo: detailsContainerView.trailingAnchor),
-            
-            messageTextField.topAnchor.constraint(equalTo: durationSegmentedControl.bottomAnchor, constant: 24),
-            messageTextField.leadingAnchor.constraint(equalTo: detailsContainerView.leadingAnchor),
-            messageTextField.trailingAnchor.constraint(equalTo: detailsContainerView.trailingAnchor),
-            messageTextField.heightAnchor.constraint(equalToConstant: 50),
-            
-            activityFeedContainer.topAnchor.constraint(equalTo: messageTextField.bottomAnchor, constant: 24),
-            activityFeedContainer.leadingAnchor.constraint(equalTo: detailsContainerView.leadingAnchor),
-            activityFeedContainer.trailingAnchor.constraint(equalTo: detailsContainerView.trailingAnchor),
-            activityFeedContainer.heightAnchor.constraint(equalToConstant: 44),
-            
-            activityFeedSwitch.centerYAnchor.constraint(equalTo: activityFeedContainer.centerYAnchor),
-            activityFeedSwitch.leadingAnchor.constraint(equalTo: activityFeedContainer.leadingAnchor),
-            
-            activityFeedLabel.centerYAnchor.constraint(equalTo: activityFeedContainer.centerYAnchor),
-            activityFeedLabel.leadingAnchor.constraint(equalTo: activityFeedSwitch.trailingAnchor, constant: 12),
             
             // Next button
             nextButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
@@ -665,83 +508,8 @@ class CheckInViewController: BaseViewController {
     }
     
     @objc private func nextButtonTapped() {
-        if currentStep == 1 {
-            // Move to step 2
-            moveToStep2()
-        } else if currentStep == 2 {
-            // Move to step 3 (recipient selection)
-            moveToStep3()
-        }
-    }
-    
-    private func moveToStep2() {
-        currentStep = 2
-        if prefilledPlace != nil {
-            stepLabel.text = "Step 1 of 2: Set Details"
-            progressView.setProgress(0.5, animated: true)
-        } else {
-            stepLabel.text = "Step 2 of 3: Set Details"
-            progressView.setProgress(0.67, animated: true)
-        }
-        
-        // Update selected place info
-        if let place = selectedPlace {
-            selectedPlaceNameLabel.text = place.name
-            selectedPlaceAddressLabel.text = place.address
-        }
-        
-        // Hide step 1 views
-        placeSelectionSegmentedControl.isHidden = true
-        searchBar.isHidden = true
-        placesTableView.isHidden = true
-        
-        // Show step 2 views
-        detailsContainerView.isHidden = false
-        
-        // Update button
-        nextButton.setTitle("Next →", for: .normal)
-    }
-    
-    private func moveToStep3() {
-        // Create recipient selection view controller
-        let recipientVC = CheckInRecipientSelectionViewController()
-        recipientVC.delegate = self
-        if prefilledPlace != nil {
-            recipientVC.stepText = "Step 2 of 2: Who to Notify"
-        }
-        
-        // Pass check-in details
-        var checkInData: [String: Any] = [
-            "message": messageTextField.text ?? "",
-            "showInActivityFeed": activityFeedSwitch.isOn
-        ]
-        
-        // Add duration
-        let durationOptions = ["30", "60", "120", "until_leave"]
-        checkInData["duration"] = durationOptions[durationSegmentedControl.selectedSegmentIndex]
-        
-        // Add place info. A resolved POI that isn't already saved comes back
-        // with an empty circleId — the backend creates it from the name/address/
-        // coordinates below. An existing saved place is referenced by id.
-        if let place = selectedPlace {
-            let isNewPlace = place.circleId?.isEmpty ?? true
-            checkInData["placeName"] = place.name
-            checkInData["placeAddress"] = place.address
-            checkInData["placeCategory"] = place.category.rawValue
-            if let location = place.location?.clLocation {
-                checkInData["latitude"] = location.coordinate.latitude
-                checkInData["longitude"] = location.coordinate.longitude
-            }
-            if !isNewPlace {
-                checkInData["placeId"] = place.id
-                if let circleId = place.circleId {
-                    checkInData["circleId"] = circleId
-                }
-            }
-        }
-        
-        recipientVC.checkInData = checkInData
-        navigationController?.pushViewController(recipientVC, animated: true)
+        guard let place = selectedPlace else { return }
+        navigationController?.pushViewController(CheckInComposeViewController(place: place), animated: true)
     }
     
     // MARK: - Search
@@ -998,14 +766,5 @@ extension CheckInViewController: CLLocationManagerDelegate {
         @unknown default:
             break
         }
-    }
-}
-
-
-// MARK: - CheckInRecipientSelectionDelegate
-extension CheckInViewController: CheckInRecipientSelectionDelegate {
-    func didCompleteCheckIn() {
-        // Dismiss the entire check-in flow (including the navigation controller)
-        navigationController?.dismiss(animated: true) ?? dismiss(animated: true)
     }
 }
