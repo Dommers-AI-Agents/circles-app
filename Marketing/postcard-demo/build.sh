@@ -41,10 +41,11 @@ pre_sched, pe = [], 0.0
 for b in beats_pre:
     d = dur(f"{DIR}/beats/{b}.mp3"); s = max(vt[f"audio-{b}"], pe + 0.25)
     pre_sched.append((s, s + d)); pe = s + d
-PROTECT = {"tab-widgets": (0.6, 2.0), "open-postcard": (0.4, 1.8), "choose-photo": (0.3, 2.2),
-           "open-recipients": (0.3, 1.6), "toggle-mail": (0.4, 1.6), "addr-zip": (0.3, 2.4),
-           "back": (0.4, 1.6), "end": (1.6, 0.0)}
-DEFAULT_PROTECT = (0.35, 1.2)
+PROTECT = {"tab-widgets": (0.25, 0.45), "scroll-to-postcard": (0.15, 0.3), "open-postcard": (0.2, 0.6),
+           "choose-photo": (0.15, 0.9), "scroll-to-deliver": (0.15, 0.3),
+           "open-recipients": (0.15, 0.6), "toggle-mail": (0.2, 1.1),
+           "back": (0.4, 1.6), "end": (1.0, 0.0)}
+DEFAULT_PROTECT = (0.2, 0.6)
 protected = [(t - PROTECT.get(n, DEFAULT_PROTECT)[0], t + PROTECT.get(n, DEFAULT_PROTECT)[1])
              for n, t in vt.items() if not n.startswith("audio-")]
 merged = []
@@ -53,7 +54,7 @@ for s, e in sorted(pre_sched + protected):
     else: merged.append([s, e])
 cuts, pos = [], 0.0
 for s, e in merged:
-    if s - pos > 0.6: cuts.append((pos + 0.1, s - 0.1))
+    if s - pos > 0.35: cuts.append((pos + 0.05, s - 0.05))
     pos = max(pos, e)
 if raw_total - pos > 0.8: cuts.append((pos + 0.1, raw_total - 0.3))
 cuts = sorted((s, e) for s, e in cuts if e - s > 0.4 and s > 0.2)
@@ -75,6 +76,21 @@ if cuts:
 else:
     src = f"{OUT}/walk_norm.mp4"
 vt = {k: shift(v) for k, v in vt.items()}
+
+# ---- speed the walk (narration stays at normal speed) ----
+# The take is mostly waiting for the app: taps, a picker, a scroll. At 1.0 the
+# cut still runs ~12s against 6s of narration, which pushes the whole thing to
+# 22s. Speeding only the picture keeps both halves of the feature and the
+# house-style cards inside 15s, and reads as a teaser rather than a tutorial.
+SPEED = float(os.environ.get("SPEED", "1.0"))
+if SPEED != 1.0:
+    subprocess.run(["ffmpeg","-y","-v","error","-i",src,"-filter_complex",
+        f"[0:v]setpts=PTS/{SPEED},fps=30[v]","-map","[v]",
+        "-c:v","libx264","-preset","medium","-crf","18","-pix_fmt","yuv420p",f"{OUT}/walk_fast.mp4"], check=True)
+    src = f"{OUT}/walk_fast.mp4"
+    vt = {k: v / SPEED for k, v in vt.items()}
+    print(f"walk sped {SPEED}x -> {dur(src):.1f}s")
+
 total = dur(src)
 for k, v in sorted(vt.items(), key=lambda x: x[1]): print(f"  {v:6.2f}  {k}")
 
@@ -136,8 +152,8 @@ def card_clip(png, mp3, out, lead, tail, reveal):
         "-map","[v]","-map","[a]","-t",f"{d:.2f}","-c:v","libx264","-preset","medium","-crf","19","-pix_fmt","yuv420p",
         "-c:a","aac","-b:a","192k",out], check=True)
     return d
-card_clip(intro_png, f"{DIR}/beats/s00.mp3", f"{OUT}/intro.mp4", 0.5, 1.2, True)
-card_clip(outro_png, f"{DIR}/beats/s99.mp3", f"{OUT}/outro.mp4", 0.6, 1.2, False)
+card_clip(intro_png, f"{DIR}/beats/s00.mp3", f"{OUT}/intro.mp4", 0.3, 0.7, True)
+card_clip(outro_png, f"{DIR}/beats/s99.mp3", f"{OUT}/outro.mp4", 0.4, 0.8, False)
 
 # ---- main pass ----
 inputs = ["-i", src]

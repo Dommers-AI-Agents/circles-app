@@ -10,6 +10,23 @@ logs marks, `build.sh` normalizes the take, cuts dead time, lays the narration
 from `beats/`, and wraps it in the house-style navy brand cards (see the
 `demo-video-brand-card-opener` note).
 
+## Known gap: the mail switch does not flip on camera
+
+The finished cut shows the "Mail a printed postcard · $3.99" row, but the
+switch stays OFF while the narration describes the printed card.
+
+A synthetic click flips that SwiftUI `Toggle` exactly once and then never
+again in the same session — tapping the label, the switch, the row centre, the
+subtitle, with an instant click and with a held press, all verified against
+`ocrfind "Full name"` (the address form only exists while the switch is on).
+Every other tap in the take lands normally, so it is specific to this control.
+Do not add a blind retry: the tap sometimes *does* land, and a second tap turns
+it back off, which is how an earlier cut ended up showing an off switch after
+three "successful" attempts.
+
+Worth another look before the next cut — the address form sliding in is the
+strongest single frame the paid half has.
+
 ## The take deliberately stops before Send
 
 The last beat rests on "Send postcard" without tapping it.
