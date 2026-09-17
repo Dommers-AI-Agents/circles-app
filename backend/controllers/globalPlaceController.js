@@ -703,11 +703,25 @@ exports.uploadPlaceMedia = async (req, res, next) => {
     }
     
     console.log(`📤 [UploadMedia] Sending response with photo ID: ${attributedMedia.id}`);
+
+    // A photo of their own is the app's cue to offer a postcard; the
+    // fortnightly cooldown lives on the server (same flag PUT /places/:id
+    // returns). Best-effort — never fails an upload.
+    let postcardNudge = null;
+    if (mediaType === 'photo') {
+      try {
+        const homePromptService = require('../services/homePromptService');
+        postcardNudge = { eligible: await homePromptService.postcardNudgeEligible(req.user.uid || req.user.id) };
+      } catch (nudgeError) {
+        console.warn('⚠️ [UploadMedia] postcard eligibility check failed:', nudgeError.message);
+      }
+    }
     
     res.status(201).json({
       success: true,
       data: attributedMedia,
-      message: `${mediaType} uploaded successfully`
+      message: `${mediaType} uploaded successfully`,
+      postcardNudge
     });
   } catch (error) {
     next(error);
