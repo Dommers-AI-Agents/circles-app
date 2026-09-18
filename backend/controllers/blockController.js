@@ -77,16 +77,21 @@ const blockUser = async (req, res) => {
     // filters on (blockedUsers on the blocker, blockedBy on the blocked) —
     // and sever the follow relationship in BOTH directions: a block means
     // "we never see each other again", not "we stay followers".
+    // innerCircle goes with them: a block means "we never see each other
+    // again", and an Inner Circle grant is the most permissive thing either
+    // person could still be holding.
     batch.update(db.collection(COLLECTIONS.USERS).doc(blockerId), {
       blockedUsers: admin.firestore.FieldValue.arrayUnion(blockedUserId),
       following: admin.firestore.FieldValue.arrayRemove(blockedUserId),
       followers: admin.firestore.FieldValue.arrayRemove(blockedUserId),
+      innerCircle: admin.firestore.FieldValue.arrayRemove(blockedUserId),
       updatedAt: new Date().toISOString()
     });
     batch.update(db.collection(COLLECTIONS.USERS).doc(blockedUserId), {
       blockedBy: admin.firestore.FieldValue.arrayUnion(blockerId),
       following: admin.firestore.FieldValue.arrayRemove(blockerId),
       followers: admin.firestore.FieldValue.arrayRemove(blockerId),
+      innerCircle: admin.firestore.FieldValue.arrayRemove(blockerId),
       updatedAt: new Date().toISOString()
     });
 

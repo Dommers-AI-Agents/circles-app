@@ -3,6 +3,7 @@ const { admin, getFirestore } = require('../config/firebase');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
 const { canViewCircle, canViewMoment } = require('../services/visibility');
+const { normalizeUserId } = require('../services/idService');
 const { makeViewerContext } = require('../services/viewerContext');
 const { getInnerCircleGrantorIds } = require('../utils/networkAccess');
 const db = getFirestore();
@@ -347,6 +348,14 @@ exports.getNetworkActivities = async (req, res, next) => {
             return canViewMoment({ userId: ownerId, visibility: vis }, userId, viewerCtx);
           }
           return true;
+        }
+
+        // A check-in has no circle to gate on, so its audience rides on the
+        // row itself.
+        if (activity.type === 'check_in' && activity.metadata
+            && activity.metadata.checkInAudience === 'innerCircle') {
+          return activity.actorId === userId
+            || viewerCtx.innerCircleGrantors.has(normalizeUserId(activity.actorId));
         }
 
         let circleId = null;

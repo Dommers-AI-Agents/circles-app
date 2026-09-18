@@ -1007,6 +1007,13 @@ const createCheckIn = (checkInData, userId, userData) => {
           && !(checkInData.notifiedUsers || []).length),
     notifiedGroups: checkInData.isPrivate === true ? [] : (checkInData.notifiedGroups || []), // conversation IDs
     notifiedUsers: checkInData.isPrivate === true ? [] : (checkInData.notifiedUsers || []), // individual user IDs
+
+    // Audience tier. null = the historic behaviour (connections see it if it's
+    // on the feed). 'innerCircle' narrows it to the owner's Inner Circle list
+    // however the feed flag is set, so it can't be widened by accident.
+    audience: checkInData.isPrivate === true
+      ? null
+      : (checkInData.audience === 'innerCircle' ? 'innerCircle' : null),
     
     // Activity feed visibility
     showInActivityFeed: checkInData.isPrivate === true ? false : checkInData.showInActivityFeed !== false, // default true

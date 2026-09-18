@@ -25,11 +25,17 @@ service cloud.firestore {
         get(/databases/$(database)/documents/circles/$(circleId)).data.owner == request.auth.uid;
     }
     
+    function isInInnerCircleOf(userId) {
+      return isAuthenticated() &&
+        request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.innerCircle;
+    }
+
     function canViewCircle(circle) {
       return isAuthenticated() && (
         circle.owner == request.auth.uid ||
         circle.privacy == 'public' ||
         (circle.privacy == 'myNetwork' && isInUserNetwork(circle.owner)) ||
+        (circle.privacy == 'innerCircle' && isInInnerCircleOf(circle.owner)) ||
         request.auth.uid in circle.sharedWith ||
         exists(/databases/$(database)/documents/circleShares/$(circle.id + '_' + request.auth.uid))
       );
@@ -64,7 +70,7 @@ service cloud.firestore {
       return data.keys().hasAll(['name', 'owner', 'privacy', 'createdAt', 'updatedAt']) &&
         data.name is string && data.name.size() <= 50 &&
         data.owner == request.auth.uid &&
-        data.privacy in ['public', 'myNetwork', 'private'] &&
+        data.privacy in ['public', 'myNetwork', 'innerCircle', 'private'] &&
         (!('description' in data) || data.description.size() <= 500) &&
         (!('category' in data) || data.category in ['travel', 'food', 'services', 'shopping', 'healthcare', 'entertainment', 'other']);
     }

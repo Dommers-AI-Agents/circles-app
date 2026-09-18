@@ -11,6 +11,9 @@ const { isOwnerPremiumUser, isOwnerPremiumForVenue, isOwnerPremiumById } = requi
 const { normalizeUserId, isSameUser } = require('../../services/idService');
 const db = getFirestore();
 const { venueManagerIds, isVenueTeamMember, venueGlobalPlaceId } = require('../../services/venueHelpers.js');
+const { canViewCircle } = require('../../services/visibility');
+const { makeViewerContext } = require('../../services/viewerContext');
+const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
 
 // ---------- Venue owner endpoints (self-service offer/earn-rate management) ----------
 
@@ -334,14 +337,13 @@ exports.getVenueSavers = async (req, res) => {
     outgoing.forEach((doc) => connectedIds.add(normalizeUserId(doc.data().connectedUserId)));
     incomingAccepted.forEach((doc) => connectedIds.add(normalizeUserId(doc.data().userId)));
 
-    const isCircleVisibleToOwner = (circle, saverId) => {
-      if (!circle) return false;
-      if (isSameUser(saverId, ownerId) || isSameUser(circle.owner, ownerId)) return true;
-      if (circle.privacy === 'public') return true;
-      if (circle.sharedWith && circle.sharedWith.includes(ownerId)) return true;
-      if (circle.privacy === 'myNetwork' && connectedIds.has(normalizeUserId(circle.owner))) return true;
-      return false;
-    };
+    const ownerViewerCtx = makeViewerContext({
+      viewerId: ownerId,
+      connections: connectedIds,
+      innerCircleGrantors: await getInnerCircleGrantorIds(ownerId)
+    });
+    const isCircleVisibleToOwner = (circle, saverId) =>
+      isSameUser(saverId, ownerId) || canViewCircle(circle, ownerId, ownerViewerCtx);
 
     const visible = [...bySaver.entries()].filter(([saverId, entry]) =>
       entry.hasNonPrivate &&
