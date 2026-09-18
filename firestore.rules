@@ -26,8 +26,12 @@ service cloud.firestore {
     }
     
     function isInInnerCircleOf(userId) {
+      // .get(key, default) rather than .innerCircle: a user doc written before
+      // the field existed has no such key, and indexing into it would error the
+      // whole rule. One document read, not two.
       return isAuthenticated() &&
-        request.auth.uid in get(/databases/$(database)/documents/users/$(userId)).data.innerCircle;
+        request.auth.uid in get(/databases/$(database)/documents/users/$(userId))
+          .data.get('innerCircle', []);
     }
 
     function canViewCircle(circle) {
