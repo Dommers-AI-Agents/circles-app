@@ -10,6 +10,7 @@ struct PendingLinkParserTests {
         #expect(PendingLinkParser.parse("create-wallet") == .createWallet)
         #expect(PendingLinkParser.parse("add-place") == .openPath("add-place"))
         #expect(PendingLinkParser.parse("me") == .openPath("me"))
+        #expect(PendingLinkParser.parse("check-in") == .quickCheckIn)
     }
 
     @Test func typedLinks() {

@@ -20,8 +20,12 @@ enum PendingLink: Equatable {
     case connect(fromUserId: String)
     case video(id: String)
     case notificationSettings
-    /// "check-in:<placeId>": the "you're near <saved place>" banner tapped on a cold start.
+    /// "check-in:<placeId>": the "you're near <saved place>" banner tapped on a cold start,
+    /// or a "Check in at <place>" Home Screen quick action.
     case checkIn(placeId: String)
+    /// "check-in": the static "Check In" Home Screen quick action; the sheet
+    /// opens with its place picker.
+    case quickCheckIn
 }
 
 /// Turns the stored string into a `PendingLink`. Pure; SceneDelegate keeps
@@ -37,6 +41,7 @@ enum PendingLinkParser {
         case "all-places-map": return .allPlacesMap
         case "create-wallet": return .createWallet
         case "add-place", "me": return .openPath(link)
+        case "check-in": return .quickCheckIn
         default: break
         }
 

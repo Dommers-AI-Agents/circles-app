@@ -173,6 +173,8 @@ class NotificationService {
 
         // Location-triggered check-in banners are per account
         ProximityNotificationScheduler.shared.cancelAll()
+        // So are the "Check in at <place>" rows on the app icon's long-press menu
+        QuickCheckInShortcuts.clear()
 
         // Clear badge
         clearBadge()
