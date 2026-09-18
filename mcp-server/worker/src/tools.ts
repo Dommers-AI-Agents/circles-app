@@ -40,6 +40,9 @@ const CIRCLE_CATEGORIES = [
 // Mirrors CIRCLE_PRIVACY_LEVELS in backend/services/visibility.js.
 // "innerCircle" = only the people on the owner's Inner Circle list.
 const PRIVACY_LEVELS = ["public", "myNetwork", "innerCircle", "private"] as const;
+// A place may also defer to its circle, which is the default and has no
+// circle-level equivalent.
+const PLACE_PRIVACY_LEVELS = [...PRIVACY_LEVELS, "followCircle"] as const;
 
 // ---- structured output shapes ----------------------------------------------
 
@@ -423,13 +426,17 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
     {
       title: "Edit a place",
       description:
-        "Edit a place's name, address, category, or notes. Only provide the fields to change. Place ids come from get_circle or search_places.",
+        "Edit a place's name, address, category, notes, or privacy. Only provide the fields to change. Place ids come from get_circle or search_places. A place's privacy can only narrow what its circle already allows — `followCircle` (the default) inherits the circle.",
       inputSchema: {
         placeId: z.string().describe("Place id (from get_circle or search_places)"),
         name: z.string().min(1).optional().describe("New name"),
         address: z.string().min(1).optional().describe("New address"),
         category: z.enum(PLACE_CATEGORIES).optional().describe("New category"),
         notes: z.string().optional().describe("New note (visible to anyone who can see the place)"),
+        privacy: z
+          .enum(PLACE_PRIVACY_LEVELS)
+          .optional()
+          .describe("This place's own privacy tier, or followCircle to inherit its circle's"),
       },
       outputSchema: { place: PLACE_OUT },
       annotations: { title: "Edit a place", ...UPDATE },
@@ -439,7 +446,7 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
       try {
         const body = { ...updates, ...(notes !== undefined ? { publicNotes: notes } : {}) };
         if (Object.values(body).every((v) => v === undefined)) {
-          return err(new Error("Nothing to update — provide at least one of name/address/category/notes."));
+          return err(new Error("Nothing to update — provide at least one of name/address/category/notes/privacy."));
         }
         const place = await backend.updatePlace(placeId, body);
         return ok(`Updated place:\n${formatPlace(place)}`, { place: placeStruct(place) });
