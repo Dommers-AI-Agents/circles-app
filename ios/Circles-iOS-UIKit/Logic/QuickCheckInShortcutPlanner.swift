@@ -1,24 +1,28 @@
 import Foundation
 import CoreLocation
 
-/// Home Screen quick actions (long-press the app icon) for checking in.
+/// Home Screen quick actions (long-press the app icon).
 ///
-/// The static "Check In" item lives in Info.plist and always shows. This
-/// planner picks the dynamic "Check in at <saved place>" rows for wherever
-/// the user last was, and turns a tapped item back into the pending link the
-/// scene delegate already knows how to route.
+/// Three static items live in Info.plist and always show — Check In, Add a
+/// Place, Send a Postcard. This planner picks the one dynamic "Check in at
+/// <saved place>" row for wherever the user last was (iOS shows four items,
+/// so exactly one), and turns any tapped item back into the pending link
+/// the scene delegate already knows how to route.
 ///
 /// Pure: no UIKit, no services. The home controller and the scene delegate
 /// apply the result to `UIApplication.shortcutItems`.
 struct QuickCheckInShortcutPlanner {
-    /// The static item's type (also in Info.plist).
+    /// The static items' types (also in Info.plist).
     static let checkInType = "com.favcircles.circles.check-in"
+    static let addPlaceType = "com.favcircles.circles.add-place"
+    static let postcardType = "com.favcircles.circles.postcard"
     /// Dynamic per-place items.
     static let checkInAtPlaceType = "com.favcircles.circles.check-in-at"
     static let placeIdKey = "placeId"
 
-    /// iOS shows four items; the static "Check In" takes one.
-    static let defaultLimit = 3
+    /// iOS shows four items; the three static ones leave room for exactly
+    /// one "Check in at <nearest place>" — the nearest is the one that matters.
+    static let defaultLimit = 1
     /// A city block's worth: the shops you might walk into from here.
     static let defaultRadiusMeters: CLLocationDistance = 1_500
     /// Two saves this close are the same venue (a check-in copy, a second circle).
@@ -65,6 +69,10 @@ struct QuickCheckInShortcutPlanner {
         switch type {
         case checkInType:
             return "check-in"
+        case addPlaceType:
+            return "add-place"
+        case postcardType:
+            return "widget:postcard"
         case checkInAtPlaceType:
             guard let placeId = userInfo?[placeIdKey] as? String,
                   !placeId.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }

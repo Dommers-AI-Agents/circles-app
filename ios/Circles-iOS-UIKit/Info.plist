@@ -247,7 +247,27 @@
 			<key>UIApplicationShortcutItemSubtitle</key>
 			<string>Let your people know where you are</string>
 			<key>UIApplicationShortcutItemIconSymbolName</key>
-			<string>checkmark.circle</string>
+			<string>figure.walk.arrival</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.favcircles.circles.add-place</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Add a Place</string>
+			<key>UIApplicationShortcutItemSubtitle</key>
+			<string>Save somewhere you love</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>plus.circle</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.favcircles.circles.postcard</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Send a Postcard</string>
+			<key>UIApplicationShortcutItemSubtitle</key>
+			<string>A photo, a note, mailed or shared</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>envelope</string>
 		</dict>
 	</array>
 </dict>
