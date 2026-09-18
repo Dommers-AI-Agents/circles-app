@@ -4,6 +4,7 @@ const {
   getNotifications,
   markNotificationAsRead,
   getUnreadCount,
+  getBadgeCount,
   markAllAsRead,
   archiveAllNotifications,
   deleteNotification,
@@ -22,6 +23,11 @@ router.route('/')
 
 router.route('/unread-count')
   .get(getUnreadCount);
+
+// What the icon badge should say: messages + connection requests + unread
+// notifications. iOS re-syncs from this on every foreground.
+router.route('/badge')
+  .get(getBadgeCount);
 
 router.route('/read-all')
   .put(markAllAsRead);

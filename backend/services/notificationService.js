@@ -4,6 +4,7 @@ const { localClock } = require('../utils/localClock');
 const { COLLECTIONS, createNotification, validateNotification } = require('../models/FirestoreModels');
 const emailService = require('./emailService');
 const sseService = require('./sseService');
+const { shouldBadge, computeBadgeCount } = require('./badgeService');
 
 const db = getFirestore();
 const messaging = getMessaging();
@@ -101,6 +102,22 @@ class NotificationService {
           break;
       }
 
+      // The badge counts what is WAITING for this user — unread messages,
+      // unanswered connection requests, unread rows in the Notifications list.
+      // A push that leaves none of those behind (an "X added a place" banner,
+      // say) gets no badge key at all, which leaves whatever is on the icon
+      // untouched. Previously every push hardcoded `badge: 1`, and iOS SETS the
+      // badge from that value, so an ephemeral banner put a 1 on the icon
+      // pointing at something the app had no screen for, and nothing cleared it.
+      let badgeValue;
+      if (notification.badge !== undefined) {
+        badgeValue = notification.badge;
+      } else if (shouldBadge(notification.type)) {
+        // Counted AFTER the caller has written its notification doc, so the
+        // number the user sees already includes the thing we are announcing.
+        badgeValue = await computeBadgeCount(userId);
+      }
+
       // Prepare the message with enhanced iOS configuration
       const message = {
         notification: {
@@ -118,7 +135,7 @@ class NotificationService {
                 ...(notification.subtitle && { subtitle: notification.subtitle })
                 // Removed 'sound' from alert object - it goes at aps level
               },
-              badge: notification.badge !== undefined ? notification.badge : 1,
+              ...(badgeValue !== undefined && { badge: badgeValue }),
               sound: 'default',
               'content-available': 1,
               'mutable-content': 1, // Allows notification service extension to modify content
@@ -849,24 +866,10 @@ class NotificationService {
   // Update badge count for a user
   async updateBadgeCount(userId) {
     try {
-      // Calculate total unread count
-      let totalUnread = 0;
-
-      // Count unread messages
-      const messageReadsSnapshot = await db.collection(COLLECTIONS.MESSAGE_READS)
-        .where('userId', '==', userId)
-        .where('isRead', '==', false)
-        .get();
-      
-      totalUnread += messageReadsSnapshot.size;
-
-      // Count pending connection requests
-      const connectionSnapshot = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'pending')
-        .get();
-      
-      totalUnread += connectionSnapshot.size;
+      // One definition of the badge, shared with sendToUser and the sync
+      // endpoint. This used to count messages and connection requests only,
+      // so an unread like or comment never reached the icon.
+      const totalUnread = await computeBadgeCount(userId);
 
       // Send silent notification to update badge
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();

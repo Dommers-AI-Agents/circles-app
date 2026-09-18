@@ -1,6 +1,7 @@
 // backend/controllers/notificationController.js
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
+const { computeBadgeCount } = require('../services/badgeService');
 
 const db = getFirestore();
 
@@ -116,6 +117,23 @@ exports.markNotificationAsRead = async (req, res, next) => {
 // @desc    Get unread notification count
 // @route   GET /api/notifications/unread-count
 // @access  Private
+// @desc    What the app icon badge should say right now
+// @route   GET /api/notifications/badge
+// @access  Private
+//
+// The client cannot compute this: it spans unread messages, pending connection
+// requests and unread notifications. iOS calls it whenever the app becomes
+// active, which is what stops a stale badge from sitting there forever.
+exports.getBadgeCount = async (req, res, next) => {
+  try {
+    const count = await computeBadgeCount(req.user.uid);
+    res.status(200).json({ success: true, count });
+  } catch (error) {
+    console.error('Error computing badge count:', error);
+    next(error);
+  }
+};
+
 exports.getUnreadCount = async (req, res, next) => {
   try {
     const userId = req.user.uid;

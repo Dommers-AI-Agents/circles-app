@@ -250,6 +250,9 @@ class NotificationsViewController: BaseViewController {
             // viewWillAppear refresh.
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .notificationsMarkedRead, object: nil)
+                // The icon should agree with the screen the user is looking at,
+                // without waiting for the next foreground to find out.
+                NotificationService.shared.syncBadge()
             }
         }
     }

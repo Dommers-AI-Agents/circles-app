@@ -101,6 +101,29 @@ class NotificationService {
         Logger.debug("🔔 NotificationService: Clearing application badge count")
         updateApplicationBadge(count: 0)
     }
+
+    /// Ask the server what the badge should say, and say it.
+    ///
+    /// The count spans unread messages, unanswered connection requests and
+    /// unread notifications, so the client can't work it out for itself — and
+    /// guessing is what produced a badge that sat on the icon for hours with
+    /// nothing behind it. Called on every foreground; failures are ignored
+    /// rather than left to strand a stale number, since the next foreground
+    /// will try again.
+    func syncBadge() {
+        APIService.shared.request(
+            endpoint: "notifications/badge",
+            method: .get,
+            requiresAuth: true
+        ) { [weak self] (result: Result<BadgeCountResponse, APIError>) in
+            switch result {
+            case .success(let response):
+                self?.updateApplicationBadge(count: response.count)
+            case .failure(let error):
+                Logger.debug("🔔 Badge sync failed (will retry next foreground): \(error)")
+            }
+        }
+    }
     
     // MARK: - Notification Permissions
     
@@ -359,4 +382,10 @@ private struct NotificationUnreadCountResponse: Codable {
 private struct NotificationActionResponse: Codable {
     let success: Bool
     let message: String
+}
+
+/// `GET /notifications/badge`
+private struct BadgeCountResponse: Codable {
+    let success: Bool
+    let count: Int
 }

@@ -1144,9 +1144,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         // Check for any pending notifications or updates
         if AuthService.shared.isLoggedIn {
-            // Clear notification badge when user opens the app
-            Logger.debug("🔔 SceneDelegate: Clearing notification badge on app activation")
-            NotificationService.shared.clearBadge()
+            // Re-sync the badge with what is actually waiting, rather than
+            // blanket-zeroing it. Clearing unconditionally cut both ways: an
+            // ephemeral banner's badge did go away, but so did a real one —
+            // open the app with three unread messages and the icon went to 0
+            // while the messages sat there unread.
+            Logger.debug("🔔 SceneDelegate: Syncing notification badge on app activation")
+            NotificationService.shared.syncBadge()
 
             // Record the app open (throttled inside the service)
             UserService.shared.reportAppOpen()
