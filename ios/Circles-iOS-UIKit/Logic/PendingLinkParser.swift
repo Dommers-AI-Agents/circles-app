@@ -10,6 +10,9 @@ enum PendingLink: Equatable {
     case createWallet
     /// "add-place" / "me": resolved through DeepLinkRouter's open-path table.
     case openPath(String)
+    /// "widget:<id>": the Widgets segment with one widget's page open
+    /// (the "Send a Postcard" quick action).
+    case widget(id: String)
 
     // "type:payload" links
     case shareToken(circleId: String, shareToken: String)
@@ -60,6 +63,7 @@ enum PendingLinkParser {
         case "user": return .user(id: payload)
         case "share": return .share(id: payload)
         case "connect": return .connect(fromUserId: payload)
+        case "widget": return .widget(id: payload)
         case "video": return .video(id: payload)
         case "daily-summary": return .dailySummary
         case "check-in": return .checkIn(placeId: payload)

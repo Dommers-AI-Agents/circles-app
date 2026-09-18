@@ -30,9 +30,17 @@ struct QuickCheckInShortcutPlannerTests {
             place("out", meters: 5_000),
             place("mid2", meters: 900),
         ]
-        let plan = QuickCheckInShortcutPlanner.plan(places: places, around: here)
+        let plan = QuickCheckInShortcutPlanner.plan(places: places, around: here, limit: 3)
         #expect(plan.map(\.placeId) == ["near", "mid", "mid2"])
         #expect(plan.first?.placeName == "near")
+    }
+
+    @Test func byDefaultOnlyTheNearestRowIsPlanned() {
+        // Three static items (Check In, Add a Place, Send a Postcard) fill the
+        // rest of the four-item menu
+        let places = [place("far", meters: 1_400), place("near", meters: 40), place("mid", meters: 300)]
+        #expect(QuickCheckInShortcutPlanner.defaultLimit == 1)
+        #expect(QuickCheckInShortcutPlanner.plan(places: places, around: here).map(\.placeId) == ["near"])
     }
 
     @Test func noLocationMeansNoRows() {
@@ -57,6 +65,8 @@ struct QuickCheckInShortcutPlannerTests {
         let staticType = QuickCheckInShortcutPlanner.checkInType
         let placeType = QuickCheckInShortcutPlanner.checkInAtPlaceType
         #expect(QuickCheckInShortcutPlanner.pendingLink(forShortcutType: staticType, userInfo: nil) == "check-in")
+        #expect(QuickCheckInShortcutPlanner.pendingLink(forShortcutType: QuickCheckInShortcutPlanner.addPlaceType, userInfo: nil) == "add-place")
+        #expect(QuickCheckInShortcutPlanner.pendingLink(forShortcutType: QuickCheckInShortcutPlanner.postcardType, userInfo: nil) == "widget:postcard")
         #expect(QuickCheckInShortcutPlanner.pendingLink(forShortcutType: placeType, userInfo: ["placeId": "abc"]) == "check-in:abc")
         #expect(QuickCheckInShortcutPlanner.pendingLink(forShortcutType: placeType, userInfo: ["placeId": " "]) == nil)
         #expect(QuickCheckInShortcutPlanner.pendingLink(forShortcutType: placeType, userInfo: nil) == nil)
