@@ -519,6 +519,22 @@ describe('Lob tracking events', () => {
     return ID('o1');
   }
 
+  it('pushes once when the card is delivered, and not again on a redelivered webhook', async () => {
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+    notificationService.sendToUser.mockClear();
+    await service.handleLobEvent({ event_type: { id: 'postcard.in_transit' }, body: { id: 'psc_1' } });
+    expect(notificationService.sendToUser).not.toHaveBeenCalled(); // transit stays silent
+    await service.handleLobEvent({ event_type: { id: 'postcard.processed_for_delivery' }, body: { id: 'psc_1' } });
+    await service.handleLobEvent({ event_type: { id: 'postcard.processed_for_delivery' }, body: { id: 'psc_1' } });
+    expect(notificationService.sendToUser).toHaveBeenCalledTimes(1);
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(USER, expect.objectContaining({
+      title: 'Your postcard was delivered',
+      body: expect.stringContaining('Ana Ruiz')
+    }));
+  });
+
   it('treats processed_for_delivery as the end of the line', async () => {
     // USPS does not scan First Class postcards on delivery, so waiting for a
     // `delivered` event would leave every order in transit forever.
