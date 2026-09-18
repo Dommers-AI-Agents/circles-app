@@ -210,7 +210,7 @@ describe('add a place', () => {
   test('nudges when nothing was saved this week, then not again for a week', async () => {
     const card = await pick();
     expect(card).toMatchObject({ key: 'add_place', type: 'add_place', title: 'Add a new place?', target: 'add_place' });
-    await service.ack(ME, 'add_place', 'skipped');
+    await service.ack(ME, 'add_place', 'skipped', { now: NOW });
     expect(await service.pick(ME, { now: NOW + 3 * DAY })).toBeNull();
     expect((await service.pick(ME, { now: NOW + 8 * DAY })).key).toBe('add_place');
   });
@@ -287,7 +287,7 @@ describe('postcard', () => {
   test('asks at most once a fortnight, and the app pop-up ack silences it too', async () => {
     savePlace('p');
     expect((await pick()).key).toBe('postcard_nudge');
-    await service.ack(ME, 'postcard_nudge', 'skipped');
+    await service.ack(ME, 'postcard_nudge', 'skipped', { now: NOW });
     // Kept fresh so the add-place nudge stays quiet and the only question is
     // whether the postcard card comes back.
     savePlace('p', { createdAt: iso(NOW + 12 * DAY) });

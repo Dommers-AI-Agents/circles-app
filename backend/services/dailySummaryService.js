@@ -1,4 +1,5 @@
 const { getFirestore, FieldValue } = require('../config/firebase');
+const { localClock: userLocalClock } = require('../utils/localClock');
 const notificationService = require('./notificationService');
 const emailService = require('./emailService');
 const { COLLECTIONS } = require('../models/FirestoreModels');
@@ -525,25 +526,11 @@ class DailySummaryService {
     return local.weekday === this.summaryWeekday && local.hour === preferredHour;
   }
 
-  // { hour (0-23), weekday (0=Sunday) } in the given IANA zone
+  // { hour (0-23), minute, weekday (0=Sunday) } in the given IANA zone.
+  // Shared with the quiet-hours check in notificationService — one clock, so a
+  // fix in either place is a fix in both.
   localClock(timeZone, now = new Date()) {
-    const read = (zone) => {
-      const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: zone,
-        hour: 'numeric',
-        hour12: false,
-        weekday: 'short'
-      }).formatToParts(now);
-      const hour = parseInt(parts.find((p) => p.type === 'hour').value, 10) % 24;
-      const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-        .indexOf(parts.find((p) => p.type === 'weekday').value);
-      return { hour, weekday };
-    };
-    try {
-      return read(timeZone || 'America/New_York');
-    } catch (error) {
-      return read('America/New_York');
-    }
+    return userLocalClock(timeZone, now);
   }
 
   // Check if user already received this week's summary. A rolling 6-day

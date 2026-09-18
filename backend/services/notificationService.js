@@ -1,5 +1,6 @@
 // backend/services/notificationService.js
 const { getFirestore, getMessaging } = require('../config/firebase');
+const { localClock } = require('../utils/localClock');
 const { COLLECTIONS, createNotification, validateNotification } = require('../models/FirestoreModels');
 const emailService = require('./emailService');
 const sseService = require('./sseService');
@@ -277,12 +278,16 @@ class NotificationService {
     return preferences[preferencesKey] !== false;
   }
 
-  // Check if current time is in quiet hours
+  // Check if current time is in quiet hours.
+  //
+  // In the USER'S timezone. This used to read the server clock, which is UTC
+  // on Cloud Run, so the window a user set was applied at their UTC offset
+  // instead: 22:00-08:00 chosen by an Eastern user silenced 18:00-04:00 their
+  // time. Every notification type on this path was affected.
   isInQuietHours(preferences) {
     if (!preferences.quietHoursEnabled) return false;
 
-    const now = new Date();
-    const currentTime = now.getHours() * 60 + now.getMinutes();
+    const currentTime = localClock(preferences.timezone).minutes;
 
     const [startHour, startMin] = (preferences.quietHoursStart || '22:00').split(':').map(Number);
     const [endHour, endMin] = (preferences.quietHoursEnd || '08:00').split(':').map(Number);

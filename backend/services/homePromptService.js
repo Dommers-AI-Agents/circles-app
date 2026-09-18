@@ -597,7 +597,10 @@ class HomePromptService {
 
   // ---------------------------------------------------------------- ack
 
-  async ack(userId, key, action) {
+  // `now` is injectable for the same reason pick's is: every other clock in
+  // this service is, and a test that acks at the real time but picks at an
+  // injected one drifts as the calendar moves.
+  async ack(userId, key, action, { now = Date.now() } = {}) {
     if (typeof key !== 'string' || key.length === 0 || key.length > 200) {
       throw new HomePromptError(400, 'bad_key', 'Card key is required.');
     }
@@ -616,7 +619,7 @@ class HomePromptService {
     }
     // "shown" never downgrades a skip/act the user already made.
     if (action === 'shown' && acks[key] && acks[key].action !== 'shown') return acks[key];
-    const next = { action, at: new Date().toISOString() };
+    const next = { action, at: new Date(now).toISOString() };
     await ref.update({ homePrompt: { ...state, acks: { ...acks, [key]: next } } });
     return next;
   }
