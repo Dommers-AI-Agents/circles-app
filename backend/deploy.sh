@@ -14,6 +14,60 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Preflight: is this tree safe to ship?
+#
+# `gcloud run deploy --source .` ships whatever is on disk here, with no notion
+# of a branch. Run from a stale worktree it would quietly roll production back
+# to that branch's code — no error, the features just stop existing. Several
+# agent sessions share this repo and each may sit on its own worktree, so the
+# check lives here rather than in anyone's habits.
+#
+# Override for a deliberate off-main deploy: DEPLOY_ALLOW_ANY_TREE=1 ./deploy.sh
+preflight() {
+    local branch upstream behind dirty
+    branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || return 0  # not a git tree; nothing to check
+
+    if [ "$branch" != "main" ]; then
+        echo -e "${RED}❌ On branch '$branch', not main.${NC}"
+        echo -e "${RED}   This ships THIS tree. Deploying a branch that is behind main${NC}"
+        echo -e "${RED}   removes whatever main has that it doesn't.${NC}"
+        echo -e "${YELLOW}   Worktrees on this machine:${NC}"
+        git worktree list | sed 's/^/     /'
+        echo -e "${YELLOW}   Intentional? DEPLOY_ALLOW_ANY_TREE=1 ./deploy.sh${NC}"
+        return 1
+    fi
+
+    # Behind origin/main = someone else's merged work would be undone.
+    git fetch --quiet origin main 2>/dev/null || true
+    upstream=$(git rev-parse origin/main 2>/dev/null)
+    if [ ! -z "$upstream" ]; then
+        behind=$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)
+        if [ "$behind" != "0" ]; then
+            echo -e "${RED}❌ $behind commit(s) behind origin/main — deploying would undo them.${NC}"
+            echo -e "${YELLOW}   git pull --ff-only, then deploy.${NC}"
+            return 1
+        fi
+    fi
+
+    # Uncommitted backend changes ship too; that's usually a mistake, never a secret.
+    dirty=$(git status --porcelain -- . | grep -v '^??' | head -5)
+    if [ ! -z "$dirty" ]; then
+        echo -e "${YELLOW}⚠️  Uncommitted backend changes — these WILL ship:${NC}"
+        echo "$dirty" | sed 's/^/     /'
+    fi
+    return 0
+}
+
+if [ -z "$DEPLOY_ALLOW_ANY_TREE" ]; then
+    if ! preflight; then
+        echo -e "${RED}Aborted before deploying. Nothing changed.${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✅ Tree check passed: main, in sync with origin${NC}"
+else
+    echo -e "${YELLOW}⚠️  DEPLOY_ALLOW_ANY_TREE set — shipping $(git rev-parse --abbrev-ref HEAD 2>/dev/null) without checks${NC}"
+fi
+
 # Set the project
 gcloud config set project $PROJECT_ID
 
