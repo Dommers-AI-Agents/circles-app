@@ -142,6 +142,12 @@ export class Backend {
       headers: {
         Authorization: `Bearer ${this.auth.token}`,
         "Content-Type": "application/json",
+        // Without this the backend rewrites the innerCircle privacy tier to
+        // "private" in every response, so circles set to Inner Circle would be
+        // reported to the assistant as more private than they are — and an
+        // explicit "make this private" would be read as an old client echoing
+        // that downgrade back, and silently ignored.
+        "X-FC-Inner-Circle": "1",
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });

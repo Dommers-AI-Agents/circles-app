@@ -27,6 +27,8 @@ async function request<T>(auth: AuthInfo, method: string, path: string, body?: u
     headers: {
       Authorization: `Bearer ${auth.token}`,
       "Content-Type": "application/json",
+      // See worker/src/backend.ts — this build understands the innerCircle tier.
+      "X-FC-Inner-Circle": "1",
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });

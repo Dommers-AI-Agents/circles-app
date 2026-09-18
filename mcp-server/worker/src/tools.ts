@@ -37,7 +37,9 @@ const PLACE_CATEGORIES = [
 const CIRCLE_CATEGORIES = [
   "travel", "food", "services", "shopping", "healthcare", "entertainment", "other",
 ] as const;
-const PRIVACY_LEVELS = ["public", "myNetwork", "private"] as const;
+// Mirrors CIRCLE_PRIVACY_LEVELS in backend/services/visibility.js.
+// "innerCircle" = only the people on the owner's Inner Circle list.
+const PRIVACY_LEVELS = ["public", "myNetwork", "innerCircle", "private"] as const;
 
 // ---- structured output shapes ----------------------------------------------
 
