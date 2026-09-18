@@ -90,8 +90,9 @@ class PlaceTableViewCell: UITableViewCell {
         return label
     }()
     
-    // "🔒 Private" chip — shown only on the owner's private places, so they can
-    // see at a glance which saves are hidden from followers/connections.
+    // Narrowed-privacy chip — shown on the owner's Private and Inner Circle
+    // saves, so they can see at a glance which ones are hidden from their
+    // followers and connections.
     private let privacyChip: UIView = {
         let view = UIView()
         view.backgroundColor = .secondarySystemFill // subtle gray pill, adapts to dark mode
@@ -394,10 +395,22 @@ class PlaceTableViewCell: UITableViewCell {
         self.place = place
         nameLabel.text = place.name.isEmpty ? "Unnamed Place" : place.name
 
-        // Flag private places so the owner can see which saves are hidden from
+        // Flag narrowed places so the owner can see which saves are hidden from
         // their followers/connections (backend already omits these for others,
-        // so this chip is only ever seen by the owner).
-        privacyChip.isHidden = place.privacy != .private
+        // so this chip is only ever seen by the owner). A tier this build
+        // doesn't recognise is chipped too — better a stale label than none.
+        let narrowedTiers: [PrivacyTier] = [.innerCircle, .private]
+        let placeTier = place.privacy.option.flatMap { option -> PrivacyTier? in
+            if case .tier(let tier) = option { return tier }
+            return nil
+        }
+        let isNarrowed = place.privacy == .unknown || narrowedTiers.contains(where: { $0 == placeTier })
+        privacyChip.isHidden = !isNarrowed
+        if isNarrowed {
+            let shown = placeTier ?? .private
+            privacyChipIcon.image = UIImage(systemName: shown.systemIconName)
+            privacyChipLabel.text = shown.title
+        }
 
         // Highlight new places
         if place.isNew == true {

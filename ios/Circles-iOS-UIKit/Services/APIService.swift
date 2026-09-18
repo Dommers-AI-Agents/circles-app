@@ -637,6 +637,13 @@ class APIService {
         // floors every coin value to an integer so old builds (whose models
         // decode Int) keep working.
         request.addValue("1", forHTTPHeaderField: "X-FC-Decimal-Coins")
+
+        // Advertise that this build understands the "innerCircle" privacy tier.
+        // Without it the backend rewrites that value to "private" everywhere it
+        // appears, because older builds decode `privacy` with a strict enum —
+        // one unrecognised value threw mid-decode and dropped the circle (or
+        // the whole moments response) rather than failing visibly.
+        request.addValue("1", forHTTPHeaderField: "X-FC-Inner-Circle")
         
         // Add cache control headers to prevent 304 responses
         if method == .get {

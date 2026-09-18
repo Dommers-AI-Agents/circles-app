@@ -69,7 +69,7 @@ extension UIViewController {
     private func presentMomentPrivacyPicker(for reel: PlaceVideo,
                                             onPrivacyChanged: @escaping (VideoVisibility) -> Void) {
         let actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] =
-            VideoVisibility.allCases.map { level in
+            VideoVisibility.selectable.map { level in
                 let mark = level == reel.visibility ? "  ✓" : ""
                 return ("\(level.displayLabel) — \(level.pickerSubtitle)\(mark)", .default, { [weak self] in
                     guard let self = self, level != reel.visibility else { return }

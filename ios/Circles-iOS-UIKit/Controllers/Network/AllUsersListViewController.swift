@@ -101,20 +101,9 @@ class AllUsersListViewController: UIViewController {
     }()
 
     @objc private func scopeInfoTapped() {
-        AlertPresenter.showInfo(
-            title: "Connections vs Following",
-            message: """
-            Following — you see their public places and activity in your feed. \
-            One-way and instant; they don't need to approve.
-
-            Connections — you both agreed to connect. Unlocks their \
-            network-only circles, messaging, and place suggestions.
-
-            You can follow someone and also be connected — those people \
-            appear in both lists.
-            """,
-            from: self
-        )
+        // One explanation of the ladder, shared with the ⓘ on section headers
+        // and on the privacy pickers.
+        RelationshipExplainer.present(from: self)
     }
 
     @objc private func scopeChanged() {

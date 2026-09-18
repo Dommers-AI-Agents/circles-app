@@ -11,11 +11,26 @@ class TagPeoplePickerViewController: BaseViewController {
     var initialSelection: [TaggedMomentUser] = []
     var onDone: (([TaggedMomentUser]) -> Void)?
 
+    /// How many may be chosen, and what to say when they try one too many.
+    /// Defaults to the moment-tagging cap; the Inner Circle screen reuses this
+    /// picker with the server's own limit rather than hardcoding a second one.
+    var selectionLimit: Int = TagPeoplePickerViewController.maxTags
+    var limitMessage: String?
+
+    /// Narrows the people offered. The moment composer uses it so an Inner
+    /// Circle moment can't tag someone who wouldn't be able to open it.
+    var eligibleUserIds: Set<String>?
+
     private var people: [User] = []
     private var selectedIds: Set<String> = []
 
     override var showsLoadingIndicator: Bool { true }
-    override var emptyStateMessage: String? { "Connect with people to tag them in your Moments" }
+    /// Overridable so a caller that narrows `eligibleUserIds` can explain why
+    /// the list looks empty.
+    var emptyStateOverride: String?
+    override var emptyStateMessage: String? {
+        emptyStateOverride ?? "Connect with people to tag them in your Moments"
+    }
 
     private let tableView = UITableView(frame: .zero, style: .insetGrouped)
 
@@ -49,6 +64,7 @@ class TagPeoplePickerViewController: BaseViewController {
                 self.people = (connections ?? [])
                     .filter { $0.status == .accepted }
                     .compactMap { $0.connectedUser }
+                    .filter { person in self.eligibleUserIds.map { $0.contains(person.id) } ?? true }
                     .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
                 self.tableView.reloadData()
                 completion?()
@@ -102,8 +118,8 @@ extension TagPeoplePickerViewController: UITableViewDataSource, UITableViewDeleg
         if selectedIds.contains(id) {
             selectedIds.remove(id)
         } else {
-            guard selectedIds.count < Self.maxTags else {
-                showError("You can tag up to \(Self.maxTags) people")
+            guard selectedIds.count < selectionLimit else {
+                showError(limitMessage ?? "You can tag up to \(selectionLimit) people")
                 return
             }
             selectedIds.insert(id)

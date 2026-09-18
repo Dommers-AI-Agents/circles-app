@@ -231,22 +231,55 @@ struct Circle: Codable, Identifiable {
     }
 }
 
+/// A circle's privacy, as stored. `PrivacyTier` is the presentation side of the
+/// same ladder — see Logic/PrivacyTier.swift.
 enum PrivacyLevel: String, Codable, Comparable {
     case `public`
     case myNetwork
+    case innerCircle
     case `private`
-    
-    // Order of privacy restrictiveness (public < myNetwork < private)
+    /// A tier a newer build understands and this one does not.
+    ///
+    /// Decoding used to be a plain `decode(PrivacyLevel.self)`, so an
+    /// unrecognised value threw — and because circle lists decode lossily, the
+    /// circle simply vanished from the list rather than failing loudly. Landing
+    /// on `.unknown` instead keeps the row, renders it as the most restrictive
+    /// thing we can show, and is never treated as more open than it is.
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = PrivacyLevel(rawValue: raw) ?? .unknown
+    }
+
+    /// The tier this maps to, or nil when we don't recognise it. Callers that
+    /// get nil must fail closed: show the Private badge, offer no picker
+    /// selection, and leave the field out of any save.
+    var tier: PrivacyTier? {
+        PrivacyTier(rawValue: rawValue)
+    }
+
+    // Order of privacy restrictiveness. `unknown` sorts most restrictive so it
+    // never wins a `min`-style comparison against a real tier.
     private var sortOrder: Int {
         switch self {
         case .public: return 0
         case .myNetwork: return 1
-        case .private: return 2
+        case .innerCircle: return 2
+        case .private: return 3
+        case .unknown: return 4
         }
     }
     
     static func < (lhs: PrivacyLevel, rhs: PrivacyLevel) -> Bool {
         return lhs.sortOrder < rhs.sortOrder
+    }
+}
+
+extension PrivacyTier {
+    /// The stored circle value for this tier.
+    var circlePrivacy: PrivacyLevel {
+        PrivacyLevel(rawValue: rawValue) ?? .private
     }
 }
 

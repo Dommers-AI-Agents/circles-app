@@ -79,13 +79,11 @@ extension ProfileViewController: UICollectionViewDelegate {
         shareText += "\n📍 \(circle.places?.count ?? 0) places"
         
         // Add privacy info
-        switch circle.privacy {
-        case .public:
-            shareText += "\n🌐 Public Circle"
-        case .myNetwork:
-            shareText += "\n👥 My Network"
-        case .private:
-            shareText += "\n🔒 Private Circle"
+        switch circle.privacy.tier {
+        case .public: shareText += "\n🌐 Public Circle"
+        case .connections: shareText += "\n👥 Connections"
+        case .innerCircle: shareText += "\n⭐ Inner Circle"
+        case .private, .none: shareText += "\n🔒 Private Circle"
         }
         
         shareText += "\n\nJoin me on Circles:"

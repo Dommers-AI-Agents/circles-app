@@ -63,14 +63,13 @@ final class CircleShareController {
 
         shareText += "\n📍 \(placeCount) place\(placeCount != 1 ? "s" : "")"
 
-        // Add privacy emoji
-        switch circle.privacy {
-        case .public:
-            shareText += " 🌐"
-        case .myNetwork:
-            shareText += " 👥"
-        case .private:
-            shareText += " 🔒"
+        // Add privacy emoji. An unrecognised tier reads as the most private
+        // thing we can say about it.
+        switch circle.privacy.tier {
+        case .public: shareText += " 🌐"
+        case .connections: shareText += " 👥"
+        case .innerCircle: shareText += " ⭐"
+        case .private, .none: shareText += " 🔒"
         }
 
         shareText += "\n\nJoin me on Circles:"

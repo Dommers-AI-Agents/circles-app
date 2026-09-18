@@ -538,6 +538,9 @@ class AuthService {
         
         // Clear NetworkManager cached data
         NetworkManager.shared.clearCache()
+
+        // One account's Inner Circle must never be visible to the next
+        InnerCircleManager.shared.clear()
         
         // Clear ImageService cache
         ImageService.shared.clearCache()

@@ -128,29 +128,64 @@ struct EmbedMetadata: Codable {
 }
 
 // MARK: - Video Enums
-enum VideoVisibility: String, Codable, CaseIterable {
+/// A moment's audience. Same ladder as circles and places, plus the followers
+/// tier that only moments have; see Logic/PrivacyTier.swift.
+enum VideoVisibility: String, Codable {
     case `public` = "public"
     case followers = "followers"
     case network = "network"   // "Connections" — raw value kept as-is (no migration)
+    case innerCircle = "innerCircle"
     case `private` = "private"
+    /// A tier a newer build understands and this one does not. Decoded rather
+    /// than thrown: PlaceVideo has no lossy array wrapper, so one unrecognised
+    /// value used to fail a whole moments response and empty the feed.
+    case unknown
 
-    /// User-facing label. Note raw `network` is shown as "Connections".
-    var displayLabel: String {
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = VideoVisibility(rawValue: raw) ?? .unknown
+    }
+
+    /// The picker option this corresponds to, or nil if we don't recognise it.
+    var option: PrivacyOption? {
         switch self {
-        case .public: return "Public"
-        case .followers: return "Followers"
-        case .network: return "Connections"
-        case .private: return "Only Me"
+        case .public: return .tier(.public)
+        case .followers: return .followers
+        case .network: return .tier(.connections)
+        case .innerCircle: return .tier(.innerCircle)
+        case .private: return .tier(.private)
+        case .unknown: return nil
         }
     }
 
+    /// User-facing label. Note raw `network` is shown as "Connections".
+    var displayLabel: String {
+        // Moments have always said "Only Me" rather than "Private".
+        if self == .private { return "Only Me" }
+        return option?.title ?? PrivacyTier.private.title
+    }
+
     /// One-line description shown under each option in the privacy picker.
-    var pickerSubtitle: String {
+    var pickerSubtitle: String { option?.subtitle ?? PrivacyTier.private.subtitle }
+}
+
+extension VideoVisibility {
+    /// Every value a moment can be SET to, open → closed. Deliberately not
+    /// `allCases`: that would offer `.unknown` in the picker.
+    static var selectable: [VideoVisibility] {
+        PrivacyTier.options(for: .moment).compactMap { $0.videoVisibility }
+    }
+}
+
+extension PrivacyOption {
+    /// The stored moment value for this option, or nil if a moment can't hold
+    /// it (a place's "same as circle").
+    var videoVisibility: VideoVisibility? {
         switch self {
-        case .public: return "Anyone on FavCircles"
-        case .followers: return "People who follow you"
-        case .network: return "Your accepted connections"
-        case .private: return "Only you"
+        case .inheritCircle: return nil
+        case .followers: return .followers
+        case .tier(.connections): return .network
+        case .tier(let tier): return VideoVisibility(rawValue: tier.rawValue)
         }
     }
 }

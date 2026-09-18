@@ -140,12 +140,15 @@ class CreateCircleViewController: UIViewController {
         return label
     }()
     
-    private let privacySegmentedControl: UISegmentedControl = {
-        let privacyLevels = ["Public", "My Network", "Private"]
-        let segmentedControl = UISegmentedControl(items: privacyLevels)
-        segmentedControl.selectedSegmentIndex = 0
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        return segmentedControl
+    // A segmented control has nowhere to put the one line that explains each
+    // tier, which is how "My Network" ended up meaning something different from
+    // the "Friends" option on the place screen. See PrivacyPickerButton.
+    private lazy var privacyPicker: PrivacyPickerButton = {
+        let picker = PrivacyPickerButton(entity: .circle, selected: .tier(.public))
+        picker.onEditInnerCircle = { [weak self] in
+            self?.navigationController?.pushViewController(InnerCircleListViewController(), animated: true)
+        }
+        return picker
     }()
     
     private let locationLabel: UILabel = {
@@ -283,7 +286,7 @@ class CreateCircleViewController: UIViewController {
         contentView.addSubview(categoryLabel)
         contentView.addSubview(categoryButton)
         contentView.addSubview(privacyLabel)
-        contentView.addSubview(privacySegmentedControl)
+        contentView.addSubview(privacyPicker)
         contentView.addSubview(locationLabel)
         contentView.addSubview(locationTextField)
         contentView.addSubview(tagsLabel)
@@ -366,12 +369,12 @@ class CreateCircleViewController: UIViewController {
             privacyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Privacy segmented control
-            privacySegmentedControl.topAnchor.constraint(equalTo: privacyLabel.bottomAnchor, constant: Constants.Spacing.small),
-            privacySegmentedControl.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            privacySegmentedControl.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            privacyPicker.topAnchor.constraint(equalTo: privacyLabel.bottomAnchor, constant: Constants.Spacing.small),
+            privacyPicker.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            privacyPicker.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
             // Location label
-            locationLabel.topAnchor.constraint(equalTo: privacySegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
+            locationLabel.topAnchor.constraint(equalTo: privacyPicker.bottomAnchor, constant: Constants.Spacing.medium),
             locationLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Location text field
@@ -514,9 +517,7 @@ class CreateCircleViewController: UIViewController {
         let category = selectedCategoryType
         
         // Get selected privacy level
-        let privacyIndex = privacySegmentedControl.selectedSegmentIndex
-        let privacyLevels = [PrivacyLevel.public, .myNetwork, .private]
-        let privacy = privacyLevels[privacyIndex]
+        let privacy = privacyPicker.selectedCirclePrivacy
         
         // Get optional fields
         let description = descriptionTextView.text?.isEmpty == false ? descriptionTextView.text : nil

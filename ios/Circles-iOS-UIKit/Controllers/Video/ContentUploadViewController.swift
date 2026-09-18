@@ -320,7 +320,7 @@ class ContentUploadViewController: UIViewController {
         )
         
         // One action per privacy tier, with a checkmark on the current selection.
-        for level in VideoVisibility.allCases {
+        for level in VideoVisibility.selectable {
             let mark = selectedVisibility == level ? "✓ " : ""
             let action = UIAlertAction(title: "\(mark)\(level.displayLabel) — \(level.pickerSubtitle)", style: .default) { [weak self] _ in
                 self?.selectedVisibility = level
