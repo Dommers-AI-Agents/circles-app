@@ -11,6 +11,14 @@
 // Ordering matters too: submit to Lob BEFORE capturing. Lob is the step that
 // can permanently refuse; capture on an already-authorized card almost never
 // fails. In that order a refusal costs nobody anything.
+//
+// And "accepted" is not "printable": Lob takes the job over the API and
+// renders it asynchronously a few seconds later, which is when a bad asset
+// URL surfaces as `postcard.failed`. The first real order (2026-09-17) was
+// captured on acceptance and failed on render — a paid refund for a card
+// that never existed. So the capture now waits for Lob's `rendered_pdf`
+// webhook; the hourly reconciler is the safety net when that webhook never
+// arrives (it asks Lob directly and captures after a grace period).
 const { getFirestore, FieldValue } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const stripeClient = require('./stripeClient');
@@ -23,7 +31,7 @@ const STATUS = {
   AUTHORIZED: 'authorized',  // hold in place, cancel window open
   CANCELED: 'canceled',      // user canceled, hold voided — free
   SUBMITTING: 'submitting',  // release job owns it; Lob call in flight
-  SUBMITTED: 'submitted',    // Lob accepted and the money is captured
+  SUBMITTED: 'submitted',    // Lob accepted; captured once Lob has rendered it
   IN_TRANSIT: 'in_transit',
   DELIVERED: 'delivered',
   RETURNED: 'returned_to_sender', // came back; a human decides what to do
@@ -41,6 +49,9 @@ const MESSAGE_MAX_CHARS = 350;   // what actually fits on a 4x6 back
 const MAX_LOB_ATTEMPTS = 3;
 const SUBMITTING_STALE_MINUTES = 15;
 const AUTHORIZATION_LIFETIME_DAYS = 7; // Stripe voids uncaptured holds after this
+// How long the reconciler waits for Lob's rendered_pdf webhook before it
+// asks Lob directly and captures anyway (a render failure surfaces in seconds)
+const RENDER_GRACE_MINUTES = 30;
 
 const US_STATES = new Set(['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC','PR','VI','GU','AS','MP']);
 
@@ -441,25 +452,18 @@ class PostcardMailService {
         })
       });
 
-      // Printed. Only now does the money move.
-      let capturedAt = null;
-      try {
-        await stripeClient.capture(row.stripePaymentIntentId);
-        capturedAt = new Date().toISOString();
-      } catch (error) {
-        // The card is already at the printer, so we do NOT unwind it. The
-        // reconciler retries; worst case we eat the ~$0.91 print cost.
-        console.error(`[postcard-mail] capture failed after Lob accepted ${orderId}: ${error.message}`);
-      }
-
+      // Accepted. The money still waits: Lob renders asynchronously and a
+      // render failure a few seconds from now must void the hold, not
+      // refund a capture. `captureAfterRender` takes it on rendered_pdf.
       await ref.update({
         status: STATUS.SUBMITTED,
         lobPostcardId: lob.id,
         lobExpectedDeliveryDate: lob.expectedDeliveryDate,
         lobPreviewUrl: lob.previewUrl,
         publicPageToken: page.token,
-        capturedAt,
-        error: capturedAt ? null : 'capture_pending',
+        capturedAt: null,
+        awaitingRenderSince: new Date().toISOString(),
+        error: null,
         updatedAt: new Date().toISOString()
       });
       this.notify(row.userId, {
@@ -545,7 +549,7 @@ class PostcardMailService {
         return {
           token: row.publicPageToken,
           url: `${postcardShareService.PUBLIC_BASE_URL}/postcard/${row.publicPageToken}`,
-          qrUrl: `${postcardShareService.PUBLIC_BASE_URL}/postcard/${row.publicPageToken}/qr.png`,
+          qrUrl: `${postcardShareService.ASSET_BASE_URL}/postcard/${row.publicPageToken}/qr.png`,
           senderName: existing.senderName
         };
       }
@@ -560,7 +564,7 @@ class PostcardMailService {
     return {
       token: share.token,
       url: share.url,
-      qrUrl: `${postcardShareService.PUBLIC_BASE_URL}/postcard/${share.token}/qr.png`,
+      qrUrl: `${postcardShareService.ASSET_BASE_URL}/postcard/${share.token}/qr.png`,
       senderName: share.senderName
     };
   }
@@ -573,26 +577,37 @@ class PostcardMailService {
     if (!isEnabled() || !stripeClient.isEnabled()) return { ...summary, disabled: true };
     const now = Date.now();
 
-    // 1. Printed but not paid: retry the capture. This is the only path that
-    // can cost us money, so it gets retried hard before anyone gives up.
+    // 1. At the printer but not paid. Normally rendered_pdf captures within
+    // seconds; this is the net for a missed webhook. Ask Lob first — a card
+    // it has failed must be voided, never captured — then capture only once
+    // Lob has rendered it or the grace period has passed (a render failure
+    // surfaces in seconds, so silence past the grace means it rendered).
     const unpaid = await this.col.where('status', '==', STATUS.SUBMITTED)
       .where('capturedAt', '==', null).limit(50).get();
     for (const doc of unpaid.docs) {
       const row = doc.data();
+      let lob = null;
       try {
-        // The capture carries a fixed idempotency key, so a replay returns the
-        // original response — including the original error. Ask Stripe what
-        // actually happened first; a lost response looks like `succeeded`.
-        const intent = await stripeClient.getPaymentIntent(row.stripePaymentIntentId);
-        if (intent.status !== 'succeeded') {
-          await stripeClient.capture(row.stripePaymentIntentId);
-        }
-        await doc.ref.update({ capturedAt: new Date().toISOString(), error: null, updatedAt: new Date().toISOString() });
-        summary.captured++;
+        lob = row.lobPostcardId ? await lobClient.getPostcard(row.lobPostcardId) : null;
       } catch (error) {
+        console.warn(`[postcard-mail] ${doc.id} Lob lookup failed during reconcile: ${error.message}`);
+      }
+      const lobStatus = lob && typeof lob.status === 'string' ? lob.status : null;
+      if (lobStatus === 'failed' || lobStatus === 'rejected') {
+        await this.unwindPrintFailure(doc, row, `postcard.${lobStatus}`);
+        summary.voided = (summary.voided || 0) + 1;
+        continue;
+      }
+      const rendered = !!(lob && Array.isArray(lob.thumbnails) && lob.thumbnails.length > 0);
+      const waitedMinutes = (now - Date.parse(row.awaitingRenderSince || row.submittingAt || row.updatedAt || row.createdAt)) / 60000;
+      if (!rendered && waitedMinutes < RENDER_GRACE_MINUTES) continue; // rendered_pdf may still arrive
+      const captured = await this.captureAfterRender(doc.ref, row, rendered ? 'reconcile:rendered' : 'reconcile:grace');
+      if (captured) {
+        summary.captured++;
+      } else {
         const ageHours = (now - Date.parse(row.updatedAt || row.createdAt)) / 3600000;
         if (ageHours > 24) {
-          await doc.ref.update({ error: `capture_failed: ${error.message}`.slice(0, 300), needsReview: true });
+          await doc.ref.update({ needsReview: true });
           console.error(`[postcard-mail] ${doc.id} mailed but never captured — needs review`);
           summary.flagged++;
         }
@@ -696,15 +711,18 @@ class PostcardMailService {
     const type = event?.event_type?.id || event?.event_type;
     if (!lobId || !type) return { ignored: true };
 
+    // Lob has rendered the card: every asset resolved, nothing left that can
+    // refuse it for free. This is when the money moves.
+    const RENDERED = ['postcard.rendered_pdf', 'postcard.rendered_thumbnails'];
     const TERMINAL = ['postcard.processed_for_delivery', 'postcard.delivered'];
     const IN_TRANSIT = ['postcard.mailed', 'postcard.in_transit', 'postcard.in_local_area', 'postcard.re-routed'];
     // Lob accepted the card over the API and then refused the mailpiece.
-    // By this point we have already captured, because capture follows Lob's
-    // acceptance — so this is the one event that can leave someone charged
-    // for a card that will never exist.
+    // Before rendered_pdf the hold is still open and voiding is free; after
+    // it (rare — a refusal at the print line) the money was captured and
+    // only a refund puts it right.
     const PRINT_FAILED = ['postcard.failed', 'postcard.rejected'];
 
-    if (!TERMINAL.includes(type) && !IN_TRANSIT.includes(type)
+    if (!RENDERED.includes(type) && !TERMINAL.includes(type) && !IN_TRANSIT.includes(type)
         && !PRINT_FAILED.includes(type) && type !== 'postcard.returned_to_sender') {
       return { ignored: true };
     }
@@ -716,6 +734,12 @@ class PostcardMailService {
 
     if (PRINT_FAILED.includes(type)) {
       return this.unwindPrintFailure(doc, row, type);
+    }
+
+    if (RENDERED.includes(type)) {
+      if (row.capturedAt) return { handled: 'already_captured' };
+      const captured = await this.captureAfterRender(doc.ref, row, type);
+      return { handled: captured ? 'captured' : 'capture_pending' };
     }
 
     const patch = { updatedAt: new Date().toISOString(), lobLastEvent: type };
@@ -732,6 +756,28 @@ class PostcardMailService {
     }
     await doc.ref.update(patch);
     return { handled: patch.status };
+  }
+
+  /**
+   * Take the money for a card Lob has rendered. Idempotent: the capture
+   * carries a fixed key and Stripe is asked first, so a redelivered webhook
+   * or a reconcile pass after a lost response never double-charges. Never
+   * throws — a failed capture leaves `capture_pending` for the reconciler.
+   */
+  async captureAfterRender(ref, row, reason) {
+    const now = new Date().toISOString();
+    try {
+      const intent = await stripeClient.getPaymentIntent(row.stripePaymentIntentId);
+      if (intent.status !== 'succeeded') {
+        await stripeClient.capture(row.stripePaymentIntentId);
+      }
+      await ref.update({ capturedAt: now, awaitingRenderSince: null, error: null, lobLastEvent: reason, updatedAt: now });
+      return true;
+    } catch (error) {
+      console.error(`[postcard-mail] capture after render failed for ${ref.id} (${reason}): ${error.message}`);
+      await ref.update({ error: 'capture_pending', lobLastEvent: reason, updatedAt: now }).catch(() => {});
+      return false;
+    }
   }
 
   /**

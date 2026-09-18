@@ -10,6 +10,10 @@ const { COLLECTIONS } = require('../models/FirestoreModels');
 // Share links use the friendly domain; favcircles.com's .htaccess forwards
 // /postcard/* to the API page (website/favcircles.com/.htaccess).
 const PUBLIC_BASE_URL = 'https://favcircles.com';
+// Where the page and its assets are actually served. The friendly host only
+// redirects, and Lob's renderer fetched the QR from it and got a 404 on the
+// first real order (2026-09-17) — assets must point at the API host directly.
+const ASSET_BASE_URL = process.env.API_PUBLIC_BASE_URL || 'https://api.favcircles.com';
 const MAX_MESSAGE_CHARS = 500;
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,32}$/;
 
@@ -84,5 +88,5 @@ class PostcardShareService {
 }
 
 module.exports = Object.assign(new PostcardShareService(), {
-  ShareError, isAllowedImageUrl, normalizeShare, newToken, PUBLIC_BASE_URL, TOKEN_RE
+  ShareError, isAllowedImageUrl, normalizeShare, newToken, PUBLIC_BASE_URL, ASSET_BASE_URL, TOKEN_RE
 });
