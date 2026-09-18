@@ -46,6 +46,7 @@ jest.mock('../notificationService', () => ({ sendToUser: jest.fn(async () => ({ 
 
 jest.mock('../postcardShareService', () => ({
   PUBLIC_BASE_URL: 'https://favcircles.com',
+  ASSET_BASE_URL: 'https://api.favcircles.com',
   isAllowedImageUrl: (url) => typeof url === 'string' && url.startsWith('https://storage.googleapis.com/bucket/'),
   create: jest.fn(async () => ({ token: 'tok123', url: 'https://favcircles.com/postcard/tok123', senderName: 'Wes' })),
   get: jest.fn(async () => null)
@@ -103,6 +104,10 @@ function resetVendorMocks() {
   stripeClient.getPaymentIntent.mockImplementation(async (id) => ({ id, status: 'requires_capture' }));
   stripeClient.capture.mockImplementation(async (id) => ({ id, status: 'succeeded' }));
   stripeClient.voidAuthorization.mockImplementation(async (id) => ({ id, status: 'canceled' }));
+  // clearAllMocks keeps implementations: a test that made Lob report "failed"
+  // must not leak into the next reconcile
+  lobClient.getPostcard.mockReset();
+  lobClient.getPostcard.mockImplementation(async () => null);
   lobClient.verifyUSAddress.mockImplementation(async (a) => ({
     deliverable: true,
     standardized: { ...a, line1: a.line1.toUpperCase() },
@@ -199,20 +204,47 @@ describe('canceling', () => {
   });
 });
 
+/** Lob's "rendered" webhook — the moment the money is allowed to move. */
+const rendered = (lobId = 'psc_1') => service.handleLobEvent({ event_type: { id: 'postcard.rendered_pdf' }, body: { id: lobId } });
+
 describe('release: print first, then take the money', () => {
-  it('captures only after Lob accepts', async () => {
+  it('prints on release and leaves the hold in place until Lob has rendered the card', async () => {
     await placeOrder('o1');
     closeWindow(ID('o1'));
     const summary = await service.releaseDue();
 
     expect(summary.released).toBe(1);
-    const order = lobClient.createPostcard.mock.invocationCallOrder[0];
-    const capture = stripeClient.capture.mock.invocationCallOrder[0];
-    expect(order).toBeLessThan(capture); // the ordering that makes refusals free
+    expect(lobClient.createPostcard).toHaveBeenCalledTimes(1);
+    expect(stripeClient.capture).not.toHaveBeenCalled(); // a render failure must still be a free void
     const row = rowOf(ID('o1'));
     expect(row.status).toBe(STATUS.SUBMITTED);
     expect(row.lobPostcardId).toBe('psc_1');
-    expect(row.capturedAt).toBeTruthy();
+    expect(row.capturedAt).toBeNull();
+    expect(row.awaitingRenderSince).toBeTruthy();
+  });
+
+  it('captures when Lob says the card rendered, and only once', async () => {
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+
+    await rendered();
+    expect(stripeClient.capture).toHaveBeenCalledWith(`pi_${ID('o1')}`);
+    expect(rowOf(ID('o1')).capturedAt).toBeTruthy();
+
+    // Stripe already reports the intent captured on a redelivery
+    stripeClient.getPaymentIntent.mockImplementation(async (id) => ({ id, status: 'succeeded' }));
+    await rendered();
+    expect(stripeClient.capture).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends the QR image from the API host, not the redirect-only friendly host', async () => {
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+    const backHtml = lobClient.createPostcard.mock.calls[0][0].backHtml;
+    expect(backHtml).toContain('src="https://api.favcircles.com/postcard/tok123/qr.png"');
+    expect(backHtml).toContain('favcircles.com/postcard/tok123'); // the printed link stays friendly
   });
 
   it('leaves an order alone while its cancel window is still open', async () => {
@@ -222,13 +254,13 @@ describe('release: print first, then take the money', () => {
     expect(lobClient.createPostcard).not.toHaveBeenCalled();
   });
 
-  it('prints once and captures once even if the job runs twice', async () => {
+  it('prints once even if the job runs twice', async () => {
     await placeOrder('o1');
     closeWindow(ID('o1'));
     await service.releaseDue();
     await service.releaseDue();
     expect(lobClient.createPostcard).toHaveBeenCalledTimes(1);
-    expect(stripeClient.capture).toHaveBeenCalledTimes(1);
+    expect(stripeClient.capture).not.toHaveBeenCalled();
   });
 
   it('passes the order id to Lob as the idempotency key', async () => {
@@ -288,13 +320,14 @@ describe('release failures', () => {
     expect(stripeClient.voidAuthorization).toHaveBeenCalledWith(`pi_${ID('o1')}`);
   });
 
-  it('keeps the card when capture fails after Lob already accepted it', async () => {
+  it('keeps the card when capture fails after Lob rendered it', async () => {
     // The one path that can cost us money. Unwinding here would mail a card
     // and cancel the payment, so the order stands and the reconciler retries.
     stripeClient.capture.mockRejectedValueOnce(new Error('card_declined'));
     await placeOrder('o1');
     closeWindow(ID('o1'));
     await service.releaseDue();
+    await rendered();
 
     const row = rowOf(ID('o1'));
     expect(row.status).toBe(STATUS.SUBMITTED);
@@ -304,16 +337,49 @@ describe('release failures', () => {
 });
 
 describe('reconciler', () => {
-  it('retries a capture for a card already at the printer', async () => {
+  it('retries a capture for a card Lob has rendered', async () => {
     stripeClient.capture.mockRejectedValueOnce(new Error('temporary'));
     await placeOrder('o1');
     closeWindow(ID('o1'));
     await service.releaseDue();
+    await rendered();
     expect(rowOf(ID('o1')).capturedAt).toBeNull();
 
+    lobClient.getPostcard.mockResolvedValue({ id: 'psc_1', status: 'processed', thumbnails: [{ small: 'x' }] });
     const summary = await service.reconcile();
     expect(summary.captured).toBe(1);
     expect(rowOf(ID('o1')).capturedAt).toBeTruthy();
+  });
+
+  it('leaves a just-submitted card alone until the render grace passes, then captures', async () => {
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+    lobClient.getPostcard.mockResolvedValue({ id: 'psc_1', status: 'processed', thumbnails: [] });
+
+    expect((await service.reconcile()).captured).toBe(0); // rendered_pdf may still arrive
+    expect(stripeClient.capture).not.toHaveBeenCalled();
+
+    const row = rowOf(ID('o1'));
+    mockDb.docs.set(ID('o1'), { ...row, awaitingRenderSince: new Date(Date.now() - 45 * 60000).toISOString() });
+    expect((await service.reconcile()).captured).toBe(1);
+    expect(rowOf(ID('o1')).capturedAt).toBeTruthy();
+  });
+
+  it('voids, never captures, a card Lob reports as failed — even after the grace', async () => {
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+    const row = rowOf(ID('o1'));
+    mockDb.docs.set(ID('o1'), { ...row, awaitingRenderSince: new Date(Date.now() - 45 * 60000).toISOString() });
+    lobClient.getPostcard.mockResolvedValue({ id: 'psc_1', status: 'failed', thumbnails: [] });
+
+    const summary = await service.reconcile();
+    expect(summary.voided).toBe(1);
+    expect(stripeClient.voidAuthorization).toHaveBeenCalledWith(`pi_${ID('o1')}`);
+    expect(stripeClient.capture).not.toHaveBeenCalled();
+    expect(stripeClient.refund).not.toHaveBeenCalled();
+    expect(rowOf(ID('o1')).status).toBe(STATUS.REJECTED);
   });
 
   it('returns a claim stranded by a dead job to authorized', async () => {
@@ -554,10 +620,11 @@ describe('Lob refuses the card after accepting it', () => {
   }
 
   it('refunds when the money was already captured', async () => {
-    // Capture follows Lob's acceptance, so by the time this event arrives the
-    // charge has gone through. There is no hold left to void — only a refund
+    // A refusal after rendered_pdf (rare — the print line, not the render)
+    // arrives after capture. There is no hold left to void — only a refund
     // stops us keeping money for a card that will never exist.
     const id = await mailedOrder();
+    await rendered();
     expect(rowOf(id).capturedAt).toBeTruthy();
 
     await service.handleLobEvent({ event_type: { id: 'postcard.rejected' }, body: { id: 'psc_1' } });
@@ -566,8 +633,7 @@ describe('Lob refuses the card after accepting it', () => {
     expect(rowOf(id).status).toBe(STATUS.REFUNDED);
   });
 
-  it('voids instead of refunding when capture never landed', async () => {
-    stripeClient.capture.mockRejectedValueOnce(new Error('temporary'));
+  it('voids instead of refunding when the render itself fails — the 2026-09-17 case', async () => {
     const id = await mailedOrder();
     expect(rowOf(id).capturedAt).toBeNull();
 
@@ -582,12 +648,13 @@ describe('Lob refuses the card after accepting it', () => {
     const id = await mailedOrder();
     await service.handleLobEvent({ event_type: { id: 'postcard.failed' }, body: { id: 'psc_1' } });
     expect(notificationService.sendToUser).toHaveBeenCalledWith(USER, expect.objectContaining({
-      body: expect.stringContaining('refunded')
+      body: expect.stringContaining("weren't charged")
     }));
   });
 
   it('does not refund twice when the webhook is redelivered', async () => {
     const id = await mailedOrder();
+    await rendered();
     await service.handleLobEvent({ event_type: { id: 'postcard.rejected' }, body: { id: 'psc_1' } });
     await service.handleLobEvent({ event_type: { id: 'postcard.rejected' }, body: { id: 'psc_1' } });
     expect(stripeClient.refund).toHaveBeenCalledTimes(1);
@@ -596,6 +663,7 @@ describe('Lob refuses the card after accepting it', () => {
   it('flags for review rather than looking fine when the refund itself fails', async () => {
     stripeClient.refund.mockRejectedValueOnce(new Error('refund unavailable'));
     const id = await mailedOrder();
+    await rendered();
     await service.handleLobEvent({ event_type: { id: 'postcard.rejected' }, body: { id: 'psc_1' } });
 
     const row = rowOf(id);

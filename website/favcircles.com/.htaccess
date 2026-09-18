@@ -15,5 +15,5 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteRule ^postcard/([A-Za-z0-9_-]+)/?$ https://api.favcircles.com/postcard/$1 [R=302,L]
-  RewriteRule ^postcard/([A-Za-z0-9_-]+)/(image|download)$ https://api.favcircles.com/postcard/$1/$2 [R=302,L]
+  RewriteRule ^postcard/([A-Za-z0-9_-]+)/(image|download|qr\.png)$ https://api.favcircles.com/postcard/$1/$2 [R=302,L]
 </IfModule>
