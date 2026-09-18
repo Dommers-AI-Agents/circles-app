@@ -53,6 +53,14 @@ const CIRCLE_OUT = z.object({
 });
 type CircleOut = z.infer<typeof CIRCLE_OUT>;
 
+const TIER_LABEL: Record<string, string> = {
+  public: "Public — anyone, including your followers",
+  myNetwork: "Connections — people who accepted your request",
+  innerCircle: "Inner Circle — only the people on your list",
+  private: "Private — only you",
+  followCircle: "Same as its circle",
+};
+
 const PLACE_OUT = z.object({
   id: z.string(),
   name: z.string(),
@@ -66,6 +74,13 @@ const PLACE_OUT = z.object({
   phone: z.string().nullable(),
   latitude: z.number().nullable(),
   longitude: z.number().nullable(),
+  // A place has its own tier, and leaving it off the shape was read as
+  // evidence that places have no privacy at all — an assistant asked about
+  // place privacy inspected these fields and told the user the feature does
+  // not exist. It does: `followCircle` (the default) inherits the circle,
+  // anything else overrides it.
+  privacy: z.string(),
+  privacyMeaning: z.string(),
 });
 type PlaceOut = z.infer<typeof PLACE_OUT>;
 
@@ -82,6 +97,7 @@ function circleStruct(c: Circle): CircleOut {
 
 function placeStruct(p: Place, circleName?: string): PlaceOut {
   const [lng, lat] = p.location?.coordinates ?? [null, null];
+  const tier = p.privacy || "followCircle";
   return {
     id: docId(p),
     name: p.name,
@@ -95,6 +111,8 @@ function placeStruct(p: Place, circleName?: string): PlaceOut {
     phone: p.phone || null,
     latitude: lat,
     longitude: lng,
+    privacy: tier,
+    privacyMeaning: TIER_LABEL[tier] || tier,
   };
 }
 
@@ -189,6 +207,8 @@ function formatPlace(p: Place): string {
   const notes = p.publicNotes || p.notes;
   if (notes) bits.push(`  notes: ${notes}`);
   if (p.rating != null) bits.push(`  rating: ${p.rating}`);
+  const tier = p.privacy || "followCircle";
+  bits.push(`  privacy: ${tier} (${TIER_LABEL[tier] || tier})`);
   return bits.join("\n");
 }
 
@@ -198,6 +218,7 @@ Conventions:
 - Circle and place ids come from list_circles / get_circle / search_places; pass them unchanged to mutation tools.
 - Deletions are two-tier: delete_* moves items to a recoverable trash; permanently_delete_* is irreversible. Always get explicit user confirmation before any delete, and name the exact item being deleted.
 - Never fabricate places or attribute recommendations to people who didn't make them.
+- Privacy exists at BOTH levels. A circle has a tier, and so does every place: \`followCircle\` (the default, meaning it inherits its circle) or its own \`public\`/\`myNetwork\`/\`innerCircle\`/\`private\`, which narrows what the circle allows. Every place this server returns carries \`privacy\` and \`privacyMeaning\` — read them rather than concluding from a place's other fields that per-place privacy does not exist. Use get_privacy_overview for an audit and set_privacy to change either level.
 
 Importing places: users can bring their saved-place history from Mapstr, Google Maps (Takeout), or Swarm/Foursquare (personal data export) by sharing the export file with you. YOU parse the file (any format), normalize it, and use prepare_place_import → user confirmation → execute_place_import. Never invent coordinates — only pass lat/lng found in the file; rows without them import unmapped, which is correct. Aggregate repeat Swarm check-ins into one place with visitCount.
 
@@ -2248,14 +2269,6 @@ function normalizeTier(input: string): string | null {
 }
 
 /** How the tier reads in a sentence. */
-const TIER_LABEL: Record<string, string> = {
-  public: "Public — anyone, including your followers",
-  myNetwork: "Connections — people who accepted your request",
-  innerCircle: "Inner Circle — only the people on your list",
-  private: "Private — only you",
-  followCircle: "Same as its circle",
-};
-
 export function registerPrivacyTools(server: McpServer, backend: Backend): void {
   const PERSON = z.object({ userId: z.string(), name: z.string() });
 
