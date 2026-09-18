@@ -490,13 +490,15 @@ describe('telling the customer what happened', () => {
     }));
   });
 
-  it('confirms the card is printing, with the arrival date', async () => {
+  it('confirms the card is printing, with the typical delivery window rather than Lob\'s outer date', async () => {
     await placeOrder('o1');
     closeWindow(ID('o1'));
     await service.releaseDue();
     expect(notificationService.sendToUser).toHaveBeenCalledWith(USER, expect.objectContaining({
-      body: expect.stringContaining('Sep 20')
+      body: expect.stringContaining('Typically arrives in 4 to 6 business days')
     }));
+    const body = notificationService.sendToUser.mock.calls[0][1].body;
+    expect(body).not.toContain('Sep 20');
   });
 
   it('never lets a failed push fail the order it describes', async () => {

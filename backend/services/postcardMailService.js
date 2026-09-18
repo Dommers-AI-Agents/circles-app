@@ -466,11 +466,12 @@ class PostcardMailService {
         error: null,
         updatedAt: new Date().toISOString()
       });
+      // Lob's expected date is its outer bound (production plus 5–7 business
+      // days) and read as a promise of the slow date; the typical window is
+      // the honest line (Wes, 2026-09-18).
       this.notify(row.userId, {
         title: 'Your postcard is printing',
-        body: lob.expectedDeliveryDate
-          ? `On its way to ${row.recipient.name} — arriving around ${formatDate(lob.expectedDeliveryDate)}.`
-          : `On its way to ${row.recipient.name}.`,
+        body: `On its way to ${row.recipient.name}. Typically arrives in 4 to 6 business days.`,
         data: { orderId, status: STATUS.SUBMITTED }
       });
       return 'released';
