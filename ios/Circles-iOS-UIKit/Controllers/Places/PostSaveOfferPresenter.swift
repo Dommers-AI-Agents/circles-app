@@ -44,8 +44,16 @@ enum PostSaveOfferPresenter {
     @discardableResult
     static func offerAfterPhotoUpload(place: Place, photo: UIImage, eligible: Bool,
                                       from presenter: UIViewController) -> Bool {
-        guard eligible, isClear(presenter) else { return false }
+        guard eligible else {
+            Logger.debug("📮 postcard offer skipped: server says the cooldown is spent")
+            return false
+        }
+        guard isClear(presenter) else {
+            Logger.debug("📮 postcard offer skipped: \(type(of: presenter)) is not a usable presenter")
+            return false
+        }
         let key = HomePromptService.postcardNudgeKey
+        whenFree(presenter) { presenter in
         AnalyticsService.shared.logEvent("postcard_nudge_shown", parameters: ["source": "photo_upload"])
         AlertPresenter.showConfirmation(
             title: "Photo added to \(place.name)",
@@ -63,12 +71,14 @@ enum PostSaveOfferPresenter {
                 HomePromptService.shared.ack(key: key, action: .skipped)
             }
         )
+        }
         return true
     }
 
     // MARK: - The two questions
 
     private static func presentCheckInOffer(place: Place, from presenter: UIViewController) {
+        whenFree(presenter) { presenter in
         AlertPresenter.showConfirmation(
             title: "You're at \(place.name)",
             message: "Check in and let your people know?",
@@ -77,10 +87,12 @@ enum PostSaveOfferPresenter {
             from: presenter,
             onConfirm: { CheckInViewController.present(from: presenter, prefilledPlace: place) }
         )
+        }
     }
 
     private static func presentPostcardOffer(place: Place, photoUrl: String?, from presenter: UIViewController) {
         let key = HomePromptService.postcardNudgeKey
+        whenFree(presenter) { presenter in
         AnalyticsService.shared.logEvent("postcard_nudge_shown", parameters: ["source": "post_save"])
         AlertPresenter.showConfirmation(
             title: "Send a postcard from \(place.name)?",
@@ -104,6 +116,7 @@ enum PostSaveOfferPresenter {
                 HomePromptService.shared.ack(key: key, action: .skipped)
             }
         )
+        }
     }
 
     // MARK: - Helpers
@@ -143,5 +156,34 @@ enum PostSaveOfferPresenter {
         if presenter is MilestoneCelebrationViewController { return false }
         if presenter.isBeingDismissed { return false }
         return true
+    }
+
+    /// Presents once the presenter can actually present.
+    ///
+    /// `AlertPresenter` calls `present` with no guard, and UIKit drops a
+    /// present on a controller that is already presenting — it logs a warning
+    /// and nothing appears. That is how this offer went missing after a photo
+    /// upload: the alert was built and thrown at a screen still finishing with
+    /// the upload's loading alert, and the user saw nothing at all. Waiting a
+    /// few runloop turns for the screen to free up costs nothing and turns a
+    /// silent miss into a shown question.
+    private static func whenFree(_ presenter: UIViewController,
+                                 attempt: Int = 0,
+                                 _ show: @escaping (UIViewController) -> Void) {
+        guard presenter.view.window != nil else {
+            Logger.debug("📮 postcard offer skipped: presenter left the window")
+            return
+        }
+        if presenter.presentedViewController == nil {
+            show(presenter)
+            return
+        }
+        guard attempt < 12 else {          // ~3s, then give up rather than pile on
+            Logger.debug("📮 postcard offer skipped: screen stayed busy")
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            whenFree(presenter, attempt: attempt + 1, show)
+        }
     }
 }
