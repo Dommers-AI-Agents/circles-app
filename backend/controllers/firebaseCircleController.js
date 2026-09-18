@@ -680,69 +680,6 @@ exports.deleteCircle = async (req, res, next) => {
   }
 };
 
-// @desc    Share circle with users
-// @route   POST /api/circles/:id/share
-// @access  Private
-exports.shareCircle = async (req, res, next) => {
-  try {
-    const { userIds } = req.body;
-    
-    if (!userIds || !Array.isArray(userIds)) {
-      return res.status(400).json({
-        success: false,
-        message: 'User IDs array is required'
-      });
-    }
-
-    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(req.params.id);
-    const circleDoc = await circleRef.get();
-
-    if (!circleDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: 'Circle not found'
-      });
-    }
-
-    const circle = serializeDoc(circleDoc);
-
-    // Make sure user is circle owner (using normalized IDs)
-    const normalizedCircleOwner = normalizeUserId(circle.owner);
-    const normalizedUserId = normalizeUserId(req.user.uid);
-    
-    if (normalizedCircleOwner !== normalizedUserId) {
-      console.log('❌ Circle share authorization failed:', {
-        circleId: req.params.id,
-        circleOwner: circle.owner,
-        normalizedCircleOwner: normalizedCircleOwner,
-        requestingUserId: req.user.uid,
-        normalizedUserId: normalizedUserId
-      });
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to share this circle'
-      });
-    }
-
-    // Add users to sharedWith array (avoid duplicates)
-    const currentSharedWith = circle.sharedWith || [];
-    const newSharedWith = [...new Set([...currentSharedWith, ...userIds])];
-
-    await circleRef.update({
-      sharedWith: newSharedWith,
-      updatedAt: new Date().toISOString()
-    });
-
-    res.status(200).json({
-      success: true,
-      message: 'Circle shared successfully'
-    });
-  } catch (error) {
-    console.error('Error sharing circle:', error);
-    next(error);
-  }
-};
-
 // @desc    Follow/unfollow circle
 // @route   POST /api/circles/:id/follow
 // @route   POST /api/circles/:id/unfollow

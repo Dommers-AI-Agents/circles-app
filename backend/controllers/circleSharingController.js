@@ -1,5 +1,5 @@
 // backend/controllers/circleSharingController.js
-const { getFirestore } = require('../config/firebase');
+const { admin, getFirestore } = require('../config/firebase');
 const { sortCirclesByUserOrder } = require('../utils/circleOrder');
 const { 
   COLLECTIONS, 
@@ -158,12 +158,23 @@ const shareCircle = async (req, res) => {
     const newDoc = await docRef.get();
     const share = serializeDoc(newDoc);
 
-    // Update circle's activeShares array
+    // Update circle's activeShares array.
+    //
+    // Also push the person onto `circles.sharedWith`, which is the array every
+    // read gate actually consults. Creating a circleShares doc on its own
+    // granted nothing — the two systems were disconnected, so sharing a circle
+    // with someone by name quietly did nothing. circleShares keeps what an
+    // array can't hold: accessLevel, expiry, and shares to an email address
+    // with no account behind it yet.
     const currentShares = circle.activeShares || [];
-    await circleDoc.ref.update({
+    const circleUpdate = {
       activeShares: [...currentShares, docRef.id],
       updatedAt: new Date().toISOString()
-    });
+    };
+    if (shareType === 'registered_user' && targetUserId) {
+      circleUpdate.sharedWith = admin.firestore.FieldValue.arrayUnion(targetUserId);
+    }
+    await circleDoc.ref.update(circleUpdate);
 
     // Populate related data
     if (shareType === 'registered_user' && targetUserId) {
@@ -240,13 +251,18 @@ const revokeShare = async (req, res) => {
     // Delete the share
     await shareDoc.ref.delete();
 
-    // Update circle's activeShares array
+    // Update circle's activeShares array, and take the person back off the
+    // guest list the read gates consult.
     const currentShares = circle.activeShares || [];
     const updatedShares = currentShares.filter(id => id !== shareId);
-    await circleDoc.ref.update({
+    const circleUpdate = {
       activeShares: updatedShares,
       updatedAt: new Date().toISOString()
-    });
+    };
+    if (share.shareType === 'registered_user' && share.sharedWith) {
+      circleUpdate.sharedWith = admin.firestore.FieldValue.arrayRemove(share.sharedWith);
+    }
+    await circleDoc.ref.update(circleUpdate);
 
     res.status(200).json({
       success: true,
