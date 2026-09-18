@@ -30,6 +30,9 @@ router.post('/postcard-orders-release', verifyCloudScheduler, postcardMail.relea
 // Hourly cleanup: retry captures for cards already at the printer, unstick
 // claims from a job that died mid-flight, expire holds nobody completed.
 router.post('/postcard-orders-reconcile', verifyCloudScheduler, postcardMail.reconcile);
+// Fridge Mail: daily at 15:00 UTC (before Lob's 10 AM Pacific cutoff); each
+// plan actually sends only on its own weekday, once per rolling week.
+router.post('/fridgemail-send', verifyCloudScheduler, require('../controllers/widgets/fridgeMailController').runWeekly);
 
 // Daily summary endpoint
 router.post('/daily-summary', verifyCloudScheduler, async (req, res) => {

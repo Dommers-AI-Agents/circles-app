@@ -207,7 +207,9 @@ exports.stripeWebhook = async (req, res) => {
     return res.status(400).send(`Webhook Error: ${error.message}`);
   }
   try {
-    await mailService.handleStripeEvent(event);
+    // One endpoint, one secret: the router attributes the event to printed
+    // postcards or Fridge Mail by object type and metadata.kind
+    await require('../../services/stripeEventRouter').route(event);
   } catch (error) {
     // Acknowledge anyway: Stripe retries on non-2xx, and the reconciler
     // already covers everything a missed event would have fixed.

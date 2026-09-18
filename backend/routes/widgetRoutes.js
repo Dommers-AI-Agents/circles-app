@@ -10,6 +10,7 @@ const widgetData = require('../controllers/widgets/widgetDataController');
 const postcard = require('../controllers/widgets/postcardController');
 const nextBarRounds = require('../controllers/widgets/nextBarRoundController');
 const postcardMail = require('../controllers/widgets/postcardMailController');
+const fridgeMail = require('../controllers/widgets/fridgeMailController');
 
 const router = express.Router();
 router.use(protect);
@@ -38,6 +39,24 @@ router.post('/postcard/mail/orders/:id/cancel', postcardMail.cancelOrder);
 // NOTE: the Stripe and Lob webhooks are NOT here. They arrive without a JWT
 // and verify an HMAC over the raw body, so they are mounted in server.js
 // above the global express.json() parser.
+
+// Fridge Mail: weekly printed cards to grandparents. Server-owned state; the
+// print image is uploaded through /postcard/mail/upload like any postcard.
+router.get('/fridgemail/plan', fridgeMail.getPlan);
+router.put('/fridgemail/plan', fridgeMail.updatePlan);
+router.post('/fridgemail/recipients', messageLimiter, fridgeMail.addRecipient);
+router.delete('/fridgemail/recipients/:id', fridgeMail.removeRecipient);
+router.post('/fridgemail/queue', messageLimiter, fridgeMail.enqueue);
+router.delete('/fridgemail/queue/:id', fridgeMail.removeQueued);
+router.put('/fridgemail/queue/order', fridgeMail.reorderQueue);
+router.get('/fridgemail/packs', fridgeMail.listPacks);
+router.post('/fridgemail/packs/orders', messageLimiter, fridgeMail.createPackOrder);
+router.post('/fridgemail/packs/orders/:id/confirm', fridgeMail.confirmPackOrder);
+router.post('/fridgemail/subscription/setup', messageLimiter, fridgeMail.setupSubscription);
+router.post('/fridgemail/subscription/start', messageLimiter, fridgeMail.startSubscription);
+router.post('/fridgemail/subscription/cancel', fridgeMail.cancelSubscription);
+router.post('/fridgemail/subscription/resume', fridgeMail.resumeSubscription);
+router.get('/fridgemail/cards', fridgeMail.listCards);
 
 // NextBar voting rounds: shared docs (host + tagged connections vote)
 router.post('/nextbar/rounds', nextBarRounds.createRound);
