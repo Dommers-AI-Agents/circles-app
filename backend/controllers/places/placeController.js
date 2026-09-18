@@ -22,6 +22,7 @@ const { normalizePhotosArray, overlayVenuePhotos, VENUE_GOOGLE_FIELDS, overlayVe
 const { resolveIncomingPrivacy, canViewCircle } = require('../../services/visibility');
 const { canViewCircleFor } = require('../../services/circleAccess');
 const { buildViewerContext, makeViewerContext } = require('../../services/viewerContext');
+const { circleAudience, narrowedByPlace } = require('../../services/activity/audience');
 const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
 const { getMyCheckInStats } = require('../../services/checkInStatsService');
 const homePromptService = require('../../services/homePromptService');
@@ -1283,28 +1284,36 @@ exports.createPlace = async (req, res, next) => {
       // Get users who should be notified
       const notifyUserIds = new Set();
       
-      // Add circle members (if not private)
-      if (circle.privacy !== 'private') {
-        // Add shared users
+      // Who this circle's contents may be announced to. Same resolver the
+      // activity fan-out uses, narrowed by the place's own tier — a push is a
+      // point-in-time event that can't be taken back, so it is decided here
+      // rather than left to a read gate.
+      const audience = await narrowedByPlace(
+        await circleAudience(circle, circle.owner),
+        place,
+        req.user.uid
+      );
+
+      if (audience.emits) {
+        // People the circle was shared with directly
         circle.sharedWith.forEach(userId => {
-          if (userId !== req.user.uid) {
+          if (userId !== req.user.uid && audience.allows(userId)) {
             notifyUserIds.add(userId);
           }
         });
-        
+
         // Add circle owner if not the one adding
         if (circle.owner !== req.user.uid) {
           notifyUserIds.add(circle.owner);
         }
-        
-        // If circle is public, add user's network
-        if (circle.privacy === 'public' || circle.privacy === 'myNetwork') {
-          const userDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
-          if (userDoc.exists) {
-            const userData = userDoc.data();
-            const connections = userData.friends || [];
-            connections.forEach(userId => notifyUserIds.add(userId));
-          }
+
+        // Everyone else the tier admits
+        const userDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
+        if (userDoc.exists) {
+          const connections = userDoc.data().friends || [];
+          connections.forEach(userId => {
+            if (audience.allows(userId)) notifyUserIds.add(userId);
+          });
         }
       }
       

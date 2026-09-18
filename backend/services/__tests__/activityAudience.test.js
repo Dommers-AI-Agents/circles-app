@@ -73,3 +73,39 @@ describe('circleAudience', () => {
     expect(snake.allows('anyone')).toBe(true);
   });
 });
+
+// A place can only narrow its circle, never widen it. Without this the fan-out
+// asked the circle alone, so an Inner Circle save in a Connections circle was
+// pushed to every connection.
+describe('narrowedByPlace', () => {
+  const { narrowedByPlace } = require('../activity/audience');
+
+  const open = { tier: 'myNetwork', emits: true, allows: () => true };
+
+  test('followCircle, public and myNetwork leave the circle audience alone', async () => {
+    for (const privacy of ['followCircle', 'public', 'myNetwork', undefined]) {
+      const result = await narrowedByPlace(open, { privacy }, 'owner');
+      expect(result).toBe(open);
+    }
+  });
+
+  test('a private place tells nobody, whatever the circle said', async () => {
+    const result = await narrowedByPlace(open, { privacy: 'private' }, 'owner');
+    expect(result.emits).toBe(false);
+    expect(result.allows('insider')).toBe(false);
+  });
+
+  test('an inner circle place reaches the list and nobody else', async () => {
+    const result = await narrowedByPlace(open, { privacy: 'innerCircle' }, 'owner');
+    expect(result.emits).toBe(true);
+    expect(result.allows('insider')).toBe(true);
+    expect(result.allows('some-other-connection')).toBe(false);
+  });
+
+  // It intersects, so it can never widen what the circle already allowed.
+  test('it cannot widen a circle that admits nobody', async () => {
+    const closed = { tier: 'private', emits: false, allows: () => false };
+    const result = await narrowedByPlace(closed, { privacy: 'innerCircle' }, 'owner');
+    expect(result.allows('insider')).toBe(false);
+  });
+});
