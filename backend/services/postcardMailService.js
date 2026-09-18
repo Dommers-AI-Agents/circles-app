@@ -756,6 +756,18 @@ class PostcardMailService {
       console.warn(`[postcard-mail] Lob postcard ${lobId} was returned to sender`);
     }
     await doc.ref.update(patch);
+
+    // The second and last push: the card is on the carrier's truck (USPS
+    // doesn't scan postcards at the door, so this is "delivered"). Transit
+    // scans stay silent — they land the same day as "printing". A redelivered
+    // webhook must not push twice.
+    if (patch.status === STATUS.DELIVERED && row.status !== STATUS.DELIVERED) {
+      this.notify(row.userId, {
+        title: 'Your postcard was delivered',
+        body: `Your card to ${row.recipient?.name || 'your recipient'} has arrived.`,
+        data: { orderId: doc.id, status: STATUS.DELIVERED }
+      });
+    }
     return { handled: patch.status };
   }
 
