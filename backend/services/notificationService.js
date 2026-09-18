@@ -286,7 +286,10 @@ class NotificationService {
       'milestone': 'milestones',
       'did_you_know': 'tips',
       'nextbar_round': 'socialActivity',
-      'nextbar_result': 'socialActivity'
+      'nextbar_result': 'socialActivity',
+      // Printed mail: personal and actionable, but still a preference
+      'postcard_order': 'socialActivity',
+      'fridgemail': 'socialActivity'
     };
 
     const preferencesKey = typeMap[type];

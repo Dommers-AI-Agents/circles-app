@@ -340,9 +340,13 @@ class PostcardMailService {
   }
 
   async listOrders(userId, limit = 25) {
+    // Fridge Mail cards share the collection but have their own history view
     const snapshot = await this.col.where('userId', '==', userId)
-      .orderBy('createdAt', 'desc').limit(limit).get();
-    return snapshot.docs.map((doc) => this.present(doc.id, doc.data()));
+      .orderBy('createdAt', 'desc').limit(limit * 2).get();
+    return snapshot.docs
+      .filter((doc) => doc.data().kind !== 'fridgemail')
+      .slice(0, limit)
+      .map((doc) => this.present(doc.id, doc.data()));
   }
 
   async getOrder({ userId, orderId }) {
@@ -587,6 +591,8 @@ class PostcardMailService {
       .where('capturedAt', '==', null).limit(50).get();
     for (const doc of unpaid.docs) {
       const row = doc.data();
+      // Fridge Mail cards are prepaid (packs/subscription): nothing to capture
+      if (row.prepaid === true) continue;
       let lob = null;
       try {
         lob = row.lobPostcardId ? await lobClient.getPostcard(row.lobPostcardId) : null;
@@ -809,7 +815,11 @@ class PostcardMailService {
 
     let status = STATUS.REJECTED;
     try {
-      if (row.capturedAt) {
+      if (row.prepaid === true) {
+        // A Fridge Mail card: the money was a pack credit or a subscription
+        // slot, so give the credit back rather than touching Stripe.
+        if (row.usesCredit) await require('./fridgeMailService').refundCredit(row.userId, `${type} on ${doc.id}`);
+      } else if (row.capturedAt) {
         await stripeClient.refund(row.stripePaymentIntentId);
         status = STATUS.REFUNDED;
       } else {
@@ -832,6 +842,14 @@ class PostcardMailService {
     }
 
     await doc.ref.update({ status, lobLastEvent: type, refundedAt: row.capturedAt ? now : null, updatedAt: now });
+    if (row.prepaid === true) {
+      this.notify(row.userId, {
+        title: "We couldn't print this week's Fridge Mail card",
+        body: `The card to ${row.recipient?.name || 'your recipient'} couldn't be printed.${row.usesCredit ? ' Your card credit was returned.' : ''} We'll try the next drawing on the next mailing day.`,
+        data: { orderId: doc.id, status }
+      });
+      return { handled: status };
+    }
     this.notify(row.userId, {
       title: "We couldn't print that postcard",
       body: row.capturedAt

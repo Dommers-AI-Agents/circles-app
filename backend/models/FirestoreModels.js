@@ -48,7 +48,10 @@ const COLLECTIONS = {
   // NextBar widget social rounds: shared docs, participantIds array-contains
   NEXTBAR_ROUNDS: 'nextbarRounds',
   POSTCARD_SHARES: 'postcardShares', // public postcard pages, doc id = share token
-  POSTCARD_ORDERS: 'postcardOrders' // paid printed-postcard orders, doc id = client orderId
+  POSTCARD_ORDERS: 'postcardOrders', // paid printed-postcard orders, doc id = client orderId
+  // Fridge Mail: weekly printed cards to grandparents (server-owned state)
+  FRIDGE_MAIL_PLANS: 'fridgeMailPlans',       // doc id = userId
+  FRIDGE_MAIL_PACK_ORDERS: 'fridgeMailPackOrders' // doc id = client orderId
 };
 
 // User model structure
