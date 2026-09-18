@@ -446,8 +446,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return label
     }()
     
+    // Deliberately two options, not the full ladder. A place saved into a
+    // circle already carries that circle's tier, so the high-traffic add flow
+    // only needs "inherit it" or "just me"; the other tiers live in Edit Place.
     let privacySegmentedControl: UISegmentedControl = {
-        let items = ["Follow Circle", "Private"]
+        let items = [PrivacyOption.inheritCircle.title, PrivacyTier.private.title]
         let segmentedControl = UISegmentedControl(items: items)
         segmentedControl.selectedSegmentIndex = 0
         segmentedControl.selectedSegmentTintColor = UIColor.systemBlue

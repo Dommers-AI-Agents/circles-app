@@ -98,7 +98,9 @@ class HelpContentProvider {
                 **Key Concepts:**
                 • **Circles** - Curated collections of your favorite places
                 • **Places** - Restaurants, shops, services, and locations you love
-                • **Network** - Friends and connections you share with
+                • **Followers** - People who see your public places; one-way
+                • **Connections** - People who accepted your request; both agreed
+                • **Inner Circle** - The connections you pick by name
                 • **Moments** - Photos and videos from places you visit
                 
                 **Getting Started:**
@@ -191,10 +193,17 @@ class HelpContentProvider {
                 • Appears in search results
                 • Great for sharing broadly
                 
-                **My Network** 👥
-                • Only your connections can view
-                • Perfect for trusted recommendations
+                **Connections** 👥
+                • Only people who accepted your connection request
+                • Followers do NOT see these — following is one-way
                 • Most common setting
+                
+                **Inner Circle** ⭐
+                • Only the connections on your Inner Circle list
+                • One list, shared by every circle, place, moment and check-in
+                  you set to this
+                • Edit it in Settings › Privacy › Inner Circle. Taking someone
+                  off takes back what they could already see
                 
                 **Private** 🔒
                 • Only you can see this circle
@@ -433,8 +442,9 @@ class HelpContentProvider {
                 4. Wait for them to accept
                 
                 **Connection vs Following:**
-                • **Connections** - Mutual relationship, see each other's network-only content
-                • **Following** - One-way, see their public content only
+                • **Connections** - Mutual; you each see the other's Connections-only content
+                • **Following** - One-way; they see your public content only
+                • **Inner Circle** - The connections you pick by name, in Settings › Privacy
                 
                 **Managing connections:**
                 • View all connections in Network tab

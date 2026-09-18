@@ -10,7 +10,7 @@ struct PlaceMoment: Codable {
     let title: String
     let description: String
     let contentType: MomentContentType
-    let visibility: MomentVisibility
+    let visibility: VideoVisibility
     let tags: [String]
     
     // Media URLs (for uploaded content)
@@ -106,13 +106,6 @@ enum MomentContentType: String, Codable {
         case .carousel: return "photo.on.rectangle.angled"
         }
     }
-}
-
-// MARK: - Visibility
-enum MomentVisibility: String, Codable {
-    case `public` = "public"
-    case network = "network"
-    case `private` = "private"
 }
 
 // MARK: - Content Limits
@@ -219,7 +212,10 @@ extension PlaceMoment {
         self.title = video.title
         self.description = video.description
         self.contentType = video.isEmbedded ? MomentContentType.videoEmbedded : MomentContentType.videoUploaded
-        self.visibility = MomentVisibility(rawValue: video.visibility.rawValue) ?? .public
+        // Straight across. This used to re-parse the raw value into a
+        // three-case mirror enum and fall back to `.public`, which silently
+        // published a followers-only moment to everyone.
+        self.visibility = video.visibility
         self.tags = video.tags
         
         self.mediaUrls = video.videoUrl != nil ? [video.videoUrl!] : nil

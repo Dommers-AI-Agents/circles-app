@@ -234,12 +234,17 @@ class EditPlaceViewController: BaseViewController {
         return label
     }()
     
-    private let privacySegmentedControl: UISegmentedControl = {
-        let items = ["Follow Circle", "Public", "Friends", "Private"]
-        let segmentedControl = UISegmentedControl(items: items)
-        segmentedControl.selectedSegmentIndex = 0
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        return segmentedControl
+    // Was a four-segment control whose titles were hardcoded as
+    // ["Follow Circle", "Public", "Friends", "Private"] — with "Friends" being
+    // the same tier Edit Circle called "My Network" and moments called
+    // "Connections" — and whose values lived in a parallel array repeated three
+    // times in this file. Titles and values now both come from PrivacyTier.
+    private lazy var privacyPicker: PrivacyPickerButton = {
+        let picker = PrivacyPickerButton(entity: .place, selected: .inheritCircle)
+        picker.onEditInnerCircle = { [weak self] in
+            self?.navigationController?.pushViewController(InnerCircleListViewController(), animated: true)
+        }
+        return picker
     }()
     
     private let notesLabel: UILabel = {
@@ -456,7 +461,7 @@ class EditPlaceViewController: BaseViewController {
             guard let self = self else { return }
             self.isVenueOwnerUnlocked = true
             self.title = "Edit Store Details"
-            [self.privacyLabel, self.privacySegmentedControl, self.moveToCircleButton].forEach {
+            [self.privacyLabel, self.privacyPicker, self.moveToCircleButton].forEach {
                 $0.isHidden = true
             }
         }
@@ -514,7 +519,7 @@ class EditPlaceViewController: BaseViewController {
         contentView.addSubview(mapView)
         contentView.addSubview(useCurrentLocationButton)
         contentView.addSubview(privacyLabel)
-        contentView.addSubview(privacySegmentedControl)
+        contentView.addSubview(privacyPicker)
         contentView.addSubview(notesLabel)
         contentView.addSubview(notesTextView)
         contentView.addSubview(tagsLabel)
@@ -632,12 +637,12 @@ class EditPlaceViewController: BaseViewController {
             privacyLabel.topAnchor.constraint(equalTo: useCurrentLocationButton.bottomAnchor, constant: Constants.Spacing.medium),
             privacyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
-            privacySegmentedControl.topAnchor.constraint(equalTo: privacyLabel.bottomAnchor, constant: Constants.Spacing.small),
-            privacySegmentedControl.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            privacySegmentedControl.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            privacyPicker.topAnchor.constraint(equalTo: privacyLabel.bottomAnchor, constant: Constants.Spacing.small),
+            privacyPicker.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            privacyPicker.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
             // Notes label and text view
-            notesLabel.topAnchor.constraint(equalTo: privacySegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
+            notesLabel.topAnchor.constraint(equalTo: privacyPicker.bottomAnchor, constant: Constants.Spacing.medium),
             notesLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             notesTextView.topAnchor.constraint(equalTo: notesLabel.bottomAnchor, constant: Constants.Spacing.small),
@@ -782,11 +787,9 @@ class EditPlaceViewController: BaseViewController {
             countryTextField.text = addressComponents[4]
         }
         
-        // Set privacy
-        let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .myNetwork, .private]
-        if let index = privacyOptions.firstIndex(of: place.privacy) {
-            privacySegmentedControl.selectedSegmentIndex = index
-        }
+        // Set privacy. A value this build doesn't recognise disables the
+        // control instead of showing a narrower one we'd then save back.
+        privacyPicker.select(place.privacy.option)
         
         // The only note on a save is the private one; shared thoughts are comments
         notesTextView.text = place.privateNotes
@@ -882,9 +885,11 @@ class EditPlaceViewController: BaseViewController {
         
         // Get privacy setting. A store owner's listing is always public —
         // the privacy control is hidden for them.
-        let privacyIndex = privacySegmentedControl.selectedSegmentIndex
-        let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .myNetwork, .private]
-        let privacy = isVenueOwnerUnlocked ? .public : privacyOptions[privacyIndex]
+        // A locked picker (a tier this build doesn't understand) yields nil, and
+        // we keep what is stored rather than writing a stale default over it.
+        let privacy: PlacePrivacy = isVenueOwnerUnlocked
+            ? .public
+            : (privacyPicker.selectedPlacePrivacy ?? place.privacy)
         
         // Guard against a second tap while the update is in flight
         isSaving = true
@@ -1300,9 +1305,8 @@ class EditPlaceViewController: BaseViewController {
         if formattedAddress != place.address { return true }
         
         // Check privacy
-        let privacyIndex = privacySegmentedControl.selectedSegmentIndex
-        let privacyOptions = [PlacePrivacy.followCirclePrivacy, .public, .myNetwork, .private]
-        if privacyOptions[privacyIndex] != place.privacy { return true }
+        // A locked picker can't have changed anything, so it isn't "dirty".
+        if let picked = privacyPicker.selectedPlacePrivacy, picked != place.privacy { return true }
         
         // Check notes
         let currentNotes = notesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)

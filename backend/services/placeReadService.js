@@ -11,6 +11,7 @@ const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
 const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
 const { isSameUser } = require('./idService');
 const { ensureGlobalPlaceLink } = require('./globalPlaceResolver');
+const visibility = require('./visibility');
 
 const db = getFirestore();
 
@@ -160,13 +161,16 @@ const buildAddedByUserMap = async (places) => {
 };
 
 // A place's OWN privacy can only further RESTRICT visibility beyond its
-// circle — callers apply this AFTER the circle-level access check. The only
-// per-place override the app sets is `private` = owner-only; every other value
-// (the `followCircle` default, and legacy `public`/`myNetwork`) inherits the
-// circle's visibility. Without this, a place marked Private inside a public or
-// myNetwork circle was still served to everyone who could see the circle.
-const isPlaceVisibleToViewer = (place, viewerId) =>
-  isSameUser(place.addedBy, viewerId) || place.privacy !== 'private';
+// circle — callers apply this AFTER the circle-level access check. Kept here
+// under its original name because ~20 call sites import it; the rule itself now
+// lives in services/visibility.js so circles, places and moments all answer to
+// one ladder.
+//
+// `ctx` is the viewer's relationships (services/viewerContext.js). Callers that
+// have none may omit it, in which case every tier above `public` denies — the
+// safe direction.
+const isPlaceVisibleToViewer = (place, viewerId, ctx) =>
+  visibility.isPlaceVisibleToViewer(place, viewerId, ctx);
 
 module.exports = {
   normalizePhotosArray,

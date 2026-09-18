@@ -3,6 +3,7 @@
 
 const { getFirestore } = require('../config/firebase');
 const { sanitizeVenueDescription } = require('../utils/venueDescriptionSanitizer');
+const { PLACE_PRIVACY_LEVELS } = require('../services/visibility');
 
 // Word-prefix tokens for search: every prefix of every word in the name, so
 // an array-contains query matches "pizza" or "colv" anywhere in the name.
@@ -189,7 +190,7 @@ const createUserPlaceRelation = (relationData) => {
     // Relationship metadata
     addedAt: relationData.addedAt || now,
     lastVisited: relationData.lastVisited || null,
-    privacy: relationData.privacy || 'followCircle', // followCircle, public, myNetwork, private
+    privacy: relationData.privacy || 'followCircle', // followCircle, public, myNetwork, innerCircle, private
     
     // Activity tracking
     lastAccessedAt: now,
@@ -296,7 +297,7 @@ const validateUserPlaceRelation = (relationData) => {
     errors.push('Circle ID is required');
   }
   
-  const validPrivacyLevels = ['followCircle', 'public', 'myNetwork', 'private'];
+  const validPrivacyLevels = PLACE_PRIVACY_LEVELS;
   if (relationData.privacy && !validPrivacyLevels.includes(relationData.privacy)) {
     errors.push('Invalid privacy level');
   }

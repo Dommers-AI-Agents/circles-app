@@ -19,23 +19,26 @@ enum RelationshipExplainer {
         UserDefaults.standard.set(true, forKey: dismissedKey)
     }
 
-    /// The full explanation, shown on demand from any section header's ⓘ.
+    /// The full explanation, shown on demand from any section header's ⓘ and
+    /// from the ⓘ beside a privacy picker.
+    ///
+    /// There used to be a second, differently worded version of this in
+    /// AllUsersListViewController. Two explanations of the same thing is how
+    /// people end up unsure which is authoritative, so there is now one.
     static func present(from viewController: UIViewController) {
-        let alert = UIAlertController(
-            title: "Follow or Connect?",
+        AlertPresenter.showInfo(
+            title: "Followers, Connections, Inner Circle",
             message: """
-            Follow
-            See someone's public picks in your feed. It's instant, and they don't have to approve it.
+            Following — they see your public places and activity in their feed.             One-way and instant; you don't have to approve it.
 
-            Connect
-            Everything above, plus their network-only circles, messaging and place suggestions. You both have to agree.
+            Connections — you both agreed to connect. Opens your             Connections-only circles, messaging and place suggestions.
 
-            Connect becomes available once you follow each other.
+            Inner Circle — the connections you pick by name. Anything you set             to Inner Circle is visible only to them, and taking someone off the             list takes back what they could already see.
+
+            Someone can follow you and be connected to you at once, so they             appear in both lists.
             """,
-            preferredStyle: .alert
+            from: viewController
         )
-        alert.addAction(UIAlertAction(title: "Got it", style: .default))
-        viewController.present(alert, animated: true)
     }
 
     /// The dismissible card shown at the top of the tab until it's been read.

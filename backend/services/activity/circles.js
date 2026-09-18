@@ -6,6 +6,8 @@ const { admin, getFirestore } = require('../../config/firebase');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const db = getFirestore();
 const { createActivity } = require('../../controllers/activityController');
+const { circleAudience } = require('./audience');
+const { normalizePrivacy, PRIVACY } = require('../visibility');
 const SSEService = require('../sseService');
 const notificationService = require('../notificationService');
 
@@ -19,16 +21,18 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
     let circlePrivacy = 'private';
     let circleCover = null;
 
+    let audience = { emits: false, allows: () => false };
     if (circleDoc.exists) {
       const circleData = circleDoc.data();
       circleName = circleData.name || 'Unknown Circle';
       circlePrivacy = circleData.privacy || 'private';
       circleCover = circleData.coverImage || null;
+      audience = await circleAudience(circleData, circleData.owner || createdByUserId);
     }
 
-    // Only create activity for public and myNetwork circles
-    // Private circles should not generate activities
-    if (circlePrivacy !== 'private') {
+    // Skip only when nobody but the owner could ever see it. An innerCircle
+    // circle emits a row; the read gate narrows it to the owner's list.
+    if (audience.emits) {
       // Create activity record in the activities collection. placePhoto is
       // the feed's generic thumbnail key — for circle activities it carries
       // the circle's cover image.
@@ -46,8 +50,9 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
       );
     }
 
-    // Only create connection activities and notifications for non-private circles
-    if (circlePrivacy !== 'private') {
+    // Only create connection activities and notifications when someone besides
+    // the owner is entitled to them
+    if (audience.emits) {
       // Get all connections of the user who created the circle (both directions)
       const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
         db.collection(COLLECTIONS.CONNECTIONS)
@@ -72,19 +77,7 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
           ? connectionData.connectedUserId 
           : connectionData.userId;
         
-        // Check if this connection should see the activity based on circle privacy
-        let shouldShowActivity = false;
-        
-        if (circlePrivacy === 'public') {
-          // Public circles - all connections see the activity
-          shouldShowActivity = true;
-        } else if (circlePrivacy === 'myNetwork') {
-          // My Network circles - all connections see the activity
-          shouldShowActivity = true;
-        }
-        // Private circles already excluded above
-        
-        if (shouldShowActivity) {
+        if (audience.allows(otherUserId)) {
           const activity = {
             type: 'circle',
             entityId: circleId,
@@ -112,11 +105,7 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
           ? connectionData.connectedUserId 
           : connectionData.userId;
         
-        // Check if this connection should see the activity based on circle privacy
-        let shouldShowActivity = false;
-        if (circlePrivacy === 'public' || circlePrivacy === 'myNetwork') {
-          shouldShowActivity = true;
-        }
+        const shouldShowActivity = audience.allows(otherUserId);
         
         if (shouldShowActivity) {
           // Send circle creation event
@@ -245,9 +234,8 @@ const trackCircleLiked = async (circleId, likedByUserId, circleOwnerId) => {
       circleCover = circleData.coverImage || null;
     }
 
-    // Only track likes for public and myNetwork circles
-    // Private circles should never generate like activities
-    if (circlePrivacy !== 'private') {
+    // Owner-only circles never generate like activities
+    if (normalizePrivacy(circlePrivacy) !== PRIVACY.PRIVATE) {
       // Create activity record
       await createActivity(
         'circle_liked',
@@ -303,9 +291,8 @@ const trackCircleCommented = async (circleId, commentedByUserId, circleOwnerId, 
       circleCover = circleData.coverImage || null;
     }
 
-    // Only track comments for public and myNetwork circles
-    // Private circles should never generate comment activities
-    if (circlePrivacy !== 'private') {
+    // Owner-only circles never generate comment activities
+    if (normalizePrivacy(circlePrivacy) !== PRIVACY.PRIVATE) {
       // Create activity record
       await createActivity(
         'circle_commented',

@@ -45,8 +45,8 @@ class MomentPlacePickerViewController: BaseViewController {
         return l
     }()
     private lazy var privacyControl: UISegmentedControl = {
-        let c = UISegmentedControl(items: VideoVisibility.allCases.map { $0.displayLabel })
-        c.selectedSegmentIndex = VideoVisibility.allCases.firstIndex(of: visibility) ?? 0
+        let c = UISegmentedControl(items: VideoVisibility.selectable.map { $0.displayLabel })
+        c.selectedSegmentIndex = VideoVisibility.selectable.firstIndex(of: visibility) ?? 0
         c.addTarget(self, action: #selector(privacyChanged), for: .valueChanged)
         c.translatesAutoresizingMaskIntoConstraints = false
         return c
@@ -195,6 +195,13 @@ class MomentPlacePickerViewController: BaseViewController {
     @objc private func tagPeopleTapped() {
         let picker = TagPeoplePickerViewController()
         picker.initialSelection = taggedUsers
+        // An Inner Circle moment can only be tagged with people who can open
+        // it. Otherwise the tag notification lands on someone who taps through
+        // to a 403 — and tells them the moment exists at all.
+        if visibility == .innerCircle {
+            picker.eligibleUserIds = Set(InnerCircleManager.shared.list.userIds)
+            picker.emptyStateOverride = "Add people to your Inner Circle to tag them here"
+        }
         picker.onDone = { [weak self] chosen in
             guard let self = self else { return }
             self.taggedUsers = chosen
@@ -206,8 +213,14 @@ class MomentPlacePickerViewController: BaseViewController {
     // MARK: - Privacy bubble
 
     @objc private func privacyChanged() {
-        visibility = VideoVisibility.allCases[privacyControl.selectedSegmentIndex]
+        visibility = VideoVisibility.selectable[privacyControl.selectedSegmentIndex]
         if visibility == .private { taggedUsers = [] }
+        // Narrowing to Inner Circle drops anyone tagged who isn't on the list,
+        // rather than leaving them to be notified about something they can't see.
+        if visibility == .innerCircle {
+            let allowed = Set(InnerCircleManager.shared.list.userIds)
+            taggedUsers = taggedUsers.filter { allowed.contains($0.id) }
+        }
         refreshTagButton()
         updatePrivacySubtitle()
     }

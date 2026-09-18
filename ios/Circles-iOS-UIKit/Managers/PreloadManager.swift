@@ -477,6 +477,11 @@ class PreloadManager {
             }
         }
         
+        // The Inner Circle list, so privacy pickers can say how many people the
+        // tier reaches without each one firing its own request. Fire-and-forget:
+        // nothing on the critical path waits for it.
+        InnerCircleManager.shared.primeIfNeeded()
+
         // 5. Load Connections (with retry)
         loadGroup.enter()
         let connectionsStartTime = Date()

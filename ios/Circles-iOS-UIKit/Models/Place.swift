@@ -792,27 +792,44 @@ enum PriceLevel: Int, Codable, CaseIterable {
     }
 }
 
-enum PlacePrivacy: String, Codable, CaseIterable {
+/// A place's own privacy. It can only NARROW what its circle already allows —
+/// `followCircle` (the default, and all the Add Place screen can produce) adds
+/// nothing. Display strings live on `PrivacyOption`; see Logic/PrivacyTier.swift.
+enum PlacePrivacy: String, Codable {
     case followCirclePrivacy = "followCircle"
     case `public` = "public"
     case myNetwork = "myNetwork"
+    case innerCircle = "innerCircle"
     case `private` = "private"
-    
-    var displayName: String {
-        switch self {
-        case .followCirclePrivacy: return "Follow Circle Privacy"
-        case .`public`: return "Public"
-        case .myNetwork: return "My Network"
-        case .`private`: return "Private"
-        }
+    /// A value a newer build understands and this one does not. Decoded rather
+    /// than thrown so the place still appears, shown as Private, never saved.
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = PlacePrivacy(rawValue: raw) ?? .unknown
     }
-    
-    var systemIconName: String {
+
+    /// The picker option this corresponds to, or nil if we don't recognise it.
+    var option: PrivacyOption? {
+        if self == .followCirclePrivacy { return .inheritCircle }
+        guard let tier = PrivacyTier(rawValue: rawValue) else { return nil }
+        return .tier(tier)
+    }
+
+    var displayName: String { option?.title ?? PrivacyTier.private.title }
+
+    var systemIconName: String { option?.systemIconName ?? PrivacyTier.private.systemIconName }
+}
+
+extension PrivacyOption {
+    /// The stored place value for this option, or nil if it isn't one a place
+    /// can hold (moments' followers audience).
+    var placePrivacy: PlacePrivacy? {
         switch self {
-        case .followCirclePrivacy: return "circle"
-        case .`public`: return "globe"
-        case .myNetwork: return "person.2"
-        case .`private`: return "lock"
+        case .inheritCircle: return .followCirclePrivacy
+        case .followers: return nil
+        case .tier(let tier): return PlacePrivacy(rawValue: tier.rawValue)
         }
     }
 }

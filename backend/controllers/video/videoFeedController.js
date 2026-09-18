@@ -5,6 +5,10 @@
 const { getFirestore, FieldValue } = require('../../config/firebase');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../../models/FirestoreModels');
 const { queryInChunks } = require('../../utils/firestoreChunks');
+const { canViewMoment, MOMENT_PRIVACY_LEVELS } = require('../../services/visibility');
+const { normalizeUserId } = require('../../services/idService');
+const { buildViewerContext, makeViewerContext } = require('../../services/viewerContext');
+const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
 const db = getFirestore();
 
 // Get videos for a place
@@ -124,16 +128,42 @@ exports.getVideoFeed = async (req, res) => {
     // sorted; merge, re-sort, and window to keep limit/offset semantics.
     const pageLimit = parseInt(limit);
     const pageOffset = parseInt(offset);
-    const videoDocs = await queryInChunks(connectionIds, chunk =>
-      db.collection(COLLECTIONS.PLACE_VIDEOS)
-        .where('userId', 'in', chunk)
-        .where('uploadStatus', '==', 'ready')
-        .where('deletedAt', '==', null)
-        .where('visibility', 'in', ['public', 'network'])
-        .orderBy('createdAt', 'desc')
-        .limit(pageLimit + pageOffset)
-        .get()
-    );
+    // Inner-circle moments come from a SECOND query rather than an extra value
+    // in the `visibility` IN-list. The list query applies its limit inside
+    // Firestore, so post-filtering rows the viewer isn't entitled to would eat
+    // into the page and silently truncate it. Two windowed queries merged into
+    // the same sort keeps limit/offset honest.
+    const grantorIds = Array.from(await getInnerCircleGrantorIds(userId))
+      .filter(id => connectionIds.has(id));
+
+    const [connectionVideoDocs, innerCircleVideoDocs] = await Promise.all([
+      queryInChunks(connectionIds, chunk =>
+        db.collection(COLLECTIONS.PLACE_VIDEOS)
+          .where('userId', 'in', chunk)
+          .where('uploadStatus', '==', 'ready')
+          .where('deletedAt', '==', null)
+          .where('visibility', 'in', ['public', 'network'])
+          .orderBy('createdAt', 'desc')
+          .limit(pageLimit + pageOffset)
+          .get()
+      ),
+      grantorIds.length === 0 ? Promise.resolve([]) : queryInChunks(grantorIds, chunk =>
+        db.collection(COLLECTIONS.PLACE_VIDEOS)
+          .where('userId', 'in', chunk)
+          .where('uploadStatus', '==', 'ready')
+          .where('deletedAt', '==', null)
+          .where('visibility', '==', 'innerCircle')
+          .orderBy('createdAt', 'desc')
+          .limit(pageLimit + pageOffset)
+          .get()
+      )
+    ]);
+    const seenVideoIds = new Set();
+    const videoDocs = [...connectionVideoDocs, ...innerCircleVideoDocs].filter(doc => {
+      if (seenVideoIds.has(doc.id)) return false;
+      seenVideoIds.add(doc.id);
+      return true;
+    });
     videoDocs.sort((a, b) => String(b.data().createdAt).localeCompare(String(a.data().createdAt)));
 
     const videos = videoDocs.slice(pageOffset, pageOffset + pageLimit)
@@ -198,6 +228,17 @@ function momentAccessDenied(visibility, ownerName, ownerId) {
       message: `This moment is for ${name}'s followers. Follow ${name} to view it.`
     };
   }
+  // Nothing to offer here — being added is the owner's decision, and an
+  // "ask to be let in" button would put the viewer in an awkward position.
+  if (visibility === 'innerCircle') {
+    return {
+      reason: 'not_in_inner_circle',
+      action: null,
+      ownerId,
+      ownerName: ownerName || null,
+      message: `${name} shared this with their Inner Circle.`
+    };
+  }
   return {
     reason: 'private',
     action: null,
@@ -259,18 +300,9 @@ exports.getVideoDetails = async (req, res) => {
       const visibility = videoData.visibility || 'private';
       let allowed = visibility === 'public';
       // A relationship-gated moment needs a known viewer. Without one (no auth)
-      // only public moments are visible — the checks below simply don't run.
+      // only public moments are visible — the context below isn't even built.
       if (!allowed && userId) {
-        if (visibility === 'network') {
-          const [c1, c2] = await Promise.all([
-            db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', userId).where('connectedUserId', '==', owner).where('status', '==', 'accepted').get(),
-            db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', owner).where('connectedUserId', '==', userId).where('status', '==', 'accepted').get()
-          ]);
-          allowed = !c1.empty || !c2.empty;
-        } else if (visibility === 'followers') {
-          const meDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-          allowed = (meDoc.exists ? (meDoc.data().following || []) : []).includes(owner);
-        }
+        allowed = canViewMoment(videoData, userId, await buildViewerContext(userId));
       }
       // Not allowed → return a friendly, actionable message naming the owner.
       if (!allowed) {
@@ -420,18 +452,15 @@ exports.getReelsFeed = async (req, res) => {
     const allUserIds = new Set([...connectionIds, ...followingIds]);
     
     // A viewer may see a moment by its visibility + their relationship to the
-    // owner: public (anyone in their graph), network/"Connections" (accepted
-    // connections only), followers (people who follow the owner), private (self).
-    const canView = (v) => {
-      if (v.userId === userId) return true;
-      switch (v.visibility) {
-        case 'public': return true;
-        case 'network': return connectionIds.has(v.userId);
-        case 'followers': return followingIds.has(v.userId);
-        case 'private': return false;
-        default: return v.visibility === 'public';
-      }
-    };
+    // owner. This query already fetches the viewer's whole graph, so the tier
+    // check is a predicate over rows in hand.
+    const viewerCtx = makeViewerContext({
+      viewerId: userId,
+      connections: connectionIds,
+      following: followingIds,
+      innerCircleGrantors: await getInnerCircleGrantorIds(userId)
+    });
+    const canView = (v) => canViewMoment(v, userId, viewerCtx);
 
     // Fetch recent ready moments from everyone in the viewer's graph, batched for
     // Firestore's 30-value IN limit. Visibility is filtered in JS (Firestore
@@ -565,8 +594,10 @@ exports.getUserReels = async (req, res) => {
     let visibilityFilter = ['public']; // Default: only public content
     
     if (currentUserId === userId) {
-      // User viewing their own content - show all
-      visibilityFilter = ['public', 'followers', 'network', 'private'];
+      // User viewing their own content - show all. MOMENT_PRIVACY_LEVELS rather
+      // than a hand-written list, so a new tier can't go missing here and hide
+      // the owner's own moments from them.
+      visibilityFilter = [...MOMENT_PRIVACY_LEVELS];
     } else {
       // Build the filter from BOTH relationships: connections can see 'network',
       // people who follow the owner can see 'followers'. They're independent
@@ -597,6 +628,13 @@ exports.getUserReels = async (req, res) => {
       visibilityFilter = ['public'];
       if (isConnected) visibilityFilter.push('network');
       if (isFollowing) visibilityFilter.push('followers');
+      // Single-owner query, so one membership test decides the whole shelf.
+      if (isConnected) {
+        const grantors = await getInnerCircleGrantorIds(currentUserId);
+        if (grantors.has(normalizeUserId(userId)) || grantors.has(String(userId))) {
+          visibilityFilter.push('innerCircle');
+        }
+      }
     }
 
     const videosQuery = await db.collection(COLLECTIONS.PLACE_VIDEOS)
@@ -741,30 +779,20 @@ exports.getPlaceReels = async (req, res) => {
     const { excludedUserIds } = require('../../services/moderationService');
     const excludedIds = excludedUserIds(currentUserDoc.exists ? currentUserDoc.data() : {});
 
+    const viewerCtx = makeViewerContext({
+      viewerId: currentUserId,
+      connections: connectedUserIds,
+      following: followingUserIds,
+      innerCircleGrantors: await getInnerCircleGrantorIds(currentUserId)
+    });
+
     // Filter videos based on visibility and relationships
     const filteredVideos = allVideos.filter(video => {
       if (excludedIds.has(video.userId)) return false;
       if (video.moderationStatus === 'under_review' || video.moderationStatus === 'removed') {
         return video.userId === currentUserId && video.moderationStatus === 'under_review';
       }
-      // User's own videos - always visible
-      if (video.userId === currentUserId) return true;
-
-      // Check visibility based on relationship
-      const isConnected = connectedUserIds.has(video.userId);
-      const isFollowing = followingUserIds.has(video.userId);
-      
-      if (video.visibility === 'public') {
-        return true; // Public videos visible to all
-      } else if (video.visibility === 'followers') {
-        return isFollowing; // Followers-only: viewer must follow the owner
-      } else if (video.visibility === 'network') {
-        return isConnected; // Connections-only ("network") visible to connections
-      } else if (video.visibility === 'private') {
-        return false; // Private videos not visible in place feeds
-      }
-
-      return false; // Default deny
+      return canViewMoment(video, currentUserId, viewerCtx);
     });
     
     // Apply pagination to filtered results

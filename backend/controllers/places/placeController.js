@@ -19,6 +19,11 @@ const subscriptionLimitService = require('../../services/subscriptionLimitServic
 const rewardService = require('../../services/rewardService');
 const piggyBankService = require('../../services/piggyBankService');
 const { normalizePhotosArray, overlayVenuePhotos, VENUE_GOOGLE_FIELDS, overlayVenueFields, getGlobalSocial, fetchGlobalSocialMap, buildAddedByUserMap, isPlaceVisibleToViewer } = require('../../services/placeReadService');
+const { resolveIncomingPrivacy, canViewCircle } = require('../../services/visibility');
+const { canViewCircleFor } = require('../../services/circleAccess');
+const { buildViewerContext, makeViewerContext } = require('../../services/viewerContext');
+const { circleAudience, narrowedByPlace } = require('../../services/activity/audience');
+const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
 const { getMyCheckInStats } = require('../../services/checkInStatsService');
 const homePromptService = require('../../services/homePromptService');
 const db = getFirestore();
@@ -159,14 +164,9 @@ exports.getPlacesByCircleId = async (req, res, next) => {
 
     const circle = serializeDoc(circleDoc);
 
-    // Check permissions
-    const isOwner = circle.owner === req.user.uid;
-    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(req.user.uid);
-    const isPublic = circle.privacy === 'public';
-
-    // Both-direction connection docs between viewer and owner. Fetched once
-    // here (when needed for the myNetwork permission check) and reused by the
-    // activity/isNew pass below instead of re-querying the same pair.
+    // Both-direction connection docs between viewer and owner. Fetched lazily
+    // and reused by the activity/isNew pass below instead of re-querying the
+    // same pair.
     const fetchOwnerConnectionDocs = () => Promise.all([
       db.collection(COLLECTIONS.CONNECTIONS)
         .where('userId', '==', req.user.uid)
@@ -182,14 +182,7 @@ exports.getPlacesByCircleId = async (req, res, next) => {
 
     let ownerConnectionDocs = null;
 
-    // For myNetwork privacy, check if users are connected
-    let isConnected = false;
-    if (circle.privacy === 'myNetwork' && !isOwner) {
-      ownerConnectionDocs = await fetchOwnerConnectionDocs();
-      isConnected = ownerConnectionDocs.length > 0;
-    }
-
-    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+    if (!(await canViewCircleFor(circle, req.user.uid))) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to access this circle'
@@ -208,9 +201,10 @@ exports.getPlacesByCircleId = async (req, res, next) => {
     // Filter out soft-deleted places, and places marked Private that the
     // viewer doesn't own (private is owner-only even in a visible circle)
     const allPlaces = serializeQuerySnapshot(placesSnapshot);
+    const viewerCtx = await buildViewerContext(req.user.uid);
     const places = allPlaces.filter(place =>
       (place.deletedAt === null || place.deletedAt === undefined) &&
-      isPlaceVisibleToViewer(place, req.user.uid)
+      isPlaceVisibleToViewer(place, req.user.uid, viewerCtx)
     );
 
     // Get unique user IDs who added places
@@ -422,12 +416,16 @@ exports.getPlacesByCircleIdPublic = async (req, res, next) => {
       size: placesSnapshot.size
     });
     
-    // Filter out soft-deleted places, and any Private places — this is an
-    // unauthenticated public share, so there is no owner to exempt
+    // Filter out soft-deleted places, and anything the place's own privacy
+    // narrows below the circle. This is an unauthenticated share, so there is
+    // no viewer to exempt and no relationships to check: with no context every
+    // tier above public denies, which is exactly right here. Checking only for
+    // `private` used to serve an Inner Circle place inside a public circle to
+    // the open web.
     const allPlaces = serializeQuerySnapshot(placesSnapshot);
     const places = allPlaces.filter(place => {
       const isDeleted = place.deletedAt !== null && place.deletedAt !== undefined;
-      return !isDeleted && place.privacy !== 'private';
+      return !isDeleted && isPlaceVisibleToViewer(place, null, null);
     });
 
     console.log(`🔍 Found ${places.length} active places for public circle`);
@@ -639,77 +637,12 @@ exports.getPlace = async (req, res, next) => {
       console.log(`🔐 Circle privacy: ${circle.privacy}`);
       
       // Check permissions
-      const isOwner = circle.owner === userId;
-      const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
-      const isPublic = circle.privacy === 'public';
-      
-      console.log(`🔐 Is owner: ${isOwner}`);
-      console.log(`🔐 Is shared with: ${isSharedWith}`);
-      console.log(`🔐 Is public: ${isPublic}`);
-      
-      // Check relationship with circle owner to determine access
-      let hasAccess = false;
-      
-      // Owner always has access
-      if (isOwner) {
-        hasAccess = true;
-      }
-      // Explicitly shared users have access
-      else if (isSharedWith) {
-        hasAccess = true;
-      }
-      // Public circles are accessible to everyone
-      else if (isPublic) {
-        hasAccess = true;
-      }
-      // For non-public circles, check relationship with owner
-      else {
-        console.log(`\n🔐 Checking relationship with circle owner...`);
-        const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(circle.owner).get();
-        if (ownerDoc.exists) {
-          const ownerData = serializeDoc(ownerDoc);
-          
-          // Check if current user is following the owner (gets access to public circles)
-          const isFollowingOwner = ownerData.followers && ownerData.followers.includes(userId);
-          
-          // Check if current user is connected to the owner (gets access to myNetwork circles)  
-          const isConnected = ownerData.connections && ownerData.connections.includes(userId);
-          
-          console.log(`🔐 Owner's connections array: ${ownerData.connections ? ownerData.connections.length + ' connections' : 'none'}`);
-          console.log(`🔐 Is user in owner's connections: ${isConnected}`);
-          console.log(`🔐 Is user following owner: ${isFollowingOwner}`);
-          
-          // Also check the connections collection for proper connection status
-          const connectionQuery = await db.collection(COLLECTIONS.CONNECTIONS)
-            .where('userId', '==', circle.owner)
-            .where('connectedUserId', '==', userId)
-            .where('status', '==', 'accepted')
-            .get();
-          
-          const reverseConnectionQuery = await db.collection(COLLECTIONS.CONNECTIONS)
-            .where('userId', '==', userId)
-            .where('connectedUserId', '==', circle.owner)
-            .where('status', '==', 'accepted')
-            .get();
-            
-          const hasConnectionRecord = !connectionQuery.empty || !reverseConnectionQuery.empty;
-          console.log(`🔐 Has connection record in connections collection: ${hasConnectionRecord}`);
-          
-          // For myNetwork privacy, connections have access
-          if ((circle.privacy === 'myNetwork' || circle.privacy === 'my_network') && (isConnected || hasConnectionRecord)) {
-            console.log(`✅ Access granted: User is connected to circle owner (myNetwork circle)`);
-            hasAccess = true;
-          }
-          // For public circles, followers have access (but we already checked isPublic above)
-          // This is redundant but kept for clarity
-          else if (isPublic && isFollowingOwner) {
-            hasAccess = true;
-          }
-        } else {
-          console.log(`❌ Owner document not found for userId: ${circle.owner}`);
-        }
-      }
-      
+      // One rule, same as every other read path. The old version here also
+      // consulted the owner's denormalised `connections`/`followers` arrays as
+      // a fallback; canViewCircleFor reads the connections collection, which is
+      // the source of truth those arrays are derived from.
+      const hasAccess = await canViewCircleFor(circle, userId);
+
       // Deny access if none of the conditions are met
       if (!hasAccess) {
         console.log(`\n❌ ========== ACCESS DENIED ==========`);
@@ -718,9 +651,7 @@ exports.getPlace = async (req, res, next) => {
         console.log(`❌ User: ${userId}`);
         console.log(`❌ Circle Owner: ${circle.owner}`);
         console.log(`❌ Circle Privacy: ${circle.privacy}`);
-        console.log(`❌ Is Owner: ${isOwner}`);
-        console.log(`❌ Is Shared With: ${isSharedWith}`);
-        console.log(`❌ Is Public: ${isPublic}`);
+        console.log(`❌ Shared with: ${(circle.sharedWith || []).length} people`);
         console.log(`❌ ====================================\n`);
         
         console.error('❌ DENYING ACCESS - Version 3 - 2025-08-18-11:58');
@@ -752,8 +683,9 @@ exports.getPlace = async (req, res, next) => {
       console.log(`✅ Allowing access to floating place: ${place.name} (check-in place)`);
     }
 
-    // A place marked Private is owner-only, even inside a visible circle
-    if (!isPlaceVisibleToViewer(place, req.user.uid)) {
+    // A place's own privacy narrows the circle's: Private is owner-only and
+    // Inner Circle reaches only the owner's list, even inside a visible circle.
+    if (!isPlaceVisibleToViewer(place, req.user.uid, await buildViewerContext(req.user.uid))) {
       return res.status(403).json({
         success: false,
         message: 'This place is private'
@@ -1352,28 +1284,36 @@ exports.createPlace = async (req, res, next) => {
       // Get users who should be notified
       const notifyUserIds = new Set();
       
-      // Add circle members (if not private)
-      if (circle.privacy !== 'private') {
-        // Add shared users
+      // Who this circle's contents may be announced to. Same resolver the
+      // activity fan-out uses, narrowed by the place's own tier — a push is a
+      // point-in-time event that can't be taken back, so it is decided here
+      // rather than left to a read gate.
+      const audience = await narrowedByPlace(
+        await circleAudience(circle, circle.owner),
+        place,
+        req.user.uid
+      );
+
+      if (audience.emits) {
+        // People the circle was shared with directly
         circle.sharedWith.forEach(userId => {
-          if (userId !== req.user.uid) {
+          if (userId !== req.user.uid && audience.allows(userId)) {
             notifyUserIds.add(userId);
           }
         });
-        
+
         // Add circle owner if not the one adding
         if (circle.owner !== req.user.uid) {
           notifyUserIds.add(circle.owner);
         }
-        
-        // If circle is public, add user's network
-        if (circle.privacy === 'public' || circle.privacy === 'myNetwork') {
-          const userDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
-          if (userDoc.exists) {
-            const userData = userDoc.data();
-            const connections = userData.friends || [];
-            connections.forEach(userId => notifyUserIds.add(userId));
-          }
+
+        // Everyone else the tier admits
+        const userDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
+        if (userDoc.exists) {
+          const connections = userDoc.data().friends || [];
+          connections.forEach(userId => {
+            if (audience.allows(userId)) notifyUserIds.add(userId);
+          });
         }
       }
       
@@ -1475,6 +1415,18 @@ exports.updatePlace = async (req, res, next) => {
     // hint (which check-in prompted a re-rate), never a doc field.
     const { circleId, addedBy, ratingCheckInId, ratingHistory: _clientHistory, userRatedAt: _clientRatedAt, ...updateData } = req.body;
     updateData.updatedAt = new Date().toISOString();
+
+    // An 'innerCircle' place reaches builds that predate the tier as 'private'
+    // (see middleware/responseNormalizer). When such a build saves the form it
+    // echoes that 'private' straight back; keep the stored tier instead of
+    // silently collapsing it.
+    if ('privacy' in updateData) {
+      updateData.privacy = resolveIncomingPrivacy({
+        incoming: updateData.privacy,
+        stored: place.privacy,
+        req
+      });
+    }
 
     // Google-backed places: Google Places is the source of truth for venue
     // fields, so users can't edit them (they can flag bad data instead —
@@ -1850,13 +1802,15 @@ exports.searchPlaces = async (req, res, next) => {
       });
     }
 
+    // Search never showed connections-only circles: it skipped the myNetwork
+    // tier entirely. Going through the shared gate makes it consistent with
+    // every other read path, and applies the place's own privacy on top.
+    const searchViewerCtx = await buildViewerContext(req.user.uid);
     const accessiblePlaces = places.filter(place => {
       const circle = circleMap.get(place.circleId);
       if (!circle) return false;
-      const isOwner = circle.owner === req.user.uid;
-      const isSharedWith = (circle.sharedWith || []).includes(req.user.uid);
-      const isPublic = circle.privacy === 'public';
-      return isOwner || isSharedWith || isPublic;
+      return canViewCircle(circle, req.user.uid, searchViewerCtx)
+        && isPlaceVisibleToViewer(place, req.user.uid, searchViewerCtx);
     });
 
     // Sort results by name
@@ -2534,6 +2488,14 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     connSnap1.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().connectedUserId)));
     connSnap2.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().userId)));
 
+    // The connection sets are already loaded above, so reuse them rather than
+    // paying for buildViewerContext's own connection reads.
+    const batchViewerCtx = makeViewerContext({
+      viewerId: currentUserId,
+      connections: connectedUserIds,
+      innerCircleGrantors: await getInnerCircleGrantorIds(currentUserId)
+    });
+
     // Place activities across ALL connections, keyed by place id — powers the
     // same isNew flag getPlacesByCircleId computes, from docs already in hand.
     // (Deliberately NOT paired with markCirclePlacesViewed: a bulk home load
@@ -2564,21 +2526,9 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
       if (processedCircles.has(circle.id)) continue;
       processedCircles.add(circle.id);
 
-      // Check permissions (id comparisons are normalized to tolerate
-      // mixed id formats between circles, users, and connections)
-      const isOwner = isSameUser(circle.owner, currentUserId);
-      const isSharedWith = circle.sharedWith && circle.sharedWith.includes(currentUserId);
-      const isPublic = circle.privacy === 'public';
-
-      // For myNetwork privacy, check the pre-resolved connection set
-      let isConnected = false;
-      if (circle.privacy === 'myNetwork' && !isOwner) {
-        isConnected = connectedUserIds.has(normalizeUserId(circle.owner));
-      }
-
-      if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
-        continue;
-      }
+      // The connection set and inner-circle grants are already resolved for
+      // this request, so the tier check costs nothing extra here.
+      if (!canViewCircle(circle, currentUserId, batchViewerCtx)) continue;
       accessibleCircles.push(circle);
     }
 
@@ -2615,7 +2565,7 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
         // still belong to one of the requested, accessible circles.
         if (place.deletedAt !== null && place.deletedAt !== undefined) continue;
         if (!accessibleCircleIds.has(place.circleId)) continue;
-        if (!isPlaceVisibleToViewer(place, currentUserId)) continue;
+        if (!isPlaceVisibleToViewer(place, currentUserId, batchViewerCtx)) continue;
 
         // Filter privateNotes - only visible to the user who added the place
         const placeData = { ...place };

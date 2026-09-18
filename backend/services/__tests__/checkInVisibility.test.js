@@ -9,6 +9,7 @@ const base = {
 
 const ctx = (overrides = {}) => ({
   connectionIds: new Set(['owner', 'friend']),
+  innerCircleGrantors: new Set(['owner']),
   isInAnyGroup: async () => false,
   ...overrides,
 });
@@ -50,5 +51,32 @@ describe('check-in visibility', () => {
     const legacy = { userId: 'owner', notifiedUsers: ['friend'] };
     expect(isPrivateCheckIn(legacy)).toBe(false);
     expect(await isCheckInVisibleTo(legacy, 'friend', ctx())).toBe(true);
+  });
+});
+
+// An Inner Circle check-in stops at the owner's list. The feed flag is about
+// where it appears, not who may see it, so turning it on must not widen the
+// audience — that is the mistake the tier exists to prevent.
+describe('inner circle check-ins', () => {
+  const inner = { ...base, audience: 'innerCircle', showInActivityFeed: true };
+
+  test('only people on the list see it, feed flag notwithstanding', async () => {
+    expect(await isCheckInVisibleTo(inner, 'insider', ctx())).toBe(true);
+    expect(await isCheckInVisibleTo(inner, 'friend', ctx({ innerCircleGrantors: new Set() }))).toBe(false);
+  });
+
+  test('a connection who is not on the list is out, even on the feed', async () => {
+    const notListed = ctx({ innerCircleGrantors: new Set() });
+    expect(await isCheckInVisibleTo(inner, 'friend', notListed)).toBe(false);
+    expect(await isCheckInVisibleTo({ ...base, showInActivityFeed: true }, 'friend', notListed)).toBe(true);
+  });
+
+  test('someone it was sent to directly still sees it', async () => {
+    const sent = { ...inner, notifiedUsers: ['outsider'] };
+    expect(await isCheckInVisibleTo(sent, 'outsider', ctx({ innerCircleGrantors: new Set() }))).toBe(true);
+  });
+
+  test('the owner always sees their own', async () => {
+    expect(await isCheckInVisibleTo(inner, 'owner', ctx({ innerCircleGrantors: new Set() }))).toBe(true);
   });
 });

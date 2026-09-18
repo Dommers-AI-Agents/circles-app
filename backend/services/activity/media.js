@@ -8,11 +8,19 @@ const db = getFirestore();
 const { createActivity } = require('../../controllers/activityController');
 const SSEService = require('../sseService');
 const notificationService = require('../notificationService');
+const { normalizePrivacy, PRIVACY } = require('../visibility');
 
 
 // Track when a user uploads a moment/video
 const trackMomentUpload = async (momentId, placeId, placeName, uploadedByUserId) => {
   try {
+    // The moment's audience decides both halves of this: which connections get
+    // told now, and who the feed will show the row to later. trackVideoLiked
+    // has always stamped it; the upload path never did, so a followers-only or
+    // private moment announced itself to every connection.
+    const momentDoc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(momentId).get();
+    const momentVisibility = momentDoc.exists ? (momentDoc.data().visibility || 'public') : 'public';
+
     // Create activity record
     await createActivity(
       'video_uploaded',
@@ -22,9 +30,27 @@ const trackMomentUpload = async (momentId, placeId, placeName, uploadedByUserId)
       placeName || 'Unknown Place',
       {
         placeId: placeId,
-        placeName: placeName
+        placeName: placeName,
+        momentVisibility,
+        momentOwnerId: uploadedByUserId
       }
     );
+
+    // Nobody to tell: a private moment is a personal record, and an Inner
+    // Circle one is announced below only to people on the list.
+    const tier = normalizePrivacy(momentVisibility);
+    if (tier === PRIVACY.PRIVATE) return;
+
+    // Who, among the uploader's connections, is entitled to hear about it.
+    // Followers-tier moments reach connections too — being connected is closer
+    // than following (see services/visibility.js).
+    let allows = () => true;
+    if (tier === PRIVACY.INNER_CIRCLE) {
+      const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(String(uploadedByUserId)).get();
+      const list = new Set(((ownerDoc.exists && ownerDoc.data().innerCircle) || []).map(String));
+      if (list.size === 0) return;
+      allows = (userId) => list.has(String(userId));
+    }
     
     // Send SSE events to connections and followers
     const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
@@ -45,7 +71,9 @@ const trackMomentUpload = async (momentId, placeId, placeName, uploadedByUserId)
       const otherUserId = connectionData.userId === uploadedByUserId 
         ? connectionData.connectedUserId 
         : connectionData.userId;
-      
+
+      if (!allows(otherUserId)) return;
+
       // Send moment uploaded event
       SSEService.sendEvent(otherUserId, {
         type: 'moment_uploaded',

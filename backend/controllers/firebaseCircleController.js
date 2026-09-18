@@ -16,6 +16,8 @@ const { normalizeUserId } = require('../services/idService');
 const { sortCirclesByUserOrder } = require('../utils/circleOrder');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
 const { attachOwnerDetails } = require('../services/ownerResolver');
+const { CIRCLE_PRIVACY_LEVELS, resolveIncomingPrivacy } = require('../services/visibility');
+const { canViewCircleFor } = require('../services/circleAccess');
 
 const db = getFirestore();
 
@@ -240,25 +242,6 @@ exports.getCircle = async (req, res, next) => {
     const isSharedWith = (circle.sharedWith || []).some(userId => normalizeUserId(userId) === normalizedUserId);
     const isPublic = circle.privacy === 'public';
     
-    // For myNetwork privacy, check if users are connected
-    let isConnected = false;
-    if (circle.privacy === 'myNetwork' && !isOwner) {
-      // Check if the current user is connected to the circle owner
-      const connectionQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', req.user.uid)
-        .where('connectedUserId', '==', circle.owner)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      const connectionQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', circle.owner)
-        .where('connectedUserId', '==', req.user.uid)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      isConnected = !connectionQuery1.empty || !connectionQuery2.empty;
-    }
-    
     // For public circles, also check if user is following the circle owner
     let isFollowing = false;
     if (isPublic && !isOwner && !isSharedWith) {
@@ -272,7 +255,7 @@ exports.getCircle = async (req, res, next) => {
     }
     
     // Allow access if user is owner, shared with, public (including followers), or connected (for myNetwork)
-    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+    if (!(await canViewCircleFor(circle, req.user.uid))) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to access this circle'
@@ -555,14 +538,21 @@ exports.updateCircle = async (req, res, next) => {
     }
     
     if (req.body.privacy !== undefined) {
-      const validPrivacyLevels = ['public', 'myNetwork', 'private'];
+      const validPrivacyLevels = CIRCLE_PRIVACY_LEVELS;
       if (!validPrivacyLevels.includes(req.body.privacy)) {
         return res.status(400).json({
           success: false,
-          message: 'Privacy must be public, myNetwork, or private'
+          message: `Privacy must be one of: ${validPrivacyLevels.join(', ')}`
         });
       }
-      updateData.privacy = req.body.privacy;
+      // An old build was shown 'private' in place of 'innerCircle' and is now
+      // echoing it back; keep what is stored rather than silently collapsing
+      // the tier. See resolveIncomingPrivacy.
+      updateData.privacy = resolveIncomingPrivacy({
+        incoming: req.body.privacy,
+        stored: circle.privacy,
+        req
+      });
     }
     
     if (req.body.category !== undefined) {
@@ -686,69 +676,6 @@ exports.deleteCircle = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error deleting circle:', error);
-    next(error);
-  }
-};
-
-// @desc    Share circle with users
-// @route   POST /api/circles/:id/share
-// @access  Private
-exports.shareCircle = async (req, res, next) => {
-  try {
-    const { userIds } = req.body;
-    
-    if (!userIds || !Array.isArray(userIds)) {
-      return res.status(400).json({
-        success: false,
-        message: 'User IDs array is required'
-      });
-    }
-
-    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(req.params.id);
-    const circleDoc = await circleRef.get();
-
-    if (!circleDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: 'Circle not found'
-      });
-    }
-
-    const circle = serializeDoc(circleDoc);
-
-    // Make sure user is circle owner (using normalized IDs)
-    const normalizedCircleOwner = normalizeUserId(circle.owner);
-    const normalizedUserId = normalizeUserId(req.user.uid);
-    
-    if (normalizedCircleOwner !== normalizedUserId) {
-      console.log('❌ Circle share authorization failed:', {
-        circleId: req.params.id,
-        circleOwner: circle.owner,
-        normalizedCircleOwner: normalizedCircleOwner,
-        requestingUserId: req.user.uid,
-        normalizedUserId: normalizedUserId
-      });
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to share this circle'
-      });
-    }
-
-    // Add users to sharedWith array (avoid duplicates)
-    const currentSharedWith = circle.sharedWith || [];
-    const newSharedWith = [...new Set([...currentSharedWith, ...userIds])];
-
-    await circleRef.update({
-      sharedWith: newSharedWith,
-      updatedAt: new Date().toISOString()
-    });
-
-    res.status(200).json({
-      success: true,
-      message: 'Circle shared successfully'
-    });
-  } catch (error) {
-    console.error('Error sharing circle:', error);
     next(error);
   }
 };
@@ -1572,26 +1499,8 @@ exports.copyCircle = async (req, res, next) => {
     const isPublic = sourceCircle.privacy === 'public';
     const isSharedWith = sourceCircle.sharedWith && sourceCircle.sharedWith.includes(userId);
     
-    // For myNetwork privacy, check if users are connected
-    let isConnected = false;
-    if (sourceCircle.privacy === 'myNetwork' && !isOwner) {
-      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('connectedUserId', '==', sourceCircle.owner)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', sourceCircle.owner)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      isConnected = !connection1.empty || !connection2.empty;
-    }
-    
     // Check if user has access to view the circle
-    if (!isOwner && !isPublic && !isSharedWith && !(sourceCircle.privacy === 'myNetwork' && isConnected)) {
+    if (!(await canViewCircleFor(sourceCircle, userId))) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to copy this circle'

@@ -8,7 +8,6 @@ const {
   createCircle,
   updateCircle,
   deleteCircle,
-  shareCircle,
   followCircle,
   unfollowCircle,
   addEditor,
@@ -27,7 +26,7 @@ const {
   mergeCircles
 } = require('../controllers/firebaseCircleController');
 const {
-  shareCircle: newShareCircle,
+  shareCircle,
   revokeShare,
   getCircleShares,
   validateShareToken
@@ -69,9 +68,10 @@ router.route('/:id')
   .put(updateCircle)
   .delete(deleteCircle);
 
-// New sharing routes (replacing the old shareCircle)
+// Sharing a circle with a named person. Writes a circleShares doc AND pushes
+// them onto circles.sharedWith, which is the array the read gates consult.
 router.route('/:id/share')
-  .post(newShareCircle);
+  .post(shareCircle);
 
 router.route('/:id/share/:shareId')
   .delete(revokeShare);

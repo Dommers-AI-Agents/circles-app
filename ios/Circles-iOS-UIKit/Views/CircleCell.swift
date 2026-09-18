@@ -156,15 +156,10 @@ class CircleCell: UICollectionViewCell {
             removePulsingAnimation()
         }
         
-        // Set privacy icon
-        switch circle.privacy {
-        case .public:
-            privacyImageView.image = UIImage(systemName: "globe")
-        case .myNetwork:
-            privacyImageView.image = UIImage(systemName: "person.2")
-        case .private:
-            privacyImageView.image = UIImage(systemName: "lock")
-        }
+        // Set privacy icon. A tier this build doesn't know shows the lock —
+        // never a more open-looking badge than the truth.
+        let tier = circle.privacy.tier ?? .private
+        privacyImageView.image = UIImage(systemName: tier.systemIconName)
         
         // Load cover image
         if let coverImageUrl = circle.coverImage {

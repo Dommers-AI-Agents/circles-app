@@ -3,6 +3,11 @@
 // list): the owner always; anyone it was explicitly sent to; a connection
 // when it was posted to the activity feed. A private check-in (notify no one,
 // keep off the feed) is therefore visible to its owner only.
+//
+// A check-in with audience 'innerCircle' stops at the owner's Inner Circle
+// list. That is checked BEFORE the connection rule, so turning the feed on
+// cannot widen it — the tier is the ceiling, and the people it was explicitly
+// sent to are the one exception above it.
 
 const isPrivateCheckIn = (checkIn) => checkIn.isPrivate === true;
 
@@ -11,12 +16,16 @@ const isPrivateCheckIn = (checkIn) => checkIn.isPrivate === true;
  *                          notifiedGroups, showInActivityFeed, isPrivate)
  * @param {string} viewerId
  * @param {object} ctx      { connectionIds: Set<string>,
+ *                            innerCircleGrantors: Set<string>,
  *                            isInAnyGroup: async (viewerId, groupIds) => bool }
  */
 const isCheckInVisibleTo = async (checkIn, viewerId, ctx) => {
   if (checkIn.userId === viewerId) return true;
   if (isPrivateCheckIn(checkIn)) return false;
   if ((checkIn.notifiedUsers || []).includes(viewerId)) return true;
+  if (checkIn.audience === 'innerCircle') {
+    return !!(ctx.innerCircleGrantors && ctx.innerCircleGrantors.has(checkIn.userId));
+  }
   if (ctx.connectionIds && ctx.connectionIds.has(checkIn.userId) && checkIn.showInActivityFeed) return true;
   if (ctx.isInAnyGroup && (checkIn.notifiedGroups || []).length > 0) {
     return ctx.isInAnyGroup(viewerId, checkIn.notifiedGroups);

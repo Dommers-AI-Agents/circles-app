@@ -745,18 +745,11 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         nameLabel.text = circle.name
         descriptionLabel.text = circle.description ?? "No description provided"
         
-        // Privacy settings
-        switch circle.privacy {
-        case .public:
-            privacyImageView.image = UIImage(systemName: "globe")
-            privacyLabel.text = "Public"
-        case .myNetwork:
-            privacyImageView.image = UIImage(systemName: "person.2")
-            privacyLabel.text = "My Network"
-        case .private:
-            privacyImageView.image = UIImage(systemName: "lock")
-            privacyLabel.text = "Private"
-        }
+        // Privacy settings. One source for the icon and the label, so this
+        // screen can't drift from the picker that set the value.
+        let privacyTier = circle.privacy.tier ?? .private
+        privacyImageView.image = UIImage(systemName: privacyTier.systemIconName)
+        privacyLabel.text = privacyTier.title
         
         // Show shared circle info if applicable
         if !circle.isOwner {

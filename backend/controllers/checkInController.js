@@ -14,6 +14,7 @@ const {
 const { createActivity } = require('./activityController');
 const notificationService = require('../services/notificationService');
 const { isCheckInVisibleTo } = require('../services/checkInVisibility');
+const { getInnerCircleGrantorIds } = require('../utils/networkAccess');
 const sseService = require('../services/sseService');
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
@@ -648,7 +649,12 @@ exports.createCheckIn = async (req, res) => {
           placeId: finalPlaceId, // Use the guaranteed place ID
           latitude: checkIn.location ? checkIn.location.latitude : null,
           longitude: checkIn.location ? checkIn.location.longitude : null,
-          placeCategory: checkIn.placeCategory || 'other'
+          placeCategory: checkIn.placeCategory || 'other',
+          // Stamped so the feed can gate the row the same way it gates
+          // moments. A check-in activity carries no circle to hang privacy
+          // on, so without this an Inner Circle check-in posted to the feed
+          // would reach every connection.
+          checkInAudience: checkIn.audience || null
         }
       );
     }
@@ -694,7 +700,7 @@ exports.getActiveCheckIns = async (req, res) => {
     // Filter check-ins based on visibility (owner / notified / group /
     // connection-with-feed; private check-ins are owner-only)
     const visibleCheckIns = [];
-    const ctx = { connectionIds, isInAnyGroup: isUserInAnyGroup };
+    const ctx = { connectionIds, innerCircleGrantors: await getInnerCircleGrantorIds(userId), isInAnyGroup: isUserInAnyGroup };
     for (const doc of checkInsQuery.docs) {
       if (await isCheckInVisibleTo(doc.data(), userId, ctx)) {
         visibleCheckIns.push(serializeDoc(doc));
@@ -909,7 +915,7 @@ exports.getCheckInsAtPlace = async (req, res) => {
     // Same visibility rule as the active feed — this used to return every
     // check-in at the place to any signed-in user
     const connectionIds = await acceptedConnectionIds(userId);
-    const ctx = { connectionIds, isInAnyGroup: isUserInAnyGroup };
+    const ctx = { connectionIds, innerCircleGrantors: await getInnerCircleGrantorIds(userId), isInAnyGroup: isUserInAnyGroup };
     const checkIns = [];
     for (const doc of checkInsQuery.docs) {
       if (await isCheckInVisibleTo(doc.data(), userId, ctx)) checkIns.push(serializeDoc(doc));

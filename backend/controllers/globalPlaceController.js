@@ -25,6 +25,8 @@ const { serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreMod
 const db = getFirestore();
 
 const { resolveGlobalPlace, createGlobalPlaceFromLegacy } = require('../services/globalPlaceResolver');
+const { normalizePrivacy, PRIVACY } = require('../services/visibility');
+const { isSameUser } = require('../services/idService');
 
 
 // Mirror an uploaded media URL into the legacy places docs so legacy readers
@@ -259,10 +261,15 @@ exports.getGlobalPlace = async (req, res, next) => {
         .where('globalPlaceId', '==', placeDoc.id)
         .get();
       const viewerId = req.user?.uid || req.user?.id || null;
-      // Conservative visibility: own saves always; others only when public
-      // (myNetwork would need a connection check — not worth it here)
+      // Conservative visibility: own saves always; everyone else's only when
+      // the save is explicitly Public. This endpoint never loads the owning
+      // circle, so it cannot honour a tier that depends on one — and a place
+      // with no privacy field means "inherit the circle", which is exactly the
+      // case we can't evaluate. Attribution is best-effort; guessing here would
+      // name a saver on a venue page they never made public.
       const visible = savesSnap.docs.map(serializeDoc).filter(p =>
-        !p.deletedAt && (p.addedBy === viewerId || p.privacy === 'public' || !p.privacy)
+        !p.deletedAt
+        && (isSameUser(p.addedBy, viewerId) || normalizePrivacy(p.privacy) === PRIVACY.PUBLIC)
       );
       if (visible.length > 0) {
         visible.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));

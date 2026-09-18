@@ -6,6 +6,9 @@ const cacheInvalidationService = require('../services/cacheInvalidationService')
 const { fetchActivitiesByActors } = require('../services/activityFeedService');
 const { queryInChunks } = require('../utils/firestoreChunks');
 const { sortCirclesByUserOrder } = require('../utils/circleOrder');
+const { canViewCircle } = require('../services/visibility');
+const { makeViewerContext } = require('../services/viewerContext');
+const { getInnerCircleGrantorIds } = require('../utils/networkAccess');
 const db = getFirestore();
 
 // Helper function to calculate map center from places
@@ -38,25 +41,6 @@ const calculateMapBounds = (places) => {
   };
 };
 
-// Helper function to check if a user can see a circle based on privacy settings
-const canUserSeeCircle = (userId, circle, connectedUserIds) => {
-  if (!circle) return false;
-  
-  // Owner can always see their own circle
-  if (circle.owner === userId) return true;
-  
-  // Check privacy level
-  switch (circle.privacy) {
-    case 'public':
-      return true;
-    case 'myNetwork':
-      return connectedUserIds.has(circle.owner);
-    case 'private':
-      return (circle.sharedWith || []).includes(userId);
-    default:
-      return false;
-  }
-};
 
 // @desc    Get all dashboard data in one request (Enhanced for home screen optimization)
 // @route   GET /api/home/dashboard
@@ -97,17 +81,23 @@ exports.getDashboard = async (req, res, next) => {
       db.collection(COLLECTIONS.USERS).doc(userId).get()
     ]);
     
-    // Build connected users set
+    // connectedUserIds is the union used to FETCH candidate circles. Keep the
+    // true connection set apart from it: a followed user is not a connection,
+    // and letting the two blur is what made myNetwork circles visible to mere
+    // followers here (the same bug the activity feed had).
     const connectedUserIds = new Set();
-    
+    const connectionSet = new Set();
+
     connections1.docs.forEach(doc => {
       connectedUserIds.add(doc.data().connectedUserId);
+      connectionSet.add(doc.data().connectedUserId);
     });
-    
+
     connections2.docs.forEach(doc => {
       connectedUserIds.add(doc.data().userId);
+      connectionSet.add(doc.data().userId);
     });
-    
+
     // Add followed users
     let followedUserIds = [];
     if (currentUserDoc.exists) {
@@ -115,6 +105,13 @@ exports.getDashboard = async (req, res, next) => {
       followedUserIds = userData.following || [];
       followedUserIds.forEach(id => connectedUserIds.add(id));
     }
+
+    const viewerCtx = makeViewerContext({
+      viewerId: userId,
+      connections: connectionSet,
+      following: followedUserIds,
+      innerCircleGrantors: await getInnerCircleGrantorIds(userId)
+    });
     
     // Get network circles if there are connections (chunked — 'in' caps at 30
     // values and broke past 30 connections/follows)
@@ -123,7 +120,7 @@ exports.getDashboard = async (req, res, next) => {
       networkCircleDocs = await queryInChunks(connectedUserIds, chunk =>
         db.collection(COLLECTIONS.CIRCLES)
           .where('owner', 'in', chunk)
-          .where('privacy', 'in', ['public', 'myNetwork'])
+          .where('privacy', 'in', ['public', 'myNetwork', 'innerCircle'])
           .get()
       );
     }
@@ -241,7 +238,7 @@ exports.getDashboard = async (req, res, next) => {
       const circle = circlesMap.get(circleId);
       if (!circle) return false;
       
-      return canUserSeeCircle(userId, circle, connectedUserIds);
+      return canViewCircle(circle, userId, viewerCtx);
     }).slice(0, parseInt(activityLimit)); // Take only requested amount after filtering
     
     // Enrich activities with actor details and convert timestamps

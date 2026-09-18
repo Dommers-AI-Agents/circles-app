@@ -34,6 +34,12 @@ const {
   reorderPinnedPlaces
 } = require('../controllers/users/pinnedPlacesController');
 const {
+  getMyInnerCircle,
+  replaceMyInnerCircle,
+  addMyInnerCircleMember,
+  removeMyInnerCircleMember
+} = require('../controllers/users/innerCircleController');
+const {
   getTutorialStatus,
   completeTutorial,
   recordAppOpen,
@@ -133,6 +139,16 @@ router.route('/me/pinned-places/reorder')
 
 router.route('/me/pinned-places/:placeId')
   .delete(removePinnedPlace);
+
+// Inner Circle: the reusable list behind the innerCircle privacy tier.
+// Sits above the /:id routes for the same reason pinned-places does.
+router.route('/me/inner-circle')
+  .get(getMyInnerCircle)
+  .put(replaceMyInnerCircle);
+
+router.route('/me/inner-circle/:userId')
+  .post(addMyInnerCircleMember)
+  .delete(removeMyInnerCircleMember);
 
 // Tutorial routes
 router.route('/me/tutorial-status')

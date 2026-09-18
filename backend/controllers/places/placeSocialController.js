@@ -14,6 +14,10 @@ const { trackPlaceView, trackPlaceLiked } = require('../../services/activityServ
 const rewardService = require('../../services/rewardService');
 const piggyBankService = require('../../services/piggyBankService');
 const { getGlobalSocial } = require('../../services/placeReadService');
+const { canViewCircleFor } = require('../../services/circleAccess');
+const { canViewCircle } = require('../../services/visibility');
+const { makeViewerContext } = require('../../services/viewerContext');
+const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
 const db = getFirestore();
 
 // @desc    Like a place
@@ -42,29 +46,7 @@ exports.likePlace = async (req, res, next) => {
     const circleDoc = await circleRef.get();
     const circle = serializeDoc(circleDoc);
     
-    const isOwner = circle.owner === userId;
-    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
-    const isPublic = circle.privacy === 'public';
-    
-    // Check if users are connected for myNetwork privacy
-    let isConnected = false;
-    if (circle.privacy === 'myNetwork' && !isOwner) {
-      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('connectedUserId', '==', circle.owner)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', circle.owner)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      isConnected = !connection1.empty || !connection2.empty;
-    }
-    
-    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+    if (!(await canViewCircleFor(circle, userId))) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to like this place'
@@ -176,29 +158,7 @@ exports.getPlaceLikes = async (req, res, next) => {
     const circleDoc = await circleRef.get();
     const circle = serializeDoc(circleDoc);
     
-    const isOwner = circle.owner === userId;
-    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
-    const isPublic = circle.privacy === 'public';
-    
-    // Check if users are connected for myNetwork privacy
-    let isConnected = false;
-    if (circle.privacy === 'myNetwork' && !isOwner) {
-      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('connectedUserId', '==', circle.owner)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', circle.owner)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      isConnected = !connection1.empty || !connection2.empty;
-    }
-    
-    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+    if (!(await canViewCircleFor(circle, userId))) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to view likes for this place'
@@ -352,14 +312,13 @@ exports.getPlaceSavers = async (req, res, next) => {
 
     // A saver is visible if at least one circle holding their save is visible
     // to the requester
-    const isCircleVisible = (circle, saverId) => {
-      if (!circle) return false;
-      if (saverId === userId || circle.owner === userId) return true;
-      if (circle.privacy === 'public') return true;
-      if (circle.sharedWith && circle.sharedWith.includes(userId)) return true;
-      if (circle.privacy === 'myNetwork' && connectedIds.has(normalizeUserId(circle.owner))) return true;
-      return false;
-    };
+    const saverViewerCtx = makeViewerContext({
+      viewerId: userId,
+      connections: connectedIds,
+      innerCircleGrantors: await getInnerCircleGrantorIds(userId)
+    });
+    const isCircleVisible = (circle, saverId) =>
+      isSameUser(saverId, userId) || canViewCircle(circle, userId, saverViewerCtx);
 
     const visibleSaverIds = [...circleIdsBySaver.entries()]
       .filter(([saverId, ids]) =>
@@ -445,28 +404,7 @@ exports.getPlaceComments = async (req, res, next) => {
       const circleDoc = await circleRef.get();
       const circle = serializeDoc(circleDoc);
       
-      const isOwner = circle.owner === userId;
-      const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
-      const isPublic = circle.privacy === 'public';
-      
-      let isConnected = false;
-      if (circle.privacy === 'myNetwork' && !isOwner) {
-        const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', userId)
-          .where('connectedUserId', '==', circle.owner)
-          .where('status', '==', 'accepted')
-          .get();
-          
-        const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', circle.owner)
-          .where('connectedUserId', '==', userId)
-          .where('status', '==', 'accepted')
-          .get();
-          
-        isConnected = !connection1.empty || !connection2.empty;
-      }
-      
-      if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+      if (!(await canViewCircleFor(circle, userId))) {
         return res.status(403).json({
           success: false,
           message: 'Not authorized to view comments for this place'
@@ -583,28 +521,7 @@ exports.addPlaceComment = async (req, res, next) => {
     const circleDoc = await circleRef.get();
     const circle = serializeDoc(circleDoc);
     
-    const isOwner = circle.owner === userId;
-    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
-    const isPublic = circle.privacy === 'public';
-    
-    let isConnected = false;
-    if (circle.privacy === 'myNetwork' && !isOwner) {
-      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('connectedUserId', '==', circle.owner)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', circle.owner)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      isConnected = !connection1.empty || !connection2.empty;
-    }
-    
-    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+    if (!(await canViewCircleFor(circle, userId))) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to comment on this place'
@@ -782,28 +699,7 @@ exports.likeComment = async (req, res, next) => {
     const circleDoc = await circleRef.get();
     const circle = serializeDoc(circleDoc);
     
-    const isOwner = circle.owner === userId;
-    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
-    const isPublic = circle.privacy === 'public';
-    
-    let isConnected = false;
-    if (circle.privacy === 'myNetwork' && !isOwner) {
-      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('connectedUserId', '==', circle.owner)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', circle.owner)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      isConnected = !connection1.empty || !connection2.empty;
-    }
-    
-    if (!isOwner && !isSharedWith && !isPublic && !isConnected) {
+    if (!(await canViewCircleFor(circle, userId))) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to like comments on this place'
@@ -970,29 +866,7 @@ exports.addPlaceCommentReply = async (req, res, next) => {
     const circle = serializeDoc(circleDoc);
     
     // Check permissions
-    const isOwner = circle.owner === userId;
-    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
-    const isPublic = circle.privacy === 'public';
-    
-    // Check if users are connected for myNetwork privacy
-    let isConnected = false;
-    if (circle.privacy === 'myNetwork' && !isOwner) {
-      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('connectedUserId', '==', circle.owner)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', circle.owner)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      isConnected = !connection1.empty || !connection2.empty;
-    }
-    
-    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+    if (!(await canViewCircleFor(circle, userId))) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to reply to comments on this place'
@@ -1118,29 +992,7 @@ exports.getPlaceCommentReplies = async (req, res, next) => {
     const circle = serializeDoc(circleDoc);
     
     // Check permissions
-    const isOwner = circle.owner === userId;
-    const isSharedWith = circle.sharedWith && circle.sharedWith.includes(userId);
-    const isPublic = circle.privacy === 'public';
-    
-    // Check if users are connected for myNetwork privacy
-    let isConnected = false;
-    if (circle.privacy === 'myNetwork' && !isOwner) {
-      const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('connectedUserId', '==', circle.owner)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', circle.owner)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get();
-        
-      isConnected = !connection1.empty || !connection2.empty;
-    }
-    
-    if (!isOwner && !isSharedWith && !isPublic && !(circle.privacy === 'myNetwork' && isConnected)) {
+    if (!(await canViewCircleFor(circle, userId))) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to view replies on this place'

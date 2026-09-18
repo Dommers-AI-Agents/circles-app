@@ -74,12 +74,14 @@ class SettingsViewController: BaseTableViewController {
     
     private enum PrivacyRow: Int, CaseIterable {
         case profileVisibility
-        case circleSharing
+        // Replaced the old "Circle Sharing" stub, which only offered a
+        // Public/Private default and never did anything.
+        case innerCircle
         
         var title: String {
             switch self {
             case .profileVisibility: return "Profile Visibility"
-            case .circleSharing: return "Circle Sharing"
+            case .innerCircle: return "Inner Circle"
             }
         }
     }
@@ -250,19 +252,6 @@ class SettingsViewController: BaseTableViewController {
                 (title: "Everyone", style: .default, handler: { /* Handle selection */ }),
                 (title: "Connections Only", style: .default, handler: { /* Handle selection */ }),
                 (title: "No One", style: .default, handler: { /* Handle selection */ })
-            ],
-            from: self,
-            sourceView: view
-        )
-    }
-    
-    private func showCircleSharing() {
-        AlertPresenter.showActionSheet(
-            title: "Circle Sharing",
-            message: "Default sharing settings for new circles",
-            actions: [
-                (title: "Public", style: .default, handler: { /* Handle selection */ }),
-                (title: "Private", style: .default, handler: { /* Handle selection */ })
             ],
             from: self,
             sourceView: view
@@ -704,6 +693,10 @@ extension SettingsViewController {
             if let row = PrivacyRow(rawValue: indexPath.row) {
                 cell.textLabel?.text = row.title
                 cell.accessoryType = .disclosureIndicator
+                if row == .innerCircle {
+                    let count = InnerCircleManager.shared.memberCount
+                    cell.detailTextLabel?.text = count == 0 ? "No one yet" : "\(count)"
+                }
             }
             
         case .notifications:
@@ -842,8 +835,8 @@ extension SettingsViewController {
                 switch row {
                 case .profileVisibility:
                     showProfileVisibility()
-                case .circleSharing:
-                    showCircleSharing()
+                case .innerCircle:
+                    navigationController?.pushViewController(InnerCircleListViewController(), animated: true)
                 }
             }
             

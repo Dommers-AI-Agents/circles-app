@@ -5,6 +5,7 @@ const { getFirestore } = require('../../config/firebase');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../../models/FirestoreModels');
 const { normalizeUserId, isSameUser } = require('../../services/idService');
 const { buildConnectionMap } = require('../../services/connectionMap');
+const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
 
 const db = getFirestore();
 
@@ -645,8 +646,14 @@ exports.getUserPublicCircles = async (req, res, next) => {
     if (!isConnected && currentUserId !== targetUserId) {
       circlesQuery = circlesQuery.where('privacy', '==', 'public');
     } else if (isConnected) {
-      // If connected, show public and myNetwork circles
-      circlesQuery = circlesQuery.where('privacy', 'in', ['public', 'myNetwork']);
+      // If connected, show public and myNetwork circles — plus innerCircle
+      // ones, but only if this person put the viewer on their list.
+      const tiers = ['public', 'myNetwork'];
+      const grantors = await getInnerCircleGrantorIds(currentUserId);
+      if (grantors.has(normalizeUserId(targetUserId)) || grantors.has(String(targetUserId))) {
+        tiers.push('innerCircle');
+      }
+      circlesQuery = circlesQuery.where('privacy', 'in', tiers);
     }
     // If viewing own circles, show all
     

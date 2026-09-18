@@ -119,6 +119,15 @@ final class CheckInComposeViewController: BaseViewController {
         return toggle
     }()
 
+    /// Narrows the check-in to the Inner Circle list. The server treats the
+    /// tier as a ceiling, so this holds even with "Show in activity feed" on —
+    /// the feed switch decides where it appears, not who may see it.
+    private lazy var innerCircleSwitch: UISwitch = {
+        let toggle = UISwitch()
+        toggle.onTintColor = Constants.Colors.primary
+        return toggle
+    }()
+
     private lazy var checkInButton: UIButton = {
         // Same icon as every check-in surface (UIImage.checkInIcon), next to the words
         let button = UIButton.primaryButton(title: "  Check In")
@@ -167,6 +176,11 @@ final class CheckInComposeViewController: BaseViewController {
         contentStack.addArrangedSubview(notifyButton)
         contentStack.addArrangedSubview(section("How long? (optional)", durationControl))
         contentStack.addArrangedSubview(switchRow("Show in activity feed", feedSwitch))
+        // Only worth offering once there is a list; with nobody on it the tier
+        // is indistinguishable from the private button below.
+        if InnerCircleManager.shared.memberCount > 0 {
+            contentStack.addArrangedSubview(switchRow("Inner Circle only", innerCircleSwitch))
+        }
         contentStack.setCustomSpacing(8, after: noteTextView)
 
         NSLayoutConstraint.activate([
@@ -263,6 +277,9 @@ final class CheckInComposeViewController: BaseViewController {
             // A note on a public check-in is also a comment on the place
             "postComment": isPrivate ? false : postOnPlaceSwitch.isOn
         ]
+        if !isPrivate && innerCircleSwitch.isOn {
+            data["audience"] = "innerCircle"
+        }
         if let rating = ratingPills.selectedRating { data["rating"] = rating }
         // Duration is optional: nothing picked = the server's two-hour default
         let durations = ["30", "60", "120", "until_leave"]

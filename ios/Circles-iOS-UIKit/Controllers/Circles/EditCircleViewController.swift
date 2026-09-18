@@ -124,12 +124,15 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         return label
     }()
     
-    private let privacySegmentedControl: UISegmentedControl = {
-        let privacyLevels = ["Public", "My Network", "Private"]
-        let segmentedControl = UISegmentedControl(items: privacyLevels)
-        segmentedControl.selectedSegmentIndex = 0
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        return segmentedControl
+    // A segmented control has nowhere to put the one line that explains each
+    // tier, which is how "My Network" ended up meaning something different from
+    // the "Friends" option on the place screen. See PrivacyPickerButton.
+    private lazy var privacyPicker: PrivacyPickerButton = {
+        let picker = PrivacyPickerButton(entity: .circle, selected: .tier(.public))
+        picker.onEditInnerCircle = { [weak self] in
+            self?.navigationController?.pushViewController(InnerCircleListViewController(), animated: true)
+        }
+        return picker
     }()
     
     private let showOnMapLabel: UILabel = {
@@ -274,7 +277,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         return nameTextField.text != circle.name ||
                descriptionTextView.text != (circle.description ?? "") ||
                getCurrentCategory() != circle.category ||
-               getCurrentPrivacy() != circle.privacy ||
+               (getCurrentPrivacy().map { $0 != circle.privacy } ?? false) ||
                showOnMapSwitch.isOn != (circle.showOnMap ?? true) ||
                locationTextField.text != (circle.location ?? "") ||
                getCurrentTags() != (circle.tags ?? []) ||
@@ -332,7 +335,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         contentView.addSubview(categoryLabel)
         contentView.addSubview(categoryButton)
         contentView.addSubview(privacyLabel)
-        contentView.addSubview(privacySegmentedControl)
+        contentView.addSubview(privacyPicker)
         contentView.addSubview(showOnMapLabel)
         contentView.addSubview(showOnMapSwitch)
         contentView.addSubview(locationLabel)
@@ -414,12 +417,12 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
             privacyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Privacy segmented control
-            privacySegmentedControl.topAnchor.constraint(equalTo: privacyLabel.bottomAnchor, constant: Constants.Spacing.small),
-            privacySegmentedControl.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            privacySegmentedControl.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            privacyPicker.topAnchor.constraint(equalTo: privacyLabel.bottomAnchor, constant: Constants.Spacing.small),
+            privacyPicker.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            privacyPicker.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
 
             // Show on home map row
-            showOnMapLabel.topAnchor.constraint(equalTo: privacySegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
+            showOnMapLabel.topAnchor.constraint(equalTo: privacyPicker.bottomAnchor, constant: Constants.Spacing.medium),
             showOnMapLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             showOnMapSwitch.centerYAnchor.constraint(equalTo: showOnMapLabel.centerYAnchor),
             showOnMapSwitch.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
@@ -508,11 +511,9 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
             selectedCategoryType = circle.category
         }
         
-        // Set privacy
-        let privacyLevels = [PrivacyLevel.public, .myNetwork, .private]
-        if let privacyIndex = privacyLevels.firstIndex(of: circle.privacy) {
-            privacySegmentedControl.selectedSegmentIndex = privacyIndex
-        }
+        // Set privacy. A tier this build doesn't recognise disables the picker
+        // rather than showing a narrower one we'd then save back over it.
+        privacyPicker.select(circle.privacy.tier.map(PrivacyOption.tier))
 
         // Set map visibility (missing = shown)
         showOnMapSwitch.isOn = circle.showOnMap ?? true
@@ -567,9 +568,11 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         return selectedCategoryType
     }
     
-    private func getCurrentPrivacy() -> PrivacyLevel {
-        let privacyLevels = [PrivacyLevel.public, .myNetwork, .private]
-        return privacyLevels[privacySegmentedControl.selectedSegmentIndex]
+    /// nil when the stored tier is one this build doesn't understand — the
+    /// save then leaves `privacy` out rather than writing a stale default over
+    /// it. CircleService.updateCircle takes it as an optional for exactly this.
+    private func getCurrentPrivacy() -> PrivacyLevel? {
+        privacyPicker.selectedCirclePrivacy
     }
     
     private func getCurrentTags() -> [String] {
@@ -643,10 +646,13 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
             // Create updated body with default image URL
             var body: [String: Any] = [
                 "name": name,
-                "privacy": privacy.rawValue,
                 "category": category.rawValue,
                 "showOnMap": showOnMapSwitch.isOn
             ]
+            // Omitted entirely when the picker is locked on a tier this build
+            // doesn't understand, so the rest of the edit still saves without
+            // demoting the setting.
+            if let privacy = privacy { body["privacy"] = privacy.rawValue }
             
             // Add custom category ID if selected
             if let customCategoryId = selectedCategory?.customCategoryId {

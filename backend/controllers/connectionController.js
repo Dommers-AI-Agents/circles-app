@@ -16,6 +16,7 @@ const scoringService = require('../services/scoringService');
 const { normalizeUserId, isSameUser } = require('../services/idService');
 const { decorateUserCards } = require('../services/userCardEnrichment');
 const { getPlaceCountMap } = require('../services/userStatsCache');
+const { revokeMutualGrants } = require('../services/innerCircleService');
 
 const db = getFirestore();
 
@@ -1051,6 +1052,12 @@ const removeConnection = async (req, res) => {
       batch.delete(connectionDoc.ref);
       
       await batch.commit();
+
+      // Only connections may sit on an Inner Circle list, so tidy both lists.
+      // The read gate already intersects grantors with the viewer's current
+      // connections, so access is gone either way — this keeps the owner's
+      // list screen honest rather than showing someone who no longer counts.
+      await revokeMutualGrants(connection.userId, connection.connectedUserId);
       console.log('✅ Connection removed and user arrays updated');
     } catch (updateError) {
       console.error('❌ Error updating arrays during connection removal:', updateError);
