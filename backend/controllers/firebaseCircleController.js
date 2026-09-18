@@ -16,6 +16,7 @@ const { normalizeUserId } = require('../services/idService');
 const { sortCirclesByUserOrder } = require('../utils/circleOrder');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
 const { attachOwnerDetails } = require('../services/ownerResolver');
+const { CIRCLE_PRIVACY_LEVELS, resolveIncomingPrivacy } = require('../services/visibility');
 
 const db = getFirestore();
 
@@ -555,14 +556,21 @@ exports.updateCircle = async (req, res, next) => {
     }
     
     if (req.body.privacy !== undefined) {
-      const validPrivacyLevels = ['public', 'myNetwork', 'private'];
+      const validPrivacyLevels = CIRCLE_PRIVACY_LEVELS;
       if (!validPrivacyLevels.includes(req.body.privacy)) {
         return res.status(400).json({
           success: false,
-          message: 'Privacy must be public, myNetwork, or private'
+          message: `Privacy must be one of: ${validPrivacyLevels.join(', ')}`
         });
       }
-      updateData.privacy = req.body.privacy;
+      // An old build was shown 'private' in place of 'innerCircle' and is now
+      // echoing it back; keep what is stored rather than silently collapsing
+      // the tier. See resolveIncomingPrivacy.
+      updateData.privacy = resolveIncomingPrivacy({
+        incoming: req.body.privacy,
+        stored: circle.privacy,
+        req
+      });
     }
     
     if (req.body.category !== undefined) {

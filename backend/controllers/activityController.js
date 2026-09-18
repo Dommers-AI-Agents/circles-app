@@ -2,30 +2,11 @@
 const { admin, getFirestore } = require('../config/firebase');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
+const { canViewCircle, canViewMoment } = require('../services/visibility');
+const { makeViewerContext } = require('../services/viewerContext');
+const { getInnerCircleGrantorIds } = require('../utils/networkAccess');
 const db = getFirestore();
 
-// Helper function to check if a user can see a circle based on privacy settings
-const canUserSeeCircle = async (userId, circle, connectedUserIds) => {
-  if (!circle) return false;
-  
-  // Owner can always see their own circle
-  if (circle.owner === userId) return true;
-  
-  // Check privacy level
-  switch (circle.privacy) {
-    case 'public':
-      return true; // Public circles visible to all
-    case 'myNetwork':
-      // Network circles visible to connections only
-      return connectedUserIds.has(circle.owner);
-    case 'private':
-      // Private circles only visible if explicitly shared
-      const sharedWith = circle.sharedWith || [];
-      return sharedWith.includes(userId);
-    default:
-      return false;
-  }
-};
 
 // @desc    Get network activities for the current user
 // @route   GET /api/network/activities
@@ -38,7 +19,7 @@ exports.getNetworkActivities = async (req, res, next) => {
     // Fetching network activities for user
     
     // Get user's connections AND followed users
-    const [connections1, connections2, currentUserDoc] = await Promise.all([
+    const [connections1, connections2, currentUserDoc, innerCircleGrantors] = await Promise.all([
       db.collection(COLLECTIONS.CONNECTIONS)
         .where('userId', '==', userId)
         .where('status', '==', 'accepted')
@@ -47,7 +28,9 @@ exports.getNetworkActivities = async (req, res, next) => {
         .where('connectedUserId', '==', userId)
         .where('status', '==', 'accepted')
         .get(),
-      db.collection(COLLECTIONS.USERS).doc(userId).get()
+      db.collection(COLLECTIONS.USERS).doc(userId).get(),
+      // Whose Inner Circle list this viewer is on — one array-contains query.
+      getInnerCircleGrantorIds(userId)
     ]);
     
     // Extract connected user IDs. Keep connections and follows in SEPARATE sets
@@ -91,8 +74,17 @@ exports.getNetworkActivities = async (req, res, next) => {
         connectedUserIds.delete(blockedId);
         connectionSet.delete(blockedId);
         followingSet.delete(blockedId);
+        innerCircleGrantors.delete(blockedId);
       }
     }
+
+    // One bundle of relationships, handed to every gate below.
+    const viewerCtx = makeViewerContext({
+      viewerId: userId,
+      connections: connectionSet,
+      following: followingSet,
+      innerCircleGrantors
+    });
 
     // Add the current user to see their own activities too
     connectedUserIds.add(userId);
@@ -352,10 +344,7 @@ exports.getNetworkActivities = async (req, res, next) => {
           const vis = activity.metadata && activity.metadata.momentVisibility;
           const ownerId = activity.metadata && activity.metadata.momentOwnerId;
           if (vis && ownerId && ownerId !== userId) {
-            if (vis === 'public') return true;
-            if (vis === 'followers') return followingSet.has(ownerId);
-            if (vis === 'network') return connectionSet.has(ownerId);
-            return false; // private/unknown → owner only
+            return canViewMoment({ userId: ownerId, visibility: vis }, userId, viewerCtx);
           }
           return true;
         }
@@ -373,8 +362,7 @@ exports.getNetworkActivities = async (req, res, next) => {
         const circle = circlesMap.get(circleId);
         if (!circle) return false; // Exclude if circle not found
         
-        // Check privacy using helper function (synchronous now)
-        return canUserSeeCircle(userId, circle, connectedUserIds);
+        return canViewCircle(circle, userId, viewerCtx);
       } catch (error) {
         console.error('Error checking activity privacy:', error);
         return false;

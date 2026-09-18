@@ -3,6 +3,7 @@
 
 const { getFirestore } = require('../config/firebase');
 const geofire = require('geofire-common');
+const { CIRCLE_PRIVACY_LEVELS, MOMENT_PRIVACY_LEVELS } = require('../services/visibility');
 
 // Collection names
 const COLLECTIONS = {
@@ -65,6 +66,9 @@ const createUser = (userData) => {
     location: userData.location || null,
     zipcode: userData.zipcode || null,
     friends: userData.friends || [],
+    // The people this user has given Inner Circle access to. Connections only;
+    // see services/innerCircleService.js.
+    innerCircle: userData.innerCircle || [],
     friendRequests: userData.friendRequests || [],
     linkedProviders: userData.linkedProviders || {},
     circleOrder: userData.circleOrder || [],
@@ -283,7 +287,7 @@ const createPlace = (placeData, circleId, addedBy) => {
     likesCount: placeData.likesCount || 0,
     circleId: circleId,
     addedBy: addedBy,
-    privacy: placeData.privacy || 'followCircle', // followCircle, public, myNetwork, private
+    privacy: placeData.privacy || 'followCircle', // followCircle, public, myNetwork, innerCircle, private
     addedViaCheckIn: placeData.addedViaCheckIn || false, // Track places created from check-ins
     importSource: placeData.importSource || null, // 'mapstr', 'google_maps', 'swarm' when imported from another platform
     sourceExternalId: placeData.sourceExternalId || null, // Stable per-source id (fsq:<venueId>, cid:<hexCid>, pin:<lat>,<lng>, mapstr:<hash>) for re-import idempotency
@@ -389,9 +393,9 @@ const validateCircle = (circleData) => {
     errors.push('Description must be 500 characters or less');
   }
   
-  const validPrivacyLevels = ['public', 'myNetwork', 'private'];
+  const validPrivacyLevels = CIRCLE_PRIVACY_LEVELS;
   if (circleData.privacy && !validPrivacyLevels.includes(circleData.privacy)) {
-    errors.push('Privacy must be public, myNetwork, or private');
+    errors.push(`Privacy must be one of: ${validPrivacyLevels.join(', ')}`);
   }
   
   const validCategories = ['travel', 'food', 'services', 'shopping', 'healthcare', 'entertainment', 'other'];
@@ -508,7 +512,7 @@ const validatePlaceVideo = (videoData) => {
     errors.push('Description must be 500 characters or less');
   }
   
-  const validVisibility = ['public', 'followers', 'network', 'private'];
+  const validVisibility = MOMENT_PRIVACY_LEVELS;
   if (videoData.visibility && !validVisibility.includes(videoData.visibility)) {
     errors.push('Invalid visibility setting');
   }

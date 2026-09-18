@@ -19,6 +19,9 @@ const subscriptionLimitService = require('../../services/subscriptionLimitServic
 const rewardService = require('../../services/rewardService');
 const piggyBankService = require('../../services/piggyBankService');
 const { normalizePhotosArray, overlayVenuePhotos, VENUE_GOOGLE_FIELDS, overlayVenueFields, getGlobalSocial, fetchGlobalSocialMap, buildAddedByUserMap, isPlaceVisibleToViewer } = require('../../services/placeReadService');
+const { resolveIncomingPrivacy } = require('../../services/visibility');
+const { buildViewerContext, makeViewerContext } = require('../../services/viewerContext');
+const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
 const { getMyCheckInStats } = require('../../services/checkInStatsService');
 const homePromptService = require('../../services/homePromptService');
 const db = getFirestore();
@@ -208,9 +211,10 @@ exports.getPlacesByCircleId = async (req, res, next) => {
     // Filter out soft-deleted places, and places marked Private that the
     // viewer doesn't own (private is owner-only even in a visible circle)
     const allPlaces = serializeQuerySnapshot(placesSnapshot);
+    const viewerCtx = await buildViewerContext(req.user.uid);
     const places = allPlaces.filter(place =>
       (place.deletedAt === null || place.deletedAt === undefined) &&
-      isPlaceVisibleToViewer(place, req.user.uid)
+      isPlaceVisibleToViewer(place, req.user.uid, viewerCtx)
     );
 
     // Get unique user IDs who added places
@@ -752,8 +756,9 @@ exports.getPlace = async (req, res, next) => {
       console.log(`✅ Allowing access to floating place: ${place.name} (check-in place)`);
     }
 
-    // A place marked Private is owner-only, even inside a visible circle
-    if (!isPlaceVisibleToViewer(place, req.user.uid)) {
+    // A place's own privacy narrows the circle's: Private is owner-only and
+    // Inner Circle reaches only the owner's list, even inside a visible circle.
+    if (!isPlaceVisibleToViewer(place, req.user.uid, await buildViewerContext(req.user.uid))) {
       return res.status(403).json({
         success: false,
         message: 'This place is private'
@@ -1475,6 +1480,18 @@ exports.updatePlace = async (req, res, next) => {
     // hint (which check-in prompted a re-rate), never a doc field.
     const { circleId, addedBy, ratingCheckInId, ratingHistory: _clientHistory, userRatedAt: _clientRatedAt, ...updateData } = req.body;
     updateData.updatedAt = new Date().toISOString();
+
+    // An 'innerCircle' place reaches builds that predate the tier as 'private'
+    // (see middleware/responseNormalizer). When such a build saves the form it
+    // echoes that 'private' straight back; keep the stored tier instead of
+    // silently collapsing it.
+    if ('privacy' in updateData) {
+      updateData.privacy = resolveIncomingPrivacy({
+        incoming: updateData.privacy,
+        stored: place.privacy,
+        req
+      });
+    }
 
     // Google-backed places: Google Places is the source of truth for venue
     // fields, so users can't edit them (they can flag bad data instead —
@@ -2534,6 +2551,14 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     connSnap1.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().connectedUserId)));
     connSnap2.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().userId)));
 
+    // The connection sets are already loaded above, so reuse them rather than
+    // paying for buildViewerContext's own connection reads.
+    const batchViewerCtx = makeViewerContext({
+      viewerId: currentUserId,
+      connections: connectedUserIds,
+      innerCircleGrantors: await getInnerCircleGrantorIds(currentUserId)
+    });
+
     // Place activities across ALL connections, keyed by place id — powers the
     // same isNew flag getPlacesByCircleId computes, from docs already in hand.
     // (Deliberately NOT paired with markCirclePlacesViewed: a bulk home load
@@ -2615,7 +2640,7 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
         // still belong to one of the requested, accessible circles.
         if (place.deletedAt !== null && place.deletedAt !== undefined) continue;
         if (!accessibleCircleIds.has(place.circleId)) continue;
-        if (!isPlaceVisibleToViewer(place, currentUserId)) continue;
+        if (!isPlaceVisibleToViewer(place, currentUserId, batchViewerCtx)) continue;
 
         // Filter privateNotes - only visible to the user who added the place
         const placeData = { ...place };

@@ -15,6 +15,7 @@ const bucket = getStorage().bucket();
 // denormalized {id, displayName, profilePicture} at write time. Never trusts
 // the client list — every id is re-checked against the connections collection.
 const notificationService = require('../../services/notificationService');
+const { MOMENT_PRIVACY_LEVELS, resolveIncomingPrivacy } = require('../../services/visibility');
 const MAX_MOMENT_TAGS = 10;
 
 // Helper function to verify video processing is complete
@@ -923,7 +924,7 @@ exports.updateVideo = async (req, res) => {
     }
     
     if (visibility !== undefined) {
-      const validVisibility = ['public', 'followers', 'network', 'private'];
+      const validVisibility = MOMENT_PRIVACY_LEVELS;
       if (!validVisibility.includes(visibility)) {
         return res.status(400).json({
           success: false,
@@ -940,7 +941,13 @@ exports.updateVideo = async (req, res) => {
         && visibility === 'network'
         && videoData.visibility === 'followers';
       if (!echoingDowngrade) {
-        updates.visibility = visibility;
+        // The same story one tier down: 'innerCircle' reaches old builds as
+        // 'private', so an echoed 'private' must not collapse the tier either.
+        updates.visibility = resolveIncomingPrivacy({
+          incoming: visibility,
+          stored: videoData.visibility,
+          req
+        });
       }
     }
     

@@ -9,6 +9,7 @@ const { createActivity } = require('../../controllers/activityController');
 const SSEService = require('../sseService');
 const notificationService = require('../notificationService');
 const { resolvePlacePhoto } = require('./core');
+const { circleAudience } = require('./audience');
 
 
 // Track when a user adds a new place
@@ -23,10 +24,13 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
     
     const circleData = circleDoc.data();
     const circlePrivacy = circleData.privacy || 'private';
-    const sharedWith = circleData.sharedWith || [];
-    
-    // Only create activity record for non-private circles
-    if (circlePrivacy !== 'private') {
+    const audience = await circleAudience(circleData, circleData.owner || addedByUserId);
+
+    // Skip the row entirely when nobody but the owner could ever see it. An
+    // innerCircle or shared-private circle DOES get a row — the read gate
+    // narrows it to the right people, so taking someone off the list retracts
+    // what they can see.
+    if (audience.emits) {
       // Create activity record in the activities collection. Thumbnail via
       // resolvePlacePhoto: a canonical-matched save (share extension, adopt)
       // carries no photos of its own — the venue's canonical record does.
@@ -74,20 +78,8 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
         ? connectionData.connectedUserId 
         : connectionData.userId;
       
-      // Check if this connection should see the activity based on circle privacy
-      let shouldShowActivity = false;
-      
-      if (circlePrivacy === 'public') {
-        // Public circles - all connections see the activity
-        shouldShowActivity = true;
-      } else if (circlePrivacy === 'myNetwork') {
-        // My Network circles - all connections see the activity
-        shouldShowActivity = true;
-      }
-      // Private circles NEVER generate activities, per user requirements
-      
-      // Only update connections who should see this activity
-      if (shouldShowActivity) {
+      // Only connections this circle's audience admits
+      if (audience.allows(otherUserId)) {
         const activity = {
           type: 'place',
           entityId: placeId,
@@ -121,14 +113,7 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
         ? connectionData.connectedUserId 
         : connectionData.userId;
       
-      // Check if this connection should see the activity based on circle privacy  
-      let shouldShowActivity = false;
-      if (circlePrivacy === 'public' || circlePrivacy === 'myNetwork') {
-        shouldShowActivity = true;
-      }
-      // Private circles NEVER generate SSE events, per user requirements
-      
-      if (shouldShowActivity) {
+      if (audience.allows(otherUserId)) {
         // Send place added event
         SSEService.sendEvent(otherUserId, {
           type: 'place_added',
