@@ -109,7 +109,32 @@ const revokeMutualGrants = async (userId, otherUserId) => {
   ]);
 };
 
+
+
+/**
+ * Validate a guest list (a circle's or a place's `sharedWith`) before storing.
+ *
+ * Same rule as the Inner Circle: you can only hand private access to someone
+ * you are connected with. Returns the cleaned list; throws InnerCircleError
+ * naming the problem so the API can pass it straight to the user.
+ */
+const validateGuestList = async (ownerId, requestedIds) => {
+  const wanted = [...new Set(asIdArray(requestedIds))].filter(id => id !== String(ownerId));
+  if (wanted.length === 0) return [];
+
+  const connected = await getConnectedUserIds(ownerId);
+  const strangers = wanted.filter(id => !connected.has(id));
+  if (strangers.length > 0) {
+    throw new InnerCircleError(
+      'You can only share with people you are connected with.',
+      'SHARED_WITH_NOT_CONNECTED'
+    );
+  }
+  return wanted;
+};
+
 module.exports = {
+  validateGuestList,
   MAX_INNER_CIRCLE,
   InnerCircleError,
   getInnerCircle,

@@ -1347,6 +1347,7 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
 
   registerImportTools(server, backend);
   registerStoreOwnerTools(server, backend);
+  registerPrivacyTools(server, backend);
 
   return server;
 }
@@ -2209,4 +2210,403 @@ function toRecommendation(
     recommendedById,
     recommendedByName,
   };
+}
+
+// ---- Privacy tools ----------------------------------------------------------
+// One place to see and change who can reach what. The app can only answer this
+// a screen at a time — open a circle, read its badge, open the next — which is
+// how a setting nobody meant to leave open stays that way. These tools answer
+// it for the whole account in one call, and change it in bulk.
+//
+// The model has three levers, and they compose:
+//   * the tier on a circle or a place (public / connections / inner circle / private)
+//   * the account-level Inner Circle list, which every item on that tier shares
+//   * a per-item guest list, which names people regardless of the tier
+
+/** Tier names as a person says them, mapped to what the API stores. */
+const PRIVACY_ALIASES: Record<string, string> = {
+  public: "public",
+  everyone: "public",
+  anyone: "public",
+  connections: "myNetwork",
+  mynetwork: "myNetwork",
+  network: "myNetwork",
+  friends: "myNetwork",
+  innercircle: "innerCircle",
+  "inner circle": "innerCircle",
+  inner: "innerCircle",
+  private: "private",
+  onlyme: "private",
+  "only me": "private",
+  followcircle: "followCircle",
+  "same as circle": "followCircle",
+  inherit: "followCircle",
+};
+
+function normalizeTier(input: string): string | null {
+  return PRIVACY_ALIASES[input.trim().toLowerCase()] ?? null;
+}
+
+/** How the tier reads in a sentence. */
+const TIER_LABEL: Record<string, string> = {
+  public: "Public — anyone, including your followers",
+  myNetwork: "Connections — people who accepted your request",
+  innerCircle: "Inner Circle — only the people on your list",
+  private: "Private — only you",
+  followCircle: "Same as its circle",
+};
+
+export function registerPrivacyTools(server: McpServer, backend: Backend): void {
+  const PERSON = z.object({ userId: z.string(), name: z.string() });
+
+  /** displayName for every accepted connection, so ids can be shown as people. */
+  async function nameLookup(): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    try {
+      for (const c of await backend.getConnections()) {
+        const u = c.connectedUser;
+        if (!u) continue;
+        const id = u._id || u.id;
+        if (id) map.set(String(id), u.displayName || u.firstName || "(unnamed)");
+      }
+    } catch {
+      /* names are a nicety; ids still work without them */
+    }
+    return map;
+  }
+
+  const people = (ids: string[] | undefined, names: Map<string, string>) =>
+    (ids || []).map((id) => ({ userId: id, name: names.get(id) || "(not a current connection)" }));
+
+  server.registerTool(
+    "get_privacy_overview",
+    {
+      title: "Review every privacy setting",
+      description:
+        "Audit who can see what across the whole account in one call: the Inner Circle list, every circle's tier and guest list, and every place whose own setting differs from its circle's. Use this before changing anything, and to answer questions like \"what can my connections see?\" or \"is anything still public?\".",
+      inputSchema: {
+        includePlaces: z
+          .boolean()
+          .optional()
+          .describe("Also list places whose own privacy overrides their circle's. Default true."),
+      },
+      outputSchema: {
+        innerCircle: z.object({ maxSize: z.number(), members: z.array(PERSON) }),
+        circles: z.array(
+          z.object({
+            circleId: z.string(),
+            name: z.string(),
+            privacy: z.string(),
+            meaning: z.string(),
+            placesCount: z.number().nullable(),
+            sharedWith: z.array(PERSON),
+          })
+        ),
+        placeOverrides: z.array(
+          z.object({
+            placeId: z.string(),
+            name: z.string(),
+            circleName: z.string().nullable(),
+            privacy: z.string(),
+            meaning: z.string(),
+            sharedWith: z.array(PERSON),
+          })
+        ),
+      },
+      annotations: { title: "Review every privacy setting", ...READ },
+      _meta: inv("Reviewing your privacy settings", "Reviewed your privacy settings"),
+    },
+    async ({ includePlaces = true }): Promise<ToolResult> => {
+      try {
+        const [circles, inner, names] = await Promise.all([
+          backend.listCircles(),
+          backend.getInnerCircle().catch(() => ({ maxSize: 150, userIds: [] as string[], users: [] as any[] })),
+          nameLookup(),
+        ]);
+
+        const circleRows = circles.map((c) => {
+          const tier = c.privacy || "myNetwork";
+          return {
+            circleId: docId(c),
+            name: c.name,
+            privacy: tier,
+            meaning: TIER_LABEL[tier] || tier,
+            placesCount: c.placesCount ?? null,
+            sharedWith: people(c.sharedWith, names),
+          };
+        });
+
+        // Only places that DIFFER from their circle are worth listing: a place
+        // on followCircle is already described by the circle above it, and
+        // listing hundreds of them would bury the handful that were changed.
+        let placeRows: {
+          placeId: string; name: string; circleName: string | null;
+          privacy: string; meaning: string; sharedWith: { userId: string; name: string }[];
+        }[] = [];
+        if (includePlaces && circles.length > 0) {
+          const byId = new Map(circles.map((c) => [docId(c), c.name]));
+          const places = await backend.getPlacesForCircles(circles.map((c) => docId(c)));
+          placeRows = places
+            .filter((p) => {
+              const tier = p.privacy;
+              return tier && tier !== "followCircle";
+            })
+            .map((p) => ({
+              placeId: docId(p),
+              name: p.name,
+              circleName: p.circleId ? byId.get(p.circleId) ?? null : null,
+              privacy: p.privacy as string,
+              meaning: TIER_LABEL[p.privacy as string] || (p.privacy as string),
+              sharedWith: people(p.sharedWith, names),
+            }));
+        }
+
+        const innerMembers = (inner.users || []).map((u: any) => ({
+          userId: String(u._id || u.id),
+          name: u.displayName || u.firstName || "(unnamed)",
+        }));
+
+        const lines: string[] = [];
+        lines.push(
+          innerMembers.length === 0
+            ? "Inner Circle: nobody yet — anything set to Inner Circle is currently visible to you alone."
+            : `Inner Circle (${innerMembers.length}): ${innerMembers.map((m) => m.name).join(", ")}`
+        );
+        lines.push("", "Circles:");
+        for (const c of circleRows) {
+          const guests = c.sharedWith.length ? ` | also shared with: ${c.sharedWith.map((g) => g.name).join(", ")}` : "";
+          lines.push(`- ${c.name} — ${c.meaning}${guests} (${c.placesCount ?? "?"} places, id: ${c.circleId})`);
+        }
+        if (placeRows.length > 0) {
+          lines.push("", "Places set differently from their circle:");
+          for (const p of placeRows) {
+            const guests = p.sharedWith.length ? ` | also shared with: ${p.sharedWith.map((g) => g.name).join(", ")}` : "";
+            lines.push(`- ${p.name}${p.circleName ? ` (in ${p.circleName})` : ""} — ${p.meaning}${guests} (id: ${p.placeId})`);
+          }
+        } else if (includePlaces) {
+          lines.push("", "No place overrides its circle's setting.");
+        }
+
+        return ok(lines.join("\n"), {
+          innerCircle: { maxSize: inner.maxSize ?? 150, members: innerMembers },
+          circles: circleRows,
+          placeOverrides: placeRows,
+        });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "set_privacy",
+    {
+      title: "Set the privacy level of circles or places",
+      description:
+        "Change the privacy tier on any number of circles and/or places at once. Levels: public, connections, innerCircle, private — plus followCircle for a place, meaning it inherits its circle. Inner Circle draws on the account-level list (see get_inner_circle); if that list is empty, Inner Circle shows the same thing Private does.",
+      inputSchema: {
+        privacy: z
+          .string()
+          .describe("public | connections | innerCircle | private (places also accept followCircle)"),
+        circleIds: z.array(z.string()).optional().describe("Circle ids from get_privacy_overview or list_circles"),
+        placeIds: z.array(z.string()).optional().describe("Place ids from get_privacy_overview or list_places"),
+      },
+      outputSchema: {
+        privacy: z.string(),
+        updatedCircles: z.array(z.object({ circleId: z.string(), name: z.string() })),
+        updatedPlaces: z.array(z.object({ placeId: z.string(), name: z.string() })),
+        failures: z.array(z.object({ id: z.string(), reason: z.string() })),
+      },
+      annotations: { title: "Set the privacy level of circles or places", ...UPDATE },
+      _meta: inv("Updating privacy", "Updated privacy"),
+    },
+    async ({ privacy, circleIds = [], placeIds = [] }): Promise<ToolResult> => {
+      try {
+        const tier = normalizeTier(privacy);
+        if (!tier) {
+          return err(new Error(`Unknown privacy level "${privacy}". Use public, connections, innerCircle or private.`));
+        }
+        if (circleIds.length === 0 && placeIds.length === 0) {
+          return err(new Error("Give at least one circleId or placeId."));
+        }
+        if (tier === "followCircle" && circleIds.length > 0) {
+          return err(new Error("followCircle only applies to places — a circle has no circle to inherit from."));
+        }
+
+        const updatedCircles: { circleId: string; name: string }[] = [];
+        const updatedPlaces: { placeId: string; name: string }[] = [];
+        const failures: { id: string; reason: string }[] = [];
+
+        // Sequential on purpose: a partial result the user can read beats a
+        // burst of parallel writes that half-fails with no order to report.
+        for (const id of circleIds) {
+          try {
+            const c = await backend.updateCircle(id, { privacy: tier });
+            updatedCircles.push({ circleId: docId(c), name: c.name });
+          } catch (e) {
+            failures.push({ id, reason: e instanceof Error ? e.message : String(e) });
+          }
+        }
+        for (const id of placeIds) {
+          try {
+            const p = await backend.updatePlace(id, { privacy: tier });
+            updatedPlaces.push({ placeId: docId(p), name: p.name });
+          } catch (e) {
+            failures.push({ id, reason: e instanceof Error ? e.message : String(e) });
+          }
+        }
+
+        const parts = [`Set to ${TIER_LABEL[tier] || tier}.`];
+        if (updatedCircles.length) parts.push(`Circles: ${updatedCircles.map((c) => c.name).join(", ")}`);
+        if (updatedPlaces.length) parts.push(`Places: ${updatedPlaces.map((p) => p.name).join(", ")}`);
+        if (tier === "innerCircle") {
+          parts.push("Reaches whoever is on your Inner Circle list — check it with get_inner_circle.");
+        }
+        if (failures.length) {
+          parts.push(`Failed: ${failures.map((f) => `${f.id} (${f.reason})`).join("; ")}`);
+        }
+        return ok(parts.join("\n"), { privacy: tier, updatedCircles, updatedPlaces, failures });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "get_inner_circle",
+    {
+      title: "See who is in your Inner Circle",
+      description:
+        "List the people on the account-level Inner Circle list. Everything set to the Inner Circle tier — circles, places, moments, check-ins — is visible to exactly these people, and to nobody else.",
+      inputSchema: {},
+      outputSchema: { maxSize: z.number(), members: z.array(PERSON) },
+      annotations: { title: "See who is in your Inner Circle", ...READ },
+      _meta: inv("Reading your Inner Circle", "Read your Inner Circle"),
+    },
+    async (): Promise<ToolResult> => {
+      try {
+        const list = await backend.getInnerCircle();
+        const members = (list.users || []).map((u: any) => ({
+          userId: String(u._id || u.id),
+          name: u.displayName || u.firstName || "(unnamed)",
+        }));
+        const text =
+          members.length === 0
+            ? "Your Inner Circle is empty, so anything set to that tier is visible only to you."
+            : `Inner Circle (${members.length} of ${list.maxSize}):\n${members.map((m) => `- ${m.name} (${m.userId})`).join("\n")}`;
+        return ok(text, { maxSize: list.maxSize, members });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "update_inner_circle",
+    {
+      title: "Change who is in your Inner Circle",
+      description:
+        "Add or remove people on the account-level Inner Circle list, or replace it outright. Only accepted connections can be added. This changes what those people can see EVERYWHERE at once and retroactively — removing someone takes back access to things they can see right now. Confirm removals with the user first.",
+      inputSchema: {
+        action: z.enum(["add", "remove", "replace"]).describe("add / remove the given people, or replace the whole list"),
+        userIds: z.array(z.string()).min(1).describe("User ids (from search_users or list_connections)"),
+      },
+      outputSchema: { action: z.string(), members: z.array(PERSON), maxSize: z.number() },
+      annotations: { title: "Change who is in your Inner Circle", ...UPDATE },
+      _meta: inv("Updating your Inner Circle", "Updated your Inner Circle"),
+    },
+    async ({ action, userIds }): Promise<ToolResult> => {
+      try {
+        let list;
+        if (action === "replace") {
+          list = await backend.setInnerCircle(userIds);
+        } else {
+          list = await backend.getInnerCircle();
+          for (const id of userIds) {
+            list = action === "add" ? await backend.addToInnerCircle(id) : await backend.removeFromInnerCircle(id);
+          }
+        }
+        const members = (list.users || []).map((u: any) => ({
+          userId: String(u._id || u.id),
+          name: u.displayName || u.firstName || "(unnamed)",
+        }));
+        const note =
+          action === "remove"
+            ? "They can no longer see anything set to Inner Circle, including things they could see a moment ago."
+            : action === "add"
+            ? "They can now see everything set to Inner Circle."
+            : "";
+        return ok(
+          [`Inner Circle is now ${members.length} ${members.length === 1 ? "person" : "people"}: ${members.map((m) => m.name).join(", ") || "(empty)"}`, note]
+            .filter(Boolean)
+            .join("\n"),
+          { action, members, maxSize: list.maxSize }
+        );
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "update_item_access",
+    {
+      title: "Give or take away one person's access to a circle or place",
+      description:
+        "Name specific people who may see ONE circle or ONE place, whatever its privacy tier says — including a private one. Use this for a one-off (\"let Dana see this restaurant\"); use update_inner_circle for people you want to trust across everything. Access covers the item and the activity that goes with it. Only accepted connections can be named.",
+      inputSchema: {
+        target: z.enum(["circle", "place"]).describe("What to change access to"),
+        id: z.string().describe("The circle id or place id"),
+        action: z.enum(["grant", "revoke"]).describe("Give or take away access"),
+        userIds: z.array(z.string()).min(1).describe("User ids (from search_users or list_connections)"),
+      },
+      outputSchema: {
+        target: z.string(),
+        id: z.string(),
+        name: z.string(),
+        privacy: z.string(),
+        sharedWith: z.array(PERSON),
+      },
+      annotations: { title: "Give or take away one person's access", ...UPDATE },
+      _meta: inv("Updating access", "Updated access"),
+    },
+    async ({ target, id, action, userIds }): Promise<ToolResult> => {
+      try {
+        // Read the current guest list first — the API replaces the array
+        // wholesale, so adding one person means sending the others back too.
+        const current: string[] =
+          target === "circle"
+            ? (await backend.getCircle(id)).sharedWith || []
+            : (await backend.getPlace(id)).sharedWith || [];
+
+        const next =
+          action === "grant"
+            ? [...new Set([...current, ...userIds])]
+            : current.filter((existing) => !userIds.includes(existing));
+
+        const updated =
+          target === "circle"
+            ? await backend.updateCircle(id, { sharedWith: next })
+            : await backend.updatePlace(id, { sharedWith: next });
+
+        const names = await nameLookup();
+        const guests = people(next, names);
+        const tier = (updated as any).privacy || "";
+        return ok(
+          [
+            `${action === "grant" ? "Granted" : "Revoked"} access to "${updated.name}".`,
+            guests.length
+              ? `Now named on it: ${guests.map((g) => g.name).join(", ")}`
+              : "Nobody is named on it now — only its privacy tier decides who can see it.",
+            tier ? `Its tier is still ${TIER_LABEL[tier] || tier}.` : "",
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          { target, id, name: updated.name, privacy: tier, sharedWith: guests }
+        );
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
 }

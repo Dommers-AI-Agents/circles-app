@@ -25,9 +25,16 @@ export interface Circle {
   description?: string | null;
   category?: string;
   privacy?: string;
+  sharedWith?: string[];
   placesCount?: number;
   owner?: string;
   createdAt?: string;
+}
+
+export interface InnerCircleList {
+  maxSize: number;
+  userIds: string[];
+  users: UserProfile[];
 }
 
 export interface Place {
@@ -44,6 +51,10 @@ export interface Place {
   website?: string | null;
   phone?: string | null;
   location?: { type: string; coordinates: [number, number] } | null;
+  /** followCircle | public | myNetwork | innerCircle | private */
+  privacy?: string;
+  /** Named people who may see this one save whatever its tier says. */
+  sharedWith?: string[];
 }
 
 export interface UserProfile {
@@ -213,7 +224,14 @@ export class Backend {
 
   async updateCircle(
     circleId: string,
-    updates: { name?: string; description?: string; category?: string; privacy?: string }
+    updates: {
+      name?: string;
+      description?: string;
+      category?: string;
+      privacy?: string;
+      /** Named people who may see this circle whatever its tier says. */
+      sharedWith?: string[];
+    }
   ): Promise<Circle> {
     const res = await this.request<{ circle?: Circle; data?: Circle }>(
       "PUT",
@@ -230,9 +248,29 @@ export class Backend {
     await this.request("DELETE", `/circles/${encodeURIComponent(circleId)}`);
   }
 
+  /** One saved place by id. */
+  async getPlace(placeId: string): Promise<Place> {
+    const res = await this.request<{ place?: Place; data?: Place }>(
+      "GET",
+      `/places/${encodeURIComponent(placeId)}`
+    );
+    const place = res.place || res.data;
+    if (!place) throw new BackendError("Place not found in response", 404);
+    return place;
+  }
+
   async updatePlace(
     placeId: string,
-    updates: { name?: string; address?: string; category?: string; publicNotes?: string; privateNotes?: string }
+    updates: {
+      name?: string;
+      address?: string;
+      category?: string;
+      publicNotes?: string;
+      privateNotes?: string;
+      privacy?: string;
+      /** Named people who may see this one save whatever its tier says. */
+      sharedWith?: string[];
+    }
   ): Promise<Place> {
     const res = await this.request<{ place?: Place; data?: Place }>(
       "PUT",
@@ -279,6 +317,30 @@ export class Backend {
     const user = res.user || res.data;
     if (!user) throw new BackendError("No user in /auth/me response", 500);
     return user;
+  }
+
+  /** The account-level Inner Circle list — one list, reused by every item set to that tier. */
+  async getInnerCircle(): Promise<InnerCircleList> {
+    const res = await this.request<{ data: InnerCircleList }>("GET", "/users/me/inner-circle");
+    return res.data;
+  }
+
+  /** Replace the whole list. The backend rejects anyone who isn't an accepted connection. */
+  async setInnerCircle(userIds: string[]): Promise<InnerCircleList> {
+    const res = await this.request<{ data: InnerCircleList }>("PUT", "/users/me/inner-circle", { userIds });
+    return res.data;
+  }
+
+  async addToInnerCircle(userId: string): Promise<InnerCircleList> {
+    const res = await this.request<{ data: InnerCircleList }>(
+      "POST", `/users/me/inner-circle/${encodeURIComponent(userId)}`);
+    return res.data;
+  }
+
+  async removeFromInnerCircle(userId: string): Promise<InnerCircleList> {
+    const res = await this.request<{ data: InnerCircleList }>(
+      "DELETE", `/users/me/inner-circle/${encodeURIComponent(userId)}`);
+    return res.data;
   }
 
   async getConnections(): Promise<Connection[]> {

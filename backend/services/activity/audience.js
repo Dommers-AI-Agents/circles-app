@@ -67,18 +67,27 @@ const circleAudience = async (circleData, ownerId) => {
  */
 const narrowedByPlace = async (audience, place, ownerId) => {
   const tier = normalizePrivacy(place && place.privacy);
+  const guests = new Set(((place && place.sharedWith) || []).map(String));
+
   // followCircle (the default), public and myNetwork add nothing of their own:
   // the circle already decided. Only the two closed tiers narrow.
   if (tier !== PRIVACY.INNER_CIRCLE && tier !== PRIVACY.PRIVATE) return audience;
 
   if (tier === PRIVACY.PRIVATE) {
-    return { tier, emits: false, allows: () => false };
+    // Named guests still hear about it — that is what naming them means.
+    return {
+      tier,
+      emits: guests.size > 0,
+      allows: (userId) => guests.has(String(userId))
+    };
   }
 
   const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(String(ownerId)).get();
   const list = new Set(((ownerDoc.exists && ownerDoc.data().innerCircle) || []).map(String));
-  const allows = (userId) => audience.allows(userId) && list.has(String(userId));
-  return { tier, emits: list.size > 0, allows };
+  const allowed = new Set([...list, ...guests]);
+  const allows = (userId) => guests.has(String(userId))
+    || (audience.allows(userId) && list.has(String(userId)));
+  return { tier, emits: allowed.size > 0, allows };
 };
 
 module.exports = { circleAudience, narrowedByPlace };

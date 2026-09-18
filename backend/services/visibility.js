@@ -172,11 +172,14 @@ const canViewCircle = (circle, viewerId, ctx) => {
  * default, and all the Add Place screen can produce — adds nothing.
  *
  * Callers that genuinely have no viewer context may omit `ctx`; every tier
- * above `public` then denies, which is the safe direction.
+ * above `public` then denies, which is the safe direction. A name on the
+ * place's own `sharedWith` is honoured either way — it needs no context.
  */
 const isPlaceVisibleToViewer = (place, viewerId, ctx) => {
   if (!place) return false;
   if (isSameUser(place.addedBy, viewerId)) return true;
+  // A per-place guest list wins over the tier, exactly as a circle's does.
+  if ((place.sharedWith || []).some(id => isSameUser(id, viewerId))) return true;
 
   // No privacy field at all, or an explicit "inherit": the circle already
   // decided. A value we simply don't RECOGNISE is a different thing and must

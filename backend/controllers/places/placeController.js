@@ -21,6 +21,7 @@ const piggyBankService = require('../../services/piggyBankService');
 const { normalizePhotosArray, overlayVenuePhotos, VENUE_GOOGLE_FIELDS, overlayVenueFields, getGlobalSocial, fetchGlobalSocialMap, buildAddedByUserMap, isPlaceVisibleToViewer } = require('../../services/placeReadService');
 const { resolveIncomingPrivacy, canViewCircle } = require('../../services/visibility');
 const { canViewCircleFor } = require('../../services/circleAccess');
+const { validateGuestList } = require('../../services/innerCircleService');
 const { buildViewerContext, makeViewerContext } = require('../../services/viewerContext');
 const { circleAudience, narrowedByPlace } = require('../../services/activity/audience');
 const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
@@ -1426,6 +1427,20 @@ exports.updatePlace = async (req, res, next) => {
         stored: place.privacy,
         req
       });
+    }
+
+    // Per-place guest list: named people who may see this one save whatever
+    // its tier says. Connections only, same rule as the Inner Circle.
+    if ('sharedWith' in updateData) {
+      try {
+        updateData.sharedWith = await validateGuestList(req.user.uid, updateData.sharedWith);
+      } catch (guestError) {
+        return res.status(400).json({
+          success: false,
+          code: guestError.code,
+          message: guestError.message
+        });
+      }
     }
 
     // Google-backed places: Google Places is the source of truth for venue

@@ -138,6 +138,17 @@ describe('isPlaceVisibleToViewer', () => {
     expect(isPlaceVisibleToViewer(place('private'), 'connection', ctx('connection'))).toBe(false);
   });
 
+  // A place carries its own guest list now, the same way a circle always has.
+  test('a named guest sees the place at any tier, with or without context', () => {
+    const guarded = { addedBy: 'owner', privacy: 'private', sharedWith: ['guest'] };
+    expect(isPlaceVisibleToViewer(guarded, 'guest', strangerCtx())).toBe(true);
+    expect(isPlaceVisibleToViewer(guarded, 'guest', undefined)).toBe(true);
+    expect(isPlaceVisibleToViewer(guarded, 'someone-else', ctx('connection'))).toBe(false);
+
+    const inner = { addedBy: 'owner', privacy: 'innerCircle', sharedWith: ['guest'] };
+    expect(isPlaceVisibleToViewer(inner, 'guest', strangerCtx())).toBe(true);
+  });
+
   // Previously any non-private value inherited the circle, so a place marked
   // Connections inside a public circle was served to strangers.
   test('a place narrows its circle rather than inheriting it', () => {

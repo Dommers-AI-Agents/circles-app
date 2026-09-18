@@ -18,6 +18,7 @@ const subscriptionLimitService = require('../services/subscriptionLimitService')
 const { attachOwnerDetails } = require('../services/ownerResolver');
 const { CIRCLE_PRIVACY_LEVELS, resolveIncomingPrivacy } = require('../services/visibility');
 const { canViewCircleFor } = require('../services/circleAccess');
+const { validateGuestList } = require('../services/innerCircleService');
 
 const db = getFirestore();
 
@@ -555,6 +556,24 @@ exports.updateCircle = async (req, res, next) => {
       });
     }
     
+    // Per-circle guest list. Previously only writable through the share
+    // endpoint, which made "who can see this circle" impossible to set in one
+    // call. Connections only, same rule as the Inner Circle.
+    if (req.body.sharedWith !== undefined) {
+      if (!Array.isArray(req.body.sharedWith)) {
+        return res.status(400).json({ success: false, message: 'sharedWith must be an array of user ids' });
+      }
+      try {
+        updateData.sharedWith = await validateGuestList(req.user.uid, req.body.sharedWith);
+      } catch (guestError) {
+        return res.status(400).json({
+          success: false,
+          code: guestError.code,
+          message: guestError.message
+        });
+      }
+    }
+
     if (req.body.category !== undefined) {
       const validCategories = ['travel', 'food', 'services', 'shopping', 'healthcare', 'entertainment', 'other'];
       if (!validCategories.includes(req.body.category)) {

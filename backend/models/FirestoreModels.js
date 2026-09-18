@@ -288,6 +288,10 @@ const createPlace = (placeData, circleId, addedBy) => {
     circleId: circleId,
     addedBy: addedBy,
     privacy: placeData.privacy || 'followCircle', // followCircle, public, myNetwork, innerCircle, private
+    // Per-place guest list, the same shape circles have had all along: named
+    // people who may see this one save whatever its tier says. Connections
+    // only, enforced on write.
+    sharedWith: placeData.sharedWith || [],
     addedViaCheckIn: placeData.addedViaCheckIn || false, // Track places created from check-ins
     importSource: placeData.importSource || null, // 'mapstr', 'google_maps', 'swarm' when imported from another platform
     sourceExternalId: placeData.sourceExternalId || null, // Stable per-source id (fsq:<venueId>, cid:<hexCid>, pin:<lat>,<lng>, mapstr:<hash>) for re-import idempotency

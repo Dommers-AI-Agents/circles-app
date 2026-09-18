@@ -109,3 +109,23 @@ describe('narrowedByPlace', () => {
     expect(result.allows('insider')).toBe(false);
   });
 });
+
+// The per-place guest list is a promise that they hear about it, not just that
+// they could find it if they looked.
+describe('narrowedByPlace with a per-place guest list', () => {
+  const { narrowedByPlace } = require('../activity/audience');
+  const open = { tier: 'myNetwork', emits: true, allows: () => true };
+
+  test('a named guest is told about a private place', async () => {
+    const result = await narrowedByPlace(open, { privacy: 'private', sharedWith: ['guest'] }, 'owner');
+    expect(result.emits).toBe(true);
+    expect(result.allows('guest')).toBe(true);
+    expect(result.allows('some-connection')).toBe(false);
+  });
+
+  test('a named guest is told even when they are not on the inner circle list', async () => {
+    const result = await narrowedByPlace(open, { privacy: 'innerCircle', sharedWith: ['guest'] }, 'owner');
+    expect(result.allows('guest')).toBe(true);
+    expect(result.allows('insider')).toBe(true);
+  });
+});
