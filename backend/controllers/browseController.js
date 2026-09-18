@@ -13,6 +13,8 @@
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
 const { getFirestore } = require('../config/firebase');
 const { getAllowedCircleIds } = require('../utils/networkAccess');
+const { isPlaceVisibleToViewer } = require('../services/visibility');
+const { buildViewerContext } = require('../services/viewerContext');
 const { getSummaries } = require('../services/circleLocationSummary');
 const placeCache = require('../services/placeCache');
 const {
@@ -55,7 +57,10 @@ async function getBrowseLocations(req, res) {
 const countryCodeOf = (key) =>
   key.startsWith(COUNTRY_KEY_PREFIX) ? key.slice(COUNTRY_KEY_PREFIX.length) : null;
 
-async function fetchCirclePlacesInCity(circleIds, regionKey) {
+// `viewer` is the requester's relationship context: the circle set above says
+// which circles are reachable, and a place's own privacy can still narrow that
+// (Private is owner-only, Inner Circle reaches only the owner's list).
+async function fetchCirclePlacesInCity(circleIds, regionKey, { viewerId, viewerCtx } = {}) {
   const isUnplaced = regionKey === UNPLACED_KEY;
   const countryCode = countryCodeOf(regionKey);
   const chunks = [];
@@ -76,6 +81,7 @@ async function fetchCirclePlacesInCity(circleIds, regionKey) {
       seen.add(doc.id);
       const p = serializeDoc(doc);
       if (p.deletedAt) continue;
+      if (viewerId && !isPlaceVisibleToViewer(p, viewerId, viewerCtx)) continue;
       // In an unplaced-only chunk query, drop anything that IS placed — by US
       // state or by country. Must match summarizeCirclePlaces' precedence.
       if (isUnplaced && (p.stateCode || p.countryCode)) continue;
@@ -140,7 +146,10 @@ async function getBrowseCityPlaces(req, res) {
       return res.status(200).json({ success: true, cityKey, count: 0, places: [], people: [] });
     }
 
-    const allPlaces = await fetchCirclePlacesInCity(circleIds, cityKey);
+    const allPlaces = await fetchCirclePlacesInCity(circleIds, cityKey, {
+      viewerId: userId,
+      viewerCtx: await buildViewerContext(userId)
+    });
     const capped = allPlaces.slice(0, CITY_VENUE_CAP);
 
     const [circleNameById, userById, ratingByVenue] = await Promise.all([

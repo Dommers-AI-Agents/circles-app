@@ -5,7 +5,9 @@
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
 const { getAllowedCircleIds } = require('../utils/networkAccess');
-const { normalizeUserId, isSameUser } = require('../services/idService');
+const { isPlaceVisibleToViewer } = require('../services/visibility');
+const { buildViewerContext } = require('../services/viewerContext');
+const { normalizeUserId } = require('../services/idService');
 const geofire = require('geofire-common');
 
 const db = getFirestore();
@@ -42,7 +44,10 @@ const getNetworkPlacesInViewport = async (req, res) => {
 
     // mapOnly: honors each circle owner's showOnMap opt-out (map clutter
     // control for bulk-import circles) — list/browse endpoints are unaffected
-    const { circleIds } = await getAllowedCircleIds(userId, { connectionId, mapOnly: true });
+    const [{ circleIds }, viewerCtx] = await Promise.all([
+      getAllowedCircleIds(userId, { connectionId, mapOnly: true }),
+      buildViewerContext(userId)
+    ]);
     if (circleIds.length === 0) {
       return res.status(200).json({
         success: true,
@@ -96,8 +101,10 @@ const getNetworkPlacesInViewport = async (req, res) => {
 
         const data = doc.data();
         if (data.deletedAt) continue;
-        // A place marked Private is owner-only, even inside a visible circle
-        if (data.privacy === 'private' && !isSameUser(data.addedBy, userId)) continue;
+        // The place's own privacy narrows its circle's: Private is owner-only
+        // and Inner Circle reaches only the owner's list, even inside a circle
+        // the viewer can otherwise see.
+        if (!isPlaceVisibleToViewer(data, userId, viewerCtx)) continue;
 
         const coords = data.location && data.location.coordinates;
         if (!Array.isArray(coords) || coords.length < 2) continue;

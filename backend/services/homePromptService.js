@@ -26,6 +26,9 @@ const { excludedUserIds } = require('./moderationService');
 const tipsService = require('./tipsService');
 const { getAssumedLocation } = require('./userCardEnrichment');
 const { haversineMeters } = require('./globalPlaceResolver');
+const { canViewCircle, canViewMoment, isPlaceVisibleToViewer } = require('./visibility');
+const { makeViewerContext } = require('./viewerContext');
+const { getInnerCircleGrantorIds } = require('../utils/networkAccess');
 
 const CATALOG_COLLECTION = 'notificationTips';
 const HOUR = 60 * 60 * 1000;
@@ -184,7 +187,20 @@ class HomePromptService {
     }
     connections.delete(user.id);
     following.delete(user.id);
-    ctx.network = { connections, following, all: new Set([...connections, ...following]) };
+    const innerCircleGrantors = await getInnerCircleGrantorIds(user.id);
+    for (const blocked of excludedUserIds(user)) innerCircleGrantors.delete(blocked);
+    ctx.network = {
+      connections,
+      following,
+      all: new Set([...connections, ...following]),
+      // One bundle for the shared gates in services/visibility.js.
+      viewer: makeViewerContext({
+        viewerId: user.id,
+        connections,
+        following,
+        innerCircleGrantors
+      })
+    };
     return ctx.network;
   }
 
@@ -211,22 +227,14 @@ class HomePromptService {
       const vis = meta.momentVisibility;
       const owner = meta.momentOwnerId;
       if (vis && owner && owner !== ctx.user.id) {
-        if (vis === 'public') return true;
-        if (vis === 'followers') return network.following.has(owner);
-        if (vis === 'network') return network.connections.has(owner);
-        return false;
+        return canViewMoment({ userId: owner, visibility: vis }, ctx.user.id, network.viewer);
       }
       return true;
     }
     if (activity.circleId) {
       const circleDoc = await this.db.collection(COLLECTIONS.CIRCLES).doc(activity.circleId).get();
       if (!circleDoc.exists) return false;
-      const circle = circleDoc.data();
-      if (circle.owner !== ctx.user.id) {
-        if (circle.privacy === 'myNetwork' && !network.connections.has(circle.owner)) return false;
-        if (circle.privacy === 'private' && !(circle.sharedWith || []).includes(ctx.user.id)) return false;
-        if (!['public', 'myNetwork', 'private'].includes(circle.privacy)) return false;
-      }
+      if (!canViewCircle(circleDoc.data(), ctx.user.id, network.viewer)) return false;
     }
     // Place-level privacy. A missing doc is allowed through: photo uploads
     // target the canonical globalPlaces id, which has no `places` row.
@@ -236,7 +244,7 @@ class HomePromptService {
       if (placeDoc.exists) {
         const place = placeDoc.data();
         if (place.deletedAt) return false;
-        if (place.privacy === 'private' && place.addedBy !== ctx.user.id) return false;
+        if (!isPlaceVisibleToViewer(place, ctx.user.id, network.viewer)) return false;
       }
     }
     return true;
@@ -349,14 +357,14 @@ class HomePromptService {
         .where('userId', 'in', chunk)
         .where('uploadStatus', '==', 'ready')
         .where('deletedAt', '==', null)
-        .where('visibility', 'in', ['public', 'network'])
+        .where('visibility', 'in', ['public', 'network', 'innerCircle'])
         .orderBy('createdAt', 'desc')
         .limit(3)
         .get()
     );
     const videos = docs.map(doc => ({ id: doc.id, ...doc.data() }))
       .filter(v => String(v.createdAt) >= sinceIso)
-      .filter(v => v.visibility === 'public' || network.connections.has(v.userId))
+      .filter(v => canViewMoment(v, ctx.user.id, network.viewer))
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 
     for (const video of videos) {

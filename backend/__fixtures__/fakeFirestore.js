@@ -12,6 +12,10 @@ class FakeQuery {
   where(field, op, value) { return new FakeQuery(this.store, [...this.filters, { field, op, value }], this.order, this.max); }
   orderBy(field, direction = 'asc') { return new FakeQuery(this.store, this.filters, { field, direction }, this.max); }
   limit(n) { return new FakeQuery(this.store, this.filters, this.order, n); }
+  // Real queries use select() to fetch ids without the document bodies. The
+  // fake always returns whole docs, so this is just a pass-through that keeps
+  // the call chain working.
+  select() { return this; }
 
   async get() {
     let rows = [...this.store.docs.entries()].map(([id, data]) => ({ id, data }));
@@ -23,6 +27,10 @@ class FakeQuery {
           case '<=': return v !== null && v !== undefined && v <= f.value;
           case '>=': return v !== null && v !== undefined && v >= f.value;
           case 'in': return Array.isArray(f.value) && f.value.includes(v);
+          case '!=': return v !== f.value;
+          case 'array-contains': return Array.isArray(v) && v.includes(f.value);
+          case 'array-contains-any':
+            return Array.isArray(v) && Array.isArray(f.value) && f.value.some(x => v.includes(x));
           default: throw new Error(`FakeQuery: unsupported operator ${f.op}`);
         }
       });

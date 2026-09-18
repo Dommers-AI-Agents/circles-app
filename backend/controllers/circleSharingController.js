@@ -9,6 +9,10 @@ const {
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
 const crypto = require('crypto');
+const { canViewCircle } = require('../services/visibility');
+const { getInnerCircleGrantorIds } = require('../utils/networkAccess');
+const { buildViewerContext } = require('../services/viewerContext');
+const { normalizeUserId } = require('../services/idService');
 
 const db = getFirestore();
 
@@ -581,11 +585,23 @@ const getMyNetworkCircles = async (req, res) => {
 
     // Fetch circles from all batches in parallel — connections get
     // public+myNetwork, followed-only users get public
+    // ...and the connections who put this viewer on their Inner Circle list
+    // contribute their innerCircle circles too. Grantors are intersected with
+    // connections, so a lapsed connection stops contributing automatically.
+    const grantorIds = Array.from(await getInnerCircleGrantorIds(userId))
+      .filter(id => connectedUserIds.has(id));
+
     const circleResults = await Promise.all([
       ...batchOwners(connectedUserIdsArray).map(batch =>
         db.collection(COLLECTIONS.CIRCLES)
           .where('owner', 'in', batch)
           .where('privacy', 'in', ['public', 'myNetwork'])
+          .get()
+      ),
+      ...batchOwners(grantorIds).map(batch =>
+        db.collection(COLLECTIONS.CIRCLES)
+          .where('owner', 'in', batch)
+          .where('privacy', '==', 'innerCircle')
           .get()
       ),
       ...batchOwners(followedOnlyIds).map(batch =>
@@ -859,9 +875,14 @@ const getUserCircles = async (req, res) => {
     // Get circles based on relationship type. Never empty — Firestore's `in`
     // operator throws on an empty array, and everyone can see public circles.
     let allowedPrivacyLevels = ['public'];
+    const viewerCtx = await buildViewerContext(currentUserId);
     if (isConnected) {
       // Connected users can additionally see myNetwork circles
       allowedPrivacyLevels = ['public', 'myNetwork'];
+      // ...and innerCircle ones, but only if THIS person listed the viewer.
+      if (viewerCtx.innerCircleGrantors.has(normalizeUserId(targetUserId))) {
+        allowedPrivacyLevels.push('innerCircle');
+      }
     }
 
     const circlesQuery = await db.collection(COLLECTIONS.CIRCLES)
@@ -930,8 +951,9 @@ const getUserCircles = async (req, res) => {
       circle.hasNewPlaces = unviewedPlacesByCircle.has(circle._id);
       circle.newPlacesCount = unviewedPlacesByCircle.get(circle._id)?.length || 0;
       
-      // Only fetch places for circles with appropriate privacy settings
-      if (circle.privacy === 'myNetwork' || circle.privacy === 'public') {
+      // Only fetch places for circles the viewer may actually open. The query
+      // above already limited the tiers, so this is the belt to that braces.
+      if (canViewCircle(doc.data(), currentUserId, viewerCtx)) {
         try {
           // Try with index first
           const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
@@ -943,7 +965,7 @@ const getUserCircles = async (req, res) => {
           // the owner's connections either. Private places are owner-only too.
           const activePlaceDocs = placesSnapshot.docs.filter(doc => {
             const d = doc.data();
-            return !d.deletedAt && isPlaceVisibleToViewer(d, currentUserId);
+            return !d.deletedAt && isPlaceVisibleToViewer(d, currentUserId, viewerCtx);
           });
 
           // Return both place IDs and full details in separate fields
@@ -965,7 +987,7 @@ const getUserCircles = async (req, res) => {
           const sortedDocs = placesSnapshot.docs
             .filter(doc => {
               const d = doc.data();
-              return !d.deletedAt && isPlaceVisibleToViewer(d, currentUserId);
+              return !d.deletedAt && isPlaceVisibleToViewer(d, currentUserId, viewerCtx);
             })
             .sort((a, b) => {
               const aDate = new Date(a.data().createdAt || 0);
