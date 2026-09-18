@@ -9,7 +9,7 @@ const { createActivity } = require('../../controllers/activityController');
 const SSEService = require('../sseService');
 const notificationService = require('../notificationService');
 const { resolvePlacePhoto } = require('./core');
-const { circleAudience } = require('./audience');
+const { circleAudience, narrowedByPlace } = require('./audience');
 
 
 // Track when a user adds a new place
@@ -24,7 +24,15 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
     
     const circleData = circleDoc.data();
     const circlePrivacy = circleData.privacy || 'private';
-    const audience = await circleAudience(circleData, circleData.owner || addedByUserId);
+    // The save's own privacy can narrow the circle's — an Inner Circle place in
+    // a Connections circle reaches the list, not every connection.
+    const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
+    const placeData = placeDoc.exists ? placeDoc.data() : null;
+    const audience = await narrowedByPlace(
+      await circleAudience(circleData, circleData.owner || addedByUserId),
+      placeData,
+      addedByUserId
+    );
 
     // Skip the row entirely when nobody but the owner could ever see it. An
     // innerCircle or shared-private circle DOES get a row — the read gate
@@ -34,9 +42,8 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
       // Create activity record in the activities collection. Thumbnail via
       // resolvePlacePhoto: a canonical-matched save (share extension, adopt)
       // carries no photos of its own — the venue's canonical record does.
-      const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
       const placePhoto = await resolvePlacePhoto(placeId);
-      const placeAddress = placeDoc.exists ? (placeDoc.data().address || null) : null;
+      const placeAddress = placeData ? (placeData.address || null) : null;
       
       await createActivity(
         'place_added',
@@ -48,7 +55,10 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
           circleId: circleId,
           circleName: circleName || 'Unknown Circle',
           placePhoto: placePhoto,
-          placeAddress: placeAddress
+          placeAddress: placeAddress,
+          // Stamped so the feed can re-check the place's own tier at read time
+          // — the circle gate alone can't see it.
+          placePrivacy: placeData ? (placeData.privacy || null) : null
         }
       );
     }

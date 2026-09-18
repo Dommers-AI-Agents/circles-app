@@ -415,12 +415,16 @@ exports.getPlacesByCircleIdPublic = async (req, res, next) => {
       size: placesSnapshot.size
     });
     
-    // Filter out soft-deleted places, and any Private places — this is an
-    // unauthenticated public share, so there is no owner to exempt
+    // Filter out soft-deleted places, and anything the place's own privacy
+    // narrows below the circle. This is an unauthenticated share, so there is
+    // no viewer to exempt and no relationships to check: with no context every
+    // tier above public denies, which is exactly right here. Checking only for
+    // `private` used to serve an Inner Circle place inside a public circle to
+    // the open web.
     const allPlaces = serializeQuerySnapshot(placesSnapshot);
     const places = allPlaces.filter(place => {
       const isDeleted = place.deletedAt !== null && place.deletedAt !== undefined;
-      return !isDeleted && place.privacy !== 'private';
+      return !isDeleted && isPlaceVisibleToViewer(place, null, null);
     });
 
     console.log(`🔍 Found ${places.length} active places for public circle`);

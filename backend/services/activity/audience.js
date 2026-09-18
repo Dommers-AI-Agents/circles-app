@@ -53,4 +53,32 @@ const circleAudience = async (circleData, ownerId) => {
   };
 };
 
-module.exports = { circleAudience };
+/**
+ * Narrow a circle's audience by a PLACE's own privacy.
+ *
+ * A place can only restrict further than its circle, so this intersects: an
+ * Inner Circle place inside a Connections circle reaches the owner's list, not
+ * every connection. Without it the fan-out asked the circle only, and pushed a
+ * deliberately narrowed save to everyone.
+ *
+ * @param {object} audience  the result of circleAudience
+ * @param {object} place     the save record (may be undefined — then unchanged)
+ * @param {string} ownerId   whoever saved it
+ */
+const narrowedByPlace = async (audience, place, ownerId) => {
+  const tier = normalizePrivacy(place && place.privacy);
+  // followCircle (the default), public and myNetwork add nothing of their own:
+  // the circle already decided. Only the two closed tiers narrow.
+  if (tier !== PRIVACY.INNER_CIRCLE && tier !== PRIVACY.PRIVATE) return audience;
+
+  if (tier === PRIVACY.PRIVATE) {
+    return { tier, emits: false, allows: () => false };
+  }
+
+  const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(String(ownerId)).get();
+  const list = new Set(((ownerDoc.exists && ownerDoc.data().innerCircle) || []).map(String));
+  const allows = (userId) => audience.allows(userId) && list.has(String(userId));
+  return { tier, emits: list.size > 0, allows };
+};
+
+module.exports = { circleAudience, narrowedByPlace };

@@ -2,7 +2,7 @@
 const { admin, getFirestore } = require('../config/firebase');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
-const { canViewCircle, canViewMoment } = require('../services/visibility');
+const { canViewCircle, canViewMoment, isPlaceVisibleToViewer } = require('../services/visibility');
 const { normalizeUserId } = require('../services/idService');
 const { makeViewerContext } = require('../services/viewerContext');
 const { getInnerCircleGrantorIds } = require('../utils/networkAccess');
@@ -371,7 +371,20 @@ exports.getNetworkActivities = async (req, res, next) => {
         const circle = circlesMap.get(circleId);
         if (!circle) return false; // Exclude if circle not found
         
-        return canViewCircle(circle, userId, viewerCtx);
+        if (!canViewCircle(circle, userId, viewerCtx)) return false;
+
+        // The place's own privacy narrows the circle's, and the circle gate
+        // can't see it. Rows written before this was stamped carry no value,
+        // which reads as "inherit the circle" — their old behaviour.
+        const stampedPlacePrivacy = activity.metadata && activity.metadata.placePrivacy;
+        if (stampedPlacePrivacy) {
+          return isPlaceVisibleToViewer(
+            { addedBy: activity.actorId, privacy: stampedPlacePrivacy },
+            userId,
+            viewerCtx
+          );
+        }
+        return true;
       } catch (error) {
         console.error('Error checking activity privacy:', error);
         return false;

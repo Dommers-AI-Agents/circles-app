@@ -35,16 +35,27 @@ final class PrivacyPickerButton: UIView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Point the picker at a stored value. An unrecognised tier leaves the
-    /// selection alone and disables the control rather than silently showing —
-    /// and then saving — something narrower than what is stored.
+    /// True once `select` was handed a tier this build doesn't understand.
+    ///
+    /// Callers MUST leave the privacy field out of their save body while this
+    /// is set. Disabling the control is not enough on its own: `selected` still
+    /// holds whatever it was initialised with, so a save would quietly write
+    /// that over a tier the app can't even display.
+    private(set) var isLocked = false
+
+    /// Point the picker at a stored value. An unrecognised tier locks the
+    /// control rather than silently showing — and then saving — something
+    /// different from what is stored.
     func select(_ option: PrivacyOption?) {
         guard let option = option, options.contains(option) else {
+            isLocked = true
             button.isEnabled = false
+            captionButton.isHidden = false
             captionButton.isEnabled = false
             captionButton.setTitle("Update the app to change this setting", for: .normal)
             return
         }
+        isLocked = false
         selected = option
         refresh()
     }
@@ -106,7 +117,7 @@ final class PrivacyPickerButton: UIView {
         config?.imagePadding = 8
         button.configuration = config
 
-        if selected == .tier(.innerCircle) {
+        if !isLocked && selected == .tier(.innerCircle) {
             captionButton.isHidden = false
             captionButton.setTitle(InnerCircleManager.shared.pickerCaption, for: .normal)
         } else {
@@ -118,9 +129,14 @@ final class PrivacyPickerButton: UIView {
     /// The circle value for the current selection. Circles can't be set to
     /// "same as circle" or the followers audience, so those fall back to the
     /// most private thing rather than guessing.
-    var selectedCirclePrivacy: PrivacyLevel {
-        if case .tier(let tier) = selected { return tier.circlePrivacy }
-        return .private
+    var selectedCirclePrivacy: PrivacyLevel? {
+        guard !isLocked, case .tier(let tier) = selected else { return nil }
+        return tier.circlePrivacy
+    }
+
+    /// The place value for the current selection, or nil when locked.
+    var selectedPlacePrivacy: PlacePrivacy? {
+        isLocked ? nil : selected.placePrivacy
     }
 
     @objc private func captionTapped() {

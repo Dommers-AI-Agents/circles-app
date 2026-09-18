@@ -885,9 +885,11 @@ class EditPlaceViewController: BaseViewController {
         
         // Get privacy setting. A store owner's listing is always public —
         // the privacy control is hidden for them.
+        // A locked picker (a tier this build doesn't understand) yields nil, and
+        // we keep what is stored rather than writing a stale default over it.
         let privacy: PlacePrivacy = isVenueOwnerUnlocked
             ? .public
-            : (privacyPicker.selected.placePrivacy ?? place.privacy)
+            : (privacyPicker.selectedPlacePrivacy ?? place.privacy)
         
         // Guard against a second tap while the update is in flight
         isSaving = true
@@ -1303,7 +1305,8 @@ class EditPlaceViewController: BaseViewController {
         if formattedAddress != place.address { return true }
         
         // Check privacy
-        if privacyPicker.selected.placePrivacy != place.privacy { return true }
+        // A locked picker can't have changed anything, so it isn't "dirty".
+        if let picked = privacyPicker.selectedPlacePrivacy, picked != place.privacy { return true }
         
         // Check notes
         let currentNotes = notesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)

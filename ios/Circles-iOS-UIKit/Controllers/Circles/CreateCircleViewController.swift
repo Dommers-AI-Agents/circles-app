@@ -516,8 +516,10 @@ class CreateCircleViewController: UIViewController {
         // Get selected category
         let category = selectedCategoryType
         
-        // Get selected privacy level
-        let privacy = privacyPicker.selectedCirclePrivacy
+        // Get selected privacy level. Creation always has a real selection —
+        // there is no stored value to be locked out of — so the fallback is
+        // only a belt for the impossible case.
+        let privacy = privacyPicker.selectedCirclePrivacy ?? .public
         
         // Get optional fields
         let description = descriptionTextView.text?.isEmpty == false ? descriptionTextView.text : nil

@@ -7,6 +7,7 @@
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
+const { normalizeUserId } = require('../services/idService');
 
 const db = getFirestore();
 
@@ -136,8 +137,12 @@ async function getAllowedCircleIds(userId, { connectionId = null, mapOnly = fals
   // the connections who listed this viewer, and followed users' public circles
   // Only connections may grant inner-circle access, so a grantor who is no
   // longer a connection has already lost it — intersect rather than trust the
-  // stored list.
-  const activeGrantors = Array.from(innerCircleGrantors).filter(id => connectedUserIds.has(id));
+  // stored list. Normalised on both sides: grantors are user doc ids while
+  // connections come off connection docs, and Apple accounts write those two
+  // in different shapes.
+  const connectedNormalized = new Set(Array.from(connectedUserIds).map(normalizeUserId));
+  const activeGrantors = Array.from(innerCircleGrantors)
+    .filter(id => connectedNormalized.has(normalizeUserId(id)));
 
   const [connectionDocs, innerCircleDocs, followedDocs] = await Promise.all([
     circlesByOwners(Array.from(connectedUserIds), ['public', 'myNetwork']),

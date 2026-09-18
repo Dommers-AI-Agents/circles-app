@@ -277,7 +277,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         return nameTextField.text != circle.name ||
                descriptionTextView.text != (circle.description ?? "") ||
                getCurrentCategory() != circle.category ||
-               getCurrentPrivacy() != circle.privacy ||
+               (getCurrentPrivacy().map { $0 != circle.privacy } ?? false) ||
                showOnMapSwitch.isOn != (circle.showOnMap ?? true) ||
                locationTextField.text != (circle.location ?? "") ||
                getCurrentTags() != (circle.tags ?? []) ||
@@ -568,7 +568,10 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         return selectedCategoryType
     }
     
-    private func getCurrentPrivacy() -> PrivacyLevel {
+    /// nil when the stored tier is one this build doesn't understand — the
+    /// save then leaves `privacy` out rather than writing a stale default over
+    /// it. CircleService.updateCircle takes it as an optional for exactly this.
+    private func getCurrentPrivacy() -> PrivacyLevel? {
         privacyPicker.selectedCirclePrivacy
     }
     
@@ -643,10 +646,13 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
             // Create updated body with default image URL
             var body: [String: Any] = [
                 "name": name,
-                "privacy": privacy.rawValue,
                 "category": category.rawValue,
                 "showOnMap": showOnMapSwitch.isOn
             ]
+            // Omitted entirely when the picker is locked on a tier this build
+            // doesn't understand, so the rest of the edit still saves without
+            // demoting the setting.
+            if let privacy = privacy { body["privacy"] = privacy.rawValue }
             
             // Add custom category ID if selected
             if let customCategoryId = selectedCategory?.customCategoryId {

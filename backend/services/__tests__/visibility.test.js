@@ -123,6 +123,15 @@ describe('isPlaceVisibleToViewer', () => {
   test('followCircle and a missing value defer to the circle', () => {
     expect(isPlaceVisibleToViewer(place('followCircle'), 'stranger', strangerCtx())).toBe(true);
     expect(isPlaceVisibleToViewer(place(undefined), 'stranger', strangerCtx())).toBe(true);
+    expect(isPlaceVisibleToViewer(place(null), 'stranger', strangerCtx())).toBe(true);
+  });
+
+  // "No privacy field" means inherit the circle; "a value we don't recognise"
+  // does not, and must not be collapsed into it.
+  test('an unrecognised value denies rather than inheriting', () => {
+    expect(isPlaceVisibleToViewer(place('restricted'), 'stranger', strangerCtx())).toBe(false);
+    expect(isPlaceVisibleToViewer(place('restricted'), 'connection', ctx('connection'))).toBe(false);
+    expect(isPlaceVisibleToViewer(place('restricted'), 'owner', strangerCtx())).toBe(true);
   });
 
   test('a private place stays hidden inside a circle the viewer can see', () => {

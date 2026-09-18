@@ -178,9 +178,15 @@ const isPlaceVisibleToViewer = (place, viewerId, ctx) => {
   if (!place) return false;
   if (isSameUser(place.addedBy, viewerId)) return true;
 
+  // No privacy field at all, or an explicit "inherit": the circle already
+  // decided. A value we simply don't RECOGNISE is a different thing and must
+  // deny — normalizePrivacy returns null for both, so check the raw field.
+  const missing = place.privacy === undefined || place.privacy === null || place.privacy === '';
+  if (missing) return true;
+
   const tier = normalizePrivacy(place.privacy);
-  // No privacy set at all, or an explicit "inherit": the circle already decided.
-  if (tier === null || tier === FOLLOW_CIRCLE) return true;
+  if (tier === FOLLOW_CIRCLE) return true;
+  if (tier === null) return false;
   return canViewAtTier(place.addedBy, tier, viewerId, ctx);
 };
 
