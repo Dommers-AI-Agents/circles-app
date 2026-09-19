@@ -54,7 +54,9 @@ const COLLECTIONS = {
   FRIDGE_MAIL_PACK_ORDERS: 'fridgeMailPackOrders', // doc id = client orderId
   // "How Are You?" check-ins between an adult child and a parent
   CARE_PLANS: 'carePlans',   // doc id = ownerId_parentId
-  CARE_ASKS: 'careAsks'      // doc id = planId_YYYY-MM-DD_HHMM
+  CARE_ASKS: 'careAsks',     // doc id = planId_YYYY-MM-DD_HHMM
+  // Workouts posted to the Inner Circle feed, doc id = userId_startedAtMs
+  WORKOUT_POSTS: 'workoutPosts'
 };
 
 // User model structure
