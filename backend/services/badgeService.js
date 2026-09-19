@@ -27,26 +27,9 @@ const db = getFirestore();
  * request. Anything NOT here is a banner and nothing more: worth interrupting
  * for once, not worth a dot that persists until it's dealt with.
  */
-const BADGE_WORTHY = new Set([
-  'new_message',
-  'connection_request',
-  'connection_accepted',
-  'place_like',
-  'place_comment',
-  'new_follower',
-  'activity_reaction',
-  'activity_comment',
-  'check_in',
-  'new_suggestion',
-  'moment_tag',
-  'circle_invite',
-  'store_claim',
-  'store_claim_approved',
-  'premium_signup',
-  'did_you_know'
-]);
-
-const shouldBadge = (type) => BADGE_WORTHY.has(type);
+const { TYPES, shouldBadge } = require('./notificationTypes');
+// Derived from the one type table; kept for readers of the old set.
+const BADGE_WORTHY = new Set(Object.keys(TYPES).filter(shouldBadge));
 
 /**
  * How many things are waiting for this user.

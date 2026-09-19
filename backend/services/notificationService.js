@@ -4,7 +4,8 @@ const { localClock } = require('../utils/localClock');
 const { COLLECTIONS, createNotification, validateNotification } = require('../models/FirestoreModels');
 const emailService = require('./emailService');
 const sseService = require('./sseService');
-const { shouldBadge, computeBadgeCount } = require('./badgeService');
+const { computeBadgeCount } = require('./badgeService');
+const { categoryFor, prefKeyFor, shouldBadge } = require('./notificationTypes');
 
 const db = getFirestore();
 const messaging = getMessaging();
@@ -50,61 +51,8 @@ class NotificationService {
         return { success: false, error: 'Quiet hours' };
       }
 
-      // Determine category based on notification type
-      let category = null;
-      switch (notification.type) {
-        case 'new_message':
-          category = 'NEW_MESSAGE';
-          break;
-        case 'connection_request':
-          category = 'CONNECTION_REQUEST';
-          break;
-        case 'new_suggestion':
-          category = 'PLACE_SUGGESTION';
-          break;
-        case 'new_place':
-        case 'place_like':
-        case 'place_comment':
-          category = 'ACTIVITY_UPDATE';
-          break;
-        case 'daily_summary':
-          category = 'DAILY_SUMMARY';
-          break;
-        case 'discovery_prompt':
-          category = 'DISCOVERY_PROMPT';
-          break;
-        case 'weekend_recommendations':
-          category = 'WEEKEND_RECOMMENDATIONS';
-          break;
-        case 'social_activity':
-          category = 'SOCIAL_ACTIVITY';
-          break;
-        case 'milestone':
-          category = 'MILESTONE';
-          break;
-        case 'check_in':
-          category = 'CHECK_IN';
-          break;
-        case 'engagement_reminder':
-          category = 'ENGAGEMENT_REMINDER';
-          break;
-        case 'weekly_summary':
-          category = 'WEEKLY_SUMMARY';
-          break;
-        case 'monthly_summary':
-          category = 'MONTHLY_SUMMARY';
-          break;
-        case 'special_event':
-          category = 'SPECIAL_EVENT';
-          break;
-        case 'network_growth':
-          category = 'NETWORK_GROWTH';
-          break;
-        case 'care_ask':
-          // Answer buttons on the Lock Screen (no unlock needed)
-          category = 'CARE_ASK';
-          break;
-      }
+      // APNs category (Lock Screen actions), from the one type table
+      const category = categoryFor(notification.type);
 
       // The badge counts what is WAITING for this user — unread messages,
       // unanswered connection requests, unread rows in the Notifications list.
@@ -270,40 +218,7 @@ class NotificationService {
       tips: true
     };
 
-    const typeMap = {
-      'new_message': 'newMessages',
-      'new_suggestion': 'newSuggestions',
-      'new_place': 'newPlaces',
-      'connection_request': 'connectionRequests',
-      'connection_accepted': 'connectionRequests',
-      'circle_invite': 'circleInvites',
-      'check_in': 'checkIns',
-      'daily_summary': 'dailySummary',
-      'discovery_prompt': 'discoveryPrompts',
-      'weekend_recommendations': 'weekendRecommendations',
-      'social_activity': 'socialActivity',
-      'social_notification': 'socialActivity',
-      'place_like': 'socialActivity',
-      'place_comment': 'socialActivity',
-      'new_follower': 'newFollowers',
-      'engagement_reminder': 'reengagement',
-      'milestone': 'milestones',
-      'did_you_know': 'tips',
-      'nextbar_round': 'socialActivity',
-      'nextbar_result': 'socialActivity',
-      // Printed mail: personal and actionable, but still a preference
-      'postcard_order': 'socialActivity',
-      'fridgemail': 'socialActivity',
-      // "How Are You?" check-ins: opted into per plan, so their own key —
-      // a parent who muted social activity must still get asked
-      'care_invite': 'careCheckins',
-      'care_ask': 'careCheckins',
-      'care_answer': 'careCheckins',
-      'care_accepted': 'careCheckins',
-      'care_silence': 'careCheckins'
-    };
-
-    const preferencesKey = typeMap[type];
+    const preferencesKey = prefKeyFor(type);
     if (!preferencesKey) return true; // Allow unknown types by default
 
     return preferences[preferencesKey] !== false;
