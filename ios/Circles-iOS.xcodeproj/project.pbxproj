@@ -672,7 +672,7 @@
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Circles needs permission to save photos to your library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Circles needs access to your photos to upload images for places and profiles.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "remote-notification fetch processing";
+				INFOPLIST_KEY_UIBackgroundModes = "audio remote-notification fetch processing";
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UIRequiresFullScreen = NO;
@@ -720,7 +720,7 @@
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Circles needs permission to save photos to your library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Circles needs access to your photos to upload images for places and profiles.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "remote-notification fetch processing";
+				INFOPLIST_KEY_UIBackgroundModes = "audio remote-notification fetch processing";
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UIRequiresFullScreen = NO;
