@@ -10,6 +10,7 @@ struct PendingLinkParserTests {
         #expect(PendingLinkParser.parse("create-wallet") == .createWallet)
         #expect(PendingLinkParser.parse("add-place") == .openPath("add-place"))
         #expect(PendingLinkParser.parse("widget:postcard") == .widget(id: "postcard"))
+        #expect(PendingLinkParser.parse("postcard-order:o1") == .postcardOrder(id: "o1"))
         #expect(PendingLinkParser.parse("me") == .openPath("me"))
         #expect(PendingLinkParser.parse("check-in") == .quickCheckIn)
     }

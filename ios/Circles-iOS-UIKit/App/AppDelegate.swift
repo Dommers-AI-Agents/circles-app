@@ -611,6 +611,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             center.post(name: Notification.Name("NavigateToMessages"), object: nil)
         case .homeWidget(let id):
             center.post(name: .navigateToHomeWidget, object: id)
+        case .postcardOrder(let id):
+            postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "postcard-order:\(id)",
+                                object: "postcard", userInfo: ["orderId": id])
         case .suggestions(let placeId, let suggestionId):
             var info: [String: Any] = [:]
             if let placeId { info["placeId"] = placeId }

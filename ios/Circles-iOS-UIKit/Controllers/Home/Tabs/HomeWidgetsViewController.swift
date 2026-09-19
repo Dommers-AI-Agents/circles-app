@@ -106,15 +106,19 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
 
     // MARK: - Navigation
 
-    /// Opens one widget's full page by id (push taps, deep links).
-    func open(widgetId: String) {
+    /// Opens one widget's full page by id (push taps, deep links). A postcard
+    /// order id is handed to the page through its context, like a launch
+    /// photo, so the page opens on that card's status.
+    func open(widgetId: String, postcardOrderId: String? = nil) {
         guard ensureModel(), let model,
               let descriptor = model.descriptors.first(where: { $0.id == widgetId }),
               let widget = model.widget(for: descriptor) else { return }
         if navigationController?.topViewController is HomeWidgetDetailViewController {
             navigationController?.popViewController(animated: false)
         }
-        open(widget, context: model.context(for: descriptor))
+        let context = model.context(for: descriptor)
+        if widgetId == "postcard", let postcardOrderId { context.launchPostcardOrderId = postcardOrderId }
+        open(widget, context: context)
     }
 
     /// Moments → postcard: open the postcard page with `photo` already chosen

@@ -8,6 +8,8 @@ enum NotificationDestination: Equatable {
     case conversation(id: String)
     case messages
     case homeWidget(id: String)
+    /// "Your postcard is printing": the postcard page opened on that card's detail.
+    case postcardOrder(id: String)
     case suggestions(placeId: String?, suggestionId: String?)
     /// `showComments` nil = post without userInfo (as `new_place` always did).
     case circle(id: String, showComments: Bool?)
@@ -51,7 +53,9 @@ enum NotificationTapRouter {
 
         case "nextbar_round", "nextbar_result": return .homeWidget(id: "nextbar")
         case "fridgemail": return .homeWidget(id: "fridgemail")
-        case "postcard_order": return .homeWidget(id: "postcard")
+        case "postcard_order":
+            if let orderId = string("orderId", in: userInfo) { return .postcardOrder(id: orderId) }
+            return .homeWidget(id: "postcard")
         case "water_reminder": return .homeWidget(id: "water")
         case "care_invite", "care_ask", "care_answer", "care_accepted", "care_silence": return .homeWidget(id: "howareyou")
 
@@ -127,6 +131,14 @@ enum NotificationTapRouter {
             }
             return nil
         }
+    }
+
+    /// A data field, wherever the sender put it (same shapes as `type(in:)`).
+    static func string(_ key: String, in userInfo: [AnyHashable: Any]) -> String? {
+        if let value = userInfo[key] as? String, !value.isEmpty { return value }
+        if let custom = userInfo["customData"] as? [String: Any], let value = custom[key] as? String, !value.isEmpty { return value }
+        if let data = userInfo["data"] as? [String: Any], let value = data[key] as? String, !value.isEmpty { return value }
+        return nil
     }
 
     private static func actorId(_ userInfo: [AnyHashable: Any]) -> String? {

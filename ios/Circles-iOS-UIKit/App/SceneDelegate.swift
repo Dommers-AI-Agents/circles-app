@@ -1329,6 +1329,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case .allPlacesMap: self.navigateToAllPlacesMap()
             case .createWallet: self.navigateToCreateWallet()
             case .widget(let id): self.navigateToWidget(id: id)
+            case .postcardOrder(let id): self.navigateToWidget(id: "postcard", postcardOrderId: id)
             case .openPath(let path):
                 if let destination = DeepLinkRouter().openPathDestination(path) { self.route(destination) }
             case .shareToken(let circleId, let shareToken):
@@ -2087,10 +2088,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// Engagement-tip deep link: open the Piggy Bank wallet-create coach-mark.
     /// Home → Widgets segment → one widget's page (e.g. the postcard
     /// composer from the app icon's "Send a Postcard" quick action).
-    private func navigateToWidget(id: String) {
+    private func navigateToWidget(id: String, postcardOrderId: String? = nil) {
         guard AuthService.shared.isLoggedIn,
               let tabBar = window?.rootViewController as? CirclesTabBarController else {
-            UserDefaults.standard.set("widget:\(id)", forKey: "pendingDeepLink")
+            UserDefaults.standard.set(postcardOrderId.map { "postcard-order:\($0)" } ?? "widget:\(id)", forKey: "pendingDeepLink")
             return
         }
         tabBar.presentedViewController?.dismiss(animated: false)
@@ -2098,7 +2099,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let nav = tabBar.viewControllers?.first as? UINavigationController,
               let home = nav.viewControllers.first as? CirclesHomeViewController else { return }
         nav.popToRootViewController(animated: false)
-        home.showWidgetsTab(openingWidget: id)
+        home.showWidgetsTab(openingWidget: id, postcardOrderId: postcardOrderId)
     }
 
     private func navigateToCreateWallet() {

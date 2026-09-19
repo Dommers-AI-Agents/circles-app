@@ -23,6 +23,9 @@ struct NotificationTapRouterTests {
         #expect(route(["type": "nextbar_round"]) == .homeWidget(id: "nextbar"))
         #expect(route(["type": "fridgemail"]) == .homeWidget(id: "fridgemail"))
         #expect(route(["type": "postcard_order"]) == .homeWidget(id: "postcard"))
+        #expect(route(["type": "postcard_order", "orderId": "o1"]) == .postcardOrder(id: "o1"))
+        #expect(route(["type": "postcard_order", "data": ["orderId": "o2"]]) == .postcardOrder(id: "o2"))
+        #expect(route(["type": "postcard_order", "orderId": ""]) == .homeWidget(id: "postcard"))
         #expect(route(["type": "water_reminder"]) == .homeWidget(id: "water"))
         for t in ["care_invite", "care_ask", "care_answer", "care_accepted", "care_silence"] {
             #expect(route(["type": t]) == .homeWidget(id: "howareyou"))

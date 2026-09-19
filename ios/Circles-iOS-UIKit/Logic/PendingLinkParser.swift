@@ -13,6 +13,9 @@ enum PendingLink: Equatable {
     /// "widget:<id>": the Widgets segment with one widget's page open
     /// (the "Send a Postcard" quick action).
     case widget(id: String)
+    /// "postcard-order:<orderId>": the postcard page open on one printed
+    /// card's status (its "printing" push tapped on a cold start).
+    case postcardOrder(id: String)
 
     // "type:payload" links
     case shareToken(circleId: String, shareToken: String)
@@ -64,6 +67,7 @@ enum PendingLinkParser {
         case "share": return .share(id: payload)
         case "connect": return .connect(fromUserId: payload)
         case "widget": return .widget(id: payload)
+        case "postcard-order": return .postcardOrder(id: payload)
         case "video": return .video(id: payload)
         case "daily-summary": return .dailySummary
         case "check-in": return .checkIn(placeId: payload)
