@@ -870,6 +870,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             // A mailed postcard was printed or delivered: its status lives in the Postcard widget
             NotificationCenter.default.post(name: .navigateToHomeWidget, object: "postcard")
 
+        case "water_reminder":
+            // A local "drink some water" reminder: open the Water widget to log a cup
+            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "water")
+
         case "care_invite", "care_ask", "care_answer", "care_accepted", "care_silence":
             // "How Are You?" — an invitation, a question to answer, or a parent's answer/silence
             NotificationCenter.default.post(name: .navigateToHomeWidget, object: "howareyou")
