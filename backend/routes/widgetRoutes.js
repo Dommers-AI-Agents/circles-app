@@ -67,6 +67,11 @@ router.post('/care/plans', messageLimiter, care.createPlan);
 router.put('/care/plans/:id', care.updatePlan);
 router.delete('/care/plans/:id', care.endPlan);
 router.post('/care/plans/:id/respond', care.respond);
+// Watchers: the other siblings. Joining is requested by them or offered by the
+// owner, and accepted by the parent — never by the owner on their behalf.
+router.post('/care/plans/:id/watchers', messageLimiter, care.requestWatcher);
+router.post('/care/plans/:id/watchers/:watcherId/respond', care.respondToWatcher);
+router.delete('/care/plans/:id/watchers/:watcherId', care.removeWatcher);
 router.get('/care/asks', care.listAsks);
 router.post('/care/asks/:id/answer', care.answer);
 

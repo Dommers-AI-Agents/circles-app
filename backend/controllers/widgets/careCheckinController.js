@@ -5,7 +5,11 @@ const care = require('../../services/careCheckinService');
 
 const fail = (res, error) => {
   if (error && error.status && error.code) {
-    return res.status(error.status).json({ success: false, code: error.code, message: error.message });
+    // `details` carries the plan a sibling should join instead of creating a
+    // second one — the app turns that into "join theirs" rather than a dead end.
+    return res.status(error.status).json({
+      success: false, code: error.code, message: error.message, ...(error.details || {})
+    });
   }
   console.error('[care] request failed:', error && error.message);
   return res.status(500).json({ success: false, code: 'care_failed', message: 'Something went wrong with check-ins.' });
@@ -61,4 +65,22 @@ exports.runDue = async (req, res) => {
     console.error('[care] run failed:', error);
     res.status(500).json({ success: false, error: error.message });
   }
+};
+
+// A sibling asks to join, or the owner invites one. Either way the parent decides.
+exports.requestWatcher = async (req, res) => {
+  const { watcherId } = req.body || {};
+  try { res.status(201).json({ success: true, plan: await care.requestWatcher({ userId: req.user.uid, planId: req.params.id, watcherId }) }); }
+  catch (e) { fail(res, e); }
+};
+
+exports.respondToWatcher = async (req, res) => {
+  const { accept } = req.body || {};
+  try { res.json({ success: true, plan: await care.respondToWatcher({ userId: req.user.uid, planId: req.params.id, watcherId: req.params.watcherId, accept: accept === true }) }); }
+  catch (e) { fail(res, e); }
+};
+
+exports.removeWatcher = async (req, res) => {
+  try { res.json({ success: true, plan: await care.removeWatcher({ userId: req.user.uid, planId: req.params.id, watcherId: req.params.watcherId }) }); }
+  catch (e) { fail(res, e); }
 };

@@ -6,6 +6,9 @@
 //
 // Two collections, both keyed so a retried run can't double-ask:
 //   carePlans/{ownerId_parentId}   the arrangement (status, questions, times, tz)
+//                                  plus `watchers[]` — the other siblings. One
+//                                  child sets it up, the rest join it, and the
+//                                  parent is asked once rather than once each.
 //   careAsks/{planId_YYYY-MM-DD_HHMM}  one question sent at one slot
 //
 // Every query is equality-only and sorted in memory: no composite indexes.
@@ -17,10 +20,12 @@ const notificationService = require('./notificationService');
 const { localClock, FALLBACK_ZONE } = require('../utils/localClock');
 
 class CareError extends Error {
-  constructor(status, code, message) {
+  constructor(status, code, message, details = null) {
     super(message);
     this.status = status;
     this.code = code;
+    // e.g. the plan a sibling should join instead of creating a duplicate.
+    if (details) this.details = details;
   }
 }
 
@@ -54,6 +59,9 @@ const TYPES = {
   ask: 'care_ask',
   answer: 'care_answer',
   accepted: 'care_accepted',
+  watcherRequest: 'care_watcher_request',
+  watcherAccepted: 'care_watcher_accepted',
+  watcherDeclined: 'care_watcher_declined',
   silence: 'care_silence'
 };
 
@@ -109,6 +117,31 @@ class CareCheckinService {
   get asks() { return this.db.collection(COLLECTIONS.CARE_ASKS); }
 
   static planId(ownerId, parentId) { return `${ownerId}_${parentId}`; }
+
+  // Who someone is on a plan. A watcher is a sibling the parent accepted; they
+  // see the answers and the silences but never change the schedule — one person
+  // owns the arrangement and the rest partake.
+  static roleOf(plan, userId) {
+    if (userId === plan.ownerId) return 'owner';
+    if (userId === plan.parentId) return 'parent';
+    const w = (plan.watchers || []).find((x) => x.userId === userId);
+    if (w) return w.status === 'active' ? 'watcher' : 'pending_watcher';
+    return 'none';
+  }
+
+  static activeWatcherIds(plan) {
+    return (plan.watchers || []).filter((w) => w.status === 'active').map((w) => w.userId);
+  }
+
+  // Everyone who should hear about an answer or a silence: the child who set it
+  // up plus every sibling the parent let in.
+  static careTeam(plan) {
+    return [plan.ownerId, ...CareCheckinService.activeWatcherIds(plan)];
+  }
+
+  static canRead(plan, userId) {
+    return ['owner', 'parent', 'watcher'].includes(CareCheckinService.roleOf(plan, userId));
+  }
   static askId(planId, dateKey, slot) { return `${planId}_${dateKey}_${slot.replace(':', '')}`; }
 
   // MARK: - Presentation
@@ -118,7 +151,7 @@ class CareCheckinService {
     const answered = asks.filter((a) => a.status === 'answered').sort((a, b) => (a.answeredAt < b.answeredAt ? 1 : -1));
     return {
       planId: plan.id,
-      role: viewerId === plan.ownerId ? 'owner' : 'parent',
+      role: CareCheckinService.roleOf(plan, viewerId),
       ownerId: plan.ownerId,
       ownerName: plan.ownerName || '',
       parentId: plan.parentId,
@@ -133,6 +166,10 @@ class CareCheckinService {
       acceptedAt: plan.acceptedAt || null,
       lastAskedAt: plan.lastAskedAt || null,
       lastAnsweredAt: plan.lastAnsweredAt || null,
+      watchers: (plan.watchers || []).map((w) => ({
+        userId: w.userId, name: w.name || 'Someone', status: w.status,
+        invitedBy: w.invitedBy || null, acceptedAt: w.acceptedAt || null
+      })),
       openAsk: open[0] ? this.presentAsk({ id: open[0].id, ...open[0] }) : null,
       lastAnswer: answered[0] ? this.presentAsk({ id: answered[0].id, ...answered[0] }) : null,
       answers: ANSWERS
@@ -160,11 +197,16 @@ class CareCheckinService {
   // MARK: - Reads
 
   async listPlans(userId) {
-    const [owned, parenting] = await Promise.all([
+    const [owned, parenting, watching] = await Promise.all([
       this.plans.where('ownerId', '==', userId).get(),
-      this.plans.where('parentId', '==', userId).get()
+      this.plans.where('parentId', '==', userId).get(),
+      // Equality on an array field: Firestore matches if the array contains it,
+      // so no composite index and no second shape to keep in step.
+      this.plans.where('watcherIds', 'array-contains', userId).get()
     ]);
-    const rows = [...owned.docs, ...parenting.docs]
+    const seen = new Set();
+    const rows = [...owned.docs, ...parenting.docs, ...watching.docs]
+      .filter((d) => (seen.has(d.id) ? false : seen.add(d.id)))
       .map((d) => ({ id: d.id, ...d.data() }))
       .filter((p) => p.status !== 'ended');
     const withAsks = await Promise.all(rows.map(async (plan) => {
@@ -174,7 +216,8 @@ class CareCheckinService {
     withAsks.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     return {
       asOwner: withAsks.filter((p) => p.role === 'owner'),
-      asParent: withAsks.filter((p) => p.role === 'parent')
+      asParent: withAsks.filter((p) => p.role === 'parent'),
+      asWatcher: withAsks.filter((p) => p.role === 'watcher')
     };
   }
 
@@ -188,7 +231,7 @@ class CareCheckinService {
 
   async listAsks({ userId, planId, limit = 60 }) {
     const plan = await this.requirePlan(planId);
-    if (plan.ownerId !== userId && plan.parentId !== userId) throw new CareError(403, 'not_yours', 'Not your check-in.');
+    if (!CareCheckinService.canRead(plan, userId)) throw new CareError(403, 'not_yours', 'Not your check-in.');
     return (await this.recentAsks(planId, limit)).map((a) => this.presentAsk(a));
   }
 
@@ -216,6 +259,17 @@ class CareCheckinService {
     const parentName = parentDoc.data().displayName || 'Them';
     const parentPrefs = parentDoc.data().notificationPreferences || {};
 
+    // Someone else may already check in on this parent. Setting up a second
+    // plan would ask them twice on two schedules, which is worse for the
+    // parent than not being able to join at all — so say so, and hand back the
+    // plan to join instead.
+    const live = await this.livePlanForParent(parent);
+    if (live && live.ownerId !== ownerId) {
+      throw new CareError(409, 'plan_exists',
+        `${live.ownerName || 'Someone'} already checks in on ${parentName}. Ask to join theirs so ${parentName} is only asked once.`,
+        { planId: live.id, ownerName: live.ownerName || null });
+    }
+
     const planId = CareCheckinService.planId(ownerId, parent);
     const existing = await this.plans.doc(planId).get();
     const prior = existing.exists ? existing.data() : {};
@@ -229,6 +283,8 @@ class CareCheckinService {
       times: normalizeTimes(times) || DEFAULT_TIMES,
       timezone: parentPrefs.timezone || prior.timezone || null,
       nextQuestionIndex: 0,
+      watchers: [],
+      watcherIds: [],
       createdAt: nowIso(), updatedAt: nowIso(), acceptedAt: null, lastAskedAt: null, lastAnsweredAt: null
     };
     await this.plans.doc(planId).set(plan);
@@ -239,6 +295,134 @@ class CareCheckinService {
       data: { planId }
     });
     return this.presentPlan({ id: planId, ...plan }, { viewerId: ownerId });
+  }
+
+  // The live plan on a parent, whoever set it up. Equality-only, sorted in
+  // memory, like every other read here.
+  async livePlanForParent(parentId) {
+    const snap = await this.plans.where('parentId', '==', parentId).get();
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .find((p) => ['active', 'invited', 'paused'].includes(p.status)) || null;
+  }
+
+  // Tell the whole care team — the child who set it up and every sibling the
+  // parent accepted. Silence and answers are exactly what a watcher joined for;
+  // sending them only to the owner would make joining decorative.
+  notifyTeam(plan, payload) {
+    for (const userId of CareCheckinService.careTeam(plan)) this.notify(userId, payload);
+  }
+
+  // MARK: - Watchers (the other siblings)
+
+  // A sibling asks to join, or the owner invites one. Either way the PARENT
+  // decides: they already had to accept the first child, and agreeing to one
+  // person seeing how you are is not agreeing to four.
+  async requestWatcher({ userId, planId, watcherId = null }) {
+    const plan = await this.requirePlan(planId);
+    const role = CareCheckinService.roleOf(plan, userId);
+    const candidate = normalizeUserId(watcherId || userId);
+
+    if (watcherId && role !== 'owner') {
+      throw new CareError(403, 'not_owner', 'Only the person who set this up can invite someone.');
+    }
+    if (!candidate || candidate === plan.parentId) {
+      throw new CareError(400, 'bad_watcher', 'That person cannot join this check-in.');
+    }
+    if (candidate === plan.ownerId) throw new CareError(409, 'already_owner', 'They already run this check-in.');
+    const already = (plan.watchers || []).find((w) => w.userId === candidate);
+    if (already) {
+      throw new CareError(409, 'already_watching',
+        already.status === 'active' ? 'They are already on this check-in.' : `${plan.parentName} hasn't answered that request yet.`);
+    }
+
+    // A watcher must be connected to the PARENT, not merely to the sibling who
+    // invited them — the parent's answers are the thing being shared.
+    const connections = await buildConnectionMap(plan.parentId);
+    const link = connections.get(candidate);
+    if (!link || link.status !== 'accepted') {
+      throw new CareError(403, 'not_connected', `They need to be connected with ${plan.parentName} first.`);
+    }
+
+    const doc = await this.db.collection(COLLECTIONS.USERS).doc(candidate).get();
+    if (!doc.exists) throw new CareError(404, 'no_user', 'That person could not be found.');
+    const name = doc.data().displayName || 'Someone';
+
+    const watcher = {
+      userId: candidate,
+      name,
+      status: 'invited',
+      invitedBy: userId === candidate ? 'self' : userId,
+      invitedAt: nowIso(),
+      acceptedAt: null
+    };
+    await this.plans.doc(planId).update({
+      watchers: [...(plan.watchers || []), watcher],
+      updatedAt: nowIso()
+    });
+
+    this.notify(plan.parentId, {
+      type: TYPES.watcherRequest,
+      title: `${name} wants to check in on you too`,
+      body: `They'd see the same answers as ${plan.ownerName || 'your family'}. Open Circles to say yes or no.`,
+      data: { planId, watcherId: candidate }
+    });
+    const merged = { ...plan, watchers: [...(plan.watchers || []), watcher] };
+    return this.presentPlan(merged, { viewerId: userId });
+  }
+
+  // The parent says yes or no. Only the parent — the owner cannot wave a
+  // sibling through on their behalf.
+  async respondToWatcher({ userId, planId, watcherId, accept }) {
+    const plan = await this.requirePlan(planId);
+    if (plan.parentId !== userId) {
+      throw new CareError(403, 'not_parent', 'Only the person being checked in on can answer this.');
+    }
+    const target = normalizeUserId(watcherId);
+    const watcher = (plan.watchers || []).find((w) => w.userId === target);
+    if (!watcher) throw new CareError(404, 'no_watcher', 'That request is no longer there.');
+
+    const watchers = accept
+      ? (plan.watchers || []).map((w) => (w.userId === target ? { ...w, status: 'active', acceptedAt: nowIso() } : w))
+      : (plan.watchers || []).filter((w) => w.userId !== target);
+    const merged = { ...plan, watchers };
+    await this.plans.doc(planId).update({
+      watchers,
+      watcherIds: CareCheckinService.activeWatcherIds(merged),
+      updatedAt: nowIso()
+    });
+
+    this.notify(target, accept ? {
+      type: TYPES.watcherAccepted,
+      title: `You're on ${plan.parentName}'s check-ins`,
+      body: `You'll see their answers, and hear about it when a question goes unanswered.`,
+      data: { planId }
+    } : {
+      type: TYPES.watcherDeclined,
+      title: `${plan.parentName} said no for now`,
+      body: 'They chose not to add you to their check-ins.',
+      data: { planId }
+    });
+    return this.presentPlan(merged, { viewerId: userId });
+  }
+
+  // Leaving, or being removed. A watcher can always take themselves off; the
+  // parent and the owner can remove anyone.
+  async removeWatcher({ userId, planId, watcherId }) {
+    const plan = await this.requirePlan(planId);
+    const target = normalizeUserId(watcherId);
+    const isSelf = target === userId;
+    if (!isSelf && plan.parentId !== userId && plan.ownerId !== userId) {
+      throw new CareError(403, 'not_allowed', 'Only they, the owner, or the person being checked in on can do that.');
+    }
+    const watchers = (plan.watchers || []).filter((w) => w.userId !== target);
+    const merged = { ...plan, watchers };
+    await this.plans.doc(planId).update({
+      watchers,
+      watcherIds: CareCheckinService.activeWatcherIds(merged),
+      updatedAt: nowIso()
+    });
+    return this.presentPlan(merged, { viewerId: userId });
   }
 
   async updatePlan({ userId, planId, times, questions, status }) {
@@ -294,6 +478,7 @@ class CareCheckinService {
     const merged = { ...plan, ...patch };
     if (accept) {
       const next = this.nextSlot(merged);
+      // Deliberately the owner only: this answers the invitation they sent.
       this.notify(plan.ownerId, {
         type: TYPES.accepted,
         title: `${plan.parentName} said yes to check-ins`,
@@ -319,7 +504,7 @@ class CareCheckinService {
     const plan = await this.plans.doc(ask.planId).get();
     const parentName = (plan.exists && plan.data().parentName) || 'They';
     const noteLine = patch.note ? ` — "${patch.note}"` : '';
-    this.notify(ask.ownerId, {
+    this.notifyTeam(plan.exists ? { id: plan.id, ...plan.data() } : { ownerId: ask.ownerId }, {
       type: TYPES.answer,
       title: `${parentName}: ${ANSWERS[answer]}`,
       body: `“${ask.questionText}”${noteLine}`,
@@ -437,7 +622,7 @@ class CareCheckinService {
         if (!undeliveredNoticed.has(key) && !(plan.undeliveredNoticedOn === ask.dateKey)) {
           undeliveredNoticed.add(key);
           await this.plans.doc(plan.id).update({ undeliveredNoticedOn: ask.dateKey });
-          this.notify(plan.ownerId, {
+          this.notifyTeam(plan, {
             type: TYPES.silence,
             title: `${plan.parentName}'s phone isn't getting check-ins`,
             body: `Today's question couldn't be delivered. Notifications may be off, or Circles is signed out on their phone.`,
@@ -448,7 +633,7 @@ class CareCheckinService {
         await this.asks.doc(ask.id).update({ status: 'missed', alertedAt: now.toISOString(), alertKind: 'undelivered' });
         continue;
       }
-      this.notify(plan.ownerId, {
+      this.notifyTeam(plan, {
         type: TYPES.silence,
         title: `${plan.parentName} hasn't answered`,
         body: `“${ask.questionText}” went out at ${friendlyTime(ask.slot)} their time and hasn't been answered.`,
