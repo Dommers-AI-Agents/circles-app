@@ -316,6 +316,17 @@ describe('siblings joining (watchers)', () => {
       .rejects.toMatchObject({ code: 'plan_exists', details: { planId: PLAN } });
   });
 
+  test('joining by naming the parent finds the plan a sibling already made', async () => {
+    await activePlan();
+    await seedSibling();
+    const joined = await care.requestWatcherForParent({ userId: SIBLING, parentId: PARENT });
+    expect(joined.planId).toBe(PLAN);
+    expect(joined.watchers[0]).toMatchObject({ userId: SIBLING, status: 'invited' });
+    // Nobody checking in on them yet → set one up instead of joining nothing.
+    await expect(care.requestWatcherForParent({ userId: SIBLING, parentId: 'stranger' }))
+      .rejects.toMatchObject({ code: 'no_plan' });
+  });
+
   test('a watcher sees the plan but never changes the schedule', async () => {
     await activePlan();
     await seedSibling();

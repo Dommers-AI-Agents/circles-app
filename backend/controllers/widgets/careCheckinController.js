@@ -84,3 +84,10 @@ exports.removeWatcher = async (req, res) => {
   try { res.json({ success: true, plan: await care.removeWatcher({ userId: req.user.uid, planId: req.params.id, watcherId: req.params.watcherId }) }); }
   catch (e) { fail(res, e); }
 };
+
+// Join the check-in someone else already set up on this parent.
+exports.joinForParent = async (req, res) => {
+  const { parentId } = req.body || {};
+  try { res.status(201).json({ success: true, plan: await care.requestWatcherForParent({ userId: req.user.uid, parentId }) }); }
+  catch (e) { fail(res, e); }
+};

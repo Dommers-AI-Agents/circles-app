@@ -371,6 +371,16 @@ class CareCheckinService {
     return this.presentPlan(merged, { viewerId: userId });
   }
 
+  // Join by naming the PARENT rather than the plan. A sibling who tries to set
+  // up their own check-in only knows who they meant to watch, not the id of the
+  // arrangement someone else already made — so this resolves it for them.
+  async requestWatcherForParent({ userId, parentId }) {
+    const parent = normalizeUserId(parentId);
+    const plan = parent ? await this.livePlanForParent(parent) : null;
+    if (!plan) throw new CareError(404, 'no_plan', 'Nobody is checking in on them yet — set one up instead.');
+    return this.requestWatcher({ userId, planId: plan.id });
+  }
+
   // The parent says yes or no. Only the parent — the owner cannot wave a
   // sibling through on their behalf.
   async respondToWatcher({ userId, planId, watcherId, accept }) {
