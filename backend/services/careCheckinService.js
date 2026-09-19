@@ -1,0 +1,483 @@
+// backend/services/careCheckinService.js
+//
+// "How Are You?": an adult child sets up a few times a day when their parent
+// gets a short question as a push, answered with one tap from the Lock
+// Screen. The child sees every answer and, more importantly, the silence.
+//
+// Two collections, both keyed so a retried run can't double-ask:
+//   carePlans/{ownerId_parentId}   the arrangement (status, questions, times, tz)
+//   careAsks/{planId_YYYY-MM-DD_HHMM}  one question sent at one slot
+//
+// Every query is equality-only and sorted in memory: no composite indexes.
+const { getFirestore } = require('../config/firebase');
+const { COLLECTIONS } = require('../models/FirestoreModels');
+const { buildConnectionMap } = require('./connectionMap');
+const { normalizeUserId } = require('./idService');
+const notificationService = require('./notificationService');
+const { localClock, FALLBACK_ZONE } = require('../utils/localClock');
+
+class CareError extends Error {
+  constructor(status, code, message) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+const DEFAULT_QUESTIONS = [
+  'How are you feeling today?',
+  'Did you sleep well?',
+  'Have you eaten something good today?',
+  'Did you get outside today?',
+  'How is your energy today?',
+  'Anything on your mind?',
+  'Did you take your medicine today?',
+  'What made you smile today?'
+];
+const DEFAULT_TIMES = ['08:30', '13:00', '19:00'];
+const ANSWERS = {
+  great: 'Doing great 👍',
+  okay: 'Okay',
+  not_great: 'Not so good'
+};
+const MAX_QUESTIONS = 40;
+const MAX_TIMES = 5;
+const QUESTION_MAX = 120;
+const NOTE_MAX = 200;
+/** Unanswered this long after the push → the child hears about it. */
+const DUE_AFTER_MS = 3 * 60 * 60 * 1000;
+/** The scheduler runs every 15 minutes; a slot is "now" inside its window. */
+const RUN_WINDOW_MINUTES = 15;
+/** Read the plan's queue of questions across runs. */
+const TYPES = {
+  invite: 'care_invite',
+  ask: 'care_ask',
+  answer: 'care_answer',
+  accepted: 'care_accepted',
+  silence: 'care_silence'
+};
+
+const nowIso = () => new Date().toISOString();
+const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+const clean = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** "2026-09-19" in the given zone. */
+function localDateKey(timeZone, now = new Date()) {
+  const read = (zone) => {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+    const get = (type) => parts.find((p) => p.type === type).value;
+    return `${get('year')}-${get('month')}-${get('day')}`;
+  };
+  try { return read(timeZone || FALLBACK_ZONE); } catch (error) { return read(FALLBACK_ZONE); }
+}
+
+/** "08:30" → "8:30 AM" */
+function friendlyTime(hhmm) {
+  const [h, m] = String(hhmm).split(':').map((n) => parseInt(n, 10));
+  if (!Number.isInteger(h) || !Number.isInteger(m)) return hhmm;
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(m).padStart(2, '0')} ${suffix}`;
+}
+
+function normalizeTimes(times) {
+  if (!Array.isArray(times)) return null;
+  const valid = [...new Set(times.map((t) => clean(t, 5)).filter((t) => TIME_RE.test(t)))].sort();
+  if (valid.length === 0 || valid.length > MAX_TIMES) return null;
+  return valid;
+}
+
+function normalizeQuestions(questions, existing = []) {
+  if (!Array.isArray(questions)) return null;
+  const out = [];
+  for (const q of questions.slice(0, MAX_QUESTIONS)) {
+    const text = clean(typeof q === 'string' ? q : q && q.text, QUESTION_MAX);
+    if (!text) continue;
+    const prior = existing.find((e) => e.text === text) || (q && q.id ? existing.find((e) => e.id === q.id) : null);
+    out.push({ id: prior ? prior.id : newId(), text, createdAt: prior ? prior.createdAt : nowIso() });
+  }
+  return out;
+}
+
+class CareCheckinService {
+  constructor() {
+    this.db = getFirestore();
+  }
+
+  get plans() { return this.db.collection(COLLECTIONS.CARE_PLANS); }
+  get asks() { return this.db.collection(COLLECTIONS.CARE_ASKS); }
+
+  static planId(ownerId, parentId) { return `${ownerId}_${parentId}`; }
+  static askId(planId, dateKey, slot) { return `${planId}_${dateKey}_${slot.replace(':', '')}`; }
+
+  // MARK: - Presentation
+
+  presentPlan(plan, { asks = [], viewerId } = {}) {
+    const open = asks.filter((a) => a.status === 'open').sort((a, b) => (a.askedAt < b.askedAt ? 1 : -1));
+    const answered = asks.filter((a) => a.status === 'answered').sort((a, b) => (a.answeredAt < b.answeredAt ? 1 : -1));
+    return {
+      planId: plan.id,
+      role: viewerId === plan.ownerId ? 'owner' : 'parent',
+      ownerId: plan.ownerId,
+      ownerName: plan.ownerName || '',
+      parentId: plan.parentId,
+      parentName: plan.parentName || '',
+      status: plan.status,
+      questions: (plan.questions || []).map((q) => ({ id: q.id, text: q.text })),
+      usesDefaultQuestions: !(plan.questions || []).length,
+      defaultQuestions: DEFAULT_QUESTIONS,
+      times: plan.times || DEFAULT_TIMES,
+      timezone: plan.timezone || null,
+      createdAt: plan.createdAt || null,
+      acceptedAt: plan.acceptedAt || null,
+      lastAskedAt: plan.lastAskedAt || null,
+      lastAnsweredAt: plan.lastAnsweredAt || null,
+      openAsk: open[0] ? this.presentAsk({ id: open[0].id, ...open[0] }) : null,
+      lastAnswer: answered[0] ? this.presentAsk({ id: answered[0].id, ...answered[0] }) : null,
+      answers: ANSWERS
+    };
+  }
+
+  presentAsk(ask) {
+    return {
+      askId: ask.id,
+      planId: ask.planId,
+      questionText: ask.questionText,
+      slot: ask.slot,
+      dateKey: ask.dateKey,
+      askedAt: ask.askedAt,
+      dueBy: ask.dueBy,
+      status: ask.status,
+      answer: ask.answer || null,
+      answerText: ask.answer ? ANSWERS[ask.answer] || ask.answer : null,
+      note: ask.note || '',
+      answeredAt: ask.answeredAt || null,
+      pushDelivered: ask.pushDelivered !== false
+    };
+  }
+
+  // MARK: - Reads
+
+  async listPlans(userId) {
+    const [owned, parenting] = await Promise.all([
+      this.plans.where('ownerId', '==', userId).get(),
+      this.plans.where('parentId', '==', userId).get()
+    ]);
+    const rows = [...owned.docs, ...parenting.docs]
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((p) => p.status !== 'ended');
+    const withAsks = await Promise.all(rows.map(async (plan) => {
+      const asks = await this.recentAsks(plan.id, 6);
+      return this.presentPlan(plan, { asks, viewerId: userId });
+    }));
+    withAsks.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    return {
+      asOwner: withAsks.filter((p) => p.role === 'owner'),
+      asParent: withAsks.filter((p) => p.role === 'parent')
+    };
+  }
+
+  async recentAsks(planId, limit = 30) {
+    const snap = await this.asks.where('planId', '==', planId).get();
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.askedAt < b.askedAt ? 1 : -1))
+      .slice(0, limit);
+  }
+
+  async listAsks({ userId, planId, limit = 60 }) {
+    const plan = await this.requirePlan(planId);
+    if (plan.ownerId !== userId && plan.parentId !== userId) throw new CareError(403, 'not_yours', 'Not your check-in.');
+    return (await this.recentAsks(planId, limit)).map((a) => this.presentAsk(a));
+  }
+
+  async requirePlan(planId) {
+    const doc = await this.plans.doc(planId).get();
+    if (!doc.exists) throw new CareError(404, 'no_plan', 'That check-in no longer exists.');
+    return { id: doc.id, ...doc.data() };
+  }
+
+  // MARK: - Owner
+
+  async createPlan({ ownerId, parentId, times, questions }) {
+    const parent = normalizeUserId(parentId);
+    if (!parent || parent === ownerId) throw new CareError(400, 'bad_parent', 'Pick someone from your connections.');
+    const connections = await buildConnectionMap(ownerId);
+    const link = connections.get(parent);
+    if (!link || link.status !== 'accepted') throw new CareError(403, 'not_connected', 'You can only check in on someone you are connected with.');
+
+    const [ownerDoc, parentDoc] = await Promise.all([
+      this.db.collection(COLLECTIONS.USERS).doc(ownerId).get(),
+      this.db.collection(COLLECTIONS.USERS).doc(parent).get()
+    ]);
+    if (!parentDoc.exists) throw new CareError(404, 'no_user', 'That person could not be found.');
+    const ownerName = (ownerDoc.exists && ownerDoc.data().displayName) || 'Someone';
+    const parentName = parentDoc.data().displayName || 'Them';
+    const parentPrefs = parentDoc.data().notificationPreferences || {};
+
+    const planId = CareCheckinService.planId(ownerId, parent);
+    const existing = await this.plans.doc(planId).get();
+    const prior = existing.exists ? existing.data() : {};
+    if (existing.exists && (prior.status === 'active' || prior.status === 'invited' || prior.status === 'paused')) {
+      throw new CareError(409, 'exists', `You already check in on ${parentName}.`);
+    }
+    const plan = {
+      ownerId, parentId: parent, ownerName, parentName,
+      status: 'invited',
+      questions: normalizeQuestions(questions) || [],
+      times: normalizeTimes(times) || DEFAULT_TIMES,
+      timezone: parentPrefs.timezone || prior.timezone || null,
+      nextQuestionIndex: 0,
+      createdAt: nowIso(), updatedAt: nowIso(), acceptedAt: null, lastAskedAt: null, lastAnsweredAt: null
+    };
+    await this.plans.doc(planId).set(plan);
+    this.notify(parent, {
+      type: TYPES.invite,
+      title: `${ownerName} wants to check in on you`,
+      body: `They'll send a short "how are you?" a few times a day. Open Circles to say yes.`,
+      data: { planId }
+    });
+    return this.presentPlan({ id: planId, ...plan }, { viewerId: ownerId });
+  }
+
+  async updatePlan({ userId, planId, times, questions, status }) {
+    const plan = await this.requirePlan(planId);
+    if (plan.ownerId !== userId) throw new CareError(403, 'not_owner', 'Only the person who set this up can change it.');
+    const patch = { updatedAt: nowIso() };
+    if (times !== undefined) {
+      const t = normalizeTimes(times);
+      if (!t) throw new CareError(400, 'bad_times', 'Pick between one and five times, like 08:30.');
+      patch.times = t;
+    }
+    if (questions !== undefined) {
+      const q = normalizeQuestions(questions, plan.questions || []);
+      if (!q) throw new CareError(400, 'bad_questions', 'Questions must be a list.');
+      patch.questions = q;
+      patch.nextQuestionIndex = 0;
+    }
+    if (status !== undefined) {
+      if (!['active', 'paused'].includes(status)) throw new CareError(400, 'bad_status', 'Status must be active or paused.');
+      if (!plan.acceptedAt) throw new CareError(409, 'not_accepted', `${plan.parentName} hasn't accepted yet.`);
+      patch.status = status;
+    }
+    await this.plans.doc(planId).update(patch);
+    const merged = { ...plan, ...patch };
+    return this.presentPlan(merged, { asks: await this.recentAsks(planId, 6), viewerId: userId });
+  }
+
+  async endPlan({ userId, planId }) {
+    const plan = await this.requirePlan(planId);
+    if (plan.ownerId !== userId && plan.parentId !== userId) throw new CareError(403, 'not_yours', 'Not your check-in.');
+    await this.plans.doc(planId).update({ status: 'ended', endedBy: userId, updatedAt: nowIso() });
+    return { planId, status: 'ended' };
+  }
+
+  // MARK: - Parent
+
+  async respondToInvite({ userId, planId, accept, timezone }) {
+    const plan = await this.requirePlan(planId);
+    if (plan.parentId !== userId) throw new CareError(403, 'not_parent', 'This invitation is for someone else.');
+    if (plan.status === 'ended') throw new CareError(409, 'ended', 'This check-in was ended.');
+    const patch = { updatedAt: nowIso() };
+    if (accept) {
+      patch.status = 'active';
+      patch.acceptedAt = plan.acceptedAt || nowIso();
+      const tz = clean(timezone, 64);
+      if (tz) {
+        try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); patch.timezone = tz; } catch (error) { /* keep prior */ }
+      }
+    } else {
+      patch.status = 'declined';
+    }
+    await this.plans.doc(planId).update(patch);
+    const merged = { ...plan, ...patch };
+    if (accept) {
+      const next = this.nextSlot(merged);
+      this.notify(plan.ownerId, {
+        type: TYPES.accepted,
+        title: `${plan.parentName} said yes to check-ins`,
+        body: next ? `The first question goes out at ${friendlyTime(next)} their time.` : 'Questions start at the times you chose.',
+        data: { planId }
+      });
+    }
+    return this.presentPlan(merged, { viewerId: userId });
+  }
+
+  async answerAsk({ userId, askId, answer, note }) {
+    const doc = await this.asks.doc(askId).get();
+    if (!doc.exists) throw new CareError(404, 'no_ask', 'That question has expired.');
+    const ask = { id: doc.id, ...doc.data() };
+    if (ask.parentId !== userId) throw new CareError(403, 'not_parent', 'This question is for someone else.');
+    if (!ANSWERS[answer]) throw new CareError(400, 'bad_answer', 'Answer must be great, okay or not_great.');
+    if (ask.status === 'answered') {
+      return this.presentAsk(ask);
+    }
+    const patch = { status: 'answered', answer, note: clean(note, NOTE_MAX), answeredAt: nowIso() };
+    await this.asks.doc(askId).update(patch);
+    await this.plans.doc(ask.planId).update({ lastAnsweredAt: patch.answeredAt, updatedAt: nowIso() });
+    const plan = await this.plans.doc(ask.planId).get();
+    const parentName = (plan.exists && plan.data().parentName) || 'They';
+    const noteLine = patch.note ? ` — "${patch.note}"` : '';
+    this.notify(ask.ownerId, {
+      type: TYPES.answer,
+      title: `${parentName}: ${ANSWERS[answer]}`,
+      body: `“${ask.questionText}”${noteLine}`,
+      data: { planId: ask.planId, askId, answer }
+    });
+    return this.presentAsk({ ...ask, ...patch });
+  }
+
+  // MARK: - The scheduler
+
+  /** The next configured slot after the parent's current local time, if any today. */
+  nextSlot(plan, now = new Date()) {
+    const clock = localClock(plan.timezone, now);
+    const times = plan.times || DEFAULT_TIMES;
+    return times.find((t) => {
+      const [h, m] = t.split(':').map((n) => parseInt(n, 10));
+      return h * 60 + m > clock.minutes;
+    }) || times[0];
+  }
+
+  /** Questions in rotation: the owner's own, or the defaults. */
+  pickQuestion(plan) {
+    const pool = (plan.questions || []).length ? plan.questions : DEFAULT_QUESTIONS.map((text, i) => ({ id: `default_${i}`, text }));
+    const index = Number.isInteger(plan.nextQuestionIndex) ? plan.nextQuestionIndex % pool.length : 0;
+    return { question: pool[index], nextIndex: (index + 1) % pool.length };
+  }
+
+  /**
+   * Runs every 15 minutes. Sends each active plan's questions whose slot fell
+   * inside the window that just closed (parent-local), then raises the
+   * silence alerts for questions unanswered past their due time.
+   */
+  async runDue({ now = new Date() } = {}) {
+    const summary = { plans: 0, asked: 0, silence: 0, undelivered: 0, errors: 0 };
+    const snap = await this.plans.where('status', '==', 'active').get();
+    for (const doc of snap.docs) {
+      const plan = { id: doc.id, ...doc.data() };
+      summary.plans += 1;
+      try {
+        summary.asked += await this.askDueSlots(plan, now);
+      } catch (error) {
+        summary.errors += 1;
+        console.error(`[care] ask failed for ${plan.id}: ${error.message}`);
+      }
+    }
+    try {
+      const alerts = await this.raiseSilenceAlerts(now);
+      summary.silence += alerts.silence;
+      summary.undelivered += alerts.undelivered;
+    } catch (error) {
+      summary.errors += 1;
+      console.error(`[care] silence sweep failed: ${error.message}`);
+    }
+    return summary;
+  }
+
+  async askDueSlots(plan, now) {
+    const clock = localClock(plan.timezone, now);
+    const dateKey = localDateKey(plan.timezone, now);
+    let sent = 0;
+    let nextIndex = plan.nextQuestionIndex;
+    for (const slot of plan.times || DEFAULT_TIMES) {
+      const [h, m] = slot.split(':').map((n) => parseInt(n, 10));
+      const slotMinutes = h * 60 + m;
+      const delta = clock.minutes - slotMinutes;
+      if (delta < 0 || delta >= RUN_WINDOW_MINUTES) continue;
+      const askId = CareCheckinService.askId(plan.id, dateKey, slot);
+      const { question, nextIndex: after } = this.pickQuestion({ ...plan, nextQuestionIndex: nextIndex });
+      const ask = {
+        planId: plan.id, ownerId: plan.ownerId, parentId: plan.parentId,
+        slot, dateKey, questionId: question.id, questionText: question.text,
+        askedAt: now.toISOString(), dueBy: new Date(now.getTime() + DUE_AFTER_MS).toISOString(),
+        status: 'open', answer: null, note: '', answeredAt: null, alertedAt: null, pushDelivered: null, pushError: null
+      };
+      try {
+        await this.asks.doc(askId).create(ask);
+      } catch (error) {
+        continue; // already asked this slot today (a retried run)
+      }
+      nextIndex = after;
+      const result = await this.push(plan.parentId, {
+        type: TYPES.ask,
+        title: `${plan.ownerName || 'Your family'} asks`,
+        body: question.text,
+        data: { planId: plan.id, askId, questionText: question.text }
+      });
+      await this.asks.doc(askId).update({ pushDelivered: !!(result && result.success), pushError: result && result.error ? String(result.error) : null });
+      sent += 1;
+    }
+    if (sent > 0) {
+      await this.plans.doc(plan.id).update({ nextQuestionIndex: nextIndex, lastAskedAt: now.toISOString(), updatedAt: nowIso() });
+    }
+    return sent;
+  }
+
+  /**
+   * "Didn't answer" and "never got it" are different alarms. A push the
+   * phone never received (no tokens, quiet hours, signed out) must not be
+   * reported as the parent going quiet.
+   */
+  async raiseSilenceAlerts(now) {
+    const counts = { silence: 0, undelivered: 0 };
+    const snap = await this.asks.where('status', '==', 'open').get();
+    const due = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((a) => !a.alertedAt && a.dueBy && Date.parse(a.dueBy) <= now.getTime());
+    const undeliveredNoticed = new Set();
+    for (const ask of due) {
+      const planDoc = await this.plans.doc(ask.planId).get();
+      if (!planDoc.exists || planDoc.data().status !== 'active') {
+        await this.asks.doc(ask.id).update({ status: 'missed', alertedAt: now.toISOString(), alertKind: 'none' });
+        continue;
+      }
+      const plan = { id: planDoc.id, ...planDoc.data() };
+      if (ask.pushDelivered === false) {
+        const key = `${plan.id}_${ask.dateKey}`;
+        if (!undeliveredNoticed.has(key) && !(plan.undeliveredNoticedOn === ask.dateKey)) {
+          undeliveredNoticed.add(key);
+          await this.plans.doc(plan.id).update({ undeliveredNoticedOn: ask.dateKey });
+          this.notify(plan.ownerId, {
+            type: TYPES.silence,
+            title: `${plan.parentName}'s phone isn't getting check-ins`,
+            body: `Today's question couldn't be delivered. Notifications may be off, or Circles is signed out on their phone.`,
+            data: { planId: plan.id, askId: ask.id, kind: 'undelivered' }
+          });
+          counts.undelivered += 1;
+        }
+        await this.asks.doc(ask.id).update({ status: 'missed', alertedAt: now.toISOString(), alertKind: 'undelivered' });
+        continue;
+      }
+      this.notify(plan.ownerId, {
+        type: TYPES.silence,
+        title: `${plan.parentName} hasn't answered`,
+        body: `“${ask.questionText}” went out at ${friendlyTime(ask.slot)} their time and hasn't been answered.`,
+        data: { planId: plan.id, askId: ask.id, kind: 'silence' }
+      });
+      await this.asks.doc(ask.id).update({ status: 'missed', alertedAt: now.toISOString(), alertKind: 'silence' });
+      counts.silence += 1;
+    }
+    return counts;
+  }
+
+  // MARK: - Push
+
+  /** Awaited: the delivery result decides which alarm the child gets later. */
+  async push(userId, { type, title, body, data }) {
+    try {
+      return await notificationService.sendToUser(userId, { type, title, body, data: { type, ...(data || {}) } });
+    } catch (error) {
+      console.error(`[care] push failed for ${userId}: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /** Fire-and-forget, for notices whose delivery nothing depends on. */
+  notify(userId, payload) {
+    this.push(userId, payload).catch(() => {});
+  }
+}
+
+module.exports = Object.assign(new CareCheckinService(), {
+  CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, ANSWERS, TYPES, DUE_AFTER_MS, localDateKey, friendlyTime
+});
