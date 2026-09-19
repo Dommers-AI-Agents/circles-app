@@ -18,6 +18,7 @@ const requestDeduplicator = require('../../services/requestDeduplicator');
 const subscriptionLimitService = require('../../services/subscriptionLimitService');
 const rewardService = require('../../services/rewardService');
 const piggyBankService = require('../../services/piggyBankService');
+const { sameVenue, carryOverPatch } = require('../../services/placeMoveMerge');
 const { normalizePhotosArray, overlayVenuePhotos, VENUE_GOOGLE_FIELDS, overlayVenueFields, getGlobalSocial, fetchGlobalSocialMap, buildAddedByUserMap, isPlaceVisibleToViewer } = require('../../services/placeReadService');
 const { resolveIncomingPrivacy, canViewCircle } = require('../../services/visibility');
 const { canViewCircleFor } = require('../../services/circleAccess');
@@ -2371,36 +2372,43 @@ exports.movePlace = async (req, res, next) => {
       }
     }
     
-    // Check if target circle already has this place (by googlePlaceId or name+address)
-    if (place.googlePlaceId) {
-      const existingPlace = await db.collection(COLLECTIONS.PLACES)
-        .where('circleId', '==', targetCircleId)
-        .where('googlePlaceId', '==', place.googlePlaceId)
-        .where('deletedAt', '==', null)
-        .get();
-        
-      if (!existingPlace.empty) {
-        return res.status(400).json({
-          success: false,
-          message: 'This place already exists in the target circle'
+    // Does the target circle already hold this venue? Then this is a merge:
+    // the copy being moved goes away, the target keeps its copy plus
+    // anything worth carrying over. (It used to refuse with "already
+    // exists", which left the place stuck in the source circle.)
+    const targetSnap = await db.collection(COLLECTIONS.PLACES)
+      .where('circleId', '==', targetCircleId)
+      .where('deletedAt', '==', null)
+      .get();
+    const existingDoc = targetSnap.docs.find((d) => d.id !== placeId && sameVenue(place, serializeDoc(d)));
+
+    if (existingDoc) {
+      const existing = serializeDoc(existingDoc);
+      const patch = carryOverPatch(place, existing);
+      const now = new Date().toISOString();
+      await db.runTransaction(async (transaction) => {
+        const sourcePlaces = sourceCircle.places || [];
+        transaction.update(sourceCircleRef, {
+          places: sourcePlaces.filter(id => id !== placeId),
+          placesCount: Math.max(0, (sourceCircle.placesCount || 0) - 1),
+          updatedAt: now
         });
-      }
-    } else {
-      const existingPlace = await db.collection(COLLECTIONS.PLACES)
-        .where('circleId', '==', targetCircleId)
-        .where('name', '==', place.name)
-        .where('address', '==', place.address)
-        .where('deletedAt', '==', null)
-        .get();
-        
-      if (!existingPlace.empty) {
-        return res.status(400).json({
-          success: false,
-          message: 'This place already exists in the target circle'
-        });
-      }
+        transaction.update(placeRef, { deletedAt: now, updatedAt: now, mergedInto: existingDoc.id });
+        if (Object.keys(patch).length) {
+          transaction.update(existingDoc.ref, { ...patch, updatedAt: now });
+        }
+      });
+      indexPlaceRemoved(place.circleId, place);
+      placeCache.clear('browseTree', userId);
+      const mergedDoc = await existingDoc.ref.get();
+      return res.status(200).json({
+        success: true,
+        merged: true,
+        message: `${place.name} was already in ${targetCircle.name}, so it was removed from ${sourceCircle.name}`,
+        place: serializeDoc(mergedDoc)
+      });
     }
-    
+
     // Use a transaction for atomic updates
     await db.runTransaction(async (transaction) => {
       // Remove place ID from source circle
