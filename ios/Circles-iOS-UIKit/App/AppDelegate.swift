@@ -353,131 +353,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     }
     
     // MARK: - Notification Configuration
-    
+
     private func configureNotificationCategories() {
-        // Connection request actions
-        let acceptAction = UNNotificationAction(
-            identifier: "ACCEPT_CONNECTION",
-            title: "Accept",
-            options: [.authenticationRequired, .foreground]
-        )
-        let declineAction = UNNotificationAction(
-            identifier: "DECLINE_CONNECTION",
-            title: "Decline",
-            options: [.authenticationRequired, .destructive]
-        )
-        let connectionCategory = UNNotificationCategory(
-            identifier: "CONNECTION_REQUEST",
-            actions: [acceptAction, declineAction],
-            intentIdentifiers: [],
-            options: [.customDismissAction, .hiddenPreviewsShowTitle]
-        )
-        
-        // Message actions
-        let replyAction = UNTextInputNotificationAction(
-            identifier: "REPLY_MESSAGE",
-            title: "Reply",
-            options: [.authenticationRequired],
-            textInputButtonTitle: "Send",
-            textInputPlaceholder: "Type your message..."
-        )
-        let viewAction = UNNotificationAction(
-            identifier: "VIEW_MESSAGE",
-            title: "View",
-            options: [.authenticationRequired, .foreground]
-        )
-        let messageCategory = UNNotificationCategory(
-            identifier: "NEW_MESSAGE",
-            actions: [replyAction, viewAction],
-            intentIdentifiers: [],
-            options: [.customDismissAction, .hiddenPreviewsShowTitle]
-        )
-        
-        // Place suggestion actions
-        let viewPlaceAction = UNNotificationAction(
-            identifier: "VIEW_PLACE",
-            title: "View Place",
-            options: [.authenticationRequired, .foreground]
-        )
-        let saveAction = UNNotificationAction(
-            identifier: "SAVE_PLACE",
-            title: "Save to Circle",
-            options: [.authenticationRequired]
-        )
-        let suggestionCategory = UNNotificationCategory(
-            identifier: "PLACE_SUGGESTION",
-            actions: [viewPlaceAction, saveAction],
-            intentIdentifiers: [],
-            options: [.customDismissAction, .hiddenPreviewsShowTitle]
-        )
-        
-        // Activity update category
-        let viewActivityAction = UNNotificationAction(
-            identifier: "VIEW_ACTIVITY",
-            title: "View",
-            options: [.authenticationRequired, .foreground]
-        )
-        let activityCategory = UNNotificationCategory(
-            identifier: "ACTIVITY_UPDATE",
-            actions: [viewActivityAction],
-            intentIdentifiers: [],
-            options: [.customDismissAction, .hiddenPreviewsShowTitle]
-        )
-        
-        // "You're near <saved place>" local banner (ProximityNotificationScheduler).
-        // Check In opens the pre-filled sheet — the backend needs a recipient,
-        // so a background one-tap check-in isn't possible. Not Now runs in the
-        // background and stamps the once-per-day gate.
-        let checkInAction = UNNotificationAction(
-            identifier: ProximityNotificationScheduler.checkInAction,
-            title: "Check In",
-            options: [.foreground]
-        )
-        let notNowAction = UNNotificationAction(
-            identifier: ProximityNotificationScheduler.notNowAction,
-            title: "Not Now",
-            options: []
-        )
-        let checkInPromptCategory = UNNotificationCategory(
-            identifier: ProximityNotificationScheduler.categoryIdentifier,
-            actions: [checkInAction, notNowAction],
-            intentIdentifiers: [],
-            options: [.customDismissAction]
-        )
-
-        // "How Are You?" question to a parent: three answers right on the
-        // Lock Screen. Background actions with NO authentication required,
-        // so an older parent answers without unlocking the phone.
-        let careCategory = UNNotificationCategory(
-            identifier: CareAnswerAction.categoryIdentifier,
-            actions: CareAnswerAction.allCases.map {
-                UNNotificationAction(identifier: $0.rawValue, title: $0.title, options: [])
-            },
-            intentIdentifiers: [],
-            options: [.customDismissAction]
-        )
-
-        // Water reminder (a local notification the Water widget schedules):
-        // "Log a cup" writes today's cup without opening the app.
-        let waterCategory = UNNotificationCategory(
-            identifier: WaterQuickLog.categoryIdentifier,
-            actions: [UNNotificationAction(identifier: WaterQuickLog.logCupAction, title: "Log a cup 💧", options: [])],
-            intentIdentifiers: [],
-            options: [.customDismissAction]
-        )
-
-        // Set categories
-        UNUserNotificationCenter.current().setNotificationCategories([
-            connectionCategory,
-            messageCategory,
-            suggestionCategory,
-            activityCategory,
-            checkInPromptCategory,
-            careCategory,
-            waterCategory
-        ])
+        NotificationCategoryRegistry.register()
     }
-    
+
     // MARK: - UNUserNotificationCenterDelegate
     
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
@@ -681,157 +561,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     }
     
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-        // Handle notification response (tap or action)
-        let userInfo = response.notification.request.content.userInfo
-        
-        // Handle notification actions
-        switch response.actionIdentifier {
-        case UNNotificationDefaultActionIdentifier:
-            // User tapped the notification itself
-            handleNotificationTap(userInfo: userInfo)
-            
-        case "ACCEPT_CONNECTION":
-            // Handle connection accept action
-            if let requestId = userInfo["requestId"] as? String {
-                handleAcceptConnection(requestId: requestId)
-            }
-            
-        case "DECLINE_CONNECTION":
-            // Handle connection decline action
-            if let requestId = userInfo["requestId"] as? String {
-                handleDeclineConnection(requestId: requestId)
-            }
-            
-        case "REPLY_MESSAGE":
-            // Handle message reply action
-            if let textResponse = response as? UNTextInputNotificationResponse,
-               let conversationId = userInfo["conversationId"] as? String {
-                handleQuickReply(conversationId: conversationId, message: textResponse.userText)
-            }
-            
-        case "VIEW_MESSAGE":
-            // Navigate to specific conversation
-            if let conversationId = userInfo["conversationId"] as? String {
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToConversation"),
-                    object: conversationId
-                )
-            }
-            
-        case "VIEW_PLACE":
-            // Navigate to place detail
-            if let placeId = userInfo["placeId"] as? String {
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToPlace"),
-                    object: placeId
-                )
-            }
-            
-        case "SAVE_PLACE":
-            // Handle save place action
-            if let placeId = userInfo["placeId"] as? String {
-                handleSavePlace(placeId: placeId)
-            }
-            
-        case "VIEW_ACTIVITY":
-            // Navigate based on activity type
-            handleViewActivity(userInfo: userInfo)
-
-        case ProximityNotificationScheduler.checkInAction:
-            // Same as tapping the banner: open the pre-filled check-in sheet
-            handleNotificationTap(userInfo: userInfo)
-
-        case WaterQuickLog.logCupAction:
-            // Held until the write lands, like the care answers.
-            Task {
-                do {
-                    let result = try await WaterQuickLog.logCup(store: HomeWidgetsAPIDataStore())
-                    Logger.debug("💧 Logged a cup from the reminder: \(result.cups) of \(result.goal)")
-                } catch {
-                    Logger.debug("❌ Water quick log failed: \(error)")
-                    NotificationCenter.default.post(name: .navigateToHomeWidget, object: "water")
-                }
-                await MainActor.run { completionHandler() }
-            }
-            return
-
-        case CareAnswerAction.great.rawValue, CareAnswerAction.okay.rawValue, CareAnswerAction.notGreat.rawValue:
-            // Answer from the Lock Screen. The completion handler is held until
-            // the request returns: a background action's process can be
-            // suspended as soon as we call it.
-            if let askId = userInfo["askId"] as? String, let action = CareAnswerAction(rawValue: response.actionIdentifier) {
-                handleCareAnswer(askId: askId, action: action, completion: completionHandler)
-                return
-            }
-
-        case ProximityNotificationScheduler.notNowAction, UNNotificationDismissActionIdentifier:
-            // Don't offer this place again today; free its region slot
-            if let type = userInfo["type"] as? String,
-               type == ProximityNotificationScheduler.notificationType,
-               let placeId = userInfo["placeId"] as? String {
-                ProximityNotificationScheduler.markPromptedToday(placeId: placeId)
-                ProximityNotificationScheduler.shared.replanFromCache(force: true)
-            }
-
-        default:
-            break
-        }
-
-        completionHandler()
-    }
-    
-    // MARK: - Notification Action Handlers
-
-    /// The three answer buttons on a "How Are You?" question.
-    enum CareAnswerAction: String, CaseIterable {
-        static let categoryIdentifier = "CARE_ASK"
-        case great = "CARE_GREAT"
-        case okay = "CARE_OKAY"
-        case notGreat = "CARE_NOT_GREAT"
-
-        var title: String {
-            switch self {
-            case .great: return "Doing great 👍"
-            case .okay: return "Okay"
-            case .notGreat: return "Not so good"
-            }
-        }
-
-        /// The server's answer value.
-        var answer: String {
-            switch self {
-            case .great: return "great"
-            case .okay: return "okay"
-            case .notGreat: return "not_great"
-            }
-        }
+        notificationActions.handle(response, completion: completionHandler)
     }
 
-    /// Sends a Lock Screen answer to the server, then releases the
-    /// notification. If the phone is offline the tap opens the widget so
-    /// the parent sees the question is still waiting.
-    private func handleCareAnswer(askId: String, action: CareAnswerAction, completion: @escaping () -> Void) {
-        APIService.shared.request(
-            endpoint: "widgets/care/asks/\(askId)/answer",
-            method: .post,
-            body: ["answer": action.answer, "note": ""]
-        ) { (result: Result<EmptyResponse, APIError>) in
-            DispatchQueue.main.async {
-                if case .failure(let error) = result {
-                    Logger.debug("❌ Care answer failed: \(error)")
-                    NotificationCenter.default.post(name: .navigateToHomeWidget, object: "howareyou")
-                }
-                completion()
-            }
-        }
-    }
-    
-    /// Post a navigation notification if the main tab bar is already installed;
-    /// otherwise stash a pending deep link for SceneDelegate.handlePendingDeepLink
-    /// to replay once the interface is up. A cold-start tap posts before any
-    /// observer exists and would otherwise be dropped unheard — same pattern the
-    /// daily-summary tap uses.
-    private func postOrStashDeepLink(navName: String, pending: String, object: Any? = nil) {
+    /// The buttons on notifications, and a plain tap → `handleNotificationTap`.
+    private lazy var notificationActions = NotificationActionHandler(
+        onTap: { [weak self] userInfo in self?.handleNotificationTap(userInfo: userInfo) },
+        topViewController: { [weak self] in self?.getTopViewController() }
+    )
+
+
+    private func postOrStashDeepLink(navName: String, pending: String, object: Any? = nil, userInfo: [AnyHashable: Any]? = nil) {
         DispatchQueue.main.async {
             let mainUIReady = UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
@@ -839,7 +579,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 .contains { $0.rootViewController is CirclesTabBarController }
 
             if mainUIReady {
-                NotificationCenter.default.post(name: Notification.Name(navName), object: object)
+                NotificationCenter.default.post(name: Notification.Name(navName), object: object, userInfo: userInfo)
             } else {
                 UserDefaults.standard.set(pending, forKey: "pendingDeepLink")
             }
@@ -847,279 +587,71 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     }
 
     private func handleNotificationTap(userInfo: [AnyHashable: Any]) {
-        // Check for notification type
-        var notificationType: String?
-        
-        // Check multiple possible locations for the type field
-        if let type = userInfo["type"] as? String {
-            notificationType = type
-        } else if let customData = userInfo["customData"] as? [String: Any],
-                  let type = customData["type"] as? String {
-            notificationType = type
-        } else if let data = userInfo["data"] as? [String: Any],
-                  let type = data["type"] as? String {
-            notificationType = type
-        }
-        
-        guard let type = notificationType else {
+        guard let type = NotificationTapRouter.type(in: userInfo) else {
             Logger.debug("⚠️ No notification type found")
             return
         }
-        
-        // Handle different notification types when user taps the notification
         Logger.debug("🔔 AppDelegate: Handling notification tap for type: \(type)")
-        Logger.debug("🔔 AppDelegate: UserInfo: \(userInfo)")
-        
-        switch type {
-        case "new_message":
-            // Navigate to specific conversation if conversationId is provided
-            if let conversationId = userInfo["conversationId"] as? String {
-                Logger.debug("🔔 AppDelegate: Navigating to conversation: \(conversationId)")
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToConversation"),
-                    object: conversationId
-                )
-            } else {
-                NotificationCenter.default.post(name: Notification.Name("NavigateToMessages"), object: nil)
-            }
-            
-        case "nextbar_round", "nextbar_result":
-            // A NextBar vote started or finished: open that widget on the home Widgets tab
-            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "nextbar")
+        guard let destination = NotificationTapRouter.destination(for: userInfo) else {
+            Logger.debug("⚠️ AppDelegate: nowhere to go for notification type: \(type)")
+            return
+        }
+        perform(destination)
+    }
 
-        case "fridgemail":
-            // A Fridge Mail card went out, needs cards, or couldn't print: the widget shows why
-            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "fridgemail")
-
-        case "postcard_order":
-            // A mailed postcard was printed or delivered: its status lives in the Postcard widget
-            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "postcard")
-
-        case "water_reminder":
-            // A local "drink some water" reminder: open the Water widget to log a cup
-            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "water")
-
-        case "care_invite", "care_ask", "care_answer", "care_accepted", "care_silence":
-            // "How Are You?" — an invitation, a question to answer, or a parent's answer/silence
-            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "howareyou")
-
-        case "new_suggestion":
-            // Navigate to suggestions with optional placeId
-            var suggestionInfo: [String: Any] = [:]
-            if let placeId = userInfo["placeId"] as? String {
-                suggestionInfo["placeId"] = placeId
-            }
-            if let suggestionId = userInfo["suggestionId"] as? String {
-                suggestionInfo["suggestionId"] = suggestionId
-            }
-            NotificationCenter.default.post(
-                name: Notification.Name("NavigateToSuggestions"),
-                object: nil,
-                userInfo: suggestionInfo.isEmpty ? nil : suggestionInfo
-            )
-            
-        case "new_place":
-            if let circleId = userInfo["circleId"] as? String {
-                NotificationCenter.default.post(name: Notification.Name("NavigateToCircle"), object: circleId)
-            }
-            
-        case "place_liked", "place_commented":
-            // Navigate to specific place
-            if let placeId = userInfo["placeId"] as? String {
-                Logger.debug("🔔 AppDelegate: Navigating to place: \(placeId)")
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToPlace"),
-                    object: placeId,
-                    userInfo: ["showComments": type == "place_commented"]
-                )
-            } else if let activityId = userInfo["activityId"] as? String {
-                // Fallback to activity view if no placeId
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToActivity"),
-                    object: activityId
-                )
-            }
-            
-        case "circle_liked", "circle_commented":
-            // Navigate to specific circle
-            if let circleId = userInfo["circleId"] as? String {
-                Logger.debug("🔔 AppDelegate: Navigating to circle: \(circleId)")
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToCircle"),
-                    object: circleId,
-                    userInfo: ["showComments": type == "circle_commented"]
-                )
-            } else if let activityId = userInfo["activityId"] as? String {
-                // Fallback to activity view if no circleId
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToActivity"),
-                    object: activityId
-                )
-            }
-            
-        case "connection_request":
-            // Navigate to network tab with pending connections filter
-            NotificationCenter.default.post(
-                name: Notification.Name("NavigateToNetwork"),
-                object: nil,
-                userInfo: ["showPending": true]
-            )
-            
-        case "connection_accepted":
-            if let acceptedByUserId = userInfo["acceptedByUserId"] as? String {
-                UserDefaults.standard.set(acceptedByUserId, forKey: "newlyAcceptedConnectionId")
-                UserDefaults.standard.set(Date(), forKey: "newlyAcceptedConnectionDate")
-                // Navigate to specific user profile
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToNetwork"),
-                    object: acceptedByUserId
-                )
-            } else {
-                NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
-            }
-        case "daily_summary":
-            // Clear badge count since daily summaries are informational only
+    /// The side effects for a routed tap. Everything that needs UIKit,
+    /// UserDefaults or the scene lives here; the choice of destination is the
+    /// router's, and tested.
+    private func perform(_ destination: NotificationDestination) {
+        let center = NotificationCenter.default
+        switch destination {
+        case .conversation(let id):
+            center.post(name: Notification.Name("NavigateToConversation"), object: id)
+        case .messages:
+            center.post(name: Notification.Name("NavigateToMessages"), object: nil)
+        case .homeWidget(let id):
+            center.post(name: .navigateToHomeWidget, object: id)
+        case .suggestions(let placeId, let suggestionId):
+            var info: [String: Any] = [:]
+            if let placeId { info["placeId"] = placeId }
+            if let suggestionId { info["suggestionId"] = suggestionId }
+            center.post(name: Notification.Name("NavigateToSuggestions"), object: nil, userInfo: info.isEmpty ? nil : info)
+        case .circle(let id, let showComments):
+            center.post(name: Notification.Name("NavigateToCircle"), object: id, userInfo: showComments.map { ["showComments": $0] })
+        case .place(let id, let showComments):
+            center.post(name: Notification.Name("NavigateToPlace"), object: id, userInfo: showComments.map { ["showComments": $0] })
+        case .activity(let id):
+            center.post(name: Notification.Name("NavigateToActivity"), object: id)
+        case .network(let showPending):
+            center.post(name: Notification.Name("NavigateToNetwork"), object: nil, userInfo: showPending ? ["showPending": true] : nil)
+        case .connectionAccepted(let userId):
+            UserDefaults.standard.set(userId, forKey: "newlyAcceptedConnectionId")
+            UserDefaults.standard.set(Date(), forKey: "newlyAcceptedConnectionDate")
+            center.post(name: Notification.Name("NavigateToNetwork"), object: userId)
+        case .dailySummary:
+            // Informational only: clear the badge, then open the summary (or
+            // stash it for the scene on a cold start).
             UIApplication.shared.applicationIconBadgeNumber = 0
-
-            // Navigate to Home tab and trigger daily summary display
-            // The summary will be fetched from API when displayed
-            DispatchQueue.main.async {
-                let mainUIReady = UIApplication.shared.connectedScenes
-                    .compactMap { $0 as? UIWindowScene }
-                    .flatMap { $0.windows }
-                    .contains { $0.rootViewController is CirclesTabBarController }
-
-                if mainUIReady {
-                    NotificationCenter.default.post(
-                        name: Notification.Name("NavigateToDailySummary"),
-                        object: nil,
-                        userInfo: ["showDailySummary": true]
-                    )
-                } else {
-                    // Cold start: the tab bar isn't installed yet, so a
-                    // NotificationCenter post would be dropped unheard. Stash
-                    // the same pending deep link the universal-link flow uses;
-                    // SceneDelegate.handlePendingDeepLink runs it once the
-                    // main interface is up.
-                    UserDefaults.standard.set("daily-summary", forKey: "pendingDeepLink")
-                }
-            }
-            
-        case "check_in", "checkin":
-            // Navigate to activity or specific place
-            if let placeId = userInfo["placeId"] as? String {
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToPlace"),
-                    object: placeId
-                )
-            } else if let activityId = userInfo["activityId"] as? String {
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToActivity"),
-                    object: activityId
-                )
-            }
-            
-        case "activity_update", "activity_like", "activity_comment":
-            // Navigate to activity feed with specific activity
-            if let activityId = userInfo["activityId"] as? String {
-                Logger.debug("🔔 AppDelegate: Navigating to activity: \(activityId)")
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToActivity"),
-                    object: activityId
-                )
-            } else {
-                // Just go to home tab activity feed
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToActivity"),
-                    object: nil
-                )
-            }
-            
-        case "all_places_map":
-            // Engagement tip: "see all your favorite places in one view" → open
-            // the expanded map scoped to the user's own places, zoomed to fit
-            // them all (their whole world, or their region if they're local).
-            postOrStashDeepLink(navName: "NavigateToAllPlacesMap", pending: "all-places-map")
-
-        case "create_wallet":
-            // Engagement tip: "your FavCoins are real crypto" → open the Rewards
-            // hub's Piggy Bank tab with a coach-mark pointing at the wallet
-            // create/link button.
-            postOrStashDeepLink(navName: "NavigateToCreateWallet", pending: "create-wallet")
-
-        case ProximityNotificationScheduler.notificationType:
-            // "You're near <saved place>" local banner → check-in sheet with
-            // the place pre-filled. Stashed on cold start like the tips are.
-            if let placeId = userInfo["placeId"] as? String, !placeId.isEmpty {
-                ProximityNotificationScheduler.markPromptedToday(placeId: placeId)
-                postOrStashDeepLink(navName: Notification.Name.navigateToCheckIn.rawValue,
-                                    pending: "check-in:\(placeId)",
-                                    object: placeId)
-            }
-
-        case "favcoin_claim_settled":
-            // Body says "Open your Piggy Bank" — so open the Piggy Bank
-            NotificationCenter.default.post(name: Notification.Name("NavigateToPiggyBank"), object: nil)
-
-        case "new_follower", "user_followed":
-            // "X started following you" → X's profile
-            if let fromUserId = (userInfo["fromUserId"] as? String) ?? (userInfo["actorId"] as? String) {
-                sceneDelegate?.navigateToUserProfile(userId: fromUserId)
-            }
-
-        case "video_uploaded", "video_liked", "moment_uploaded", "moment_liked", "moment_tag":
-            // Moment pushes open the moment, not the place it was taken at
-            if let videoId = (userInfo["videoId"] as? String) ?? (userInfo["momentId"] as? String) {
-                sceneDelegate?.navigateToVideo(videoId: videoId)
-            } else if let placeId = userInfo["placeId"] as? String {
-                NotificationCenter.default.post(name: Notification.Name("NavigateToPlace"), object: placeId)
-            }
-
-        case "store_claim", "store_claim_approved":
-            // Venue claims are managed from the Me tab
+            postOrStashDeepLink(navName: "NavigateToDailySummary", pending: "daily-summary", userInfo: ["showDailySummary": true])
+        case .postOrStash(let navName, let pending, let object):
+            postOrStashDeepLink(navName: navName, pending: pending, object: object)
+        case .proximityCheckIn(let placeId):
+            ProximityNotificationScheduler.markPromptedToday(placeId: placeId)
+            postOrStashDeepLink(navName: Notification.Name.navigateToCheckIn.rawValue, pending: "check-in:\(placeId)", object: placeId)
+        case .piggyBank:
+            center.post(name: Notification.Name("NavigateToPiggyBank"), object: nil)
+        case .userProfile(let id):
+            sceneDelegate?.navigateToUserProfile(userId: id)
+        case .video(let id):
+            sceneDelegate?.navigateToVideo(videoId: id)
+        case .meTab:
             sceneDelegate?.navigateToMeTab()
-
-        case "check_in", "checkin", "check_in_response":
-            if let placeId = userInfo["placeId"] as? String {
-                NotificationCenter.default.post(name: Notification.Name("NavigateToPlace"), object: placeId)
-            }
-
-        default:
-            Logger.debug("⚠️ AppDelegate: Unknown notification type: \(type)")
-            // For unknown types, try to navigate based on available data
-            if let activityId = userInfo["activityId"] as? String {
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToActivity"),
-                    object: activityId
-                )
-            } else if let circleId = userInfo["circleId"] as? String {
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToCircle"),
-                    object: circleId
-                )
-            } else if let placeId = userInfo["placeId"] as? String {
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToPlace"),
-                    object: placeId
-                )
-            } else if let conversationId = userInfo["conversationId"] as? String {
-                NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToConversation"),
-                    object: conversationId
-                )
-            } else if let videoId = (userInfo["videoId"] as? String) ?? (userInfo["momentId"] as? String) {
-                sceneDelegate?.navigateToVideo(videoId: videoId)
-            } else if let fromUserId = (userInfo["fromUserId"] as? String) ?? (userInfo["actorId"] as? String) {
-                sceneDelegate?.navigateToUserProfile(userId: fromUserId)
-            } else if let deepLink = userInfo["deepLink"] as? String,
-                      let url = URL(string: deepLink), url.scheme == "circles" {
-                // Engagement pushes carry circles:// deep links that no code
-                // was reading — route them through the scheme handler
-                sceneDelegate?.handleDeepLink(url)
-            }
-            // If no specific data, do nothing (stay on current screen)
+        case .deepLink(let url):
+            sceneDelegate?.handleDeepLink(url)
         }
     }
+
+
 
     /// The connected scene's delegate — owner of all deep-link navigation.
     private var sceneDelegate: SceneDelegate? {
@@ -1128,110 +660,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             .first
     }
     
-    private func handleAcceptConnection(requestId: String) {
-        // Show loading indicator
-        DispatchQueue.main.async {
-            if let topVC = self.getTopViewController() {
-                let loading = AlertPresenter.showLoading(message: "Accepting connection...", from: topVC)
-                
-                // Make API call to accept connection
-                NetworkManager.shared.acceptConnectionRequest(requestId: requestId) { result in
-                    loading.dismiss(animated: true) {
-                        switch result {
-                        case .success:
-                            // Show success and navigate to network
-                            AlertPresenter.showSuccess("Connection accepted!", from: topVC)
-                            NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
-                        case .failure(let error):
-                            AlertPresenter.showError(error, from: topVC)
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private func handleDeclineConnection(requestId: String) {
-        // Make API call to decline connection
-        NetworkManager.shared.declineConnectionRequest(requestId: requestId) { result in
-            DispatchQueue.main.async {
-                if let topVC = self.getTopViewController() {
-                    switch result {
-                    case .success:
-                        // Just show a brief confirmation
-                        AlertPresenter.showBriefMessage("Connection declined", from: topVC)
-                    case .failure(let error):
-                        AlertPresenter.showError(error, from: topVC)
-                    }
-                }
-            }
-        }
-    }
-    
-    private func handleQuickReply(conversationId: String, message: String) {
-        // Send the message via messaging service
-        MessagingService.shared.sendQuickReply(conversationId: conversationId, message: message) { result in
-            DispatchQueue.main.async {
-                if let topVC = self.getTopViewController() {
-                    switch result {
-                    case .success:
-                        // Show brief success
-                        AlertPresenter.showBriefMessage("Reply sent", from: topVC)
-                    case .failure(let error):
-                        // Show error and offer to open conversation
-                        AlertPresenter.showConfirmation(
-                            title: "Reply Failed",
-                            message: "Failed to send reply. Open conversation?",
-                            from: topVC
-                        ) {
-                            NotificationCenter.default.post(
-                                name: Notification.Name("NavigateToConversation"),
-                                object: conversationId
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private func handleSavePlace(placeId: String) {
-        // Show circle picker to save place
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(
-                name: Notification.Name("SavePlaceToCircle"),
-                object: placeId
-            )
-        }
-    }
-    
-    private func handleViewActivity(userInfo: [AnyHashable: Any]) {
-        // Navigate based on activity type
-        if let activityType = userInfo["activityType"] as? String {
-            switch activityType {
-            case "new_place", "place_liked":
-                if let circleId = userInfo["circleId"] as? String {
-                    NotificationCenter.default.post(
-                        name: Notification.Name("NavigateToCircle"),
-                        object: circleId
-                    )
-                }
-            case "new_connection":
-                NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
-            case "comment":
-                if let placeId = userInfo["placeId"] as? String {
-                    NotificationCenter.default.post(
-                        name: Notification.Name("NavigateToPlace"),
-                        object: placeId
-                    )
-                }
-            default:
-                // Navigate to home/activity feed
-                NotificationCenter.default.post(name: Notification.Name("NavigateToHome"), object: nil)
-            }
-        }
-    }
-    
+
     // MARK: - MessagingDelegate
     
     func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
