@@ -233,6 +233,13 @@ final class AppWidgetHost: FavWidgetHost {
     /// `collectPayment`), which is what Apple expects.
     var supportsPayment: Bool { PKPaymentAuthorizationController.canMakePayments() }
 
+    /// The account's quiet hours, so widget-scheduled local reminders stay
+    /// silent when the server's pushes would.
+    var quietHours: WidgetQuietHours? {
+        guard let prefs = AuthService.shared.currentUser?.notificationPreferences, prefs.quietHoursEnabled else { return nil }
+        return WidgetQuietHours(start: prefs.quietHoursStart, end: prefs.quietHoursEnd)
+    }
+
     /// Presents the wallet and waits for the person to finish with it. Must
     /// be reached straight from their tap — Apple won't present the sheet
     /// after asynchronous work, which is why the order is created inside it.
