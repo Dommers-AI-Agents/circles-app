@@ -182,10 +182,9 @@ const presentable = (s) => {
  * dryRun: no email, no stamp — returns what would have gone out.
  */
 const run = async ({ dryRun = false, limit = 500, onlyUserId = null, log = console.log } = {}) => {
-  const [usersSnap, idx] = await Promise.all([
-    db().collection(COLLECTIONS.USERS).get(),
-    suggestionEngine.buildIndexes()
-  ]);
+  // One users scan, shared with the engine's indexes.
+  const usersSnap = await db().collection(COLLECTIONS.USERS).get();
+  const idx = await suggestionEngine.buildIndexes({ usersSnap });
   const users = usersSnap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() }))
     .filter((u) => !onlyUserId || u.id === onlyUserId);

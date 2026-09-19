@@ -98,11 +98,13 @@ const cosine = (a, b) => {
 
 /**
  * Reads everything once and builds the indexes every signal needs.
- * Three collection reads total, regardless of how many users exist.
+ * Four collection reads total, regardless of how many users exist. A caller
+ * that has already read the users collection passes its snapshot so the
+ * biggest of the four is not read twice.
  */
-const buildIndexes = async () => {
+const buildIndexes = async ({ usersSnap: preloadedUsers = null } = {}) => {
   const [usersSnap, circlesSnap, placesSnap, connectionsSnap] = await Promise.all([
-    db.collection(COLLECTIONS.USERS).get(),
+    preloadedUsers || db.collection(COLLECTIONS.USERS).get(),
     db.collection(COLLECTIONS.CIRCLES).get(),
     db.collection(COLLECTIONS.PLACES).get(),
     db.collection(COLLECTIONS.CONNECTIONS).get()
