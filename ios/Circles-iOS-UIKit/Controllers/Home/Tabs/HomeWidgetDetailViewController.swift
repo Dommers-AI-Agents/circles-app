@@ -28,6 +28,15 @@ final class HomeWidgetDetailViewController: BaseViewController {
         super.viewDidLoad()
         view.backgroundColor = Constants.Colors.background
         navigationItem.largeTitleDisplayMode = .never
+        // The widget can claim Back for itself (a live workout returning to
+        // the widget's home page). A custom item is the only way to be asked.
+        navigationItem.hidesBackButton = true
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            image: UIImage(systemName: "chevron.backward"),
+            style: .plain,
+            target: self,
+            action: #selector(backTapped)
+        )
 
         let hosting = UIHostingController(rootView: widget.makeFullView(context: context))
         hosting.view.backgroundColor = Constants.Colors.background
@@ -43,10 +52,22 @@ final class HomeWidgetDetailViewController: BaseViewController {
         hosting.didMove(toParent: self)
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // The swipe-back gesture would bypass the widget's Back handling.
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+    }
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         // Save anything pending as the user leaves.
         let model = self.model
         Task { await model.flushAll() }
+    }
+
+    @objc private func backTapped() {
+        if let handle = context.handleBack, handle() { return }
+        navigationController?.popViewController(animated: true)
     }
 }

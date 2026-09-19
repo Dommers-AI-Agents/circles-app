@@ -12,6 +12,7 @@ const nextBarRounds = require('../controllers/widgets/nextBarRoundController');
 const postcardMail = require('../controllers/widgets/postcardMailController');
 const fridgeMail = require('../controllers/widgets/fridgeMailController');
 const care = require('../controllers/widgets/careCheckinController');
+const workoutFeed = require('../controllers/widgets/workoutFeedController');
 
 const router = express.Router();
 router.use(protect);
@@ -68,6 +69,10 @@ router.delete('/care/plans/:id', care.endPlan);
 router.post('/care/plans/:id/respond', care.respond);
 router.get('/care/asks', care.listAsks);
 router.post('/care/asks/:id/answer', care.answer);
+
+// Workouts shared with the Inner Circle (feed = grantors ∩ connections)
+router.post('/workouts/share', messageLimiter, workoutFeed.share);
+router.get('/workouts/feed', workoutFeed.feed);
 
 // NextBar voting rounds: shared docs (host + tagged connections vote)
 router.post('/nextbar/rounds', nextBarRounds.createRound);
