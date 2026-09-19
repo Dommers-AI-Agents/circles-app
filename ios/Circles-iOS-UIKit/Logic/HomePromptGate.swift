@@ -16,11 +16,20 @@ struct HomePromptCard: Decodable, Equatable {
     let data: [String: HomePromptValue]
     let imageUrl: String?
     let actorPhoto: String?
+    /// "overlay" for a scheduled card that should cover the home screen until
+    /// it is answered; "inline" for the organic cards, which sit in the page
+    /// and can be scrolled past. Anything unrecognised is treated as inline —
+    /// a card that renders in the wrong style is better than one that takes
+    /// over the screen by accident.
+    let presentation: String
 
     var destination: HomePromptTarget { HomePromptTarget(target: target, data: data) }
 
+    /// A scheduled card covers the home screen; organic ones do not.
+    var isOverlay: Bool { presentation == "overlay" }
+
     enum CodingKeys: String, CodingKey {
-        case key, type, title, body, actionLabel, skipLabel, target, data, imageUrl, actorPhoto
+        case key, type, title, body, actionLabel, skipLabel, target, data, imageUrl, actorPhoto, presentation
     }
 
     init(from decoder: Decoder) throws {
@@ -35,14 +44,16 @@ struct HomePromptCard: Decodable, Equatable {
         data = try c.decodeIfPresent([String: HomePromptValue].self, forKey: .data) ?? [:]
         imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
         actorPhoto = try c.decodeIfPresent(String.self, forKey: .actorPhoto)
+        presentation = try c.decodeIfPresent(String.self, forKey: .presentation) ?? "inline"
     }
 
     init(key: String, type: String, title: String, body: String, actionLabel: String = "Show me",
          skipLabel: String = "Skip", target: String, data: [String: HomePromptValue] = [:],
-         imageUrl: String? = nil, actorPhoto: String? = nil) {
+         imageUrl: String? = nil, actorPhoto: String? = nil, presentation: String = "inline") {
         self.key = key; self.type = type; self.title = title; self.body = body
         self.actionLabel = actionLabel; self.skipLabel = skipLabel; self.target = target
         self.data = data; self.imageUrl = imageUrl; self.actorPhoto = actorPhoto
+        self.presentation = presentation
     }
 }
 

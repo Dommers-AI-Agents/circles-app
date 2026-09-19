@@ -24,6 +24,7 @@ const { PIGGY_COLLECTIONS } = require('../models/PiggyBankModels');
 const { queryInChunks } = require('../utils/firestoreChunks');
 const { excludedUserIds } = require('./moderationService');
 const tipsService = require('./tipsService');
+const homeCards = require('./homeCards');
 const { getAssumedLocation } = require('./userCardEnrichment');
 const { haversineMeters } = require('./globalPlaceResolver');
 const { canViewCircle, canViewMoment, isPlaceVisibleToViewer } = require('./visibility');
@@ -31,6 +32,8 @@ const { makeViewerContext } = require('./viewerContext');
 const { getInnerCircleGrantorIds } = require('../utils/networkAccess');
 
 const CATALOG_COLLECTION = 'notificationTips';
+// Scheduled campaigns Wes writes from the backend — see services/homeCards.js.
+const CARDS_COLLECTION = 'homeCards';
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
@@ -106,7 +109,7 @@ class HomePromptService {
 
   // ---------------------------------------------------------------- pick
 
-  async pick(userId, { now = Date.now() } = {}) {
+  async pick(userId, { now = Date.now() } = {}, options = {}) {
     if (!isEnabled()) return null;
 
     const userDoc = await this.db.collection(COLLECTIONS.USERS).doc(userId).get();
@@ -118,16 +121,73 @@ class HomePromptService {
 
     const state = user.homePrompt || {};
     const lastShownAt = toMillis(state.lastShownAt);
-    if (Number.isFinite(lastShownAt) && now - lastShownAt < SHOW_INTERVAL_MS) return null;
-
     const acks = state.acks || {};
-    const ctx = { user, acks, now, lastShownAt: Number.isFinite(lastShownAt) ? lastShownAt : null };
+    const ctx = {
+      user,
+      acks,
+      now,
+      lastShownAt: Number.isFinite(lastShownAt) ? lastShownAt : null,
+      appVersion: options.appVersion || null
+    };
+    const withinWindow = Number.isFinite(lastShownAt) && now - lastShownAt < SHOW_INTERVAL_MS;
 
-    const card = await this.firstCandidate(ctx);
+    // A scheduled card marked `override` is picked before any organic source,
+    // and one marked `bypassInterval` is picked even when the user already had
+    // a card today. That is the whole point of the tier: what Wes schedules
+    // wins, and the rest of the ladder is untouched underneath it.
+    let card = null;
+    try {
+      card = await this.overrideCard(ctx);
+    } catch (error) {
+      console.error('🃏 scheduled card lookup failed:', error.message);
+    }
+    if (card && withinWindow && !card.bypassInterval) card = null;
+
+    if (!card) {
+      if (withinWindow) return null;
+      card = await this.firstCandidate(ctx);
+    }
     if (!card) return null;
 
     await this.stamp(userId, state, card.key, now);
     return card;
+  }
+
+  // ------------------------------------------------- scheduled (custom) cards
+
+  // Every live, due, in-audience card for this user, highest priority first.
+  // Cached on ctx because both the override tier and the tail of the ladder
+  // ask for it.
+  async liveCards(ctx) {
+    if (ctx._liveCards) return ctx._liveCards;
+    let docs = [];
+    try {
+      const snap = await this.db.collection(CARDS_COLLECTION).where('enabled', '==', true).get();
+      snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+    } catch (error) {
+      console.error('🃏 homeCards read failed:', error.message);
+    }
+    const zone = (ctx.user.notificationPreferences || {}).timezone;
+    ctx._liveCards = docs
+      .filter(c => c.title)
+      .filter(c => homeCards.windowOpen(c, ctx.now, zone))
+      .filter(c => homeCards.cadenceDue(c, ctx.acks[homeCards.ackKey(c)], ctx.now))
+      .filter(c => homeCards.audienceMatches(c, ctx.user, { now: ctx.now, appVersion: ctx.appVersion }))
+      .sort(homeCards.byPriority)
+      .map(homeCards.toCard);
+    return ctx._liveCards;
+  }
+
+  async overrideCard(ctx) {
+    const live = await this.liveCards(ctx);
+    return live.find(c => c.override) || null;
+  }
+
+  // Scheduled cards that did NOT ask to override sit just above the evergreen
+  // tips: more specific than "did you know", less urgent than a friend's news.
+  async scheduledCard(ctx) {
+    const live = await this.liveCards(ctx);
+    return live.find(c => !c.override) || null;
   }
 
   // Priority order: first match wins. Each builder returns a card or null and
@@ -140,6 +200,7 @@ class HomePromptService {
       () => this.addPlaceCard(ctx),
       () => this.postcardCard(ctx),
       () => this.favCoinsCard(ctx),
+      () => this.scheduledCard(ctx),
       () => this.catalogCard(ctx)
     ];
     for (const build of builders) {

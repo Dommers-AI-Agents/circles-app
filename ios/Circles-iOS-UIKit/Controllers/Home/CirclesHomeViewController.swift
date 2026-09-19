@@ -669,6 +669,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
     var dailyCardCollapsedHeight: NSLayoutConstraint?
     var dailyCardView: HomePromptCardView?
+    /// The scheduled card currently shown over the home screen, held so its
+    /// answer can be acked after the overlay dismisses itself.
+    var overlayCard: HomePromptCard?
     var lastHomePromptFetchAt: Date?
 
     lazy var specialsTab: HomeSpecialsViewController = {

@@ -18,7 +18,11 @@ function sendError(res, error, fallback) {
 // @access  Private
 exports.getPrompt = async (req, res) => {
   try {
-    const card = await homePromptService.pick(req.user.uid);
+    // The app's build, when it sends one, so a card about a new feature can be
+    // held back from builds that do not have it. Absent on older clients, and
+    // absence never excludes anyone.
+    const appVersion = req.get('X-App-Version') || null;
+    const card = await homePromptService.pick(req.user.uid, {}, { appVersion });
     res.status(200).json({ success: true, card });
   } catch (error) {
     // Never fail the home screen over a card: report "nothing today".

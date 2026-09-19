@@ -47,6 +47,12 @@ extension CirclesHomeViewController {
     // MARK: Presentation
 
     private func presentDailyCard(_ card: HomePromptCard) {
+        // A card scheduled from the backend covers the screen and asks for an
+        // answer; the organic ones stay inline and can be scrolled past.
+        guard !card.isOverlay else {
+            presentOverlayCard(card)
+            return
+        }
         dailyCardView?.removeFromSuperview()
         let view = HomePromptCardView()
         view.configure(with: card)
@@ -71,6 +77,34 @@ extension CirclesHomeViewController {
             self.view.layoutIfNeeded()
         }
         AnalyticsService.shared.logEvent("home_card_shown", parameters: ["card_key": card.key, "card_type": card.type])
+    }
+
+    private func presentOverlayCard(_ card: HomePromptCard) {
+        dailyCardView?.removeFromSuperview()
+        dailyCardView = nil
+        overlayCard = card
+        let overlay = HomeCardOverlayViewController(
+            card: card,
+            onAct: { [weak self] in self?.overlayCardActed() },
+            onSkip: { [weak self] in self?.overlayCardSkipped() }
+        )
+        present(overlay, animated: true)
+        AnalyticsService.shared.logEvent("home_card_shown", parameters: ["card_key": card.key, "card_type": card.type])
+    }
+
+    private func overlayCardActed() {
+        guard let card = overlayCard else { return }
+        overlayCard = nil
+        AnalyticsService.shared.logEvent("home_card_acted", parameters: ["card_key": card.key, "card_type": card.type])
+        HomePromptService.shared.ack(key: card.key, action: .acted)
+        route(dailyCard: card)
+    }
+
+    private func overlayCardSkipped() {
+        guard let card = overlayCard else { return }
+        overlayCard = nil
+        AnalyticsService.shared.logEvent("home_card_skipped", parameters: ["card_key": card.key, "card_type": card.type])
+        HomePromptService.shared.ack(key: card.key, action: .skipped)
     }
 
     private func dismissDailyCard() {

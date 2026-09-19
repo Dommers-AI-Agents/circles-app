@@ -644,6 +644,13 @@ class APIService {
         // one unrecognised value threw mid-decode and dropped the circle (or
         // the whole moments response) rather than failing visibly.
         request.addValue("1", forHTTPHeaderField: "X-FC-Inner-Circle")
+
+        // This build's marketing version, so a backend-scheduled home card
+        // about a new feature can be held back from builds that don't have it.
+        // Absent on older clients, and the server never excludes on absence.
+        if let build = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+            request.addValue(build, forHTTPHeaderField: "X-App-Version")
+        }
         
         // Add cache control headers to prevent 304 responses
         if method == .get {

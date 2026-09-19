@@ -228,6 +228,78 @@ describe('add a place', () => {
   });
 });
 
+describe('scheduled cards (the backend-authored tier)', () => {
+  const card = (id, extra = {}) => put('homeCards', id, {
+    enabled: true, title: 'Try the new widget', body: 'Water, habits, workouts.',
+    target: 'widgets_tab', ...extra
+  });
+
+  beforeEach(() => {
+    rows('homeCards').clear();
+    rows('activities').clear();
+  });
+
+  test('an override card beats a connection\'s activity at the top of the ladder', async () => {
+    seedUser('ana'); connect(ME, 'ana');
+    activity('a1', { actorId: 'ana', targetName: "Mabel's Kitchen" });
+    expect((await pick()).type).toBe('connection_activity');   // without a card
+
+    put('users', ME, { ...rows('users').get(ME), homePrompt: {} });
+    card('widget-launch', { override: true });
+    const picked = await pick();
+    expect(picked).toMatchObject({ key: 'card:widget-launch', type: 'custom', title: 'Try the new widget' });
+  });
+
+  test('bypassInterval shows it even though the user already had a card today', async () => {
+    card('widget-launch', { override: true, bypassInterval: true });
+    expect((await pick()).key).toBe('card:widget-launch');
+    // Same user, twenty minutes later: normally the 20h window would say no.
+    put('users', ME, { ...rows('users').get(ME), homePrompt: { lastShownAt: iso(NOW), acks: {} } });
+    expect((await service.pick(ME, { now: NOW + 20 * 60 * 1000 })).key).toBe('card:widget-launch');
+  });
+
+  test('without bypassInterval the window still applies', async () => {
+    card('gentle', { override: true });
+    put('users', ME, { ...rows('users').get(ME), homePrompt: { lastShownAt: iso(NOW), acks: {} } });
+    expect(await service.pick(ME, { now: NOW + 20 * 60 * 1000 })).toBeNull();
+  });
+
+  test('a card that is not overriding sits above the evergreen tips, below the news', async () => {
+    tip('evergreen', { order: 1, target: 'all_places_map', surfaces: ['home'] });
+    card('soft', { override: false });
+    expect((await pick()).key).toBe('card:soft');
+  });
+
+  test('the window and the cadence are honoured', async () => {
+    card('future', { override: true, startsAt: '2099-01-01' });
+    expect(await pick()).toBeNull();
+
+    rows('homeCards').clear();
+    card('weekly', { override: true, repeatDays: 7 });
+    expect((await pick()).key).toBe('card:weekly');
+    await service.ack(ME, 'card:weekly', 'skipped', { now: NOW });
+    put('users', ME, { ...rows('users').get(ME), homePrompt: { ...state(), lastShownAt: null } });
+    expect(await service.pick(ME, { now: NOW + 6 * DAY })).toBeNull();
+    expect((await service.pick(ME, { now: NOW + 8 * DAY })).key).toBe('card:weekly');
+  });
+
+  test('audience gates on the build, and an old client is not excluded on a guess', async () => {
+    const fresh = () => put('users', ME, { ...rows('users').get(ME), homePrompt: {} });
+    card('needs-133', { override: true, audience: { minAppVersion: '1.3.3' } });
+    expect(await service.pick(ME, { now: NOW }, { appVersion: '1.3.2' })).toBeNull();
+    fresh();
+    expect((await service.pick(ME, { now: NOW }, { appVersion: '1.3.3' })).key).toBe('card:needs-133');
+    fresh();
+    // An old build sends no version at all; excluding it would be a guess.
+    expect((await service.pick(ME, { now: NOW })).key).toBe('card:needs-133');
+  });
+
+  test('disabled is off, and a broken catalog never blanks the slot', async () => {
+    card('off', { override: true, enabled: false });
+    expect(await pick()).toBeNull();
+  });
+});
+
 describe('postcard', () => {
   // A place saved this week is both what suppresses the add-place nudge and
   // what the postcard card is about, so these run with one seeded save.
