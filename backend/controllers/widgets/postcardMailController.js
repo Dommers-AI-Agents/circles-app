@@ -23,6 +23,7 @@ const MAX_BASE64_BYTES = 6 * 1024 * 1024;
 
 const mailEnabled = () => process.env.POSTCARD_MAIL_ENABLED === '1';
 
+const { sendServiceError } = require('../../utils/serviceError');
 const fail = (res, status, code, message) =>
   res.status(status).json({ success: false, code, message });
 
@@ -112,11 +113,9 @@ exports.MAX_BASE64_BYTES = MAX_BASE64_BYTES;
 // Turns a MailError into its own status/code and anything else into a 500,
 // so an unexpected Stripe or Lob failure never leaks its internals to a user.
 function sendError(res, error, context) {
-  if (error instanceof mailService.MailError) {
-    return fail(res, error.status, error.code, error.message);
-  }
-  console.error(`${context} error:`, error);
-  return fail(res, 500, 'mail_failed', 'Something went wrong. Your card wasn\'t charged.');
+  return sendServiceError(res, error, {
+    log: `${context} error`, fallbackCode: 'mail_failed', fallbackMessage: 'Something went wrong. Your card wasn\'t charged.'
+  });
 }
 
 // @desc    What the app needs to show (and hide) the mail option

@@ -3,17 +3,10 @@
 // never a body spread — and the service enforces who may do what.
 const care = require('../../services/careCheckinService');
 
-const fail = (res, error) => {
-  if (error && error.status && error.code) {
-    // `details` carries the plan a sibling should join instead of creating a
-    // second one — the app turns that into "join theirs" rather than a dead end.
-    return res.status(error.status).json({
-      success: false, code: error.code, message: error.message, ...(error.details || {})
-    });
-  }
-  console.error('[care] request failed:', error && error.message);
-  return res.status(500).json({ success: false, code: 'care_failed', message: 'Something went wrong with check-ins.' });
-};
+const { sendServiceError } = require('../../utils/serviceError');
+const fail = (res, error) => sendServiceError(res, error, {
+  log: '[care] request failed', fallbackCode: 'care_failed', fallbackMessage: 'Something went wrong with check-ins.'
+});
 
 exports.listPlans = async (req, res) => {
   try { res.json({ success: true, ...(await care.listPlans(req.user.uid)) }); } catch (e) { fail(res, e); }

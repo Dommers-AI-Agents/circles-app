@@ -19,6 +19,7 @@
 // card today, which is the cheap failure. Ships dark behind HOME_PROMPTS_ENABLED.
 
 const { getFirestore } = require('../config/firebase');
+const { ServiceError } = require('../utils/serviceError');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { PIGGY_COLLECTIONS } = require('../models/PiggyBankModels');
 const { queryInChunks } = require('../utils/firestoreChunks');
@@ -94,13 +95,7 @@ function toMillis(value) {
 
 const isDynamicKey = (key) => key.includes(':');
 
-class HomePromptError extends Error {
-  constructor(status, code, message) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
+class HomePromptError extends ServiceError {}
 
 class HomePromptService {
   constructor(db = getFirestore()) {

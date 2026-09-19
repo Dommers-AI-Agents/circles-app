@@ -3,14 +3,11 @@
 // per-card ack the app posts on Skip / tap. State lives on the user doc — see
 // services/homePromptService.js.
 const homePromptService = require('../services/homePromptService');
+const { sendServiceError } = require('../utils/serviceError');
 const { HomePromptError } = require('../services/homePromptService');
 
 function sendError(res, error, fallback) {
-  if (error instanceof HomePromptError) {
-    return res.status(error.status).json({ success: false, code: error.code, message: error.message });
-  }
-  console.error(`🃏 ${fallback}:`, error.message);
-  return res.status(500).json({ success: false, message: fallback });
+  return sendServiceError(res, error, { log: `🃏 ${fallback}`, fallbackMessage: fallback });
 }
 
 // @desc    The card to show on this home visit, if any

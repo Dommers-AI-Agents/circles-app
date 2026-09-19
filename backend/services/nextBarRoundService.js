@@ -45,7 +45,7 @@ class RoundError extends Error {
 
 const db = () => getFirestore();
 const roundsCol = () => db().collection(COLLECTIONS.NEXTBAR_ROUNDS);
-const nowIso = () => new Date().toISOString();
+const { nowIso } = require('../utils/ids');
 const displayNameOf = (data, fallback = 'Someone') =>
   (data && typeof data.displayName === 'string' && data.displayName.trim())
     ? data.displayName.trim()

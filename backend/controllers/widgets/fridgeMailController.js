@@ -3,13 +3,10 @@
 // from the authenticated user plus named body fields — never a body spread.
 const fridge = require('../../services/fridgeMailService');
 
-const fail = (res, error) => {
-  if (error && error.status && error.code) {
-    return res.status(error.status).json({ success: false, code: error.code, message: error.message });
-  }
-  console.error('[fridge-mail] request failed:', error && error.message);
-  return res.status(500).json({ success: false, code: 'fridge_failed', message: 'Something went wrong with Fridge Mail.' });
-};
+const { sendServiceError } = require('../../utils/serviceError');
+const fail = (res, error) => sendServiceError(res, error, {
+  log: '[fridge-mail] request failed', fallbackCode: 'fridge_failed', fallbackMessage: 'Something went wrong with Fridge Mail.'
+});
 
 exports.getPlan = async (req, res) => {
   try { res.json({ success: true, plan: await fridge.getPlan(req.user.uid) }); } catch (e) { fail(res, e); }

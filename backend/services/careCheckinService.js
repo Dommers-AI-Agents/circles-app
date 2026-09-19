@@ -13,21 +13,14 @@
 //
 // Every query is equality-only and sorted in memory: no composite indexes.
 const { getFirestore } = require('../config/firebase');
+const { ServiceError } = require('../utils/serviceError');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { buildConnectionMap } = require('./connectionMap');
 const { normalizeUserId } = require('./idService');
 const notificationService = require('./notificationService');
-const { localClock, FALLBACK_ZONE } = require('../utils/localClock');
+const { localClock, localDateKey } = require('../utils/localClock');
 
-class CareError extends Error {
-  constructor(status, code, message, details = null) {
-    super(message);
-    this.status = status;
-    this.code = code;
-    // e.g. the plan a sibling should join instead of creating a duplicate.
-    if (details) this.details = details;
-  }
-}
+class CareError extends ServiceError {}
 
 const DEFAULT_QUESTIONS = [
   'How are you feeling today?',
@@ -65,20 +58,9 @@ const TYPES = {
   silence: 'care_silence'
 };
 
-const nowIso = () => new Date().toISOString();
-const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-const clean = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
+const { newId, nowIso } = require('../utils/ids');
+const { clean } = require('../utils/text');
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-
-/** "2026-09-19" in the given zone. */
-function localDateKey(timeZone, now = new Date()) {
-  const read = (zone) => {
-    const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
-    const get = (type) => parts.find((p) => p.type === type).value;
-    return `${get('year')}-${get('month')}-${get('day')}`;
-  };
-  try { return read(timeZone || FALLBACK_ZONE); } catch (error) { return read(FALLBACK_ZONE); }
-}
 
 /** "08:30" → "8:30 AM" */
 function friendlyTime(hhmm) {

@@ -8,17 +8,12 @@
 //
 // Queries are equality-only (monthKey + userId-in), sorted in memory.
 const { getFirestore } = require('../config/firebase');
+const { ServiceError } = require('../utils/serviceError');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { getConnectedUserIds, getInnerCircleGrantorIds } = require('../utils/networkAccess');
 const { queryInChunks } = require('../utils/firestoreChunks');
 
-class WorkoutFeedError extends Error {
-  constructor(status, code, message) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
+class WorkoutFeedError extends ServiceError {}
 
 const NAME_MAX = 80;
 const LINE_MAX = 60;
@@ -27,7 +22,7 @@ const MAX_CARDIO = 10;
 const MAX_POSTS = 60;
 const FEED_DAYS = 45;
 
-const clean = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+const { clean } = require('../utils/text');
 const int = (v, max) => (Number.isFinite(Number(v)) ? Math.max(0, Math.min(max, Math.round(Number(v)))) : 0);
 const monthKeyOf = (date) => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 

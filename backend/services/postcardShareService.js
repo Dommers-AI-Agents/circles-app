@@ -4,6 +4,7 @@
 // user or not — can open in a browser. The page shows the card and pitches
 // the app underneath. Tokens are unguessable and pages never expire.
 const crypto = require('crypto');
+const { ServiceError } = require('../utils/serviceError');
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 
@@ -17,9 +18,7 @@ const ASSET_BASE_URL = process.env.API_PUBLIC_BASE_URL || 'https://api.favcircle
 const MAX_MESSAGE_CHARS = 500;
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,32}$/;
 
-class ShareError extends Error {
-  constructor(status, code, message) { super(message); this.status = status; this.code = code; }
-}
+class ShareError extends ServiceError {}
 
 // Same bucket allow-list as the in-app postcard send.
 function isAllowedImageUrl(url) {

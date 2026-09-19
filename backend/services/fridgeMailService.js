@@ -11,7 +11,8 @@
 // `kind: 'fridgemail'` and `prepaid: true` — no Stripe intent, `capturedAt`
 // stays null, and the postcard reconciler/unwind paths skip the money steps
 // for it. A print failure gives a credit back, never a Stripe refund.
-const crypto = require('crypto');
+const { ServiceError } = require('../utils/serviceError');
+const { sendInBackground } = require('./notifyQuiet');
 const { getFirestore, FieldValue } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const stripeClient = require('./stripeClient');
@@ -42,14 +43,13 @@ const RESEND_AFTER_MS = 6 * 24 * 60 * 60 * 1000;
 const ORDER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const SUB_ACTIVE = new Set(['active', 'trialing']);
 
-class FridgeMailError extends Error {
-  constructor(status, code, message) { super(message); this.status = status; this.code = code; }
-}
+class FridgeMailError extends ServiceError {}
 
 const isEnabled = () => process.env.POSTCARD_MAIL_ENABLED === '1';
 const dryRun = () => process.env.FRIDGEMAIL_DRY_RUN === '1';
-const nowIso = () => new Date().toISOString();
-const newId = () => crypto.randomBytes(9).toString('base64url');
+const { newId, nowIso } = require('../utils/ids');
+const { escapeHtml } = require('../utils/text');
+const { localClock } = require('../utils/localClock');
 
 function requireEnabled() {
   if (!isEnabled()) throw new FridgeMailError(503, 'mail_disabled', "Fridge Mail isn't available yet.");
@@ -58,18 +58,8 @@ function requireEnabled() {
   }
 }
 
+// Coerces numbers too: recipient fields sometimes arrive as numbers.
 const clean = (value, max) => String(value || '').trim().slice(0, max);
-
-/** { hour, weekday (0 = Sunday) } in an IANA zone, New York when unknown. */
-function localClock(timeZone, now) {
-  const read = (zone) => {
-    const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', hour12: false, weekday: 'short' }).formatToParts(now);
-    const hour = parseInt(parts.find((p) => p.type === 'hour').value, 10) % 24;
-    const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.find((p) => p.type === 'weekday').value);
-    return { hour, weekday };
-  };
-  try { return read(timeZone || 'America/New_York'); } catch (error) { return read('America/New_York'); }
-}
 
 function formatLongDate(now, timeZone) {
   try {
@@ -79,9 +69,6 @@ function formatLongDate(now, timeZone) {
   }
 }
 
-const escapeHtml = (s) => String(s || '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 /**
  * The back of a Fridge Mail card. Same page geometry as the postcard back
@@ -699,9 +686,7 @@ class FridgeMailService {
   }
 
   notify(userId, { title, body, data }) {
-    Promise.resolve(notificationService.sendToUser(userId, {
-      type: KIND, title, body, data: { type: KIND, ...(data || {}) }
-    })).catch((error) => console.error(`[fridge-mail] push failed for ${userId}: ${error.message}`));
+    sendInBackground(userId, { type: KIND, title, body, data }, 'fridge-mail');
   }
 }
 

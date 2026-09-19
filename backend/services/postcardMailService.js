@@ -20,6 +20,9 @@
 // webhook; the hourly reconciler is the safety net when that webhook never
 // arrives (it asks Lob directly and captures after a grace period).
 const { getFirestore, FieldValue } = require('../config/firebase');
+const { ServiceError } = require('../utils/serviceError');
+const { sendInBackground } = require('./notifyQuiet');
+const { escapeHtml } = require('../utils/text');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const stripeClient = require('./stripeClient');
 const lobClient = require('./lobClient');
@@ -57,9 +60,7 @@ const US_STATES = new Set(['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI
 
 const ORDER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
-class MailError extends Error {
-  constructor(status, code, message) { super(message); this.status = status; this.code = code; }
-}
+class MailError extends ServiceError {}
 
 const isEnabled = () => process.env.POSTCARD_MAIL_ENABLED === '1';
 const priceCents = () => Number(process.env.POSTCARD_PRICE_CENTS_US) || DEFAULT_PRICE_CENTS;
@@ -137,9 +138,6 @@ function formatDate(iso) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
-const escapeHtml = (s) => String(s || '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 /**
  * The back of the card. Lob overlays the USPS address block in the
@@ -532,14 +530,7 @@ class PostcardMailService {
    * notification must never fail or retry the order it is describing.
    */
   notify(userId, { title, body, data }) {
-    notificationService.sendToUser(userId, {
-      type: 'postcard_order',
-      title,
-      body,
-      data: { type: 'postcard_order', ...data }
-    }).catch((error) => {
-      console.error(`[postcard-mail] push failed for ${userId}: ${error.message}`);
-    });
+    sendInBackground(userId, { type: 'postcard_order', title, body, data }, 'postcard-mail');
   }
 
   /**

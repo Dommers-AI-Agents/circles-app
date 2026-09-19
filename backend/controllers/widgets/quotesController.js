@@ -3,13 +3,10 @@
 // named fields to the service; the service decides what is valid.
 const quotes = require('../../services/quotesService');
 
-const fail = (res, error) => {
-  if (error && error.status && error.code) {
-    return res.status(error.status).json({ success: false, code: error.code, message: error.message });
-  }
-  console.error('[quotes] request failed:', error && error.message);
-  return res.status(500).json({ success: false, code: 'quotes_failed', message: 'Something went wrong with quotes.' });
-};
+const { sendServiceError } = require('../../utils/serviceError');
+const fail = (res, error) => sendServiceError(res, error, {
+  log: '[quotes] request failed', fallbackCode: 'quotes_failed', fallbackMessage: 'Something went wrong with quotes.'
+});
 
 exports.getSettings = async (req, res) => {
   try { res.json({ success: true, ...(await quotes.getSettings(req.user.uid)) }); } catch (e) { fail(res, e); }

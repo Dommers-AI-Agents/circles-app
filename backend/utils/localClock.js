@@ -41,4 +41,14 @@ const localClock = (timeZone, now = new Date()) => {
   }
 };
 
-module.exports = { localClock, FALLBACK_ZONE };
+/** "2026-09-19" in the given zone (the user's calendar day, not the server's). */
+const localDateKey = (timeZone, now = new Date()) => {
+  const read = (zone) => {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+    const get = (type) => parts.find((p) => p.type === type).value;
+    return `${get('year')}-${get('month')}-${get('day')}`;
+  };
+  try { return read(timeZone || FALLBACK_ZONE); } catch (error) { return read(FALLBACK_ZONE); }
+};
+
+module.exports = { localClock, localDateKey, FALLBACK_ZONE };

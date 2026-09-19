@@ -13,18 +13,15 @@
 // Preferences live on the user doc under `quotePrefs`, next to the other
 // notification settings, because that is what the scheduler has to scan.
 const { getFirestore } = require('../config/firebase');
+const { ServiceError } = require('../utils/serviceError');
 const { COLLECTIONS } = require('../models/FirestoreModels');
-const { localClock } = require('../utils/localClock');
+const { localClock, localDateKey } = require('../utils/localClock');
+const { nowIso } = require('../utils/ids');
+const { escapeHtml } = require('../utils/text');
 const notificationService = require('./notificationService');
 const emailService = require('./emailService');
 
-class QuoteError extends Error {
-  constructor(status, code, message) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
+class QuoteError extends ServiceError {}
 
 // The categories a user can choose between. Kept here rather than derived from
 // the catalog so the picker is stable even when the catalog is thin.
@@ -53,17 +50,6 @@ const RECENT_MEMORY = 60;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const BATCH_SIZE = 25;
 
-const nowIso = () => new Date().toISOString();
-
-/** "2026-09-19" in the user's zone — the key that makes a day a day. */
-function localDateKey(timeZone, now = new Date()) {
-  const read = (zone) => {
-    const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
-    const get = (t) => parts.find((p) => p.type === t).value;
-    return `${get('year')}-${get('month')}-${get('day')}`;
-  };
-  try { return read(timeZone || 'America/New_York'); } catch (e) { return read('America/New_York'); }
-}
 
 function normalizePrefs(input = {}, existing = {}) {
   const base = { ...DEFAULT_PREFS, ...existing };
@@ -275,11 +261,6 @@ class QuotesService {
   }
 }
 
-function escapeHtml(value) {
-  return String(value || '').replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
-}
 
 module.exports = new QuotesService();
 module.exports.QuotesService = QuotesService;
