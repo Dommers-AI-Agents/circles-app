@@ -84,6 +84,25 @@ struct HomePromptGateTests {
         #expect(HomePromptTarget(target: "something_new", data: [:]) == .unknown("something_new"))
     }
 
+    @Test func scheduledCardsOverlay_organicCardsDoNot() {
+        let json = """
+        {"success":true,"card":{"key":"card:widget-launch","type":"custom","title":"Today's new widget",
+          "body":"Water, habits, workouts.","actionLabel":"Show me","skipLabel":"Skip",
+          "target":"widgets_tab","data":{},"presentation":"overlay"}}
+        """
+        struct Envelope: Decodable { let card: HomePromptCard? }
+        let card = try! JSONDecoder().decode(Envelope.self, from: Data(json.utf8)).card!
+        #expect(card.isOverlay)
+        #expect(card.destination == .widgetsTab)
+        #expect(card.actionLabel == "Show me")
+
+        // A card with no presentation — every organic one — stays inline, and
+        // an unrecognised style is treated as inline rather than taking over
+        // the screen by accident.
+        #expect(!HomePromptCard(key: "add_place", type: "add_place", title: "t", body: "b", target: "add_place").isOverlay)
+        #expect(!HomePromptCard(key: "x", type: "custom", title: "t", body: "b", target: "network", presentation: "fullscreen").isOverlay)
+    }
+
     @Test func postcardTargetNeedsBothAPlaceAndAPhoto() {
         let full = HomePromptTarget(target: "postcard", data: [
             "placeId": .string("p1"), "globalPlaceId": .string("g1"),
