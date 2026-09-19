@@ -52,15 +52,23 @@ final class HomeWidgetDetailViewController: BaseViewController {
         hosting.didMove(toParent: self)
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        // The swipe-back gesture would bypass the widget's Back handling.
-        navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+    private weak var previousPopDelegate: UIGestureRecognizerDelegate?
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Swipe-back stays on for every widget page; it only yields while a
+        // widget has claimed Back for itself (a live workout).
+        if let gesture = navigationController?.interactivePopGestureRecognizer, gesture.delegate !== self {
+            previousPopDelegate = gesture.delegate
+            gesture.delegate = self
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+        if let gesture = navigationController?.interactivePopGestureRecognizer, gesture.delegate === self {
+            gesture.delegate = previousPopDelegate
+        }
         // Save anything pending as the user leaves.
         let model = self.model
         Task { await model.flushAll() }
@@ -69,5 +77,12 @@ final class HomeWidgetDetailViewController: BaseViewController {
     @objc private func backTapped() {
         if let handle = context.handleBack, handle() { return }
         navigationController?.popViewController(animated: true)
+    }
+}
+
+extension HomeWidgetDetailViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        // A swipe would bypass the widget's own Back handling.
+        context.handleBack == nil && (navigationController?.viewControllers.count ?? 0) > 1
     }
 }
