@@ -167,3 +167,15 @@ describe('delivery', () => {
     expect(today.sentAt).toBeTruthy();
   });
 });
+
+describe('read bounds (B1b)', () => {
+  test('one run reads the catalog once, however many people are due', async () => {
+    seedUser(); seedQuotes();
+    users().set('other', { ...users().get(ME), id: 'other', displayName: 'Other' });
+    const spy = jest.spyOn(quotes, 'loadEnabledQuotes');
+    const result = await quotes.runDue({ now: new Date('2026-09-19T12:35:00Z'), force: true });
+    expect(result.due).toBe(2);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+});

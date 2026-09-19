@@ -221,12 +221,10 @@ class CareCheckinService {
     };
   }
 
+  /** Newest first, bounded by the index (planId, askedAt desc). */
   async recentAsks(planId, limit = 30) {
-    const snap = await this.asks.where('planId', '==', planId).get();
-    return snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => (a.askedAt < b.askedAt ? 1 : -1))
-      .slice(0, limit);
+    const snap = await this.asks.where('planId', '==', planId).orderBy('askedAt', 'desc').limit(limit).get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   }
 
   async listAsks({ userId, planId, limit = 60 }) {
@@ -617,12 +615,17 @@ class CareCheckinService {
    */
   async raiseSilenceAlerts(now) {
     const counts = { silence: 0, undelivered: 0 };
-    const snap = await this.asks.where('status', '==', 'open').get();
-    const due = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((a) => !a.alertedAt && a.dueBy && Date.parse(a.dueBy) <= now.getTime());
+    // Only asks past their due time (index: status, dueBy) — never the whole
+    // open set — and each plan read once for the run.
+    const snap = await this.asks.where('status', '==', 'open').where('dueBy', '<=', now.toISOString()).limit(500).get();
+    const due = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((a) => !a.alertedAt);
+    const planIds = [...new Set(due.map((a) => a.planId))];
+    const planDocs = planIds.length ? await this.db.getAll(...planIds.map((id) => this.plans.doc(id))) : [];
+    const plansById = new Map(planDocs.map((d) => [d.id, d]));
     const undeliveredNoticed = new Set();
     for (const ask of due) {
-      const planDoc = await this.plans.doc(ask.planId).get();
-      if (!planDoc.exists || planDoc.data().status !== 'active') {
+      const planDoc = plansById.get(ask.planId);
+      if (!planDoc || !planDoc.exists || planDoc.data().status !== 'active') {
         await this.asks.doc(ask.id).update({ status: 'missed', alertedAt: now.toISOString(), alertKind: 'none' });
         continue;
       }

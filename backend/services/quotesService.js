@@ -131,9 +131,14 @@ class QuotesService {
 
   // MARK: - Catalog
 
-  async loadCatalog(categories) {
+  /** Every enabled quote — one read per run, not one per user. */
+  async loadEnabledQuotes() {
     const snap = await this.quotes.where('enabled', '==', true).get();
-    const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }
+
+  async loadCatalog(categories, enabledQuotes = null) {
+    const all = enabledQuotes || await this.loadEnabledQuotes();
     const wanted = new Set(categories || []);
     const matching = all.filter((q) => (q.categories || []).some((c) => wanted.has(c)));
     // Falling back to the whole catalog beats sending nothing because a
@@ -177,12 +182,13 @@ class QuotesService {
     const users = await this.loadCandidates(userId);
     const due = force ? users : users.filter((u) => this.isUsersQuoteHour(u, now));
     const results = { candidates: users.length, due: due.length, sent: 0, emailed: 0, skipped: 0, dryRun };
+    const enabledQuotes = due.length ? await this.loadEnabledQuotes() : [];
 
     for (let i = 0; i < due.length; i += BATCH_SIZE) {
       const batch = due.slice(i, i + BATCH_SIZE);
       await Promise.all(batch.map(async (user) => {
         try {
-          const outcome = await this.sendToUser(user, { now, dryRun });
+          const outcome = await this.sendToUser(user, { now, dryRun, enabledQuotes });
           if (outcome.sent) results.sent += 1;
           else results.skipped += 1;
           if (outcome.emailed) results.emailed += 1;
@@ -195,13 +201,13 @@ class QuotesService {
     return results;
   }
 
-  async sendToUser(user, { now = new Date(), dryRun = false } = {}) {
+  async sendToUser(user, { now = new Date(), dryRun = false, enabledQuotes = null } = {}) {
     const prefs = this.prefsOf(user);
     const zone = (user.notificationPreferences || {}).timezone;
     const dateKey = localDateKey(zone, now);
     const sendRef = this.sends.doc(QuotesService.sendId(user.id, dateKey));
 
-    const catalog = await this.loadCatalog(prefs.categories);
+    const catalog = await this.loadCatalog(prefs.categories, enabledQuotes);
     if (!catalog.length) return { sent: false, reason: 'empty_catalog' };
 
     const recent = (user.quoteRecentIds || []).slice(-RECENT_MEMORY);

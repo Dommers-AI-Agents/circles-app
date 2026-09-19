@@ -273,3 +273,28 @@ describe('the card back', () => {
     expect(html.length).toBeLessThan(10000);
   });
 });
+
+describe('read bounds (B1b)', () => {
+  it('runWeekly visits every active plan, not just the first page', async () => {
+    await planWith({ recipients: 1, queue: 1, credits: 1 });
+    const template = plansOf().get(USER);
+    // 205 more due plans, each with its own credit and drawing.
+    for (let i = 0; i < 205; i++) {
+      plansOf().set(`user_${i}`, { ...template, userId: `user_${i}` });
+    }
+    const summary = await service.runWeekly({ now: MONDAY_NOON_ET, limit: 50 });
+    expect(summary.plans).toBe(206);
+    expect(summary.sent).toBe(206);
+  });
+
+  it('listCards is not hidden by a pile of ordinary postcards', async () => {
+    await planWith({ recipients: 1, queue: 1, credits: 1 });
+    for (let i = 0; i < 70; i++) {
+      cardsOf().set(`psc_${i}`, { userId: USER, kind: 'postcard', status: 'delivered', createdAt: `2026-09-2${i % 9}T10:00:${String(i).padStart(2, '0')}Z` });
+    }
+    await service.runWeekly({ now: MONDAY_NOON_ET });
+    const cards = await service.listCards(USER);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].childName).toBe('Maya');
+  });
+});

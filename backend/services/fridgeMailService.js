@@ -539,16 +539,26 @@ class FridgeMailService {
   async runWeekly({ now = new Date(), limit = 200 } = {}) {
     const summary = { plans: 0, sent: 0, skippedNoQueue: 0, skippedNoCredit: 0, failed: 0 };
     if (!isEnabled() || !lobClient.isEnabled()) return { ...summary, disabled: true };
-    const snap = await this.plans.where('status', '==', 'active').limit(limit).get();
-    for (const doc of snap.docs) {
-      const plan = doc.data();
-      if (!isDue(plan, now)) continue;
-      summary.plans++;
-      const outcome = await this.sendForPlan(doc, plan, now);
-      summary.sent += outcome.sent;
-      if (outcome.reason === 'no_queue') summary.skippedNoQueue++;
-      if (outcome.reason === 'no_credit') summary.skippedNoCredit++;
-      summary.failed += outcome.failed;
+    // `limit` is a page size, not a cap: every active plan is visited. (It
+    // used to be a cap applied before the due check, so past 200 plans the
+    // rest silently never mailed.) A retried run is safe: lastSentAt gates.
+    let cursor = null;
+    for (;;) {
+      let query = this.plans.where('status', '==', 'active').limit(limit);
+      if (cursor) query = query.startAfter(cursor);
+      const snap = await query.get();
+      for (const doc of snap.docs) {
+        const plan = doc.data();
+        if (!isDue(plan, now)) continue;
+        summary.plans++;
+        const outcome = await this.sendForPlan(doc, plan, now);
+        summary.sent += outcome.sent;
+        if (outcome.reason === 'no_queue') summary.skippedNoQueue++;
+        if (outcome.reason === 'no_credit') summary.skippedNoCredit++;
+        summary.failed += outcome.failed;
+      }
+      if (snap.docs.length < limit) break;
+      cursor = snap.docs[snap.docs.length - 1];
     }
     return summary;
   }
@@ -673,12 +683,11 @@ class FridgeMailService {
   }
 
   async listCards(userId, limit = 60) {
-    // Same index as the postcard order list (userId + createdAt); kind
-    // filtered in memory so no new composite index is needed.
-    const snap = await this.cards.where('userId', '==', userId).orderBy('createdAt', 'desc').limit(limit * 2).get();
+    // Index (userId, kind, createdAt desc): fridge cards share postcardOrders
+    // with ordinary postcards, and filtering in memory after a capped read
+    // hid the fridge list behind 60 recent postcards.
+    const snap = await this.cards.where('userId', '==', userId).where('kind', '==', KIND).orderBy('createdAt', 'desc').limit(limit).get();
     return snap.docs
-      .filter((d) => d.data().kind === KIND)
-      .slice(0, limit)
       .map((d) => {
         const r = d.data();
         return {

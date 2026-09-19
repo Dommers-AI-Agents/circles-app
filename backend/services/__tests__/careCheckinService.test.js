@@ -353,3 +353,34 @@ describe('siblings joining (watchers)', () => {
     expect(plans().get(PLAN).watcherIds).toEqual([]);
   });
 });
+
+describe('read bounds (B1b)', () => {
+  test('recentAsks is bounded and newest-first, not a full plan history', async () => {
+    await activePlan();
+    for (let d = 1; d <= 40; d++) {
+      const dateKey = `2026-08-${String(d).padStart(2, '0')}`;
+      await asks().set(`${PLAN}_${dateKey}_0830`, {
+        planId: PLAN, ownerId: CHILD, parentId: PARENT, slot: '08:30', dateKey, questionText: `Q${d}`,
+        askedAt: `${dateKey}T12:30:00.000Z`, dueBy: `${dateKey}T15:30:00.000Z`, status: 'answered', answer: 'great', note: '', answeredAt: `${dateKey}T13:00:00.000Z`, alertedAt: null, pushDelivered: true
+      });
+    }
+    const six = await care.recentAsks(PLAN, 6);
+    expect(six).toHaveLength(6);
+    expect(six.map((a) => a.questionText)).toEqual(['Q40', 'Q39', 'Q38', 'Q37', 'Q36', 'Q35']);
+  });
+
+  test('the silence sweep only touches asks past due and reads each plan once', async () => {
+    await activePlan();
+    await care.runDue({ now: T_0835_NY });
+    const askId = [...asks().keys()][0];
+    // A second, not-yet-due ask must stay open and untouched.
+    await asks().set('other_open', { ...asks().get(askId), planId: PLAN, dueBy: new Date(T_0835_NY.getTime() + 9 * 3600 * 1000).toISOString(), alertedAt: null });
+    const spy = jest.spyOn(mockDb, 'getAll');
+    const result = await care.runDue({ now: new Date(T_0835_NY.getTime() + 3 * 3600 * 1000 + 60000) });
+    expect(result.silence).toBe(1);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]).toHaveLength(1); // one plan ref for the one due ask
+    expect(asks().get('other_open').status).toBe('open');
+    spy.mockRestore();
+  });
+});

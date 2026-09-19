@@ -3,15 +3,18 @@
 // postcard order machine runs. Deliberately not general — it exists so money
 // transitions can be tested for real instead of being mocked away.
 class FakeQuery {
-  constructor(store, filters = [], order = null, max = null) {
+  constructor(store, filters = [], order = null, max = null, after = null) {
     this.store = store;
     this.filters = filters;
     this.order = order;
     this.max = max;
+    this.after = after;
   }
-  where(field, op, value) { return new FakeQuery(this.store, [...this.filters, { field, op, value }], this.order, this.max); }
-  orderBy(field, direction = 'asc') { return new FakeQuery(this.store, this.filters, { field, direction }, this.max); }
-  limit(n) { return new FakeQuery(this.store, this.filters, this.order, n); }
+  where(field, op, value) { return new FakeQuery(this.store, [...this.filters, { field, op, value }], this.order, this.max, this.after); }
+  orderBy(field, direction = 'asc') { return new FakeQuery(this.store, this.filters, { field, direction }, this.max, this.after); }
+  limit(n) { return new FakeQuery(this.store, this.filters, this.order, n, this.after); }
+  /** Cursor paging: results strictly after `snapshot` in the query's order. */
+  startAfter(snapshot) { return new FakeQuery(this.store, this.filters, this.order, this.max, snapshot ? snapshot.id : null); }
   // Real queries use select() to fetch ids without the document bodies. The
   // fake always returns whole docs, so this is just a pass-through that keeps
   // the call chain working.
@@ -43,6 +46,13 @@ class FakeQuery {
     if (this.order) {
       const { field, direction } = this.order;
       rows.sort((a, b) => (a.data[field] > b.data[field] ? 1 : -1) * (direction === 'desc' ? -1 : 1));
+    } else {
+      // Firestore orders an unordered query by document id.
+      rows.sort((a, b) => (a.id > b.id ? 1 : -1));
+    }
+    if (this.after !== null) {
+      const at = rows.findIndex((r) => r.id === this.after);
+      rows = at >= 0 ? rows.slice(at + 1) : [];
     }
     if (this.max !== null) rows = rows.slice(0, this.max);
     const docs = rows.map(({ id, data }) => this.store.snapshot(id, data));
@@ -112,6 +122,14 @@ class FakeFirestore {
         store.docs.set(id, applyPatch(current, patch));
       }
     };
+  }
+
+  /** Batch read by reference, like the admin SDK's db.getAll(...refs). */
+  async getAll(...refs) {
+    return refs.map((ref) => {
+      const store = ref.store || this;
+      return store.snapshot(ref.id, store.docs.get(ref.id));
+    });
   }
 
   /**
