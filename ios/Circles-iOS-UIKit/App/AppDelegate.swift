@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import FavWidgetsCore
 import AuthenticationServices
 import GoogleSignIn
 import FacebookCore
@@ -456,6 +457,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             options: [.customDismissAction]
         )
 
+        // Water reminder (a local notification the Water widget schedules):
+        // "Log a cup" writes today's cup without opening the app.
+        let waterCategory = UNNotificationCategory(
+            identifier: WaterQuickLog.categoryIdentifier,
+            actions: [UNNotificationAction(identifier: WaterQuickLog.logCupAction, title: "Log a cup 💧", options: [])],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+
         // Set categories
         UNUserNotificationCenter.current().setNotificationCategories([
             connectionCategory,
@@ -463,7 +473,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             suggestionCategory,
             activityCategory,
             checkInPromptCategory,
-            careCategory
+            careCategory,
+            waterCategory
         ])
     }
     
@@ -729,6 +740,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case ProximityNotificationScheduler.checkInAction:
             // Same as tapping the banner: open the pre-filled check-in sheet
             handleNotificationTap(userInfo: userInfo)
+
+        case WaterQuickLog.logCupAction:
+            // Held until the write lands, like the care answers.
+            Task {
+                do {
+                    let result = try await WaterQuickLog.logCup(store: HomeWidgetsAPIDataStore())
+                    Logger.debug("💧 Logged a cup from the reminder: \(result.cups) of \(result.goal)")
+                } catch {
+                    Logger.debug("❌ Water quick log failed: \(error)")
+                    NotificationCenter.default.post(name: .navigateToHomeWidget, object: "water")
+                }
+                await MainActor.run { completionHandler() }
+            }
+            return
 
         case CareAnswerAction.great.rawValue, CareAnswerAction.okay.rawValue, CareAnswerAction.notGreat.rawValue:
             // Answer from the Lock Screen. The completion handler is held until
