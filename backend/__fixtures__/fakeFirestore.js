@@ -21,7 +21,12 @@ class FakeQuery {
     let rows = [...this.store.docs.entries()].map(([id, data]) => ({ id, data }));
     for (const f of this.filters) {
       rows = rows.filter(({ data }) => {
-        const v = data[f.field];
+        // Firestore reads "a.b" as a nested field, not a key called "a.b" —
+        // so a query on `quotePrefs.enabled` matched nothing here while
+        // working perfectly in production.
+        const v = String(f.field).includes('.')
+          ? String(f.field).split('.').reduce((acc, key) => (acc === null || acc === undefined ? acc : acc[key]), data)
+          : data[f.field];
         switch (f.op) {
           case '==': return v === f.value;
           case '<=': return v !== null && v !== undefined && v <= f.value;

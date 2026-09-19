@@ -37,6 +37,10 @@ router.post('/fridgemail-send', verifyCloudScheduler, require('../controllers/wi
 // Care check-ins: send due questions, raise silence alerts (every 15 min)
 router.post('/care-checkins', verifyCloudScheduler, require('../controllers/widgets/careCheckinController').runDue);
 
+// Daily quote — hourly tick, each user delivered at the hour they chose in
+// their own timezone. A per-day document id makes a retried run a no-op.
+router.post('/daily-quotes', verifyCloudScheduler, require('../controllers/widgets/quotesController').runDue);
+
 // Daily summary endpoint
 router.post('/daily-summary', verifyCloudScheduler, async (req, res) => {
   try {

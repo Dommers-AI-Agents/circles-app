@@ -53,6 +53,8 @@ const COLLECTIONS = {
   FRIDGE_MAIL_PLANS: 'fridgeMailPlans',       // doc id = userId
   FRIDGE_MAIL_PACK_ORDERS: 'fridgeMailPackOrders', // doc id = client orderId
   // "How Are You?" check-ins between an adult child and a parent
+  QUOTES: 'quotes',          // the catalog: text, author, categories[]
+  QUOTE_SENDS: 'quoteSends', // doc id = userId_YYYY-MM-DD — one a day, retry-safe
   CARE_PLANS: 'carePlans',   // doc id = ownerId_parentId
   CARE_ASKS: 'careAsks',     // doc id = planId_YYYY-MM-DD_HHMM
   // Workouts posted to the Inner Circle feed, doc id = userId_startedAtMs

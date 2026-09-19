@@ -12,6 +12,7 @@ const nextBarRounds = require('../controllers/widgets/nextBarRoundController');
 const postcardMail = require('../controllers/widgets/postcardMailController');
 const fridgeMail = require('../controllers/widgets/fridgeMailController');
 const care = require('../controllers/widgets/careCheckinController');
+const quotes = require('../controllers/widgets/quotesController');
 const workoutFeed = require('../controllers/widgets/workoutFeedController');
 
 const router = express.Router();
@@ -62,6 +63,10 @@ router.get('/fridgemail/cards', fridgeMail.listCards);
 
 // "How Are You?" check-ins: a child sets up questions, the parent answers
 // from the Lock Screen, silence gets reported.
+// Daily quote: the topics, the hour, and whether it also goes to email.
+router.get('/quotes/settings', quotes.getSettings);
+router.put('/quotes/settings', quotes.updateSettings);
+
 router.get('/care/plans', care.listPlans);
 router.post('/care/plans', messageLimiter, care.createPlan);
 router.put('/care/plans/:id', care.updatePlan);
