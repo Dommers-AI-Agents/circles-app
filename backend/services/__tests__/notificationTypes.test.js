@@ -1,4 +1,5 @@
-// The one table must reproduce the three it replaced, byte for byte.
+// The one table reproduces the three it replaced, plus the rows added since
+// (daily_quote: mutable via notificationPreferences.dailyQuote).
 const { TYPES, categoryFor, prefKeyFor, shouldBadge } = require('../notificationTypes');
 
 const OLD_CATEGORIES = {
@@ -17,7 +18,8 @@ const OLD_TYPE_MAP = {
   place_like: 'socialActivity', place_comment: 'socialActivity', new_follower: 'newFollowers',
   engagement_reminder: 'reengagement', milestone: 'milestones', did_you_know: 'tips',
   nextbar_round: 'socialActivity', nextbar_result: 'socialActivity', postcard_order: 'socialActivity', fridgemail: 'socialActivity',
-  care_invite: 'careCheckins', care_ask: 'careCheckins', care_answer: 'careCheckins', care_accepted: 'careCheckins', care_silence: 'careCheckins'
+  care_invite: 'careCheckins', care_ask: 'careCheckins', care_answer: 'careCheckins', care_accepted: 'careCheckins', care_silence: 'careCheckins',
+  daily_quote: 'dailyQuote'
 };
 const OLD_BADGE_WORTHY = ['new_message', 'connection_request', 'connection_accepted', 'place_like', 'place_comment', 'new_follower',
   'activity_reaction', 'activity_comment', 'check_in', 'new_suggestion', 'moment_tag', 'circle_invite', 'store_claim',

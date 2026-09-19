@@ -5,10 +5,10 @@
 // to the badge. These were three separate tables in two files that had
 // drifted; adding a type now means adding one row here.
 //
-// Reproduces the previous tables exactly. Known gaps (deliberately kept
-// for this change, fixed separately): daily_quote has no preference key so
-// it can't be muted; care_*/nextbar_*/fridgemail/postcard_order pushes have
-// no category, so they can't carry action buttons.
+// Types without a category show as plain notifications (the app registers
+// Lock Screen actions only for the categories listed; see
+// NotificationCategoryRegistry.swift). A type without a pref key can't be
+// muted from Settings; widget-driven types are switched off in the widget.
 const TYPES = {
   new_message:             { category: 'NEW_MESSAGE',             pref: 'newMessages',            badge: true },
   connection_request:      { category: 'CONNECTION_REQUEST',      pref: 'connectionRequests',     badge: true },
@@ -38,6 +38,7 @@ const TYPES = {
   special_event:           { category: 'SPECIAL_EVENT',           pref: null,                     badge: false },
   network_growth:          { category: 'NETWORK_GROWTH',          pref: null,                     badge: false },
   did_you_know:            { category: null,                      pref: 'tips',                   badge: true },
+  daily_quote:             { category: null,                      pref: 'dailyQuote',             badge: false },
   nextbar_round:           { category: null,                      pref: 'socialActivity',         badge: false },
   nextbar_result:          { category: null,                      pref: 'socialActivity',         badge: false },
   postcard_order:          { category: null,                      pref: 'socialActivity',         badge: false },
