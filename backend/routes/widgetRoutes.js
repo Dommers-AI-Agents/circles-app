@@ -48,6 +48,7 @@ router.post('/postcard/mail/orders/:id/cancel', postcardMail.cancelOrder);
 router.get('/fridgemail/plan', fridgeMail.getPlan);
 router.put('/fridgemail/plan', fridgeMail.updatePlan);
 router.post('/fridgemail/recipients', messageLimiter, fridgeMail.addRecipient);
+router.put('/fridgemail/recipients/:id', messageLimiter, fridgeMail.updateRecipient);
 router.delete('/fridgemail/recipients/:id', fridgeMail.removeRecipient);
 router.post('/fridgemail/queue', messageLimiter, fridgeMail.enqueue);
 router.delete('/fridgemail/queue/:id', fridgeMail.removeQueued);

@@ -251,6 +251,23 @@ describe('recipients and queue', () => {
     const plan = plansOf().get(USER);
     expect(plan.recipients[0].address).toMatchObject({ line1: '123 MAIN ST', state: 'NC', zip: '28203' });
   });
+  it('edits a grandparent in place: same id, re-verified address, new name and relation', async () => {
+    await planWith({ recipients: 2, queue: 0 });
+    const before = plansOf().get(USER).recipients[1];
+    const plan = await service.updateRecipient({
+      userId: USER, recipientId: before.id, name: 'Mumsy', relation: 'Nana',
+      address: { ...ADDRESS, line1: '9 Elm St', zip: '28202' }
+    });
+    const after = plan.recipients.find((r) => r.id === before.id);
+    expect(after).toMatchObject({ name: 'Mumsy', relation: 'Nana' });
+    expect(after.address).toMatchObject({ line1: '9 ELM ST', city: 'CHARLOTTE', state: 'NC', zip: '28203' });
+    expect(plan.recipients).toHaveLength(2);
+    expect(plan.recipients[0].id).toBe(plansOf().get(USER).recipients[0].id);
+    const postcardMailService = require('../postcardMailService');
+    postcardMailService.quote.mockResolvedValueOnce({ deliverable: false, standardized: {} });
+    await expect(service.updateRecipient({ userId: USER, recipientId: before.id, address: ADDRESS })).rejects.toMatchObject({ code: 'undeliverable' });
+    await expect(service.updateRecipient({ userId: USER, recipientId: 'nope', address: ADDRESS })).rejects.toMatchObject({ code: 'no_recipient' });
+  });
   it('refuses an image that did not come from our upload, and keeps sent drawings out of reorder', async () => {
     await planWith({ recipients: 1, queue: 2, credits: 5 });
     await expect(service.enqueue({ userId: USER, imageUrl: 'https://evil.example/x.jpg', childName: 'M' })).rejects.toMatchObject({ code: 'bad_image' });

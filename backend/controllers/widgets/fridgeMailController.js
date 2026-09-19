@@ -24,6 +24,12 @@ exports.addRecipient = async (req, res) => {
   catch (e) { fail(res, e); }
 };
 
+exports.updateRecipient = async (req, res) => {
+  const { name, relation, address } = req.body || {};
+  try { res.json({ success: true, plan: await fridge.updateRecipient({ userId: req.user.uid, recipientId: req.params.id, name, relation, address }) }); }
+  catch (e) { fail(res, e); }
+};
+
 exports.removeRecipient = async (req, res) => {
   try { res.json({ success: true, plan: await fridge.removeRecipient({ userId: req.user.uid, recipientId: req.params.id }) }); }
   catch (e) { fail(res, e); }

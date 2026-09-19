@@ -125,6 +125,37 @@ class FridgeMailService {
     return this.present({ ...plan, recipients });
   }
 
+  /**
+   * Edit a grandparent in place. The id (and createdAt) survive so the cards
+   * already sent to them keep pointing at the same person; the address is
+   * re-verified exactly like a new one.
+   */
+  async updateRecipient({ userId, recipientId, name, relation, address }) {
+    requireEnabled();
+    const { ref, plan } = await this.ensurePlan(userId);
+    const recipients = [...(plan.recipients || [])];
+    const index = recipients.findIndex((r) => r.id === recipientId);
+    if (index < 0) throw new FridgeMailError(404, 'no_recipient', 'That recipient is gone already.');
+    const current = recipients[index];
+    const cleanName = clean(name, NAME_MAX) || current.name;
+    const quote = await postcardMailService.quote({ ...(address || {}), name: cleanName });
+    if (!quote.deliverable) {
+      throw new FridgeMailError(422, 'undeliverable', "USPS can't deliver to that address. Check it and try again.");
+    }
+    recipients[index] = {
+      ...current,
+      name: cleanName,
+      relation: relation === undefined ? current.relation : clean(relation, RELATION_MAX),
+      address: {
+        line1: quote.standardized.line1, line2: quote.standardized.line2 || '',
+        city: quote.standardized.city, state: quote.standardized.state, zip: quote.standardized.zip
+      },
+      updatedAt: nowIso()
+    };
+    await ref.update({ recipients, updatedAt: nowIso() });
+    return this.present({ ...plan, recipients });
+  }
+
   async removeRecipient({ userId, recipientId }) {
     const { ref, plan } = await this.ensurePlan(userId);
     const recipients = (plan.recipients || []).filter((r) => r.id !== recipientId);
