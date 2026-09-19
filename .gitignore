@@ -138,3 +138,6 @@ mcp-server/dist/
 # Raw video editing sources — exceed GitHub 100MB limit (published mp4s stay tracked)
 Marketing/user-tour/real/tour-raw.mov
 Marketing/user-tour/real/tour-final.mov
+
+# blst assembly is generated locally (worktrees symlink it); never track the dir or a link to it
+ios/ThirdParty/blst/build
