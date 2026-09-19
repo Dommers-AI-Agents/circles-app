@@ -796,6 +796,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             // A NextBar vote started or finished: open that widget on the home Widgets tab
             NotificationCenter.default.post(name: .navigateToHomeWidget, object: "nextbar")
 
+        case "fridgemail":
+            // A Fridge Mail card went out, needs cards, or couldn't print: the widget shows why
+            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "fridgemail")
+
+        case "postcard_order":
+            // A mailed postcard was printed or delivered: its status lives in the Postcard widget
+            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "postcard")
+
         case "new_suggestion":
             // Navigate to suggestions with optional placeId
             var suggestionInfo: [String: Any] = [:]
