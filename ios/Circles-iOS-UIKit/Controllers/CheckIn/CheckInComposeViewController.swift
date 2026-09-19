@@ -95,13 +95,7 @@ final class CheckInComposeViewController: BaseViewController {
     }()
 
     private lazy var notifyButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.contentHorizontalAlignment = .leading
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 16)
-        button.setTitleColor(Constants.Colors.label, for: .normal)
-        button.backgroundColor = Constants.Colors.secondaryBackground
-        button.layer.cornerRadius = 12
-        button.contentEdgeInsets = UIEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
+        let button = UIButton.fieldButton()
         button.addTarget(self, action: #selector(notifyTapped), for: .touchUpInside)
         return button
     }()

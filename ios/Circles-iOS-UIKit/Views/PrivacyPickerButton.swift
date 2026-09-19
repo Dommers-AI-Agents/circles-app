@@ -21,8 +21,8 @@ final class PrivacyPickerButton: UIView {
     private(set) var selected: PrivacyOption
     private let options: [PrivacyOption]
 
-    private let button = UIButton(type: .system)
-    private let captionButton = UIButton(type: .system)
+    private let button = UIButton.menuFieldButton()
+    private let captionButton = UIButton.captionLinkButton()
 
     /// - Parameter entity: which option set to offer — a circle has four tiers,
     ///   a place adds "same as circle", a moment adds the followers audience.
@@ -63,20 +63,7 @@ final class PrivacyPickerButton: UIView {
     private func setup() {
         translatesAutoresizingMaskIntoConstraints = false
 
-        var config = UIButton.Configuration.bordered()
-        config.baseForegroundColor = Constants.Colors.primary
-        config.cornerStyle = .medium
-        config.titleAlignment = .leading
-        button.configuration = config
-        button.contentHorizontalAlignment = .leading
-        button.showsMenuAsPrimaryAction = true
-        button.translatesAutoresizingMaskIntoConstraints = false
-
-        captionButton.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
-        captionButton.contentHorizontalAlignment = .leading
-        captionButton.setTitleColor(Constants.Colors.secondaryLabel, for: .normal)
         captionButton.addTarget(self, action: #selector(captionTapped), for: .touchUpInside)
-        captionButton.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(button)
         addSubview(captionButton)

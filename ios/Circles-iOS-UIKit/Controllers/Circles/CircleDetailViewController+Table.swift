@@ -127,30 +127,25 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
     private func confirmDeletePlace(at indexPath: IndexPath, completion: @escaping (Bool) -> Void) {
         let place = filteredPlaces[indexPath.row]
         
-        let alert = UIAlertController(
+        AlertPresenter.showConfirmation(
             title: "Delete Place",
             message: "Are you sure you want to remove \"\(place.name)\" from this circle?",
-            preferredStyle: .alert
+            confirmTitle: "Delete",
+            isDestructive: true,
+            from: self,
+            onConfirm: { [weak self] in
+                self?.deletePlace(at: indexPath)
+                completion(true)
+            },
+            onCancel: { completion(false) }
         )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
-            completion(false)
-        })
-        
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
-            self?.deletePlace(at: indexPath)
-            completion(true)
-        })
-        
-        present(alert, animated: true)
     }
     
     private func deletePlace(at indexPath: IndexPath) {
         let place = filteredPlaces[indexPath.row]
         
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Deleting", message: "Removing place...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(message: "Removing place...", from: self)
         
         PlaceService.shared.deletePlace(id: place.id) { [weak self] result in
             DispatchQueue.main.async {
@@ -175,13 +170,7 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
                         self?.updateTableViewHeight()
                         
                     case .failure(let error):
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: "Failed to delete place: \(error.localizedDescription)",
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(errorAlert, animated: true)
+                        if let self { AlertPresenter.showError(message: "Failed to delete place: \(error.localizedDescription)", from: self) }
                     }
                 }
             }
@@ -225,8 +214,7 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
     
     private func performMovePlace(_ place: Place, to targetCircle: Circle) {
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Moving Place", message: "Moving \(place.name) to \(targetCircle.name)...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(message: "Moving \(place.name) to \(targetCircle.name)...", from: self)
         
         // Perform the move
         PlaceService.shared.movePlaceToCircle(placeId: place.id, targetCircleId: targetCircle.id) { [weak self] result in
@@ -258,22 +246,10 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
                         self.updateTableViewHeight()
                         
                         // Show success message
-                        let successAlert = UIAlertController(
-                            title: "Success",
-                            message: "\(place.name) has been moved to \(targetCircle.name)",
-                            preferredStyle: .alert
-                        )
-                        successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(successAlert, animated: true)
+                        AlertPresenter.showSuccess("\(place.name) has been moved to \(targetCircle.name)", from: self)
                         
                     case .failure(let error):
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: "Failed to move place: \(error.localizedDescription)",
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(errorAlert, animated: true)
+                        AlertPresenter.showError(message: "Failed to move place: \(error.localizedDescription)", from: self)
                     }
                 }
             }

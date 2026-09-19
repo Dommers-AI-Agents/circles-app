@@ -13,7 +13,7 @@ extension PlaceDetailViewFactory {
     }
 
     static func checkInRowButton() -> UIButton {
-        let button = PlaceDetailViewController.practicalButton(title: "Check In", systemName: "checkmark.circle")
+        let button = UIButton.rowButton(title: "Check In", systemName: "checkmark.circle")
         button.setImage(.checkInIcon, for: .normal)
         return button
     }

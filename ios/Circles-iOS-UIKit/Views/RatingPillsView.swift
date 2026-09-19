@@ -19,12 +19,7 @@ final class RatingPillsView: UIView {
         stack.distribution = .fillEqually
         stack.translatesAutoresizingMaskIntoConstraints = false
         for value in 0...10 {
-            let button = UIButton(type: .system)
-            button.setTitle("\(value)", for: .normal)
-            button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-            button.setTitleColor(Constants.Colors.label, for: .normal)
-            button.backgroundColor = Constants.Colors.secondaryBackground
-            button.layer.cornerRadius = 8
+            let button = UIButton.pillButton(title: "\(value)")
             if value == currentRating {
                 button.layer.borderWidth = 2
                 button.layer.borderColor = Constants.Colors.primary.cgColor

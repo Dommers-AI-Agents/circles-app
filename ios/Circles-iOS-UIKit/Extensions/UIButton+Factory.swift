@@ -192,6 +192,75 @@ extension UIButton {
         return button
     }
     
+    // MARK: - Pills, rows and fields (Sept 2026)
+
+    /// A compact selectable pill (rating 0–10, chips). Unselected look; the
+    /// owner flips background/title colour on selection.
+    static func pillButton(title: String) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        button.setTitleColor(Constants.Colors.label, for: .normal)
+        button.backgroundColor = Constants.Colors.secondaryBackground
+        button.layer.cornerRadius = 8
+        return button
+    }
+
+    /// Icon + short title on a tinted card: the Directions / Website / Call /
+    /// Check In row on the place page.
+    static func rowButton(title: String, systemName: String) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: systemName), for: .normal)
+        button.setTitle(" \(title)", for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.8
+        button.tintColor = Constants.Colors.primary
+        button.setTitleColor(Constants.Colors.primary, for: .normal)
+        button.backgroundColor = Constants.Colors.secondaryBackground
+        button.layer.cornerRadius = 10
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }
+
+    /// Looks like a text field, acts like a button: a row that opens a picker
+    /// and shows the current choice as its title.
+    static func fieldButton() -> UIButton {
+        let button = UIButton(type: .system)
+        button.contentHorizontalAlignment = .leading
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 16)
+        button.setTitleColor(Constants.Colors.label, for: .normal)
+        button.backgroundColor = Constants.Colors.secondaryBackground
+        button.layer.cornerRadius = 12
+        button.contentEdgeInsets = UIEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
+        return button
+    }
+
+    /// A bordered field whose primary action is a pull-down menu (privacy
+    /// picker). Set `menu` on it.
+    static func menuFieldButton() -> UIButton {
+        let button = UIButton(type: .system)
+        var config = UIButton.Configuration.bordered()
+        config.baseForegroundColor = Constants.Colors.primary
+        config.cornerStyle = .medium
+        config.titleAlignment = .leading
+        button.configuration = config
+        button.contentHorizontalAlignment = .leading
+        button.showsMenuAsPrimaryAction = true
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }
+
+    /// Small secondary-coloured text under a field ("Edit list").
+    static func captionLinkButton() -> UIButton {
+        let button = UIButton(type: .system)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+        button.contentHorizontalAlignment = .leading
+        button.setTitleColor(Constants.Colors.secondaryLabel, for: .normal)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }
+
     // MARK: - Button Style Enum
     
     enum FactoryButtonStyle {

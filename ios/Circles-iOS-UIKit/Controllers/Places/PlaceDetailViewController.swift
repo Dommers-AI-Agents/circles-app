@@ -153,23 +153,8 @@ class PlaceDetailViewController: BaseViewController {
     // Practical actions row: Directions / Website / Call / Edit
     private let practicalButtonsStackView: UIStackView = PlaceDetailViewFactory.practicalButtonsStackView()
 
-    static func practicalButton(title: String, systemName: String) -> UIButton {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: systemName), for: .normal)
-        button.setTitle(" \(title)", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
-        button.titleLabel?.adjustsFontSizeToFitWidth = true
-        button.titleLabel?.minimumScaleFactor = 0.8
-        button.tintColor = Constants.Colors.primary
-        button.setTitleColor(Constants.Colors.primary, for: .normal)
-        button.backgroundColor = Constants.Colors.secondaryBackground
-        button.layer.cornerRadius = 10
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }
-
     // Edit (own places) and Report (others' places) live in the ••• menu
-    private let directionsRowButton = PlaceDetailViewController.practicalButton(title: "Directions", systemName: "location.north.line")
+    private let directionsRowButton = UIButton.rowButton(title: "Directions", systemName: "location.north.line")
     // Check In leads the row: it's the engagement action, the rest are utilities.
     // Same icon as every check-in surface (UIImage.checkInIcon).
     private let checkInRowButton: UIButton = PlaceDetailViewFactory.checkInRowButton()
@@ -307,9 +292,9 @@ class PlaceDetailViewController: BaseViewController {
     private let tagsStackView: UIStackView = PlaceDetailViewFactory.tagsStackView()
     
     
-    private let websiteButton = PlaceDetailViewController.practicalButton(title: "Website", systemName: "globe")
+    private let websiteButton = UIButton.rowButton(title: "Website", systemName: "globe")
 
-    private let phoneButton = PlaceDetailViewController.practicalButton(title: "Call", systemName: "phone")
+    private let phoneButton = UIButton.rowButton(title: "Call", systemName: "phone")
     
     private let circleInfoView: UIView = PlaceDetailViewFactory.circleInfoView()
     
