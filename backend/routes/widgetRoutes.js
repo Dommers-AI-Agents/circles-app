@@ -11,6 +11,7 @@ const postcard = require('../controllers/widgets/postcardController');
 const nextBarRounds = require('../controllers/widgets/nextBarRoundController');
 const postcardMail = require('../controllers/widgets/postcardMailController');
 const fridgeMail = require('../controllers/widgets/fridgeMailController');
+const care = require('../controllers/widgets/careCheckinController');
 
 const router = express.Router();
 router.use(protect);
@@ -57,6 +58,16 @@ router.post('/fridgemail/subscription/start', messageLimiter, fridgeMail.startSu
 router.post('/fridgemail/subscription/cancel', fridgeMail.cancelSubscription);
 router.post('/fridgemail/subscription/resume', fridgeMail.resumeSubscription);
 router.get('/fridgemail/cards', fridgeMail.listCards);
+
+// "How Are You?" check-ins: a child sets up questions, the parent answers
+// from the Lock Screen, silence gets reported.
+router.get('/care/plans', care.listPlans);
+router.post('/care/plans', messageLimiter, care.createPlan);
+router.put('/care/plans/:id', care.updatePlan);
+router.delete('/care/plans/:id', care.endPlan);
+router.post('/care/plans/:id/respond', care.respond);
+router.get('/care/asks', care.listAsks);
+router.post('/care/asks/:id/answer', care.answer);
 
 // NextBar voting rounds: shared docs (host + tagged connections vote)
 router.post('/nextbar/rounds', nextBarRounds.createRound);

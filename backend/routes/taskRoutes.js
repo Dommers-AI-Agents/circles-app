@@ -34,6 +34,9 @@ router.post('/postcard-orders-reconcile', verifyCloudScheduler, postcardMail.rec
 // plan actually sends only on its own weekday, once per rolling week.
 router.post('/fridgemail-send', verifyCloudScheduler, require('../controllers/widgets/fridgeMailController').runWeekly);
 
+// Care check-ins: send due questions, raise silence alerts (every 15 min)
+router.post('/care-checkins', verifyCloudScheduler, require('../controllers/widgets/careCheckinController').runDue);
+
 // Daily summary endpoint
 router.post('/daily-summary', verifyCloudScheduler, async (req, res) => {
   try {

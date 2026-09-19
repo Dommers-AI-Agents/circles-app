@@ -100,6 +100,10 @@ class NotificationService {
         case 'network_growth':
           category = 'NETWORK_GROWTH';
           break;
+        case 'care_ask':
+          // Answer buttons on the Lock Screen (no unlock needed)
+          category = 'CARE_ASK';
+          break;
       }
 
       // The badge counts what is WAITING for this user — unread messages,
@@ -289,7 +293,14 @@ class NotificationService {
       'nextbar_result': 'socialActivity',
       // Printed mail: personal and actionable, but still a preference
       'postcard_order': 'socialActivity',
-      'fridgemail': 'socialActivity'
+      'fridgemail': 'socialActivity',
+      // "How Are You?" check-ins: opted into per plan, so their own key —
+      // a parent who muted social activity must still get asked
+      'care_invite': 'careCheckins',
+      'care_ask': 'careCheckins',
+      'care_answer': 'careCheckins',
+      'care_accepted': 'careCheckins',
+      'care_silence': 'careCheckins'
     };
 
     const preferencesKey = typeMap[type];

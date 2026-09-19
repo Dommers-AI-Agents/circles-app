@@ -195,6 +195,8 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>FavCircles finds nearby friends' phones so you can connect by holding them together.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Circles connects to a Bluetooth heart-rate strap so the Heartbeat widget can show your live pulse.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Circles needs access to your camera to take photos and record videos for your places.</string>
 	<key>NSMicrophoneUsageDescription</key>
@@ -238,38 +240,5 @@
 	</array>
 	<key>SKIncludesAppleSignInWithPurchase</key>
 	<true/>
-	<key>UIApplicationShortcutItems</key>
-	<array>
-		<dict>
-			<key>UIApplicationShortcutItemType</key>
-			<string>com.favcircles.circles.check-in</string>
-			<key>UIApplicationShortcutItemTitle</key>
-			<string>Check In</string>
-			<key>UIApplicationShortcutItemSubtitle</key>
-			<string>Let your people know where you are</string>
-			<key>UIApplicationShortcutItemIconSymbolName</key>
-			<string>figure.walk.arrival</string>
-		</dict>
-		<dict>
-			<key>UIApplicationShortcutItemType</key>
-			<string>com.favcircles.circles.add-place</string>
-			<key>UIApplicationShortcutItemTitle</key>
-			<string>Add a Place</string>
-			<key>UIApplicationShortcutItemSubtitle</key>
-			<string>Save somewhere you love</string>
-			<key>UIApplicationShortcutItemIconSymbolName</key>
-			<string>plus.circle</string>
-		</dict>
-		<dict>
-			<key>UIApplicationShortcutItemType</key>
-			<string>com.favcircles.circles.postcard</string>
-			<key>UIApplicationShortcutItemTitle</key>
-			<string>Send a Postcard</string>
-			<key>UIApplicationShortcutItemSubtitle</key>
-			<string>A photo, a note, mailed or shared</string>
-			<key>UIApplicationShortcutItemIconSymbolName</key>
-			<string>envelope</string>
-		</dict>
-	</array>
 </dict>
 </plist>

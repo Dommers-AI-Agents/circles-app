@@ -45,11 +45,13 @@ class SettingsViewController: BaseTableViewController {
     private enum DataRow: Int, CaseIterable {
         case importPlaces
         case exportData
+        case homeShortcuts
 
         var title: String {
             switch self {
             case .importPlaces: return "Import Places"
             case .exportData: return "Export My Data"
+            case .homeShortcuts: return "Home Screen Shortcuts"
             }
         }
     }
@@ -591,6 +593,15 @@ extension SettingsViewController {
         case .data:
             if let row = DataRow(rawValue: indexPath.row) {
                 switch row {
+                case .homeShortcuts:
+                    var config = cell.defaultContentConfiguration()
+                    config.text = row.title
+                    config.secondaryText = "Long-press the app icon"
+                    config.secondaryTextProperties.color = .secondaryLabel
+                    config.image = UIImage(systemName: "square.grid.2x2")
+                    config.imageProperties.tintColor = Constants.Colors.primary
+                    cell.contentConfiguration = config
+                    cell.accessoryType = .disclosureIndicator
                 case .importPlaces, .exportData:
                     if row == .importPlaces {
                         // Say WHERE from — the bare title didn't tell users
@@ -811,6 +822,8 @@ extension SettingsViewController {
                     showPlaceImport()
                 case .exportData:
                     showDataExport()
+                case .homeShortcuts:
+                    navigationController?.pushViewController(HomeShortcutsViewController(), animated: true)
                 }
             }
             

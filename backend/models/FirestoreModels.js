@@ -51,7 +51,10 @@ const COLLECTIONS = {
   POSTCARD_ORDERS: 'postcardOrders', // paid printed-postcard orders, doc id = client orderId
   // Fridge Mail: weekly printed cards to grandparents (server-owned state)
   FRIDGE_MAIL_PLANS: 'fridgeMailPlans',       // doc id = userId
-  FRIDGE_MAIL_PACK_ORDERS: 'fridgeMailPackOrders' // doc id = client orderId
+  FRIDGE_MAIL_PACK_ORDERS: 'fridgeMailPackOrders', // doc id = client orderId
+  // "How Are You?" check-ins between an adult child and a parent
+  CARE_PLANS: 'carePlans',   // doc id = ownerId_parentId
+  CARE_ASKS: 'careAsks'      // doc id = planId_YYYY-MM-DD_HHMM
 };
 
 // User model structure
