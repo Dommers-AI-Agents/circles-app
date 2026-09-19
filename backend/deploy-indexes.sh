@@ -3,6 +3,10 @@
 echo "🔥 Deploying Firestore indexes..."
 echo "================================"
 
+# The deployed index file is the one at the repo ROOT (firebase.json there
+# points at firestore.indexes.json). Run from wherever; deploy from the root.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
 # Check if Firebase CLI is installed
 if ! command -v firebase &> /dev/null; then
     echo "❌ Firebase CLI not found. Please install it with: npm install -g firebase-tools"
