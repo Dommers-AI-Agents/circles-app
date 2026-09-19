@@ -25,6 +25,9 @@ final class ApplePayCoordinator: NSObject, ApplePayContextDelegate {
     /// Converts "the sheet never appeared" into an error instead of an await
     /// that never returns. See `finish` for why that case is reachable.
     private var watchdog: Task<Void, Never>?
+    /// Catches the same "no sheet" case in seconds rather than minutes. See
+    /// `startPresentationProbe`.
+    private var presentationProbe: Task<Void, Never>?
     /// An error raised while creating the order, kept so the caller is told
     /// what actually went wrong instead of a generic payment failure.
     private var secretError: Error?
@@ -67,6 +70,7 @@ final class ApplePayCoordinator: NSObject, ApplePayContextDelegate {
             self.continuation = continuation
             self.selfReference = self
             context.presentApplePay(from: window)
+            startPresentationProbe(from: window, before: Self.deepestPresented(window))
             startWatchdog()
         }
     }
@@ -81,6 +85,41 @@ final class ApplePayCoordinator: NSObject, ApplePayContextDelegate {
     /// The window is deliberately long. Someone can legitimately stare at the
     /// Apple Pay sheet for minutes, and cutting off a real payment mid-thought
     /// would be far worse than the hang this exists to prevent.
+    /// Did the wallet actually appear?
+    ///
+    /// The watchdog below already turns "no sheet" into an error, but it waits
+    /// five minutes — right for someone staring at a real sheet, hopeless for a
+    /// sheet that never opened. Nobody waits five minutes on a button; App
+    /// Review waited a few seconds and rejected the build as "the send button
+    /// was not responsive", which is exactly what this looked like from the
+    /// outside: the tap disabled the button and then nothing, ever.
+    ///
+    /// Presentation is detected by comparing the deepest presented controller
+    /// before and after. If the sheet is up, it changed. Deliberately generous
+    /// at six seconds and conservative in its test — wrongly cancelling a real
+    /// payment would be far worse than the hang it replaces.
+    private func startPresentationProbe(from window: UIWindow?, before: UIViewController?) {
+        presentationProbe = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 6 * 1_000_000_000)
+            guard !Task.isCancelled, let self else { return }
+            await MainActor.run {
+                // Something new is on screen: the wallet opened. Leave it to
+                // the delegate callbacks and the long watchdog.
+                guard Self.deepestPresented(window) === before else { return }
+                self.finish(.failure(WidgetAPIError(
+                    status: 500, code: "apple_pay_unavailable",
+                    message: "Apple Pay didn't open. Check that a card is set up in Wallet, then tap Send again.")))
+            }
+        }
+    }
+
+    @MainActor
+    private static func deepestPresented(_ window: UIWindow?) -> UIViewController? {
+        var controller = window?.rootViewController
+        while let next = controller?.presentedViewController { controller = next }
+        return controller
+    }
+
     private func startWatchdog() {
         watchdog = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 5 * 60 * 1_000_000_000)
@@ -101,6 +140,8 @@ final class ApplePayCoordinator: NSObject, ApplePayContextDelegate {
         guard resumeOnce.claim() else { return }
         watchdog?.cancel()
         watchdog = nil
+        presentationProbe?.cancel()
+        presentationProbe = nil
         let continuation = self.continuation
         self.continuation = nil
         selfReference = nil
