@@ -587,7 +587,19 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
   - `Logic/` — pure, unit-tested rules (`HomePlaceFilter`, `PinTierPlanner`,
     `PlaceMediaAssembler`, `DeepLinkRouter`). No UIKit, no services.
   - `State/` — controller-owned state + loading (`HomeState`, `HomeDataLoader`);
-    the controller talks to them through delegate protocols.
+    the controller talks to them through delegate protocols. App-wide caches and
+    singletons (`HomePromptService`, `ProximityNotificationScheduler`,
+    `QuickCheckInShortcuts`) belong in `Services/`, not here.
+  - Notification routing (Sept 2026): a push's tap goes through
+    `Logic/NotificationTapRouter` (pure, table-tested → `NotificationDestination`),
+    categories through `Services/NotificationCategoryRegistry`, action buttons
+    through `Services/NotificationActionHandler`. AppDelegate only performs the
+    destination. Add a push type by adding a router case + a test, never a new
+    switch arm in AppDelegate. The server's `services/notificationTypes.js` is the
+    matching table (category / preference key / badge per type).
+  - `HomeCardOverlayViewController` is a deliberate `UIViewController` (a dimmed
+    overlay container with no loading chrome); everything else inherits
+    `BaseViewController`.
   - `Controllers/Home/Tabs/` — the home segment contents (Activity, Moments,
     Specials, Widgets) are child view controllers behind `HomeContentTab`; the host
     protocol is in `HomeContentTab.swift`. Tabs are switched with `isHidden`,
@@ -603,6 +615,15 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
     JSON string, 409 on version conflict). Adding a widget = one folder + one
     registry line in the package; no app or backend change. User data in
     widgets is never pruned — entry logs shard by month.
+    Package conventions (Sept 2026 cleanup): server-backed stores subclass
+    `RemoteStore` and live in `context.transient`; calls go through
+    `WidgetContext.api<T>()`; JSON through `WidgetJSON`; date copy through
+    `WidgetDateCopy`; sheets/fields/thumbnails through `WidgetSheet` and `WidgetUI`;
+    pure logic and copy enums live in `FavWidgetsCore` (Mac-testable), not in a
+    widget folder. Release = tag from main → bump `minimumVersion` in pbxproj →
+    `xcodebuild -resolvePackageDependencies` (never hand-edit Package.resolved).
+    Moving a symbol between the two modules is a patch bump; a host-contract
+    change is a minor bump and needs the app in lockstep.
   - `Controllers/Profile/Tabs/` — Moments/Uploads grids as child VCs on
     `ProfileGridTabViewController` (reports height to the profile's scroll view).
   - `Controllers/Places/PlaceOwnerEditController.swift` — venue-owner
@@ -617,8 +638,23 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
     `ProfileStorefrontController`); big verbatim moves live in sibling extensions
     (`AddPlaceViewController+Save`, `CircleDetailViewController+Table`); view factories in
     `Views/Places/PlaceDetailViewFactory`.
-  - Tests live in `Circles-iOSTests` (Swift Testing); every extraction above ships
-    with a suite.
+  - Tests: target `Circles-iOSTests`, folder `Circles-iOS-UIKitTests` (Swift
+    Testing, `@testable import Circles_iOS`); every extraction above ships with a
+    suite. Run: `xcodebuild test -scheme Circles-iOS -destination
+    'platform=iOS Simulator,name=iPhone 17 Pro Max' -only-testing:Circles-iOSTests`.
+
+### Backend conventions (Sept 2026 cleanup)
+- Errors a service refuses with are `ServiceError(status, code, message, details)`
+  from `utils/serviceError.js`; controllers answer with `sendServiceError`. Never
+  declare a per-feature Error class or a per-controller `fail()`.
+- Shared helpers: `utils/text.js` (`escapeHtml`, `clean`), `utils/ids.js` (`newId`,
+  `nowIso`), `utils/localClock.js` (`localClock`, `localDateKey`),
+  `services/notifyQuiet.js` (fire-and-forget push), `services/notificationTypes.js`
+  (one row per push type). Scheduled endpoints use `middleware/scheduledTask` and
+  live in `controllers/tasks/`; `routes/taskRoutes.js` is a manifest.
+- Firestore indexes: the ROOT `firestore.indexes.json` is the deployed one
+  (`firebase.json` there); `backend/deploy-indexes.sh` deploys from the root. Create
+  indexes before deploying code that queries them.
 
 ### Backend controller layout (Sept 2026)
 The former 3–5k-line controllers are split by domain; handlers are unchanged
