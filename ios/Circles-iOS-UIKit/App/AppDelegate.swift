@@ -444,13 +444,26 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             options: [.customDismissAction]
         )
 
+        // "How Are You?" question to a parent: three answers right on the
+        // Lock Screen. Background actions with NO authentication required,
+        // so an older parent answers without unlocking the phone.
+        let careCategory = UNNotificationCategory(
+            identifier: CareAnswerAction.categoryIdentifier,
+            actions: CareAnswerAction.allCases.map {
+                UNNotificationAction(identifier: $0.rawValue, title: $0.title, options: [])
+            },
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+
         // Set categories
         UNUserNotificationCenter.current().setNotificationCategories([
             connectionCategory,
             messageCategory,
             suggestionCategory,
             activityCategory,
-            checkInPromptCategory
+            checkInPromptCategory,
+            careCategory
         ])
     }
     
@@ -717,6 +730,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             // Same as tapping the banner: open the pre-filled check-in sheet
             handleNotificationTap(userInfo: userInfo)
 
+        case CareAnswerAction.great.rawValue, CareAnswerAction.okay.rawValue, CareAnswerAction.notGreat.rawValue:
+            // Answer from the Lock Screen. The completion handler is held until
+            // the request returns: a background action's process can be
+            // suspended as soon as we call it.
+            if let askId = userInfo["askId"] as? String, let action = CareAnswerAction(rawValue: response.actionIdentifier) {
+                handleCareAnswer(askId: askId, action: action, completion: completionHandler)
+                return
+            }
+
         case ProximityNotificationScheduler.notNowAction, UNNotificationDismissActionIdentifier:
             // Don't offer this place again today; free its region slot
             if let type = userInfo["type"] as? String,
@@ -734,6 +756,50 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     }
     
     // MARK: - Notification Action Handlers
+
+    /// The three answer buttons on a "How Are You?" question.
+    enum CareAnswerAction: String, CaseIterable {
+        static let categoryIdentifier = "CARE_ASK"
+        case great = "CARE_GREAT"
+        case okay = "CARE_OKAY"
+        case notGreat = "CARE_NOT_GREAT"
+
+        var title: String {
+            switch self {
+            case .great: return "Doing great 👍"
+            case .okay: return "Okay"
+            case .notGreat: return "Not so good"
+            }
+        }
+
+        /// The server's answer value.
+        var answer: String {
+            switch self {
+            case .great: return "great"
+            case .okay: return "okay"
+            case .notGreat: return "not_great"
+            }
+        }
+    }
+
+    /// Sends a Lock Screen answer to the server, then releases the
+    /// notification. If the phone is offline the tap opens the widget so
+    /// the parent sees the question is still waiting.
+    private func handleCareAnswer(askId: String, action: CareAnswerAction, completion: @escaping () -> Void) {
+        APIService.shared.request(
+            endpoint: "widgets/care/asks/\(askId)/answer",
+            method: .post,
+            body: ["answer": action.answer, "note": ""]
+        ) { (result: Result<EmptyResponse, APIError>) in
+            DispatchQueue.main.async {
+                if case .failure(let error) = result {
+                    Logger.debug("❌ Care answer failed: \(error)")
+                    NotificationCenter.default.post(name: .navigateToHomeWidget, object: "howareyou")
+                }
+                completion()
+            }
+        }
+    }
     
     /// Post a navigation notification if the main tab bar is already installed;
     /// otherwise stash a pending deep link for SceneDelegate.handlePendingDeepLink
@@ -803,6 +869,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case "postcard_order":
             // A mailed postcard was printed or delivered: its status lives in the Postcard widget
             NotificationCenter.default.post(name: .navigateToHomeWidget, object: "postcard")
+
+        case "care_invite", "care_ask", "care_answer", "care_accepted", "care_silence":
+            // "How Are You?" — an invitation, a question to answer, or a parent's answer/silence
+            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "howareyou")
 
         case "new_suggestion":
             // Navigate to suggestions with optional placeId

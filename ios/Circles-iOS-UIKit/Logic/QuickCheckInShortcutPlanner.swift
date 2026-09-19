@@ -3,11 +3,10 @@ import CoreLocation
 
 /// Home Screen quick actions (long-press the app icon).
 ///
-/// Three static items live in Info.plist and always show — Check In, Add a
-/// Place, Send a Postcard. This planner picks the one dynamic "Check in at
-/// <saved place>" row for wherever the user last was (iOS shows four items,
-/// so exactly one), and turns any tapped item back into the pending link
-/// the scene delegate already knows how to route.
+/// The user picks up to four actions in Settings (`HomeShortcutCatalog`);
+/// this planner fills whatever slots are left with "Check in at <saved
+/// place>" rows for wherever the user last was, and turns any tapped item
+/// back into the pending link the scene delegate already knows how to route.
 ///
 /// Pure: no UIKit, no services. The home controller and the scene delegate
 /// apply the result to `UIApplication.shortcutItems`.
@@ -66,19 +65,12 @@ struct QuickCheckInShortcutPlanner {
     /// The `pendingDeepLink` string for a tapped item, or nil when the item
     /// isn't one of ours (or a per-place item lost its place id).
     static func pendingLink(forShortcutType type: String, userInfo: [String: Any]?) -> String? {
-        switch type {
-        case checkInType:
-            return "check-in"
-        case addPlaceType:
-            return "add-place"
-        case postcardType:
-            return "widget:postcard"
-        case checkInAtPlaceType:
+        if type == checkInAtPlaceType {
             guard let placeId = userInfo?[placeIdKey] as? String,
                   !placeId.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
             return "check-in:\(placeId)"
-        default:
-            return nil
         }
+        // Everything else is a user-chosen action from the catalog
+        return HomeShortcutCatalog.pendingLink(forShortcutType: type)
     }
 }
