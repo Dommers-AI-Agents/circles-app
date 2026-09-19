@@ -33,6 +33,29 @@ final class AudioSessionManager {
         }
     }
 
+    /// Make the session safe for a MUTED decorative clip — the coin drop's
+    /// leprechaun, and anything like it.
+    ///
+    /// Muting an AVPlayer does not stop it activating the audio session when
+    /// it plays, and the category it activates under decides what happens to
+    /// everyone else's music. The default (`.soloAmbient`) stops it, and after
+    /// someone has watched a Moment the category is still `.playback`, which
+    /// also stops it — so liking a place paused Pandora to play a silent
+    /// three-second cartoon.
+    ///
+    /// `.ambient` mixes instead. Nothing is activated or deactivated here: the
+    /// player activates implicitly, under a category that leaves other audio
+    /// alone.
+    func allowSilentDecoration() {
+        // A Moment is playing and owns the session — leave it exactly alone.
+        guard !isHoldingSession else { return }
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+        } catch {
+            Logger.debug("⚠️ AudioSession: couldn't switch to ambient: \(error)")
+        }
+    }
+
     /// Give the session back so other audio can resume. Call once nothing is
     /// playing any more — leaving Moments, pausing everything, backgrounding.
     /// Don't call it between two moments; `beginPlayback` will just re-take it.

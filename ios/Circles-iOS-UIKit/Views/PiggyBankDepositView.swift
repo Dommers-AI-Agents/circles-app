@@ -154,6 +154,10 @@ final class PiggyBankDepositView: UIView {
         })
 
         if isLeprechaunMode {
+            // The clip is muted, but playing it still claims the audio session
+            // and would stop whatever the person is listening to. Ambient
+            // mixes, so the music keeps going.
+            AudioSessionManager.shared.allowSilentDecoration()
             leprechaunPlayer?.play()
             UIView.animate(withDuration: 0.4, delay: 2.7, usingSpringWithDamping: 0.6,
                            initialSpringVelocity: 0.6, options: [], animations: {

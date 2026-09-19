@@ -33,12 +33,17 @@ module.exports = {
   // 10-coin bonus on top of the action's own earn. Deliberately weekly, not a
   // daily streak: the app's job is episodic, and a daily streak would only
   // train people to ignore it. Once per week via weekly_goal:<uid>:<isoWeek>.
+  // 2026.09-b: no earn is worth less than half a coin. A nickel for a like
+  // read as not worth having — the point of paying for small actions is that
+  // the person notices, and 0.05 did not clear that bar. Rows record the
+  // amount they were earned at, so history keeps its old values.
+  //
   // 2026.09-a: Widgets tab — the first widget save of each UTC day pays half
   // a coin (showing up, priced like a check-in), and sending a digital
   // postcard to a connection pays 2 (creating something for someone, priced
   // like a moment). Both flag-gated by WIDGET_PIGGY_ENABLED=1 in the
   // controllers; off by default.
-  RULE_VERSION: '2026.09-a',
+  RULE_VERSION: '2026.09-b',
   CLEARING_WINDOW_HOURS: 24,
   COINS: {
     ADD_PLACE: 3,
@@ -52,14 +57,14 @@ module.exports = {
     PLACE_PHOTO: 1,
     MOMENT_POSTED: 2,
     PROFILE_COMPLETED: 5,
-    PLACE_LIKED: 0.05,          // a nickel
-    PHOTO_LIKED: 0.05,          // a nickel — hearting a photo in the carousel
-    COMMENT_LIKED: 0.05,        // a nickel — hearting someone's comment
+    PLACE_LIKED: 0.5,           // half a coin — the floor for any earn
+    PHOTO_LIKED: 0.5,           // hearting a photo in the carousel
+    COMMENT_LIKED: 0.5,         // hearting someone's comment
     PLACE_COMMENT: 1,           // real feedback — full coin, capped below
-    USER_FOLLOWED: 0.10,        // a dime
-    ACTIVITY_REACTION: 0.05,
-    MOMENT_LIKED: 0.05,
-    MOMENT_LIKE_RECEIVED: 0.05, // paid to the moment's OWNER
+    USER_FOLLOWED: 0.5,
+    ACTIVITY_REACTION: 0.5,
+    MOMENT_LIKED: 0.5,
+    MOMENT_LIKE_RECEIVED: 0.5,  // paid to the moment's OWNER
     BRAND_CODE_REDEEMED: 2,     // scanning the card that shipped in an order
     FIRST_PLACE_ADDED: 25,      // welcome gift — first place ever, once per user
     CLIP_SIGNUP: 50,            // generic App Clip signup (no store), once per user
@@ -79,8 +84,10 @@ module.exports = {
     PLACE_PHOTO: 5,
     MOMENT_POSTED: 3,
     PROFILE_COMPLETED: 1,
-    // Fractional actions: generous counts, tiny value — 40 likes/day is
-    // still only 2 coins
+    // Fractional actions: generous counts. NOTE these are counts, not coins,
+    // so the 2026.09-b floor of 0.5 multiplied every ceiling here by ten —
+    // 40 likes/day is 20 coins now, not 2, and MOMENT_LIKE_RECEIVED is 50 a
+    // day to someone who simply posted something popular.
     PLACE_LIKED: 40,
     PHOTO_LIKED: 40,
     COMMENT_LIKED: 40,
