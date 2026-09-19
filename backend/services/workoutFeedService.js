@@ -89,14 +89,13 @@ class WorkoutFeedService {
     const previous = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
     const months = [monthKeyOf(now), monthKeyOf(previous)];
     const cutoff = now.getTime() - FEED_DAYS * 24 * 3600 * 1000;
+    const perMonth = await Promise.all(months.map((month) =>
+      queryInChunks(authors, (chunk) => this.posts.where('monthKey', '==', month).where('userId', 'in', chunk).get())));
     const rows = [];
-    for (const month of months) {
-      const docs = await queryInChunks(authors, (chunk) => this.posts.where('monthKey', '==', month).where('userId', 'in', chunk).get());
-      for (const doc of docs) {
-        const data = doc.data();
-        if (Date.parse(data.createdAt) < cutoff) continue;
-        rows.push({ id: doc.id, ...data });
-      }
+    for (const doc of perMonth.flat()) {
+      const data = doc.data();
+      if (Date.parse(data.createdAt) < cutoff) continue;
+      rows.push({ id: doc.id, ...data });
     }
     rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     const top = rows.slice(0, MAX_POSTS);
@@ -111,12 +110,13 @@ class WorkoutFeedService {
     }));
   }
 
+  /** One batched read for the authors on the page instead of a get per user. */
   async usersById(ids) {
+    if (ids.length === 0) return {};
+    const users = this.db.collection(COLLECTIONS.USERS);
+    const docs = await this.db.getAll(...ids.map((id) => users.doc(id)));
     const out = {};
-    await Promise.all(ids.map(async (id) => {
-      const doc = await this.db.collection(COLLECTIONS.USERS).doc(id).get();
-      if (doc.exists) out[id] = doc.data();
-    }));
+    for (const doc of docs) if (doc.exists) out[doc.id] = doc.data();
     return out;
   }
 }
