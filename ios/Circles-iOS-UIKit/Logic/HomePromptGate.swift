@@ -92,6 +92,11 @@ enum HomePromptTarget: Equatable {
     case allPlacesMap
     case createWallet
     case network
+    /// One specific widget, by the package's id (\"postcard\", \"heartbeat\", …).
+    /// Lets a feature tip open the thing it's about rather than the tab.
+    case widget(id: String)
+    /// Settings › Privacy › Inner Circle.
+    case innerCircle
     case unknown(String)
 
     init(target: String, data: [String: HomePromptValue]) {
@@ -119,6 +124,9 @@ enum HomePromptTarget: Equatable {
         case "all_places_map": self = .allPlacesMap
         case "create_wallet": self = .createWallet
         case "network": self = .network
+        case "widget":
+            if let id = data["widgetId"]?.stringValue { self = .widget(id: id) } else { self = .unknown(target) }
+        case "inner_circle": self = .innerCircle
         default: self = .unknown(target)
         }
     }
@@ -132,6 +140,21 @@ enum HomePromptTarget: Equatable {
 struct HomePromptGate {
     /// Never ask the server more than once an hour, regardless of foregrounds.
     static let minimumFetchInterval: TimeInterval = 60 * 60
+    /// How long the app must have been away for a foreground to count as
+    /// "coming back". Matches the server's window between cards.
+    static let minimumAwayInterval: TimeInterval = 2 * 60 * 60
+
+    /// Why the Home screen is asking. A card greets someone ARRIVING — on
+    /// launch, or back after a couple of hours away. It must not pop because
+    /// they switched to the Home tab mid-session, or the card stops being a
+    /// greeting and becomes an interruption.
+    enum Trigger: Equatable {
+        /// The Home screen appeared: first show, a tab switch, back from a push.
+        case appear
+        /// The app came to the foreground after `sinceBackground` seconds away;
+        /// nil when the app can't tell how long it was gone.
+        case foreground(sinceBackground: TimeInterval?)
+    }
 
     struct Context: Equatable {
         var now: Date
@@ -144,11 +167,21 @@ struct HomePromptGate {
         /// The once-per-session onboarding decision has been made, so a card
         /// can't race the suggested-people overlay or the home tour.
         var onboardingCheckDone: Bool
+        var trigger: Trigger = .appear
     }
 
     static func shouldFetch(_ c: Context) -> Bool {
         guard c.isSignedIn, c.onboardingCheckDone else { return false }
         guard !c.isCardVisible, !c.isPresentingModal, !c.isTourRunning, !c.isFirstSessionFlowActive else { return false }
+        switch c.trigger {
+        case .appear:
+            // Only the first appearance of a session is an arrival. (If that
+            // first try was blocked by onboarding or a modal, nothing was
+            // fetched, so the next appearance gets to try again.)
+            guard c.lastFetchAt == nil else { return false }
+        case .foreground(let away):
+            if let away, away < minimumAwayInterval { return false }
+        }
         if let last = c.lastFetchAt, c.now.timeIntervalSince(last) < minimumFetchInterval { return false }
         return true
     }

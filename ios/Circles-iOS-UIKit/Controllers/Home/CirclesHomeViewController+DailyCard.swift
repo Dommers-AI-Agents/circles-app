@@ -3,17 +3,18 @@ import FavWidgetsCore
 
 // MARK: - Home "daily card"
 //
-// One server-picked card per visit (roughly once a day), rendered inline
-// between the segment bar and the tab content. The server decides what and
-// whether (`GET /api/home/prompt`); this file decides *when it's safe* —
-// never over onboarding, the home tour, or a modal — and routes the tap.
-// Timing rules are in `HomePromptGate` (unit tested).
+// One server-picked card when someone ARRIVES — on launch, or back after a
+// couple of hours away — covering the home screen until it's answered. The
+// server decides what and whether (`GET /api/home/prompt`) and asks for the
+// overlay; this file decides *when it's safe* — never over onboarding, the
+// home tour, or a modal — and routes the tap. Timing rules are in
+// `HomePromptGate` (unit tested).
 extension CirclesHomeViewController {
 
     /// Called from viewDidAppear (after the onboarding check has had its
     /// turn) and on foreground. Cheap when nothing needs doing.
-    func refreshDailyCardIfAppropriate() {
-        let context = dailyCardContext()
+    func refreshDailyCardIfAppropriate(trigger: HomePromptGate.Trigger = .appear) {
+        let context = dailyCardContext(trigger: trigger)
         guard HomePromptGate.shouldFetch(context) else { return }
         lastHomePromptFetchAt = context.now
 
@@ -22,7 +23,7 @@ extension CirclesHomeViewController {
                 guard let self else { return }
                 switch result {
                 case .success(let card):
-                    guard let card, HomePromptGate.canPresent(self.dailyCardContext()) else { return }
+                    guard let card, HomePromptGate.canPresent(self.dailyCardContext(trigger: trigger)) else { return }
                     self.presentDailyCard(card)
                 case .failure(let error):
                     Logger.debug("🃏 home prompt fetch failed: \(error)")
@@ -31,7 +32,7 @@ extension CirclesHomeViewController {
         }
     }
 
-    private func dailyCardContext() -> HomePromptGate.Context {
+    private func dailyCardContext(trigger: HomePromptGate.Trigger) -> HomePromptGate.Context {
         HomePromptGate.Context(
             now: Date(),
             lastFetchAt: lastHomePromptFetchAt,
@@ -40,7 +41,8 @@ extension CirclesHomeViewController {
             isPresentingModal: presentedViewController != nil,
             isTourRunning: isShowingWelcomeTour,
             isFirstSessionFlowActive: OnboardingManager.shared.isFirstSessionFlowActive,
-            onboardingCheckDone: hasCheckedTutorialAndOverlay
+            onboardingCheckDone: hasCheckedTutorialAndOverlay,
+            trigger: trigger
         )
     }
 
@@ -181,6 +183,10 @@ extension CirclesHomeViewController {
             NotificationCenter.default.post(name: Notification.Name("NavigateToCreateWallet"), object: nil)
         case .network:
             tabBarController?.selectedIndex = 1
+        case .widget(let id):
+            showWidgetsTab(openingWidget: id)
+        case .innerCircle:
+            navigationController?.pushViewController(InnerCircleListViewController(), animated: true)
         case .unknown(let target):
             Logger.debug("🃏 home card target not routable in this build: \(target)")
         }

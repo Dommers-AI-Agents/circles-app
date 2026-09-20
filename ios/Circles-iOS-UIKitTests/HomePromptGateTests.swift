@@ -14,15 +14,42 @@ struct HomePromptGateTests {
         )
     }
 
-    @Test func fetchesWhenTheScreenIsClearAndNoRecentFetch() {
-        #expect(HomePromptGate.shouldFetch(clear()))
-        #expect(HomePromptGate.shouldFetch(clear(now: Date(), lastFetchAt: Date().addingTimeInterval(-3601))))
+    private func back(after away: TimeInterval?, now: Date = Date(), lastFetchAt: Date? = nil) -> HomePromptGate.Context {
+        var c = clear(now: now, lastFetchAt: lastFetchAt)
+        c.trigger = .foreground(sinceBackground: away)
+        return c
     }
 
-    @Test func throttlesToOnceAnHour() {
+    @Test func theFirstAppearanceOfASessionFetches() {
+        #expect(HomePromptGate.shouldFetch(clear()))
+    }
+
+    /// Switching back to the Home tab mid-session is not an arrival. Once
+    /// anything has been fetched this session, appearing again never asks —
+    /// otherwise the card would pop every time someone came back from a place.
+    @Test func laterAppearancesNeverFetch() {
         let now = Date()
-        #expect(!HomePromptGate.shouldFetch(clear(now: now, lastFetchAt: now.addingTimeInterval(-60))))
-        #expect(!HomePromptGate.shouldFetch(clear(now: now, lastFetchAt: now.addingTimeInterval(-3599))))
+        #expect(!HomePromptGate.shouldFetch(clear(now: now, lastFetchAt: now.addingTimeInterval(-3601))))
+        #expect(!HomePromptGate.shouldFetch(clear(now: now, lastFetchAt: now.addingTimeInterval(-86_400))))
+    }
+
+    /// A foreground counts as coming back only after a couple of hours away.
+    @Test func foregroundFetchesOnlyAfterTwoHoursAway() {
+        let now = Date()
+        let earlier = now.addingTimeInterval(-3 * 3600)
+        #expect(!HomePromptGate.shouldFetch(back(after: 60, now: now, lastFetchAt: earlier)))
+        #expect(!HomePromptGate.shouldFetch(back(after: 2 * 3600 - 1, now: now, lastFetchAt: earlier)))
+        #expect(HomePromptGate.shouldFetch(back(after: 2 * 3600, now: now, lastFetchAt: earlier)))
+        // If the app can't say how long it was gone, it errs toward asking —
+        // the server's own window still decides whether anything shows.
+        #expect(HomePromptGate.shouldFetch(back(after: nil, now: now, lastFetchAt: earlier)))
+    }
+
+    @Test func throttlesToOnceAnHourEvenWhenComingBack() {
+        let now = Date()
+        #expect(!HomePromptGate.shouldFetch(back(after: 3 * 3600, now: now, lastFetchAt: now.addingTimeInterval(-60))))
+        #expect(!HomePromptGate.shouldFetch(back(after: 3 * 3600, now: now, lastFetchAt: now.addingTimeInterval(-3599))))
+        #expect(HomePromptGate.shouldFetch(back(after: 3 * 3600, now: now, lastFetchAt: now.addingTimeInterval(-3601))))
     }
 
     @Test func neverOverOnboardingToursModalsOrAnExistingCard() {
@@ -81,6 +108,9 @@ struct HomePromptGateTests {
         #expect(HomePromptTarget(target: "moments_tab", data: [:]) == .momentsTab)
         #expect(HomePromptTarget(target: "all_places_map", data: [:]) == .allPlacesMap)
         #expect(HomePromptTarget(target: "create_wallet", data: [:]) == .createWallet)
+        #expect(HomePromptTarget(target: "widget", data: ["widgetId": .string("heartbeat")]) == .widget(id: "heartbeat"))
+        #expect(HomePromptTarget(target: "widget", data: [:]) == .unknown("widget"))
+        #expect(HomePromptTarget(target: "inner_circle", data: [:]) == .innerCircle)
         #expect(HomePromptTarget(target: "something_new", data: [:]) == .unknown("something_new"))
     }
 
@@ -96,9 +126,9 @@ struct HomePromptGateTests {
         #expect(card.destination == .widgetsTab)
         #expect(card.actionLabel == "Show me")
 
-        // A card with no presentation — every organic one — stays inline, and
-        // an unrecognised style is treated as inline rather than taking over
-        // the screen by accident.
+        // The server now asks for the overlay on every card it picks. The
+        // model's own fallback is still inline: a card with NO presentation,
+        // or an unrecognised one, must not take over the screen by accident.
         #expect(!HomePromptCard(key: "add_place", type: "add_place", title: "t", body: "b", target: "add_place").isOverlay)
         #expect(!HomePromptCard(key: "x", type: "custom", title: "t", body: "b", target: "network", presentation: "fullscreen").isOverlay)
     }

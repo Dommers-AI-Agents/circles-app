@@ -673,6 +673,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// answer can be acked after the overlay dismisses itself.
     var overlayCard: HomePromptCard?
     var lastHomePromptFetchAt: Date?
+    /// When the app last left the foreground, so a return can tell a
+    /// two-minute hop from a two-hour absence. nil until it happens.
+    var lastBackgroundedAt: Date?
 
     lazy var specialsTab: HomeSpecialsViewController = {
         let tab = HomeSpecialsViewController()
@@ -2637,6 +2640,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             name: UIApplication.willEnterForegroundNotification,
             object: nil
         )
+
+        // Remember when we left, so the foreground above can tell a quick
+        // hop to another app from a real absence (the home card only greets
+        // the latter).
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
         
         // Listen for onboarding tour request from Help view
         NotificationCenter.default.addObserver(
@@ -2704,6 +2717,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         refreshData()
     }
     
+    @objc func handleAppDidEnterBackground() {
+        lastBackgroundedAt = Date()
+    }
+
     @objc func handleAppWillEnterForeground() {
         // Check if cache is expired when app comes to foreground
         if !isCacheValid() {
@@ -2711,10 +2728,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // Don't refresh automatically, just invalidate cache
             // Data will be refreshed when view appears
         }
-        // First open of the day usually arrives as a foreground, not a fresh
-        // launch — give the daily card a chance (throttled inside).
+        // Coming back usually arrives as a foreground, not a fresh launch —
+        // give the card a chance, but only if we've been away long enough
+        // for this to be an arrival (HomePromptGate decides).
+        let away = lastBackgroundedAt.map { Date().timeIntervalSince($0) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            self?.refreshDailyCardIfAppropriate()
+            self?.refreshDailyCardIfAppropriate(trigger: .foreground(sinceBackground: away))
         }
     }
     
