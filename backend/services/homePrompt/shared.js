@@ -41,7 +41,15 @@ const DAY = 24 * HOUR;
 
 // Rolling window between cards. 20h (not 24h) so "first open of the day"
 // still qualifies for someone who opened at 9am yesterday and 8am today.
-const SHOW_INTERVAL_MS = parseInt(process.env.HOME_PROMPT_INTERVAL_HOURS || '20', 10) * HOUR;
+// Between cards. Two hours reads as "you came back", not "you switched tabs":
+// the card is meant to greet someone arriving, not interrupt someone working.
+const SHOW_INTERVAL_MS = parseInt(process.env.HOME_PROMPT_INTERVAL_HOURS || '2', 10) * HOUR;
+// A catalog tip comes round again — this is a rotation, not a one-time
+// announcement — but not too soon, and less soon the more clearly the person
+// has already dealt with it: tried it, skipped it, or merely seen it.
+const TIP_REPEAT_MS = parseInt(process.env.HOME_TIP_REPEAT_HOURS || '24', 10) * HOUR;
+const TIP_REPEAT_SKIPPED_MS = 3 * DAY;
+const TIP_REPEAT_ACTED_MS = 7 * DAY;
 // New accounts get the onboarding chain, not cards.
 const NEW_ACCOUNT_GUARD_MS = 48 * HOUR;
 // A connection's activity is only "news" for a day.
@@ -98,4 +106,4 @@ const isDynamicKey = (key) => key.includes(':');
 
 class HomePromptError extends ServiceError {}
 
-module.exports = { ACTIONS, ACTIVITY_SCAN_LIMIT, ACTIVITY_TYPES, ACTIVITY_WINDOW_MS, CARDS_COLLECTION, CATALOG_COLLECTION, CLIENT_ACK_KEYS, COLLECTIONS, DAY, DYNAMIC_ACK_TTL_MS, HOUR, HomePromptError, METERS_PER_MILE, NEW_ACCOUNT_GUARD_MS, NUDGE_REPEAT_MS, PIGGY_COLLECTIONS, POSTCARD_PLACE_SCAN_LIMIT, POSTCARD_PLACE_WINDOW_MS, POSTCARD_REPEAT_MS, SHOW_INTERVAL_MS, canViewCircle, canViewMoment, excludedUserIds, getAssumedLocation, getFirestore, getInnerCircleGrantorIds, haversineMeters, homeCards, isDynamicKey, isEnabled, isPlaceVisibleToViewer, makeViewerContext, minTripMiles, queryInChunks, tipsService, toMillis };
+module.exports = { TIP_REPEAT_MS, TIP_REPEAT_SKIPPED_MS, TIP_REPEAT_ACTED_MS, ACTIONS, ACTIVITY_SCAN_LIMIT, ACTIVITY_TYPES, ACTIVITY_WINDOW_MS, CARDS_COLLECTION, CATALOG_COLLECTION, CLIENT_ACK_KEYS, COLLECTIONS, DAY, DYNAMIC_ACK_TTL_MS, HOUR, HomePromptError, METERS_PER_MILE, NEW_ACCOUNT_GUARD_MS, NUDGE_REPEAT_MS, PIGGY_COLLECTIONS, POSTCARD_PLACE_SCAN_LIMIT, POSTCARD_PLACE_WINDOW_MS, POSTCARD_REPEAT_MS, SHOW_INTERVAL_MS, canViewCircle, canViewMoment, excludedUserIds, getAssumedLocation, getFirestore, getInnerCircleGrantorIds, haversineMeters, homeCards, isDynamicKey, isEnabled, isPlaceVisibleToViewer, makeViewerContext, minTripMiles, queryInChunks, tipsService, toMillis };

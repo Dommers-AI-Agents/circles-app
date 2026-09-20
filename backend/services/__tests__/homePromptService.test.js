@@ -32,14 +32,13 @@ function seedUser(id, extra = {}) {
 function connect(a, b) {
   put('connections', `${a}_${b}`, { userId: a, connectedUserId: b, status: 'accepted' });
 }
-function activity(id, data) {
-  put('activities', id, {
-    actorId: 'ana', type: 'place_added', targetType: 'place', targetId: 'p1', targetName: "Mabel's Kitchen",
-    circleId: null, metadata: {}, timestamp: new Date(NOW - HOUR), ...data
-  });
-}
 function tip(id, data) {
   put('notificationTips', id, { enabled: true, title: id, body: 'b', target: 't', ...data });
+}
+// The everyday card: an evergreen home tip. (Connection activity used to be
+// the bait here; it no longer produces a card — the feed already shows it.)
+function homeTip(id, data = {}) {
+  tip(id, { surfaces: ['home'], target: 'widgets_tab', ...data });
 }
 const pick = () => service.pick(ME, { now: NOW });
 const state = () => rows('users').get(ME).homePrompt || {};
@@ -50,181 +49,33 @@ beforeEach(() => {
   seedUser(ME);
   seedUser('ana', { firstName: 'Ana', profilePicture: 'https://x/ana.jpg' });
   connect(ME, 'ana');
-  // A place saved yesterday keeps the add-place nudge quiet unless a test wants it.
-  put('places', 'mine', { addedBy: ME, createdAt: iso(NOW - DAY) });
 });
 
 describe('gates', () => {
   test('flag off → null and nothing stamped', async () => {
     process.env.HOME_PROMPTS_ENABLED = '0';
-    activity('a1');
+    homeTip('t1');
     expect(await pick()).toBeNull();
     expect(state().lastShownAt).toBeUndefined();
   });
 
   test('accounts younger than 48h get nothing', async () => {
     seedUser(ME, { createdAt: iso(NOW - 47 * HOUR) });
-    activity('a1');
+    homeTip('t1');
     expect(await pick()).toBeNull();
   });
 
-  test('a card shown within the last 20h blocks the next one', async () => {
-    activity('a1');
-    expect(await pick()).not.toBeNull();
-    activity('a2', { targetName: 'Second', timestamp: new Date(NOW + 20 * HOUR) });
-    expect(await service.pick(ME, { now: NOW + 19 * HOUR })).toBeNull();
-    expect((await service.pick(ME, { now: NOW + 21 * HOUR })).key).toBe('activity:a2');
+  test('a card shown within the last 2h blocks the next one', async () => {
+    homeTip('first', { order: 1 });
+    homeTip('second', { order: 2 });
+    expect((await pick()).key).toBe('first');
+    expect(await service.pick(ME, { now: NOW + 1 * HOUR })).toBeNull();
+    expect((await service.pick(ME, { now: NOW + 2 * HOUR + 1 })).key).toBe('second');
   });
 
   test('showing nothing is a valid outcome', async () => {
     expect(await pick()).toBeNull();
     expect(state().lastShownAt).toBeUndefined();
-  });
-});
-
-describe('connection activity', () => {
-  test('newest unseen place_added from a connection wins and is stamped shown', async () => {
-    activity('old', { timestamp: new Date(NOW - 5 * HOUR), targetName: 'Old' });
-    activity('new', { timestamp: new Date(NOW - HOUR), circleName: 'Brunch', metadata: { placePhoto: 'https://x/p.jpg' } });
-    const card = await pick();
-    expect(card).toMatchObject({
-      key: 'activity:new', type: 'connection_activity', title: "Ana added Mabel's Kitchen",
-      body: 'To Brunch.', target: 'place', data: { placeId: 'p1' }, imageUrl: 'https://x/p.jpg', actorId: 'ana'
-    });
-    expect(state()).toMatchObject({ lastShownAt: iso(NOW), lastCardId: 'activity:new' });
-    expect(state().acks['activity:new'].action).toBe('shown');
-  });
-
-  test('activity older than a day, my own, or of an unknown type is ignored', async () => {
-    activity('stale', { timestamp: new Date(NOW - 25 * HOUR) });
-    activity('mine', { actorId: ME });
-    activity('like', { type: 'place_liked' });
-    expect(await pick()).toBeNull();
-  });
-
-  test('skipping one activity does not suppress the next one from the same person', async () => {
-    activity('a1');
-    await pick();
-    await service.ack(ME, 'activity:a1', 'skipped');
-    activity('a2', { targetName: 'Taco Spot', timestamp: new Date(NOW + 22 * HOUR) });
-    const card = await service.pick(ME, { now: NOW + 23 * HOUR });
-    expect(card.key).toBe('activity:a2');
-  });
-
-  test('moment activity respects momentVisibility (network needs a connection, followers needs a follow)', async () => {
-    seedUser('bo', { firstName: 'Bo' });
-    seedUser(ME, { following: ['bo'] });
-    activity('v1', { actorId: 'bo', type: 'video_uploaded', targetType: 'place_video', targetId: 'vid1',
-      metadata: { momentVisibility: 'network', momentOwnerId: 'bo', videoThumbnail: 'https://x/t.jpg' } });
-    expect(await pick()).toBeNull();
-    activity('v1', { actorId: 'bo', type: 'video_uploaded', targetType: 'place_video', targetId: 'vid1',
-      metadata: { momentVisibility: 'followers', momentOwnerId: 'bo', videoThumbnail: 'https://x/t.jpg' } });
-    const card = await pick();
-    expect(card).toMatchObject({ key: 'moment:vid1', title: 'Bo shared a moment', target: 'video', data: { videoId: 'vid1' } });
-  });
-
-  test('a check-in at a private place never surfaces', async () => {
-    put('places', 'p1', { addedBy: 'ana', privacy: 'private' });
-    activity('c', { type: 'check_in', targetType: 'check_in', targetId: 'ci1', metadata: { placeId: 'p1' } });
-    expect(await pick()).toBeNull();
-  });
-
-  test('skipping a moment\'s activity card also silences it as "latest moment"', async () => {
-    seedUser(ME, { following: ['ana'] });
-    activity('v1', { type: 'video_uploaded', targetType: 'place_video', targetId: 'vid1',
-      metadata: { momentVisibility: 'public', momentOwnerId: 'ana' } });
-    const card = await pick();
-    expect(card.key).toBe('moment:vid1');
-    await service.ack(ME, 'moment:vid1', 'skipped');
-    put('placeVideos', 'vid1', { userId: 'ana', uploadStatus: 'ready', deletedAt: null, visibility: 'public',
-      placeName: 'Pier 9', createdAt: iso(NOW + 20 * HOUR) });
-    expect(await service.pick(ME, { now: NOW + 21 * HOUR })).toBeNull();
-  });
-
-  test('circle-scoped rows honour circle privacy; private places never surface', async () => {
-    put('circles', 'c1', { owner: 'ana', privacy: 'private', sharedWith: [] });
-    activity('a1', { circleId: 'c1' });
-    expect(await pick()).toBeNull();
-    put('circles', 'c1', { owner: 'ana', privacy: 'public' });
-    put('places', 'p1', { addedBy: 'ana', privacy: 'private' });
-    expect(await pick()).toBeNull();
-    put('places', 'p1', { addedBy: 'ana', privacy: 'public' });
-    expect((await pick()).key).toBe('activity:a1');
-  });
-
-  test('blocked users contribute nothing', async () => {
-    seedUser(ME, { blockedUsers: ['ana'] });
-    activity('a1');
-    expect(await pick()).toBeNull();
-  });
-
-  test('check_in and photo_uploaded copy', async () => {
-    activity('c', { type: 'check_in', targetType: 'check_in', targetId: 'ci1',
-      metadata: { placeId: 'p1', message: 'Best espresso in town' }, timestamp: new Date(NOW - 2 * HOUR) });
-    const checkIn = await pick();
-    expect(checkIn.title).toBe("Ana checked in at Mabel's Kitchen");
-    expect(checkIn.body).toBe('Best espresso in town');
-    expect(checkIn.data.placeId).toBe('p1');
-    put('users', ME, { ...rows('users').get(ME), homePrompt: {} });
-    activity('ph', { type: 'photo_uploaded', timestamp: new Date(NOW - HOUR) });
-    expect((await pick()).title).toBe('Ana added a photo');
-  });
-});
-
-describe('latest moment', () => {
-  function video(id, data) {
-    put('placeVideos', id, {
-      userId: 'ana', uploadStatus: 'ready', deletedAt: null, visibility: 'network', placeName: 'Pier 9',
-      thumbnailUrl: 'https://x/v.jpg', createdAt: iso(NOW - 2 * HOUR), ...data
-    });
-  }
-
-  test('newest unwatched network moment in the last day', async () => {
-    video('v1');
-    const card = await pick();
-    expect(card).toMatchObject({ key: 'moment:v1', type: 'latest_moment', title: 'Latest moment from Ana', body: 'At Pier 9.', target: 'video', data: { videoId: 'v1' } });
-  });
-
-  test('already watched, older than a day, or network-only from a mere follow → skipped', async () => {
-    video('watched');
-    put('videoViews', 'x', { userId: ME, videoId: 'watched', viewedAt: iso(NOW - HOUR) });
-    video('old', { createdAt: iso(NOW - 2 * DAY) });
-    seedUser('bo', { firstName: 'Bo' });
-    seedUser(ME, { following: ['bo'] });
-    video('bos', { userId: 'bo', visibility: 'network' });
-    expect(await pick()).toBeNull();
-    video('bos', { userId: 'bo', visibility: 'public' });
-    expect((await pick()).title).toBe('Latest moment from Bo');
-  });
-
-  test('connection activity outranks a moment', async () => {
-    video('v1');
-    activity('a1');
-    expect((await pick()).key).toBe('activity:a1');
-  });
-});
-
-describe('add a place', () => {
-  beforeEach(() => rows('places').clear());
-
-  test('nudges when nothing was saved this week, then not again for a week', async () => {
-    const card = await pick();
-    expect(card).toMatchObject({ key: 'add_place', type: 'add_place', title: 'Add a new place?', target: 'add_place' });
-    await service.ack(ME, 'add_place', 'skipped', { now: NOW });
-    expect(await service.pick(ME, { now: NOW + 3 * DAY })).toBeNull();
-    expect((await service.pick(ME, { now: NOW + 8 * DAY })).key).toBe('add_place');
-  });
-
-  test('a place saved in the last 7 days suppresses the nudge; an older one does not', async () => {
-    put('places', 'mine', { addedBy: ME, createdAt: iso(NOW - 2 * DAY) });
-    expect(await pick()).toBeNull();
-    put('places', 'mine', { addedBy: ME, createdAt: iso(NOW - 9 * DAY) });
-    expect((await pick()).key).toBe('add_place');
-  });
-
-  test('first-place copy for an empty account', async () => {
-    seedUser(ME, { placesCount: 0 });
-    expect((await pick()).title).toBe('Save your first place');
   });
 });
 
@@ -239,10 +90,9 @@ describe('scheduled cards (the backend-authored tier)', () => {
     rows('activities').clear();
   });
 
-  test('an override card beats a connection\'s activity at the top of the ladder', async () => {
-    seedUser('ana'); connect(ME, 'ana');
-    activity('a1', { actorId: 'ana', targetName: "Mabel's Kitchen" });
-    expect((await pick()).type).toBe('connection_activity');   // without a card
+  test('an override card beats an evergreen tip at the top of the ladder', async () => {
+    homeTip('evergreen', { order: 1 });
+    expect((await pick()).type).toBe('feature_tip');   // without a card
 
     put('users', ME, { ...rows('users').get(ME), homePrompt: {} });
     card('widget-launch', { override: true });
@@ -253,7 +103,7 @@ describe('scheduled cards (the backend-authored tier)', () => {
   test('bypassInterval shows it even though the user already had a card today', async () => {
     card('widget-launch', { override: true, bypassInterval: true });
     expect((await pick()).key).toBe('card:widget-launch');
-    // Same user, twenty minutes later: normally the 20h window would say no.
+    // Same user, twenty minutes later: normally the 2h window would say no.
     put('users', ME, { ...rows('users').get(ME), homePrompt: { lastShownAt: iso(NOW), acks: {} } });
     expect((await service.pick(ME, { now: NOW + 20 * 60 * 1000 })).key).toBe('card:widget-launch');
   });
@@ -264,7 +114,7 @@ describe('scheduled cards (the backend-authored tier)', () => {
     expect(await service.pick(ME, { now: NOW + 20 * 60 * 1000 })).toBeNull();
   });
 
-  test('a card that is not overriding sits above the evergreen tips, below the news', async () => {
+  test('a card that is not overriding sits above the evergreen tips', async () => {
     tip('evergreen', { order: 1, target: 'all_places_map', surfaces: ['home'] });
     card('soft', { override: false });
     expect((await pick()).key).toBe('card:soft');
@@ -353,7 +203,7 @@ describe('postcard', () => {
     savePlace('nophoto', { deletedAt: iso(NOW - DAY) });
     expect(await pick()).toBeNull();
     savePlace('nophoto', { createdAt: iso(NOW - 9 * DAY) });
-    expect((await pick()).key).toBe('add_place'); // stale save → the other nudge
+    expect(await pick()).toBeNull(); // a stale save is nothing to write home about
   });
 
   test('asks at most once a fortnight, and the app pop-up ack silences it too', async () => {
@@ -461,18 +311,40 @@ describe('catalog feature tips', () => {
     expect((await tipsService.loadCatalog()).map(t => t.id)).toEqual(['legacy']);
   });
 
-  test('noWidgetData / noVideoViews suppress on evidence, and never repeat once acked or in tipsSeen', async () => {
-    tip('widgets', { order: 1, surfaces: ['home'], requires: 'noWidgetData' });
-    tip('moments', { order: 2, surfaces: ['home'], requires: 'noVideoViews' });
+  test('noWidgetData / noVideoViews suppress on evidence', async () => {
+    homeTip('widgets', { order: 1, requires: 'noWidgetData' });
+    homeTip('moments', { order: 2, requires: 'noVideoViews' });
     put('widgetData', `${ME}_water`, { userId: ME, widgetId: 'water' });
     expect((await pick()).key).toBe('moments');
-    await service.ack(ME, 'moments', 'skipped');
-    put('users', ME, { ...rows('users').get(ME), homePrompt: { ...state(), lastShownAt: null } });
-    expect(await pick()).toBeNull();
+  });
 
-    rows('widgetData').clear();
-    put('users', ME, { ...rows('users').get(ME), tipsSeen: ['widgets'] });
-    expect(await pick()).toBeNull();
+  // The catalog is a rotation, not a list of one-time announcements: with two
+  // tips shown once each, the old rule left the home card silent for good.
+  test('tips rotate: never-shown first, then least recent, never the same one twice running', async () => {
+    homeTip('a', { order: 1 }); homeTip('b', { order: 2 }); homeTip('c', { order: 3 });
+    const at = (h) => service.pick(ME, { now: NOW + h * HOUR });
+    expect((await at(0)).key).toBe('a');
+    expect((await at(3)).key).toBe('b');
+    expect((await at(6)).key).toBe('c');
+    // All three seen within the day: the floor holds and nothing shows…
+    expect(await at(9)).toBeNull();
+    // …until 'a' is a day old, and it comes round first as the least recent.
+    expect((await at(25)).key).toBe('a');
+    expect((await at(28)).key).toBe('b');
+  });
+
+  test('a skip waits three days, trying it waits a week, and the push job\'s tipsSeen no longer mutes a home tip', async () => {
+    homeTip('a', { order: 1 }); homeTip('b', { order: 2 });
+    put('users', ME, { ...rows('users').get(ME), tipsSeen: ['a'] });   // the push channel already sent it
+    expect((await pick()).key).toBe('a');                              // home still rotates it
+    await service.ack(ME, 'a', 'skipped', { now: NOW });
+    const at = (h) => service.pick(ME, { now: NOW + h * HOUR });
+    expect((await at(3)).key).toBe('b');
+    await service.ack(ME, 'b', 'acted', { now: NOW + 3 * HOUR });
+    expect(await at(48)).toBeNull();                 // a: skipped 2 days ago (needs 3); b: tried (needs 7)
+    expect((await at(73)).key).toBe('a');            // a's three days are up
+    expect(await at(76)).toBeNull();                 // a just shown; b still inside its week
+    expect((await at(172)).key).toBe('b');           // b's week is up
   });
 
   test('suppression predicates fail closed when evidence is unknown', () => {
@@ -487,11 +359,11 @@ describe('ack', () => {
   test('rejects unknown cards and bad actions; shown never downgrades a skip', async () => {
     await expect(service.ack(ME, 'activity:nope', 'skipped')).rejects.toBeInstanceOf(HomePromptError);
     await expect(service.ack(ME, 'add_place', 'nope')).rejects.toMatchObject({ status: 400 });
-    activity('a1');
+    homeTip('t1');
     await pick();
-    await service.ack(ME, 'activity:a1', 'skipped');
-    await service.ack(ME, 'activity:a1', 'shown');
-    expect(state().acks['activity:a1'].action).toBe('skipped');
+    await service.ack(ME, 't1', 'skipped');
+    await service.ack(ME, 't1', 'shown');
+    expect(state().acks['t1'].action).toBe('skipped');
   });
 
   test('dynamic acks older than 90 days are pruned on the next stamp; static keys are kept', async () => {
@@ -500,16 +372,26 @@ describe('ack', () => {
       'moment:recent': { action: 'skipped', at: iso(NOW - 10 * DAY) },
       'favcoins_balance': { action: 'skipped', at: iso(NOW - 400 * DAY) }
     } } });
-    activity('a1');
+    homeTip('t1');
     await pick();
-    expect(Object.keys(state().acks).sort()).toEqual(['activity:a1', 'favcoins_balance', 'moment:recent']);
+    expect(Object.keys(state().acks).sort()).toEqual(['favcoins_balance', 'moment:recent', 't1']);
   });
 
   test('a source that throws does not blank the card slot', async () => {
-    const spy = jest.spyOn(service, 'connectionActivityCard').mockRejectedValue(new Error('index missing'));
+    const spy = jest.spyOn(service, 'postcardCard').mockRejectedValue(new Error('index missing'));
     const err = jest.spyOn(console, 'error').mockImplementation(() => {});
     put('piggyBanks', ME, { confirmedCoins: 5 });
     expect((await pick()).key).toBe('favcoins_balance');
     spy.mockRestore(); err.mockRestore();
+  });
+});
+
+describe('presentation', () => {
+  test('every organic card covers the screen; a scheduled card may opt into inline', async () => {
+    homeTip('t1');
+    expect((await pick()).presentation).toBe('overlay');
+    put('users', ME, { ...rows('users').get(ME), homePrompt: {} });
+    put('homeCards', 'quiet', { enabled: true, title: 'Quiet', target: 'widgets_tab', override: true, presentation: 'inline' });
+    expect((await pick()).presentation).toBe('inline');
   });
 });

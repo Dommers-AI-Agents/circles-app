@@ -2,7 +2,7 @@
 // Home daily card: one server-picked prompt per ~20h.
 // Picking, suppression and acks here; the per-kind card builders are mixed in from ./homePrompt/cards.
 // Constants and pure helpers live in ./homePrompt/shared.js.
-const { ACTIONS, CARDS_COLLECTION, CATALOG_COLLECTION, CLIENT_ACK_KEYS, COLLECTIONS, DYNAMIC_ACK_TTL_MS, HomePromptError, NEW_ACCOUNT_GUARD_MS, NUDGE_REPEAT_MS, POSTCARD_REPEAT_MS, SHOW_INTERVAL_MS, canViewCircle, canViewMoment, excludedUserIds, getFirestore, getInnerCircleGrantorIds, homeCards, isDynamicKey, isEnabled, isPlaceVisibleToViewer, makeViewerContext, toMillis } = require('./homePrompt/shared');
+const { ACTIONS, CARDS_COLLECTION, CATALOG_COLLECTION, CLIENT_ACK_KEYS, COLLECTIONS, DYNAMIC_ACK_TTL_MS, HomePromptError, NEW_ACCOUNT_GUARD_MS, NUDGE_REPEAT_MS, POSTCARD_REPEAT_MS, SHOW_INTERVAL_MS, getFirestore, homeCards, isDynamicKey, isEnabled, toMillis } = require('./homePrompt/shared');
 
 class HomePromptService {
   constructor(db = getFirestore()) {
@@ -51,6 +51,12 @@ class HomePromptService {
     }
     if (!card) return null;
 
+    // Every card covers the home screen and asks for an answer. Inline was
+    // the organic cards' default and it made them easy to scroll past
+    // unread — fine for a feed row, wrong for the one thing we chose to
+    // say. A scheduled card may still opt into inline explicitly.
+    if (!card.presentation) card.presentation = 'overlay';
+
     await this.stamp(userId, state, card.key, now);
     return card;
   }
@@ -96,10 +102,12 @@ class HomePromptService {
   // swallows its own errors — one broken source must never blank the home
   // screen's card slot for everyone.
   async firstCandidate(ctx) {
+    // Only things that point at a FEATURE. "Ana added a place" and "latest
+    // moment from Ana" used to sit at the top of this ladder, and they were
+    // exactly what the activity feed already shows — a card repeating the
+    // feed, over the feed, is noise. The card's job is to tell someone
+    // arriving about something they may not have tried.
     const builders = [
-      () => this.connectionActivityCard(ctx),
-      () => this.latestMomentCard(ctx),
-      () => this.addPlaceCard(ctx),
       () => this.postcardCard(ctx),
       () => this.favCoinsCard(ctx),
       () => this.scheduledCard(ctx),
@@ -133,94 +141,7 @@ class HomePromptService {
 
   // Connections + followed users, minus anyone blocked either way. Two sets
   // because moment privacy distinguishes "connected" from "follows".
-  async loadNetwork(ctx) {
-    if (ctx.network) return ctx.network;
-    const { user } = ctx;
-    const [outgoing, incoming] = await Promise.all([
-      this.db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', user.id).where('status', '==', 'accepted').get(),
-      this.db.collection(COLLECTIONS.CONNECTIONS).where('connectedUserId', '==', user.id).where('status', '==', 'accepted').get()
-    ]);
-    const connections = new Set();
-    outgoing.docs.forEach(doc => connections.add(doc.data().connectedUserId));
-    incoming.docs.forEach(doc => connections.add(doc.data().userId));
-    const following = new Set(user.following || []);
-    for (const blocked of excludedUserIds(user)) {
-      connections.delete(blocked);
-      following.delete(blocked);
-    }
-    connections.delete(user.id);
-    following.delete(user.id);
-    const innerCircleGrantors = await getInnerCircleGrantorIds(user.id);
-    for (const blocked of excludedUserIds(user)) innerCircleGrantors.delete(blocked);
-    ctx.network = {
-      connections,
-      following,
-      all: new Set([...connections, ...following]),
-      // One bundle for the shared gates in services/visibility.js.
-      viewer: makeViewerContext({
-        viewerId: user.id,
-        connections,
-        following,
-        innerCircleGrantors
-      })
-    };
-    return ctx.network;
-  }
-
-  async loadActor(ctx, actorId) {
-    ctx.actors = ctx.actors || new Map();
-    if (!ctx.actors.has(actorId)) {
-      const doc = await this.db.collection(COLLECTIONS.USERS).doc(actorId).get();
-      ctx.actors.set(actorId, doc.exists ? { id: doc.id, ...doc.data() } : null);
-    }
-    return ctx.actors.get(actorId);
-  }
-
-  actorName(actor) {
-    if (!actor) return null;
-    return actor.firstName || (actor.displayName || '').split(' ')[0] || actor.displayName || null;
-  }
-
-  // Same gates the activity feed applies, so a card never points at content
-  // the tap can't open: moment visibility by relationship to the owner, circle
-  // privacy for circle-scoped rows, and place-level privacy.
-  async activityVisible(ctx, activity, network) {
-    const meta = activity.metadata || {};
-    if (activity.type === 'video_uploaded') {
-      const vis = meta.momentVisibility;
-      const owner = meta.momentOwnerId;
-      if (vis && owner && owner !== ctx.user.id) {
-        return canViewMoment({ userId: owner, visibility: vis }, ctx.user.id, network.viewer);
-      }
-      return true;
-    }
-    if (activity.circleId) {
-      const circleDoc = await this.db.collection(COLLECTIONS.CIRCLES).doc(activity.circleId).get();
-      if (!circleDoc.exists) return false;
-      if (!canViewCircle(circleDoc.data(), ctx.user.id, network.viewer)) return false;
-    }
-    // Place-level privacy. A missing doc is allowed through: photo uploads
-    // target the canonical globalPlaces id, which has no `places` row.
-    const placeId = this.activityPlaceId(activity);
-    if (placeId) {
-      const placeDoc = await this.db.collection(COLLECTIONS.PLACES).doc(placeId).get();
-      if (placeDoc.exists) {
-        const place = placeDoc.data();
-        if (place.deletedAt) return false;
-        if (!isPlaceVisibleToViewer(place, ctx.user.id, network.viewer)) return false;
-      }
-    }
-    return true;
-  }
-
-  // place_added / photo_uploaded target the place; check_in targets the
-  // check-in row and carries the place in metadata.
-  activityPlaceId(activity) {
-    const meta = activity.metadata || {};
-    if (activity.type === 'check_in') return meta.placeId || null;
-    return activity.targetType === 'place' ? (activity.targetId || null) : null;
-  }
-
+ 
   // 1. "Ana added Mabel's Kitchen" — newest unseen activity from the network
   //    since the last card (capped at a day).
 
