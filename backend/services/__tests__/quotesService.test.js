@@ -75,7 +75,7 @@ describe('delivery', () => {
     // 08:35 in New York — inside their 08:00 hour.
     expect((await quotes.runDue({ now: T_0835_NY })).sent).toBe(1);
     const [, payload] = notificationService.sendToUser.mock.calls[0];
-    expect(payload).toMatchObject({ type: 'daily_quote', title: "Today's quote" });
+    expect(payload).toMatchObject({ type: 'daily_quote', title: 'A line for you' });
     // Which of the motivation quotes is chosen is deliberately not fixed; that
     // it came from the chosen topic, and reads with its author, is.
     expect(['Start where you are. — Arthur Ashe', 'Keep going.']).toContain(payload.body);
@@ -95,6 +95,30 @@ describe('delivery', () => {
     const again = await quotes.runDue({ now: T_0835_NY });
     expect(again.sent).toBe(0);
     expect(notificationService.sendToUser).toHaveBeenCalledTimes(1);
+  });
+
+  test('several times a day: each slot sends once, and the widget sees the latest', async () => {
+    seedUser({ quotePrefs: { enabled: true, categories: ['motivation'], times: ['08:00', '13:00', '18:30'], email: false } });
+    seedQuotes();
+    expect((await quotes.runDue({ now: T_0835_NY })).sent).toBe(1);
+    expect((await quotes.runDue({ now: T_0835_NY })).sent).toBe(0);                       // same slot, retried
+    expect((await quotes.runDue({ now: new Date('2026-09-19T16:00:00Z') })).sent).toBe(0); // 12:00 NY, no slot
+    expect((await quotes.runDue({ now: new Date('2026-09-19T17:10:00Z') })).sent).toBe(1); // 13:10 NY
+    expect((await quotes.runDue({ now: new Date('2026-09-19T22:45:00Z') })).sent).toBe(1); // 18:45 NY
+    expect([...sends().keys()].sort()).toEqual([`${ME}_2026-09-19_0800`, `${ME}_2026-09-19_1300`, `${ME}_2026-09-19_1830`]);
+    const { today, prefs } = await quotes.getSettings(ME, { now: new Date('2026-09-19T23:00:00Z') });
+    expect(today.slot).toBe('18:30');
+    expect(prefs.times).toEqual(['08:00', '13:00', '18:30']);
+    expect(prefs.time).toBe('08:00');
+  });
+
+  test('times are validated, capped at six, and `time` from an old client still works', async () => {
+    seedUser();
+    await expect(quotes.updateSettings(ME, { times: ['8am'] })).rejects.toMatchObject({ code: 'bad_time' });
+    await expect(quotes.updateSettings(ME, { times: [] })).rejects.toMatchObject({ code: 'bad_time' });
+    await expect(quotes.updateSettings(ME, { times: ['01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00'] })).rejects.toMatchObject({ code: 'bad_time' });
+    expect((await quotes.updateSettings(ME, { times: ['18:00', '07:30', '18:00'] })).prefs).toMatchObject({ times: ['07:30', '18:00'], time: '07:30' });
+    expect((await quotes.updateSettings(ME, { time: '09:15' })).prefs).toMatchObject({ times: ['09:15'], time: '09:15' });
   });
 
   test('turned off means nothing goes out', async () => {
@@ -162,7 +186,7 @@ describe('delivery', () => {
     seedUser(); seedQuotes();
     expect((await quotes.getSettings(ME)).today).toBeNull();
     await quotes.runDue({ now: T_0835_NY });
-    const { today } = await quotes.getSettings(ME);
+    const { today } = await quotes.getSettings(ME, { now: T_0835_NY });
     expect(['Start where you are.', 'Keep going.']).toContain(today.text);
     expect(today.sentAt).toBeTruthy();
   });

@@ -13,8 +13,8 @@ exports.getSettings = async (req, res) => {
 };
 
 exports.updateSettings = async (req, res) => {
-  const { enabled, categories, time, email } = req.body || {};
-  try { res.json({ success: true, ...(await quotes.updateSettings(req.user.uid, { enabled, categories, time, email })) }); }
+  const { enabled, categories, time, times, email } = req.body || {};
+  try { res.json({ success: true, ...(await quotes.updateSettings(req.user.uid, { enabled, categories, time, times, email })) }); }
   catch (e) { fail(res, e); }
 };
 
