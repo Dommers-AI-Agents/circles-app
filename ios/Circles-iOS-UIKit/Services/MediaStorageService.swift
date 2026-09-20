@@ -276,7 +276,8 @@ class MediaStorageService {
             description: ""
         ) { result in
             switch result {
-            case .success(let attributedPhoto):
+            case .success(let upload):
+                let attributedPhoto = upload.photo
                 Logger.debug("✅ [MediaStorageService] Photo registered with Global Place system")
                 progress(UploadProgress(progress: 1.0, bytesUploaded: Int64(photo.sizeInBytes), totalBytes: Int64(photo.sizeInBytes), phase: .completed))
                 
@@ -289,7 +290,11 @@ class MediaStorageService {
                         "attributedPhotoId": attributedPhoto.id ?? "",
                         "uploadedTo": "globalPlace",
                         "visibility": visibility
-                    ]
+                    ],
+                    // Place photos take this branch, not the legacy moments one
+                    // below — dropping the flag here is why adding a photo to a
+                    // place never offered the postcard.
+                    postcardNudgeEligible: upload.postcardNudgeEligible
                 )
                 
                 completion(.success(storageResult))

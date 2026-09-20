@@ -284,7 +284,7 @@ class GlobalPlaceService {
         thumbnailUrl: String? = nil,
         title: String? = nil,
         description: String? = nil,
-        completion: @escaping (Result<AttributedPhoto, Error>) -> Void
+        completion: @escaping (Result<PlaceMediaUpload, Error>) -> Void
     ) {
         let endpoint = "places/global/\(placeId)/media"
         
@@ -309,7 +309,10 @@ class GlobalPlaceService {
             switch result {
             case .success(let response):
                 if response.success {
-                    completion(.success(response.data))
+                    completion(.success(PlaceMediaUpload(
+                        photo: response.data,
+                        postcardNudgeEligible: response.postcardNudge?.eligible ?? false
+                    )))
                 } else {
                     completion(.failure(APIError.serverError))
                 }
@@ -606,4 +609,15 @@ struct StandardResponse<T: Codable>: Codable {
     let success: Bool
     let data: T
     let message: String?
+    // Photo upload: whether the "send it as a postcard?" offer may run.
+    // Absent on every other endpoint, and on an old server.
+    let postcardNudge: PostcardNudge?
+}
+/// What a place-photo upload returns: the attributed photo, plus the server's
+/// answer to "may we offer a postcard of it?" The offer is the whole reason
+/// the endpoint reports eligibility, so it travels with the photo rather than
+/// being read off an envelope the caller no longer holds.
+struct PlaceMediaUpload {
+    let photo: AttributedPhoto
+    let postcardNudgeEligible: Bool
 }

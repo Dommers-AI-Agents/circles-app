@@ -360,9 +360,8 @@ class CircleService {
                 switch result {
                 case .success(_):
                     // Post notification for circle deletion
-                    NotificationCenter.default.post(
+                    NotificationCenter.default.postOnMain(
                         name: .circleDeleted,
-                        object: nil,
                         userInfo: ["circleId": id]
                     )
                     completion(.success(true))

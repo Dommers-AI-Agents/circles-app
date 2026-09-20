@@ -1243,9 +1243,8 @@ class PlaceService {
             completion: createAPICompletion { (result: Result<EmptyResponse, Error>) in
                 if case .success(_) = result {
                     // Post notification to refresh circles data
-                    NotificationCenter.default.post(
+                    NotificationCenter.default.postOnMain(
                         name: Notification.Name("PlaceDeleted"),
-                        object: nil,
                         userInfo: ["placeId": id]
                     )
                     SpotlightIndexService.shared.removePlace(id: id)

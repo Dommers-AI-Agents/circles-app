@@ -1210,7 +1210,9 @@ class APIService {
                 var info: [String: Any] = ["checkInId": response.data.id, "placeName": response.data.placeName]
                 if let placeId = response.data.placeId { info["placeId"] = placeId }
                 if let stats = response.myCheckInStats { info["stats"] = stats }
-                NotificationCenter.default.post(name: .checkInCreated, object: nil, userInfo: info)
+                // On main: observers touch labels and layout constraints, and
+                // this completion arrives on URLSession's queue.
+                NotificationCenter.default.postOnMain(name: .checkInCreated, userInfo: info)
                 // "How was it this time?" — once the check-in flow is off screen
                 if let placeId = response.data.placeId {
                     PostCheckInRatePresenter.offer(placeId: placeId, checkInId: response.data.id, placeName: response.data.placeName)

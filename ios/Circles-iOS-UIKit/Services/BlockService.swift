@@ -113,7 +113,7 @@ class BlockService {
         
         // Post notification so UI components can update
         // NetworkManager will refresh connections list when needed
-        NotificationCenter.default.post(name: .userBlocked, object: nil, userInfo: ["userId": userId])
+        NotificationCenter.default.postOnMain(name: .userBlocked, userInfo: ["userId": userId])
         
         // Note: UI components should handle hiding conversations with blocked users
         // MessagingService will filter out blocked users in conversation lists
