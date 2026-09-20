@@ -658,7 +658,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Circles-iOS-UIKit/Circles-iOS-Debug.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -672,7 +672,7 @@
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Circles needs permission to save photos to your library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Circles needs access to your photos to upload images for places and profiles.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "audio remote-notification fetch processing";
+				INFOPLIST_KEY_UIBackgroundModes = "audio remote-notification fetch processing location";
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UIRequiresFullScreen = NO;
@@ -706,7 +706,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Circles-iOS-UIKit/Circles-iOS-Release.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -720,7 +720,7 @@
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Circles needs permission to save photos to your library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Circles needs access to your photos to upload images for places and profiles.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "audio remote-notification fetch processing";
+				INFOPLIST_KEY_UIBackgroundModes = "audio remote-notification fetch processing location";
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UIRequiresFullScreen = NO;
@@ -871,7 +871,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = Y3XSN56Z5K;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -890,7 +890,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = Y3XSN56Z5K;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -908,7 +908,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = Y3XSN56Z5K;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
@@ -925,7 +925,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = Y3XSN56Z5K;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
@@ -944,7 +944,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "Circles-Clip/Circles-Clip.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
@@ -975,7 +975,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "Circles-Clip/Circles-Clip.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
@@ -1005,7 +1005,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = "Circles-Widget/Circles-Widget.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Circles-Widget/Info.plist";
@@ -1031,7 +1031,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = "Circles-Widget/Circles-Widget.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Circles-Widget/Info.plist";
@@ -1057,7 +1057,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = "Circles-Share/Circles-Share.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Circles-Share/Info.plist";
@@ -1083,7 +1083,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = "Circles-Share/Circles-Share.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Circles-Share/Info.plist";
@@ -1210,7 +1210,7 @@
 			repositoryURL = "https://github.com/Dommers-AI-Agents/favcircles-widgets";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.18.4;
+				minimumVersion = 0.18.5;
 			};
 		};
 		FAB6000000000000000000D0 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */ = {
