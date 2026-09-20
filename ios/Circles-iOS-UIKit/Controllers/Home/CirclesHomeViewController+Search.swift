@@ -33,16 +33,14 @@ extension CirclesHomeViewController: UISearchBarDelegate {
 
         isSearching = true
 
-        // Places — local, instant (still needed: powers the SUGGESTED
-        // fallback rule and the empty state, even though place rows no longer
-        // render in the dropdown)
+        // Places — local, instant. These now render as rows again (capped, see
+        // HomeSearchPlan) as well as narrowing the map.
         filterPlaces(searchText: trimmed)
 
-        // Place results live on the MAP, not in a dropdown: the pins narrow
-        // with the text (FSM debounces internally, camera stays). The list
-        // toggle remains the user's choice — when open, it shows the same
-        // filtered set (Wes: don't auto-open it).
-        mapViewController?.setSearchFilter(trimmed)
+        // The pins narrow with the text (FSM debounces internally, camera
+        // stays), but only in Places mode — filtering the map by a person's
+        // name matches place names by accident and empties it for nothing.
+        mapViewController?.setSearchFilter(searchMode.filtersMap(trimmed))
 
         // People — debounced server search so we don't fire a request per
         // keystroke. Clear stale people up front so the PEOPLE section never
@@ -77,12 +75,56 @@ extension CirclesHomeViewController: UISearchBarDelegate {
     /// peek (Done/map tap) keeps it down until the user edits or refocuses
     /// the bar — late async results must not yank the map away again.
     func refreshSearchOverlay() {
-        if isSearching && !isSearchOverlayDismissed
-            && (!searchedUsers.isEmpty || !visibleSuggestedPlaces.isEmpty) {
+        if isSearching && !isSearchOverlayDismissed && searchPlan.hasRows {
             showSearchResults()
         } else {
             hideSearchResults()
         }
+    }
+
+    /// What the dropdown should show right now. Everything that draws or sizes
+    /// the overlay asks this, so the sections can never disagree about how
+    /// many rows exist.
+    var searchPlan: HomeSearchPlan {
+        HomeSearchPlan.make(
+            mode: searchMode,
+            matchedPlaces: filteredPlaces.count,
+            suggestedPlaces: suggestedPlaces.count,
+            people: searchedUsers.count
+        )
+    }
+
+    /// Switching between Places and People re-runs the current query under the
+    /// new rules — including handing the map back when People is chosen.
+    @objc func searchModeControlChanged() {
+        guard let mode = HomeSearchMode(rawValue: searchModeControl.selectedSegmentIndex) else { return }
+        searchModeChanged(to: mode)
+    }
+
+    /// The mode control belongs to an active search — it appears with the
+    /// keyboard and goes away with it, so the home screen is unchanged for
+    /// anyone not searching.
+    func setSearchModeControlVisible(_ visible: Bool) {
+        guard searchModeControl.isHidden == visible else { return }
+        searchModeControl.isHidden = !visible
+        searchResultsTopConstraint?.isActive = false
+        searchResultsTopConstraint = visible
+            ? searchResultsTableView.topAnchor.constraint(equalTo: searchModeControl.bottomAnchor, constant: 8)
+            : searchResultsTableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 8)
+        searchResultsTopConstraint?.isActive = true
+    }
+
+    func searchModeChanged(to mode: HomeSearchMode) {
+        searchMode = mode
+        searchBar.placeholder = mode.placeholder
+        isSearchOverlayDismissed = false
+        let trimmed = (searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            mapViewController?.setSearchFilter(nil)
+            refreshSearchOverlay()
+            return
+        }
+        searchBar(searchBar, textDidChange: trimmed)
     }
 
 
@@ -105,6 +147,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
     }
 
     func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+        setSearchModeControlVisible(true)
         searchBar.setShowsCancelButton(true, animated: true)
         // Refocusing after a map peek restores the results list
         if isSearching && isSearchOverlayDismissed {
@@ -118,6 +161,10 @@ extension CirclesHomeViewController: UISearchBarDelegate {
     }
 
     func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+        setSearchModeControlVisible(false)
+        searchMode = .places
+        searchModeControl.selectedSegmentIndex = HomeSearchMode.places.rawValue
+        searchBar.placeholder = HomeSearchMode.places.placeholder
         searchBar.text = ""
         searchBar.resignFirstResponder()
         isSearching = false
@@ -200,7 +247,13 @@ extension CirclesHomeViewController {
 
     /// SUGGESTED rows render only while there are no local place results.
     var visibleSuggestedPlaces: [GlobalPlace] {
-        filteredPlaces.isEmpty ? suggestedPlaces : []
+        Array(suggestedPlaces.prefix(searchPlan.suggestedRows))
+    }
+
+    /// The matched places that get a row; the rest are on the map and counted
+    /// in the section header.
+    var visibleFilteredPlaces: [Place] {
+        Array(filteredPlaces.prefix(searchPlan.placeRows))
     }
 
     /// Debounced global-venue lookup for the SUGGESTED fallback section.
@@ -288,12 +341,12 @@ extension CirclesHomeViewController {
     func showSearchResults() {
         let cellHeight: CGFloat = 60
         let headerHeight: CGFloat = 28
-        let suggestedRows = min(visibleSuggestedPlaces.count, 6)
-        let userRows = min(searchedUsers.count, 6)
+        let plan = searchPlan
 
         var height: CGFloat = 0
-        if suggestedRows > 0 { height += headerHeight + CGFloat(suggestedRows) * cellHeight }
-        if userRows > 0 { height += headerHeight + CGFloat(userRows) * cellHeight }
+        if plan.placeRows > 0 { height += headerHeight + CGFloat(plan.placeRows) * cellHeight }
+        if plan.suggestedRows > 0 { height += headerHeight + CGFloat(plan.suggestedRows) * cellHeight }
+        if plan.peopleRows > 0 { height += headerHeight + CGFloat(plan.peopleRows) * cellHeight }
         height = min(height, 400) // cap — the overlay scrolls beyond this
 
         searchResultsTableView.isHidden = false

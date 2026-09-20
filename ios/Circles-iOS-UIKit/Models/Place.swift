@@ -545,6 +545,28 @@ enum PlaceCategory: String, Codable, CaseIterable {
         }
     }
     
+    /// The SF Symbol for this category in a list row. Lived as a copy-pasted
+    /// switch in two search cells before this; one table, one answer.
+    var symbolName: String {
+        switch self {
+        case .restaurant, .cafe, .bar: return "fork.knife"
+        case .hotel: return "bed.double"
+        case .retail: return "bag"
+        case .service: return "wrench.and.screwdriver"
+        case .attraction: return "star"
+        case .entertainment: return "tv"
+        case .healthcare: return "heart"
+        case .fitness: return "figure.walk"
+        case .education: return "graduationcap"
+        case .outdoor: return "tree"
+        case .transport: return "car"
+        case .finance: return "dollarsign.circle"
+        case .home: return "house"
+        case .work: return "building.2"
+        case .other: return "circle.grid.3x3"
+        }
+    }
+
     var color: UIColor {
         switch self {
         case .restaurant:

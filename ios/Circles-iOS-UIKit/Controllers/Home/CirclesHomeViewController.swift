@@ -531,6 +531,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
     
     var searchResultsHeightConstraint: NSLayoutConstraint?
+    var searchResultsTopConstraint: NSLayoutConstraint?
 
 
     let loadingIndicator: UIActivityIndicatorView = {
@@ -672,6 +673,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// The scheduled card currently shown over the home screen, held so its
     /// answer can be acked after the overlay dismisses itself.
     var overlayCard: HomePromptCard?
+
+    /// Places or People — the person says which rather than the search
+    /// guessing from an ambiguous name.
+    var searchMode: HomeSearchMode = .places
+
+    /// Sits under the search bar while searching. A visible toggle rather than
+    /// a question asked before every search: "Nick" is a person AND Nickyo's
+    /// Rodeo, and the answer is one tap away in either direction.
+    let searchModeControl: UISegmentedControl = {
+        let control = UISegmentedControl(items: HomeSearchMode.allCases.map(\.title))
+        control.selectedSegmentIndex = HomeSearchMode.places.rawValue
+        control.translatesAutoresizingMaskIntoConstraints = false
+        control.isHidden = true
+        return control
+    }()
     var lastHomePromptFetchAt: Date?
     /// When the app last left the foreground, so a return can tell a
     /// two-minute hop from a two-hour absence. nil until it happens.
@@ -1762,12 +1778,24 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         dailyCardCollapsedHeight = dailyCardContainer.heightAnchor.constraint(equalToConstant: 0)
         dailyCardCollapsedHeight?.isActive = true
         
-        // Search results table view constraints
+        view.addSubview(searchModeControl)
+        searchModeControl.addTarget(self, action: #selector(searchModeControlChanged), for: .valueChanged)
         NSLayoutConstraint.activate([
-            searchResultsTableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 8),
+            searchModeControl.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 6),
+            searchModeControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
+            searchModeControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium)
+        ])
+        view.bringSubviewToFront(searchModeControl)
+
+        // Search results table view constraints. It hangs off the mode control
+        // when that is visible, so the two never overlap.
+        searchResultsTopConstraint = searchResultsTableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 8)
+        NSLayoutConstraint.activate([
+            searchResultsTopConstraint!,
             searchResultsTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
             searchResultsTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium)
         ])
+        view.bringSubviewToFront(searchResultsTableView)
         
         searchResultsHeightConstraint = searchResultsTableView.heightAnchor.constraint(equalToConstant: 0)
         searchResultsHeightConstraint?.isActive = true

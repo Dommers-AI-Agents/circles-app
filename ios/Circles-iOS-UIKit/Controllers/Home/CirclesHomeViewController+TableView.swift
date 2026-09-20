@@ -30,12 +30,11 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             return SearchScope.allCases.count
         } else if tableView == searchResultsTableView {
             guard isSearching else { return 0 }
+            let plan = searchPlan
             switch SearchSection(rawValue: section) {
-            // Place matches render on the map + its list now, never as
-            // dropdown rows — the dropdown is people/suggested only
-            case .places: return 0
-            case .suggested: return visibleSuggestedPlaces.count
-            case .people: return searchedUsers.count
+            case .places: return plan.placeRows
+            case .suggested: return plan.suggestedRows
+            case .people: return plan.peopleRows
             case .none: return 0
             }
         }
@@ -101,6 +100,33 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 content.imageProperties.tintColor = Constants.Colors.primary
                 cell.contentConfiguration = content
                 cell.accessoryType = (isConnected || isFollowing) ? .none : .disclosureIndicator
+                return cell
+            }
+
+            // PLACES section: somewhere already saved, by this user or by
+            // their network. The row is the point — the map filtering alone
+            // gave the user nothing to tap.
+            if SearchSection(rawValue: indexPath.section) == .places {
+                let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
+                cell.accessoryView = nil
+                cell.accessoryType = .disclosureIndicator
+                let places = visibleFilteredPlaces
+                guard indexPath.row < places.count else { return cell }
+                let place = places[indexPath.row]
+
+                var content = cell.defaultContentConfiguration()
+                content.text = place.name
+                var subtitle = place.address
+                if let distance = searchDistances[place.id] {
+                    subtitle = "\(listDistanceFormatter.string(fromDistance: distance)) · \(subtitle)"
+                }
+                content.secondaryText = subtitle
+                content.secondaryTextProperties.color = Constants.Colors.secondaryLabel
+                content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
+                content.secondaryTextProperties.numberOfLines = 1
+                content.image = UIImage(systemName: place.category.symbolName)
+                content.imageProperties.tintColor = Constants.Colors.primary
+                cell.contentConfiguration = content
                 return cell
             }
 
@@ -196,25 +222,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
             
             // Add category icon
-            let iconName: String
-            switch place.category {
-            case .restaurant, .cafe, .bar: iconName = "fork.knife"
-            case .hotel: iconName = "bed.double"
-            case .retail: iconName = "bag"
-            case .service: iconName = "wrench.and.screwdriver"
-            case .attraction: iconName = "star"
-            case .entertainment: iconName = "tv"
-            case .healthcare: iconName = "heart"
-            case .fitness: iconName = "figure.walk"
-            case .education: iconName = "graduationcap"
-            case .outdoor: iconName = "tree"
-            case .transport: iconName = "car"
-            case .finance: iconName = "dollarsign.circle"
-            case .home: iconName = "house"
-            case .work: iconName = "building.2"
-            case .other: iconName = "circle.grid.3x3"
-            }
-            content.image = UIImage(systemName: iconName)
+            content.image = UIImage(systemName: place.category.symbolName)
             content.imageProperties.tintColor = Constants.Colors.primary
             
             cell.contentConfiguration = content
@@ -240,7 +248,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         guard tableView == searchResultsTableView, isSearching else { return nil }
         switch SearchSection(rawValue: section) {
-        case .places: return nil // place rows moved to the map + its list
+        case .places: return searchPlan.placeRows == 0 ? nil : searchPlan.placesHeader
         case .suggested: return visibleSuggestedPlaces.isEmpty ? nil : "SUGGESTED NEARBY"
         case .people: return searchedUsers.isEmpty ? nil : "PEOPLE"
         case .none: return nil
@@ -250,7 +258,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
         guard tableView == searchResultsTableView, isSearching else { return 0 }
         switch SearchSection(rawValue: section) {
-        case .places: return 0 // place rows moved to the map + its list
+        case .places: return searchPlan.placeRows == 0 ? 0 : 28
         case .suggested: return visibleSuggestedPlaces.isEmpty ? 0 : 28
         case .people: return searchedUsers.isEmpty ? 0 : 28
         case .none: return 0
@@ -308,6 +316,10 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             isSearchScopeDropdownOpen = false
         } else if tableView == searchResultsTableView {
             switch SearchSection(rawValue: indexPath.section) {
+            case .places:
+                let places = visibleFilteredPlaces
+                guard indexPath.row < places.count else { return }
+                presentDetailForPlace(places[indexPath.row])
             case .people:
                 guard indexPath.row < searchedUsers.count else { return }
                 selectSearchedUser(searchedUsers[indexPath.row])
