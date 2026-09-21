@@ -2073,12 +2073,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// Deep link / push: switch to the Widgets segment and optionally open one widget's page.
     /// - Parameter postcardOrderId: a printed-postcard order to open on the
     ///   postcard page (from its "printing" push) instead of a blank composer.
-    func showWidgetsTab(openingWidget widgetId: String?, postcardOrderId: String? = nil) {
+    func showWidgetsTab(openingWidget widgetId: String?, postcardOrderId: String? = nil, quoteId: String? = nil) {
         contentSegmentedControl.selectedSegmentIndex = HomeContentSegment.widgets.rawValue
         showContentTab(.widgets)
         scrollView.scrollRectToVisible(activityFeedSection.frame, animated: false)
         if let widgetId {
-            widgetsTab.open(widgetId: widgetId, postcardOrderId: postcardOrderId)
+            widgetsTab.open(widgetId: widgetId, postcardOrderId: postcardOrderId, quoteId: quoteId)
         }
     }
 

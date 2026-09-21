@@ -66,6 +66,7 @@ router.get('/fridgemail/cards', fridgeMail.listCards);
 // from the Lock Screen, silence gets reported.
 // Daily quote: the topics, the hour, and whether it also goes to email.
 router.get('/quotes/settings', quotes.getSettings);
+router.get('/quotes/feed', quotes.getFeed);
 router.put('/quotes/settings', quotes.updateSettings);
 
 router.get('/care/plans', care.listPlans);

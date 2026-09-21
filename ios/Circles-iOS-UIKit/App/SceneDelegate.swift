@@ -1334,6 +1334,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case .allPlacesMap: self.navigateToAllPlacesMap()
             case .createWallet: self.navigateToCreateWallet()
             case .widget(let id): self.navigateToWidget(id: id)
+            case .quote(let id): self.navigateToWidget(id: "quotes", quoteId: id)
             case .postcardOrder(let id): self.navigateToWidget(id: "postcard", postcardOrderId: id)
             case .openPath(let path):
                 if let destination = DeepLinkRouter().openPathDestination(path) { self.route(destination) }
@@ -2093,10 +2094,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// Engagement-tip deep link: open the Piggy Bank wallet-create coach-mark.
     /// Home → Widgets segment → one widget's page (e.g. the postcard
     /// composer from the app icon's "Send a Postcard" quick action).
-    private func navigateToWidget(id: String, postcardOrderId: String? = nil) {
+    private func navigateToWidget(id: String, postcardOrderId: String? = nil, quoteId: String? = nil) {
         guard AuthService.shared.isLoggedIn,
               let tabBar = window?.rootViewController as? CirclesTabBarController else {
-            UserDefaults.standard.set(postcardOrderId.map { "postcard-order:\($0)" } ?? "widget:\(id)", forKey: "pendingDeepLink")
+            let pending = postcardOrderId.map { "postcard-order:\($0)" }
+                ?? quoteId.map { "quote:\($0)" }
+                ?? "widget:\(id)"
+            UserDefaults.standard.set(pending, forKey: "pendingDeepLink")
             return
         }
         tabBar.presentedViewController?.dismiss(animated: false)
@@ -2104,7 +2108,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let nav = tabBar.viewControllers?.first as? UINavigationController,
               let home = nav.viewControllers.first as? CirclesHomeViewController else { return }
         nav.popToRootViewController(animated: false)
-        home.showWidgetsTab(openingWidget: id, postcardOrderId: postcardOrderId)
+        home.showWidgetsTab(openingWidget: id, postcardOrderId: postcardOrderId, quoteId: quoteId)
     }
 
     private func navigateToCreateWallet() {

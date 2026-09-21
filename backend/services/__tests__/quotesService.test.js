@@ -203,3 +203,51 @@ describe('read bounds (B1b)', () => {
     spy.mockRestore();
   });
 });
+
+// The reel behind a tapped quote push: the quote they were sent, then the
+// ones most like it.
+describe('quote reel', () => {
+  const CAT = [
+    { id: 'a', text: 'A', categories: ['calm', 'resilience'] },
+    { id: 'b', text: 'B', categories: ['calm'] },
+    { id: 'c', text: 'C', categories: ['humor'] },
+    { id: 'd', text: 'D', categories: ['resilience', 'calm'] }
+  ];
+
+  it('opens on the tapped quote and orders the rest by how much they overlap', () => {
+    // d shares both categories with a, b shares one, c shares none.
+    expect(quotes.rankFeed(CAT, 'a').map((q) => q.id)).toEqual(['a', 'd', 'b', 'c']);
+  });
+
+  it('is stable between opens, so a re-tap is not a reshuffle', () => {
+    expect(quotes.rankFeed(CAT, 'a').map((q) => q.id)).toEqual(quotes.rankFeed(CAT, 'a').map((q) => q.id));
+  });
+
+  it('still returns a readable reel when the quote is gone or unnamed', () => {
+    // A quote retired since the push went out must not be an error — the
+    // person tapped a notification and deserves something.
+    expect(quotes.rankFeed(CAT, 'retired').map((q) => q.id)).toEqual(['a', 'b', 'c', 'd']);
+    expect(quotes.rankFeed(CAT, null)).toHaveLength(4);
+  });
+
+  it('reads only enabled quotes and carries context through', async () => {
+    catalog().clear();
+    await catalogSeed([
+      { id: 'q1', text: 'One', author: 'A', categories: ['calm'], context: 'why it lands', enabled: true },
+      { id: 'q2', text: 'Two', categories: ['calm'], enabled: true },
+      { id: 'off', text: 'Hidden', categories: ['calm'], enabled: false }
+    ]);
+    const feed = await quotes.feed('q1');
+    expect(feed.start).toBe('q1');
+    expect(feed.quotes.map((q) => q.id)).toEqual(['q1', 'q2']);
+    expect(feed.quotes[0].context).toBe('why it lands');
+    // Absent context is null, never undefined — the client decodes it.
+    expect(feed.quotes[1].context).toBeNull();
+  });
+
+  async function catalogSeed(rows) {
+    for (const row of rows) {
+      await mockDb.collection(COLLECTIONS.QUOTES).doc(row.id).set(row);
+    }
+  }
+});

@@ -89,3 +89,30 @@ struct NotificationTapRouterTests {
         #expect(route(["type": "mystery"]) == nil)
     }
 }
+
+/// The quote of the day. The push has carried `quoteId` since it shipped and
+/// nothing on the client read it — a tap went nowhere.
+@Suite("Daily quote taps")
+struct DailyQuoteTapTests {
+    @Test func aQuoteTapOpensThatQuote() {
+        #expect(NotificationTapRouter.destination(for: ["type": "daily_quote", "quoteId": "rumi-wound"])
+                == .dailyQuote(id: "rumi-wound"))
+    }
+
+    @Test func nestedPayloadsAreReadTheSameWay() {
+        #expect(NotificationTapRouter.destination(for: ["data": ["type": "daily_quote", "quoteId": "ashe-start"]])
+                == .dailyQuote(id: "ashe-start"))
+    }
+
+    @Test func withoutAnIdItStillOpensTheWidget() {
+        // An older server, or a quote retired since — the page is better than
+        // nowhere, which is where these taps used to go.
+        #expect(NotificationTapRouter.destination(for: ["type": "daily_quote"]) == .homeWidget(id: "quotes"))
+    }
+
+    @Test func theColdStartShapeRoundTrips() {
+        // A push tap is the cold-start case: killed app, no tab bar yet, so
+        // the id rides through UserDefaults as "quote:<id>".
+        #expect(PendingLinkParser.parse("quote:rumi-wound") == .quote(id: "rumi-wound"))
+    }
+}

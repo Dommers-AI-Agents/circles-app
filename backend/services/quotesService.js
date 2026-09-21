@@ -138,7 +138,10 @@ class QuotesService {
     const sent = docs.filter((d) => d.exists).map((d) => d.data()).sort((a, b) => (a.sentAt < b.sentAt ? 1 : -1));
     if (!sent.length) return null;
     const d = sent[0];
-    return { text: d.text, author: d.author || null, category: d.category || null, sentAt: d.sentAt || null, slot: d.slot || null };
+    // `id` lets the card open the reel on the quote they were actually sent,
+    // the same place the push lands.
+    return { id: d.quoteId || null, text: d.text, author: d.author || null, category: d.category || null,
+             sentAt: d.sentAt || null, slot: d.slot || null };
   }
 
   // MARK: - Catalog
@@ -156,6 +159,53 @@ class QuotesService {
     // Falling back to the whole catalog beats sending nothing because a
     // category happens to be empty today.
     return matching.length ? matching : all;
+  }
+
+  /// The reel behind a tapped "quote of the day" push: the quote they were
+  /// sent, then the ones most like it, then everything else.
+  ///
+  /// "Most like it" = how many categories overlap, so a quote filed under both
+  /// calm and resilience ranks above one sharing only calm. Ties break on id
+  /// so the order is stable between opens — a feed that reshuffles under you
+  /// on a re-tap reads as broken.
+  ///
+  /// The whole enabled catalog is read and ranked in memory. That is the right
+  /// shape at this size (tens of quotes): an `array-contains-any` query plus a
+  /// cursor would need a composite index and still could not order by overlap.
+  /// Revisit past a few thousand.
+  rankFeed(all, startId) {
+    const enabled = (all || []).filter((q) => q && q.id);
+    const start = enabled.find((q) => q.id === startId) || null;
+    const startCategories = new Set(start ? (start.categories || []) : []);
+    const rest = enabled.filter((q) => q.id !== (start && start.id));
+    const overlap = (q) => (q.categories || []).filter((c) => startCategories.has(c)).length;
+    rest.sort((a, b) => {
+      const diff = overlap(b) - overlap(a);
+      return diff !== 0 ? diff : String(a.id).localeCompare(String(b.id));
+    });
+    return start ? [start, ...rest] : rest;
+  }
+
+  /// `startId` missing or unknown (a quote retired since the push) still
+  /// returns a readable reel rather than an error — the person tapped a
+  /// notification and deserves something.
+  async feed(startId = null, { limit = 40 } = {}) {
+    const all = await this.loadEnabledQuotes();
+    const ranked = this.rankFeed(all, startId);
+    const capped = ranked.slice(0, Math.max(1, Math.min(limit, 100)));
+    return {
+      start: startId && ranked.length && ranked[0].id === startId ? startId : null,
+      categories: CATEGORIES,
+      quotes: capped.map((q) => ({
+        id: q.id,
+        text: q.text,
+        author: q.author || null,
+        categories: q.categories || [],
+        // Optional background on the quote or who said it. Absent on most
+        // rows; the reel simply doesn't show the line then.
+        context: q.context || null
+      }))
+    };
   }
 
   // Least-recently-sent wins, so a small catalog still feels varied and a

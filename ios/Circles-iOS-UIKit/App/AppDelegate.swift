@@ -614,6 +614,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case .postcardOrder(let id):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "postcard-order:\(id)",
                                 object: "postcard", userInfo: ["orderId": id])
+        case .dailyQuote(let id):
+            postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "quote:\(id)",
+                                object: "quotes", userInfo: ["quoteId": id])
         case .suggestions(let placeId, let suggestionId):
             var info: [String: Any] = [:]
             if let placeId { info["placeId"] = placeId }

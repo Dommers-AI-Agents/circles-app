@@ -18,6 +18,14 @@ exports.updateSettings = async (req, res) => {
   catch (e) { fail(res, e); }
 };
 
+// The reel opened by tapping a quote push: that quote, then the ones most
+// like it. `start` is the quote id from the notification payload.
+exports.getFeed = async (req, res) => {
+  const start = req.query && req.query.start ? String(req.query.start) : null;
+  const limit = req.query && req.query.limit ? parseInt(req.query.limit, 10) : undefined;
+  try { res.json({ success: true, ...(await quotes.feed(start, { limit })) }); } catch (e) { fail(res, e); }
+};
+
 // Cloud Scheduler, hourly. Each user is gated on their own local clock.
 exports.runDue = async (req, res) => {
   try {
