@@ -1074,7 +1074,7 @@ class PlaceService {
         )
     }
     
-    func updatePlace(id: String, name: String? = nil, description: String? = nil, address: String? = nil, category: PlaceCategory? = nil, customCategory: String? = nil, privacy: PlacePrivacy? = nil, website: String? = nil, phone: String? = nil, tags: [String]? = nil, privateNotes: String? = nil, userRating: Int? = nil,
+    func updatePlace(id: String, name: String? = nil, description: String? = nil, address: String? = nil, category: PlaceCategory? = nil, customCategory: String? = nil, privacy: PlacePrivacy? = nil, audienceListId: String? = nil, website: String? = nil, phone: String? = nil, tags: [String]? = nil, privateNotes: String? = nil, userRating: Int? = nil,
                      ratingCheckInId: String? = nil, addPhotos: [Data]? = nil, removePhotoUrls: [String]? = nil, onPhotoNudgeEligible: ((Bool) -> Void)? = nil, completion: @escaping (Result<Place, Error>) -> Void) {
         
         var locationCoordinate: CLLocationCoordinate2D?
@@ -1183,6 +1183,9 @@ class PlaceService {
             
             if let privacy = privacy {
                 body["privacy"] = privacy.rawValue
+                // Sent alongside the tier so moving off Inner Circle clears
+                // the list in the same write.
+                body["audienceListId"] = audienceListId ?? NSNull()
             }
             
             if let website = website {

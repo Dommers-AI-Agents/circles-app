@@ -198,7 +198,7 @@ class CircleService {
     
     // MARK: - Create, Update, Delete
     
-    func createCircle(name: String, description: String?, privacy: PrivacyLevel, category: CircleCategory, customCategoryId: String? = nil, location: String? = nil, tags: [String]? = nil, coverImage: Data? = nil, completion: @escaping (Result<Circle, Error>) -> Void) {
+    func createCircle(name: String, description: String?, privacy: PrivacyLevel, audienceListId: String? = nil, category: CircleCategory, customCategoryId: String? = nil, location: String? = nil, tags: [String]? = nil, coverImage: Data? = nil, completion: @escaping (Result<Circle, Error>) -> Void) {
         
         // First check if we need to upload an image
         if let imageData = coverImage {
@@ -206,22 +206,24 @@ class CircleService {
                 switch result {
                 case .success(let imageUrl):
                     // Now create the circle with the image URL
-                    self?.performCreateCircle(name: name, description: description, privacy: privacy, category: category, customCategoryId: customCategoryId, location: location, tags: tags, coverImageUrl: imageUrl, completion: completion)
+                    self?.performCreateCircle(name: name, description: description, privacy: privacy, audienceListId: audienceListId, category: category, customCategoryId: customCategoryId, location: location, tags: tags, coverImageUrl: imageUrl, completion: completion)
                 case .failure(let error):
                     completion(.failure(error))
                 }
             }
         } else {
             // Create circle without image
-            performCreateCircle(name: name, description: description, privacy: privacy, category: category, customCategoryId: customCategoryId, location: location, tags: tags, coverImageUrl: nil, completion: completion)
+            performCreateCircle(name: name, description: description, privacy: privacy, audienceListId: audienceListId, category: category, customCategoryId: customCategoryId, location: location, tags: tags, coverImageUrl: nil, completion: completion)
         }
     }
     
-    private func performCreateCircle(name: String, description: String?, privacy: PrivacyLevel, category: CircleCategory, customCategoryId: String?, location: String?, tags: [String]?, coverImageUrl: String?, completion: @escaping (Result<Circle, Error>) -> Void) {
+    private func performCreateCircle(name: String, description: String?, privacy: PrivacyLevel, audienceListId: String?, category: CircleCategory, customCategoryId: String?, location: String?, tags: [String]?, coverImageUrl: String?, completion: @escaping (Result<Circle, Error>) -> Void) {
         
         var body: [String: Any] = [
             "name": name,
             "privacy": privacy.rawValue,
+            // Always sent, so clearing the list is as saveable as setting it.
+            "audienceListId": audienceListId ?? NSNull(),
             "category": category.rawValue
         ]
         
@@ -263,7 +265,7 @@ class CircleService {
         )
     }
     
-    func updateCircle(id: String, name: String? = nil, description: String? = nil, privacy: PrivacyLevel? = nil, category: CircleCategory? = nil, customCategoryId: String? = nil, location: String? = nil, tags: [String]? = nil, showOnMap: Bool? = nil, coverImage: Data? = nil, completion: @escaping (Result<Circle, Error>) -> Void) {
+    func updateCircle(id: String, name: String? = nil, description: String? = nil, privacy: PrivacyLevel? = nil, audienceListId: String? = nil, category: CircleCategory? = nil, customCategoryId: String? = nil, location: String? = nil, tags: [String]? = nil, showOnMap: Bool? = nil, coverImage: Data? = nil, completion: @escaping (Result<Circle, Error>) -> Void) {
 
         // First check if we need to upload an image
         if let imageData = coverImage {
@@ -271,18 +273,18 @@ class CircleService {
                 switch result {
                 case .success(let imageUrl):
                     // Now update the circle with the image URL
-                    self?.performUpdateCircle(id: id, name: name, description: description, privacy: privacy, category: category, customCategoryId: customCategoryId, location: location, tags: tags, showOnMap: showOnMap, coverImageUrl: imageUrl, completion: completion)
+                    self?.performUpdateCircle(id: id, name: name, description: description, privacy: privacy, audienceListId: audienceListId, category: category, customCategoryId: customCategoryId, location: location, tags: tags, showOnMap: showOnMap, coverImageUrl: imageUrl, completion: completion)
                 case .failure(let error):
                     completion(.failure(error))
                 }
             }
         } else {
             // Update circle without changing image
-            performUpdateCircle(id: id, name: name, description: description, privacy: privacy, category: category, customCategoryId: customCategoryId, location: location, tags: tags, showOnMap: showOnMap, coverImageUrl: nil, completion: completion)
+            performUpdateCircle(id: id, name: name, description: description, privacy: privacy, audienceListId: audienceListId, category: category, customCategoryId: customCategoryId, location: location, tags: tags, showOnMap: showOnMap, coverImageUrl: nil, completion: completion)
         }
     }
 
-    private func performUpdateCircle(id: String, name: String?, description: String?, privacy: PrivacyLevel?, category: CircleCategory?, customCategoryId: String?, location: String?, tags: [String]?, showOnMap: Bool? = nil, coverImageUrl: String?, completion: @escaping (Result<Circle, Error>) -> Void) {
+    private func performUpdateCircle(id: String, name: String?, description: String?, privacy: PrivacyLevel?, audienceListId: String?, category: CircleCategory?, customCategoryId: String?, location: String?, tags: [String]?, showOnMap: Bool? = nil, coverImageUrl: String?, completion: @escaping (Result<Circle, Error>) -> Void) {
         
         var body: [String: Any] = [:]
         
@@ -296,6 +298,7 @@ class CircleService {
         
         if let privacy = privacy {
             body["privacy"] = privacy.rawValue
+            body["audienceListId"] = audienceListId ?? NSNull()
         }
 
         if let showOnMap = showOnMap {

@@ -242,7 +242,7 @@ class EditPlaceViewController: BaseViewController {
     private lazy var privacyPicker: PrivacyPickerButton = {
         let picker = PrivacyPickerButton(entity: .place, selected: .inheritCircle)
         picker.onEditInnerCircle = { [weak self] in
-            self?.navigationController?.pushViewController(InnerCircleListViewController(), animated: true)
+            self?.navigationController?.pushViewController(InnerCircleListsViewController(), animated: true)
         }
         return picker
     }()
@@ -789,7 +789,7 @@ class EditPlaceViewController: BaseViewController {
         
         // Set privacy. A value this build doesn't recognise disables the
         // control instead of showing a narrower one we'd then save back.
-        privacyPicker.select(place.privacy.option)
+        privacyPicker.select(place.privacy.option, listId: place.audienceListId)
         
         // The only note on a save is the private one; shared thoughts are comments
         notesTextView.text = place.privateNotes
@@ -907,6 +907,7 @@ class EditPlaceViewController: BaseViewController {
             category: category,
             customCategory: customCategory,
             privacy: privacy,
+            audienceListId: privacyPicker.selectedListId,
             website: website,
             phone: phone,
             tags: tags,
@@ -1120,6 +1121,7 @@ class EditPlaceViewController: BaseViewController {
         category: PlaceCategory,
         customCategory: String?,
         privacy: PlacePrivacy,
+        audienceListId: String?,
         website: String?,
         phone: String?,
         tags: [String]?,
@@ -1138,6 +1140,7 @@ class EditPlaceViewController: BaseViewController {
             category: category,
             customCategory: customCategory,
             privacy: privacy,
+            audienceListId: audienceListId,
             website: website,
             phone: phone,
             tags: tags,

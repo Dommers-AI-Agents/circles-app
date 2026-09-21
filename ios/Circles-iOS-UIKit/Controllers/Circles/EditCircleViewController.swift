@@ -130,7 +130,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
     private lazy var privacyPicker: PrivacyPickerButton = {
         let picker = PrivacyPickerButton(entity: .circle, selected: .tier(.public))
         picker.onEditInnerCircle = { [weak self] in
-            self?.navigationController?.pushViewController(InnerCircleListViewController(), animated: true)
+            self?.navigationController?.pushViewController(InnerCircleListsViewController(), animated: true)
         }
         return picker
     }()
@@ -513,7 +513,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         
         // Set privacy. A tier this build doesn't recognise disables the picker
         // rather than showing a narrower one we'd then save back over it.
-        privacyPicker.select(circle.privacy.tier.map(PrivacyOption.tier))
+        privacyPicker.select(circle.privacy.tier.map(PrivacyOption.tier), listId: circle.audienceListId)
 
         // Set map visibility (missing = shown)
         showOnMapSwitch.isOn = circle.showOnMap ?? true
@@ -709,6 +709,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                 name: name,
                 description: description,
                 privacy: privacy,
+                audienceListId: privacyPicker.selectedListId,
                 category: category,
                 customCategoryId: selectedCategory?.customCategoryId,
                 location: location,

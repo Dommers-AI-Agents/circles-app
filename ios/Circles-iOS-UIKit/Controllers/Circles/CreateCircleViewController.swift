@@ -146,7 +146,7 @@ class CreateCircleViewController: UIViewController {
     private lazy var privacyPicker: PrivacyPickerButton = {
         let picker = PrivacyPickerButton(entity: .circle, selected: .tier(.public))
         picker.onEditInnerCircle = { [weak self] in
-            self?.navigationController?.pushViewController(InnerCircleListViewController(), animated: true)
+            self?.navigationController?.pushViewController(InnerCircleListsViewController(), animated: true)
         }
         return picker
     }()
@@ -520,6 +520,7 @@ class CreateCircleViewController: UIViewController {
         // there is no stored value to be locked out of — so the fallback is
         // only a belt for the impossible case.
         let privacy = privacyPicker.selectedCirclePrivacy ?? .public
+        let audienceListId = privacyPicker.selectedListId
         
         // Get optional fields
         let description = descriptionTextView.text?.isEmpty == false ? descriptionTextView.text : nil
@@ -636,6 +637,7 @@ class CreateCircleViewController: UIViewController {
                 name: name,
                 description: description,
                 privacy: privacy,
+                audienceListId: audienceListId,
                 category: category,
                 customCategoryId: selectedCategory?.customCategoryId,
                 location: location,

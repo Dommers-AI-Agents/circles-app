@@ -186,7 +186,7 @@ extension CirclesHomeViewController {
         case .widget(let id):
             showWidgetsTab(openingWidget: id)
         case .innerCircle:
-            navigationController?.pushViewController(InnerCircleListViewController(), animated: true)
+            navigationController?.pushViewController(InnerCircleListsViewController(), animated: true)
         case .unknown(let target):
             Logger.debug("🃏 home card target not routable in this build: \(target)")
         }

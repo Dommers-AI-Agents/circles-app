@@ -1,25 +1,37 @@
 import UIKit
 
-/// Manage the account-level Inner Circle list.
+/// Who is on one Inner Circle list.
 ///
-/// One list, reused by every circle, place, moment and check-in set to that
-/// tier. Editing it here changes what those people can see everywhere, at once
-/// and retroactively — the server judges access against the current list on
-/// every read, so taking someone off takes back what they could already see.
-/// The screen says so, because that is not obvious from a list of names.
+/// A list is reused by every circle, place, moment and check-in set to it.
+/// Editing it here changes what those people can see everywhere, at once and
+/// retroactively — the server judges access against the current list on every
+/// read, so taking someone off takes back what they could already see. The
+/// screen says so, because that is not obvious from a list of names.
 class InnerCircleListViewController: BaseViewController {
 
     override var showsLoadingIndicator: Bool { true }
     override var enablesPullToRefresh: Bool { true }
 
+    /// Which list. Nil edits the first one, which is what the screens that
+    /// predate naming ask for.
+    private let listId: String?
+    private var listName: String
     private var members: [User] = []
     private var maxSize: Int = InnerCircleList.empty.maxSize
+
+    init(list: InnerCircleNamedList? = nil) {
+        self.listId = list?.id
+        self.listName = list?.name ?? "Inner Circle"
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     private let tableView = UITableView(frame: .zero, style: .insetGrouped)
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Inner Circle"
+        title = listName
         view.backgroundColor = Constants.Colors.background
 
         tableView.dataSource = self
@@ -35,12 +47,12 @@ class InnerCircleListViewController: BaseViewController {
     }
 
     override func loadData(completion: (() -> Void)? = nil) {
-        InnerCircleService.shared.getList { [weak self] result in
+        InnerCircleService.shared.getLists { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 switch result {
                 case .success(let list):
-                    self.members = list.users
+                    self.members = self.members(in: list)
                     self.maxSize = list.maxSize
                     self.tableView.reloadData()
                 case .failure(let error):
@@ -55,29 +67,42 @@ class InnerCircleListViewController: BaseViewController {
 
     @objc private func addPeopleTapped() {
         let picker = TagPeoplePickerViewController()
-        picker.title = "Add to Inner Circle"
+        picker.title = "Add to \(listName)"
         // Seeded with the current members so the picker is the whole list, not
         // an append-only box — people expect to be able to uncheck here too.
         picker.initialSelection = members.map {
             TaggedMomentUser(id: $0.id, displayName: $0.displayName, profilePicture: $0.profilePicture)
         }
         picker.selectionLimit = maxSize
-        picker.limitMessage = "An Inner Circle can hold up to \(maxSize) people"
+        picker.limitMessage = "A list can hold up to \(maxSize) people"
         picker.onDone = { [weak self] chosen in
             self?.replaceList(with: chosen.map { $0.id })
         }
         present(UINavigationController(rootViewController: picker), animated: true)
     }
 
+    /// The people on the list this screen is showing.
+    private func members(in list: InnerCircleList) -> [User] {
+        guard let listId else { return list.users }
+        return (list.lists ?? []).first { $0.id == listId }?.users ?? []
+    }
+
     private func replaceList(with userIds: [String]) {
         let loading = AlertPresenter.showLoading(message: "Saving…", from: self)
-        InnerCircleService.shared.replace(userIds: userIds) { [weak self] result in
+        let save: (@escaping (Result<InnerCircleList, Error>) -> Void) -> Void = { [listId] done in
+            if let listId {
+                InnerCircleService.shared.updateList(id: listId, userIds: userIds, completion: done)
+            } else {
+                InnerCircleService.shared.replace(userIds: userIds, completion: done)
+            }
+        }
+        save { [weak self] result in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) {
                     guard let self = self else { return }
                     switch result {
                     case .success(let list):
-                        self.members = list.users
+                        self.members = self.members(in: list)
                         self.maxSize = list.maxSize
                         self.tableView.reloadData()
                     case .failure(let error):
@@ -93,7 +118,7 @@ class InnerCircleListViewController: BaseViewController {
     private func confirmRemove(_ person: User) {
         showConfirmation(
             title: "Remove \(person.displayName)?",
-            message: "They'll stop seeing anything you've set to Inner Circle, including things they can see now.",
+            message: "They'll stop seeing anything you've set to \(listName), including things they can see now.",
             confirmTitle: "Remove"
         ) { [weak self] in
             self?.remove(person)
@@ -101,12 +126,18 @@ class InnerCircleListViewController: BaseViewController {
     }
 
     private func remove(_ person: User) {
+        // Off THIS list. Removing them everywhere is what ending the
+        // connection does; here they may well belong on another list.
+        if listId != nil {
+            replaceList(with: members.map { $0.id }.filter { $0 != person.id })
+            return
+        }
         InnerCircleService.shared.remove(userId: person.id) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 switch result {
                 case .success(let list):
-                    self.members = list.users
+                    self.members = self.members(in: list)
                     self.tableView.reloadData()
                 case .failure(let error):
                     self.showError(error)

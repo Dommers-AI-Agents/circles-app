@@ -19,6 +19,8 @@ final class PrivacyPickerButton: UIView {
     var onEditInnerCircle: (() -> Void)?
 
     private(set) var selected: PrivacyOption
+    /// The named Inner Circle list behind the selection, when one was chosen.
+    private(set) var selectedListId: String?
     private let options: [PrivacyOption]
 
     private let button = UIButton.menuFieldButton()
@@ -46,6 +48,12 @@ final class PrivacyPickerButton: UIView {
     /// Point the picker at a stored value. An unrecognised tier locks the
     /// control rather than silently showing — and then saving — something
     /// different from what is stored.
+    /// Point the picker at a stored value that named a list.
+    func select(_ option: PrivacyOption?, listId: String?) {
+        selectedListId = listId
+        select(option)
+    }
+
     func select(_ option: PrivacyOption?) {
         guard let option = option, options.contains(option) else {
             isLocked = true
@@ -86,31 +94,69 @@ final class PrivacyPickerButton: UIView {
     }
 
     @objc private func refresh() {
-        button.menu = UIMenu(children: options.map { option in
-            UIAction(title: option.title,
-                     subtitle: option.subtitle,
-                     image: UIImage(systemName: option.systemIconName),
-                     state: option == selected ? .on : .off) { [weak self] _ in
-                guard let self = self else { return }
-                self.selected = option
-                self.refresh()
-                self.onChange?(option)
-            }
-        })
+        button.menu = UIMenu(children: options.flatMap(entries(for:)))
 
         var config = button.configuration
-        config?.title = selected.title
+        config?.title = currentTitle
         config?.image = UIImage(systemName: selected.systemIconName)
         config?.imagePadding = 8
         button.configuration = config
 
         if !isLocked && selected == .tier(.innerCircle) {
             captionButton.isHidden = false
-            captionButton.setTitle(InnerCircleManager.shared.pickerCaption, for: .normal)
+            captionButton.setTitle(captionText, for: .normal)
         } else {
             captionButton.isHidden = true
             captionButton.setTitle(nil, for: .normal)
         }
+    }
+
+    /// One entry per option, except Inner Circle, which becomes one entry per
+    /// named list — "which list" being the only useful form of the question
+    /// once there is more than one.
+    private func entries(for option: PrivacyOption) -> [UIMenuElement] {
+        guard option == .tier(.innerCircle) else { return [action(option, listId: nil, title: option.title, subtitle: option.subtitle)] }
+        let lists = InnerCircleManager.shared.usableLists
+        guard !lists.isEmpty else { return [action(option, listId: nil, title: option.title, subtitle: option.subtitle)] }
+        var children = lists.map { list in
+            action(option, listId: list.id, title: list.name,
+                   subtitle: list.userIds.count == 1 ? "Inner Circle · 1 person" : "Inner Circle · \(list.userIds.count) people")
+        }
+        // Only offered when it is what the item already says, so nobody picks
+        // a vaguer audience by accident, and nothing silently narrows either.
+        if selected == .tier(.innerCircle) && selectedListId == nil {
+            children.append(action(option, listId: nil, title: "Anyone on my lists", subtitle: option.subtitle))
+        }
+        return children
+    }
+
+    private func action(_ option: PrivacyOption, listId: String?, title: String, subtitle: String) -> UIAction {
+        UIAction(title: title,
+                 subtitle: subtitle,
+                 image: UIImage(systemName: option.systemIconName),
+                 state: option == selected && listId == selectedListId ? .on : .off) { [weak self] _ in
+            guard let self = self else { return }
+            self.selected = option
+            self.selectedListId = listId
+            self.refresh()
+            self.onChange?(option)
+        }
+    }
+
+    private var currentList: InnerCircleNamedList? {
+        guard let selectedListId else { return nil }
+        return InnerCircleManager.shared.usableLists.first { $0.id == selectedListId }
+    }
+
+    private var currentTitle: String {
+        if selected == .tier(.innerCircle), let name = currentList?.name { return name }
+        return selected.title
+    }
+
+    private var captionText: String {
+        guard let list = currentList else { return InnerCircleManager.shared.pickerCaption }
+        let count = list.userIds.count
+        return "\(count) \(count == 1 ? "person" : "people") on \(list.name) · Edit lists"
     }
 
     /// The circle value for the current selection. Circles can't be set to

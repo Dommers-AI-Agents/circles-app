@@ -849,7 +849,7 @@ extension SettingsViewController {
                 case .profileVisibility:
                     showProfileVisibility()
                 case .innerCircle:
-                    navigationController?.pushViewController(InnerCircleListViewController(), animated: true)
+                    navigationController?.pushViewController(InnerCircleListsViewController(), animated: true)
                 }
             }
             
