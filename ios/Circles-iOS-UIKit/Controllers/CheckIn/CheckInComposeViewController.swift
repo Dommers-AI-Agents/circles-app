@@ -119,13 +119,16 @@ final class CheckInComposeViewController: BaseViewController {
         return toggle
     }()
 
-    /// Narrows the check-in to the Inner Circle list. The server treats the
-    /// tier as a ceiling, so this holds even with "Show in activity feed" on —
-    /// the feed switch decides where it appears, not who may see it.
-    private lazy var innerCircleSwitch: UISwitch = {
-        let toggle = UISwitch()
-        toggle.onTintColor = Constants.Colors.primary
-        return toggle
+    /// Which audience this check-in is for: everyone you're connected with,
+    /// or one of your named Inner Circle lists. A list is a ceiling the
+    /// server enforces, so it holds even with "Show in activity feed" on —
+    /// that switch decides where it appears, not who may see it.
+    private var selectedListId: String?
+    private var audienceSection: UIView?
+    private lazy var audienceButton: UIButton = {
+        let button = UIButton.menuFieldButton()
+        button.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        return button
     }()
 
     private lazy var checkInButton: UIButton = {
@@ -176,10 +179,15 @@ final class CheckInComposeViewController: BaseViewController {
         contentStack.addArrangedSubview(notifyButton)
         contentStack.addArrangedSubview(section("How long? (optional)", durationControl))
         contentStack.addArrangedSubview(switchRow("Show in activity feed", feedSwitch, info: #selector(feedInfoTapped)))
-        // Only worth offering once there is a list; with nobody on it the tier
-        // is indistinguishable from the private button below.
-        if InnerCircleManager.shared.memberCount > 0 {
-            contentStack.addArrangedSubview(switchRow("Inner Circle only", innerCircleSwitch))
+        // Only worth offering once there is a list with someone on it; an
+        // empty one is indistinguishable from the private button below. The
+        // row is built either way and hidden until the lists arrive, because
+        // they may still be loading when this screen opens.
+        audienceSection = section("Who's it for?", audienceButton)
+        contentStack.addArrangedSubview(audienceSection!)
+        refreshAudienceMenu()
+        InnerCircleManager.shared.primeIfNeeded { [weak self] in
+            DispatchQueue.main.async { self?.refreshAudienceMenu() }
         }
         contentStack.setCustomSpacing(8, after: noteTextView)
 
@@ -239,6 +247,35 @@ final class CheckInComposeViewController: BaseViewController {
         return text == notePlaceholder ? "" : text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// One entry for everyone, then one per named list. A menu rather than a
+    /// switch because there is no longer a single Inner Circle to be "only".
+    private func refreshAudienceMenu() {
+        let lists = InnerCircleManager.shared.usableLists
+        audienceSection?.isHidden = lists.isEmpty
+        // A list that went away (deleted, or everyone removed) must not stay
+        // selected: it would send an audience nobody is on.
+        if let id = selectedListId, !lists.contains(where: { $0.id == id }) { selectedListId = nil }
+        guard !lists.isEmpty else { return }
+        let everyone = UIAction(title: "Everyone in my circles",
+                                subtitle: "People you're connected with",
+                                state: selectedListId == nil ? .on : .off) { [weak self] _ in
+            self?.selectedListId = nil
+            self?.refreshAudienceMenu()
+        }
+        let listActions = lists.map { list in
+            UIAction(title: list.name,
+                     subtitle: list.userIds.count == 1 ? "1 person" : "\(list.userIds.count) people",
+                     state: selectedListId == list.id ? .on : .off) { [weak self] _ in
+                self?.selectedListId = list.id
+                self?.refreshAudienceMenu()
+            }
+        }
+        audienceButton.menu = UIMenu(children: [everyone] + listActions)
+        let name = lists.first { $0.id == selectedListId }?.name
+        audienceButton.setTitle("\(name ?? "Everyone in my circles")  ›", for: .normal)
+        audienceButton.setTitleColor(Constants.Colors.label, for: .normal)
+    }
+
     private func updateNotifyTitle() {
         let count = selectedGroups.count + selectedUsers.count
         let detail: String
@@ -288,7 +325,7 @@ final class CheckInComposeViewController: BaseViewController {
 
             Anyone you choose under "Notify people" sees it either way.
 
-            With "Inner Circle only" on, it stops at that list — turning this on can't widen it.
+            Pick one of your Inner Circle lists under "Who's it for?" and it stops there — turning this on can't widen it.
 
             Off, with nobody notified: it's yours alone, kept in your own history here.
             """,
@@ -310,8 +347,9 @@ final class CheckInComposeViewController: BaseViewController {
             // A note on a public check-in is also a comment on the place
             "postComment": isPrivate ? false : postOnPlaceSwitch.isOn
         ]
-        if !isPrivate && innerCircleSwitch.isOn {
+        if !isPrivate, let selectedListId {
             data["audience"] = "innerCircle"
+            data["audienceListId"] = selectedListId
         }
         if let rating = ratingPills.selectedRating { data["rating"] = rating }
         // Duration is optional: nothing picked = the server's two-hour default

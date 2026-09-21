@@ -20,6 +20,8 @@ final class InnerCircleManager {
     private(set) var hasLoaded = false
 
     var memberCount: Int { list.userIds.count }
+    /// The named lists worth offering as an audience (the ones with people on).
+    var usableLists: [InnerCircleNamedList] { list.usableLists }
     var members: [User] { list.users }
 
     func contains(userId: String) -> Bool { list.userIds.contains(userId) }

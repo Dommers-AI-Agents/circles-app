@@ -35,13 +35,6 @@ const hydrate = async (userIds) => {
     .map(doc => projectPublicUser(serializeDoc(doc)));
 };
 
-const respond = async (res, userIds) => {
-  res.status(200).json({
-    success: true,
-    data: { maxSize: MAX_INNER_CIRCLE, userIds, users: await hydrate(userIds) }
-  });
-};
-
 /**
  * Every list, each with its people hydrated. One read for all of them: the
  * lists overlap often enough that fetching per list would ask for the same
@@ -83,7 +76,7 @@ const handleError = (res, next, error, action) => {
 // @access  Private
 const getMyInnerCircle = async (req, res, next) => {
   try {
-    await respond(res, await getInnerCircle(req.user.uid));
+    await respondWithLists(res, await getInnerCircleLists(req.user.uid));
   } catch (error) {
     handleError(res, next, error, 'reading');
   }
@@ -98,7 +91,8 @@ const replaceMyInnerCircle = async (req, res, next) => {
     if (!Array.isArray(userIds)) {
       return res.status(400).json({ success: false, message: 'userIds must be an array' });
     }
-    await respond(res, await setInnerCircle(req.user.uid, userIds));
+    await setInnerCircle(req.user.uid, userIds);
+    await respondWithLists(res, await getInnerCircleLists(req.user.uid));
   } catch (error) {
     handleError(res, next, error, 'replacing');
   }
@@ -109,7 +103,8 @@ const replaceMyInnerCircle = async (req, res, next) => {
 // @access  Private
 const addMyInnerCircleMember = async (req, res, next) => {
   try {
-    await respond(res, await addToInnerCircle(req.user.uid, req.params.userId));
+    await addToInnerCircle(req.user.uid, req.params.userId);
+    await respondWithLists(res, await getInnerCircleLists(req.user.uid));
   } catch (error) {
     handleError(res, next, error, 'adding to');
   }
@@ -120,7 +115,8 @@ const addMyInnerCircleMember = async (req, res, next) => {
 // @access  Private
 const removeMyInnerCircleMember = async (req, res, next) => {
   try {
-    await respond(res, await removeFromInnerCircle(req.user.uid, req.params.userId));
+    await removeFromInnerCircle(req.user.uid, req.params.userId);
+    await respondWithLists(res, await getInnerCircleLists(req.user.uid));
   } catch (error) {
     handleError(res, next, error, 'removing from');
   }
