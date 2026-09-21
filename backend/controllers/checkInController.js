@@ -14,7 +14,14 @@ const {
 const { createActivity } = require('./activityController');
 const notificationService = require('../services/notificationService');
 const { isCheckInVisibleTo } = require('../services/checkInVisibility');
-const { getInnerCircleGrantorIds } = require('../utils/networkAccess');
+
+const { getInnerCircleGrantorLists } = require('../utils/networkAccess');
+/// Both halves of the Inner Circle question in one query: whose lists the
+/// viewer is on, and which of those lists.
+const innerCircleContext = async (userId) => {
+  const innerCircleLists = await getInnerCircleGrantorLists(userId);
+  return { innerCircleLists, innerCircleGrantors: new Set(innerCircleLists.keys()) };
+};
 const sseService = require('../services/sseService');
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
@@ -700,7 +707,7 @@ exports.getActiveCheckIns = async (req, res) => {
     // Filter check-ins based on visibility (owner / notified / group /
     // connection-with-feed; private check-ins are owner-only)
     const visibleCheckIns = [];
-    const ctx = { connectionIds, innerCircleGrantors: await getInnerCircleGrantorIds(userId), isInAnyGroup: isUserInAnyGroup };
+    const ctx = { connectionIds, ...(await innerCircleContext(userId)), isInAnyGroup: isUserInAnyGroup };
     for (const doc of checkInsQuery.docs) {
       if (await isCheckInVisibleTo(doc.data(), userId, ctx)) {
         visibleCheckIns.push(serializeDoc(doc));
@@ -915,7 +922,7 @@ exports.getCheckInsAtPlace = async (req, res) => {
     // Same visibility rule as the active feed — this used to return every
     // check-in at the place to any signed-in user
     const connectionIds = await acceptedConnectionIds(userId);
-    const ctx = { connectionIds, innerCircleGrantors: await getInnerCircleGrantorIds(userId), isInAnyGroup: isUserInAnyGroup };
+    const ctx = { connectionIds, ...(await innerCircleContext(userId)), isInAnyGroup: isUserInAnyGroup };
     const checkIns = [];
     for (const doc of checkInsQuery.docs) {
       if (await isCheckInVisibleTo(doc.data(), userId, ctx)) checkIns.push(serializeDoc(doc));

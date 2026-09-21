@@ -62,6 +62,56 @@ test('revokeMutualGrants cleans both lists and is safe when neither mentions the
   await expect(svc.revokeMutualGrants('owner', 'a')).resolves.toBeUndefined();
 });
 
+describe('named lists', () => {
+  test('a legacy list is presented as one named list and can be added to', async () => {
+    expect(await svc.getInnerCircleLists('owner')).toEqual([
+      { id: 'default', name: 'Inner Circle', userIds: ['a'] }
+    ]);
+    const lists = await svc.createInnerCircleList('owner', { name: '  Gym crew ', userIds: ['b'] });
+    expect(lists.map((l) => l.name)).toEqual(['Inner Circle', 'Gym crew']);
+    // The flat field is the index the reverse lookup reads: everyone, once.
+    expect(users().get('owner').innerCircle.sort()).toEqual(['a', 'b']);
+  });
+
+  test('a list can be renamed and re-peopled, and only connections may be on it', async () => {
+    const [created] = (await svc.createInnerCircleList('owner', { name: 'Gym', userIds: ['b'] })).slice(-1);
+    const lists = await svc.updateInnerCircleList('owner', created.id, { name: 'Gym crew', userIds: ['a', 'b'] });
+    expect(lists.find((l) => l.id === created.id)).toMatchObject({ name: 'Gym crew', userIds: ['a', 'b'] });
+    await expect(svc.updateInnerCircleList('owner', created.id, { userIds: ['stranger'] }))
+      .rejects.toMatchObject({ code: 'INNER_CIRCLE_NOT_CONNECTED' });
+    await expect(svc.updateInnerCircleList('owner', 'nope', { name: 'x' }))
+      .rejects.toMatchObject({ code: 'INNER_CIRCLE_NO_LIST' });
+    // Renaming alone leaves the members be.
+    const renamed = await svc.updateInnerCircleList('owner', created.id, { name: 'Gym' });
+    expect(renamed.find((l) => l.id === created.id).userIds).toEqual(['a', 'b']);
+  });
+
+  test('deleting a list takes its people out of the index unless another list has them', async () => {
+    const created = (await svc.createInnerCircleList('owner', { name: 'Gym', userIds: ['a', 'b'] })).slice(-1)[0];
+    expect(users().get('owner').innerCircle.sort()).toEqual(['a', 'b']);
+    await svc.deleteInnerCircleList('owner', created.id);
+    // 'a' is still on the default list; 'b' was only on the deleted one.
+    expect(users().get('owner').innerCircle).toEqual(['a']);
+    await expect(svc.deleteInnerCircleList('owner', created.id)).rejects.toMatchObject({ code: 'INNER_CIRCLE_NO_LIST' });
+  });
+
+  test('removing someone takes them off EVERY list, because revocation is total', async () => {
+    await svc.createInnerCircleList('owner', { name: 'Gym', userIds: ['a', 'b'] });
+    await svc.removeFromInnerCircle('owner', 'a');
+    const lists = await svc.getInnerCircleLists('owner');
+    expect(lists.flatMap((l) => l.userIds)).toEqual(['b']);
+    expect(users().get('owner').innerCircle).toEqual(['b']);
+  });
+
+  test('the number of lists is capped', async () => {
+    for (let i = 0; i < svc.MAX_LISTS - 1; i++) {
+      await svc.createInnerCircleList('owner', { name: `L${i}`, userIds: [] });
+    }
+    await expect(svc.createInnerCircleList('owner', { name: 'one too many' }))
+      .rejects.toMatchObject({ code: 'INNER_CIRCLE_TOO_MANY_LISTS' });
+  });
+});
+
 test('validateGuestList applies the same connected-only rule to sharedWith', async () => {
   expect(await svc.validateGuestList('owner', [])).toEqual([]);
   expect(await svc.validateGuestList('owner', ['b', 'b', 'owner'])).toEqual(['b']);

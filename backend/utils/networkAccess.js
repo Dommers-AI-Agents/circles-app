@@ -45,6 +45,25 @@ async function getFollowedOnlyUserIds(userId, exclude = new Set()) {
  * feed. Grantors are always accepted connections, since that is enforced when
  * the list is written.
  */
+/**
+ * The same question as `getInnerCircleGrantorIds`, answered per list:
+ * ownerId → the ids of THAT owner's lists the viewer is on. One query, the
+ * same single-field index; the lists are read from the documents it returns.
+ */
+async function getInnerCircleGrantorLists(userId) {
+  if (!userId) return new Map();
+  const { listsFrom, listIdsContaining } = require('../services/innerCircleLists');
+  const snapshot = await db.collection(COLLECTIONS.USERS)
+    .where('innerCircle', 'array-contains', String(userId))
+    .select('innerCircle', 'innerCircles')
+    .get();
+  const out = new Map();
+  for (const doc of snapshot.docs) {
+    out.set(doc.id, listIdsContaining(listsFrom(doc.data()), userId, isSameUser));
+  }
+  return out;
+}
+
 async function getInnerCircleGrantorIds(userId) {
   if (!userId) return new Set();
   const snapshot = await db.collection(COLLECTIONS.USERS)
@@ -156,4 +175,4 @@ async function getAllowedCircleIds(userId, { connectionId = null, mapOnly = fals
   return { circleIds: Array.from(circleIds) };
 }
 
-module.exports = { getAllowedCircleIds, getConnectedUserIds, getFollowedOnlyUserIds, getInnerCircleGrantorIds };
+module.exports = { getAllowedCircleIds, getConnectedUserIds, getFollowedOnlyUserIds, getInnerCircleGrantorIds, getInnerCircleGrantorLists };

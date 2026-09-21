@@ -1028,6 +1028,14 @@ const createCheckIn = (checkInData, userId, userData) => {
     audience: checkInData.isPrivate === true
       ? null
       : (checkInData.audience === 'innerCircle' ? 'innerCircle' : null),
+    // Which named list, when the person picked one. Absent means any of
+    // them, which is what every check-in written before lists existed meant.
+    audienceListId: checkInData.isPrivate !== true
+      && checkInData.audience === 'innerCircle'
+      && typeof checkInData.audienceListId === 'string'
+      && checkInData.audienceListId
+      ? checkInData.audienceListId
+      : null,
     
     // Activity feed visibility
     showInActivityFeed: checkInData.isPrivate === true ? false : checkInData.showInActivityFeed !== false, // default true

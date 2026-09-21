@@ -1,8 +1,8 @@
 // services/innerCircleService.js
 //
-// The Inner Circle list: one curated set of people per user, reused by every
-// circle, place, moment and check-in that picks the Inner Circle tier. Stored
-// as `users/{uid}.innerCircle` — an array of uids.
+// Inner Circle lists: named sets of people, reused by every circle, place,
+// moment and check-in that picks the Inner Circle tier. The shape and the
+// two fields that hold it are described in services/innerCircleLists.js.
 //
 // Two rules give the feature its shape:
 //
@@ -20,21 +20,15 @@
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { getConnectedUserIds, getInnerCircleGrantorIds } = require('../utils/networkAccess');
+const {
+  DEFAULT_LIST_ID, DEFAULT_LIST_NAME, MAX_LISTS, asIdArray, cleanName, listsFrom, unionOf
+} = require('./innerCircleLists');
 
 const db = getFirestore();
 
 // Large enough that nobody realistic hits it, small enough that the list still
 // means something and the user doc stays far from Firestore's 1MB ceiling.
 const MAX_INNER_CIRCLE = 150;
-
-const asIdArray = (value) =>
-  Array.isArray(value) ? value.filter(id => typeof id === 'string' && id.length > 0).map(String) : [];
-
-/** The owner's own list. */
-const getInnerCircle = async (userId) => {
-  const doc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-  return doc.exists ? asIdArray(doc.data().innerCircle) : [];
-};
 
 class InnerCircleError extends Error {
   constructor(message, code = 'INNER_CIRCLE_INVALID') {
@@ -44,57 +38,134 @@ class InnerCircleError extends Error {
   }
 }
 
+const userRef = (userId) => db.collection(COLLECTIONS.USERS).doc(String(userId));
+
+const readLists = async (userId) => {
+  const doc = await userRef(userId).get();
+  return doc.exists ? listsFrom(doc.data()) : [];
+};
+
 /**
- * Replace the whole list. Rejects anyone who is not an accepted connection so
- * the invariant can never be broken from the API side.
+ * Store the lists, and with them the flat union that the reverse lookup
+ * reads. The two are written together, always, because a union that lags
+ * behind the lists is either a leak or a disappearance.
+ */
+const writeLists = async (userId, lists) => {
+  await userRef(userId).update({
+    innerCircles: lists,
+    innerCircle: unionOf(lists),
+    updatedAt: new Date().toISOString()
+  });
+  return lists;
+};
+
+/** The connected-only rule, applied to one list's membership. */
+const vetMembers = async (userId, requestedIds, { tooLargeCode = 'INNER_CIRCLE_TOO_LARGE', strangerCode = 'INNER_CIRCLE_NOT_CONNECTED' } = {}) => {
+  const wanted = asIdArray(requestedIds).filter(id => id !== String(userId));
+  if (wanted.length > MAX_INNER_CIRCLE) {
+    throw new InnerCircleError(`An Inner Circle can hold up to ${MAX_INNER_CIRCLE} people.`, tooLargeCode);
+  }
+  if (wanted.length === 0) return wanted;
+  const connected = await getConnectedUserIds(userId);
+  if (wanted.some(id => !connected.has(id))) {
+    throw new InnerCircleError('You can only add people you are connected with.', strangerCode);
+  }
+  return wanted;
+};
+
+// MARK: - Named lists
+
+/** Every list this user keeps. Always at least the default once they have one. */
+const getInnerCircleLists = async (userId) => readLists(userId);
+
+const createInnerCircleList = async (userId, { name, userIds } = {}) => {
+  const lists = await readLists(userId);
+  if (lists.length >= MAX_LISTS) {
+    throw new InnerCircleError(`You can keep up to ${MAX_LISTS} lists.`, 'INNER_CIRCLE_TOO_MANY_LISTS');
+  }
+  const members = await vetMembers(userId, userIds);
+  const id = `ic_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const next = [...lists, { id, name: cleanName(name, `List ${lists.length + 1}`), userIds: members }];
+  await writeLists(userId, next);
+  return next;
+};
+
+/** Rename a list, change who is on it, or both. */
+const updateInnerCircleList = async (userId, listId, { name, userIds } = {}) => {
+  const lists = await readLists(userId);
+  const index = lists.findIndex(list => list.id === listId);
+  if (index < 0) throw new InnerCircleError('That list is gone.', 'INNER_CIRCLE_NO_LIST');
+  const next = [...lists];
+  const members = userIds === undefined ? next[index].userIds : await vetMembers(userId, userIds);
+  next[index] = {
+    ...next[index],
+    name: name === undefined ? next[index].name : cleanName(name, next[index].name),
+    userIds: members
+  };
+  await writeLists(userId, next);
+  return next;
+};
+
+/**
+ * Delete a list. Anything that was shared with it stops being visible to
+ * those people, which is the point — access is decided at read time against
+ * the list as it is now.
+ */
+const deleteInnerCircleList = async (userId, listId) => {
+  const lists = await readLists(userId);
+  const next = lists.filter(list => list.id !== listId);
+  if (next.length === lists.length) throw new InnerCircleError('That list is gone.', 'INNER_CIRCLE_NO_LIST');
+  await writeLists(userId, next);
+  return next;
+};
+
+// MARK: - The default list (what a client that knows nothing of lists edits)
+
+/** The owner's first list, flattened — the shape older clients expect. */
+const getInnerCircle = async (userId) => {
+  const lists = await readLists(userId);
+  return lists.length ? lists[0].userIds : [];
+};
+
+/**
+ * Replace the first list's membership. Rejects anyone who is not an accepted
+ * connection so the invariant can never be broken from the API side.
  *
  * @returns {Promise<string[]>} the stored list
  */
 const setInnerCircle = async (userId, requestedIds) => {
-  const wanted = [...new Set(asIdArray(requestedIds))].filter(id => id !== String(userId));
-
-  if (wanted.length > MAX_INNER_CIRCLE) {
-    throw new InnerCircleError(
-      `An Inner Circle can hold up to ${MAX_INNER_CIRCLE} people.`,
-      'INNER_CIRCLE_TOO_LARGE'
-    );
-  }
-
-  const connected = await getConnectedUserIds(userId);
-  const notConnected = wanted.filter(id => !connected.has(id));
-  if (notConnected.length > 0) {
-    throw new InnerCircleError(
-      'You can only add people you are connected with.',
-      'INNER_CIRCLE_NOT_CONNECTED'
-    );
-  }
-
-  await db.collection(COLLECTIONS.USERS).doc(userId).update({
-    innerCircle: wanted,
-    updatedAt: new Date().toISOString()
-  });
-  return wanted;
+  const members = await vetMembers(userId, requestedIds);
+  const lists = await readLists(userId);
+  const next = lists.length
+    ? [{ ...lists[0], userIds: members }, ...lists.slice(1)]
+    : [{ id: DEFAULT_LIST_ID, name: DEFAULT_LIST_NAME, userIds: members }];
+  await writeLists(userId, next);
+  return members;
 };
 
-/** Add one person, keeping the list a set. */
+/** Add one person to the first list, keeping it a set. */
 const addToInnerCircle = async (userId, targetId) => {
   const current = await getInnerCircle(userId);
   if (current.includes(String(targetId))) return current;
   return setInnerCircle(userId, [...current, targetId]);
 };
 
-/** Remove one person. Their access is gone on the next read. */
+/**
+ * Remove one person from EVERY list. Revocation has to be total — a grant
+ * that survived on a second list would be invisible to the person revoking
+ * it — so this is not the mirror of `addToInnerCircle`.
+ *
+ * Straight to the doc: a removal can never break the connected-only rule,
+ * and re-validating would fail for exactly the case we are cleaning up after.
+ */
 const removeFromInnerCircle = async (userId, targetId) => {
-  const current = await getInnerCircle(userId);
-  const next = current.filter(id => id !== String(targetId));
-  if (next.length === current.length) return current;
-  // Straight to the doc: a removal can never break the connected-only rule, and
-  // re-validating would fail for exactly the case we are cleaning up after.
-  await db.collection(COLLECTIONS.USERS).doc(userId).update({
-    innerCircle: next,
-    updatedAt: new Date().toISOString()
-  });
-  return next;
+  const lists = await readLists(userId);
+  const target = String(targetId);
+  const next = lists.map(list => ({ ...list, userIds: list.userIds.filter(id => id !== target) }));
+  const changed = next.some((list, i) => list.userIds.length !== lists[i].userIds.length);
+  if (!changed) return lists.length ? lists[0].userIds : [];
+  await writeLists(userId, next);
+  return next.length ? next[0].userIds : [];
 };
 
 /**
@@ -109,8 +180,6 @@ const revokeMutualGrants = async (userId, otherUserId) => {
   ]);
 };
 
-
-
 /**
  * Validate a guest list (a circle's or a place's `sharedWith`) before storing.
  *
@@ -119,16 +188,11 @@ const revokeMutualGrants = async (userId, otherUserId) => {
  * naming the problem so the API can pass it straight to the user.
  */
 const validateGuestList = async (ownerId, requestedIds) => {
-  const wanted = [...new Set(asIdArray(requestedIds))].filter(id => id !== String(ownerId));
+  const wanted = asIdArray(requestedIds).filter(id => id !== String(ownerId));
   if (wanted.length === 0) return [];
-
   const connected = await getConnectedUserIds(ownerId);
-  const strangers = wanted.filter(id => !connected.has(id));
-  if (strangers.length > 0) {
-    throw new InnerCircleError(
-      'You can only share with people you are connected with.',
-      'SHARED_WITH_NOT_CONNECTED'
-    );
+  if (wanted.some(id => !connected.has(id))) {
+    throw new InnerCircleError('You can only share with people you are connected with.', 'SHARED_WITH_NOT_CONNECTED');
   }
   return wanted;
 };
@@ -136,6 +200,11 @@ const validateGuestList = async (ownerId, requestedIds) => {
 module.exports = {
   validateGuestList,
   MAX_INNER_CIRCLE,
+  MAX_LISTS,
+  getInnerCircleLists,
+  createInnerCircleList,
+  updateInnerCircleList,
+  deleteInnerCircleList,
   InnerCircleError,
   getInnerCircle,
   getInnerCircleGrantorIds,

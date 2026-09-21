@@ -80,3 +80,33 @@ describe('inner circle check-ins', () => {
     expect(await isCheckInVisibleTo(inner, 'owner', ctx({ innerCircleGrantors: new Set() }))).toBe(true);
   });
 });
+
+describe('a named Inner Circle list', () => {
+  const onFamily = { userId: 'owner', audience: 'innerCircle', audienceListId: 'family', showInActivityFeed: true };
+  const ctx = (listIds) => ({
+    connectionIds: new Set(['owner']),
+    innerCircleGrantors: new Set(['owner']),
+    innerCircleLists: new Map([['owner', new Set(listIds)]])
+  });
+
+  it('reaches the list it named, and no other list of the same owner', async () => {
+    expect(await isCheckInVisibleTo(onFamily, 'viewer', ctx(['family']))).toBe(true);
+    expect(await isCheckInVisibleTo(onFamily, 'viewer', ctx(['gym']))).toBe(false);
+  });
+
+  it('is invisible when the caller forgot the per-list map, rather than falling back to any list', async () => {
+    const careless = { connectionIds: new Set(['owner']), innerCircleGrantors: new Set(['owner']) };
+    expect(await isCheckInVisibleTo(onFamily, 'viewer', careless)).toBe(false);
+  });
+
+  it('still reaches anyone it was sent to directly', async () => {
+    const sent = { ...onFamily, notifiedUsers: ['viewer'] };
+    expect(await isCheckInVisibleTo(sent, 'viewer', ctx(['gym']))).toBe(true);
+  });
+
+  it('written before lists existed, it means any of them', async () => {
+    const old = { userId: 'owner', audience: 'innerCircle', showInActivityFeed: true };
+    expect(await isCheckInVisibleTo(old, 'viewer', ctx(['gym']))).toBe(true);
+    expect(await isCheckInVisibleTo(old, 'viewer', { connectionIds: new Set(['owner']), innerCircleGrantors: new Set() })).toBe(false);
+  });
+});

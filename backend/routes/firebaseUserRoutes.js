@@ -37,7 +37,11 @@ const {
   getMyInnerCircle,
   replaceMyInnerCircle,
   addMyInnerCircleMember,
-  removeMyInnerCircleMember
+  removeMyInnerCircleMember,
+  getMyInnerCircleLists,
+  createMyInnerCircleList,
+  updateMyInnerCircleList,
+  deleteMyInnerCircleList
 } = require('../controllers/users/innerCircleController');
 const {
   getTutorialStatus,
@@ -145,6 +149,15 @@ router.route('/me/pinned-places/:placeId')
 router.route('/me/inner-circle')
   .get(getMyInnerCircle)
   .put(replaceMyInnerCircle);
+
+// Named lists. Above /:userId so "lists" is never read as a user id.
+router.route('/me/inner-circle/lists')
+  .get(getMyInnerCircleLists)
+  .post(createMyInnerCircleList);
+
+router.route('/me/inner-circle/lists/:listId')
+  .put(updateMyInnerCircleList)
+  .delete(deleteMyInnerCircleList);
 
 router.route('/me/inner-circle/:userId')
   .post(addMyInnerCircleMember)
