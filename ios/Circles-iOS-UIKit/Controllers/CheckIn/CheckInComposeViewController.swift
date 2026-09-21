@@ -87,12 +87,18 @@ final class CheckInComposeViewController: BaseViewController {
         return view
     }()
 
+    /// Off until there is something to post. The comment box is optional, so
+    /// defaulting this on offered to publish a comment nobody had written.
+    /// Typing turns it on, clearing turns it back off — until the person
+    /// touches the switch themselves, after which it is theirs.
     private lazy var postOnPlaceSwitch: UISwitch = {
         let toggle = UISwitch()
-        toggle.isOn = true
+        toggle.isOn = false
         toggle.onTintColor = Constants.Colors.primary
+        toggle.addTarget(self, action: #selector(postOnPlaceChanged), for: .valueChanged)
         return toggle
     }()
+    private var postOnPlaceSetByHand = false
 
     private lazy var notifyButton: UIButton = {
         let button = UIButton.fieldButton()
@@ -166,10 +172,10 @@ final class CheckInComposeViewController: BaseViewController {
         contentStack.addArrangedSubview(placeCard)
         contentStack.addArrangedSubview(section("How was it? (optional)", ratingPills))
         contentStack.addArrangedSubview(noteTextView)
-        contentStack.addArrangedSubview(switchRow("Also post it on the place", postOnPlaceSwitch))
+        contentStack.addArrangedSubview(switchRow("Also post as a comment", postOnPlaceSwitch))
         contentStack.addArrangedSubview(notifyButton)
         contentStack.addArrangedSubview(section("How long? (optional)", durationControl))
-        contentStack.addArrangedSubview(switchRow("Show in activity feed", feedSwitch))
+        contentStack.addArrangedSubview(switchRow("Show in activity feed", feedSwitch, info: #selector(feedInfoTapped)))
         // Only worth offering once there is a list; with nobody on it the tier
         // is indistinguishable from the private button below.
         if InnerCircleManager.shared.memberCount > 0 {
@@ -205,15 +211,26 @@ final class CheckInComposeViewController: BaseViewController {
         return stack
     }
 
-    private func switchRow(_ title: String, _ toggle: UISwitch) -> UIView {
+    /// A switch and its label, and — when the setting has consequences worth
+    /// explaining — an "i" at the end of the row that says what they are.
+    private func switchRow(_ title: String, _ toggle: UISwitch, info: Selector? = nil) -> UIView {
         let label = UILabel()
         label.text = title
         label.font = UIFont.systemFont(ofSize: 16)
         label.textColor = Constants.Colors.label
+        label.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let row = UIStackView(arrangedSubviews: [toggle, label])
         row.axis = .horizontal
         row.spacing = 12
         row.alignment = .center
+        if let info {
+            let button = UIButton.iconButton(systemName: "info.circle", pointSize: 17)
+            button.tintColor = Constants.Colors.secondaryLabel
+            button.accessibilityLabel = "What does \(title) mean?"
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.addTarget(self, action: info, for: .touchUpInside)
+            row.addArrangedSubview(button)
+        }
         return row
     }
 
@@ -255,6 +272,28 @@ final class CheckInComposeViewController: BaseViewController {
             self?.updateNotifyTitle()
         }
         navigationController?.pushViewController(picker, animated: true)
+    }
+
+    @objc private func postOnPlaceChanged() { postOnPlaceSetByHand = true }
+
+    /// Says exactly who ends up seeing this, because "activity feed" on its
+    /// own does not tell anyone whether that means followers, connections or
+    /// the world.
+    @objc private func feedInfoTapped() {
+        view.endEditing(true)
+        AlertPresenter.showInfo(
+            title: "Who sees this check-in?",
+            message: """
+            On: people you're connected with see it in their activity feed. Not your followers, and not the public.
+
+            Anyone you choose under "Notify people" sees it either way.
+
+            With "Inner Circle only" on, it stops at that list — turning this on can't widen it.
+
+            Off, with nobody notified: it's yours alone, kept in your own history here.
+            """,
+            from: self
+        )
     }
 
     @objc private func checkInTapped() { submit(isPrivate: false) }
@@ -332,6 +371,14 @@ extension CheckInComposeViewController: UITextViewDelegate {
             textView.text = ""
             textView.textColor = Constants.Colors.label
         }
+    }
+
+    /// Writing something is the only reason to post it, so the switch
+    /// follows the box — until the person overrides it by hand.
+    func textViewDidChange(_ textView: UITextView) {
+        guard !postOnPlaceSetByHand else { return }
+        let hasText = !noteText.isEmpty
+        if postOnPlaceSwitch.isOn != hasText { postOnPlaceSwitch.setOn(hasText, animated: true) }
     }
 
     /// Matches the server cap; the note doubles as a place comment
