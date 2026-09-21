@@ -18,6 +18,46 @@ extension PlaceDetailViewFactory {
         return button
     }
 
+    // MARK: - Check-in strip (directly under the photo)
+
+    /// The row that sits between the photo and the info card: either your
+    /// history here, or an invitation to start one, plus an "i" that says
+    /// what a check-in is. A stack so the unused half collapses.
+    static func checkInStripView() -> UIStackView {
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.alignment = .center
+        stack.spacing = Constants.Spacing.small
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }
+
+    static func checkInHistoryLabel() -> UILabel {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }
+
+    /// Shown only to someone who has never checked in here.
+    static func checkInHereButton() -> UIButton {
+        let button = UIButton.smallActionButton(title: "Check in here", style: .primary)
+        button.setImage(.checkInIcon, for: .normal)
+        button.tintColor = .white
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+        return button
+    }
+
+    static func checkInInfoButton() -> UIButton {
+        let button = UIButton.iconButton(systemName: "info.circle", pointSize: 17)
+        button.tintColor = Constants.Colors.secondaryLabel
+        button.accessibilityLabel = "What is a check-in?"
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        return button
+    }
+
     static func addToCircleButton() -> UIButton {
         let button = UIButton.smallActionButton(title: "Add to My Circle", style: .primary)
         button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)

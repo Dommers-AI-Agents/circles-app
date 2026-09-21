@@ -159,18 +159,13 @@ class PlaceDetailViewController: BaseViewController {
     // Same icon as every check-in surface (UIImage.checkInIcon).
     private let checkInRowButton: UIButton = PlaceDetailViewFactory.checkInRowButton()
 
-    // Personal history under the quick actions: "Checked in 7 times · last
-    // Sep 5". Collapsed (zero height, no gap) until the viewer has checked in.
-    private let checkInHistoryLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .medium)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    private var checkInHistoryTopConstraint: NSLayoutConstraint?
-    private var checkInHistoryHeightConstraint: NSLayoutConstraint?
+    // Directly under the photo: your own history here ("Checked in 7 times ·
+    // last Sep 5"), or — if you never have — the invitation to start one.
+    // Whichever it is, an "i" explains what a check-in actually does.
+    private let checkInStripView: UIStackView = PlaceDetailViewFactory.checkInStripView()
+    private let checkInHistoryLabel: UILabel = PlaceDetailViewFactory.checkInHistoryLabel()
+    private let checkInHereButton: UIButton = PlaceDetailViewFactory.checkInHereButton()
+    private let checkInInfoButton: UIButton = PlaceDetailViewFactory.checkInInfoButton()
 
     // Add to Circle: compact pill in the action row, left of Follow — same
     // size and style family (they're sibling actions; this one also picks
@@ -560,6 +555,19 @@ class PlaceDetailViewController: BaseViewController {
         // mediaCarouselView.addSubview(updateInfoButton) // Commented - automatic migration handles this
         mediaCarouselView.isUserInteractionEnabled = true
         
+        // The check-in strip lives between the photo and the info card, so
+        // the first thing under the picture is your own relationship with
+        // the place.
+        contentView.addSubview(checkInStripView)
+        checkInStripView.addArrangedSubview(checkInHistoryLabel)
+        checkInStripView.addArrangedSubview(checkInHereButton)
+        let checkInSpacer = UIView()
+        checkInSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        checkInStripView.addArrangedSubview(checkInSpacer)
+        checkInStripView.addArrangedSubview(checkInInfoButton)
+        checkInHereButton.addTarget(self, action: #selector(checkInRowButtonTapped), for: .touchUpInside)
+        checkInInfoButton.addTarget(self, action: #selector(checkInInfoTapped), for: .touchUpInside)
+
         // Add info container after image view
         contentView.addSubview(infoContainerView)
         
@@ -762,8 +770,13 @@ class PlaceDetailViewController: BaseViewController {
             // updateInfoButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
             
             
-            // Info container view - positioned below the image with padding
-            infoContainerView.topAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: Constants.Spacing.medium),
+            // Check-in strip — directly under the photo
+            checkInStripView.topAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: Constants.Spacing.small),
+            checkInStripView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            checkInStripView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+
+            // Info container view - positioned below the strip with padding
+            infoContainerView.topAnchor.constraint(equalTo: checkInStripView.bottomAnchor, constant: Constants.Spacing.small),
             infoContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             infoContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             infoContainerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
@@ -875,18 +888,7 @@ class PlaceDetailViewController: BaseViewController {
             partnerActionsRowView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             partnerActionsRowView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium)
         ])
-        let historyTop = checkInHistoryLabel.topAnchor.constraint(equalTo: practicalButtonsStackView.bottomAnchor, constant: 0)
-        let historyHeight = checkInHistoryLabel.heightAnchor.constraint(equalToConstant: 0)
-        NSLayoutConstraint.activate([
-            historyTop,
-            historyHeight,
-            checkInHistoryLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
-            checkInHistoryLabel.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium)
-        ])
-        checkInHistoryTopConstraint = historyTop
-        checkInHistoryHeightConstraint = historyHeight
-
-        let partnerTop = partnerActionsRowView.topAnchor.constraint(equalTo: checkInHistoryLabel.bottomAnchor, constant: 0)
+        let partnerTop = partnerActionsRowView.topAnchor.constraint(equalTo: practicalButtonsStackView.bottomAnchor, constant: 0)
         let partnerHeight = partnerActionsRowView.heightAnchor.constraint(equalToConstant: 0)
         partnerTop.isActive = true
         partnerHeight.isActive = true
@@ -1622,12 +1624,26 @@ class PlaceDetailViewController: BaseViewController {
         CheckInViewController.present(from: self, prefilledPlace: place)
     }
 
+    /// Under the photo you see one of two things: how often you've been
+    /// here, or an invitation to say you're here now. Never both, never
+    /// neither — an empty gap under the picture teaches nobody anything.
     private func updateCheckInHistory() {
         let line = CheckInHistoryFormatter.line(for: place.myCheckInStats)
         checkInHistoryLabel.text = line
-        let show = line != nil
-        checkInHistoryHeightConstraint?.constant = show ? 18 : 0
-        checkInHistoryTopConstraint?.constant = show ? Constants.Spacing.small : 0
+        checkInHistoryLabel.isHidden = line == nil
+        checkInHereButton.isHidden = line != nil
+    }
+
+    @objc private func checkInInfoTapped() {
+        AlertPresenter.showInfo(
+            title: "What's a check-in?",
+            message: """
+            A check-in is you saying you're here, now.
+
+            You choose who sees it each time — everyone, certain people, or nobody at all. Either way it's kept in your own history at this place, so you can see how often you come back.
+            """,
+            from: self
+        )
     }
 
     // MARK: - My rating (latest wins, history kept)
