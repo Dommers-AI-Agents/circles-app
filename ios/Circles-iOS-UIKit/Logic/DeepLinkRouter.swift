@@ -30,6 +30,11 @@ enum DeepLinkDestination: Equatable {
     case referral(code: String)
     case sticker(code: String)
     case upgradePaywall
+    /// A shared widget link — `/app/widget/<id>` or `circles://widget/<id>`.
+    /// Opens the Widgets tab on that widget's page, turning it on if the
+    /// recipient had it switched off; a link to something they can't see is
+    /// the one way this share is worth nothing.
+    case widget(id: String)
 }
 
 /// Interprets universal links (https://api.favcircles.com/…) and the custom
@@ -69,6 +74,8 @@ struct DeepLinkRouter {
                 return query(url, "path").flatMap(openPathDestination)
             case "video":
                 return parts.count >= 3 ? .video(id: parts[2], promptsLogin: false) : nil
+            case "widget":
+                return parts.count >= 3 ? .widget(id: parts[2]) : nil
             case "circle":
                 return parts.count >= 3 ? .circle(id: parts[2], shareToken: query(url, "share")) : nil
             case "connect":
@@ -140,6 +147,8 @@ struct DeepLinkRouter {
             return .placeFromExtension(id: hostPathId)
         case "upgrade":
             return .upgradePaywall
+        case "widget" where !hostPathId.isEmpty:
+            return .widget(id: hostPathId)
         case "network":
             return .network
         case "settings" where url.path == "/notifications":
@@ -162,6 +171,8 @@ struct DeepLinkRouter {
             return .place(id: parts[2], refUserId: query(url, "ref"))
         case "user" where parts.count >= 3:
             return .userProfile(id: parts[2])
+        case "widget" where parts.count >= 3:
+            return .widget(id: parts[2])
         case "connect" where parts.count >= 3:
             return .connectionInvite(userId: parts[2], referralCode: query(url, "code"))
         default:

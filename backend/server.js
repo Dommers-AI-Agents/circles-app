@@ -369,6 +369,42 @@ ${photoUrl ? `<meta property="og:image" content="${esc(photoUrl)}">` : ''}
 </body></html>`);
 });
 
+// Shared widget link (AASA /app/*). A device with the app installed never
+// renders this — the Universal Link opens the widget's page directly. This is
+// what everyone else sees, and its job is the App Store, because these links
+// are shared precisely with people who don't have FavCircles yet.
+app.get('/app/widget/:id', (req, res) => {
+  const id = String(req.params.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+  const { widgetCopy } = require('./config/widgetCatalog');
+  const copy = widgetCopy(id);
+
+  const esc = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const title = esc(copy.title);
+  const blurb = esc(copy.blurb);
+
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title} on FavCircles</title>
+<meta property="og:title" content="${title} on FavCircles">
+<meta property="og:description" content="${blurb}">
+<meta property="og:site_name" content="FavCircles">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://api.favcircles.com/app/widget/${id}">
+</head>
+<body style="font-family:-apple-system,Helvetica,Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#3182CE;color:#fff;text-align:center;padding:24px">
+<div><div style="font-size:64px;line-height:1;margin-bottom:16px">${copy.emoji}</div>
+<h1 style="margin:0 0 8px">${title}</h1>
+<p style="margin:0 0 24px;opacity:.9">${blurb}</p>
+<a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Get FavCircles</a></div>
+<script>
+  window.location = 'circles://widget/${id}';
+  setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
+</script>
+</body></html>`);
+});
+
 // Route debug middleware (reduced logging)
 app.use('/api/users', (req, res, next) => {
   next();

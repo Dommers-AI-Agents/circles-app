@@ -116,6 +116,12 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         if navigationController?.topViewController is HomeWidgetDetailViewController {
             navigationController?.popViewController(animated: false)
         }
+        // Arriving from a shared link for a widget they had turned off: turn
+        // it on, so going Back shows the thing they were just sent rather than
+        // a list it isn't in.
+        if !model.visible.contains(where: { $0.id == widgetId }) {
+            model.setEnabled(true, id: widgetId)
+        }
         let context = model.context(for: descriptor)
         if widgetId == "postcard", let postcardOrderId { context.launchPostcardOrderId = postcardOrderId }
         open(widget, context: context)

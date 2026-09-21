@@ -37,6 +37,14 @@ final class HomeWidgetDetailViewController: BaseViewController {
             target: self,
             action: #selector(backTapped)
         )
+        // Every widget gets this, including ones that don't exist yet: the
+        // button lives on the shell all full views are pushed into, not in
+        // any widget's own code.
+        navigationItem.rightBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .action,
+            target: self,
+            action: #selector(shareTapped)
+        )
 
         let hosting = UIHostingController(rootView: widget.makeFullView(context: context))
         hosting.view.backgroundColor = Constants.Colors.background
@@ -50,6 +58,20 @@ final class HomeWidgetDetailViewController: BaseViewController {
             hosting.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         hosting.didMove(toParent: self)
+    }
+
+    @objc private func shareTapped(_ sender: UIBarButtonItem) {
+        let descriptor = widget.descriptor
+        guard let url = WidgetShareLink.url(widgetId: descriptor.id) else { return }
+        AnalyticsService.shared.logEvent("widget_shared", parameters: ["widget_id": descriptor.id])
+        let share = UIActivityViewController(
+            activityItems: [WidgetShareLink.message(title: descriptor.title, subtitle: descriptor.subtitle), url],
+            applicationActivities: nil
+        )
+        // An unanchored activity sheet is a crash on iPad, which is the device
+        // App Review uses.
+        share.popoverPresentationController?.barButtonItem = sender
+        present(share, animated: true)
     }
 
     private weak var previousPopDelegate: UIGestureRecognizerDelegate?

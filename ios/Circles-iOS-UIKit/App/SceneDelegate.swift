@@ -799,6 +799,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             selectTabOrStash(index: 3, pendingKey: "me")
         case .piggyBank:
             navigateToCreateWallet()
+        case .widget(let id):
+            // navigateToWidget stashes to pendingDeepLink when the tab bar
+            // isn't up yet or nobody is signed in — which is the normal case
+            // for a shared link, since it usually arrives on a cold launch.
+            navigateToWidget(id: id)
         case .referral(let code):
             handleReferralCode(code)
         case .sticker(let code):

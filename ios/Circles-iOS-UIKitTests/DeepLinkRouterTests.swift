@@ -100,3 +100,46 @@ struct DeepLinkRouterTests {
         #expect(dest("http://api.favcircles.com/place/p1") == .place(id: "p1", refUserId: nil))
     }
 }
+
+/// Shared widget links. Both shapes matter: the https one is what a share
+/// sheet hands out, the `circles://` one is what the landing page fires at a
+/// device that turns out to have the app after all.
+@Suite("Widget share links")
+struct WidgetShareLinkTests {
+    private let router = DeepLinkRouter()
+
+    @Test func universalLinkOpensTheWidget() {
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/widget/sleepsounds")!)
+                == .widget(id: "sleepsounds"))
+        #expect(router.destination(for: URL(string: "https://circles-backend-196924649787.us-central1.run.app/app/widget/water")!)
+                == .widget(id: "water"))
+    }
+
+    @Test func customSchemeFormsBothRoute() {
+        #expect(router.destination(for: URL(string: "circles://widget/postcard")!) == .widget(id: "postcard"))
+        #expect(router.destination(for: URL(string: "circles:///widget/postcard")!) == .widget(id: "postcard"))
+    }
+
+    @Test func widgetWithoutAnIdRoutesNowhere() {
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/widget")!) == nil)
+        #expect(router.destination(for: URL(string: "circles://widget")!) == nil)
+    }
+
+    @Test func builtLinkIsTheOneTheRouterUnderstands() {
+        let url = WidgetShareLink.url(widgetId: "heartbeat")
+        #expect(url?.absoluteString == "https://api.favcircles.com/app/widget/heartbeat")
+        #expect(url.flatMap(router.destination(for:)) == .widget(id: "heartbeat"))
+    }
+
+    @Test func aBrokenIdNeverBecomesALink() {
+        #expect(WidgetShareLink.url(widgetId: "") == nil)
+        #expect(WidgetShareLink.url(widgetId: "has space") == nil)
+        #expect(WidgetShareLink.url(widgetId: "../../etc") == nil)
+    }
+
+    @Test func messageNamesTheWidgetAndSurvivesAnEmptySubtitle() {
+        #expect(WidgetShareLink.message(title: "Water", subtitle: "Tap to log each glass")
+                == "Water on FavCircles — Tap to log each glass")
+        #expect(WidgetShareLink.message(title: "Water", subtitle: "  ") == "Water on FavCircles")
+    }
+}
