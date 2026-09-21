@@ -19,6 +19,7 @@ const { attachOwnerDetails } = require('../services/ownerResolver');
 const { CIRCLE_PRIVACY_LEVELS, resolveIncomingPrivacy } = require('../services/visibility');
 const { canViewCircleFor } = require('../services/circleAccess');
 const { validateGuestList } = require('../services/innerCircleService');
+const { listIdFor } = require('../services/innerCircleLists');
 
 const db = getFirestore();
 
@@ -556,6 +557,16 @@ exports.updateCircle = async (req, res, next) => {
       });
     }
     
+    // Which named Inner Circle list, when the tier is that. Read from the
+    // tier being saved rather than the stored one, so switching away from
+    // Inner Circle clears it in the same write.
+    if (req.body.audienceListId !== undefined || updateData.privacy !== undefined) {
+      updateData.audienceListId = listIdFor(
+        updateData.privacy !== undefined ? updateData.privacy : circle.privacy,
+        req.body.audienceListId !== undefined ? req.body.audienceListId : circle.audienceListId
+      );
+    }
+
     // Per-circle guest list. Previously only writable through the share
     // endpoint, which made "who can see this circle" impossible to set in one
     // call. Connections only, same rule as the Inner Circle.

@@ -15,6 +15,7 @@
 const { getFirestore } = require('../../config/firebase');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { normalizePrivacy, PRIVACY } = require('../visibility');
+const { listsFrom } = require('../innerCircleLists');
 
 const db = getFirestore();
 
@@ -37,10 +38,16 @@ const circleAudience = async (circleData, ownerId) => {
   }
 
   if (tier === PRIVACY.INNER_CIRCLE) {
-    // The list lives on the owner, not the circle, so that editing it
-    // retroactively changes who can see every circle set to this tier.
+    // The lists live on the owner, not the circle, so that editing one
+    // retroactively changes who can see every circle set to this tier. A
+    // circle that names a list reaches that list only.
     const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(String(ownerId)).get();
-    const list = new Set(((ownerDoc.exists && ownerDoc.data().innerCircle) || []).map(String));
+    const owner = ownerDoc.exists ? ownerDoc.data() : {};
+    const listId = circleData && circleData.audienceListId;
+    const members = listId
+      ? ((listsFrom(owner).find(list => list.id === listId) || {}).userIds || [])
+      : (owner.innerCircle || []);
+    const list = new Set(members.map(String));
     const allowed = new Set([...list, ...sharedWith]);
     return { tier, emits: allowed.size > 0, allows: (userId) => allowed.has(String(userId)) };
   }

@@ -46,3 +46,28 @@ test('a viewer learns which lists they are on, not merely that they are', () => 
   const loose = (x, y) => String(x).toLowerCase() === String(y).toLowerCase();
   expect([...listIdsContaining(lists, 'A', loose)].sort()).toEqual(['family', 'gym']);
 });
+
+describe('the list id stored next to a tier', () => {
+  const { listIdFor } = require('../innerCircleLists');
+
+  test('only an Inner Circle item may name a list', () => {
+    expect(listIdFor('innerCircle', 'family')).toBe('family');
+    expect(listIdFor('inner_circle', 'family')).toBe('family');
+    expect(listIdFor('public', 'family')).toBeNull();
+    expect(listIdFor('private', 'family')).toBeNull();
+    expect(listIdFor('myNetwork', 'family')).toBeNull();
+  });
+
+  test('moving off the tier clears the audience rather than leaving it aimed', () => {
+    // What an edit does: the tier being saved decides, not the stored one.
+    expect(listIdFor('followers', 'family')).toBeNull();
+  });
+
+  test('junk is a null, not a list', () => {
+    expect(listIdFor('innerCircle', '')).toBeNull();
+    expect(listIdFor('innerCircle', '   ')).toBeNull();
+    expect(listIdFor('innerCircle', null)).toBeNull();
+    expect(listIdFor('innerCircle', 42)).toBeNull();
+    expect(listIdFor('innerCircle', 'x'.repeat(100))).toHaveLength(64);
+  });
+});

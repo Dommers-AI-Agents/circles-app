@@ -101,7 +101,8 @@ const { normalizeUserId, isSameUser } = require('./idService');
 const NO_RELATIONSHIPS = {
   connections: new Set(),
   following: new Set(),
-  innerCircleGrantors: new Set()
+  innerCircleGrantors: new Set(),
+  innerCircleLists: new Map()
 };
 
 /**
@@ -116,10 +117,13 @@ const NO_RELATIONSHIPS = {
  * @param {string} viewerId
  * @param {object} ctx  the VIEWER's relationships, all keyed by the other
  *   person's id: `connections` (accepted both ways), `following` (people the
- *   viewer follows), `innerCircleGrantors` (people whose Inner Circle list
- *   contains the viewer). Built by services/viewerContext.js.
+ *   viewer follows), `innerCircleGrantors` (people one of whose Inner Circle
+ *   lists contains the viewer) and `innerCircleLists` (which of their lists).
+ *   Built by services/viewerContext.js.
+ * @param {string|null} audienceListId  the named Inner Circle list the
+ *   content was published to, when it named one.
  */
-const canViewAtTier = (ownerId, privacy, viewerId, ctx) => {
+const canViewAtTier = (ownerId, privacy, viewerId, ctx, audienceListId = null) => {
   if (isSameUser(ownerId, viewerId)) return true;
   // A caller with no context can still be told about public content; every
   // narrower tier reads an empty relationship set and therefore denies.
@@ -139,9 +143,16 @@ const canViewAtTier = (ownerId, privacy, viewerId, ctx) => {
     case PRIVACY.CONNECTIONS:
       return rel.connections.has(normalizeUserId(ownerId));
 
-    // Grantors are the people whose Inner Circle list contains the viewer.
-    case PRIVACY.INNER_CIRCLE:
-      return rel.innerCircleGrantors.has(normalizeUserId(ownerId));
+    // Grantors are the people one of whose Inner Circle lists contains the
+    // viewer. When the content names a particular list, being on some OTHER
+    // list of the same owner is not enough — and a caller who brought no
+    // per-list map gets nothing rather than the benefit of the doubt.
+    case PRIVACY.INNER_CIRCLE: {
+      const owner = normalizeUserId(ownerId);
+      if (!audienceListId) return rel.innerCircleGrantors.has(owner);
+      const lists = rel.innerCircleLists && rel.innerCircleLists.get(owner);
+      return !!(lists && lists.has(audienceListId));
+    }
 
     case PRIVACY.PRIVATE:
       return false;
@@ -161,7 +172,7 @@ const canViewCircle = (circle, viewerId, ctx) => {
   if (!circle) return false;
   if (isSameUser(circle.owner, viewerId)) return true;
   if ((circle.sharedWith || []).some(id => isSameUser(id, viewerId))) return true;
-  return canViewAtTier(circle.owner, circle.privacy, viewerId, ctx);
+  return canViewAtTier(circle.owner, circle.privacy, viewerId, ctx, circle.audienceListId || null);
 };
 
 /**
@@ -190,7 +201,7 @@ const isPlaceVisibleToViewer = (place, viewerId, ctx) => {
   const tier = normalizePrivacy(place.privacy);
   if (tier === FOLLOW_CIRCLE) return true;
   if (tier === null) return false;
-  return canViewAtTier(place.addedBy, tier, viewerId, ctx);
+  return canViewAtTier(place.addedBy, tier, viewerId, ctx, place.audienceListId || null);
 };
 
 /** Can `viewerId` see this moment? Moments carry their tier directly. */
@@ -198,7 +209,7 @@ const canViewMoment = (moment, viewerId, ctx) => {
   if (!moment) return false;
   const ownerId = moment.userId || moment.addedBy;
   if (isSameUser(ownerId, viewerId)) return true;
-  return canViewAtTier(ownerId, moment.visibility, viewerId, ctx);
+  return canViewAtTier(ownerId, moment.visibility, viewerId, ctx, moment.audienceListId || null);
 };
 
 // ---------------------------------------------------------------------------

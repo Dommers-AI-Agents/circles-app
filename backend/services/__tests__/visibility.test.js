@@ -200,3 +200,39 @@ describe('Apple-format ids', () => {
     expect(canViewAtTier(complex, 'innerCircle', 'viewer', ctxWithComplexOwner)).toBe(true);
   });
 });
+
+describe('a named Inner Circle list', () => {
+  const ctx = {
+    connections: new Set(['owner']),
+    following: new Set(),
+    innerCircleGrantors: new Set(['owner']),
+    innerCircleLists: new Map([['owner', new Set(['family'])]])
+  };
+
+  it('gates a circle, a place and a moment by the list they named', () => {
+    const named = { owner: 'owner', privacy: 'innerCircle', audienceListId: 'family' };
+    const other = { owner: 'owner', privacy: 'innerCircle', audienceListId: 'gym' };
+    expect(canViewCircle(named, 'viewer', ctx)).toBe(true);
+    expect(canViewCircle(other, 'viewer', ctx)).toBe(false);
+
+    expect(isPlaceVisibleToViewer({ addedBy: 'owner', privacy: 'innerCircle', audienceListId: 'family' }, 'viewer', ctx)).toBe(true);
+    expect(isPlaceVisibleToViewer({ addedBy: 'owner', privacy: 'innerCircle', audienceListId: 'gym' }, 'viewer', ctx)).toBe(false);
+
+    expect(canViewMoment({ userId: 'owner', visibility: 'innerCircle', audienceListId: 'family' }, 'viewer', ctx)).toBe(true);
+    expect(canViewMoment({ userId: 'owner', visibility: 'innerCircle', audienceListId: 'gym' }, 'viewer', ctx)).toBe(false);
+  });
+
+  it('naming no list still means any of them, as everything written before did', () => {
+    expect(canViewCircle({ owner: 'owner', privacy: 'innerCircle' }, 'viewer', ctx)).toBe(true);
+  });
+
+  it('a guest list still wins over the tier', () => {
+    const shared = { owner: 'owner', privacy: 'innerCircle', audienceListId: 'gym', sharedWith: ['viewer'] };
+    expect(canViewCircle(shared, 'viewer', ctx)).toBe(true);
+  });
+
+  it('a context without the map hides named content rather than guessing', () => {
+    const careless = { connections: new Set(['owner']), following: new Set(), innerCircleGrantors: new Set(['owner']) };
+    expect(canViewCircle({ owner: 'owner', privacy: 'innerCircle', audienceListId: 'family' }, 'viewer', careless)).toBe(false);
+  });
+});

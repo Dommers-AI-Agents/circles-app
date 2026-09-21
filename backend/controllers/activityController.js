@@ -5,7 +5,7 @@ const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models
 const { canViewCircle, canViewMoment, isPlaceVisibleToViewer } = require('../services/visibility');
 const { normalizeUserId } = require('../services/idService');
 const { makeViewerContext } = require('../services/viewerContext');
-const { getInnerCircleGrantorIds } = require('../utils/networkAccess');
+const { getInnerCircleGrantorLists } = require('../utils/networkAccess');
 const db = getFirestore();
 
 
@@ -20,7 +20,7 @@ exports.getNetworkActivities = async (req, res, next) => {
     // Fetching network activities for user
     
     // Get user's connections AND followed users
-    const [connections1, connections2, currentUserDoc, innerCircleGrantors] = await Promise.all([
+    const [connections1, connections2, currentUserDoc, innerCircleLists] = await Promise.all([
       db.collection(COLLECTIONS.CONNECTIONS)
         .where('userId', '==', userId)
         .where('status', '==', 'accepted')
@@ -31,7 +31,7 @@ exports.getNetworkActivities = async (req, res, next) => {
         .get(),
       db.collection(COLLECTIONS.USERS).doc(userId).get(),
       // Whose Inner Circle list this viewer is on — one array-contains query.
-      getInnerCircleGrantorIds(userId)
+      getInnerCircleGrantorLists(userId)
     ]);
     
     // Extract connected user IDs. Keep connections and follows in SEPARATE sets
@@ -75,7 +75,7 @@ exports.getNetworkActivities = async (req, res, next) => {
         connectedUserIds.delete(blockedId);
         connectionSet.delete(blockedId);
         followingSet.delete(blockedId);
-        innerCircleGrantors.delete(blockedId);
+        innerCircleLists.delete(blockedId);
       }
     }
 
@@ -84,7 +84,7 @@ exports.getNetworkActivities = async (req, res, next) => {
       viewerId: userId,
       connections: connectionSet,
       following: followingSet,
-      innerCircleGrantors
+      innerCircleLists
     });
 
     // Add the current user to see their own activities too

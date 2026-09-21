@@ -13,7 +13,7 @@ const db = getFirestore();
 const { venueManagerIds, isVenueTeamMember, venueGlobalPlaceId } = require('../../services/venueHelpers.js');
 const { canViewCircle } = require('../../services/visibility');
 const { makeViewerContext } = require('../../services/viewerContext');
-const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
+const { getInnerCircleGrantorLists } = require('../../utils/networkAccess');
 
 // ---------- Venue owner endpoints (self-service offer/earn-rate management) ----------
 
@@ -340,7 +340,7 @@ exports.getVenueSavers = async (req, res) => {
     const ownerViewerCtx = makeViewerContext({
       viewerId: ownerId,
       connections: connectedIds,
-      innerCircleGrantors: await getInnerCircleGrantorIds(ownerId)
+      innerCircleLists: await getInnerCircleGrantorLists(ownerId)
     });
     const isCircleVisibleToOwner = (circle, saverId) =>
       isSameUser(saverId, ownerId) || canViewCircle(circle, ownerId, ownerViewerCtx);

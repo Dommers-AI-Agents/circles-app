@@ -16,6 +16,7 @@ const bucket = getStorage().bucket();
 // the client list — every id is re-checked against the connections collection.
 const notificationService = require('../../services/notificationService');
 const { MOMENT_PRIVACY_LEVELS, resolveIncomingPrivacy } = require('../../services/visibility');
+const { listIdFor } = require('../../services/innerCircleLists');
 const MAX_MOMENT_TAGS = 10;
 
 // Helper function to verify video processing is complete
@@ -954,7 +955,16 @@ exports.updateVideo = async (req, res) => {
     if (tags !== undefined) {
       updates.tags = tags;
     }
-    
+
+    // The named Inner Circle list rides with the tier, and is cleared by any
+    // move away from it.
+    if (req.body.audienceListId !== undefined || updates.visibility !== undefined) {
+      updates.audienceListId = listIdFor(
+        updates.visibility !== undefined ? updates.visibility : videoData.visibility,
+        req.body.audienceListId !== undefined ? req.body.audienceListId : videoData.audienceListId
+      );
+    }
+
     updates.updatedAt = new Date().toISOString();
     
     await videoRef.update(updates);

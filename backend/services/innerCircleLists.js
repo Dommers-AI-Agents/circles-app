@@ -62,4 +62,18 @@ const unionOf = (lists) => [...new Set((lists || []).flatMap(list => list.userId
 const listIdsContaining = (lists, viewerId, isSame = (a, b) => String(a) === String(b)) =>
   new Set((lists || []).filter(list => (list.userIds || []).some(id => isSame(id, viewerId))).map(list => list.id));
 
-module.exports = { DEFAULT_LIST_ID, DEFAULT_LIST_NAME, MAX_LISTS, NAME_MAX, asIdArray, cleanName, listsFrom, unionOf, listIdsContaining };
+/**
+ * The list id to store next to a privacy tier.
+ *
+ * Only an Inner Circle item may name a list; anything else is stored as null
+ * so a tier change can never leave a stale audience behind, quietly aimed at
+ * a list the person no longer meant.
+ */
+const listIdFor = (tier, value) => {
+  const normalized = String(tier === undefined || tier === null ? '' : tier).trim().toLowerCase().replace(/[\s_-]/g, '');
+  if (normalized !== 'innercircle') return null;
+  const id = typeof value === 'string' ? value.trim() : '';
+  return id ? id.slice(0, 64) : null;
+};
+
+module.exports = { listIdFor, DEFAULT_LIST_ID, DEFAULT_LIST_NAME, MAX_LISTS, NAME_MAX, asIdArray, cleanName, listsFrom, unionOf, listIdsContaining };

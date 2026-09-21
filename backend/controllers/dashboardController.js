@@ -8,7 +8,7 @@ const { queryInChunks } = require('../utils/firestoreChunks');
 const { sortCirclesByUserOrder } = require('../utils/circleOrder');
 const { canViewCircle } = require('../services/visibility');
 const { makeViewerContext } = require('../services/viewerContext');
-const { getInnerCircleGrantorIds } = require('../utils/networkAccess');
+const { getInnerCircleGrantorLists } = require('../utils/networkAccess');
 const db = getFirestore();
 
 // Helper function to calculate map center from places
@@ -110,7 +110,7 @@ exports.getDashboard = async (req, res, next) => {
       viewerId: userId,
       connections: connectionSet,
       following: followedUserIds,
-      innerCircleGrantors: await getInnerCircleGrantorIds(userId)
+      innerCircleLists: await getInnerCircleGrantorLists(userId)
     });
     
     // Get network circles if there are connections (chunked — 'in' caps at 30

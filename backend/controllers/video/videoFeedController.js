@@ -8,7 +8,7 @@ const { queryInChunks } = require('../../utils/firestoreChunks');
 const { canViewMoment, MOMENT_PRIVACY_LEVELS } = require('../../services/visibility');
 const { normalizeUserId } = require('../../services/idService');
 const { buildViewerContext, makeViewerContext } = require('../../services/viewerContext');
-const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
+const { getInnerCircleGrantorIds, getInnerCircleGrantorLists } = require('../../utils/networkAccess');
 const db = getFirestore();
 
 // Get videos for a place
@@ -458,7 +458,7 @@ exports.getReelsFeed = async (req, res) => {
       viewerId: userId,
       connections: connectionIds,
       following: followingIds,
-      innerCircleGrantors: await getInnerCircleGrantorIds(userId)
+      innerCircleLists: await getInnerCircleGrantorLists(userId)
     });
     const canView = (v) => canViewMoment(v, userId, viewerCtx);
 
@@ -783,7 +783,7 @@ exports.getPlaceReels = async (req, res) => {
       viewerId: currentUserId,
       connections: connectedUserIds,
       following: followingUserIds,
-      innerCircleGrantors: await getInnerCircleGrantorIds(currentUserId)
+      innerCircleLists: await getInnerCircleGrantorLists(currentUserId)
     });
 
     // Filter videos based on visibility and relationships

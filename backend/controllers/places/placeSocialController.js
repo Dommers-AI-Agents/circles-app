@@ -17,7 +17,7 @@ const { getGlobalSocial } = require('../../services/placeReadService');
 const { canViewCircleFor } = require('../../services/circleAccess');
 const { canViewCircle } = require('../../services/visibility');
 const { makeViewerContext } = require('../../services/viewerContext');
-const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
+const { getInnerCircleGrantorLists } = require('../../utils/networkAccess');
 const db = getFirestore();
 
 // @desc    Like a place
@@ -315,7 +315,7 @@ exports.getPlaceSavers = async (req, res, next) => {
     const saverViewerCtx = makeViewerContext({
       viewerId: userId,
       connections: connectedIds,
-      innerCircleGrantors: await getInnerCircleGrantorIds(userId)
+      innerCircleLists: await getInnerCircleGrantorLists(userId)
     });
     const isCircleVisible = (circle, saverId) =>
       isSameUser(saverId, userId) || canViewCircle(circle, userId, saverViewerCtx);

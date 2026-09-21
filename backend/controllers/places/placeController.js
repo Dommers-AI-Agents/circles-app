@@ -25,7 +25,8 @@ const { canViewCircleFor } = require('../../services/circleAccess');
 const { validateGuestList } = require('../../services/innerCircleService');
 const { buildViewerContext, makeViewerContext } = require('../../services/viewerContext');
 const { circleAudience, narrowedByPlace } = require('../../services/activity/audience');
-const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
+const { getInnerCircleGrantorIds, getInnerCircleGrantorLists } = require('../../utils/networkAccess');
+const { listIdFor } = require('../../services/innerCircleLists');
 const { getMyCheckInStats } = require('../../services/checkInStatsService');
 const homePromptService = require('../../services/homePromptService');
 const db = getFirestore();
@@ -1430,6 +1431,16 @@ exports.updatePlace = async (req, res, next) => {
       });
     }
 
+    // The named Inner Circle list travels with the tier: set on an Inner
+    // Circle place, cleared on any other, so a tier change never leaves a
+    // stale audience pointing at a list the person no longer meant.
+    if ('audienceListId' in updateData || 'privacy' in updateData) {
+      updateData.audienceListId = listIdFor(
+        'privacy' in updateData ? updateData.privacy : place.privacy,
+        'audienceListId' in updateData ? updateData.audienceListId : place.audienceListId
+      );
+    }
+
     // Per-place guest list: named people who may see this one save whatever
     // its tier says. Connections only, same rule as the Inner Circle.
     if ('sharedWith' in updateData) {
@@ -2516,7 +2527,7 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     const batchViewerCtx = makeViewerContext({
       viewerId: currentUserId,
       connections: connectedUserIds,
-      innerCircleGrantors: await getInnerCircleGrantorIds(currentUserId)
+      innerCircleLists: await getInnerCircleGrantorLists(currentUserId)
     });
 
     // Place activities across ALL connections, keyed by place id — powers the

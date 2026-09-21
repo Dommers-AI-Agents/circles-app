@@ -158,6 +158,10 @@ const createCircle = (circleData, ownerId) => {
     places: circleData.places || [],
     placesCount: circleData.placesCount || 0, // Count of places for efficient display
     privacy: circleData.privacy || 'public', // public, myNetwork, private
+    // Which named Inner Circle list this is for, when the tier is
+    // innerCircle and one was chosen. Absent means any of the owner's lists,
+    // which is what everything written before lists existed meant.
+    audienceListId: circleData.audienceListId || null,
     // Owner's choice: false keeps this circle's places off the big home map
     // (viewport + own-pins) while the circle itself stays fully browsable.
     // Import circles default to false — a 500-place Takeout dump shouldn't
@@ -298,6 +302,10 @@ const createPlace = (placeData, circleId, addedBy) => {
     circleId: circleId,
     addedBy: addedBy,
     privacy: placeData.privacy || 'followCircle', // followCircle, public, myNetwork, innerCircle, private
+    // Which named Inner Circle list this is for, when the tier is
+    // innerCircle and one was chosen. Absent means any of the owner's lists,
+    // which is what everything written before lists existed meant.
+    audienceListId: placeData.audienceListId || null,
     // Per-place guest list, the same shape circles have had all along: named
     // people who may see this one save whatever its tier says. Connections
     // only, enforced on write.
@@ -479,6 +487,10 @@ const createPlaceVideo = (videoData, userId) => {
     originalSize: videoData.originalSize || 0, // bytes before compression
     compressionRatio: videoData.compressionRatio || 0,
     visibility: videoData.visibility || 'followers', // public, followers, network(=connections), private
+    // Which named Inner Circle list this is for, when the tier is
+    // innerCircle and one was chosen. Absent means any of the owner's lists,
+    // which is what everything written before lists existed meant.
+    audienceListId: videoData.audienceListId || null,
     // People tagged in the moment: accepted connections only, validated
     // server-side; denormalized {id, displayName, profilePicture} ride along
     // so every read path gets them without a join (names may drift — accepted)

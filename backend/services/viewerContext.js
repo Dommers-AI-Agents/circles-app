@@ -12,7 +12,7 @@
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
-const { getConnectedUserIds, getInnerCircleGrantorIds } = require('../utils/networkAccess');
+const { getConnectedUserIds, getInnerCircleGrantorLists } = require('../utils/networkAccess');
 const { normalizeUserId } = require('./idService');
 
 const db = getFirestore();
@@ -31,16 +31,26 @@ const toIdSet = (values) =>
  * blocked the other — the grant evaporates at the next read. No cleanup job is
  * needed for correctness; tidying the stored list is cosmetic.
  */
-const makeViewerContext = ({ viewerId, connections, following, innerCircleGrantors }) => {
+const makeViewerContext = ({ viewerId, connections, following, innerCircleGrantors, innerCircleLists }) => {
   const connectionSet = toIdSet(connections);
-  const grantors = new Set(
-    [...toIdSet(innerCircleGrantors)].filter(id => connectionSet.has(id))
-  );
+  // A caller with the per-list map need not also pass the owners.
+  const owners = innerCircleGrantors !== undefined
+    ? toIdSet(innerCircleGrantors)
+    : toIdSet(innerCircleLists ? [...innerCircleLists.keys()] : []);
+  const grantors = new Set([...owners].filter(id => connectionSet.has(id)));
+  // The same intersection applied per list, so a grant cannot outlive the
+  // connection it was qualified by on either shape of the question.
+  const lists = new Map();
+  for (const [ownerId, listIds] of (innerCircleLists || new Map())) {
+    const owner = normalizeUserId(ownerId);
+    if (owner && grantors.has(owner)) lists.set(owner, new Set(listIds));
+  }
   return {
     viewerId: viewerId ? String(viewerId) : null,
     connections: connectionSet,
     following: toIdSet(following),
-    innerCircleGrantors: grantors
+    innerCircleGrantors: grantors,
+    innerCircleLists: lists
   };
 };
 
@@ -48,17 +58,17 @@ const makeViewerContext = ({ viewerId, connections, following, innerCircleGranto
 const buildViewerContext = async (viewerId) => {
   if (!viewerId) return makeViewerContext({ viewerId: null });
 
-  const [connections, userDoc, innerCircleGrantors] = await Promise.all([
+  const [connections, userDoc, innerCircleLists] = await Promise.all([
     getConnectedUserIds(viewerId),
     db.collection(COLLECTIONS.USERS).doc(String(viewerId)).get(),
-    getInnerCircleGrantorIds(viewerId)
+    getInnerCircleGrantorLists(viewerId)
   ]);
 
   return makeViewerContext({
     viewerId,
     connections,
     following: userDoc.exists ? userDoc.data().following : [],
-    innerCircleGrantors
+    innerCircleLists
   });
 };
 

@@ -17,6 +17,7 @@ const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { normalizePrivacy, PRIVACY } = require('./visibility');
 const { isSameUser } = require('./idService');
+const { listsFrom } = require('./innerCircleLists');
 
 const db = getFirestore();
 
@@ -55,9 +56,14 @@ const canViewCircleFor = async (circle, viewerId) => {
   if (!(await areConnected(viewerId, circle.owner))) return false;
   if (tier === PRIVACY.CONNECTIONS) return true;
 
-  // Inner Circle: being connected is necessary but not sufficient.
+  // Inner Circle: being connected is necessary but not sufficient. When the
+  // circle names one of the owner's lists, only that list counts.
   const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(String(circle.owner)).get();
-  return ownerDoc.exists && listIncludes(ownerDoc.data().innerCircle, viewerId);
+  if (!ownerDoc.exists) return false;
+  const listId = circle.audienceListId || null;
+  if (!listId) return listIncludes(ownerDoc.data().innerCircle, viewerId);
+  const named = listsFrom(ownerDoc.data()).find(list => list.id === listId);
+  return !!named && listIncludes(named.userIds, viewerId);
 };
 
 module.exports = { canViewCircleFor, areConnected };
