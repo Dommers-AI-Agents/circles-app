@@ -513,6 +513,36 @@ class RewardsService {
         }
     }
 
+    // MARK: Storefront (owner)
+
+    func fetchStorefront(venueId: String, completion: @escaping (Result<VenueStorefront, Error>) -> Void) {
+        apiService.request(endpoint: "rewards/venues/\(venueId)/storefront", method: .get, requiresAuth: true) {
+            (result: Result<RewardsEnvelope<VenueStorefront>, APIError>) in
+            completion(result.map { $0.data }.mapError { $0 as Error })
+        }
+    }
+
+    /// Each block is replaced whole — the editor holds the full list.
+    func updateStorefrontActions(venueId: String, actions: StorefrontActions, completion: @escaping (Result<VenueStorefront, Error>) -> Void) {
+        putStorefront(venueId: venueId, block: "actions", body: actions.asBody, completion: completion)
+    }
+
+    func updateStorefrontOfferings(venueId: String, offerings: StorefrontOfferings, completion: @escaping (Result<VenueStorefront, Error>) -> Void) {
+        putStorefront(venueId: venueId, block: "offerings", body: offerings.asBody, completion: completion)
+    }
+
+    func updateStorefrontGallery(venueId: String, photos: [StorefrontGalleryPhoto], completion: @escaping (Result<VenueStorefront, Error>) -> Void) {
+        let body: [String: Any] = ["photos": photos.map { photo -> [String: Any] in ["photoId": photo.photoId, "url": photo.url, "caption": photo.caption ?? NSNull()] }]
+        putStorefront(venueId: venueId, block: "gallery", body: body, completion: completion)
+    }
+
+    private func putStorefront(venueId: String, block: String, body: [String: Any], completion: @escaping (Result<VenueStorefront, Error>) -> Void) {
+        apiService.request(endpoint: "rewards/venues/\(venueId)/storefront/\(block)", method: .put, body: body, requiresAuth: true) {
+            (result: Result<RewardsEnvelope<VenueStorefront>, APIError>) in
+            completion(result.map { $0.data }.mapError { $0 as Error })
+        }
+    }
+
     func setVenueCoverPhoto(venueId: String, url: String?, completion: @escaping (Result<String?, Error>) -> Void) {
         apiService.request(
             endpoint: "rewards/venues/\(venueId)/cover-photo",
@@ -939,7 +969,122 @@ struct PlaceVenueData: Codable {
     /// Present only when isOwner: headline counters for the inline stat strip
     let ownerStats: VenueOwnerStats?
     let claim: PlaceVenueClaim?
+    /// Menu / money buttons / gallery. nil when the owner has set nothing;
+    /// the paid blocks are already stripped server-side when the store's
+    /// subscription isn't live, so the view renders whatever arrives.
+    let storefront: VenueStorefront?
 }
+
+// MARK: - Storefront (menu, buttons, gallery)
+
+struct VenueStorefront: Codable {
+    /// "Menu", "Services", "Products", "Rooms" — decided by the server from
+    /// the venue's category so the client never learns that rule.
+    let offeringsLabel: String
+    let offerings: StorefrontOfferings?
+    let actions: StorefrontActions?
+    let gallery: [StorefrontGalleryPhoto]
+
+    enum CodingKeys: String, CodingKey { case offeringsLabel, offerings, actions, gallery }
+    init(offeringsLabel: String, offerings: StorefrontOfferings?, actions: StorefrontActions?, gallery: [StorefrontGalleryPhoto]) {
+        self.offeringsLabel = offeringsLabel; self.offerings = offerings; self.actions = actions; self.gallery = gallery
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        offeringsLabel = (try? c.decode(String.self, forKey: .offeringsLabel)) ?? "Menu"
+        offerings = try? c.decodeIfPresent(StorefrontOfferings.self, forKey: .offerings)
+        actions = try? c.decodeIfPresent(StorefrontActions.self, forKey: .actions)
+        gallery = (try? c.decode([StorefrontGalleryPhoto].self, forKey: .gallery)) ?? []
+    }
+}
+
+struct StorefrontOfferings: Codable {
+    var link: String?
+    var files: [StorefrontFile]
+    var featured: [StorefrontFeaturedItem]
+
+    enum CodingKeys: String, CodingKey { case link, files, featured }
+    init(link: String? = nil, files: [StorefrontFile] = [], featured: [StorefrontFeaturedItem] = []) {
+        self.link = link; self.files = files; self.featured = featured
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        link = try? c.decodeIfPresent(String.self, forKey: .link)
+        files = (try? c.decode([StorefrontFile].self, forKey: .files)) ?? []
+        featured = (try? c.decode([StorefrontFeaturedItem].self, forKey: .featured)) ?? []
+    }
+    var isEmpty: Bool { (link ?? "").isEmpty && files.isEmpty && featured.isEmpty }
+    var asBody: [String: Any] {
+        [
+            "link": link ?? NSNull(),
+            "files": files.map { file -> [String: Any] in ["url": file.url, "kind": file.kind, "label": file.label ?? NSNull()] },
+            "featured": featured.map { item -> [String: Any] in
+                ["itemId": item.itemId, "name": item.name, "price": item.price ?? NSNull(),
+                 "description": item.description ?? NSNull(), "photoUrl": item.photoUrl ?? NSNull(), "tags": item.tags]
+            }
+        ]
+    }
+}
+
+struct StorefrontFile: Codable {
+    var url: String
+    /// "pdf" or "image"
+    var kind: String
+    var label: String?
+}
+
+struct StorefrontFeaturedItem: Codable {
+    var itemId: String
+    var name: String
+    var price: String?
+    var description: String?
+    var photoUrl: String?
+    var tags: [String]
+
+    enum CodingKeys: String, CodingKey { case itemId, name, price, description, photoUrl, tags }
+    init(itemId: String = "item_\(Int(Date().timeIntervalSince1970 * 1000))", name: String, price: String? = nil,
+         description: String? = nil, photoUrl: String? = nil, tags: [String] = []) {
+        self.itemId = itemId; self.name = name; self.price = price; self.description = description; self.photoUrl = photoUrl; self.tags = tags
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        itemId = (try? c.decode(String.self, forKey: .itemId)) ?? UUID().uuidString
+        name = (try? c.decode(String.self, forKey: .name)) ?? ""
+        price = try? c.decodeIfPresent(String.self, forKey: .price)
+        description = try? c.decodeIfPresent(String.self, forKey: .description)
+        photoUrl = try? c.decodeIfPresent(String.self, forKey: .photoUrl)
+        tags = (try? c.decode([String].self, forKey: .tags)) ?? []
+    }
+}
+
+struct StorefrontActions: Codable {
+    var reserve: String?
+    var order: String?
+    var catering: String?
+    var book: String?
+
+    /// In display order, with the label the button wears.
+    var buttons: [(key: String, title: String, icon: String, url: String)] {
+        [("reserve", "Reserve", "calendar.badge.clock", reserve),
+         ("order", "Order", "bag", order),
+         ("catering", "Catering", "fork.knife", catering),
+         ("book", "Book", "calendar", book)]
+            .compactMap { key, title, icon, url in
+                guard let url, !url.isEmpty else { return nil }
+                return (key, title, icon, url)
+            }
+    }
+    var asBody: [String: Any] {
+        ["reserve": reserve ?? NSNull(), "order": order ?? NSNull(), "catering": catering ?? NSNull(), "book": book ?? NSNull()]
+    }
+}
+
+struct StorefrontGalleryPhoto: Codable {
+    var photoId: String
+    var url: String
+    var caption: String?
+}
+
 
 struct VenueOwnerStats: Codable {
     let saves: Int

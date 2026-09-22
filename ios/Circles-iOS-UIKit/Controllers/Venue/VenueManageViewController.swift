@@ -38,6 +38,7 @@ class VenueManageViewController: BaseViewController {
     private enum Section: Int, CaseIterable {
         case dashboard
         case businessInfo
+        case storefront
         case windowQR
         case earnRate
         case offers
@@ -47,7 +48,51 @@ class VenueManageViewController: BaseViewController {
     }
 
     /// Free owner tier: everything else is business-tier (paywalled)
-    private static let freeSections: Set<Section> = [.dashboard, .businessInfo, .windowQR]
+    private static let freeSections: Set<Section> = [.dashboard, .businessInfo, .storefront, .windowQR]
+
+    // MARK: - Storefront (menu, buttons, photos)
+
+    private enum StorefrontRow: Int, CaseIterable { case buttons, offerings, gallery }
+    /// Loaded once on appear; the editors hand back the saved copy.
+    private var storefront: VenueStorefront?
+    /// The one storefront row a free owner can use. A working Reserve button
+    /// helps the customer whoever is paying; menu and photos are Business.
+    private static let freeStorefrontRows: Set<StorefrontRow> = [.buttons]
+
+    private func loadStorefront() {
+        RewardsService.shared.fetchStorefront(venueId: venueId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, case .success(let storefront) = result else { return }
+                self.storefront = storefront
+                self.tableView.reloadSections([Section.storefront.rawValue], with: .none)
+            }
+        }
+    }
+
+    private func openStorefrontRow(_ row: StorefrontRow) {
+        if !ownerPremium && !Self.freeStorefrontRows.contains(row) {
+            presentOwnerPaywall()
+            return
+        }
+        let onSaved: (VenueStorefront) -> Void = { [weak self] saved in
+            self?.storefront = saved
+            self?.tableView.reloadSections([Section.storefront.rawValue], with: .none)
+        }
+        switch row {
+        case .buttons:
+            let vc = VenueStorefrontActionsViewController(venueId: venueId, actions: storefront?.actions)
+            vc.onSaved = onSaved
+            navigationController?.pushViewController(vc, animated: true)
+        case .offerings:
+            let vc = VenueStorefrontOfferingsViewController(venueId: venueId, label: storefront?.offeringsLabel ?? "Menu", offerings: storefront?.offerings)
+            vc.onSaved = onSaved
+            navigationController?.pushViewController(vc, animated: true)
+        case .gallery:
+            let vc = VenueStorefrontGalleryViewController(venueId: venueId, photos: storefront?.gallery ?? [])
+            vc.onSaved = onSaved
+            navigationController?.pushViewController(vc, animated: true)
+        }
+    }
 
     // MARK: - UI Elements
 
@@ -130,6 +175,7 @@ class VenueManageViewController: BaseViewController {
         ])
 
         refreshOwnerPremium()
+        loadStorefront()
     }
 
     // MARK: - Business gate
@@ -753,6 +799,9 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         case .businessInfo:
             return ("Business info",
                     "How FavCircles reaches you about this venue, plus a link to your public place page. Monthly reports and printable QR codes go to the contact email.")
+        case .storefront:
+            return ("Your storefront",
+                    "What customers see on your place page beyond points: buttons that make money (Reserve, Order, Catering, Book — free), and with FavCircles Business your menu, a few featured items with photos and prices, and your own photos of the place.")
         case .windowQR:
             return ("Scan-to-save QR",
                     "Print this code and put it in your window. Customers scan it to save your place in FavCircles and start earning points. Free for every venue.")
@@ -818,6 +867,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             return nil
         case .businessInfo:
             return "Where FavCircles reaches you about your venue. Monthly reports and printable QR codes go to the contact email."
+        case .storefront:
+            return "Buttons are free for every venue. Menu, featured items and photos come with FavCircles Business."
         case .windowQR:
             return "Free for every venue: customers scan this in your window (or from your phone) to save your place and start earning points."
         case .earnRate:
@@ -837,6 +888,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         switch Section(rawValue: section)! {
         case .dashboard: return 1
         case .businessInfo: return venuePlaceId != nil ? 4 : 3 // place page + contact name + contact email + managers
+        case .storefront: return StorefrontRow.allCases.count
         case .windowQR: return 2 // show QR + email QR codes
         case .earnRate: return 1
         case .offers: return offers.count + 1 // + "Add offer" row
@@ -883,6 +935,34 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             config.imageProperties.tintColor = Constants.Colors.primary
             cell.accessoryType = .disclosureIndicator
 
+        case .storefront:
+            let row = StorefrontRow(rawValue: indexPath.row)!
+            let label = storefront?.offeringsLabel ?? "Menu"
+            switch row {
+            case .buttons:
+                let count = storefront?.actions?.buttons.count ?? 0
+                config.text = "Reserve · Order · Catering · Book"
+                config.secondaryText = count > 0 ? "\(count) button\(count == 1 ? "" : "s") on your page" : "Add the links customers tap to spend money"
+                config.image = UIImage(systemName: "hand.tap")
+            case .offerings:
+                let o = storefront?.offerings
+                let featured = o?.featured.count ?? 0
+                let pages = o?.files.count ?? 0
+                var parts: [String] = []
+                if featured > 0 { parts.append("\(featured) featured") }
+                if pages > 0 { parts.append("\(pages) photo\(pages == 1 ? "" : "s")") }
+                if !(o?.link ?? "").isEmpty { parts.append("link") }
+                config.text = "\(label) & featured items"
+                config.secondaryText = parts.isEmpty ? "A link or photos of your \(label.lowercased()), plus a few dishes with a picture and a price" : parts.joined(separator: " · ")
+                config.image = UIImage(systemName: "menucard")
+            case .gallery:
+                let count = storefront?.gallery.count ?? 0
+                config.text = "Your photos"
+                config.secondaryText = count > 0 ? "\(count) photo\(count == 1 ? "" : "s") — yours, not Google's" : "Food, the room, the team. Yours, not Google's."
+                config.image = UIImage(systemName: "photo.on.rectangle.angled")
+            }
+            config.imageProperties.tintColor = Constants.Colors.primary
+            cell.accessoryType = .disclosureIndicator
         case .windowQR:
             if indexPath.row == 0 {
                 config.text = "Show scan-to-save QR"
@@ -960,7 +1040,10 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         }
 
         // Business-tier tools show a lock for free owners
-        if !ownerPremium && !Self.freeSections.contains(Section(rawValue: indexPath.section)!) {
+        let storefrontLocked = Section(rawValue: indexPath.section) == .storefront
+            && !ownerPremium
+            && !Self.freeStorefrontRows.contains(StorefrontRow(rawValue: indexPath.row)!)
+        if storefrontLocked || (!ownerPremium && !Self.freeSections.contains(Section(rawValue: indexPath.section)!)) {
             let lock = UIImageView(image: UIImage(systemName: "lock.fill"))
             lock.tintColor = .systemGray2
             cell.accessoryView = lock
@@ -1003,6 +1086,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             } else {
                 addAnnouncement()
             }
+        case .storefront:
+            openStorefrontRow(StorefrontRow(rawValue: indexPath.row)!)
         case .businessInfo:
             let contactRow = indexPath.row - (venuePlaceId != nil ? 1 : 0)
             if contactRow < 0 {

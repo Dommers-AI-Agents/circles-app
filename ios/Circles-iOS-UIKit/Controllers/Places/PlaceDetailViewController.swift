@@ -1,3 +1,4 @@
+import SafariServices
 import UIKit
 import MapKit
 import PhotosUI
@@ -3176,6 +3177,25 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
     func placeVenueViewDidTapStats(_ view: PlaceVenueRewardsView, venue: PlaceVenue) {
         let dashboardVC = VenueDashboardViewController(venueId: venue.venueId, venueName: venue.venueName)
         navigationController?.pushViewController(dashboardVC, animated: true)
+    }
+
+    // MARK: Storefront taps
+
+    /// Reserve / Order / Catering / Book, and "see the full menu" — the
+    /// owner's own links, opened in an in-app Safari sheet so a partner site
+    /// that app-links away can't strand the person outside FavCircles.
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapStorefrontLink url: String, title: String) {
+        guard let link = URL(string: url), ["http", "https"].contains(link.scheme?.lowercased() ?? "") else { return }
+        AnalyticsService.shared.logEvent("storefront_link_tapped", parameters: ["place_id": place.id, "button": title])
+        let safari = SFSafariViewController(url: link)
+        safari.preferredControlTintColor = Constants.Colors.primary
+        present(safari, animated: true)
+    }
+
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapStorefrontPhotos urls: [String], startingAt index: Int) {
+        guard !urls.isEmpty else { return }
+        AnalyticsService.shared.logEvent("storefront_photos_opened", parameters: ["place_id": place.id, "count": urls.count])
+        present(StorefrontPhotoViewerViewController(urls: urls, startingAt: index), animated: true)
     }
 
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapQuickAction action: PlaceVenueRewardsView.QuickAction, venue: PlaceVenue) {

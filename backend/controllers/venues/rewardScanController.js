@@ -446,6 +446,9 @@ exports.getVenueByPlace = async (req, res) => {
           offerId, title, pointsCost
         })),
         announcements: venueLoyaltyLive ? rewardService.activeAnnouncements(venue) : [],
+        // Menu / buttons / gallery. Buttons always; the paid blocks only while
+        // the store's subscription is live, same as announcements.
+        storefront: require('../../services/venueStorefront').publicStorefront(venue, { live: venueLoyaltyLive }),
         balance,
         venueBalance,
         isOwner,

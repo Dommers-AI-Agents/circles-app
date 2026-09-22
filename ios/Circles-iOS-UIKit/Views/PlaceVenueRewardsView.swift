@@ -7,6 +7,9 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
     func placeVenueViewDidTapUpgrade(_ view: PlaceVenueRewardsView)
     func placeVenueViewDidTapStats(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapQuickAction action: PlaceVenueRewardsView.QuickAction, venue: PlaceVenue)
+    // Storefront: the owner's buttons, menu, featured items and photos
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapStorefrontLink url: String, title: String)
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapStorefrontPhotos urls: [String], startingAt index: Int)
 }
 
 /// The rewards section of a place page: the venue's announcements and offers,
@@ -93,6 +96,11 @@ class PlaceVenueRewardsView: UIView {
         layer.borderColor = isOwner ? Constants.Colors.primary.withAlphaComponent(0.35).cgColor : nil
 
         containerStack.addArrangedSubview(makeHeader(venue, isOwner: isOwner))
+        // The money buttons sit right under the name — Reserve / Order are
+        // the reason most people open a store's page at all.
+        if let actions = data.storefront?.actions, let row = makeActionButtonsRow(actions) {
+            containerStack.addArrangedSubview(row)
+        }
         if isOwner {
             if let stats = data.ownerStats {
                 containerStack.addArrangedSubview(makeOwnerStatsStrip(stats, venue: venue))
@@ -129,6 +137,21 @@ class PlaceVenueRewardsView: UIView {
             )
         }
 
+        if let storefront = data.storefront {
+            let hasLoyaltyRows = !announcements.isEmpty || !offers.isEmpty
+            if let offerings = storefront.offerings, !offerings.isEmpty {
+                if hasLoyaltyRows { containerStack.addArrangedSubview(makeSeparator()) }
+                if !offerings.featured.isEmpty {
+                    containerStack.addArrangedSubview(makeFeaturedStrip(offerings.featured, label: storefront.offeringsLabel))
+                }
+                if let row = makeMenuRow(offerings, label: storefront.offeringsLabel) {
+                    containerStack.addArrangedSubview(row)
+                }
+            }
+            if !storefront.gallery.isEmpty {
+                containerStack.addArrangedSubview(makeGalleryStrip(storefront.gallery))
+            }
+        }
         // Claim states are for non-owners only; the owner CTA lives in the header
         if !isOwner, let footer = makeOwnershipFooter(data, venue: venue) {
             containerStack.addArrangedSubview(makeSeparator())
@@ -547,6 +570,213 @@ class PlaceVenueRewardsView: UIView {
 
         NSLayoutConstraint.activate(constraints)
         return row
+    }
+
+    // MARK: - Storefront rows
+
+    /// Reserve · Order · Catering · Book, as pills. nil when none are set.
+    private func makeActionButtonsRow(_ actions: StorefrontActions) -> UIView? {
+        let buttons = actions.buttons
+        guard !buttons.isEmpty else { return nil }
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.spacing = 8
+        row.distribution = .fillEqually
+        for (index, button) in buttons.enumerated() {
+            let b = UIButton.smallActionButton(title: button.title, style: index == 0 ? .primary : .secondary)
+            b.setImage(UIImage(systemName: button.icon), for: .normal)
+            b.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
+            b.tag = index
+            b.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                self.delegate?.placeVenueView(self, didTapStorefrontLink: button.url, title: button.title)
+            }, for: .touchUpInside)
+            row.addArrangedSubview(b)
+        }
+        return row
+    }
+
+    /// Horizontal cards: photo, name, price. The thing that makes the page
+    /// look like a real place rather than a listing.
+    private func makeFeaturedStrip(_ items: [StorefrontFeaturedItem], label: String) -> UIView {
+        let container = UIStackView()
+        container.axis = .vertical
+        container.spacing = 8
+        let title = UILabel()
+        title.text = "From the \(label.lowercased())"
+        title.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        title.textColor = .secondaryLabel
+        container.addArrangedSubview(title)
+
+        let scroll = UIScrollView()
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        let strip = UIStackView()
+        strip.axis = .horizontal
+        strip.spacing = 10
+        strip.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(strip)
+        let photoUrls = items.compactMap { $0.photoUrl }
+        for item in items {
+            let card = makeFeaturedCard(item)
+            if let url = item.photoUrl, let index = photoUrls.firstIndex(of: url) {
+                card.isUserInteractionEnabled = true
+                card.addGestureRecognizer(FeaturedTap(target: self, action: #selector(featuredTapped(_:)), urls: photoUrls, index: index))
+            }
+            strip.addArrangedSubview(card)
+        }
+        NSLayoutConstraint.activate([
+            strip.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            strip.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            strip.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            strip.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            strip.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
+            scroll.heightAnchor.constraint(equalToConstant: 176)
+        ])
+        container.addArrangedSubview(scroll)
+        return container
+    }
+
+    private func makeFeaturedCard(_ item: StorefrontFeaturedItem) -> UIView {
+        let card = UIView()
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.backgroundColor = .secondarySystemBackground
+        card.layer.cornerRadius = 10
+        card.clipsToBounds = true
+        let image = UIImageView()
+        image.translatesAutoresizingMaskIntoConstraints = false
+        image.contentMode = .scaleAspectFill
+        image.clipsToBounds = true
+        image.backgroundColor = .tertiarySystemFill
+        if let url = item.photoUrl {
+            ImageService.shared.loadImage(from: url) { loaded in
+                DispatchQueue.main.async { image.image = loaded }
+            }
+        }
+        let name = UILabel()
+        name.translatesAutoresizingMaskIntoConstraints = false
+        name.text = item.name
+        name.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        name.textColor = .label
+        name.numberOfLines = 2
+        let price = UILabel()
+        price.translatesAutoresizingMaskIntoConstraints = false
+        price.text = [item.price, item.tags.first].compactMap { $0 }.joined(separator: " · ")
+        price.font = UIFont.systemFont(ofSize: 12)
+        price.textColor = .secondaryLabel
+        price.numberOfLines = 1
+        card.addSubview(image)
+        card.addSubview(name)
+        card.addSubview(price)
+        NSLayoutConstraint.activate([
+            card.widthAnchor.constraint(equalToConstant: 150),
+            image.topAnchor.constraint(equalTo: card.topAnchor),
+            image.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            image.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            image.heightAnchor.constraint(equalToConstant: 110),
+            name.topAnchor.constraint(equalTo: image.bottomAnchor, constant: 6),
+            name.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 8),
+            name.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -8),
+            price.topAnchor.constraint(equalTo: name.bottomAnchor, constant: 2),
+            price.leadingAnchor.constraint(equalTo: name.leadingAnchor),
+            price.trailingAnchor.constraint(equalTo: name.trailingAnchor),
+            price.bottomAnchor.constraint(lessThanOrEqualTo: card.bottomAnchor, constant: -8)
+        ])
+        return card
+    }
+
+    /// "See the full menu" — a link, or the owner's photos of the printed one.
+    private func makeMenuRow(_ offerings: StorefrontOfferings, label: String) -> UIView? {
+        let hasLink = !(offerings.link ?? "").isEmpty
+        let photos = offerings.files.filter { $0.kind == "image" }.map(\.url)
+        guard hasLink || !photos.isEmpty else { return nil }
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.spacing = 8
+        row.distribution = .fillEqually
+        if hasLink, let url = offerings.link {
+            let b = UIButton.smallActionButton(title: "See the full \(label.lowercased())", style: .secondary)
+            b.setImage(UIImage(systemName: "doc.text"), for: .normal)
+            b.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
+            b.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                self.delegate?.placeVenueView(self, didTapStorefrontLink: url, title: label)
+            }, for: .touchUpInside)
+            row.addArrangedSubview(b)
+        }
+        if !photos.isEmpty {
+            let b = UIButton.smallActionButton(title: photos.count == 1 ? "\(label) photo" : "\(label) photos (\(photos.count))", style: .secondary)
+            b.setImage(UIImage(systemName: "photo.on.rectangle"), for: .normal)
+            b.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
+            b.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                self.delegate?.placeVenueView(self, didTapStorefrontPhotos: photos, startingAt: 0)
+            }, for: .touchUpInside)
+            row.addArrangedSubview(b)
+        }
+        return row
+    }
+
+    /// The owner's own photos, as a thumbnail strip.
+    private func makeGalleryStrip(_ photos: [StorefrontGalleryPhoto]) -> UIView {
+        let container = UIStackView()
+        container.axis = .vertical
+        container.spacing = 8
+        let title = UILabel()
+        title.text = "Photos from the owner"
+        title.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        title.textColor = .secondaryLabel
+        container.addArrangedSubview(title)
+        let scroll = UIScrollView()
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        let strip = UIStackView()
+        strip.axis = .horizontal
+        strip.spacing = 6
+        strip.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(strip)
+        let urls = photos.map(\.url)
+        for (index, photo) in photos.enumerated() {
+            let iv = UIImageView()
+            iv.translatesAutoresizingMaskIntoConstraints = false
+            iv.contentMode = .scaleAspectFill
+            iv.clipsToBounds = true
+            iv.layer.cornerRadius = 8
+            iv.backgroundColor = .tertiarySystemFill
+            iv.isUserInteractionEnabled = true
+            iv.addGestureRecognizer(FeaturedTap(target: self, action: #selector(featuredTapped(_:)), urls: urls, index: index))
+            ImageService.shared.loadImage(from: photo.url) { loaded in
+                DispatchQueue.main.async { iv.image = loaded }
+            }
+            NSLayoutConstraint.activate([iv.widthAnchor.constraint(equalToConstant: 96), iv.heightAnchor.constraint(equalToConstant: 96)])
+            strip.addArrangedSubview(iv)
+        }
+        NSLayoutConstraint.activate([
+            strip.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            strip.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            strip.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            strip.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            strip.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
+            scroll.heightAnchor.constraint(equalToConstant: 96)
+        ])
+        container.addArrangedSubview(scroll)
+        return container
+    }
+
+    /// A tap that remembers which photo set it belongs to.
+    private final class FeaturedTap: UITapGestureRecognizer {
+        let urls: [String]
+        let index: Int
+        init(target: Any?, action: Selector?, urls: [String], index: Int) {
+            self.urls = urls
+            self.index = index
+            super.init(target: target, action: action)
+        }
+    }
+
+    @objc private func featuredTapped(_ tap: UITapGestureRecognizer) {
+        guard let tap = tap as? FeaturedTap else { return }
+        delegate?.placeVenueView(self, didTapStorefrontPhotos: tap.urls, startingAt: tap.index)
     }
 
     private func makeSeparator() -> UIView {

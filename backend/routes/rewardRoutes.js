@@ -154,5 +154,13 @@ router.patch('/venues/:venueId', requireVenueOwner, requireOwnerPremium, updateV
 router.post('/venues/:venueId/register-code', requireVenueOwner, requireOwnerPremium, rotateRegisterCode);
 router.post('/venues/:venueId/codes', requireVenueOwner, requireOwnerPremium, createRedemptionCodes);
 router.get('/venues/:venueId/codes', requireVenueOwner, listRedemptionCodes);
+// Storefront: the menu (or services/products/rooms), the money buttons, and a
+// gallery. Buttons are free — a working Reserve helps the customer whoever is
+// paying. Menu and gallery are Business-tier, like announcements.
+const storefront = require('../controllers/venues/venueStorefrontController');
+router.get('/venues/:venueId/storefront', requireVenueOwner, storefront.getStorefront);
+router.put('/venues/:venueId/storefront/actions', requireVenueOwner, storefront.updateActions);
+router.put('/venues/:venueId/storefront/offerings', requireVenueOwner, requireOwnerPremium, storefront.updateOfferings);
+router.put('/venues/:venueId/storefront/gallery', requireVenueOwner, requireOwnerPremium, storefront.updateGallery);
 
 module.exports = router;
