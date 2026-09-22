@@ -364,6 +364,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // Show notification even when app is in foreground
         let userInfo = notification.request.content.userInfo
 
+        // A push about a widget, with the app open: refetch that widget so
+        // its card reflects what the push just said (a parent accepted, a
+        // round closed) instead of what it loaded at launch.
+        if case .homeWidget(let widgetId)? = NotificationTapRouter.destination(for: userInfo) {
+            NotificationCenter.default.post(name: .refreshHomeWidget, object: widgetId)
+        }
+
         // The proximity banner is for a closed app; in the foreground the
         // home chip covers it. Swallow it here (the request is consumed and
         // the next replan reschedules the place).

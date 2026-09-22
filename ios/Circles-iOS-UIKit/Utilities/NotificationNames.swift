@@ -44,6 +44,9 @@ extension Notification.Name {
     static let navigateToCreateWallet = Notification.Name("NavigateToCreateWallet")
     /// object = widget id (e.g. "nextbar"); opens the home Widgets segment on that widget
     static let navigateToHomeWidget = Notification.Name("NavigateToHomeWidget")
+    /// object = widget id; a push for that widget arrived while the app was
+    /// open, so its data should be refetched rather than shown stale.
+    static let refreshHomeWidget = Notification.Name("RefreshHomeWidget")
     /// "You're near <saved place>" banner tap: open the check-in sheet with
     /// that place pre-filled. `object` is the place id.
     static let navigateToCheckIn = Notification.Name("NavigateToCheckIn")

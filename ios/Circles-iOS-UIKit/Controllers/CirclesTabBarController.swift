@@ -286,6 +286,12 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             name: .navigateToHomeWidget,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(refreshHomeWidget(_:)),
+            name: .refreshHomeWidget,
+            object: nil
+        )
 
         NotificationCenter.default.addObserver(
             self,
@@ -489,6 +495,16 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     }
 
     /// Push tap into a widget (e.g. a NextBar vote): Home tab → Widgets segment → that widget's page.
+    /// A widget's push arrived with the app open: refetch it if the Widgets
+    /// tab exists (never build it just to refresh it).
+    @objc private func refreshHomeWidget(_ note: Notification) {
+        guard let widgetId = note.object as? String,
+              let navController = viewControllers?[0] as? UINavigationController,
+              let circlesVC = navController.viewControllers.first as? CirclesHomeViewController,
+              circlesVC.isViewLoaded else { return }
+        circlesVC.widgetsTab.refreshWidget(id: widgetId)
+    }
+
     @objc private func navigateToHomeWidget(_ note: Notification) {
         selectedIndex = 0
         guard let navController = viewControllers?[0] as? UINavigationController,

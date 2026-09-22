@@ -337,7 +337,13 @@ class CareCheckinService {
   /** Awaited: the delivery result decides which alarm the child gets later. */
   async push(userId, { type, title, body, data }) {
     try {
-      return await notificationService.sendToUser(userId, { type, title, body, data: { type, ...(data || {}) } });
+      const payload = { type, title, body, data: { type, ...(data || {}) } };
+      // An invitation and its answer are things people go back to look for;
+      // they get a bell row as well as the push. The rest are moment-to-moment.
+      const keep = type === TYPES.invite || type === TYPES.accepted;
+      return keep
+        ? await notificationService.sendToUserWithRecord(userId, payload)
+        : await notificationService.sendToUser(userId, payload);
     } catch (error) {
       console.error(`[care] push failed for ${userId}: ${error.message}`);
       return { success: false, error: error.message };

@@ -135,6 +135,15 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
 
     // MARK: - Navigation
 
+    /// Refetches one widget's data — a push about it just arrived, so what is
+    /// on screen ("Waiting for Mom to accept") may be minutes stale.
+    func refreshWidget(id widgetId: String) {
+        guard let model, let descriptor = model.descriptors.first(where: { $0.id == widgetId }),
+              let widget = model.widget(for: descriptor) else { return }
+        let context = model.context(for: descriptor)
+        Task { await widget.refresh(context: context) }
+    }
+
     /// Opens one widget's full page by id (push taps, deep links). A postcard
     /// order id is handed to the page through its context, like a launch
     /// photo, so the page opens on that card's status.
@@ -154,6 +163,7 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         let context = model.context(for: descriptor)
         if widgetId == "postcard", let postcardOrderId { context.launchPostcardOrderId = postcardOrderId }
         if widgetId == "quotes", let quoteId { context.launchQuoteId = quoteId }
+        Task { await widget.refresh(context: context) }
         open(widget, context: context)
     }
 

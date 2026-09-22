@@ -9,7 +9,12 @@ jest.mock('../../config/firebase', () => ({
 }));
 const mockConnections = new Map();
 jest.mock('../connectionMap', () => ({ buildConnectionMap: jest.fn(async () => mockConnections) }));
-jest.mock('../notificationService', () => ({ sendToUser: jest.fn(async () => ({ success: true })) }));
+// The recording variant is a bell row PLUS the push, so it delegates to
+// sendToUser here: every "was the push sent" assertion below still holds.
+jest.mock('../notificationService', () => {
+  const sendToUser = jest.fn(async () => ({ success: true }));
+  return { sendToUser, sendToUserWithRecord: jest.fn((userId, payload) => sendToUser(userId, payload)) };
+});
 
 const notificationService = require('../notificationService');
 const care = require('../careCheckinService');
@@ -77,6 +82,8 @@ describe('setting up', () => {
     expect(plan.timezone).toBe('America/Los_Angeles');
     expect(plan.role).toBe('parent');
     expect(notificationService.sendToUser).toHaveBeenLastCalledWith(CHILD, expect.objectContaining({ type: 'care_accepted', title: 'Mom said yes to check-ins' }));
+    // Invitations and answers are things people go back to look for: bell row + push.
+    expect(notificationService.sendToUserWithRecord).toHaveBeenLastCalledWith(CHILD, expect.objectContaining({ type: 'care_accepted' }));
   });
 
   test('the owner can send the invitation again, not too often, and hears whether the phone got it', async () => {

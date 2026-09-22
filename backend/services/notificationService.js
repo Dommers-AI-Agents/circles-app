@@ -224,6 +224,33 @@ class NotificationService {
     return preferences[preferencesKey] !== false;
   }
 
+  /**
+   * A push that ALSO leaves a row in the bell. For the moments someone will
+   * go looking for later — "did Dad get my invitation?", "did Mom say yes?" —
+   * a push alone evaporates; the row is what they find. The push is sent
+   * regardless of whether the row could be written.
+   */
+  async sendToUserWithRecord(userId, notification) {
+    try {
+      const row = createNotification({
+        userId,
+        type: notification.type,
+        title: notification.title,
+        body: notification.body,
+        data: notification.data || {}
+      });
+      if (validateNotification(row).length === 0) {
+        const ref = await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(row);
+        sseService.notifyUser(userId, 'new_notification', {
+          notificationId: ref.id, type: row.type, title: row.title, body: row.body
+        });
+      }
+    } catch (error) {
+      console.error(`🔔 Could not record ${notification.type} for ${userId}: ${error.message}`);
+    }
+    return this.sendToUser(userId, notification);
+  }
+
   // Check if current time is in quiet hours.
   //
   // In the USER'S timezone. This used to read the server clock, which is UTC
