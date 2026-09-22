@@ -26,9 +26,27 @@ final class AppWidgetHost: FavWidgetHost {
 
     init(userId: String) {
         self.userId = userId
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-        let directory = caches.appendingPathComponent("HomeWidgets", isDirectory: true).appendingPathComponent(userId, isDirectory: true)
-        dataStore = CachedWidgetDataStore(wrapping: HomeWidgetsAPIDataStore(), directory: directory)
+        dataStore = AppWidgetHost.makeDataStore(userId: userId)
+    }
+
+    /// The per-user document cache, in Application Support so iOS doesn't
+    /// purge it under storage pressure — it holds edits made offline that
+    /// haven't reached the server yet. Every path that writes widget data
+    /// (the tab, the water reminder's "Log a cup") must go through this, so
+    /// an offline write lands in the same place the tab resumes from.
+    static func makeDataStore(userId: String) -> CachedWidgetDataStore {
+        let fm = FileManager.default
+        let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? fm.temporaryDirectory
+        let directory = support.appendingPathComponent("HomeWidgets", isDirectory: true).appendingPathComponent(userId, isDirectory: true)
+        // One-time move from the old Caches location (first build after this change).
+        if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            let legacy = caches.appendingPathComponent("HomeWidgets", isDirectory: true).appendingPathComponent(userId, isDirectory: true)
+            if fm.fileExists(atPath: legacy.path), !fm.fileExists(atPath: directory.path) {
+                try? fm.createDirectory(at: directory.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? fm.moveItem(at: legacy, to: directory)
+            }
+        }
+        return CachedWidgetDataStore(wrapping: HomeWidgetsAPIDataStore(), directory: directory)
     }
 
     var currentUserId: String? { userId }

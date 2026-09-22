@@ -215,8 +215,15 @@ final class HomeDataLoader {
                 guard let self = self else { return }
 
                 // Final deduplication and data integrity check
-                let uniquePlaces = HomeState.dedupe(placesArray.flatMap { $0 })
-                self.state.allPlaces = uniquePlaces
+                var uniquePlaces = HomeState.dedupe(placesArray.flatMap { $0 })
+                // Offline, every batch fails and this is empty: keep whatever
+                // the disk cache painted rather than wiping the map with nothing.
+                if PlaceRefreshMerge.shouldReplaceInMemory(fetched: uniquePlaces.count, fetchComplete: placesFetchComplete, current: self.state.allPlaces.count) {
+                    self.state.allPlaces = uniquePlaces
+                } else {
+                    Logger.info("📍 Place fetch failed with nothing back — keeping \(self.state.allPlaces.count) cached places on screen")
+                    uniquePlaces = self.state.allPlaces
+                }
 
                 // Update available categories now that we have all places
                 self.delegate?.updateAvailableCategories()
@@ -230,8 +237,10 @@ final class HomeDataLoader {
                     return false
                 }
 
-                // Cache the final places data
-                self.state.cache(uniquePlaces)
+                // Cache the final places data (a kept cached set is already the cache)
+                if placesFetchComplete || !uniquePlaces.isEmpty {
+                    self.state.cache(uniquePlaces)
+                }
 
                 // Persist own places for the next cold start's instant paint —
                 // only from a COMPLETE fetch (partial sets must never hit disk)
@@ -479,7 +488,14 @@ final class HomeDataLoader {
             Logger.debug("📍 PLACE FETCH COMPLETE: \(allFetchedPlaces.count) raw places (\(userPlacesCount) own), \(self.state.circles.count) user circles, \(self.state.networkCircles.count) network circles")
 
             // Deduplicate places that might exist in multiple circles
-            let deduplicatedPlaces = self.removeDuplicatePlaces(allFetchedPlaces)
+            let fetchedUnique = self.removeDuplicatePlaces(allFetchedPlaces)
+            // Offline, every batch fails and this is empty: keep the pins the
+            // disk cache painted rather than clearing the map with nothing.
+            let keepCached = !PlaceRefreshMerge.shouldReplaceInMemory(fetched: fetchedUnique.count, fetchComplete: ownPlacesFetchComplete, current: self.state.allPlaces.count)
+            if keepCached {
+                Logger.info("📍 Place fetch failed with nothing back — keeping \(self.state.allPlaces.count) cached places on screen")
+            }
+            let deduplicatedPlaces = keepCached ? self.state.allPlaces : fetchedUnique
             self.state.allPlaces = deduplicatedPlaces
 
             // Own places = in my circles, or in a circle I own that arrived via
@@ -500,8 +516,11 @@ final class HomeDataLoader {
             // Store user's own places separately for search filtering
             self.state.userOwnPlaces = userPlacesAfterDedup
 
-            // Cache the deduplicated places with expiry time
-            self.state.cache(deduplicatedPlaces)
+            // Cache the deduplicated places with expiry time (a kept cached
+            // set is already the cache)
+            if !keepCached {
+                self.state.cache(deduplicatedPlaces)
+            }
 
             // Persist the user's own places for the next cold start's instant
             // paint — ONLY when every own-place request succeeded (a partial
@@ -523,7 +542,7 @@ final class HomeDataLoader {
             self.delegate?.mapRefreshDidFilter(mapFilteredPlaces)
 
             // Use progressive loading instead of waiting for everything
-            self.delegate?.updateMapProgressively(with: deduplicatedPlaces, isFromCache: false)
+            self.delegate?.updateMapProgressively(with: deduplicatedPlaces, isFromCache: keepCached)
 
             // Hide loading state
             self.isLoadingPlaces = false

@@ -3,6 +3,8 @@ import Network
 
 class NetworkMonitor {
     static let shared = NetworkMonitor()
+    /// `userInfo` key on `.networkReachabilityDidChange`: the new `isConnected`.
+    static let isConnectedKey = "isConnected"
     
     private(set) var isConnected = true
     private(set) var connectionType: ConnectionType = .unknown
@@ -44,6 +46,8 @@ class NetworkMonitor {
                     self.observers.forEach { _, handler in
                         handler(newState)
                     }
+                    NotificationCenter.default.post(name: .networkReachabilityDidChange, object: nil,
+                                                    userInfo: [NetworkMonitor.isConnectedKey: newState])
                 }
             }
         }
@@ -85,3 +89,10 @@ enum ConnectionType {
     case unknown
 }
 
+
+extension Notification.Name {
+    /// Posted on the main queue when the path changes between reachable and
+    /// not (never for every path update). Queues drain on the way back up;
+    /// the offline banner shows on the way down.
+    static let networkReachabilityDidChange = Notification.Name("NetworkReachabilityDidChange")
+}

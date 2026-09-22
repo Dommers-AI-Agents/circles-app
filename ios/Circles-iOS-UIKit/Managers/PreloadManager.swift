@@ -18,7 +18,15 @@ class PreloadManager {
     
     // MARK: - Singleton
     static let shared = PreloadManager()
-    private init() {}
+    private init() {
+        // A stale snapshot refreshes as soon as the connection comes back, so
+        // the next launch after a dead spot doesn't paint week-old data.
+        NotificationCenter.default.addObserver(forName: .networkReachabilityDidChange, object: nil, queue: .main) { [weak self] note in
+            guard let self, note.userInfo?[NetworkMonitor.isConnectedKey] as? Bool == true,
+                  AuthService.shared.isLoggedIn, !self.isCacheValid() else { return }
+            self.refreshInBackground()
+        }
+    }
     
     // MARK: - Properties
     private var isPreloading = false

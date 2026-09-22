@@ -96,8 +96,11 @@ final class HomeWidgetsAPIDataStore: WidgetDataStore {
         case .httpError(let status, let data):
             switch status {
             case 409:
-                let current = data.flatMap { try? JSONDecoder().decode(ConflictBody.self, from: $0) }?.current?.document
-                return .conflict(server: current)
+                let body = data.flatMap { try? JSONDecoder().decode(ConflictBody.self, from: $0) }
+                // Not another device — this build is older than the stored
+                // schema, and only an update fixes that.
+                if body?.code == "SCHEMA_TOO_OLD" { return .schemaTooOld }
+                return .conflict(server: body?.current?.document)
             case 413:
                 return .payloadTooLarge(bytes: 0)
             case 401, 403:

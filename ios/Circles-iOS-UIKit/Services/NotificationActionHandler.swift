@@ -108,7 +108,10 @@ final class NotificationActionHandler {
             // Held until the write lands, like the care answers.
             Task {
                 do {
-                    let result = try await WaterQuickLog.logCup(store: HomeWidgetsAPIDataStore())
+                    // The same disk-backed store the tab uses: offline, the cup
+                    // is kept as a pending edit and synced when the tab next loads.
+                    let store: WidgetDataStore = KeychainService.shared.getUserId().map(AppWidgetHost.makeDataStore(userId:)) ?? HomeWidgetsAPIDataStore()
+                    let result = try await WaterQuickLog.logCup(store: store)
                     Logger.debug("💧 Logged a cup from the reminder: \(result.cups) of \(result.goal)")
                 } catch {
                     Logger.debug("❌ Water quick log failed: \(error)")

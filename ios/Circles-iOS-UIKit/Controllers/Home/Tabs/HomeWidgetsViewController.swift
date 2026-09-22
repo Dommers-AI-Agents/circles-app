@@ -16,6 +16,7 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
     private var hostingController: UIHostingController<WidgetsTabRootView>?
     private let statusView = HomeTabStatusView()
     private var hintBubble: BubbleView?
+    private var lifecycleObservers: [NSObjectProtocol] = []
 
     // The host's segment switch drives loading; nothing loads on its own.
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -25,6 +26,7 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Constants.Colors.background
+        observeLifecycle()
         view.addSubview(statusView)
         NSLayoutConstraint.activate([
             statusView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -32,6 +34,33 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
             statusView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             statusView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+    }
+
+    deinit {
+        lifecycleObservers.forEach { NotificationCenter.default.removeObserver($0) }
+    }
+
+    /// Pending edits go out when the app leaves the screen (inside a short
+    /// background task so the PUT can finish) and when the connection comes
+    /// back — a save refused offline is kept on disk and retried here.
+    private func observeLifecycle() {
+        let center = NotificationCenter.default
+        lifecycleObservers.append(center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let model = self?.model else { return }
+            var taskId = UIBackgroundTaskIdentifier.invalid
+            taskId = UIApplication.shared.beginBackgroundTask(withName: "widgets.flush") {
+                UIApplication.shared.endBackgroundTask(taskId)
+                taskId = .invalid
+            }
+            Task {
+                await model.flushAll()
+                if taskId != .invalid { UIApplication.shared.endBackgroundTask(taskId) }
+            }
+        })
+        lifecycleObservers.append(center.addObserver(forName: .networkReachabilityDidChange, object: nil, queue: .main) { [weak self] note in
+            guard note.userInfo?[NetworkMonitor.isConnectedKey] as? Bool == true, let model = self?.model else { return }
+            Task { await model.flushAll() }
+        })
     }
 
     // MARK: - HomeContentTab

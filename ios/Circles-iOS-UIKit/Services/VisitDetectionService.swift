@@ -61,6 +61,13 @@ class VisitDetectionService: NSObject {
         Logger.info("📍 VisitDetectionService.configure() called")
         loadSettings()
         checkLocationAuthorization()
+        // Visits saved while offline go out now, and again whenever the
+        // connection comes back — not only on the rare background fetch.
+        syncPendingVisits()
+        NotificationCenter.default.addObserver(forName: .networkReachabilityDidChange, object: nil, queue: .main) { [weak self] note in
+            guard note.userInfo?[NetworkMonitor.isConnectedKey] as? Bool == true else { return }
+            self?.syncPendingVisits()
+        }
     }
     
     func requestLocationPermissions(completion: @escaping (Bool) -> Void) {
@@ -492,7 +499,7 @@ class VisitDetectionService: NSObject {
                 
             case .failure(let error):
                 Logger.error("📍 Failed to sync visit: \(error.localizedDescription) ❌")
-                // Will retry on next app launch or network change
+                // Retried on the next launch and when the connection returns
             }
         }
     }

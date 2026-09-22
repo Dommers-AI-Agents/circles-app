@@ -22,6 +22,9 @@ extension AppWidgetHost {
             throw WidgetAPIError(status: 400, message: "Bad request")
         }
         var urlRequest = URLRequest(url: url)
+        // Same budget as APIService; the shared session's 60 s default left
+        // widget spinners hanging a full minute on a dead connection.
+        urlRequest.timeoutInterval = 30
         urlRequest.httpMethod = request.method.rawValue
         urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")

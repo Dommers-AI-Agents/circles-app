@@ -22,11 +22,14 @@ final class WidgetSnapshotService {
 
         var entries: [WidgetSnapshot.Entry] = []
         var coins: Double?
+        var activitiesSucceeded = false
+        var coinsSucceeded = false
         let group = DispatchGroup()
 
         group.enter()
         ActivityService.shared.getNetworkActivities(limit: 20) { result in
             if case .success(let response) = result {
+                activitiesSucceeded = true
                 entries = response.activities
                     .filter { $0.type == .placeAdded || $0.type == .checkIn }
                     .prefix(6)
@@ -52,6 +55,7 @@ final class WidgetSnapshotService {
         group.enter()
         PiggyBankAPIService.shared.getPiggyBank { result in
             if case .success(let response) = result {
+                coinsSucceeded = true
                 let bank = response.bank
                 coins = bank.confirmedCoins + bank.pendingCoins + bank.settledOnChain
             }
@@ -60,6 +64,12 @@ final class WidgetSnapshotService {
 
         group.notify(queue: .global(qos: .utility)) { [weak self] in
             self?.isRefreshing = false
+            // Offline both fail at once; the last good snapshot stays on the
+            // widget instead of an empty card.
+            guard WidgetSnapshotPolicy.shouldReplace(activitiesSucceeded: activitiesSucceeded, coinsSucceeded: coinsSucceeded) else {
+                Logger.debug("🧩 Widget snapshot: nothing came back, keeping the last one")
+                return
+            }
             WidgetSnapshotStore.save(WidgetSnapshot(
                 generatedAt: Date(),
                 entries: entries,
