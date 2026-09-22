@@ -4,8 +4,8 @@ import Testing
 /// Coming back to the app while Sleep Sounds is playing lands on the sound —
 /// unless doing so would dismiss something or re-open the page already showing.
 struct NowPlayingReturnGateTests {
-    private func playing(signedIn: Bool = true, modal: Bool = false, showing: Bool = false) -> NowPlayingReturnGate.Context {
-        .init(isPlaying: true, isSignedIn: signedIn, hasModal: modal, isShowingSleepSounds: showing)
+    private func playing(signedIn: Bool = true, modal: Bool = false, top: String? = nil) -> NowPlayingReturnGate.Context {
+        .init(isPlaying: true, isSignedIn: signedIn, hasModal: modal, topWidgetId: top)
     }
 
     @Test func returningWhileTheSoundPlaysOpensIt() {
@@ -25,7 +25,13 @@ struct NowPlayingReturnGateTests {
     }
 
     @Test func notWhenItIsAlreadyTheScreen() {
-        #expect(!NowPlayingReturnGate.shouldOpenSleepSounds(playing(showing: true)))
+        #expect(!NowPlayingReturnGate.shouldOpenSleepSounds(playing(top: "sleepsounds")))
+    }
+
+    /// Switching away for ten seconds mid-postcard and coming back must not
+    /// throw the draft away just because a sound is on.
+    @Test func notWhileAnotherWidgetIsMidTask() {
+        #expect(!NowPlayingReturnGate.shouldOpenSleepSounds(playing(top: "postcard")))
     }
 
     @Test func notWhenSignedOut() {

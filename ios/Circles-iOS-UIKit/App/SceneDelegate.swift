@@ -1520,16 +1520,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     private func returnToSleepSoundsIfPlaying() {
         let tabBar = window?.rootViewController as? CirclesTabBarController
         let nav = tabBar?.viewControllers?.first as? UINavigationController
-        let showing = tabBar?.selectedIndex == 0
-            && (nav?.topViewController as? HomeWidgetDetailViewController)?.widgetId == "sleepsounds"
+        let topWidget = tabBar?.selectedIndex == 0
+            ? (nav?.topViewController as? HomeWidgetDetailViewController)?.widgetId : nil
         let context = NowPlayingReturnGate.Context(
             isPlaying: SleepSoundEngine.shared.isPlaying,
             isSignedIn: AuthService.shared.isLoggedIn,
             hasModal: tabBar?.presentedViewController != nil,
-            isShowingSleepSounds: showing
+            topWidgetId: topWidget
         )
         guard NowPlayingReturnGate.shouldOpenSleepSounds(context) else { return }
-        navigateToWidget(id: "sleepsounds")
+        navigateToWidget(id: NowPlayingReturnGate.sleepSoundsId)
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

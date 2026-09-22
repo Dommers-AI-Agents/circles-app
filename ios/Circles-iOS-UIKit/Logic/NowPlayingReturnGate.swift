@@ -20,14 +20,18 @@ enum NowPlayingReturnGate {
         /// postcard composer, an alert. Navigating would dismiss it underneath
         /// the person, so we don't.
         var hasModal: Bool
-        /// The Sleep Sounds page is already the visible screen; re-opening it
-        /// would pop and re-push for nothing.
-        var isShowingSleepSounds: Bool
+        /// Which widget page is on top of the home stack, if any. Sleep Sounds
+        /// itself means nothing to do; any other widget means someone is in
+        /// the middle of something there — a postcard draft, a bill split —
+        /// that popping to root would throw away.
+        var topWidgetId: String?
     }
 
+    static let sleepSoundsId = "sleepsounds"
+
     static func shouldOpenSleepSounds(_ c: Context) -> Bool {
-        guard c.isPlaying, c.isSignedIn else { return false }
-        guard !c.hasModal, !c.isShowingSleepSounds else { return false }
-        return true
+        guard c.isPlaying, c.isSignedIn, !c.hasModal else { return false }
+        guard c.topWidgetId == nil || c.topWidgetId == sleepSoundsId else { return false }
+        return c.topWidgetId != sleepSoundsId
     }
 }
