@@ -2,6 +2,8 @@
 // "How Are You?" check-ins between a parent and their children.
 // Plans, asks and answers here; membership (watchers) and scheduler (ask creation, silence alerts) are mixed in from ./careCheckin.
 // Constants and pure helpers live in ./careCheckin/shared.js.
+// A resent invitation is a nudge to a real phone; ten minutes between them.
+const RESEND_INVITE_COOLDOWN_MS = 10 * 60 * 1000;
 const { ANSWERS, COLLECTIONS, CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, DUE_AFTER_MS, NOTE_MAX, TYPES, buildConnectionMap, clean, friendlyTime, getFirestore, localDateKey, normalizeQuestions, normalizeTimes, normalizeUserId, notificationService, nowIso } = require('./careCheckin/shared');
 
 class CareCheckinService {
@@ -59,6 +61,7 @@ class CareCheckinService {
       times: plan.times || DEFAULT_TIMES,
       timezone: plan.timezone || null,
       createdAt: plan.createdAt || null,
+      lastInvitedAt: plan.lastInvitedAt || plan.createdAt || null,
       acceptedAt: plan.acceptedAt || null,
       lastAskedAt: plan.lastAskedAt || null,
       lastAnsweredAt: plan.lastAnsweredAt || null,
@@ -179,16 +182,46 @@ class CareCheckinService {
       nextQuestionIndex: 0,
       watchers: [],
       watcherIds: [],
-      createdAt: nowIso(), updatedAt: nowIso(), acceptedAt: null, lastAskedAt: null, lastAnsweredAt: null
+      createdAt: nowIso(), updatedAt: nowIso(), lastInvitedAt: nowIso(), inviteCount: 1,
+      acceptedAt: null, lastAskedAt: null, lastAnsweredAt: null
     };
     await this.plans.doc(planId).set(plan);
-    this.notify(parent, {
+    this.notify(parent, CareCheckinService.inviteMessage(ownerName, planId));
+    return this.presentPlan({ id: planId, ...plan }, { viewerId: ownerId });
+  }
+
+  static inviteMessage(ownerName, planId) {
+    return {
       type: TYPES.invite,
       title: `${ownerName} wants to check in on you`,
       body: `They'll send a short "how are you?" a few times a day. Open Circles to say yes.`,
       data: { planId }
-    });
-    return this.presentPlan({ id: planId, ...plan }, { viewerId: ownerId });
+    };
+  }
+
+  // The invitation push again, for a parent who missed it (an old app, a
+  // phone that was off). The plan itself is unchanged: it was already waiting
+  // in their widget. Awaited so the child hears whether the phone got it.
+  async resendInvite({ userId, planId, now = new Date() }) {
+    const plan = await this.requirePlan(planId);
+    if (plan.ownerId !== userId) throw new CareError(403, 'not_owner', 'Only the person who set this up can send the invitation again.');
+    if (plan.status !== 'invited') {
+      const why = plan.status === 'declined' ? `${plan.parentName} said no to this one.` : `${plan.parentName} already answered the invitation.`;
+      throw new CareError(409, 'not_invited', why);
+    }
+    const last = Date.parse(plan.lastInvitedAt || plan.createdAt || 0) || 0;
+    const waitMs = RESEND_INVITE_COOLDOWN_MS - (now.getTime() - last);
+    if (waitMs > 0) {
+      const minutes = Math.max(1, Math.ceil(waitMs / 60000));
+      throw new CareError(429, 'too_soon', `The invitation just went out. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`);
+    }
+    const result = await this.push(plan.parentId, CareCheckinService.inviteMessage(plan.ownerName || 'Someone', planId));
+    const patch = { lastInvitedAt: now.toISOString(), inviteCount: (plan.inviteCount || 1) + 1, updatedAt: nowIso() };
+    await this.plans.doc(planId).update(patch);
+    return {
+      plan: this.presentPlan({ ...plan, ...patch }, { viewerId: userId }),
+      delivered: !!(result && result.success)
+    };
   }
 
   // The live plan on a parent, whoever set it up. Equality-only, sorted in

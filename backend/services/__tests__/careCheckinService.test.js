@@ -79,6 +79,41 @@ describe('setting up', () => {
     expect(notificationService.sendToUser).toHaveBeenLastCalledWith(CHILD, expect.objectContaining({ type: 'care_accepted', title: 'Mom said yes to check-ins' }));
   });
 
+  test('the owner can send the invitation again, not too often, and hears whether the phone got it', async () => {
+    await seedUsers();
+    await care.createPlan({ ownerId: CHILD, parentId: PARENT, times: ['08:30'] });
+    notificationService.sendToUser.mockClear();
+    const created = Date.parse(plans().get(PLAN).createdAt);
+
+    await expect(care.resendInvite({ userId: PARENT, planId: PLAN })).rejects.toMatchObject({ code: 'not_owner' });
+    // Right after creating it: the first push just went out.
+    await expect(care.resendInvite({ userId: CHILD, planId: PLAN, now: new Date(created + 60000) })).rejects.toMatchObject({ code: 'too_soon' });
+    expect(notificationService.sendToUser).not.toHaveBeenCalled();
+
+    const later = new Date(created + 11 * 60000);
+    const sent = await care.resendInvite({ userId: CHILD, planId: PLAN, now: later });
+    expect(sent.delivered).toBe(true);
+    expect(sent.plan.status).toBe('invited');
+    expect(sent.plan.lastInvitedAt).toBe(later.toISOString());
+    expect(plans().get(PLAN).inviteCount).toBe(2);
+    expect(notificationService.sendToUser).toHaveBeenCalledTimes(1);
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(PARENT, expect.objectContaining({
+      type: 'care_invite', title: 'Wes wants to check in on you', data: expect.objectContaining({ type: 'care_invite', planId: PLAN })
+    }));
+
+    // Inside the cooldown again, measured from the resend.
+    await expect(care.resendInvite({ userId: CHILD, planId: PLAN, now: new Date(later.getTime() + 60000) })).rejects.toMatchObject({ code: 'too_soon' });
+
+    // A push the phone never got is reported, not hidden.
+    notificationService.sendToUser.mockImplementation(async () => ({ success: false, error: 'No device tokens' }));
+    const missed = await care.resendInvite({ userId: CHILD, planId: PLAN, now: new Date(later.getTime() + 11 * 60000) });
+    expect(missed.delivered).toBe(false);
+
+    // Once accepted or declined there is nothing to resend.
+    await care.respondToInvite({ userId: PARENT, planId: PLAN, accept: false });
+    await expect(care.resendInvite({ userId: CHILD, planId: PLAN, now: new Date(later.getTime() + 30 * 60000) })).rejects.toMatchObject({ code: 'not_invited' });
+  });
+
   test('declining and ending are honored, and nothing is asked until accepted', async () => {
     await seedUsers();
     await care.createPlan({ ownerId: CHILD, parentId: PARENT, times: ['08:30'] });

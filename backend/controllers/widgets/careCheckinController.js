@@ -35,6 +35,12 @@ exports.respond = async (req, res) => {
   catch (e) { fail(res, e); }
 };
 
+// The owner nudges a parent who hasn't answered the invitation.
+exports.resendInvite = async (req, res) => {
+  try { res.json({ success: true, ...(await care.resendInvite({ userId: req.user.uid, planId: req.params.id })) }); }
+  catch (e) { fail(res, e); }
+};
+
 exports.listAsks = async (req, res) => {
   const planId = String(req.query.planId || '');
   const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 60));
