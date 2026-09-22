@@ -90,6 +90,40 @@ final class NearbyPlaceSearch: NSObject {
         }
     }
 
+    private var venueSearch: MKLocalSearch?
+
+    /// Venues Apple Maps finds for a plain-language query near a point —
+    /// "deli", "coffee", "tacos" — as unsaved Places. One request in flight at
+    /// a time; a new query cancels the old one. The region is a bias, not a
+    /// bound, so anything Apple returns from far away is dropped here.
+    func searchVenues(query: String, near origin: CLLocation, radiusMeters: CLLocationDistance = 25_000,
+                      completion: @escaping (Result<[Place], Error>) -> Void) {
+        venueSearch?.cancel()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 3 else { completion(.success([])); return }
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = trimmed
+        request.resultTypes = .pointOfInterest
+        request.region = MKCoordinateRegion(center: origin.coordinate, latitudinalMeters: radiusMeters * 2, longitudinalMeters: radiusMeters * 2)
+        let search = MKLocalSearch(request: request)
+        venueSearch = search
+        search.start { [weak self] response, error in
+            DispatchQueue.main.async {
+                guard let self, self.venueSearch === search else { return }
+                self.venueSearch = nil
+                if let error { completion(.failure(error)); return }
+                let places = (response?.mapItems ?? []).compactMap { item -> Place? in
+                    let coordinate = item.placemark.coordinate
+                    guard CLLocationCoordinate2DIsValid(coordinate),
+                          origin.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)) <= radiusMeters * 2 else { return nil }
+                    guard let name = item.name, !name.isEmpty else { return nil }
+                    return NearbyPlaceSearch.newPlace(from: item, name: name, address: item.placemark.title ?? "")
+                }
+                completion(.success(places))
+            }
+        }
+    }
+
     /// Build an unsaved `Place` from a resolved map item. An empty `circleId`
     /// marks it as "new" so both flows know to send creation data on submit.
     static func newPlace(from item: MKMapItem, name: String, address: String) -> Place {

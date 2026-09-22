@@ -22,6 +22,10 @@ extension CirclesHomeViewController: UISearchBarDelegate {
             searchedUsers = []
             searchDistances = [:]
             suggestedPlaces = []
+            appleCandidates = []
+            appleMatchedPlaceIds = []
+            appleVenues = []
+            suggestedRows = []
             suggestedDistances = [:]
             userSearchWorkItem?.cancel()
             suggestedSearchWorkItem?.cancel()
@@ -32,6 +36,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         }
 
         isSearching = true
+        if trimmed != lastAppleQuery { appleCandidates = []; lastAppleQuery = trimmed }
 
         // Places — local, instant. These now render as rows again (capped, see
         // HomeSearchPlan) as well as narrowing the map.
@@ -40,7 +45,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         // The pins narrow with the text (FSM debounces internally, camera
         // stays), but only in Places mode — filtering the map by a person's
         // name matches place names by accident and empties it for nothing.
-        mapViewController?.setSearchFilter(searchMode.filtersMap(trimmed))
+        mapViewController?.setSearchFilter(searchMode.filtersMap(trimmed), matchedPlaceIds: searchMode == .places ? appleMatchedPlaceIds : [])
 
         // People — debounced server search so we don't fire a request per
         // keystroke. Clear stale people up front so the PEOPLE section never
@@ -89,7 +94,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         HomeSearchPlan.make(
             mode: searchMode,
             matchedPlaces: filteredPlaces.count,
-            suggestedPlaces: suggestedPlaces.count,
+            suggestedPlaces: suggestedRows.count,
             people: searchedUsers.count
         )
     }
@@ -182,6 +187,10 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         searchedUsers = []
         searchDistances = [:]
         suggestedPlaces = []
+        appleCandidates = []
+        appleMatchedPlaceIds = []
+        appleVenues = []
+        suggestedRows = []
         suggestedDistances = [:]
         userSearchWorkItem?.cancel()
         suggestedSearchWorkItem?.cancel()
@@ -200,8 +209,13 @@ extension CirclesHomeViewController {
         let searchSource = deduplicatePlaces(userPlaces: userOwnPlaces, networkPlaces: networkPlaces)
 
         // Shared matcher (Place.matches) — the same predicate filters the map
-        // pins, so this list and the pins can't drift.
-        filteredPlaces = searchSource.filter { $0.matches(searchQuery: searchText) }
+        // pins, so this list and the pins can't drift. Apple Maps may have
+        // recognised a saved "restaurant" as the deli being asked for; those
+        // ids ride along to the pins too (setSearchFilter(_:matchedPlaceIds:)).
+        let split = POIDuplicateMatcher.partition(candidates: appleCandidates, saved: searchSource)
+        appleMatchedPlaceIds = Set(split.matched.map(\.id))
+        appleVenues = split.unsaved
+        filteredPlaces = searchSource.filter { appleMatchedPlaceIds.contains($0.id) || $0.matches(searchQuery: searchText) }
 
         // Nearest first, with the distance shown on each row ("looking for
         // pizza NEAR ME" is the whole query) — same reference the places
@@ -278,9 +292,20 @@ extension CirclesHomeViewController {
         }
     }
 
-    /// SUGGESTED rows render only while there are no local place results.
-    var visibleSuggestedPlaces: [GlobalPlace] {
-        Array(suggestedPlaces.prefix(searchPlan.suggestedRows))
+    /// The nearby rows on show: all of them when nothing of yours matched, a
+    /// few under your own matches (HomeSearchPlan decides how many).
+    var visibleSuggestedRows: [SuggestedRow] {
+        Array(suggestedRows.prefix(searchPlan.suggestedRows))
+    }
+
+    /// Recomputes the nearby section from both channels.
+    func rebuildSuggestedRows() {
+        let saved = deduplicatePlaces(userPlaces: userOwnPlaces, networkPlaces: networkPlaces)
+        let merged = SuggestedNearbyMerger.merge(global: suggestedPlaces, apple: appleVenues, saved: saved, from: searchReferenceLocation())
+        suggestedRows = merged.map(\.row)
+        var distances: [String: CLLocationDistance] = [:]
+        for entry in merged { if let d = entry.distance { distances[entry.row.id] = d } }
+        suggestedDistances = distances
     }
 
     /// The matched places that get a row; the rest are on the map and counted
@@ -289,24 +314,43 @@ extension CirclesHomeViewController {
         Array(filteredPlaces.prefix(searchPlan.placeRows))
     }
 
-    /// Debounced global-venue lookup for the SUGGESTED fallback section.
+    /// Debounced nearby lookup, two channels: the shared catalog (name-word
+    /// prefixes) and Apple Maps (plain language — "deli" finds delis, whatever
+    /// they were filed under). Runs whether or not your own places matched;
+    /// HomeSearchPlan decides how many rows the answer gets.
     func updateSuggestedPlaces(for query: String) {
         suggestedSearchWorkItem?.cancel()
-        guard filteredPlaces.isEmpty else {
-            suggestedPlaces = []
-            suggestedDistances = [:]
-            return
-        }
         // No reference point → skip: quality-ranked global hits with no
         // geo filter would confidently suggest pizza on another continent.
         guard let reference = searchReferenceLocation() else { return }
+        rebuildSuggestedRows()
 
         let work = DispatchWorkItem { [weak self] in
-            self?.fetchSuggestedPlaces(serverQuery: query, typedQuery: query,
-                                       reference: reference, allowFallback: true)
+            guard let self else { return }
+            self.fetchSuggestedPlaces(serverQuery: query, typedQuery: query,
+                                      reference: reference, allowFallback: true)
+            self.fetchAppleVenues(typedQuery: query, reference: reference)
         }
         suggestedSearchWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+
+    /// The Apple channel. Whatever comes back is split against the saved
+    /// places on every filter pass (phase 1), so a saved place Apple called a
+    /// deli joins PLACES and its pin stays; the rest go under MORE NEARBY.
+    private func fetchAppleVenues(typedQuery: String, reference: CLLocation) {
+        venueSearch.searchVenues(query: typedQuery, near: reference) { [weak self] result in
+            guard let self, self.isSearching,
+                  self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) == typedQuery else { return }
+            guard case .success(let venues) = result else { return }   // throttled/offline: silently nothing
+            self.appleCandidates = venues
+            self.filterPlaces(searchText: typedQuery)
+            self.mapViewController?.setSearchFilter(self.searchMode.filtersMap(typedQuery),
+                                                    matchedPlaceIds: self.searchMode == .places ? self.appleMatchedPlaceIds : [])
+            self.rebuildSuggestedRows()
+            self.refreshSearchOverlay()
+            self.updateEmptyState()
+        }
     }
 
     /// One SUGGESTED fetch. The server matches exact name-word PREFIXES, so a
@@ -326,8 +370,7 @@ extension CirclesHomeViewController {
         ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self, self.isSearching,
-                      self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) == typedQuery,
-                      self.filteredPlaces.isEmpty else { return }
+                      self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) == typedQuery else { return }
                 guard case .success(let places) = result else { return }
 
                 if places.isEmpty, allowFallback,
@@ -340,16 +383,10 @@ extension CirclesHomeViewController {
                     return
                 }
 
-                // Server sorts nearest-first when given a location
-                let suggested = Array(places.prefix(8))
-                var distances: [String: CLLocationDistance] = [:]
-                for place in suggested {
-                    if let location = place.location?.clLocation {
-                        distances[place.id] = reference.distance(from: location)
-                    }
-                }
-                self.suggestedPlaces = suggested
-                self.suggestedDistances = distances
+                // Server sorts nearest-first when given a location; the
+                // merger re-sorts once Apple's rows are in the mix.
+                self.suggestedPlaces = Array(places.prefix(8))
+                self.rebuildSuggestedRows()
                 self.refreshSearchOverlay()
                 self.updateEmptyState()
             }
@@ -404,6 +441,10 @@ extension CirclesHomeViewController {
         searchedUsers = []
         searchDistances = [:]
         suggestedPlaces = []
+        appleCandidates = []
+        appleMatchedPlaceIds = []
+        appleVenues = []
+        suggestedRows = []
         suggestedDistances = [:]
         userSearchWorkItem?.cancel()
         suggestedSearchWorkItem?.cancel()

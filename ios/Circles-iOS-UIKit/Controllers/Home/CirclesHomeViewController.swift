@@ -110,7 +110,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     var searchDistances: [String: CLLocationDistance] { get { state.searchDistances } set { state.searchDistances = newValue } }
     var suggestedPlaces: [GlobalPlace] { get { state.suggestedPlaces } set { state.suggestedPlaces = newValue } }
     var suggestedDistances: [String: CLLocationDistance] { get { state.suggestedDistances } set { state.suggestedDistances = newValue } }
+    var appleCandidates: [Place] { get { state.appleCandidates } set { state.appleCandidates = newValue } }
+    var appleMatchedPlaceIds: Set<String> { get { state.appleMatchedPlaceIds } set { state.appleMatchedPlaceIds = newValue } }
+    var appleVenues: [Place] { get { state.appleVenues } set { state.appleVenues = newValue } }
+    var suggestedRows: [SuggestedRow] { get { state.suggestedRows } set { state.suggestedRows = newValue } }
     var suggestedSearchWorkItem: DispatchWorkItem?
+    /// Apple Maps, for the plain-language part of a search ("deli").
+    let venueSearch = NearbyPlaceSearch()
+    var lastAppleQuery = ""
 
     // MARK: - Viewport-Based Network Place Loading
     // Guards the disk-cache paint so it happens at most once per instance

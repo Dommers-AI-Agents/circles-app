@@ -100,6 +100,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     // MARK: - Search-text pin filter (shared by the embedded child and the modal)
     /// Normalized (trimmed, never "") — nil means no text filter.
     private var searchQuery: String?
+    /// Saved places the search found through Apple Maps rather than their text.
+    private var searchMatchedIds: Set<String> = []
     private var searchDebounceTimer: Timer?
 
     /// Applies (debounced) a search-text filter to the pins. Single debounce
@@ -109,13 +111,15 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// the expanded map "wasn't retaining the zoom level when using search");
     /// matches outside the view are offered through the tappable
     /// searchEmptyLabel instead.
-    func setSearchFilter(_ query: String?) {
+    func setSearchFilter(_ query: String?, matchedPlaceIds: Set<String> = []) {
         let newValue = MapChipFilter.normalizedQuery(query)
+        let idsChanged = matchedPlaceIds != searchMatchedIds
+        searchMatchedIds = matchedPlaceIds
         // Invalidate BEFORE the equality check: typing "p" then deleting it
         // makes the second call a no-op by value, but the "p" timer must die
         // with it or stale text filters an empty bar.
         searchDebounceTimer?.invalidate()
-        guard newValue != searchQuery else { return }
+        guard newValue != searchQuery || idsChanged else { return }
         if newValue == nil {
             searchQuery = nil
             applyFilter(adjustRegion: false)
@@ -134,7 +138,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// same reason as applyChipFilters: the home page's list sits beside the
     /// pins and must show the same set.
     func applySearchFilter(_ list: [Place]) -> [Place] {
-        MapChipFilter.applySearch(list, query: searchQuery)
+        MapChipFilter.applySearch(list, query: searchQuery, extraIds: searchMatchedIds)
     }
 
     /// Returns the chip filters to their load state (All Categories · All

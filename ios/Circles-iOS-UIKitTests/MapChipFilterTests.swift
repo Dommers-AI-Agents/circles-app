@@ -71,6 +71,8 @@ struct MapChipFilterTests {
         #expect(MapChipFilter.normalizedQuery(" inn ") == "inn")
         #expect(ids(MapChipFilter.applySearch(sample, query: "inn")) == ["inn", "imported-inn"])
         #expect(ids(MapChipFilter.applySearch(sample, query: nil)) == ids(sample))
+        // A place the query found another way (Apple Maps) keeps its pin.
+        #expect(ids(MapChipFilter.applySearch(sample, query: "inn", extraIds: ["diner"])) == ["diner", "inn", "imported-inn"])
     }
 
     @Test func originTitles() {

@@ -33,10 +33,12 @@ enum MapChipFilter {
         return list.filter { origin == "in_app" ? $0.importSource == nil : $0.importSource == origin }
     }
 
-    /// Search text over name/address/notes (no-op when nil).
-    static func applySearch(_ list: [Place], query: String?) -> [Place] {
+    /// Search text over the place's own text (no-op when nil). `extraIds`
+    /// are places the query found another way — Apple Maps calling a saved
+    /// "restaurant" a deli — so their pins stay when the text alone wouldn't.
+    static func applySearch(_ list: [Place], query: String?, extraIds: Set<String> = []) -> [Place] {
         guard let query = query else { return list }
-        return list.filter { $0.matches(searchQuery: query) }
+        return list.filter { extraIds.contains($0.id) || $0.matches(searchQuery: query) }
     }
 
     /// Trimmed query, or nil when there's nothing left to search for.

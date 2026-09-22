@@ -42,4 +42,31 @@ struct POIDuplicateMatcherTests {
         let places = [place("Amelie's", lat: nil, lon: nil)]
         #expect(POIDuplicateMatcher.existingPlace(named: "Amelie's", at: here, in: places) == nil)
     }
+
+    // MARK: - Search hits
+
+    private func located(_ name: String, _ lat: Double, _ lng: Double) -> Place {
+        Place(id: name, name: name, description: nil, address: "", location: GeoLocation(type: "Point", coordinates: [lng, lat]), website: nil, phone: nil,
+              googlePlaceId: nil, photos: nil, videos: nil, category: .restaurant, customCategoryId: nil, subcategory: nil, rating: nil, userRatingsTotal: nil,
+              notes: nil, privateNotes: nil, publicNotes: nil, tags: nil, reviews: nil, openingHours: nil, priceLevel: nil, likes: nil, likesCount: nil, commentsCount: nil,
+              circleId: "c", addedBy: "me", addedByUser: nil, privacy: .public, createdAt: Date(), updatedAt: Date())
+    }
+
+    @Test func aSearchHitIsWithinSeventyFiveMetresOrTheSameName() {
+        let saved = located("Pasta & Provisions", 35.2175, -80.8640)
+        // 40 m away, a different name: the same place.
+        #expect(POIDuplicateMatcher.isSearchHit(name: "P&P Deli", coordinate: CLLocationCoordinate2D(latitude: 35.21785, longitude: -80.8640), place: saved))
+        // 3 km away, the same name spelled differently: the same place.
+        #expect(POIDuplicateMatcher.isSearchHit(name: "The Pasta and Provisions", coordinate: CLLocationCoordinate2D(latitude: 35.24, longitude: -80.86), place: saved))
+        // Neither: not it.
+        #expect(!POIDuplicateMatcher.isSearchHit(name: "Mint Street Deli", coordinate: CLLocationCoordinate2D(latitude: 35.24, longitude: -80.86), place: saved))
+        #expect(POIDuplicateMatcher.normalizedName("The Pasta & Provisions!") == "pasta and provisions")
+    }
+
+    @Test func partitionClaimsEachSavedPlaceOnce() {
+        let saved = [located("Pasta & Provisions", 35.2175, -80.8640)]
+        let split = POIDuplicateMatcher.partition(candidates: [located("Pasta and Provisions", 35.2175, -80.8640), located("Pasta & Provisions Deli", 35.2176, -80.8641), located("Other Deli", 35.30, -80.90)], saved: saved)
+        #expect(split.matched.map(\.id) == ["Pasta & Provisions"])
+        #expect(split.unsaved.map(\.name) == ["Pasta & Provisions Deli", "Other Deli"])
+    }
 }

@@ -79,8 +79,16 @@ final class HomeState {
     var searchedUsers: [User] = []
     /// Meters from the search reference location, keyed by place id, for the PLACES rows.
     var searchDistances: [String: CLLocationDistance] = [:]
-    /// Global venues suggested when the query matches nothing saved.
+    /// Global venues suggested for the query (the catalog channel).
     var suggestedPlaces: [GlobalPlace] = []
+    /// Everything Apple Maps returned for the query near the origin. Split on
+    /// every filter pass into saved places it turned out to be (their ids)
+    /// and venues nobody saved, so a late network-places load re-uses it.
+    var appleCandidates: [Place] = []
+    var appleMatchedPlaceIds: Set<String> = []
+    var appleVenues: [Place] = []
+    /// The merged, ordered nearby section (catalog ∪ Apple, minus saved).
+    var suggestedRows: [SuggestedRow] = []
     var suggestedDistances: [String: CLLocationDistance] = [:]
 
     // MARK: - Cache rules

@@ -56,6 +56,8 @@ struct HomeSearchPlan: Equatable {
     /// Short enough that the map is still readable behind the dropdown.
     static let maxPlaceRows = 3
     static let maxSuggestedRows = 6
+    /// When your own places already match, nearby venues are extras.
+    static let maxExtraSuggestedRows = 3
     static let maxPeopleRows = 6
 
     var hasRows: Bool { placeRows + suggestedRows + peopleRows > 0 }
@@ -78,15 +80,20 @@ struct HomeSearchPlan: Equatable {
             let shown = min(matched, maxPlaceRows)
             return HomeSearchPlan(
                 placeRows: shown,
-                // The global fallback is for "nothing of yours matched" — once
-                // something does, suggesting strangers' venues is noise.
-                suggestedRows: matched == 0 ? min(max(suggestedPlaces, 0), maxSuggestedRows) : 0,
+                // Nothing of yours matched: the nearby venues ARE the answer.
+                // Something did: a few more nearby still help ("Deli" should
+                // show the other delis, not only the one you saved), but the
+                // list stays short so your own places lead.
+                suggestedRows: min(max(suggestedPlaces, 0), matched == 0 ? maxSuggestedRows : maxExtraSuggestedRows),
                 peopleRows: 0,
                 placeOverflow: matched - shown,
                 filtersMap: true
             )
         }
     }
+
+    /// "SUGGESTED NEARBY" when it is all there is, "MORE NEARBY" under your own matches.
+    var suggestedHeader: String { placeRows == 0 ? "SUGGESTED NEARBY" : "MORE NEARBY" }
 
     /// "PLACES" / "PLACES · 12 more on the map"
     var placesHeader: String {

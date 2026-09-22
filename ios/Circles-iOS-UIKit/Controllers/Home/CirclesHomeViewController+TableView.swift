@@ -136,23 +136,31 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
                 cell.accessoryView = nil
                 cell.accessoryType = .detailDisclosureButton
-                guard indexPath.row < visibleSuggestedPlaces.count else { return cell }
-                let suggestion = visibleSuggestedPlaces[indexPath.row]
+                guard indexPath.row < visibleSuggestedRows.count else { return cell }
+                let row = visibleSuggestedRows[indexPath.row]
+                let suggestion = row.place
 
                 var content = cell.defaultContentConfiguration()
                 content.text = suggestion.name
                 var subtitle = suggestion.address
-                if let rating = suggestion.googleData?.rating {
+                if let rating = suggestion.rating {
                     subtitle = String(format: "★ %.1f · %@", rating, subtitle)
                 }
-                if let distance = suggestedDistances[suggestion.id] {
+                if let distance = suggestedDistances[row.id] {
                     subtitle = "\(listDistanceFormatter.string(fromDistance: distance)) · \(subtitle)"
                 }
                 content.secondaryText = subtitle
                 content.secondaryTextProperties.color = Constants.Colors.secondaryLabel
                 content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
-                content.image = UIImage(systemName: "sparkles")
-                content.imageProperties.tintColor = .systemOrange
+                // Catalog venues keep their sparkle; an Apple Maps venue is a
+                // pin nobody has saved yet.
+                if case .apple = row {
+                    content.image = UIImage(systemName: "mappin.and.ellipse")
+                    content.imageProperties.tintColor = Constants.Colors.primary
+                } else {
+                    content.image = UIImage(systemName: "sparkles")
+                    content.imageProperties.tintColor = .systemOrange
+                }
                 cell.contentConfiguration = content
                 return cell
             }
@@ -249,7 +257,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         guard tableView == searchResultsTableView, isSearching else { return nil }
         switch SearchSection(rawValue: section) {
         case .places: return searchPlan.placeRows == 0 ? nil : searchPlan.placesHeader
-        case .suggested: return visibleSuggestedPlaces.isEmpty ? nil : "SUGGESTED NEARBY"
+        case .suggested: return visibleSuggestedRows.isEmpty ? nil : searchPlan.suggestedHeader
         case .people: return searchedUsers.isEmpty ? nil : "PEOPLE"
         case .none: return nil
         }
@@ -259,7 +267,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         guard tableView == searchResultsTableView, isSearching else { return 0 }
         switch SearchSection(rawValue: section) {
         case .places: return searchPlan.placeRows == 0 ? 0 : 28
-        case .suggested: return visibleSuggestedPlaces.isEmpty ? 0 : 28
+        case .suggested: return visibleSuggestedRows.isEmpty ? 0 : 28
         case .people: return searchedUsers.isEmpty ? 0 : 28
         case .none: return 0
         }
@@ -275,8 +283,8 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             let place = filteredPlaces[indexPath.row]
             presentSearchPreview(place: place, circle: resolveCircle(for: place))
         case .suggested:
-            guard indexPath.row < visibleSuggestedPlaces.count else { return }
-            presentSearchPreview(place: visibleSuggestedPlaces[indexPath.row].toLegacyPlace(), circle: nil)
+            guard indexPath.row < visibleSuggestedRows.count else { return }
+            presentSearchPreview(place: visibleSuggestedRows[indexPath.row].place, circle: nil)
         default:
             break
         }
@@ -324,8 +332,8 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 guard indexPath.row < searchedUsers.count else { return }
                 selectSearchedUser(searchedUsers[indexPath.row])
             case .suggested:
-                guard indexPath.row < visibleSuggestedPlaces.count else { return }
-                let suggestion = visibleSuggestedPlaces[indexPath.row]
+                guard indexPath.row < visibleSuggestedRows.count else { return }
+                let row = visibleSuggestedRows[indexPath.row]
                 searchBar.text = ""
                 searchBar.resignFirstResponder()
                 isSearching = false
@@ -333,20 +341,53 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 searchedUsers = []
                 searchDistances = [:]
                 suggestedPlaces = []
+                appleCandidates = []
+                appleMatchedPlaceIds = []
+                appleVenues = []
+                suggestedRows = []
                 suggestedDistances = [:]
                 userSearchWorkItem?.cancel()
                 suggestedSearchWorkItem?.cancel()
                 mapViewController?.setSearchFilter(nil)
                 hideSearchResults()
                 updateEmptyState()
-                let detailVC = PlaceDetailViewController(place: suggestion.toLegacyPlace())
-                navigationController?.pushViewController(detailVC, animated: true)
+                switch row {
+                case .global(let suggestion):
+                    let detailVC = PlaceDetailViewController(place: suggestion.toLegacyPlace())
+                    navigationController?.pushViewController(detailVC, animated: true)
+                case .apple(let venue):
+                    // Nobody has saved it, so there is no place page to open —
+                    // the useful next step is saving it, prefilled.
+                    openAddPlace(prefilledWith: venue)
+                }
             default:
                 // Place rows no longer render in the dropdown (they live on
                 // the map + its list); unreachable, kept for enum coverage
                 guard indexPath.row < filteredPlaces.count else { return }
                 mapViewController?.setSearchFilter(nil)
                 handleSearchResultSelection(at: indexPath)
+            }
+        }
+    }
+}
+
+// MARK: - Saving an Apple Maps venue from the search overlay
+extension CirclesHomeViewController {
+    /// Add Place with the venue's name and pin already in the form, into the
+    /// circle used last (same rule as a shared link, SceneDelegate).
+    func openAddPlace(prefilledWith venue: Place) {
+        let coordinate = venue.location?.clLocation?.coordinate
+        CircleService.shared.fetchUserCircles { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, case .success(let circles) = result, !circles.isEmpty else {
+                    self?.showError("Create a circle first, then save places into it.")
+                    return
+                }
+                let lastUsedId = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey)
+                let target = circles.first(where: { $0.id == lastUsedId }) ?? circles[0]
+                let addPlaceVC = AddPlaceViewController(circleId: target.id, circles: circles)
+                addPlaceVC.prefillSearchWithPlace(name: venue.name, coordinate: coordinate)
+                self.navigationController?.pushViewController(addPlaceVC, animated: true)
             }
         }
     }

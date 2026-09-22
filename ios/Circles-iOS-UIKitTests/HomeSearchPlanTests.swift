@@ -24,15 +24,18 @@ struct HomeSearchPlanTests {
         #expect(exact.placesHeader == "PLACES")
     }
 
-    @Test func suggestionsAreAFallback_neverAGarnish() {
+    @Test func nearbyVenuesLeadWhenNothingMatchedAndTrailWhenSomethingDid() {
         let nothingLocal = HomeSearchPlan.make(mode: .places, matchedPlaces: 0, suggestedPlaces: 9, people: 0)
         #expect(nothingLocal.suggestedRows == 6)   // capped
+        #expect(nothingLocal.suggestedHeader == "SUGGESTED NEARBY")
 
-        // Once something of theirs matches, strangers' venues are noise — and
-        // suppressing BOTH (as the old code did) left nothing at all.
+        // Your own matches lead; a few more nearby follow ("Deli" should show
+        // the other delis, not only the one you saved) — Wes, 2026-09-22.
         let somethingLocal = HomeSearchPlan.make(mode: .places, matchedPlaces: 2, suggestedPlaces: 9, people: 0)
-        #expect(somethingLocal.suggestedRows == 0)
+        #expect(somethingLocal.suggestedRows == 3)
         #expect(somethingLocal.placeRows == 2)
+        #expect(somethingLocal.suggestedHeader == "MORE NEARBY")
+        #expect(HomeSearchPlan.make(mode: .places, matchedPlaces: 2, suggestedPlaces: 0, people: 0).suggestedRows == 0)
     }
 
     @Test func peopleModeLeavesTheMapAlone() {
