@@ -218,11 +218,12 @@ final class HomeDataLoader {
                 var uniquePlaces = HomeState.dedupe(placesArray.flatMap { $0 })
                 // Offline, every batch fails and this is empty: keep whatever
                 // the disk cache painted rather than wiping the map with nothing.
-                if PlaceRefreshMerge.shouldReplaceInMemory(fetched: uniquePlaces.count, fetchComplete: placesFetchComplete, current: self.state.allPlaces.count) {
-                    self.state.allPlaces = uniquePlaces
-                } else {
+                let keepCached = !PlaceRefreshMerge.shouldReplaceInMemory(fetched: uniquePlaces.count, fetchComplete: placesFetchComplete, current: self.state.allPlaces.count)
+                if keepCached {
                     Logger.info("📍 Place fetch failed with nothing back — keeping \(self.state.allPlaces.count) cached places on screen")
                     uniquePlaces = self.state.allPlaces
+                } else {
+                    self.state.allPlaces = uniquePlaces
                 }
 
                 // Update available categories now that we have all places
@@ -237,8 +238,9 @@ final class HomeDataLoader {
                     return false
                 }
 
-                // Cache the final places data (a kept cached set is already the cache)
-                if placesFetchComplete || !uniquePlaces.isEmpty {
+                // Cache the final places data — not when we kept the cached
+                // set, or stale data would be stamped fresh for five minutes
+                if !keepCached {
                     self.state.cache(uniquePlaces)
                 }
 
