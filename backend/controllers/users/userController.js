@@ -377,7 +377,7 @@ exports.updateUser = async (req, res, next) => {
       errorCode: error.code,
       userId: req.user?.uid,
       userEmail: req.user?.email,
-      updateFields: Object.keys(updateData || {})
+      updateFields: Object.keys(req.body || {})
     });
     next(error);
   }

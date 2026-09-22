@@ -7,7 +7,7 @@
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
-const { normalizeUserId } = require('../services/idService');
+const { normalizeUserId, isSameUser } = require('../services/idService');
 
 const db = getFirestore();
 

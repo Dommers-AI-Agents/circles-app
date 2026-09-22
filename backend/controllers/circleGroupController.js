@@ -143,7 +143,7 @@ exports.createGroup = async (req, res) => {
     
     // Get cover images from the first 4 circles
     const coverImages = [];
-    circlesSnapshot.docs.slice(0, 4).forEach(doc => {
+    ownedCircleDocs.slice(0, 4).forEach(doc => {
       const circleData = doc.data();
       if (circleData.coverImage) {
         coverImages.push(circleData.coverImage);

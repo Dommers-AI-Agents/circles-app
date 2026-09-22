@@ -8,7 +8,7 @@ const { queryInChunks } = require('../../utils/firestoreChunks');
 const db = getFirestore();
 // Like a reel
 const sseService = require('../../services/sseService');
-const { trackVideoLiked } = require('../../services/activityService');
+const { trackVideoLiked, logActivity } = require('../../services/activityService');
 
 exports.likeReel = async (req, res) => {
   try {
