@@ -13,7 +13,28 @@ class LocationService: NSObject {
     private var pendingCompletions: [(CLLocation?) -> Void] = []
     private let pendingLock = NSLock()
     private(set) var lastKnownLocation: CLLocation?
-    
+
+    private static let persistedFixKey = "LocationService.lastGoodFix"
+
+    /// The last fix we saved to disk, with its original timestamp.
+    var persistedFix: CLLocation? {
+        guard let data = UserDefaults.standard.data(forKey: Self.persistedFixKey),
+              let fix = try? JSONDecoder().decode(PersistedFix.self, from: data) else { return nil }
+        return fix.location
+    }
+
+    /// The best position available RIGHT NOW without asking the hardware or
+    /// prompting: this process's last fix, the OS's cached fix, or the one we
+    /// saved last time. Works with no network and before any new fix arrives.
+    var cachedLocation: CLLocation? {
+        lastKnownLocation ?? locationManager.location ?? persistedFix
+    }
+
+    /// Signing out must not hand one account's whereabouts to the next.
+    func clearPersistedFix() {
+        UserDefaults.standard.removeObject(forKey: Self.persistedFixKey)
+    }
+
     override init() {
         super.init()
         locationManager.delegate = self
@@ -35,6 +56,23 @@ class LocationService: NSObject {
         pendingLock.unlock()
         // One in-flight request serves every concurrent caller
         if isFirst { locationManager.requestLocation() }
+    }
+
+    /// A fresh fix if one arrives within `timeout` seconds, otherwise the best
+    /// cached position. The wait is bounded here, at the caller's completion,
+    /// and never touches `deliver` — the queued completions must still fire
+    /// exactly once each when the real fix lands (proximity check-in counts
+    /// on a real fix, not a stale one).
+    func getCurrentLocation(timeout: TimeInterval, completion: @escaping (CLLocation?) -> Void) {
+        let once = OnceFlag()
+        getCurrentLocation { location in
+            guard once.claim() else { return }
+            completion(location ?? self.cachedLocation)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in
+            guard once.claim() else { return }
+            completion(self?.cachedLocation)
+        }
     }
 
     /// Hands the result to everyone waiting, once, then forgets them.
@@ -78,6 +116,10 @@ extension LocationService: CLLocationManagerDelegate {
         }
         
         lastKnownLocation = location
+        if SearchOriginResolver.isUsable(location.coordinate),
+           let data = try? JSONEncoder().encode(PersistedFix(location)) {
+            UserDefaults.standard.set(data, forKey: Self.persistedFixKey)
+        }
         deliver(location)
     }
     

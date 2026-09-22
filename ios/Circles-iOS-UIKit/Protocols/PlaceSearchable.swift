@@ -9,26 +9,22 @@ extension Place {
     /// edits for 8+ characters. Exact substring containment stays the fast
     /// path, so nothing that matched before stops matching.
     func matches(searchQuery query: String) -> Bool {
-        let haystack = Self.fold(
-            [name, address, description ?? "", notes ?? "", publicNotes ?? "", privateNotes ?? ""]
-                .joined(separator: " ")
-        )
-        let needle = Self.fold(query)
+        // What may match exactly vs. what may match loosely is decided in
+        // PlaceSearchText (categories in, address fuzz out).
+        let haystack = PlaceSearchText.exactText(for: self)
+        let needle = PlaceSearchText.fold(query)
         guard !needle.isEmpty else { return true }
         if haystack.contains(needle) { return true }
 
-        // Every query word must appear somewhere — as a substring, or within
-        // typo distance of some word in the text.
+        // Every query word must appear somewhere — as a substring of the full
+        // text, or within typo distance of a word in the name/category text.
         let tokens = needle.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
         guard !tokens.isEmpty else { return false }
-        let words = haystack.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        let words = PlaceSearchText.fuzzText(for: self)
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
         return tokens.allSatisfy { token in
             haystack.contains(token) || words.contains { Self.fuzzyMatch(token: token, word: $0) }
         }
-    }
-
-    private static func fold(_ text: String) -> String {
-        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
     }
 
     /// True when `token` is within typo distance of `word`, or of `word`'s

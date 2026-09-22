@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 
 struct UserPreferences: Codable {
     let defaultHomeView: String? // "list" or "map"
@@ -169,6 +170,10 @@ struct User: Codable, Identifiable {
     /// card on profiles and the STORE chip in people lists.
     let isBusiness: Bool?
     let storefront: UserStorefront?
+    /// Where the phone last said it was (posted on app open), and where the
+    /// saves cluster. Own profile only; the home search's last resorts.
+    var lastKnownLocation: UserCoordinate? = nil
+    var assumedLocation: UserCoordinate? = nil
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -178,6 +183,7 @@ struct User: Codable, Identifiable {
         case isVerified, username, discoveryType, distance, mutualConnectionsCount, mutualConnectionNames, matchType
         case followsYou, suggestionReason
         case isBusiness, storefront
+        case lastKnownLocation, assumedLocation
     }
     
     // Convenience initializer for creating User objects directly
@@ -305,6 +311,8 @@ struct User: Codable, Identifiable {
         suggestionReason = try container.decodeIfPresent(String.self, forKey: .suggestionReason)
         isBusiness = try container.decodeIfPresent(Bool.self, forKey: .isBusiness)
         storefront = try container.decodeIfPresent(UserStorefront.self, forKey: .storefront)
+        lastKnownLocation = try? container.decodeIfPresent(UserCoordinate.self, forKey: .lastKnownLocation)
+        assumedLocation = try? container.decodeIfPresent(UserCoordinate.self, forKey: .assumedLocation)
         
         // Fake profile flag
         isFakeProfile = try container.decodeIfPresent(Bool.self, forKey: .isFakeProfile)
@@ -389,4 +397,32 @@ struct UserStorefront: Codable {
     let catalogUrl: String?
     let contactEmail: String?
     let findUsAtCircleId: String?
+}
+
+/// A coordinate the server keeps for the account, with what it knows about it.
+struct UserCoordinate: Codable, Equatable {
+    let latitude: Double
+    let longitude: Double
+    let city: String?
+    let updatedAt: Date?
+
+    private enum CodingKeys: String, CodingKey { case latitude, longitude, city, updatedAt }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        latitude = try c.decode(Double.self, forKey: .latitude)
+        longitude = try c.decode(Double.self, forKey: .longitude)
+        city = try c.decodeIfPresent(String.self, forKey: .city)
+        // The server writes ISO strings; an unreadable date is just unknown.
+        if let text = try? c.decodeIfPresent(String.self, forKey: .updatedAt) {
+            updatedAt = ISO8601DateFormatter().date(from: text)
+        } else {
+            updatedAt = nil
+        }
+    }
+
+    var location: CLLocation {
+        CLLocation(coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+                   altitude: 0, horizontalAccuracy: 1000, verticalAccuracy: -1, timestamp: updatedAt ?? .distantPast)
+    }
 }

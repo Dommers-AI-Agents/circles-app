@@ -7,9 +7,11 @@ import CoreLocation
 enum DistancePlaceSorter {
     typealias Entry = (place: Place, distance: CLLocationDistance?)
 
-    static func sorted(_ places: [Place], from reference: CLLocation) -> [Entry] {
+    /// No reference point at all: every distance is unknown and the list is
+    /// simply alphabetical — never geography from a guessed origin.
+    static func sorted(_ places: [Place], from reference: CLLocation?) -> [Entry] {
         places.map { place -> Entry in
-            let distance = place.location?.clLocation.map { reference.distance(from: $0) }
+            let distance = reference.flatMap { ref in place.location?.clLocation.map { ref.distance(from: $0) } }
             return (place: place, distance: distance)
         }.sorted { lhs, rhs in
             switch (lhs.distance, rhs.distance) {

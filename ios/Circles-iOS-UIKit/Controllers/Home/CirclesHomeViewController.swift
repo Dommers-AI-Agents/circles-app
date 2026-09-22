@@ -3599,8 +3599,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             filtered = mapVC.applyChipFilters(filtered)
             filtered = mapVC.applySearchFilter(filtered)
         }
-        let referenceLocation = mapViewController?.currentUserLocation
-            ?? mapViewController.map { CLLocation(latitude: $0.currentRegion.center.latitude, longitude: $0.currentRegion.center.longitude) }
+        let referenceLocation = searchReferenceLocation()
         let currentUserId = AuthService.shared.getUserId() ?? ""
 
         // The map/list is fed by every save doc, so a venue saved by several
@@ -3615,7 +3614,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             groups[key, default: []].append(place)
         }
 
-        let deduped: [(place: Place, distance: CLLocationDistance?, savedBy: [String])] = order.map { key in
+        var savedByForPlaceId: [String: [String]] = [:]
+        let representatives: [Place] = order.map { key in
             let group = groups[key] ?? []
             let hasPhotos: (Place) -> Bool = { !($0.photos?.isEmpty ?? true) }
             // Representative selection, in priority order: the user's own copy
@@ -3634,22 +3634,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 if !name.isEmpty, name != "Unknown", !names.contains(name) { names.append(name) }
             }
 
-            let distance: CLLocationDistance?
-            if let reference = referenceLocation, let placeLocation = representative.location?.clLocation {
-                distance = reference.distance(from: placeLocation)
-            } else {
-                distance = nil
-            }
-            return (place: representative, distance: distance, savedBy: names)
+            savedByForPlaceId[representative.id] = names
+            return representative
         }
 
-        distanceSortedPlaces = deduped.sorted { lhs, rhs in
-            switch (lhs.distance, rhs.distance) {
-            case let (l?, r?): return l < r
-            case (_?, nil): return true
-            case (nil, _?): return false
-            case (nil, nil): return lhs.place.name.localizedCaseInsensitiveCompare(rhs.place.name) == .orderedAscending
-            }
+        // One nearest-first rule for every list (DistancePlaceSorter).
+        distanceSortedPlaces = DistancePlaceSorter.sorted(representatives, from: referenceLocation).map {
+            (place: $0.place, distance: $0.distance, savedBy: savedByForPlaceId[$0.place.id] ?? [])
         }
 
         // Simple empty state

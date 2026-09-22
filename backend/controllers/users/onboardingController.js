@@ -99,7 +99,7 @@ exports.recordAppOpen = async (req, res, next) => {
     const hasCoords = typeof latitude === 'number' && typeof longitude === 'number' &&
       Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 && !(latitude === 0 && longitude === 0);
     if (hasCoords) {
-      updates.lastKnownLocation = { latitude, longitude };
+      updates.lastKnownLocation = { latitude, longitude, updatedAt: new Date().toISOString() };
     }
 
     await db.collection(COLLECTIONS.USERS).doc(userId).update(updates);

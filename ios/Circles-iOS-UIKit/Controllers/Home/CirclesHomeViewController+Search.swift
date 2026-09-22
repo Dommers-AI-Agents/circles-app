@@ -147,6 +147,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
     }
 
     func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+        refreshSearchOriginIfStale()
         setSearchModeControlVisible(true)
         searchBar.setShowsCancelButton(true, animated: true)
         // Refocusing after a map peek restores the results list
@@ -207,23 +208,11 @@ extension CirclesHomeViewController {
         // list uses: real location, else the map's center.
         // Built locally, then assigned once — `searchDistances` forwards to
         // HomeState, so per-key writes would copy the dictionary each time.
+        let entries = DistancePlaceSorter.sorted(filteredPlaces, from: searchReferenceLocation())
         var distances: [String: CLLocationDistance] = [:]
-        if let reference = searchReferenceLocation() {
-            for place in filteredPlaces {
-                if let location = place.location?.clLocation {
-                    distances[place.id] = reference.distance(from: location)
-                }
-            }
-        }
+        for entry in entries { if let d = entry.distance { distances[entry.place.id] = d } }
         searchDistances = distances
-        filteredPlaces = filteredPlaces.sorted { lhs, rhs in
-            switch (distances[lhs.id], distances[rhs.id]) {
-            case let (l?, r?): return l < r
-            case (_?, nil): return true
-            case (nil, _?): return false
-            case (nil, nil): return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-            }
-        }
+        filteredPlaces = entries.map(\.place)
 
         // Nothing saved by you or your network matches? Suggest nearby global
         // venues instead of a dead end. Centralized here so every caller
@@ -246,11 +235,47 @@ extension CirclesHomeViewController {
         return (trimmed?.isEmpty ?? true) ? nil : trimmed
     }
 
-    /// The point "near" means: the user's real location when we have it,
-    /// otherwise the center of the map they're looking at.
+    /// The point "near" means. Resolved by SearchOriginResolver from every
+    /// position the phone or the server knows; the map's centre only when
+    /// there is nothing else (it is the pin-fitted region, not where you are).
     func searchReferenceLocation() -> CLLocation? {
-        mapViewController?.currentUserLocation
-            ?? mapViewController.map { CLLocation(latitude: $0.currentRegion.center.latitude, longitude: $0.currentRegion.center.longitude) }
+        resolvedSearchOrigin()?.location
+    }
+
+    func resolvedSearchOrigin() -> SearchOriginResolver.Resolution? {
+        var candidates: [SearchOriginResolver.Candidate] = []
+        if let fix = LocationService.shared.lastKnownLocation { candidates.append(.init(location: fix, source: .serviceFix)) }
+        if let fix = mapViewController?.currentUserLocation { candidates.append(.init(location: fix, source: .osCachedFix)) }
+        if let fix = LocationService.shared.persistedFix { candidates.append(.init(location: fix, source: .persistedFix)) }
+        if let known = AuthService.shared.currentUser?.lastKnownLocation { candidates.append(.init(location: known.location, source: .serverLastKnown)) }
+        if let assumed = AuthService.shared.currentUser?.assumedLocation { candidates.append(.init(location: assumed.location, source: .serverAssumed)) }
+        if let map = mapViewController {
+            let centre = map.currentRegion.center
+            candidates.append(.init(location: CLLocation(latitude: centre.latitude, longitude: centre.longitude), source: .mapRegion))
+        }
+        let resolution = SearchOriginResolver.resolve(candidates)
+        Logger.debug("🔎 search origin: \(resolution?.source.rawValue ?? "none")")
+        return resolution
+    }
+
+    /// A fresh fix is worth a short wait, but the list never waits for it:
+    /// results render from the best cached origin, and re-sort only if the
+    /// real position turns out to be somewhere else.
+    func refreshSearchOriginIfStale() {
+        let current = resolvedSearchOrigin()
+        let freshEnough = current?.source == .serviceFix
+            && Date().timeIntervalSince(current!.location.timestamp) < 5 * 60
+        guard !freshEnough else { return }
+        LocationService.shared.getCurrentLocation(timeout: 3) { [weak self] fix in
+            guard let self, let fix, self.isSearching else { return }
+            if let before = current?.location, before.distance(from: fix) < 500 { return }
+            DispatchQueue.main.async {
+                let text = self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard !text.isEmpty else { return }
+                self.filterPlaces(searchText: text)
+                self.refreshSearchOverlay()
+            }
+        }
     }
 
     /// SUGGESTED rows render only while there are no local place results.

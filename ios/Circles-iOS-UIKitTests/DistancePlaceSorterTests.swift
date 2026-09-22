@@ -28,4 +28,10 @@ struct DistancePlaceSorterTests {
         #expect(sorted[0].distance! < sorted[1].distance!)
         #expect(sorted[2].distance == nil)
     }
+
+    @Test func noReferenceMeansAlphabeticalNotGeography() {
+        let entries = DistancePlaceSorter.sorted([place("Zed", lat: 40, lon: -74), place("Alpha", lat: 1, lon: 1)], from: nil)
+        #expect(entries.map { $0.place.name } == ["Alpha", "Zed"])
+        #expect(entries.allSatisfy { $0.distance == nil })
+    }
 }

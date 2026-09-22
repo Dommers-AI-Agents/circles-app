@@ -114,6 +114,10 @@ exports.getUser = async (req, res, next) => {
     // Include private data only for own profile
     if (isOwnProfile) {
       profileData.email = user.email;
+      // The phone's own last fix as we last heard it, and where the saves
+      // cluster: the home search's last resorts before the map centre.
+      profileData.lastKnownLocation = user.lastKnownLocation || null;
+      profileData.assumedLocation = user.assumedLocation || null;
       profileData.firstName = user.firstName || null;
       profileData.lastName = user.lastName || null;
       profileData.phoneNumber = user.phoneNumber || null;

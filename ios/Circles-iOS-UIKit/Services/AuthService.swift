@@ -802,6 +802,7 @@ class AuthService {
         clearUserId()
         clearAuthProvider()
         _currentUser = nil
+        LocationService.shared.clearPersistedFix()
         APIService.shared.clearTokens()
     }
     
