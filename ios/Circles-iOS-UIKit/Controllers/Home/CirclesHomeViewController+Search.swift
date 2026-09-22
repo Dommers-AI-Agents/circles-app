@@ -161,6 +161,14 @@ extension CirclesHomeViewController: UISearchBarDelegate {
     }
 
     func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+        resetSearch()
+    }
+
+    /// Back to no search at all: empty bar, keyboard down, places mode,
+    /// results gone, the map unfiltered. Cancel does this, and so does the
+    /// Home tab — arriving "home" and finding last week's search still
+    /// filtering the map is a bug, not a memory.
+    func resetSearch() {
         setSearchModeControlVisible(false)
         searchMode = .places
         searchModeControl.selectedSegmentIndex = HomeSearchMode.places.rawValue

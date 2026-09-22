@@ -560,6 +560,8 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             if let navController = viewController as? UINavigationController {
                 switch currentIndex {
                 case 0: // Home tab
+                    // Whatever is pushed on top, the search under it goes.
+                    (navController.viewControllers.first as? CirclesHomeViewController)?.resetSearch()
                     if let circlesVC = navController.topViewController as? CirclesHomeViewController {
                         circlesVC.resetContentTabToActivity()
                         circlesVC.scrollToTop()
@@ -595,6 +597,13 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         let isMessagesTab = tabBarController.selectedIndex == 2
         MessagingManager.shared.setMessagesTabActive(isMessagesTab)
         
+        // Coming to Home from another tab never lands on an old search.
+        if tabBarController.selectedIndex == 0,
+           let navController = viewController as? UINavigationController,
+           let circlesVC = navController.viewControllers.first as? CirclesHomeViewController {
+            circlesVC.resetSearch()
+        }
+
         // Clear pending requests when switching to Profile tab
         if tabBarController.selectedIndex == 3 { // Profile tab (was 4, now 3 without Discover)
             APIService.shared.clearPendingRequests()
