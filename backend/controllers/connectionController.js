@@ -1443,7 +1443,9 @@ const getActiveRelationships = async (req, res) => {
         
         relationships.push({
           ...connectionData,
-          connectedUser: userData,
+          // The public card only — this row went out with the whole user document
+          // (email, device tokens, last known location) to every connection.
+          connectedUser: projectPublicUser(userData, ['email']),
           relationshipType: 'connection',
           connectionScore: scoreData.score,
           scoreComponents: scoreData.components,
@@ -1493,7 +1495,9 @@ const getActiveRelationships = async (req, res) => {
           id: `follow_${followedId}`, // Synthetic ID for followed relationships
           userId: userId,
           connectedUserId: followedId,
-          connectedUser: userData,
+          // The public card only — this row went out with the whole user document
+          // (email, device tokens, last known location) to every connection.
+          connectedUser: projectPublicUser(userData, ['email']),
           relationshipType: 'following',
           status: 'following', // Not a connection status, but indicates following
           connectionScore: score,
