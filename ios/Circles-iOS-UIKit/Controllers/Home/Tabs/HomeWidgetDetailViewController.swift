@@ -6,6 +6,10 @@ import FavWidgetsCore
 /// Full-screen page for one widget, pushed from the Widgets tab. Thin
 /// UIKit shell around the package's SwiftUI full view.
 final class HomeWidgetDetailViewController: BaseViewController {
+    /// Which widget this page shows, so a caller can tell whether it is
+    /// already on screen before navigating to it.
+    var widgetId: String { widget.descriptor.id }
+
     private let widget: any FavWidget
     private let context: WidgetContext
     private let model: WidgetsTabModel

@@ -1,4 +1,5 @@
 import UIKit
+import FavWidgets
 import CoreLocation
 import CoreSpotlight
 import FacebookCore
@@ -1493,6 +1494,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneWillEnterForeground(_ scene: UIScene) {
         // Called as the scene transitions from the background to the foreground.
+        returnToSleepSoundsIfPlaying()
+
         // Check authentication status and refresh token if needed
         if AuthService.shared.isLoggedIn {
             // Refresh if token is expired or will expire soon
@@ -1508,6 +1511,25 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 }
             }
         }
+    }
+
+    /// Sleep Sounds is playing and the person just came back to the app —
+    /// almost always by tapping the Now Playing tile, which opens the app but
+    /// says nothing about where. Land on the sound so it can be turned off.
+    /// The rule itself is `NowPlayingReturnGate`; this only gathers the facts.
+    private func returnToSleepSoundsIfPlaying() {
+        let tabBar = window?.rootViewController as? CirclesTabBarController
+        let nav = tabBar?.viewControllers?.first as? UINavigationController
+        let showing = tabBar?.selectedIndex == 0
+            && (nav?.topViewController as? HomeWidgetDetailViewController)?.widgetId == "sleepsounds"
+        let context = NowPlayingReturnGate.Context(
+            isPlaying: SleepSoundEngine.shared.isPlaying,
+            isSignedIn: AuthService.shared.isLoggedIn,
+            hasModal: tabBar?.presentedViewController != nil,
+            isShowingSleepSounds: showing
+        )
+        guard NowPlayingReturnGate.shouldOpenSleepSounds(context) else { return }
+        navigateToWidget(id: "sleepsounds")
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
