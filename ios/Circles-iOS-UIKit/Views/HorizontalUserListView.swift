@@ -208,6 +208,15 @@ class HorizontalUserListView: UIView {
     
     private var hasLoadedConnections = false
     private var hasCompletedInitialLoad = false
+
+    /// One first-page load at a time. A check-in fans out several
+    /// connection-activity events in a row, each of which asked this row to
+    /// refresh; eleven overlapping loads raced each other's completions, and
+    /// the last one to land — not the newest — decided what was on screen.
+    /// Now a refresh during a load is remembered and run once after it.
+    private var loadGeneration = 0
+    private var isLoadingFirstPage = false
+    private var reloadRequestedWhileLoading = false
     
     // MARK: - Init
     override init(frame: CGRect) {
@@ -468,6 +477,13 @@ class HorizontalUserListView: UIView {
         // chain (connections → active-relationships) put two full round trips
         // between launch and the spinner stopping.
         if currentPage == 0 {
+            if isLoadingFirstPage {
+                reloadRequestedWhileLoading = true
+                return
+            }
+            isLoadingFirstPage = true
+            loadGeneration += 1
+            let generation = loadGeneration
             let offset = currentPage * pageSize
             var acceptedConnections = NetworkManager.shared.connections
             var connectionsError: Error?
@@ -497,6 +513,16 @@ class HorizontalUserListView: UIView {
 
             group.notify(queue: .main) { [weak self] in
                 guard let self = self else { return }
+                self.isLoadingFirstPage = false
+                // A refresh asked for mid-flight runs once, after this one.
+                defer {
+                    if self.reloadRequestedWhileLoading {
+                        self.reloadRequestedWhileLoading = false
+                        DispatchQueue.main.async { [weak self] in self?.loadActiveConnections() }
+                    }
+                }
+                // Only the newest load may touch the screen.
+                guard generation == self.loadGeneration else { return }
 
                 // Preferred: backend-sorted active relationships (connections
                 // + followed users)
@@ -539,7 +565,14 @@ class HorizontalUserListView: UIView {
                 }
 
                 // Genuinely empty (calls succeeded, no relationships) — the
-                // empty path also handles the young-account race retry
+                // empty path also handles the young-account race retry.
+                // But never replace people already on screen with the empty
+                // plea: a refresh that comes back with nothing is a hiccup,
+                // not news that the person lost every connection.
+                if !self.connections.isEmpty {
+                    Logger.debug("🔍 HorizontalUserListView: Refresh returned nothing — keeping the \(self.connections.count) already shown")
+                    return
+                }
                 self.hasLoadedConnections = true
                 self.displayConnections([], alreadySorted: false, allowEmptyState: true)
             }
