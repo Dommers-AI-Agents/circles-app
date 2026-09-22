@@ -1,6 +1,7 @@
 // backend/controllers/connectionController.js
 const { getFirestore } = require('../config/firebase');
 const { projectPublicUser } = require('../services/publicUserProjection');
+const { serializeDates } = require('../utils/wireDates');
 const { FieldValue } = require('firebase-admin/firestore');
 const { 
   COLLECTIONS, 
@@ -1392,9 +1393,11 @@ const getActiveRelationships = async (req, res) => {
       const otherUserId = data.userId === userId ? data.connectedUserId : data.userId;
       
       if (!connectionMap.has(otherUserId)) {
+        // Dates go out as ISO strings: a raw Timestamp in one row (acceptedAt,
+        // connectedUserUpdatedAt) made the iOS app drop the whole people row.
         connectionMap.set(otherUserId, {
           id: doc.id,
-          ...data,
+          ...serializeDates(data),
           relationshipType: 'connection'
         });
       }
@@ -1426,7 +1429,7 @@ const getActiveRelationships = async (req, res) => {
       if (doc.exists) {
         userDataMap.set(doc.id, {
           id: doc.id,
-          ...doc.data()
+          ...serializeDates(doc.data())
         });
       }
     });
