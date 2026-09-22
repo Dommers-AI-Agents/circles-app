@@ -2,6 +2,7 @@
 const { getFirestore } = require('../config/firebase');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { serializeDates } = require('../utils/wireDates');
+const { followedUserStats } = require('../services/followedUserStats');
 const { FieldValue } = require('firebase-admin/firestore');
 const { 
   COLLECTIONS, 
@@ -1363,9 +1364,13 @@ const getActiveRelationships = async (req, res) => {
       .where('connectedUserId', '==', userId)
       .where('status', '==', 'accepted');
 
-    // Get users this person is following
+    // Get users this person is following (read alongside the connection queries)
     console.log(`🔍 Looking up user document for: ${userId}`);
-    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    const [userDoc, snapshot1, snapshot2] = await Promise.all([
+      db.collection(COLLECTIONS.USERS).doc(userId).get(),
+      connectionsQuery1.get(),
+      connectionsQuery2.get()
+    ]);
     
     if (!userDoc.exists) {
       console.log(`⚠️ User document not found for: ${userId}`);
@@ -1378,11 +1383,6 @@ const getActiveRelationships = async (req, res) => {
     if (followingIds.length > 0) {
       console.log(`📊 Following IDs: ${followingIds.join(', ')}`);
     }
-
-    const [snapshot1, snapshot2] = await Promise.all([
-      connectionsQuery1.get(),
-      connectionsQuery2.get()
-    ]);
 
     // Process connections
     const connectionDocs = [...snapshot1.docs, ...snapshot2.docs];
@@ -1418,11 +1418,12 @@ const getActiveRelationships = async (req, res) => {
       });
     }
 
-    // Get user data for all relationships
-    const userPromises = allUserIds.map(id => 
-      db.collection(COLLECTIONS.USERS).doc(id).get()
-    );
-    const userDocs = await Promise.all(userPromises);
+    // Get user data for all relationships in one batched read, and the
+    // followed-only users' activity stats in parallel with it.
+    const [userDocs, followedStats] = await Promise.all([
+      db.getAll(...allUserIds.map(id => db.collection(COLLECTIONS.USERS).doc(id))),
+      followedUserStats(db, followedOnlyIds)
+    ]);
     const userDataMap = new Map();
     
     userDocs.forEach(doc => {
@@ -1463,37 +1464,8 @@ const getActiveRelationships = async (req, res) => {
     for (const followedId of followedOnlyIds) {
       const userData = userDataMap.get(followedId);
       if (userData) {
-        // Calculate activity score for followed user
-        const recentPlaceSnapshot = await db.collection(COLLECTIONS.PLACES)
-          .where('addedBy', '==', followedId)
-          .where('createdAt', '>', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000))
-          .limit(1)
-          .get();
-        
-        const hasRecentPlace = !recentPlaceSnapshot.empty;
-        
-        // Get total places count
-        const totalPlacesSnapshot = await db.collection(COLLECTIONS.PLACES)
-          .where('addedBy', '==', followedId)
-          .count()
-          .get();
-        
-        const totalPlaces = totalPlacesSnapshot.data().count || 0;
-        
-        // FIXED: More balanced scoring for followed users (not inflated)
-        // Base score on actual activity, not just existence of places
-        let score = 0;
-        if (hasRecentPlace) {
-          score = 30; // Recent activity gets 30 points
-        }
-        if (totalPlaces > 10) {
-          score += 15; // Active user bonus
-        } else if (totalPlaces > 5) {
-          score += 10; // Moderate activity
-        } else if (totalPlaces > 0) {
-          score += 5; // Some activity
-        }
-        
+        const { hasRecentPlace, totalPlaces, score } = followedStats.get(followedId);
+
         relationships.push({
           id: `follow_${followedId}`, // Synthetic ID for followed relationships
           userId: userId,
