@@ -480,7 +480,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 // Network/timeout failures are never auth failures, so
                 // Retry stays available indefinitely - no auto-logout.
                 var message = "Unable to load your data. Please try again."
-                if let nsError = error as? NSError {
+                if let apiError = error as? APIError, case .noInternet = apiError {
+                    message = "Can't reach FavCircles. Check your connection and try again."
+                } else if let nsError = error as? NSError {
                     if nsError.domain == "PreloadManager" {
                         switch nsError.code {
                         case -1:

@@ -72,7 +72,7 @@ circles-app/
 - **Connections**: Bidirectional relationships between users
 - **Privacy Levels**: Public, My Network, or Private circles
 - **Real-time Updates**: SSE for instant notifications
-- **Offline Support**: Local caching for better performance
+- **Low-signal behaviour**: cache-first launch, disk-cached pins and images, offline widget edits kept and retried, an offline banner — see `ios/OFFLINE_TESTING.md` for what is and isn't covered
 
 ### Enhanced Features
 - **Activity Feed**: LinkedIn-style updates on home screen

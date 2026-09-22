@@ -264,7 +264,7 @@ All ViewControllers inherit from **BaseViewController** which provides:
 | Manager | File | Key Methods | Purpose |
 |---------|------|-------------|---------|
 | **MessagingManager** | `MessagingManager.swift` | `setupNotifications()`, `handleIncomingMessage()`, `updateBadge()` | Messaging coordination |
-| **NetworkManager** | `NetworkManager.swift` | `monitorConnectivity()`, `handleOfflineMode()` | Network state management |
+| **NetworkManager** | `NetworkManager.swift` | connection / circle-sharing API calls | Network *feature* API (not connectivity — that is `Utilities/NetworkMonitor.swift`, which posts `.networkReachabilityDidChange`) |
 | **OnboardingManager** | `OnboardingManager.swift` | `startOnboarding()`, `completeStep()`, `skipOnboarding()` | User onboarding flow |
 | **PreloadManager** | `PreloadManager.swift` | `preloadData()`, `cacheEssentialData()` | Data preloading |
 

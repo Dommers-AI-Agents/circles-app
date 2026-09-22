@@ -638,6 +638,15 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
     `ProfileStorefrontController`); big verbatim moves live in sibling extensions
     (`AddPlaceViewController+Save`, `CircleDetailViewController+Table`); view factories in
     `Views/Places/PlaceDetailViewFactory`.
+  - Low / no signal (Sept 2026): `Utilities/NetworkMonitor` posts
+    `.networkReachabilityDidChange`; the tab bar shows `OfflineBannerView`;
+    reconnect drains the visits queue, stale preload and pending widget edits.
+    Rules in `Logic/` (`PlaceRefreshMerge`, `WidgetSnapshotPolicy`,
+    `NetworkErrorClassifier`): a failed refresh never replaces cached data
+    with nothing; timeouts are connectivity (`APIError.noInternet`). Widget
+    document writes go through `AppWidgetHost.makeDataStore(userId:)`
+    (Application Support; refused saves persist as pending). Manual checklist
+    before an App Review submission: `ios/OFFLINE_TESTING.md`.
   - Tests: target `Circles-iOSTests`, folder `Circles-iOS-UIKitTests` (Swift
     Testing, `@testable import Circles_iOS`); every extraction above ships with a
     suite. Run: `xcodebuild test -scheme Circles-iOS -destination

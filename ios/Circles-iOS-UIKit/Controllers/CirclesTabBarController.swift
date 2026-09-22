@@ -3,6 +3,7 @@ import UIKit
 class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     
     private var badgeObservers: [NSObjectProtocol] = []
+    private let offlineBanner = OfflineBannerView()
     private var messagesBadgeTimer: Timer?
     private var networkBadgeTimer: Timer?
     private var macKeyCommands: [UIKeyCommand] = []
@@ -42,6 +43,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         
         setupBadgeObservers()
         setupNotificationObservers()
+        setupOfflineBanner()
         
         // Set self as delegate
         self.delegate = self
@@ -66,6 +68,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     }
     
     deinit {
+        NetworkMonitor.shared.removeObserver(id: "CirclesTabBarController")
         badgeObservers.forEach { NotificationCenter.default.removeObserver($0) }
         messagesBadgeTimer?.invalidate()
         networkBadgeTimer?.invalidate()
@@ -223,6 +226,16 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         badgeObservers.append(foregroundObserver)
     }
     
+    /// "You're offline — showing saved data" under the status bar for as long
+    /// as the phone has no path to the network. `NetworkMonitor` replays the
+    /// current state on subscribe, so the first paint is right too.
+    private func setupOfflineBanner() {
+        offlineBanner.install(in: view, below: view.safeAreaLayoutGuide)
+        NetworkMonitor.shared.addObserver(id: "CirclesTabBarController") { [weak self] isConnected in
+            self?.offlineBanner.setOffline(!isConnected, animated: self?.view.window != nil)
+        }
+    }
+
     private func setupNotificationObservers() {
         // Handle navigation from push notifications
         NotificationCenter.default.addObserver(

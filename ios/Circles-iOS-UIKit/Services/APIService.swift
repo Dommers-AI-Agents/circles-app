@@ -39,7 +39,7 @@ enum APIError: Error, LocalizedError {
         case .decodingFailed(let error):
             return "Failed to decode response: \(error.localizedDescription)"
         case .noInternet:
-            return "No internet connection"
+            return "Can't reach FavCircles — check your connection"
         case .unauthorized:
             return "You are not authorized to perform this action"
         case .serverError:
@@ -234,7 +234,6 @@ class APIService {
     private let maxBackoffMultiplier: TimeInterval = 32.0
     
     // Network status
-    private var networkMonitorId = "APIService"
     
     // Request deduplication (simple approach)
     // ⚠️ Shared mutable bookkeeping, touched from the main thread, URLSession
@@ -310,19 +309,9 @@ class APIService {
         refreshToken = keychainService.getRefreshToken()
         Logger.debug("APIService: Initialized with auth token: \(authToken != nil)")
         
-        // Monitor network status
-        NetworkMonitor.shared.addObserver(id: networkMonitorId) { isConnected in
-            // If connection restored, we could potentially retry failed requests
-            if isConnected {
-                // Network connection restored
-            } else {
-                Logger.warning("Network connection lost")
-            }
-        }
     }
     
     deinit {
-        NetworkMonitor.shared.removeObserver(id: networkMonitorId)
     }
     
     // MARK: - Configuration Methods
@@ -732,13 +721,14 @@ class APIService {
                 let apiError: APIError
                 
                 if let urlError = error as? URLError {
-                    switch urlError.code {
-                    case .notConnectedToInternet, .networkConnectionLost:
+                    // Timeouts and unreachable hosts are a weak or absent
+                    // signal, not a broken request — same bucket as airplane mode.
+                    if NetworkErrorClassifier.isConnectivityFailure(urlError.code) {
                         apiError = .noInternet
                         if self.logLevel >= .errors {
-                            Logger.debug("❌ ERROR APIService: No internet connection")
+                            Logger.debug("❌ ERROR APIService: Connectivity failure: \(urlError.code)")
                         }
-                    default:
+                    } else {
                         apiError = .requestFailed(error)
                         if self.logLevel >= .errors {
                             Logger.debug("❌ ERROR APIService: URL error: \(urlError.code)")
