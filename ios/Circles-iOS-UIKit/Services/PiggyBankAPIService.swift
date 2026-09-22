@@ -21,14 +21,10 @@ final class PiggyBankAPIService {
     }
 
     func getHistory(before: String?, completion: @escaping (Result<[PiggyLedgerEvent], Error>) -> Void) {
-        var endpoint = "piggy-bank/history"
-        if let before = before,
-           let encoded = before.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-            endpoint += "?before=\(encoded)"
-        }
         APIService.shared.request(
-            endpoint: endpoint,
+            endpoint: "piggy-bank/history",
             method: .get,
+            queryParams: before.map { ["before": $0] },
             requiresAuth: true
         ) { (result: Result<PiggyBankHistoryResponse, APIError>) in
             switch result {

@@ -166,15 +166,13 @@ class RewardsService {
     /// place has no enrolled venue — the common case, not an error.
     func getVenueByPlace(placeId: String, googlePlaceId: String? = nil, completion: @escaping (Result<PlaceVenueData, Error>) -> Void) {
         let encodedId = placeId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? placeId
-        var endpoint = "rewards/venues/by-place/\(encodedId)"
-        if let googlePlaceId = googlePlaceId,
-           let encoded = googlePlaceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-            endpoint += "?googlePlaceId=\(encoded)"
-        }
+        let endpoint = "rewards/venues/by-place/\(encodedId)"
+        let params = googlePlaceId.map { ["googlePlaceId": $0] }
 
         apiService.request(
             endpoint: endpoint,
             method: .get,
+            queryParams: params,
             body: nil,
             requiresAuth: true
         ) { (result: Result<RewardsEnvelope<PlaceVenueData>, APIError>) in

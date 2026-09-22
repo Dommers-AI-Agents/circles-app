@@ -1755,37 +1755,11 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     @objc private func ratingViewTapped() {
-        // Open Google reviews by searching for the place name and reviews
-        // This approach ensures users see reviews prominently
-        
-        // Build search query with place name and address
-        var searchComponents = [place.name]
-        
-        // Add address if available
-        if !place.address.isEmpty {
-            searchComponents.append(place.address)
-        }
-        
-        // Add "reviews" to the search to ensure review results show up
-        searchComponents.append("reviews")
-        
-        // Create the search query
-        let searchQuery = searchComponents.joined(separator: " ")
-            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        
-        // Open Google search for reviews
-        // This will show the Google knowledge panel with reviews prominently displayed
-        let googleSearchURL = URL(string: "https://www.google.com/search?q=\(searchQuery)")
-        
-        if let url = googleSearchURL {
-            UIApplication.shared.open(url)
-        } else {
-            // Fallback: If URL creation fails somehow, try with just the name
-            let fallbackQuery = "\(place.name) reviews".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-            if let fallbackURL = URL(string: "https://www.google.com/search?q=\(fallbackQuery)") {
-                UIApplication.shared.open(fallbackURL)
-            }
-        }
+        // Google search for "<name> <address> reviews" — the knowledge panel
+        // puts the review list up top. GoogleReviewsLink encodes the venue as
+        // one query value (an "&" in the name used to split it in two).
+        guard let url = GoogleReviewsLink.url(name: place.name, address: place.address) else { return }
+        UIApplication.shared.open(url)
     }
     
     @objc private func websiteButtonTapped() {

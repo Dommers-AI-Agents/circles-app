@@ -214,11 +214,10 @@ class DiscoverUsersViewController: BaseViewController {
             return
         }
         
-        let endpoint = "users/contacts/search?query=\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
-        
         APIService.shared.request(
-            endpoint: endpoint,
-            method: .get
+            endpoint: "users/contacts/search",
+            method: .get,
+            queryParams: ["query": query]
         ) { [weak self] (result: Result<SearchUsersResponse, APIError>) in
             guard let self = self else { return }
             

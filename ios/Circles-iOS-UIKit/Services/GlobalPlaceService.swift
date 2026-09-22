@@ -14,19 +14,21 @@ class GlobalPlaceService {
     /// canonical record's googlePlaceId + photos instead of re-querying
     /// Google. Returns nil match when the place is new to us.
     func matchKnownPlace(name: String, latitude: Double?, longitude: Double?, address: String?, completion: @escaping (Result<KnownPlaceMatch?, Error>) -> Void) {
-        var params = "name=\(name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name)"
+        // queryParams, not a hand-built string: an "&" in a venue name
+        // ("Pasta & Provisions") must reach the server as part of the name.
+        var params = ["name": name]
         if let latitude = latitude, let longitude = longitude {
-            params += "&lat=\(latitude)&lng=\(longitude)"
+            params["lat"] = "\(latitude)"
+            params["lng"] = "\(longitude)"
         }
-        if let address = address,
-           let encoded = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-            params += "&address=\(encoded)"
+        if let address = address {
+            params["address"] = address
         }
 
         apiService.request(
-            endpoint: "places/global/match?\(params)",
+            endpoint: "places/global/match",
             method: .get,
-            queryParams: nil,
+            queryParams: params,
             body: nil,
             headers: nil,
             requiresAuth: true

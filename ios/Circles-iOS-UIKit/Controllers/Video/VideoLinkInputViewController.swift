@@ -352,12 +352,12 @@ class VideoLinkInputViewController: UIViewController {
         loadingIndicator.startAnimating()
         previewContainer.isHidden = true
         
-        // Fetch metadata from backend
-        let endpoint = "videos/metadata?url=\(urlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
-        
+        // Fetch metadata from backend. queryParams encodes the pasted link's
+        // own "&" (youtube.com/watch?v=…&t=…) so the server gets all of it.
         APIService.shared.request(
-            endpoint: endpoint,
-            method: .get
+            endpoint: "videos/metadata",
+            method: .get,
+            queryParams: ["url": urlString]
         ) { [weak self] (result: Result<VideoMetadataResponse, APIError>) in
             DispatchQueue.main.async {
                 self?.loadingIndicator.stopAnimating()

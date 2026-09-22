@@ -247,7 +247,7 @@ class ContactsService {
     // MARK: - SMS Handling
     
     private func sendSMSInvite(to phoneNumber: String, message: String) {
-        guard let url = URL(string: "sms:\(phoneNumber)&body=\(message.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") else {
+        guard let url = URL(string: "sms:\(phoneNumber)&body=\(message.urlQueryValueEncoded)") else {
             Logger.error("Failed to create SMS URL")
             return
         }
