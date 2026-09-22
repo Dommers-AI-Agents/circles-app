@@ -3,6 +3,10 @@
 // Split out of firebaseUserController.js (handlers unchanged).
 const { getFirestore, admin } = require('../../config/firebase');
 const { COLLECTIONS, serializeDoc } = require('../../models/FirestoreModels');
+const { mergeAccounts } = require('../../services/accountMergeService');
+const { mintSessionToken, getTokenExpiresInSeconds } = require('../../services/sessionToken');
+const { sendServiceError } = require('../../utils/serviceError');
+const { invalidateUserCache } = require('../../middleware/firebaseAuth');
 
 const db = getFirestore();
 
@@ -197,228 +201,49 @@ exports.checkDuplicateConnections = async (req, res, next) => {
 
 exports.mergeUserAccounts = async (req, res, next) => {
   try {
-    const { primaryAccountId, secondaryAccountId } = req.body;
-    
+    const { primaryAccountId, secondaryAccountId, dryRun } = req.body;
     if (!primaryAccountId || !secondaryAccountId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Both primaryAccountId and secondaryAccountId are required'
-      });
+      return res.status(400).json({ success: false, message: 'Both primaryAccountId and secondaryAccountId are required' });
     }
-    
-    if (primaryAccountId === secondaryAccountId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot merge account with itself'
-      });
-    }
-    
-    // Get both user documents
-    const primaryRef = db.collection(COLLECTIONS.USERS).doc(primaryAccountId);
-    const secondaryRef = db.collection(COLLECTIONS.USERS).doc(secondaryAccountId);
-    
-    const [primaryDoc, secondaryDoc] = await Promise.all([
-      primaryRef.get(),
-      secondaryRef.get()
-    ]);
-    
-    if (!primaryDoc.exists || !secondaryDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: 'One or both user accounts not found'
-      });
-    }
-    
-    const primaryUser = serializeDoc(primaryDoc);
-    const secondaryUser = serializeDoc(secondaryDoc);
-    
-    // Verify user has permission (admin or owns one of the accounts)
-    const isAdmin = req.user.role === 'admin'; // Assuming admin role exists
-    const ownsAccount = req.user.uid === primaryAccountId || req.user.uid === secondaryAccountId;
-    
+
+    // Admin, or the person owns one of the two accounts
+    const isAdmin = req.user.role === 'admin';
+    const callerIds = [req.user.uid, req.user.originalUid].filter(Boolean);
+    const ownsAccount = callerIds.includes(primaryAccountId) || callerIds.includes(secondaryAccountId);
     if (!isAdmin && !ownsAccount) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to merge these accounts'
-      });
+      return res.status(403).json({ success: false, message: 'Not authorized to merge these accounts' });
     }
-    
-    console.log(`🔄 Merging accounts: ${secondaryAccountId} -> ${primaryAccountId}`);
-    console.log(`Primary: ${primaryUser.email} (${primaryUser.displayName})`);
-    console.log(`Secondary: ${secondaryUser.email} (${secondaryUser.displayName})`);
-    
-    // Prepare merged data
-    const mergedData = {
-      // Merge alternate emails
-      alternateEmails: [
-        ...(primaryUser.alternateEmails || []),
-        ...(secondaryUser.alternateEmails || []),
-        // Add secondary email if different from primary
-        ...(secondaryUser.email && secondaryUser.email !== primaryUser.email ? [secondaryUser.email] : [])
-      ].filter((email, index, arr) => arr.indexOf(email) === index && email !== primaryUser.email), // Remove duplicates and primary email
-      
-      // Merge linked providers
-      linkedProviders: {
-        ...(primaryUser.linkedProviders || {}),
-        ...(secondaryUser.linkedProviders || {})
-      },
-      
-      // Keep better display name if secondary has one and primary doesn't
-      displayName: primaryUser.displayName || secondaryUser.displayName,
-      
-      // Keep better profile picture if secondary has one and primary doesn't
-      profilePicture: primaryUser.profilePicture || secondaryUser.profilePicture,
-      
-      // Merge other fields intelligently
-      firstName: primaryUser.firstName || secondaryUser.firstName,
-      lastName: primaryUser.lastName || secondaryUser.lastName,
-      phoneNumber: primaryUser.phoneNumber || secondaryUser.phoneNumber,
-      bio: primaryUser.bio || secondaryUser.bio,
-      location: primaryUser.location || secondaryUser.location,
-      
-      // Merge arrays (dropping both account ids — the accounts may have
-      // followed each other, and nobody should follow themselves post-merge)
-      followers: [...(primaryUser.followers || []), ...(secondaryUser.followers || [])]
-        .filter((id, index, arr) => arr.indexOf(id) === index && id !== primaryAccountId && id !== secondaryAccountId),
-      following: [...(primaryUser.following || []), ...(secondaryUser.following || [])]
-        .filter((id, index, arr) => arr.indexOf(id) === index && id !== primaryAccountId && id !== secondaryAccountId),
-      deviceTokens: [...(primaryUser.deviceTokens || []), ...(secondaryUser.deviceTokens || [])].filter((token, index, arr) => arr.indexOf(token) === index),
-      pinnedPlaces: [...(primaryUser.pinnedPlaces || []), ...(secondaryUser.pinnedPlaces || [])].slice(0, 6), // Max 6
-      
-      // Update counts
-      followersCount: 0, // Will be recalculated
-      followingCount: 0, // Will be recalculated
-      
-      // Keep notification preferences from primary (user can update if needed)
-      notificationPreferences: primaryUser.notificationPreferences || secondaryUser.notificationPreferences,
-      
-      updatedAt: new Date().toISOString()
-    };
-    
-    // Recalculate counts
-    mergedData.followersCount = mergedData.followers.length;
-    mergedData.followingCount = mergedData.following.length;
-    
-    // Rewrite every reference from the secondary id to the primary id.
-    // Batched writes (450/commit, under Firestore's 500 limit); re-running the
-    // merge resumes cleanly since the queries only match docs still pointing
-    // at the secondary id.
-    let batch = db.batch();
-    let pendingOps = 0;
-    const commitIfFull = async () => {
-      if (pendingOps >= 450) {
-        await batch.commit();
-        batch = db.batch();
-        pendingOps = 0;
-      }
-    };
-    const remapField = async (query, buildUpdate) => {
-      const snapshot = await query.get();
-      for (const doc of snapshot.docs) {
-        batch.update(doc.ref, buildUpdate(doc));
-        pendingOps++;
-        await commitIfFull();
-      }
-      return snapshot.size;
-    };
-    // Array fields swap the id in place (computed in JS — Firestore can't
-    // arrayRemove + arrayUnion the same field in one update) and dedupe in
-    // case both accounts were already in the array
-    const remapArrayField = async (query, field, extraUpdates = null) => {
-      const snapshot = await query.get();
-      for (const doc of snapshot.docs) {
-        const current = field.split('.').reduce((obj, key) => (obj || {})[key], doc.data()) || [];
-        const remapped = [...new Set(current.map(id => id === secondaryAccountId ? primaryAccountId : id))];
-        const updates = { [field]: remapped, ...(extraUpdates ? extraUpdates(remapped) : {}) };
-        batch.update(doc.ref, updates);
-        pendingOps++;
-        await commitIfFull();
-      }
-      return snapshot.size;
-    };
 
-    const now = new Date().toISOString();
-    const remapped = {};
+    const result = await mergeAccounts({ primaryId: primaryAccountId, secondaryId: secondaryAccountId, dryRun: dryRun === true });
 
-    // Ownership + authorship
-    remapped.circles = await remapField(
-      db.collection(COLLECTIONS.CIRCLES).where('owner', '==', secondaryAccountId),
-      () => ({ owner: primaryAccountId, updatedAt: now }));
-    remapped.places = await remapField(
-      db.collection(COLLECTIONS.PLACES).where('addedBy', '==', secondaryAccountId),
-      () => ({ addedBy: primaryAccountId, updatedAt: now }));
-    remapped.comments = await remapField(
-      db.collection('placeComments').where('userId', '==', secondaryAccountId),
-      () => ({ userId: primaryAccountId }));
-    remapped.activities = await remapField(
-      db.collection(COLLECTIONS.ACTIVITIES).where('actorId', '==', secondaryAccountId),
-      () => ({ actorId: primaryAccountId }));
-    remapped.messages = await remapField(
-      db.collection('messages').where('senderId', '==', secondaryAccountId),
-      () => ({ senderId: primaryAccountId }));
-
-    // Connections (both directions)
-    remapped.connections = await remapField(
-      db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', secondaryAccountId),
-      () => ({ userId: primaryAccountId }));
-    remapped.connections += await remapField(
-      db.collection(COLLECTIONS.CONNECTIONS).where('connectedUserId', '==', secondaryAccountId),
-      () => ({ connectedUserId: primaryAccountId }));
-
-    // Array memberships: circle shares, venue likes/contributors, social graph
-    remapped.sharedCircles = await remapArrayField(
-      db.collection(COLLECTIONS.CIRCLES).where('sharedWith', 'array-contains', secondaryAccountId),
-      'sharedWith');
-    remapped.venueLikes = await remapArrayField(
-      db.collection('globalPlaces').where('likes', 'array-contains', secondaryAccountId),
-      'likes',
-      likes => ({ likesCount: likes.length })); // Deduped count when both ids had liked
-    remapped.venueContributions = await remapArrayField(
-      db.collection('globalPlaces').where('userContributions.contributors', 'array-contains', secondaryAccountId),
-      'userContributions.contributors');
-    remapped.followerRefs = await remapArrayField(
-      db.collection(COLLECTIONS.USERS).where('followers', 'array-contains', secondaryAccountId),
-      'followers');
-    remapped.followingRefs = await remapArrayField(
-      db.collection(COLLECTIONS.USERS).where('following', 'array-contains', secondaryAccountId),
-      'following');
-
-    if (pendingOps > 0) {
-      await batch.commit();
-    }
-    console.log('🔄 Reference remap complete:', remapped);
-
-    // Finalize the user docs last, so a crash mid-remap leaves the merge
-    // re-runnable rather than half-marked
-    await db.runTransaction(async (transaction) => {
-      transaction.update(primaryRef, mergedData);
-      transaction.update(secondaryRef, {
-        mergedInto: primaryAccountId,
-        mergedAt: new Date().toISOString(),
-        active: false
-      });
-    });
-    
-    console.log(`✅ Successfully merged ${secondaryAccountId} into ${primaryAccountId}`);
-    
-    // Get updated primary user
-    const updatedPrimaryDoc = await primaryRef.get();
-    const updatedUser = serializeDoc(updatedPrimaryDoc);
-    
-    res.status(200).json({
+    // The caller may have been signed into the account that just got folded
+    // (the new empty one). Hand back a session for the survivor so the app
+    // continues as the person they actually are.
+    const response = {
       success: true,
-      message: 'Accounts merged successfully',
-      primaryAccount: updatedUser,
+      message: dryRun === true ? 'Merge previewed' : 'Accounts merged successfully',
+      primaryAccount: result.primaryUser,
+      survivorId: result.primaryId,
+      mergedAccountId: result.secondaryId,
+      swapped: result.swapped,
+      counts: result.counts,
       mergedData: {
-        alternateEmailsAdded: mergedData.alternateEmails.filter(email => !(primaryUser.alternateEmails || []).includes(email)),
-        providersLinked: Object.keys(secondaryUser.linkedProviders || {}),
-        followersAdded: (secondaryUser.followers || []).length,
-        followingAdded: (secondaryUser.following || []).length
+        alternateEmailsAdded: result.mergedData.alternateEmails || [],
+        providersLinked: Object.keys(result.mergedData.linkedProviders || {}),
+        followersAdded: result.counts.followerRefs || 0,
+        followingAdded: result.counts.followingRefs || 0
       }
-    });
-    
+    };
+    if (dryRun !== true) {
+      invalidateUserCache(result.primaryId);
+      invalidateUserCache(result.secondaryId);
+      if (callerIds.includes(result.secondaryId)) {
+        response.token = mintSessionToken(result.primaryId, result.primaryUser.email);
+        response.expiresIn = getTokenExpiresInSeconds();
+      }
+    }
+    res.status(200).json(response);
   } catch (error) {
-    console.error('Error merging accounts:', error);
-    next(error);
+    sendServiceError(res, error, { log: 'Error merging accounts', fallbackCode: 'merge_failed', fallbackMessage: 'Could not merge accounts' });
   }
 };

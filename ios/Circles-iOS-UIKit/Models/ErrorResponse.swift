@@ -85,7 +85,14 @@ struct DuplicateAccountsResponse: Codable {
 struct MergeAccountsResponse: Codable {
     let success: Bool
     let message: String
+    /// The account that survived — the OLDER one, whichever the app asked to keep
     let primaryAccount: User
+    let survivorId: String?
+    let mergedAccountId: String?
+    /// A session for the survivor, present when the caller was signed into
+    /// the account that got folded
+    let token: String?
+    let expiresIn: Int?
     let mergedData: MergedData
 }
 

@@ -614,7 +614,9 @@ class UserService {
         }
     }
     
-    static func mergeAccounts(primaryId: String, secondaryId: String, completion: @escaping (Result<User, Error>) -> Void) {
+    /// The server keeps the OLDER of the two whichever is passed as primary;
+    /// the response says which survived and carries its session if needed.
+    static func mergeAccounts(primaryId: String, secondaryId: String, completion: @escaping (Result<MergeAccountsResponse, Error>) -> Void) {
         let body: [String: Any] = [
             "primaryAccountId": primaryId,
             "secondaryAccountId": secondaryId
@@ -628,7 +630,7 @@ class UserService {
         ) { (result: Result<MergeAccountsResponse, APIError>) in
             switch result {
             case .success(let response):
-                completion(.success(response.primaryAccount))
+                completion(.success(response))
             case .failure(let error):
                 completion(.failure(error))
             }

@@ -3297,7 +3297,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             cancelTitle: "Not Now",
             from: self,
             onConfirm: { [weak self] in
-                let mergeVC = AccountMergeViewController()
+                // The hint's candidates seed the screen: a relay-email account
+                // matches nothing server-side, so the screen would otherwise
+                // open empty
+                let mergeVC = AccountMergeViewController(candidates: suggestion.duplicateAccounts)
                 self?.navigationController?.pushViewController(mergeVC, animated: true)
             }
         )

@@ -1,10 +1,28 @@
 import UIKit
 
+/// "Is this you?" → pick the other account → one account. Opened pushed from
+/// the home prompt after sign-in, or presented from Settings.
+///
+/// The server decides which account survives (the older one), so the row
+/// says "Keep <older>" rather than promising to merge INTO the account the
+/// phone happens to be signed into. When the survivor isn't the signed-in
+/// account, the response carries a session for it and the app switches.
 class AccountMergeViewController: BaseViewController {
     
     // MARK: - Properties
     private var duplicateAccounts: [User] = []
     private var currentUser: User?
+    /// Candidates handed in by the sign-in hint (device-local or server);
+    /// shown at once, before the server lookup — which finds nothing for a
+    /// relay-email account.
+    private let seededCandidates: [DuplicateAccountHint]
+
+    init(candidates: [DuplicateAccountHint] = []) {
+        self.seededCandidates = candidates
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     
     // MARK: - UI Elements
     private lazy var titleLabel: UILabel = {
@@ -102,16 +120,26 @@ class AccountMergeViewController: BaseViewController {
         
         self.currentUser = currentUser
         
-        // Call backend to find duplicate accounts
+        // The hint's candidates paint first
+        let seeded = seededCandidates.filter { $0.id != currentUser.id }.map { hint in
+            User(id: hint.id, email: hint.email, displayName: hint.displayName ?? hint.email ?? "Another account",
+                 profilePicture: nil, bio: nil, location: nil, friends: nil, friendRequests: nil)
+        }
+        duplicateAccounts = seeded
+        tableView.reloadData()
+        
+        // Then the server's own matches (same email / alternate email) join them
         UserService.findDuplicateAccounts(for: currentUser) { [weak self] result in
             DispatchQueue.main.async {
+                guard let self else { completion?(); return }
                 switch result {
                 case .success(let accounts):
-                    self?.duplicateAccounts = accounts
-                    self?.tableView.reloadData()
+                    let known = Set(self.duplicateAccounts.map(\.id))
+                    self.duplicateAccounts += accounts.filter { !known.contains($0.id) && $0.id != currentUser.id }
+                    self.tableView.reloadData()
                 case .failure(let error):
                     Logger.debug("Failed to find duplicate accounts: \(error)")
-                    self?.showError(error)
+                    if self.duplicateAccounts.isEmpty { self.showError(error) }
                 }
                 completion?()
             }
@@ -119,29 +147,35 @@ class AccountMergeViewController: BaseViewController {
     }
     
     // MARK: - Actions
-    @objc private func cancelTapped() {
-        dismiss(animated: true)
+    
+    /// Pushed from the home prompt or presented from Settings — leave the
+    /// way we came, or the X does nothing.
+    private func close() {
+        if let nav = navigationController, nav.viewControllers.count > 1, nav.topViewController === self {
+            nav.popViewController(animated: true)
+        } else {
+            (navigationController ?? self).dismiss(animated: true)
+        }
     }
     
-    @objc private func skipTapped() {
-        dismiss(animated: true)
-    }
+    @objc private func cancelTapped() { close() }
+    
+    @objc private func skipTapped() { close() }
     
     private func mergeAccount(_ duplicateAccount: User) {
         guard let currentUser = self.currentUser else { return }
         
-        let alert = UIAlertController(
+        let other = duplicateAccount.email ?? duplicateAccount.displayName
+        AlertPresenter.showConfirmation(
             title: "Merge Accounts",
-            message: "This will merge \(duplicateAccount.email ?? "this account") into your current account. This action cannot be undone. Continue?",
-            preferredStyle: .alert
+            message: "Your two accounts (\(currentUser.email ?? currentUser.displayName) and \(other)) become one. The older account is kept, with everything from both. This can't be undone. Continue?",
+            confirmTitle: "Merge",
+            isDestructive: true,
+            from: self,
+            onConfirm: { [weak self] in
+                self?.performMerge(primary: currentUser, secondary: duplicateAccount)
+            }
         )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Merge", style: .destructive) { [weak self] _ in
-            self?.performMerge(primary: currentUser, secondary: duplicateAccount)
-        })
-        
-        present(alert, animated: true)
     }
     
     private func performMerge(primary: User, secondary: User) {
@@ -149,25 +183,39 @@ class AccountMergeViewController: BaseViewController {
         
         UserService.mergeAccounts(primaryId: primary.id, secondaryId: secondary.id) { [weak self] result in
             DispatchQueue.main.async {
-                self?.hideLoadingState()
+                guard let self else { return }
+                self.hideLoadingState()
                 
                 switch result {
-                case .success(let mergedUser):
-                    // Update current user
-                    AuthService.shared.updateCurrentUser(mergedUser)
-                    
-                    // Show success message
-                    self?.showSuccess("Accounts merged successfully!")
-                    
-                    // Reload data to remove merged account from list
-                    self?.loadData()
+                case .success(let response):
+                    // The survivor may not be the account this phone signed in
+                    // as; the response carries its session when so
+                    AuthService.shared.adoptMergedSession(user: response.primaryAccount,
+                                                          token: response.token,
+                                                          expiresIn: response.expiresIn)
+                    self.duplicateAccounts.removeAll { $0.id == secondary.id || $0.id == response.mergedAccountId }
+                    self.tableView.reloadData()
+                    AlertPresenter.showSuccess(
+                        title: "Accounts merged",
+                        message: "You're now signed in as \(response.primaryAccount.displayName). Everything from both accounts is here.",
+                        from: self
+                    ) { [weak self] in
+                        self?.close()
+                        NotificationCenter.default.post(name: .accountDidMerge, object: nil)
+                    }
                     
                 case .failure(let error):
-                    self?.showError(error)
+                    self.showError(error)
                 }
             }
         }
     }
+}
+
+extension Notification.Name {
+    /// Two accounts became one and the session may now be a different user;
+    /// screens holding per-user data reload.
+    static let accountDidMerge = Notification.Name("AccountDidMerge")
 }
 
 // MARK: - UITableViewDataSource
@@ -296,14 +344,17 @@ class AccountMergeCell: UITableViewCell {
     
     func configure(with user: User, currentUser: User?) {
         self.user = user
-        emailLabel.text = user.email ?? "No email"
+        emailLabel.text = user.email ?? user.displayName
         
         // Determine provider
         if user.email?.contains("@privaterelay.appleid.com") == true {
-            providerLabel.text = "Apple Sign In (Private Relay)"
+            providerLabel.text = "Apple Sign In (Hide My Email)"
             warningLabel.isHidden = false
+        } else if user.email == nil {
+            providerLabel.text = user.displayName == "Apple User" ? "Apple Sign In" : "Account on this phone"
+            warningLabel.isHidden = true
         } else {
-            providerLabel.text = "Email Account"
+            providerLabel.text = "Email / Google account"
             warningLabel.isHidden = true
         }
     }

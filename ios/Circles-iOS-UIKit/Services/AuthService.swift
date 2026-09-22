@@ -144,6 +144,21 @@ class AuthService {
         // Note: AuthManager removed - listeners notified via authStateListeners
     }
 
+    /// After an account merge the person may be a different user than the
+    /// one this phone signed in as (the new empty account was folded into
+    /// the old one). Install the survivor's session so every following
+    /// request, cache key and "is this me" check uses the surviving id.
+    func adoptMergedSession(user: User, token: String?, expiresIn: Int?) {
+        if let token {
+            let expiration = expiresIn.map { Date().addingTimeInterval(TimeInterval($0)) }
+            saveToken(token, expiration: expiration)
+            APIService.shared.setAuthToken(token)
+        }
+        saveUserId(user.id)
+        _currentUser = user
+        rememberAccountOnDevice(user)
+    }
+
     /// Keep the cached user's `following` list in sync after a follow/unfollow
     /// succeeds. Screens derive settled state from this cache (e.g. the
     /// notifications "Follow Back" button shows "✓ Following" only when

@@ -10,23 +10,9 @@ const { firebaseApiKey } = require('../config/config');
 const db = getFirestore();
 const auth = getAuth();
 
-// JWT lifetime in seconds, parsed from JWT_EXPIRE (e.g. "30d", "12h", "3600").
-// Returned to clients as expiresIn so they don't have to guess token lifetime.
-function getTokenExpiresInSeconds() {
-  const value = process.env.JWT_EXPIRE || '30d';
-  const match = String(value).trim().match(/^(\d+)\s*([smhd]?)$/i);
-  if (!match) return 30 * 24 * 60 * 60;
-  const amount = parseInt(match[1], 10);
-  const unitSeconds = { '': 1, s: 1, m: 60, h: 3600, d: 86400 }[match[2].toLowerCase()];
-  return amount * unitSeconds;
-}
-
-// THE session-token mint — every auth path (social, register, login, refresh,
-// passkey) signs the same {uid, email} payload the same way. Exported for
-// passkeyController.
-function mintSessionToken(uid, email) {
-  return jwt.sign({ uid, email }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE });
-}
+// Session tokens are minted in services/sessionToken.js (shared with the
+// account merge); re-exported here for passkeyController.
+const { mintSessionToken, getTokenExpiresInSeconds } = require('../services/sessionToken');
 exports.mintSessionToken = mintSessionToken;
 exports.getTokenExpiresInSeconds = getTokenExpiresInSeconds;
 

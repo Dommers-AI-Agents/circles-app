@@ -133,6 +133,17 @@ exports.protect = async (req, res, next) => {
         });
       }
 
+      // A merged account answers as its survivor: a phone still holding the
+      // folded account's token keeps working, as the person it now is.
+      if (userDoc.data().mergedInto) {
+        const survivor = await db.collection(COLLECTIONS.USERS).doc(userDoc.data().mergedInto).get();
+        if (survivor.exists) {
+          console.log(`🔀 AUTH MIDDLEWARE: ${actualUserId} was merged into ${survivor.id}`);
+          userDoc = survivor;
+          actualUserId = survivor.id;
+        }
+      }
+
       // Add user to request object with normalized ID
       const userData = serializeDoc(userDoc);
       const finalUserId = normalizeUserId(actualUserId); // Ensure we always use normalized ID
