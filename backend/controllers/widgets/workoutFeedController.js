@@ -8,7 +8,8 @@ const fail = (res, error) => sendServiceError(res, error, {
 
 exports.share = async (req, res) => {
   const { summary } = req.body || {};
-  try { res.status(201).json({ success: true, ...(await feed.share({ userId: req.user.uid, summary })) }); } catch (e) { fail(res, e); }
+  const audienceListId = req.body && req.body.audienceListId;
+  try { res.status(201).json({ success: true, ...(await feed.share({ userId: req.user.uid, summary, audienceListId })) }); } catch (e) { fail(res, e); }
 };
 
 exports.feed = async (req, res) => {

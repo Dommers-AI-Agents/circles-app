@@ -8,8 +8,12 @@ jest.mock('../../config/firebase', () => ({
 }));
 const mockGrantors = new Set();
 const mockConnections = new Set();
+// Which of each grantor's lists the viewer is on; a grantor with no entry
+// here is on "some list" without a name, as before lists existed.
+const mockLists = new Map();
 jest.mock('../../utils/networkAccess', () => ({
   getInnerCircleGrantorIds: jest.fn(async () => mockGrantors),
+  getInnerCircleGrantorLists: jest.fn(async () => new Map([...mockGrantors].map((id) => [id, mockLists.get(id) || new Set()]))),
   getConnectedUserIds: jest.fn(async () => mockConnections)
 }));
 
@@ -28,6 +32,7 @@ beforeEach(() => {
   mockDb.rows(COLLECTIONS.USERS).clear();
   mockGrantors.clear();
   mockConnections.clear();
+  mockLists.clear();
 });
 
 test('share validates, trims and replaces the same workout', async () => {
@@ -78,4 +83,19 @@ test('feed spans this month and last, and drops old posts', async () => {
 test('helpers', () => {
   expect(feed.monthKeyOf(new Date('2026-09-19T23:59:00Z'))).toBe('2026-09');
   expect(feed.normalizeSummary(summary({ unit: 'stone' })).unit).toBe('lb');
+});
+
+test('a post shared to one named list reaches that list only', async () => {
+  mockGrantors.add('b'); mockConnections.add('b');
+  mockDb.rows(COLLECTIONS.USERS).set('b', { displayName: 'B' });
+  await feed.share({ userId: 'b', summary: summary({ name: 'Family only' }), audienceListId: 'family' });
+  await feed.share({ userId: 'b', summary: summary({ name: 'Everyone', startedAt: '2026-09-19T12:00:00.000Z' }) });
+  // Viewer is on b's gym list, not family.
+  mockLists.set('b', new Set(['gym']));
+  expect((await feed.feed('viewer')).map((p) => p.summary.name)).toEqual(['Everyone']);
+  mockLists.set('b', new Set(['family']));
+  expect((await feed.feed('viewer')).map((p) => p.summary.name).sort()).toEqual(['Everyone', 'Family only']);
+  // Junk list ids are stored as none, not as a list nobody is on.
+  const r = await feed.share({ userId: 'b', summary: summary({ startedAt: '2026-09-18T12:00:00.000Z' }), audienceListId: '  ' });
+  expect(r.audienceListId).toBeNull();
 });

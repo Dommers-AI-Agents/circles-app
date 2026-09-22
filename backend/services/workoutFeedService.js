@@ -10,7 +10,8 @@
 const { getFirestore } = require('../config/firebase');
 const { ServiceError } = require('../utils/serviceError');
 const { COLLECTIONS } = require('../models/FirestoreModels');
-const { getConnectedUserIds, getInnerCircleGrantorIds } = require('../utils/networkAccess');
+const { getConnectedUserIds, getInnerCircleGrantorLists } = require('../utils/networkAccess');
+const { listIdFor } = require('./innerCircleLists');
 const { queryInChunks } = require('../utils/firestoreChunks');
 
 class WorkoutFeedError extends ServiceError {}
@@ -63,19 +64,25 @@ class WorkoutFeedService {
 
   get posts() { return this.db.collection(COLLECTIONS.WORKOUT_POSTS); }
 
-  /** One post per finished workout; re-sharing the same workout replaces it. */
-  async share({ userId, summary }) {
+  /**
+   * One post per finished workout; re-sharing the same workout replaces it.
+   * `audienceListId` names which Inner Circle list may see it; none means
+   * anyone on any of the author's lists, as every post before lists did.
+   */
+  async share({ userId, summary, audienceListId = null }) {
     const normalized = normalizeSummary(summary);
     const started = new Date(normalized.startedAt);
     const postId = `${userId}_${started.getTime()}`;
     const now = new Date();
+    const listId = listIdFor('innerCircle', audienceListId);
     await this.posts.doc(postId).set({
       userId,
       summary: normalized,
+      audienceListId: listId,
       monthKey: monthKeyOf(now),
       createdAt: now.toISOString()
     });
-    return { postId, createdAt: now.toISOString() };
+    return { postId, audienceListId: listId, createdAt: now.toISOString() };
   }
 
   /**
@@ -83,8 +90,10 @@ class WorkoutFeedService {
    * connected, from this month and last, newest first.
    */
   async feed(viewerId, now = new Date()) {
-    const [grantors, connections] = await Promise.all([getInnerCircleGrantorIds(viewerId), getConnectedUserIds(viewerId)]);
-    const authors = [...grantors].filter((id) => connections.has(id));
+    const [lists, connections] = await Promise.all([getInnerCircleGrantorLists(viewerId), getConnectedUserIds(viewerId)]);
+    const authors = [...lists.keys()].filter((id) => connections.has(id));
+    // A post that named a list is for that list only.
+    const allowed = (row) => !row.audienceListId || (lists.get(row.userId) || new Set()).has(row.audienceListId);
     if (authors.length === 0) return [];
     const previous = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
     const months = [monthKeyOf(now), monthKeyOf(previous)];
@@ -95,6 +104,7 @@ class WorkoutFeedService {
     for (const doc of perMonth.flat()) {
       const data = doc.data();
       if (Date.parse(data.createdAt) < cutoff) continue;
+      if (!allowed(data)) continue;
       rows.push({ id: doc.id, ...data });
     }
     rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
