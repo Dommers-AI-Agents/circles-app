@@ -82,6 +82,7 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
             type: 'circle',
             entityId: circleId,
             entityName: circleName,
+            actorId: createdByUserId,
             createdAt: new Date().toISOString(),
             viewedBy: [createdByUserId] // Creator has already "viewed" their own activity
           };

@@ -96,6 +96,7 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
           entityName: placeName || 'Unknown Place',
           circleId: circleId,
           circleName: circleName || 'Unknown Circle',
+          actorId: addedByUserId,
           createdAt: new Date().toISOString(),
           viewedBy: [addedByUserId] // Creator has already "viewed" their own activity
         };

@@ -4,6 +4,18 @@ const { COLLECTIONS } = require('../models/FirestoreModels');
 
 const db = getFirestore();
 
+// Who caused a recentActivity entry. Every writer seeds viewedBy with the
+// creator, so entries written before actorId existed still resolve.
+const actorOf = (activity) => activity.actorId || (activity.viewedBy && activity.viewedBy[0]) || null;
+
+// The other person's entries on a shared connection document. The viewer's
+// own activity is fanned out onto the same document and must never score.
+const theirActivity = (connection, viewerId) =>
+  (connection.recentActivity || []).filter((a) => {
+    const actor = actorOf(a);
+    return actor && actor !== viewerId;
+  });
+
 class ScoringService {
   constructor() {
     // Scoring weights configuration - PRIORITIZING ACTIVITY OVER MESSAGES
@@ -85,37 +97,17 @@ class ScoringService {
       }
     }
 
-    // 2. User Engagement Score (0-20 points)
-    const viewCount = connection.viewCount || 0;
-    for (const tier of this.weights.engagement.views) {
-      if (viewCount >= tier.min && viewCount <= tier.max) {
-        scoreComponents.engagement = tier.points;
-        break;
-      }
-    }
+    // 2. Engagement: view counts only measured how often the viewer scrolled
+    // past this person, so they no longer score. The key stays (iOS decodes it).
+    scoreComponents.engagement = 0;
+    const theirs = theirActivity(connection, currentUserId);
 
     // 3. Content & Activity Score (0-50 points) - FIXED validation
     // Only award unviewed activity points if there's ACTUAL unviewed content
-    let hasActualUnviewedActivity = false;
-    
-    // Check recentActivity array first for actual content
-    if (connection.recentActivity && connection.recentActivity.length > 0) {
-      hasActualUnviewedActivity = connection.recentActivity.some(activity => {
-        const viewedBy = activity.viewedBy || [];
-        return !viewedBy.includes(currentUserId);
-      });
-    }
-    
-    // Only trust the flags if we have actual unviewed activity
-    if (hasActualUnviewedActivity || 
-        (connection.hasRecentPlace && connection.unviewedActivityCount > 0) || 
-        (connection.hasNewActivity && connection.unviewedActivityCount > 0)) {
+    const hasActualUnviewedActivity = theirs.some((activity) =>
+      !(activity.viewedBy || []).includes(currentUserId));
+    if (hasActualUnviewedActivity) {
       scoreComponents.content += this.weights.content.hasUnviewedActivity;
-      console.log(`✅ Awarding ${this.weights.content.hasUnviewedActivity} content points for actual unviewed activity`);
-    } else if (connection.hasRecentPlace || connection.hasNewActivity) {
-      // Log suspicious case where flags are set but no actual activity
-      const displayName = connection.connectedUser?.displayName || 'Unknown';
-      console.log(`⚠️ WARNING: ${displayName} has activity flags set but no actual unviewed content - not awarding points`);
     }
 
     // Places bonus
@@ -128,7 +120,7 @@ class ScoringService {
     }
 
     // Total activity bonus for highly active users (NEW!)
-    const totalActivityCount = connection.totalActivityCount || 0;
+    const totalActivityCount = connection.totalActivityCount || theirs.length;
     for (const tier of this.weights.content.totalActivityBonus) {
       if (totalActivityCount >= tier.min && totalActivityCount <= tier.max) {
         scoreComponents.content += tier.points;
@@ -137,7 +129,11 @@ class ScoringService {
     }
 
     // 4. Recency Bonus (0-15 points)
-    const mostRecentActivity = this.getMostRecentActivityDate(connection);
+    let mostRecentActivity = this.getMostRecentActivityDate(connection, theirs);
+    if (!mostRecentActivity && connection.hasRecentPlace) {
+      // Stats say they added a place this week; give the 7-day bonus.
+      mostRecentActivity = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
+    }
     if (mostRecentActivity) {
       const ageInDays = this.getAgeInDays(mostRecentActivity);
       if (ageInDays <= 1) {
@@ -173,34 +169,25 @@ class ScoringService {
     // Apply 2.5x multiplier for high-content users with recent activity (PRIORITIZE CONTENT CREATORS)
     if (hasHighContent && hasRecentActivity) {
       multiplier = 2.5;  // Increased from 1.6 - major boost for active content creators
-      console.log(`🌟 Applying 2.5x multiplier for high-content user with recent activity`);
     }
     // Apply 2.0x multiplier if user has BOTH recent messages and activity
     else if (hasRecentMessages && hasRecentActivity) {
       multiplier = 2.0;  // Unchanged - balanced users
-      console.log(`🚀 Applying 2.0x multiplier for user with recent messages AND activity`);
     }
     // Apply only 1.1x multiplier for users with just recent messages (REDUCED)
     else if (hasRecentMessages) {
       multiplier = 1.1;  // Reduced from 1.3 - de-emphasize pure chatters
-      console.log(`💬 Applying 1.1x multiplier for user with recent messages only`);
     }
     // Apply 1.8x multiplier for users with just recent activity (NEW)
     else if (hasRecentActivity) {
       multiplier = 1.8;  // NEW - reward activity without messages
-      console.log(`📍 Applying 1.8x multiplier for user with recent activity only`);
     }
     
     // Power user boost: Extra 1.3x multiplier for highly active users (20+ total activities AND 10+ places)
     const isPowerUser = totalActivityCount >= 20 && placesCount >= 10;
     if (isPowerUser) {
       multiplier *= 1.3;  // Increased from 1.2 - bigger boost for power users
-      console.log(`⭐ Power user boost applied: ${displayName} has ${totalActivityCount} activities and ${placesCount} places`);
     }
-    
-    // Debug multiplier calculation for all users
-    const displayName = connection.connectedUser?.displayName || 'Unknown';
-    console.log(`📊 ${displayName}: hasRecentMessages=${hasRecentMessages} hasRecentActivity=${hasRecentActivity} hasHighContent=${hasHighContent} totalActivity=${totalActivityCount} multiplier=${multiplier}x`);
     
     // Apply multiplier to final score
     let finalScore = Math.round(scoreComponents.total * multiplier);
@@ -222,36 +209,15 @@ class ScoringService {
   /**
    * Get the most recent activity date from various sources
    */
-  getMostRecentActivityDate(connection) {
+  getMostRecentActivityDate(connection, theirs = theirActivity(connection, null)) {
+    // lastViewedAt is when the viewer looked, so it is not their activity.
     const dates = [];
-    
-    // Check message timestamp
-    if (connection.lastMessageAt) {
-      dates.push(new Date(connection.lastMessageAt));
-    }
-    
-    // Check last viewed timestamp
-    if (connection.lastViewedAt) {
-      dates.push(new Date(connection.lastViewedAt));
-    }
-    
-    // Check last interaction
-    if (connection.lastInteractionAt) {
-      dates.push(new Date(connection.lastInteractionAt));
-    }
-    
-    // Check recent activities (places/circles added)
-    if (connection.recentActivity && connection.recentActivity.length > 0) {
-      connection.recentActivity.forEach(activity => {
-        if (activity.createdAt) {
-          dates.push(new Date(activity.createdAt));
-        }
-      });
-    }
-    
-    // Return the most recent date
-    if (dates.length === 0) return null;
-    return new Date(Math.max(...dates.map(d => d.getTime())));
+    if (connection.lastMessageAt) dates.push(new Date(connection.lastMessageAt));
+    if (connection.lastInteractionAt) dates.push(new Date(connection.lastInteractionAt));
+    theirs.forEach((activity) => { if (activity.createdAt) dates.push(new Date(activity.createdAt)); });
+    const valid = dates.filter((d) => !Number.isNaN(d.getTime()));
+    if (valid.length === 0) return null;
+    return new Date(Math.max(...valid.map((d) => d.getTime())));
   }
 
   /**

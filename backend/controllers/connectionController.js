@@ -3,6 +3,7 @@ const { getFirestore } = require('../config/firebase');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { serializeDates } = require('../utils/wireDates');
 const { followedUserStats } = require('../services/followedUserStats');
+const { compareRelationships } = require('../services/relationshipRanking');
 const { FieldValue } = require('firebase-admin/firestore');
 const { 
   COLLECTIONS, 
@@ -1418,11 +1419,12 @@ const getActiveRelationships = async (req, res) => {
       });
     }
 
-    // Get user data for all relationships in one batched read, and the
-    // followed-only users' activity stats in parallel with it.
-    const [userDocs, followedStats] = await Promise.all([
+    // Get user data for all relationships in one batched read, and everyone's
+    // place stats (count + a place this week) in parallel with it. Connection
+    // documents carry no totalPlaces of their own, so the score needs these.
+    const [userDocs, placeStats] = await Promise.all([
       db.getAll(...allUserIds.map(id => db.collection(COLLECTIONS.USERS).doc(id))),
-      followedUserStats(db, followedOnlyIds)
+      followedUserStats(db, allUserIds)
     ]);
     const userDataMap = new Map();
     
@@ -1442,20 +1444,22 @@ const getActiveRelationships = async (req, res) => {
     for (const [otherUserId, connectionData] of connectionMap) {
       const userData = userDataMap.get(otherUserId);
       if (userData) {
-        // Calculate activity score for connection
-        const scoreData = scoringService.calculateConnectionScore(connectionData, userId);
+        const stats = placeStats.get(otherUserId) || { hasRecentPlace: false, totalPlaces: 0 };
+        // Calculate activity score for connection from what THEY did
+        const scored = { ...connectionData, totalPlaces: stats.totalPlaces, hasRecentPlace: stats.hasRecentPlace };
+        const scoreData = scoringService.calculateConnectionScore(scored, userId);
         
         relationships.push({
-          ...connectionData,
+          ...scored,
           // The public card only — this row went out with the whole user document
           // (email, device tokens, last known location) to every connection.
           connectedUser: projectPublicUser(userData, ['email']),
           relationshipType: 'connection',
           connectionScore: scoreData.score,
           scoreComponents: scoreData.components,
-          hasRecentPlace: scoreData.hasRecentPlace,
-          lastMessageAt: scoreData.lastMessageAt,
-          totalPlaces: scoreData.totalPlaces
+          hasRecentPlace: stats.hasRecentPlace,
+          lastMessageAt: connectionData.lastMessageAt || null,
+          totalPlaces: stats.totalPlaces
         });
       }
     }
@@ -1464,7 +1468,7 @@ const getActiveRelationships = async (req, res) => {
     for (const followedId of followedOnlyIds) {
       const userData = userDataMap.get(followedId);
       if (userData) {
-        const { hasRecentPlace, totalPlaces, score } = followedStats.get(followedId);
+        const { hasRecentPlace, totalPlaces, score } = placeStats.get(followedId);
 
         relationships.push({
           id: `follow_${followedId}`, // Synthetic ID for followed relationships
@@ -1483,12 +1487,9 @@ const getActiveRelationships = async (req, res) => {
       }
     }
 
-    // Sort all relationships by score
-    relationships.sort((a, b) => {
-      const scoreA = a.connectionScore || 0;
-      const scoreB = b.connectionScore || 0;
-      return scoreB - scoreA;
-    });
+    // Highest score first, then a stable tie-break (name, id) so paging
+    // never depends on Firestore document order.
+    relationships.sort(compareRelationships);
 
     // Apply pagination
     const paginatedRelationships = relationships.slice(offset, offset + limit);
