@@ -7,6 +7,12 @@ module.exports = {
     if (!isEnabled() || !stripeClient.isEnabled()) return { ...summary, disabled: true };
     const now = Date.now();
 
+    // 0. Where every live card actually is, from Lob: a print refused after
+    // capture becomes a refund, carrier scans move the status, a funding hold
+    // on our account gets logged loudly. Webhooks do this faster when they
+    // arrive; this is what holds when they don't.
+    summary.tracking = await this.syncLiveOrders();
+
     // 1. At the printer but not paid. Normally rendered_pdf captures within
     // seconds; this is the net for a missed webhook. Ask Lob first — a card
     // it has failed must be voided, never captured — then capture only once

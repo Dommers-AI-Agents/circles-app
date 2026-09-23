@@ -178,10 +178,10 @@ class PostcardMailService {
     // Fridge Mail cards share the collection but have their own history view
     const snapshot = await this.col.where('userId', '==', userId)
       .orderBy('createdAt', 'desc').limit(limit * 2).get();
-    return snapshot.docs
-      .filter((doc) => doc.data().kind !== 'fridgemail')
-      .slice(0, limit)
-      .map((doc) => this.present(doc.id, doc.data()));
+    const docs = snapshot.docs.filter((doc) => doc.data().kind !== 'fridgemail').slice(0, limit);
+    // Answer from what we hold; ask Lob about anything stale for next time
+    this.syncStaleInBackground(docs);
+    return docs.map((doc) => this.present(doc.id, doc.data()));
   }
 
   async getOrder({ userId, orderId }) {
@@ -189,6 +189,7 @@ class PostcardMailService {
     if (!snapshot.exists) throw new MailError(404, 'not_found', 'That order no longer exists.');
     const row = snapshot.data();
     if (row.userId !== userId) throw new MailError(403, 'not_your_order', 'That order belongs to someone else.');
+    this.syncStaleInBackground([snapshot]);
     return this.present(orderId, row);
   }
 
@@ -208,7 +209,8 @@ class PostcardMailService {
       cancelableUntil: row.cancelableUntil || null,
       canCancel: row.status === STATUS.AUTHORIZED,
       publicPageUrl: row.publicPageToken ? `${postcardShareService.PUBLIC_BASE_URL}/postcard/${row.publicPageToken}` : null,
-      createdAt: row.createdAt
+      createdAt: row.createdAt,
+      ...this.printerFields(row)
     };
   }
 
@@ -238,7 +240,7 @@ class PostcardMailService {
   /** Stripe's view of the truth, for when the client dies mid-flow. */
 }
 
-Object.assign(PostcardMailService.prototype, require('./postcardMail/fulfilment'), require('./postcardMail/reconcile'), require('./postcardMail/webhooks'));
+Object.assign(PostcardMailService.prototype, require('./postcardMail/fulfilment'), require('./postcardMail/reconcile'), require('./postcardMail/webhooks'), require('./postcardMail/tracking'));
 module.exports = Object.assign(new PostcardMailService(), {
   MailError,
   STATUS,

@@ -35,7 +35,9 @@ jest.mock('../lobClient', () => ({
   verifyUSAddress: jest.fn()
 }));
 jest.mock('../postcardMailService', () => ({
-  quote: jest.fn(async (r) => ({ deliverable: true, standardized: { name: r.name, line1: String(r.line1).toUpperCase(), line2: r.line2 || '', city: 'CHARLOTTE', state: 'NC', zip: '28203' } }))
+  quote: jest.fn(async (r) => ({ deliverable: true, standardized: { name: r.name, line1: String(r.line1).toUpperCase(), line2: r.line2 || '', city: 'CHARLOTTE', state: 'NC', zip: '28203' } })),
+  syncStaleInBackground: jest.fn(() => 0),
+  printerFields: (row) => ({ printerStatus: row.lobStatus || null, printerHold: row.lobFundingStatus === 'funding_hold', lastTrackingEvent: null })
 }));
 jest.mock('../postcardShareService', () => ({
   isAllowedImageUrl: (u) => typeof u === 'string' && u.startsWith('https://storage.googleapis.com/bucket/')

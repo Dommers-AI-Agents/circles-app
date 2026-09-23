@@ -237,13 +237,16 @@ class FridgeMailService {
     // with ordinary postcards, and filtering in memory after a capped read
     // hid the fridge list behind 60 recent postcards.
     const snap = await this.cards.where('userId', '==', userId).where('kind', '==', KIND).orderBy('createdAt', 'desc').limit(limit).get();
+    // Same collection, same printer: stale rows get asked about after the answer goes out
+    postcardMailService.syncStaleInBackground(snap.docs);
     return snap.docs
       .map((d) => {
         const r = d.data();
         return {
           cardId: d.id, status: r.status, recipientId: r.recipientId || null, recipientName: r.recipient ? r.recipient.name : null,
           childName: r.childName || '', note: r.message || '', imageUrl: r.imageUrl,
-          expectedDeliveryDate: r.lobExpectedDeliveryDate || null, lobLastEvent: r.lobLastEvent || null, createdAt: r.createdAt
+          expectedDeliveryDate: r.lobExpectedDeliveryDate || null, lobLastEvent: r.lobLastEvent || null, createdAt: r.createdAt,
+          ...postcardMailService.printerFields(r)
         };
       });
   }

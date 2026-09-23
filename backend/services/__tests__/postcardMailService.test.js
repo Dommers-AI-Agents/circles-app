@@ -375,7 +375,9 @@ describe('reconciler', () => {
     lobClient.getPostcard.mockResolvedValue({ id: 'psc_1', status: 'failed', thumbnails: [] });
 
     const summary = await service.reconcile();
-    expect(summary.voided).toBe(1);
+    // The tracking sweep (step 0) sees the failure first; the capture step
+    // then has nothing left to void. Either way: voided, never captured.
+    expect(summary.tracking.failed + (summary.voided || 0)).toBe(1);
     expect(stripeClient.voidAuthorization).toHaveBeenCalledWith(`pi_${ID('o1')}`);
     expect(stripeClient.capture).not.toHaveBeenCalled();
     expect(stripeClient.refund).not.toHaveBeenCalled();
@@ -687,5 +689,67 @@ describe('Lob refuses the card after accepting it', () => {
     const row = rowOf(id);
     expect(row.needsReview).toBe(true);
     expect(row.error).toContain('refund_failed');
+  });
+});
+
+describe('pulling the truth from Lob', () => {
+  // The first real orders: three cards sat at "rendered" under a funding
+  // hold and one had failed at render after capture — and every webhook
+  // that would have said so was missing. The reconciler asks Lob directly.
+  async function paidSubmittedOrder(name = 'o1') {
+    await placeOrder(name);
+    closeWindow(ID(name));
+    await service.releaseDue();
+    await rendered();                      // captured
+    expect(rowOf(ID(name)).capturedAt).toBeTruthy();
+    expect(rowOf(ID(name)).status).toBe(STATUS.SUBMITTED);
+  }
+
+  it('records a funding hold and says so, without touching the status', async () => {
+    await paidSubmittedOrder();
+    lobClient.getPostcard.mockResolvedValue({ id: 'psc_1', status: 'rendered', lob_credits_funding_status: 'funding_hold', tracking_events: [], send_date: '2026-09-18T18:30:06Z' });
+    const summary = await service.reconcile();
+    expect(summary.tracking).toMatchObject({ synced: 1, holds: 1 });
+    const row = rowOf(ID('o1'));
+    expect(row.status).toBe(STATUS.SUBMITTED);
+    expect(row.lobFundingStatus).toBe('funding_hold');
+    expect(service.present(ID('o1'), row)).toMatchObject({ printerHold: true, printerStatus: 'rendered' });
+  });
+
+  it('refunds a captured card Lob failed after the fact', async () => {
+    await paidSubmittedOrder();
+    lobClient.getPostcard.mockResolvedValue({ id: 'psc_1', status: 'failed', failure_reason: { errors: [{ code: '404' }] }, tracking_events: [] });
+    await service.reconcile();
+    expect(stripeClient.refund).toHaveBeenCalledWith(`pi_${ID('o1')}`);
+    expect(rowOf(ID('o1')).status).toBe(STATUS.REFUNDED);
+  });
+
+  it('moves a card along from carrier scans, delivered push included', async () => {
+    await paidSubmittedOrder();
+    lobClient.getPostcard.mockResolvedValue({ id: 'psc_1', status: 'mailed', tracking_events: [
+      { name: 'Mailed', time: '2026-09-19T10:00:00Z' },
+      { name: 'Processed for Delivery', time: '2026-09-22T10:00:00Z' },
+      { name: 'In Transit', time: '2026-09-20T10:00:00Z' }
+    ] });
+    await service.reconcile();
+    const row = rowOf(ID('o1'));
+    expect(row.status).toBe(STATUS.DELIVERED);
+    expect(row.lobLastTrackingEvent).toBe('processed_for_delivery');
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(row.userId, expect.objectContaining({ title: 'Your postcard was delivered' }));
+  });
+
+  it('a list read answers at once and asks Lob about stale rows afterwards', async () => {
+    await paidSubmittedOrder();
+    lobClient.getPostcard.mockResolvedValue({ id: 'psc_1', status: 'rendered', tracking_events: [] });
+    const orders = await service.listOrders(rowOf(ID('o1')).userId);
+    expect(orders).toHaveLength(1);
+    expect(orders[0].printerHold).toBe(false);
+    await new Promise((r) => setImmediate(r));
+    expect(lobClient.getPostcard).toHaveBeenCalledWith('psc_1');
+    // Freshly synced: the next read does not ask again
+    lobClient.getPostcard.mockClear();
+    await service.listOrders(rowOf(ID('o1')).userId);
+    await new Promise((r) => setImmediate(r));
+    expect(lobClient.getPostcard).not.toHaveBeenCalled();
   });
 });
