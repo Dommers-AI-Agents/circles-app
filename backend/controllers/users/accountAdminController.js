@@ -207,14 +207,21 @@ exports.mergeUserAccounts = async (req, res, next) => {
     }
 
     // Admin, or the person owns one of the two accounts
-    const isAdmin = req.user.role === 'admin';
+    // `role` is never set on a user doc; the people who run merges are
+    // super users. Gating on role alone locked every admin out of the
+    // versioned path, which is why merges were being done by hand-written
+    // scripts that reimplemented the service.
+    const isAdmin = req.user.role === 'admin' || req.user.isSuperUser === true;
     const callerIds = [req.user.uid, req.user.originalUid].filter(Boolean);
     const ownsAccount = callerIds.includes(primaryAccountId) || callerIds.includes(secondaryAccountId);
     if (!isAdmin && !ownsAccount) {
       return res.status(403).json({ success: false, message: 'Not authorized to merge these accounts' });
     }
 
-    const result = await mergeAccounts({ primaryId: primaryAccountId, secondaryId: secondaryAccountId, dryRun: dryRun === true });
+    const result = await mergeAccounts({
+      primaryId: primaryAccountId, secondaryId: secondaryAccountId, dryRun: dryRun === true,
+      mergedBy: req.user.uid, via: 'api'
+    });
 
     // The caller may have been signed into the account that just got folded
     // (the new empty one). Hand back a session for the survivor so the app
@@ -225,6 +232,8 @@ exports.mergeUserAccounts = async (req, res, next) => {
       primaryAccount: result.primaryUser,
       survivorId: result.primaryId,
       mergedAccountId: result.secondaryId,
+      // The audit record's id; absent on a dry run.
+      mergeId: result.mergeId || null,
       swapped: result.swapped,
       counts: result.counts,
       mergedData: {

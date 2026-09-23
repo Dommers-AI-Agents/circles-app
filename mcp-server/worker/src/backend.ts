@@ -222,6 +222,31 @@ export class Backend {
     return circle;
   }
 
+  /**
+   * Merge two accounts — a super-user operation. `dryRun` returns the plan
+   * (what would move, who survives) and writes nothing; applied merges are
+   * recorded in accountMerges/{mergeId} with who ran them.
+   */
+  async mergeAccounts(
+    primaryId: string,
+    secondaryId: string,
+    dryRun: boolean
+  ): Promise<{
+    survivorId: string;
+    mergedAccountId: string;
+    swapped?: boolean;
+    counts?: Record<string, number>;
+    mergeId?: string | null;
+    message?: string;
+    primaryAccount?: { email?: string; displayName?: string };
+  }> {
+    return this.request("POST", "/users/merge-accounts", {
+      primaryAccountId: primaryId,
+      secondaryAccountId: secondaryId,
+      dryRun,
+    });
+  }
+
   async updateCircle(
     circleId: string,
     updates: {

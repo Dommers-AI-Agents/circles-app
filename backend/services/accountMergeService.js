@@ -21,6 +21,7 @@
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
 const { ServiceError } = require('../utils/serviceError');
+const { newId } = require('../utils/ids');
 
 const db = getFirestore();
 
@@ -78,7 +79,7 @@ function mergedUserFields(primary, secondary, now) {
  * @param {boolean} [args.dryRun]   plan only
  * @returns {Promise<{primaryId, secondaryId, swapped, counts, mergedData, primaryUser}>}
  */
-async function mergeAccounts({ primaryId, secondaryId, dryRun = false }) {
+async function mergeAccounts({ primaryId, secondaryId, dryRun = false, mergedBy = null, via = 'unknown' }) {
   if (!primaryId || !secondaryId) throw new ServiceError(400, 'missing_ids', 'Both account ids are required');
   if (primaryId === secondaryId) throw new ServiceError(400, 'same_account', 'Cannot merge an account with itself');
 
@@ -203,8 +204,18 @@ async function mergeAccounts({ primaryId, secondaryId, dryRun = false }) {
     tx.update(secondaryRef, { mergedInto: P, mergedAt: now, active: false, updatedAt: now });
   });
   const primaryUser = serializeDoc(await primaryRef.get());
-  console.log(`✅ Merged ${S} into ${P}`, counts);
-  return { ...plan, primaryUser };
+  // The audit record. Until this existed the only trace of a merge was
+  // `mergedInto` on the ghost — no who, no where from, no what moved. A merge
+  // rewrites another person's data; it has to be answerable for.
+  const mergeId = newId();
+  const auditRef = db.collection('accountMerges').doc(mergeId);
+  await auditRef.set({
+    primaryId: P, secondaryId: S, swapped, counts, operations: ops.length,
+    mergedBy: mergedBy || null, via, mergedAt: now,
+    primaryEmail: primary.email || null, secondaryEmail: secondary.email || null
+  });
+  console.log(`✅ Merged ${S} into ${P} (by ${mergedBy || 'unknown'} via ${via}, audit ${mergeId})`, counts);
+  return { ...plan, primaryUser, mergeId };
 }
 
 /** Batched writes (450/commit, under Firestore's 500 limit). */

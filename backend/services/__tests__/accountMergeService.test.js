@@ -145,3 +145,25 @@ describe('mergeAccounts', () => {
     await expect(mergeAccounts({ primaryId: OLD, secondaryId: NEW })).rejects.toMatchObject({ status: 409 });
   });
 });
+
+describe('audit', () => {
+  it('records who merged what, and from where', async () => {
+    put('users', OLD, { email: 'old@x.com', displayName: 'Old' });
+    put('users', NEW, { email: 'new@x.com', displayName: 'New' });
+    const result = await mergeAccounts({ primaryId: OLD, secondaryId: NEW, mergedBy: WES, via: 'mcp' });
+    expect(result.mergeId).toBeTruthy();
+    const audit = get('accountMerges', result.mergeId);
+    expect(audit).toMatchObject({ primaryId: OLD, secondaryId: NEW, mergedBy: WES, via: 'mcp', secondaryEmail: 'new@x.com' });
+    expect(audit.mergedAt).toBeTruthy();
+    expect(audit.counts).toBeDefined();
+  });
+
+  it('writes nothing on a dry run', async () => {
+    put('users', OLD, { email: 'old@x.com' });
+    put('users', NEW, { email: 'new@x.com' });
+    const result = await mergeAccounts({ primaryId: OLD, secondaryId: NEW, dryRun: true, mergedBy: WES, via: 'cli' });
+    expect(result.mergeId).toBeUndefined();
+    expect(mockDb.rows('accountMerges').size).toBe(0);
+  });
+});
+

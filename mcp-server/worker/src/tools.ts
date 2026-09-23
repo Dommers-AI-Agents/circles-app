@@ -384,6 +384,59 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
   );
 
   server.registerTool(
+    "merge_accounts",
+    {
+      title: "Merge two accounts",
+      description:
+        "Super-user only. Merge a duplicate account (secondary) into the one that should survive (primary): places, circles, connections, followers, messages and Inner Circle memberships move to the survivor; the duplicate is marked mergedInto and deactivated. Find ids with search_users. ALWAYS call with dryRun=true first and show the user the plan (survivor, folded account, counts); only after they explicitly agree, call again with dryRun=false and confirm=true. The service may swap the two so the older account survives — the result says so. Every applied merge is recorded with who ran it.",
+      inputSchema: {
+        primaryId: z.string().describe("User id that should survive (from search_users)"),
+        secondaryId: z.string().describe("User id to fold into it (from search_users)"),
+        dryRun: z.boolean().default(true).describe("true = preview only, nothing written (default). false = apply."),
+        confirm: z.boolean().default(false).describe("Must be true to apply (dryRun=false). Ignored for previews."),
+      },
+      outputSchema: {
+        applied: z.boolean(),
+        survivorId: z.string(),
+        mergedAccountId: z.string(),
+        swapped: z.boolean(),
+        counts: z.record(z.number()),
+        mergeId: z.string().nullable(),
+      },
+      annotations: { title: "Merge two accounts", ...DESTRUCTIVE },
+      _meta: inv("Merging accounts", "Merged accounts"),
+    },
+    async ({ primaryId, secondaryId, dryRun, confirm }): Promise<ToolResult> => {
+      try {
+        if (primaryId === secondaryId) return err(new Error("Those are the same account."));
+        if (!dryRun && !confirm) {
+          return err(new Error("Applying a merge needs confirm=true. Preview with dryRun=true first and show the user the plan."));
+        }
+        const r = await backend.mergeAccounts(primaryId, secondaryId, dryRun);
+        const counts = r.counts || {};
+        const lines = [
+          dryRun ? "DRY RUN — nothing written." : "MERGED.",
+          `Survivor: ${r.survivorId}${r.swapped ? " (swapped — the older account survives)" : ""}`,
+          `Folded:   ${r.mergedAccountId}`,
+          `Moved:    ${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(", ") || "nothing"}`,
+        ];
+        if (r.mergeId) lines.push(`Audit:    accountMerges/${r.mergeId}`);
+        if (dryRun) lines.push("Show this to the user; apply only with dryRun=false and confirm=true after they agree.");
+        return ok(lines.join("\n"), {
+          applied: !dryRun,
+          survivorId: r.survivorId,
+          mergedAccountId: r.mergedAccountId,
+          swapped: r.swapped === true,
+          counts,
+          mergeId: r.mergeId ?? null,
+        });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.registerTool(
     "delete_circle",
     {
       title: "Move a circle to trash",
