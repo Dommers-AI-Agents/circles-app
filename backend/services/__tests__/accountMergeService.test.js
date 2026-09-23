@@ -118,7 +118,10 @@ describe('mergeAccounts', () => {
     expect(result.counts.defaultCirclesFolded).toBe(2);
     expect(result.counts.circlesMoved).toBe(1);
     // Wes already has a connection with the old account
-    expect(get('connections', 'welcome-new').status).toBe('merged');
+    // A tombstone keeps a status the app knows; readers drop it by deletedAt
+    expect(get('connections', 'welcome-new').deletedViaMerge).toBe(true);
+    expect(get('connections', 'welcome-new').deletedAt).toBeTruthy();
+    expect(get('connections', 'welcome-new').status).toBe('pending');
     expect(get('connections', 'welcome-new').connectedUserId).toBe(NEW);
     expect(get('connections', 'welcome-old').status).toBe('accepted');
     expect(result.counts.connectionsFolded).toBe(1);

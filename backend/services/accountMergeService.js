@@ -163,7 +163,9 @@ async function mergeAccounts({ primaryId, secondaryId, dryRun = false }) {
     for (const doc of snap.docs) {
       const peer = doc.data()[other];
       if (peer === P || survivorPeers.has(peer)) {
-        ops.push({ ref: doc.ref, update: { deletedAt: now, deletedViaMerge: true, status: 'merged' } });
+        // Tombstone, never a new status: the app decodes status strictly, and
+        // an unknown value once emptied a whole connections list.
+        ops.push({ ref: doc.ref, update: { deletedAt: now, deletedViaMerge: true } });
         counts.connectionsFolded += 1;
       } else {
         ops.push({ ref: doc.ref, update: { [field]: P } });
