@@ -14,13 +14,27 @@ enum ConnectionStatus: String, Codable {
     case accepted
     case blocked
     case following
-    
+    /// A status this build doesn't know. The server tombstoned a duplicate
+    /// connection as "merged" during an account merge, and because this enum
+    /// was strict, that one row failed the whole `[Connection]` decode — all
+    /// 73 of a user's connections vanished and the Inner Circle picker went
+    /// blank. Now an unfamiliar status lands here, every `.accepted` filter
+    /// leaves it out, and the rest of the list survives. The server no longer
+    /// serves tombstones either; this is the half that holds when it slips.
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = ConnectionStatus(rawValue: raw) ?? .unknown
+    }
+
     var displayName: String {
         switch self {
         case .pending: return "Pending"
         case .accepted: return "Connected"
         case .blocked: return "Blocked"
         case .following: return "Following"
+        case .unknown: return ""
         }
     }
 }

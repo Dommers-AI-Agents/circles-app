@@ -1,5 +1,6 @@
 // backend/controllers/connectionController.js
 const { getFirestore } = require('../config/firebase');
+const { isLiveConnection } = require('../services/connectionMap');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { serializeDates } = require('../utils/wireDates');
 const { followedUserStats } = require('../services/followedUserStats');
@@ -119,7 +120,8 @@ const getConnections = async (req, res) => {
     const allConnections = [...snapshot1.docs, ...snapshot2.docs];
     const uniqueConnections = allConnections.filter((doc, index, self) =>
       index === self.findIndex(d => d.id === doc.id)
-    );
+    // Merge tombstones (status 'merged', deletedAt set) never reach a client.
+    ).filter((doc) => isLiveConnection(doc.data()));
 
     // The caller's own followers array tells us, for free, which of these
     // people follow the caller back. That distinction ("I follow them" vs "we
