@@ -2,7 +2,7 @@
 // Home daily card: one server-picked prompt per ~20h.
 // Picking, suppression and acks here; the per-kind card builders are mixed in from ./homePrompt/cards.
 // Constants and pure helpers live in ./homePrompt/shared.js.
-const { ACTIONS, CARDS_COLLECTION, CATALOG_COLLECTION, CLIENT_ACK_KEYS, COLLECTIONS, DYNAMIC_ACK_TTL_MS, HomePromptError, NEW_ACCOUNT_GUARD_MS, NUDGE_REPEAT_MS, POSTCARD_REPEAT_MS, SHOW_INTERVAL_MS, getFirestore, homeCards, isDynamicKey, isEnabled, toMillis } = require('./homePrompt/shared');
+const { ACTIONS, CARDS_COLLECTION, CATALOG_COLLECTION, CLIENT_ACK_KEYS, COLLECTIONS, DYNAMIC_ACK_TTL_MS, HomePromptError, NEW_ACCOUNT_GUARD_MS, NUDGE_REPEAT_MS, POSTCARD_REPEAT_MS, POSTCARD_REPEAT_SKIPPED_MS, SHOW_INTERVAL_MS, getFirestore, homeCards, isDynamicKey, isEnabled, toMillis } = require('./homePrompt/shared');
 
 class HomePromptService {
   constructor(db = getFirestore()) {
@@ -137,6 +137,14 @@ class HomePromptService {
     return !Number.isFinite(at) || ctx.now - at >= repeatMs;
   }
 
+  // The one postcard clock, read by the home card and the app's pop-ups: a
+  // fortnight after being shown or acted on, a few days after a "Not now".
+  postcardNudgeDue(ctx) {
+    const ack = ctx.acks.postcard_nudge;
+    const repeat = ack && ack.action === 'skipped' ? POSTCARD_REPEAT_SKIPPED_MS : POSTCARD_REPEAT_MS;
+    return this.nudgeDue(ctx, 'postcard_nudge', repeat);
+  }
+
   // ---------------------------------------------------------------- sources
 
   // Connections + followed users, minus anyone blocked either way. Two sets
@@ -204,7 +212,7 @@ class HomePromptService {
     const createdAt = toMillis(user.createdAt);
     if (Number.isFinite(createdAt) && now - createdAt < NEW_ACCOUNT_GUARD_MS) return false;
     const acks = (user.homePrompt || {}).acks || {};
-    return this.nudgeDue({ acks, now }, 'postcard_nudge', POSTCARD_REPEAT_MS);
+    return this.postcardNudgeDue({ acks, now });
   }
 
   // ---------------------------------------------------------------- ack

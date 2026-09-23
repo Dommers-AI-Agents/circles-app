@@ -209,13 +209,22 @@ describe('postcard', () => {
   test('asks at most once a fortnight, and the app pop-up ack silences it too', async () => {
     savePlace('p');
     expect((await pick()).key).toBe('postcard_nudge');
-    await service.ack(ME, 'postcard_nudge', 'skipped', { now: NOW });
+    await service.ack(ME, 'postcard_nudge', 'acted', { now: NOW });
     // Kept fresh so the add-place nudge stays quiet and the only question is
     // whether the postcard card comes back.
     savePlace('p', { createdAt: iso(NOW + 12 * DAY) });
     expect(await service.pick(ME, { now: NOW + 13 * DAY })).toBeNull();
     savePlace('p', { createdAt: iso(NOW + 14 * DAY) });
     expect((await service.pick(ME, { now: NOW + 15 * DAY })).key).toBe('postcard_nudge');
+  });
+
+  test('a "Not now" from the app pop-up holds the card only a few days', async () => {
+    savePlace('p');
+    await service.ack(ME, 'postcard_nudge', 'skipped', { now: NOW });
+    savePlace('p', { createdAt: iso(NOW + 2 * DAY) });
+    expect(await service.pick(ME, { now: NOW + 2 * DAY })).toBeNull();
+    savePlace('p', { createdAt: iso(NOW + 3 * DAY) });
+    expect((await service.pick(ME, { now: NOW + 4 * DAY })).key).toBe('postcard_nudge');
   });
 
   test('the post-save pop-up can ack the key before any card was shown', async () => {
@@ -269,6 +278,24 @@ describe('postcard nudge eligibility (the app\'s post-save pop-up)', () => {
     expect(await eligible()).toBe(false);
     expect(await eligible(NOW + 13 * DAY)).toBe(false);
     expect(await eligible(NOW + 15 * DAY)).toBe(true);
+  });
+
+  // Wes tapped "Not Now" on a Saturday; the following week a photo he took
+  // at the airport got no offer. A no holds days, a yes holds the fortnight.
+  test('"Not now" holds three days; being asked and saying yes holds a fortnight', async () => {
+    await service.ack(ME, 'postcard_nudge', 'skipped', { now: NOW });
+    expect(await eligible(NOW + 2 * DAY)).toBe(false);
+    expect(await eligible(NOW + 4 * DAY)).toBe(true);
+
+    await service.ack(ME, 'postcard_nudge', 'acted', { now: NOW });
+    expect(await eligible(NOW + 4 * DAY)).toBe(false);
+    expect(await eligible(NOW + 15 * DAY)).toBe(true);
+  });
+
+  test('the home card honours the same shorter hold after a "Not now"', async () => {
+    put('places', 'p', { addedBy: ME, name: 'Cafe Lisboa', createdAt: iso(NOW - DAY), photos: ['https://img/1.jpg'], hasOwnPhotos: true, ownPhotoUrl: 'https://img/1.jpg' });
+    await service.ack(ME, 'postcard_nudge', 'skipped', { now: NOW - 4 * DAY });
+    expect((await pick()).key).toBe('postcard_nudge');
   });
 
   test('independent of HOME_PROMPTS_ENABLED — the pop-up is its own feature', async () => {

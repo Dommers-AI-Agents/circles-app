@@ -1,5 +1,5 @@
 // services/homePrompt/cards.js — methods of HomePromptService (mixed into its prototype by the facade).
-const { COLLECTIONS, METERS_PER_MILE, PIGGY_COLLECTIONS, POSTCARD_PLACE_SCAN_LIMIT, POSTCARD_PLACE_WINDOW_MS, POSTCARD_REPEAT_MS, getAssumedLocation, haversineMeters, minTripMiles, tipsService, toMillis, TIP_REPEAT_MS, TIP_REPEAT_SKIPPED_MS, TIP_REPEAT_ACTED_MS } = require('./shared');
+const { COLLECTIONS, METERS_PER_MILE, PIGGY_COLLECTIONS, POSTCARD_PLACE_SCAN_LIMIT, POSTCARD_PLACE_WINDOW_MS, getAssumedLocation, haversineMeters, minTripMiles, tipsService, toMillis, TIP_REPEAT_MS, TIP_REPEAT_SKIPPED_MS, TIP_REPEAT_ACTED_MS } = require('./shared');
 
 module.exports = {
    // 1. "Send a postcard from Lisbon?" — a place this user photographed in the
@@ -13,7 +13,7 @@ module.exports = {
   //    neither.
   async postcardCard(ctx) {
     const key = 'postcard_nudge';
-    if (!this.nudgeDue(ctx, key, POSTCARD_REPEAT_MS)) return null;
+    if (!this.postcardNudgeDue(ctx)) return null;
 
     // No orderBy, so it rides the existing
     // (addedBy, createdAt) index; newest-first is settled in memory.

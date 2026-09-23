@@ -65,6 +65,11 @@ const NUDGE_REPEAT_MS = 7 * DAY;
 // post-save pop-up in the app — both read and write the `postcard_nudge` ack,
 // so being asked in one place silences the other.
 const POSTCARD_REPEAT_MS = parseInt(process.env.POSTCARD_NUDGE_REPEAT_DAYS || '14', 10) * DAY;
+// A "Not now" is a smaller answer than being asked and making one: it holds
+// a few days, not the fortnight. Wes said no to the offer on a Saturday and
+// found the photo-upload offer gone the next week at the airport — the
+// fortnight was meant to space out asks, not to punish a "not right now".
+const POSTCARD_REPEAT_SKIPPED_MS = parseInt(process.env.POSTCARD_NUDGE_REPEAT_SKIPPED_DAYS || '3', 10) * DAY;
 // Only nudge about places saved recently enough to still feel like news.
 const POSTCARD_PLACE_WINDOW_MS = 7 * DAY;
 // Optional tightener: only nudge when the place is at least this far from
@@ -106,4 +111,4 @@ const isDynamicKey = (key) => key.includes(':');
 
 class HomePromptError extends ServiceError {}
 
-module.exports = { TIP_REPEAT_MS, TIP_REPEAT_SKIPPED_MS, TIP_REPEAT_ACTED_MS, ACTIONS, ACTIVITY_SCAN_LIMIT, ACTIVITY_TYPES, ACTIVITY_WINDOW_MS, CARDS_COLLECTION, CATALOG_COLLECTION, CLIENT_ACK_KEYS, COLLECTIONS, DAY, DYNAMIC_ACK_TTL_MS, HOUR, HomePromptError, METERS_PER_MILE, NEW_ACCOUNT_GUARD_MS, NUDGE_REPEAT_MS, PIGGY_COLLECTIONS, POSTCARD_PLACE_SCAN_LIMIT, POSTCARD_PLACE_WINDOW_MS, POSTCARD_REPEAT_MS, SHOW_INTERVAL_MS, canViewCircle, canViewMoment, excludedUserIds, getAssumedLocation, getFirestore, getInnerCircleGrantorIds, haversineMeters, homeCards, isDynamicKey, isEnabled, isPlaceVisibleToViewer, makeViewerContext, minTripMiles, queryInChunks, tipsService, toMillis };
+module.exports = { TIP_REPEAT_MS, TIP_REPEAT_SKIPPED_MS, TIP_REPEAT_ACTED_MS, ACTIONS, ACTIVITY_SCAN_LIMIT, ACTIVITY_TYPES, ACTIVITY_WINDOW_MS, CARDS_COLLECTION, CATALOG_COLLECTION, CLIENT_ACK_KEYS, COLLECTIONS, DAY, DYNAMIC_ACK_TTL_MS, HOUR, HomePromptError, METERS_PER_MILE, NEW_ACCOUNT_GUARD_MS, NUDGE_REPEAT_MS, PIGGY_COLLECTIONS, POSTCARD_PLACE_SCAN_LIMIT, POSTCARD_PLACE_WINDOW_MS, POSTCARD_REPEAT_MS, POSTCARD_REPEAT_SKIPPED_MS, SHOW_INTERVAL_MS, canViewCircle, canViewMoment, excludedUserIds, getAssumedLocation, getFirestore, getInnerCircleGrantorIds, haversineMeters, homeCards, isDynamicKey, isEnabled, isPlaceVisibleToViewer, makeViewerContext, minTripMiles, queryInChunks, tipsService, toMillis };
