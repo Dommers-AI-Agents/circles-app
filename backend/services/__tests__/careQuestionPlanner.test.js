@@ -69,9 +69,11 @@ describe('question planner', () => {
   });
 
   test('an own question that is word for word a bank question yields to the bank (the old mood defaults)', () => {
-    const custom = [{ id: 'old_default', text: 'Did you get outside today?' }, { id: 'own', text: 'Did you water the plants?' }];
+    const custom = [{ id: 'old_default', text: 'Did you get outside today?' }, { id: 'old_sleep', text: 'Did you sleep well?' }, { id: 'own', text: 'Did you water the plants?' }];
     const rot = planner.rotation({ custom });
     expect(rot.filter((q) => q.text === 'Did you get outside today?').map((q) => q.source)).toEqual(['bank']);
+    expect(rot.find((q) => q.id === 'old_sleep')).toBeUndefined(); // the old wording of a bank question, too
+    expect(Object.keys(bank.LEGACY_TEXTS).every((t) => bank.BANK_BY_TEXT.has(t))).toBe(true);
     expect(rot.find((q) => q.id === 'own')).toMatchObject({ source: 'custom', kind: 'mood' });
     // On an old parent app the mood-kind duplicate must not sneak back in as a mood question.
     const everythingMood = ['mood_morning', 'mood_midday', 'mood_evening', 'own'].map((id) => ({ questionId: id, dateKey: base.dateKey }));

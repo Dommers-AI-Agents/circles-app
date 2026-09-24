@@ -113,6 +113,21 @@ const BANK = [
 ];
 const BANK_BY_ID = new Map(BANK.map((q) => [q.id, q]));
 const BANK_BY_TEXT = new Map(BANK.map((q) => [q.text, q]));
+// The eight rotating defaults from before kinds, as older owner builds copied
+// them onto plans as the owner's own (mood) questions. Each is a bank
+// question now, with the right answers, so the copies are recognised and
+// yield to the bank.
+const LEGACY_TEXTS = {
+  'How are you feeling today?': 'mood_morning',
+  'Did you sleep well?': 'sleep',
+  'Have you eaten something good today?': 'meal',
+  'Did you get outside today?': 'outside',
+  'How is your energy today?': 'energy',
+  'Anything on your mind?': 'mind',
+  'Did you take your medicine today?': 'meds_today',
+  'What made you smile today?': 'smile'
+};
+for (const [text, id] of Object.entries(LEGACY_TEXTS)) if (!BANK_BY_TEXT.has(text)) BANK_BY_TEXT.set(text, BANK_BY_ID.get(id));
 
 /** "Daily", "Every 3 days", "Weekly · Fridays". */
 function cadenceLabel(q) {
@@ -179,7 +194,7 @@ function applicable(profile = {}) {
 }
 
 module.exports = {
-  ASK_TYPE_BY_KIND, BANK, BANK_BY_ID, BANK_BY_TEXT, CHOICES, KINDS, PROFILE_FIELDS, PROFILE_KEYS,
+  ASK_TYPE_BY_KIND, BANK, BANK_BY_ID, BANK_BY_TEXT, CHOICES, KINDS, LEGACY_TEXTS, PROFILE_FIELDS, PROFILE_KEYS,
   SCALE_MAX, SCALE_MIN, TEXT_ANSWER_MAX,
   applicable, cadenceLabel, isAlertAnswer, kindMeta, phaseOf, resolveAnswer
 };
