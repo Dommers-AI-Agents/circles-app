@@ -67,11 +67,33 @@ function downgradeFollowersVisibility(node, depth = 0) {
   }
 }
 
+// The nearby check-in banner is switched off app-wide (Wes, 2026-09-24: it
+// fires on region entry, so a drive past saved places is a burst of buzzes).
+// Builds already installed mirror `notificationPreferences.locationPrompts`
+// into the device gate on every profile load, so forcing it false here turns
+// the banner off on phones that will never see the new build. Nothing is
+// written to the user record; flip PROXIMITY_BANNERS_ENABLED and it is back.
+const bannersOff = () => process.env.PROXIMITY_BANNERS_ENABLED === '0';
+const isUserPath = (path) => path.includes('/users') || path.includes('/auth');
+function forceLocationPromptsOff(node, depth = 0) {
+  if (!node || typeof node !== 'object' || depth > 4) return;
+  if (Array.isArray(node)) {
+    for (const item of node) forceLocationPromptsOff(item, depth + 1);
+    return;
+  }
+  const prefs = node.notificationPreferences;
+  if (prefs && typeof prefs === 'object' && !Array.isArray(prefs)) prefs.locationPrompts = false;
+  for (const key of ['user', 'data', 'users', 'primaryAccount']) {
+    if (node[key] && typeof node[key] === 'object') forceLocationPromptsOff(node[key], depth + 1);
+  }
+}
+
 module.exports = (req, res, next) => {
   const originalJson = res.json.bind(res);
   const clientKnowsFollowers = req.headers[FOLLOWERS_HEADER] === '1';
   const clientKnowsInnerCircle = req.headers[INNER_CIRCLE_HEADER] === '1';
   const momentPath = isMomentPath(req.path || '');
+  const userPath = isUserPath(req.originalUrl || req.path || '');
 
   res.json = (body) => {
     if (res.statusCode >= 400 && body && typeof body === 'object' && !Array.isArray(body)) {
@@ -83,8 +105,11 @@ module.exports = (req, res, next) => {
     } else if (res.statusCode < 400 && body && typeof body === 'object') {
       if (momentPath && !clientKnowsFollowers) downgradeFollowersVisibility(body);
       if (!clientKnowsInnerCircle) downgradeInnerCircle(body);
+      if (userPath && bannersOff()) forceLocationPromptsOff(body);
     }
     return originalJson(body);
   };
   next();
 };
+
+module.exports.forceLocationPromptsOff = forceLocationPromptsOff;
