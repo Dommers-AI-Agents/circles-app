@@ -794,7 +794,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         super.viewDidLayoutSubviews()
         let inset = searchSheetBottomInset
         searchResultsSheet.setBottomInset(inset)
-        mapBottomSearchingConstraint?.constant = -(inset + SearchSheetLayout.handleHeight)
+        let mapBottom = -(inset + SearchSheetLayout.handleHeight)
+        if mapBottomSearchingConstraint?.constant != mapBottom {
+            mapBottomSearchingConstraint?.constant = mapBottom
+        }
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {

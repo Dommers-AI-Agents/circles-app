@@ -126,8 +126,11 @@ extension CirclesHomeViewController {
     func collapseSearchSheet() {
         guard isSearching, !isSearchSheetCollapsed else { return }
         isSearchSheetCollapsed = true
-        searchBar.resignFirstResponder()
+        // State first: the keyboard's frame change (from the resign below)
+        // re-fits the sheet, and must find it already collapsed — otherwise
+        // it animates up to the no-keyboard height and the collapse fights it.
         searchResultsSheet.setState(.collapsed, animated: true)
+        searchBar.resignFirstResponder()
     }
 
     func expandSearchSheet() {

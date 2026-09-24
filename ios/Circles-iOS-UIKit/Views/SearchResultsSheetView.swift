@@ -46,6 +46,15 @@ final class SearchResultsSheetView: UIView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // Without an explicit path the compositor re-derives the shadow from
+        // the layer's contents every frame the sheet moves or scrolls — an
+        // offscreen pass over a full-width view, and a visible stutter on device.
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, byRoundingCorners: [.topLeft, .topRight],
+                                        cornerRadii: CGSize(width: 16, height: 16)).cgPath
+    }
+
     // MARK: - Public
 
     /// Pins the sheet to the container's sides and to `bottomAnchor` (the
