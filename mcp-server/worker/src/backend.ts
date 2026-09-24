@@ -57,6 +57,11 @@ export interface Place {
   sharedWith?: string[];
 }
 
+/** "Who can see my activity": audience × category, all booleans. */
+export type ActivityAudience = "public" | "myNetwork" | "innerCircle";
+export type ActivityCategory = "checkIns" | "photos" | "moments" | "savedPlaces" | "likesComments" | "circles";
+export type ActivityPrivacy = Record<ActivityCategory, Record<ActivityAudience, boolean>>;
+
 export interface UserProfile {
   _id?: string;
   id?: string;
@@ -342,6 +347,18 @@ export class Backend {
     const user = res.user || res.data;
     if (!user) throw new BackendError("No user in /auth/me response", 500);
     return user;
+  }
+
+  /** The account-level "who can see my activity" grid (defaults filled in by the server). */
+  async getActivityPrivacy(): Promise<ActivityPrivacy> {
+    const res = await this.request<{ data: { activityPrivacy: ActivityPrivacy } }>("GET", "/users/me/activity-privacy");
+    return res.data.activityPrivacy;
+  }
+
+  async setActivityPrivacy(activityPrivacy: ActivityPrivacy): Promise<ActivityPrivacy> {
+    const res = await this.request<{ data: { activityPrivacy: ActivityPrivacy } }>(
+      "PUT", "/users/me/activity-privacy", { activityPrivacy });
+    return res.data.activityPrivacy;
   }
 
   /** The account-level Inner Circle list — one list, reused by every item set to that tier. */

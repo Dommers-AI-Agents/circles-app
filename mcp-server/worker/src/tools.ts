@@ -56,6 +56,30 @@ const CIRCLE_OUT = z.object({
 });
 type CircleOut = z.infer<typeof CIRCLE_OUT>;
 
+const ACTIVITY_CATEGORIES = ["checkIns", "photos", "moments", "savedPlaces", "likesComments", "circles"] as const;
+const ACTIVITY_AUDIENCES = ["public", "myNetwork", "innerCircle"] as const;
+const CATEGORY_LABEL: Record<string, string> = {
+  checkIns: "Check-ins", photos: "Photos at a place", moments: "Moments",
+  savedPlaces: "Saved places", likesComments: "Likes & comments", circles: "New circles",
+};
+const AUDIENCE_LABEL: Record<string, string> = { public: "public", myNetwork: "connections", innerCircle: "Inner Circle" };
+const normalizeCategory = (raw: string): (typeof ACTIVITY_CATEGORIES)[number] | null => {
+  const key = raw.replace(/[\s_-]/g, "").toLowerCase();
+  const aliases: Record<string, (typeof ACTIVITY_CATEGORIES)[number]> = {
+    checkins: "checkIns", checkin: "checkIns", photos: "photos", photo: "photos", moments: "moments", moment: "moments",
+    savedplaces: "savedPlaces", places: "savedPlaces", saves: "savedPlaces", likescomments: "likesComments",
+    likes: "likesComments", comments: "likesComments", circles: "circles", newcircles: "circles",
+  };
+  return aliases[key] ?? null;
+};
+const normalizeAudience = (raw: string): (typeof ACTIVITY_AUDIENCES)[number] | null => {
+  const key = raw.replace(/[\s_-]/g, "").toLowerCase();
+  if (["public", "followers", "everyone", "anyone"].includes(key)) return "public";
+  if (["connections", "mynetwork", "network", "friends"].includes(key)) return "myNetwork";
+  if (["innercircle", "inner"].includes(key)) return "innerCircle";
+  return null;
+};
+
 const TIER_LABEL: Record<string, string> = {
   public: "Public — anyone, including your followers",
   myNetwork: "Connections — people who accepted your request",
@@ -222,6 +246,7 @@ Conventions:
 - Deletions are two-tier: delete_* moves items to a recoverable trash; permanently_delete_* is irreversible. Always get explicit user confirmation before any delete, and name the exact item being deleted.
 - Never fabricate places or attribute recommendations to people who didn't make them.
 - Privacy exists at BOTH levels. A circle has a tier, and so does every place: \`followCircle\` (the default, meaning it inherits its circle) or its own \`public\`/\`myNetwork\`/\`innerCircle\`/\`private\`, which narrows what the circle allows. Every place this server returns carries \`privacy\` and \`privacyMeaning\` — read them rather than concluding from a place's other fields that per-place privacy does not exist. Use get_privacy_overview for an audit and set_privacy to change either level.
+- On top of item privacy there is one account-level "who can see my activity" grid: for each activity category (check-ins, photos at a place, moments, saved places, likes & comments, new circles) which audiences (public/followers, connections, Inner Circle) may see the activity. It only narrows; a place's own privacy still applies. get_privacy_overview shows it; set_activity_privacy changes cells (e.g. "hide my check-ins from everyone but my Inner Circle").
 
 Importing places: users can bring their saved-place history from Mapstr, Google Maps (Takeout), or Swarm/Foursquare (personal data export) by sharing the export file with you. YOU parse the file (any format), normalize it, and use prepare_place_import → user confirmation → execute_place_import. Never invent coordinates — only pass lat/lng found in the file; rows without them import unmapped, which is correct. Aggregate repeat Swarm check-ins into one place with visitCount.
 
@@ -2365,6 +2390,7 @@ export function registerPrivacyTools(server: McpServer, backend: Backend): void 
       },
       outputSchema: {
         innerCircle: z.object({ maxSize: z.number(), members: z.array(PERSON) }),
+        activityPrivacy: z.record(z.string(), z.record(z.string(), z.boolean())).nullable(),
         circles: z.array(
           z.object({
             circleId: z.string(),
@@ -2391,10 +2417,11 @@ export function registerPrivacyTools(server: McpServer, backend: Backend): void 
     },
     async ({ includePlaces = true }): Promise<ToolResult> => {
       try {
-        const [circles, inner, names] = await Promise.all([
+        const [circles, inner, names, activityPrivacy] = await Promise.all([
           backend.listCircles(),
           backend.getInnerCircle().catch(() => ({ maxSize: 150, userIds: [] as string[], users: [] as any[] })),
           nameLookup(),
+          backend.getActivityPrivacy().catch(() => null),
         ]);
 
         const circleRows = circles.map((c) => {
@@ -2445,6 +2472,14 @@ export function registerPrivacyTools(server: McpServer, backend: Backend): void 
             ? "Inner Circle: nobody yet — anything set to Inner Circle is currently visible to you alone."
             : `Inner Circle (${innerMembers.length}): ${innerMembers.map((m) => m.name).join(", ")}`
         );
+        if (activityPrivacy) {
+          lines.push("", "Who can see my activity (on top of each item's own privacy):");
+          for (const category of ACTIVITY_CATEGORIES) {
+            const row = activityPrivacy[category] || {};
+            const on = ACTIVITY_AUDIENCES.filter((a) => row[a] !== false).map((a) => AUDIENCE_LABEL[a]);
+            lines.push(`- ${CATEGORY_LABEL[category]}: ${on.length === 3 ? "everyone the item allows" : on.length === 0 ? "only me" : on.join(", ")}`);
+          }
+        }
         lines.push("", "Circles:");
         for (const c of circleRows) {
           const guests = c.sharedWith.length ? ` | also shared with: ${c.sharedWith.map((g) => g.name).join(", ")}` : "";
@@ -2462,9 +2497,59 @@ export function registerPrivacyTools(server: McpServer, backend: Backend): void 
 
         return ok(lines.join("\n"), {
           innerCircle: { maxSize: inner.maxSize ?? 150, members: innerMembers },
+          activityPrivacy,
           circles: circleRows,
           placeOverrides: placeRows,
         });
+      } catch (e) {
+        return err(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "set_activity_privacy",
+    {
+      title: "Change who can see your activity",
+      description:
+        "Check or uncheck cells of the account-level activity grid: for an activity category (checkIns, photos, moments, savedPlaces, likesComments, circles) whether an audience (public = anyone incl. followers, connections, innerCircle) may see it. Only narrows: a place's own privacy still applies. Example: to hide check-ins and photos from everyone but the Inner Circle, set public=false and connections=false for those two categories. Confirm the exact cells with the user first.",
+      inputSchema: {
+        changes: z
+          .array(
+            z.object({
+              category: z.string().describe("checkIns | photos | moments | savedPlaces | likesComments | circles"),
+              audience: z.string().describe("public (or followers/everyone) | connections (or myNetwork) | innerCircle"),
+              allowed: z.boolean(),
+            })
+          )
+          .min(1),
+      },
+      outputSchema: {
+        activityPrivacy: z.record(z.string(), z.record(z.string(), z.boolean())),
+        applied: z.number(),
+      },
+      annotations: { title: "Change who can see your activity", ...UPDATE },
+      _meta: inv("Updating activity privacy", "Updated activity privacy"),
+    },
+    async ({ changes }): Promise<ToolResult> => {
+      try {
+        const grid = await backend.getActivityPrivacy();
+        let applied = 0;
+        for (const change of changes) {
+          const category = normalizeCategory(change.category);
+          const audience = normalizeAudience(change.audience);
+          if (!category) return err(new Error(`Unknown activity category "${change.category}". Use ${ACTIVITY_CATEGORIES.join(", ")}.`));
+          if (!audience) return err(new Error(`Unknown audience "${change.audience}". Use public, connections or innerCircle.`));
+          grid[category][audience] = change.allowed;
+          applied++;
+        }
+        const saved = await backend.setActivityPrivacy(grid);
+        const lines = ["Activity privacy updated:"];
+        for (const category of ACTIVITY_CATEGORIES) {
+          const on = ACTIVITY_AUDIENCES.filter((a) => saved[category][a]).map((a) => AUDIENCE_LABEL[a]);
+          lines.push(`- ${CATEGORY_LABEL[category]}: ${on.length === 3 ? "everyone the item allows" : on.length === 0 ? "only me" : on.join(", ")}`);
+        }
+        return ok(lines.join("\n"), { activityPrivacy: saved, applied });
       } catch (e) {
         return err(e);
       }
