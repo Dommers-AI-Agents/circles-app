@@ -716,6 +716,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             // Keep showing "Loading..." - don't update
             return
         }
+        let interval = Signposts.map.begin("updatePlaces")
+        defer { Signposts.map.end(interval) }
 
         self.places = newPlaces
         updateAvailableCategories()
@@ -1127,9 +1129,34 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
     
     // MARK: - Map Annotations
+    /// The visible rect the current annotation set was culled for.
+    private var lastCullRect: MKMapRect?
+
     private func addAnnotationsToMap(adjustRegion: Bool = true) {
-        // Differential update: only what changed is removed or added
-        annotationManager.update(with: filteredPlaces, adjustRegion: adjustRegion)
+        // Differential update: only what changed is removed or added.
+        // A fit-to-places update keeps every place so the fit is honest; the
+        // settle after the fit re-culls to the screen (regionDidChange).
+        // Otherwise only the places in and around the screen get views —
+        // a thousand pins moving on every pan is what made the map stutter.
+        if adjustRegion {
+            lastCullRect = nil
+            annotationManager.update(with: filteredPlaces, adjustRegion: true)
+        } else {
+            let rect = mapView.visibleMapRect
+            lastCullRect = rect
+            let shown = Signposts.map.measure("cullAnnotations") {
+                MapViewportCuller.placesToShow(filteredPlaces, visibleRect: rect)
+            }
+            annotationManager.update(with: shown, adjustRegion: false)
+        }
+    }
+
+    /// After a pan or zoom: bring in the places the screen reached, drop the
+    /// ones it left. Cheap when the map stayed inside the padded rect.
+    private func recullAnnotationsIfNeeded() {
+        let rect = mapView.visibleMapRect
+        guard MapViewportCuller.needsRecull(previousVisibleRect: lastCullRect, currentVisibleRect: rect) else { return }
+        addAnnotationsToMap(adjustRegion: false)
     }
 
     /// Debounced pin-tier recompute — region changes land here.
@@ -1263,6 +1290,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }
 
     func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+        // Only the places in and around the screen carry annotation views
+        recullAnnotationsIfNeeded()
         // Every zoom/pan changes which pins have room to be full-size —
         // re-tier regardless of view mode
         schedulePinTierRecompute()

@@ -26,6 +26,8 @@ final class MapAnnotationManager {
     // MARK: - Differential update
 
     func update(with places: [Place], adjustRegion shouldAdjustRegion: Bool) {
+        let interval = Signposts.map.begin("annotationDiff")
+        defer { Signposts.map.end(interval) }
         let startTime = CFAbsoluteTimeGetCurrent()
         Logger.debug("🗺️ [SmoothMap] Starting smooth annotation update...")
 
@@ -110,6 +112,8 @@ final class MapAnnotationManager {
 
     /// Decide which places get full category pins vs. small dots.
     private func recomputePinTiers() {
+        let interval = Signposts.map.begin("pinTiers")
+        defer { Signposts.map.end(interval) }
         let placeAnnotations = mapView.annotations.compactMap { $0 as? PlaceAnnotation }
         guard !placeAnnotations.isEmpty else {
             promotedPlaceIds.removeAll()

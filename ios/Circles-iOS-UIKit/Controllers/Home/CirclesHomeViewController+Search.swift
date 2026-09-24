@@ -148,6 +148,8 @@ extension CirclesHomeViewController {
     // (deduplicated) — the old "your places / all places" scope split was
     // low value since "all" already includes yours and the text narrows it.
     func filterPlaces(searchText: String) {
+        let interval = Signposts.search.begin("filterPlaces")
+        defer { Signposts.search.end(interval) }
         let searchSource = deduplicatePlaces(userPlaces: userOwnPlaces, networkPlaces: networkPlaces)
 
         // Shared matcher (Place.matches) — the same predicate filters the map

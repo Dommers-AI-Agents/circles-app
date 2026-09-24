@@ -360,6 +360,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     }()
     
     var mapViewController: FullScreenMapViewController?
+    /// A refreshMapDisplay held while the search list was being swiped
+    /// (nil = nothing pending; the value is its adjustRegion).
+    var pendingMapRefreshAdjustsRegion: Bool?
     // The modally-presented full map (weak: auto-clears on dismissal). Data
     // refreshes must reach it too, not just the embedded child above.
     weak var presentedFullScreenMap: FullScreenMapViewController?
@@ -3309,6 +3312,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Skip if we don't have data yet
         if allPlaces.isEmpty {
             Logger.debug("🗺️ [RefreshMapDisplay] No places data available, skipping refresh")
+            return
+        }
+        // A viewport fetch landing while the search list is under a finger
+        // would rebuild the map mid-swipe; hold it until the list settles.
+        if searchResultsSheet.isInteracting {
+            pendingMapRefreshAdjustsRegion = adjustRegion || (pendingMapRefreshAdjustsRegion ?? false)
             return
         }
 

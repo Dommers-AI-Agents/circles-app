@@ -183,11 +183,20 @@ extension CirclesHomeViewController {
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
         guard scrollView == searchResultsTableView, !decelerate else { return }
         searchResultsSheet.flushPendingUpdateIfIdle()
+        flushPendingMapRefreshIfIdle()
     }
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
         guard scrollView == searchResultsTableView else { return }
         searchResultsSheet.flushPendingUpdateIfIdle()
+        flushPendingMapRefreshIfIdle()
+    }
+
+    /// The map refresh held during the swipe (refreshMapDisplay) runs now.
+    func flushPendingMapRefreshIfIdle() {
+        guard !searchResultsSheet.isInteracting, let adjust = pendingMapRefreshAdjustsRegion else { return }
+        pendingMapRefreshAdjustsRegion = nil
+        refreshMapDisplay(adjustRegion: adjust)
     }
 
     /// Pulling the list down past its top is "give me the map".

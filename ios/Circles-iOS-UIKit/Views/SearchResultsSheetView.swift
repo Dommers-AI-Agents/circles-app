@@ -157,7 +157,10 @@ final class SearchResultsSheetView: UIView {
 
     // MARK: - Geometry
 
-    private var isInteracting: Bool {
+    /// Finger on the list, or it is still moving. The home screen holds map
+    /// refreshes while this is true so a viewport fetch landing mid-swipe
+    /// doesn't drop frames.
+    var isInteracting: Bool {
         tableView.isTracking || tableView.isDragging || tableView.isDecelerating || isRowHighlighted
     }
 
