@@ -13,45 +13,36 @@ extension CirclesHomeViewController: UIScrollViewDelegate {}
 // MARK: - UIGestureRecognizerDelegate
 extension CirclesHomeViewController: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        // Ensure touch.view is valid and is a UIView
-        guard let touchView = touch.view as? UIView else {
-            return false
-        }
-        
-        // Don't intercept touches on the search bar or keyboard
-        if touchView.isDescendant(of: searchBar) {
-            return false
-        }
-        
-        // Don't intercept touches if keyboard is showing (this prevents issues
-        // with keyboard buttons) — EXCEPT the map-peek tap: while search
-        // results are up, a tap outside them (the visible map) must reach
-        // dismissDropdowns so it can drop the list and show the filtered map.
-        if searchBar.isFirstResponder {
-            let location = touch.location(in: view)
-            let allowForMapPeek = isSearching && !isSearchOverlayDismissed
-                && !searchResultsTableView.isHidden
-                && !searchResultsTableView.frame.contains(location)
-            if !allowForMapPeek {
-                return false
-            }
-        }
-        
-        // Don't intercept touches on the dropdown table views
-        if touchView.isDescendant(of: searchScopeTableView) ||
-           touchView.isDescendant(of: searchResultsTableView) {
-            return false
-        }
+        guard let touchView = touch.view else { return false }
 
-        // Don't intercept touches on the dropdown containers themselves
+        // The bar, the Places/People control, the results sheet and the scope
+        // dropdown handle their own touches — the tap-outside recognizer must
+        // never fire for them (it used to hide the results when the mode
+        // control was tapped, then the control re-showed them: a flicker).
+        if touchView.isDescendant(of: searchBar)
+            || touchView.isDescendant(of: searchModeControl)
+            || touchView.isDescendant(of: searchResultsSheet)
+            || touchView.isDescendant(of: searchScopeTableView) {
+            return false
+        }
         let location = touch.location(in: view)
         if !searchScopeDropdownView.isHidden && searchScopeDropdownView.frame.contains(location) {
             return false
         }
-        if !searchResultsTableView.isHidden && searchResultsTableView.frame.contains(location) {
+        if searchResultsSheet.isVisible && searchResultsSheet.frame.contains(location) {
             return false
         }
-        
+
+        // With the keyboard up, only the map tap gets through (it collapses
+        // the sheet); anything else is left alone so keyboard buttons keep
+        // working. TRAP: a blanket `return false` here kills tap-to-collapse.
+        if searchBar.isFirstResponder {
+            let allowForMapCollapse = isSearching && !isSearchSheetCollapsed && searchResultsSheet.isVisible
+            if !allowForMapCollapse {
+                return false
+            }
+        }
+
         return true
     }
 }

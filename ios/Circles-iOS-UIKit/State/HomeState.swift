@@ -71,9 +71,10 @@ final class HomeState {
     /// and indexes into. Map-refresh paths must never write it during a search.
     var filteredPlaces: [Place] = []
     var isSearching = false
-    /// User tapped Done/the map to drop the people/suggested dropdown — it
-    /// stays down until they edit the query or refocus the bar.
-    var isSearchOverlayDismissed = false
+    /// The results sheet is collapsed to its handle (user tapped the map or
+    /// pulled it down). Late async results must not re-expand it; editing the
+    /// query or refocusing the bar does.
+    var isSearchSheetCollapsed = false
     var currentSearchScope: SearchScope = .myPlaces
     /// People results (the PEOPLE section of the search overlay).
     var searchedUsers: [User] = []
@@ -90,6 +91,23 @@ final class HomeState {
     /// The merged, ordered nearby section (catalog ∪ Apple, minus saved).
     var suggestedRows: [SuggestedRow] = []
     var suggestedDistances: [String: CLLocationDistance] = [:]
+
+    /// Every search-only field back to rest. The four teardown paths (empty
+    /// query, Cancel, a person tapped, a nearby venue tapped) all need exactly
+    /// this; one of them forgetting a field is how stale rows survived before.
+    func clearSearch() {
+        isSearching = false
+        isSearchSheetCollapsed = false
+        filteredPlaces = []
+        searchedUsers = []
+        searchDistances = [:]
+        suggestedPlaces = []
+        appleCandidates = []
+        appleMatchedPlaceIds = []
+        appleVenues = []
+        suggestedRows = []
+        suggestedDistances = [:]
+    }
 
     // MARK: - Cache rules
 

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Circles_iOS
 
-/// The rules that decide what the home search dropdown shows.
+/// The rules that decide what the home search results sheet shows.
 struct HomeSearchPlanTests {
     @Test func aMatchedPlaceAlwaysGetsARowToTap() {
         // The Nickyo's case: one local match. It filtered the map correctly and
@@ -13,15 +13,22 @@ struct HomeSearchPlanTests {
         #expect(plan.filtersMap)
     }
 
-    @Test func theListStaysShortAndSaysWhatItLeftOut() {
+    @Test func everyMatchedPlaceGetsARowNowThatTheListScrolls() {
+        // Wes, 2026-09-24: the sheet lists all matches nearest-first; the
+        // pins and the list show the same set, so no "N more on the map".
         let plan = HomeSearchPlan.make(mode: .places, matchedPlaces: 15, suggestedPlaces: 0, people: 0)
-        #expect(plan.placeRows == 3)
-        #expect(plan.placeOverflow == 12)
-        #expect(plan.placesHeader == "PLACES · 12 more on the map")
+        #expect(plan.placeRows == 15)
+        #expect(plan.placesHeader == "PLACES")
+        #expect(plan.handleTitle == "15 places")
+    }
 
-        let exact = HomeSearchPlan.make(mode: .places, matchedPlaces: 3, suggestedPlaces: 0, people: 0)
-        #expect(exact.placeOverflow == 0)
-        #expect(exact.placesHeader == "PLACES")
+    @Test func theHandleSaysWhatIsInTheSheet() {
+        #expect(HomeSearchPlan.make(mode: .places, matchedPlaces: 26, suggestedPlaces: 9, people: 4).handleTitle == "26 places · 3 nearby")
+        #expect(HomeSearchPlan.make(mode: .places, matchedPlaces: 1, suggestedPlaces: 3, people: 0).handleTitle == "1 place · 3 nearby")
+        #expect(HomeSearchPlan.make(mode: .places, matchedPlaces: 0, suggestedPlaces: 9, people: 0).handleTitle == "6 nearby")
+        #expect(HomeSearchPlan.make(mode: .people, matchedPlaces: 5, suggestedPlaces: 5, people: 2).handleTitle == "2 people")
+        #expect(HomeSearchPlan.make(mode: .people, matchedPlaces: 0, suggestedPlaces: 0, people: 1).handleTitle == "1 person")
+        #expect(HomeSearchPlan.make(mode: .places, matchedPlaces: 0, suggestedPlaces: 0, people: 3).handleTitle == "No matches")
     }
 
     @Test func nearbyVenuesLeadWhenNothingMatchedAndTrailWhenSomethingDid() {
@@ -61,7 +68,6 @@ struct HomeSearchPlanTests {
     @Test func negativeCountsCannotProduceNegativeRows() {
         let plan = HomeSearchPlan.make(mode: .places, matchedPlaces: -1, suggestedPlaces: -1, people: -1)
         #expect(plan.placeRows == 0)
-        #expect(plan.placeOverflow == 0)
         #expect(!plan.hasRows)
     }
 }

@@ -5,10 +5,10 @@ import CoreLocation
 // SearchSection model and the dropdown/table delegate & data source for
 // CirclesHomeViewController. Extracted from the main controller (Wave 4).
 
-// MARK: - Search overlay sections
-// The search dropdown renders SUGGESTED (nearby global venues, only when no
-// local place matches) and PEOPLE. The places case remains for enum coverage
-// but renders 0 rows — place matches show on the map + its list instead.
+// MARK: - Search sheet sections
+// PLACES (every matched saved place, nearest first), SUGGESTED/MORE NEARBY
+// (catalog + Apple venues) and PEOPLE. HomeSearchPlan says how many rows each
+// gets for the current mode.
 enum SearchSection: Int, CaseIterable {
     case places
     case suggested
@@ -165,79 +165,6 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 return cell
             }
 
-            // PLACES section: a place result
-            let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
-            cell.accessoryView = nil
-
-            // Add bounds check
-            guard indexPath.row < filteredPlaces.count else {
-                return cell
-            }
-
-            let place = filteredPlaces[indexPath.row]
-
-            var content = cell.defaultContentConfiguration()
-            content.text = place.name
-            
-            // Show creator name and circle info
-            var subtitle = ""
-            
-            // Check if it's the current user first
-            let currentUserId = AuthService.shared.getUserId() ?? ""
-            if place.addedBy == currentUserId {
-                subtitle = "Added by you"
-            } else {
-                // Try to find the connection name from network circles
-                var connectionName: String? = place.addedByUser?.displayName
-
-                // Look through network circles to find the owner
-                for networkCircle in networkCircles where connectionName == nil {
-                    if let circleId = place.circleId, networkCircle.id == circleId {
-                        // Found the circle, get the owner's name
-                        if let ownerDetails = networkCircle.ownerDetails {
-                            connectionName = ownerDetails.displayName
-                        } else {
-                            // Try to find from connections list
-                            if let connection = NetworkManager.shared.connections.first(where: { $0.connectedUserId == networkCircle.owner }) {
-                                connectionName = connection.connectedUser?.displayName
-                            }
-                        }
-                        break
-                    }
-                }
-                
-                if let name = connectionName {
-                    subtitle = "Added by \(name)"
-                } else {
-                    subtitle = "Added by a connection"
-                }
-            }
-            
-            // Add circle name
-            if let circle = circles.first(where: { $0.id == place.circleId }) {
-                subtitle += " • \(circle.name)"
-            } else if let networkCircle = networkCircles.first(where: { $0.id == place.circleId }) {
-                subtitle += " • \(networkCircle.name)"
-            }
-
-            // Distance leads the line — the list is sorted nearest-first
-            if let distance = searchDistances[place.id] {
-                subtitle = "\(listDistanceFormatter.string(fromDistance: distance)) · \(subtitle)"
-            }
-
-            content.secondaryText = subtitle
-            content.secondaryTextProperties.color = Constants.Colors.secondaryLabel
-            content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
-            
-            // Add category icon
-            content.image = UIImage(systemName: place.category.symbolName)
-            content.imageProperties.tintColor = Constants.Colors.primary
-            
-            cell.contentConfiguration = content
-            // The 'i' opens a preview sheet without leaving the results
-            cell.accessoryType = .detailDisclosureButton
-
-            return cell
         }
 
         return UITableViewCell()
@@ -246,6 +173,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         if tableView == placesListTableView {
             return 72 // QuickAccessPlaceCell's designed row height
+        }
+        if tableView == searchResultsTableView {
+            return SearchSheetLayout.rowHeight // the sheet's height math assumes it
         }
         // Use automatic dimensions for all table views to avoid constraint conflicts
         return UITableView.automaticDimension
@@ -257,8 +187,8 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         guard tableView == searchResultsTableView, isSearching else { return nil }
         switch SearchSection(rawValue: section) {
         case .places: return searchPlan.placeRows == 0 ? nil : searchPlan.placesHeader
-        case .suggested: return visibleSuggestedRows.isEmpty ? nil : searchPlan.suggestedHeader
-        case .people: return searchedUsers.isEmpty ? nil : "PEOPLE"
+        case .suggested: return searchPlan.suggestedRows == 0 ? nil : searchPlan.suggestedHeader
+        case .people: return searchPlan.peopleRows == 0 ? nil : "PEOPLE"
         case .none: return nil
         }
     }
@@ -266,9 +196,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
         guard tableView == searchResultsTableView, isSearching else { return 0 }
         switch SearchSection(rawValue: section) {
-        case .places: return searchPlan.placeRows == 0 ? 0 : 28
-        case .suggested: return visibleSuggestedRows.isEmpty ? 0 : 28
-        case .people: return searchedUsers.isEmpty ? 0 : 28
+        case .places: return searchPlan.placeRows == 0 ? 0 : SearchSheetLayout.headerHeight
+        case .suggested: return searchPlan.suggestedRows == 0 ? 0 : SearchSheetLayout.headerHeight
+        case .people: return searchPlan.peopleRows == 0 ? 0 : SearchSheetLayout.headerHeight
         case .none: return 0
         }
     }
@@ -327,6 +257,8 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             case .places:
                 let places = visibleFilteredPlaces
                 guard indexPath.row < places.count else { return }
+                // The search (query, pins, sheet) survives the push and the pop
+                searchBar.resignFirstResponder()
                 presentDetailForPlace(places[indexPath.row])
             case .people:
                 guard indexPath.row < searchedUsers.count else { return }
@@ -336,16 +268,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 let row = visibleSuggestedRows[indexPath.row]
                 searchBar.text = ""
                 searchBar.resignFirstResponder()
-                isSearching = false
-                filteredPlaces = []
-                searchedUsers = []
-                searchDistances = [:]
-                suggestedPlaces = []
-                appleCandidates = []
-                appleMatchedPlaceIds = []
-                appleVenues = []
-                suggestedRows = []
-                suggestedDistances = [:]
+                state.clearSearch()
                 userSearchWorkItem?.cancel()
                 suggestedSearchWorkItem?.cancel()
                 mapViewController?.setSearchFilter(nil)
@@ -360,12 +283,8 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                     // the useful next step is saving it, prefilled.
                     openAddPlace(prefilledWith: venue)
                 }
-            default:
-                // Place rows no longer render in the dropdown (they live on
-                // the map + its list); unreachable, kept for enum coverage
-                guard indexPath.row < filteredPlaces.count else { return }
-                mapViewController?.setSearchFilter(nil)
-                handleSearchResultSelection(at: indexPath)
+            case .none:
+                break
             }
         }
     }

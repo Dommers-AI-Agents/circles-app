@@ -181,4 +181,26 @@ struct HomeStateTests {
         #expect(state.fetchedViewportCircles.count == HomeState.maxFetchedViewportCircles)
         #expect(!state.isViewportCovered(center: center, radiusM: 500), "the oldest entry was evicted")
     }
+
+    @Test func clearSearchPutsEveryFieldBackToRest() {
+        let state = HomeState()
+        state.isSearching = true
+        state.isSearchSheetCollapsed = true
+        state.filteredPlaces = [place("p", circle: "mine", addedBy: me)]
+        state.searchDistances = ["p": 12]
+        state.appleMatchedPlaceIds = ["p"]
+        state.suggestedDistances = ["g": 3]
+        state.clearSearch()
+        #expect(!state.isSearching)
+        #expect(!state.isSearchSheetCollapsed)
+        #expect(state.filteredPlaces.isEmpty)
+        #expect(state.searchedUsers.isEmpty)
+        #expect(state.searchDistances.isEmpty)
+        #expect(state.suggestedPlaces.isEmpty)
+        #expect(state.appleCandidates.isEmpty)
+        #expect(state.appleMatchedPlaceIds.isEmpty)
+        #expect(state.appleVenues.isEmpty)
+        #expect(state.suggestedRows.isEmpty)
+        #expect(state.suggestedDistances.isEmpty)
+    }
 }

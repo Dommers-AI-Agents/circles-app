@@ -14,19 +14,10 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Editing the query brings the results list back after a map peek
-        isSearchOverlayDismissed = false
+        isSearchSheetCollapsed = false
 
         guard !trimmed.isEmpty else {
-            isSearching = false
-            filteredPlaces = []
-            searchedUsers = []
-            searchDistances = [:]
-            suggestedPlaces = []
-            appleCandidates = []
-            appleMatchedPlaceIds = []
-            appleVenues = []
-            suggestedRows = []
-            suggestedDistances = [:]
+            state.clearSearch()
             userSearchWorkItem?.cancel()
             suggestedSearchWorkItem?.cancel()
             mapViewController?.setSearchFilter(nil)
@@ -36,6 +27,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         }
 
         isSearching = true
+        enterSearchLayout()
         if trimmed != lastAppleQuery { appleCandidates = []; lastAppleQuery = trimmed }
 
         // Places — local, instant. These now render as rows again (capped, see
@@ -75,19 +67,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
     }
 
     /// Shows the PEOPLE/SUGGESTED dropdown when either has matches. Place
-    /// results deliberately don't render here anymore — they live on the map
-    /// and its list — so venue searches leave the map fully visible. A map
-    /// peek (Done/map tap) keeps it down until the user edits or refocuses
-    /// the bar — late async results must not yank the map away again.
-    func refreshSearchOverlay() {
-        if isSearching && !isSearchOverlayDismissed && searchPlan.hasRows {
-            showSearchResults()
-        } else {
-            hideSearchResults()
-        }
-    }
-
-    /// What the dropdown should show right now. Everything that draws or sizes
+     /// What the dropdown should show right now. Everything that draws or sizes
     /// the overlay asks this, so the sections can never disagree about how
     /// many rows exist.
     var searchPlan: HomeSearchPlan {
@@ -106,23 +86,10 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         searchModeChanged(to: mode)
     }
 
-    /// The mode control belongs to an active search — it appears with the
-    /// keyboard and goes away with it, so the home screen is unchanged for
-    /// anyone not searching.
-    func setSearchModeControlVisible(_ visible: Bool) {
-        guard searchModeControl.isHidden == visible else { return }
-        searchModeControl.isHidden = !visible
-        searchResultsTopConstraint?.isActive = false
-        searchResultsTopConstraint = visible
-            ? searchResultsTableView.topAnchor.constraint(equalTo: searchModeControl.bottomAnchor, constant: 8)
-            : searchResultsTableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 8)
-        searchResultsTopConstraint?.isActive = true
-    }
-
     func searchModeChanged(to mode: HomeSearchMode) {
         searchMode = mode
         searchBar.placeholder = mode.placeholder
-        isSearchOverlayDismissed = false
+        isSearchSheetCollapsed = false
         let trimmed = (searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             mapViewController?.setSearchFilter(nil)
@@ -134,32 +101,17 @@ extension CirclesHomeViewController: UISearchBarDelegate {
 
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        // Same as the Done button: keyboard down, the list stays open (Wes).
         searchBar.resignFirstResponder()
-        // "Search" while results are up = show me the MAP (same peek a tap on
-        // the visible map enters)
-        enterSearchMapPeek()
         updateEmptyState()
-    }
-
-    /// Hide the people/suggested dropdown while the search — and the filtered
-    /// pins + list — stay live. Entered by tapping the visible map or the
-    /// keyboard's Search key; exited by refocusing/editing the bar.
-    func enterSearchMapPeek() {
-        guard isSearching, !isSearchOverlayDismissed else { return }
-        isSearchOverlayDismissed = true
-        searchBar.resignFirstResponder()
-        hideSearchResults()
     }
 
     func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
         refreshSearchOriginIfStale()
         setSearchModeControlVisible(true)
         searchBar.setShowsCancelButton(true, animated: true)
-        // Refocusing after a map peek restores the results list
-        if isSearching && isSearchOverlayDismissed {
-            isSearchOverlayDismissed = false
-            refreshSearchOverlay()
-        }
+        // Refocusing a collapsed sheet expands it again
+        expandSearchSheet()
     }
 
     func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
@@ -181,17 +133,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         searchBar.placeholder = HomeSearchMode.places.placeholder
         searchBar.text = ""
         searchBar.resignFirstResponder()
-        isSearching = false
-        isSearchOverlayDismissed = false
-        filteredPlaces = []
-        searchedUsers = []
-        searchDistances = [:]
-        suggestedPlaces = []
-        appleCandidates = []
-        appleMatchedPlaceIds = []
-        appleVenues = []
-        suggestedRows = []
-        suggestedDistances = [:]
+        state.clearSearch()
         userSearchWorkItem?.cancel()
         suggestedSearchWorkItem?.cancel()
         mapViewController?.setSearchFilter(nil)
@@ -308,8 +250,7 @@ extension CirclesHomeViewController {
         suggestedDistances = distances
     }
 
-    /// The matched places that get a row; the rest are on the map and counted
-    /// in the section header.
+    /// The matched places that get a row (all of them, nearest first).
     var visibleFilteredPlaces: [Place] {
         Array(filteredPlaces.prefix(searchPlan.placeRows))
     }
@@ -406,29 +347,6 @@ extension CirclesHomeViewController {
         present(nav, animated: true)
     }
 
-    /// Sizes the SUGGESTED/PEOPLE dropdown (place rows render on the map and
-    /// its list instead), capped so it never swallows the whole screen.
-    func showSearchResults() {
-        let cellHeight: CGFloat = 60
-        let headerHeight: CGFloat = 28
-        let plan = searchPlan
-
-        var height: CGFloat = 0
-        if plan.placeRows > 0 { height += headerHeight + CGFloat(plan.placeRows) * cellHeight }
-        if plan.suggestedRows > 0 { height += headerHeight + CGFloat(plan.suggestedRows) * cellHeight }
-        if plan.peopleRows > 0 { height += headerHeight + CGFloat(plan.peopleRows) * cellHeight }
-        height = min(height, 400) // cap — the overlay scrolls beyond this
-
-        searchResultsTableView.isHidden = false
-        searchResultsTableView.isScrollEnabled = true
-        searchResultsHeightConstraint?.constant = height
-
-        UIView.animate(withDuration: 0.3) {
-            self.searchResultsTableView.alpha = 1
-            self.view.layoutIfNeeded()
-        }
-        searchResultsTableView.reloadData()
-    }
 
     /// Handles a tap on a PEOPLE result: connections/followees filter the map
     /// (like tapping their avatar); everyone else opens their profile to act.
@@ -436,16 +354,7 @@ extension CirclesHomeViewController {
         // Clear the search UI first
         searchBar.text = ""
         searchBar.resignFirstResponder()
-        isSearching = false
-        filteredPlaces = []
-        searchedUsers = []
-        searchDistances = [:]
-        suggestedPlaces = []
-        appleCandidates = []
-        appleMatchedPlaceIds = []
-        appleVenues = []
-        suggestedRows = []
-        suggestedDistances = [:]
+        state.clearSearch()
         userSearchWorkItem?.cancel()
         suggestedSearchWorkItem?.cancel()
         mapViewController?.setSearchFilter(nil)
@@ -460,80 +369,6 @@ extension CirclesHomeViewController {
             let profileVC = ProfileViewController()
             profileVC.configureWith(user: user)
             navigationController?.pushViewController(profileVC, animated: true)
-        }
-    }
-    
-    // Load network places for search
-    func loadNetworkPlaces() {
-        guard !isLoadingNetworkPlaces else { return }
-        
-        isLoadingNetworkPlaces = true
-        Logger.debug("🔍 Loading network places for search...")
-        
-        let group = DispatchGroup()
-        var allNetworkPlaces: [Place] = []
-        
-        // If we don't have network circles, fetch them first
-        if networkCircles.isEmpty {
-            group.enter()
-            APIService.shared.request(
-                endpoint: "network/my-network-circles",
-                method: .get,
-                requiresAuth: true
-            ) { [weak self] (result: Result<CirclesDataResponse, APIError>) in
-                switch result {
-                case .success(let response):
-                    self?.networkCircles = response.data
-                    // Now fetch places from network circles
-                    for circle in response.data {
-                        group.enter()
-                        PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
-                            switch result {
-                            case .success(let places):
-                                allNetworkPlaces.append(contentsOf: places)
-                            case .failure(let error):
-                                Logger.debug("Failed to fetch places for network circle \(circle.id): \(error)")
-                            }
-                            group.leave()
-                        }
-                    }
-                case .failure(let error):
-                    Logger.debug("Failed to fetch network circles: \(error)")
-                }
-                group.leave()
-            }
-        } else {
-            // Use existing network circles
-            for circle in networkCircles {
-                group.enter()
-                PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
-                    switch result {
-                    case .success(let places):
-                        allNetworkPlaces.append(contentsOf: places)
-                    case .failure(let error):
-                        Logger.debug("Failed to fetch places for network circle \(circle.id): \(error)")
-                    }
-                    group.leave()
-                }
-            }
-        }
-        
-        group.notify(queue: .main) { [weak self] in
-            guard let self = self else { return }
-            self.isLoadingNetworkPlaces = false
-            
-            // Deduplicate network places before storing
-            let deduplicatedNetworkPlaces = self.removeDuplicatePlaces(allNetworkPlaces)
-            self.networkPlaces = deduplicatedNetworkPlaces
-            Logger.debug("🔍 Loaded \(allNetworkPlaces.count) raw network places, deduplicated to \(deduplicatedNetworkPlaces.count) unique places for search")
-            
-            // If a search is active, fold the newly-loaded network places into
-            // the current results
-            if self.isSearching, let text = self.searchBar.text, !text.isEmpty {
-                self.filterPlaces(searchText: text)
-                self.refreshSearchOverlay()
-                self.updateEmptyState()
-            }
         }
     }
 }

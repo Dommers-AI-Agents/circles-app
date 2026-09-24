@@ -32,9 +32,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// under the visible rows made taps open the wrong place.
     var filteredPlaces: [Place] { get { state.filteredPlaces } set { state.filteredPlaces = newValue } }
     var isSearching: Bool { get { state.isSearching } set { state.isSearching = newValue } }
-    /// User tapped Done/the map to drop the people/suggested dropdown — it
-    /// stays down until they edit the query or refocus the bar.
-    var isSearchOverlayDismissed: Bool { get { state.isSearchOverlayDismissed } set { state.isSearchOverlayDismissed = newValue } }
+    /// The results sheet is collapsed to its handle (map tap / pull-down);
+    /// editing the query or refocusing the bar expands it again.
+    var isSearchSheetCollapsed: Bool { get { state.isSearchSheetCollapsed } set { state.isSearchSheetCollapsed = newValue } }
     var selectedCategory: UnifiedCategory? { get { state.selectedCategory } set { state.selectedCategory = newValue } }
     var mapUpdateTimer: Timer? // Debounce timer for map updates
     var notificationBadgeTimer: Timer? // Periodic refresh timer for notification badge
@@ -521,24 +521,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         navigationController?.pushViewController(profileVC, animated: true)
     }
     
-    // Search results table view
-    let searchResultsTableView: UITableView = {
-        let tableView = UITableView()
-        tableView.translatesAutoresizingMaskIntoConstraints = false
-        tableView.backgroundColor = Constants.Colors.background
-        tableView.layer.cornerRadius = 12
-        tableView.layer.shadowColor = UIColor.black.cgColor
-        tableView.layer.shadowOpacity = 0.15
-        tableView.layer.shadowOffset = CGSize(width: 0, height: 4)
-        tableView.layer.shadowRadius = 8
-        tableView.isHidden = true
-        tableView.alpha = 0
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "SearchResultCell")
-        return tableView
-    }()
-    
+    // Search results: an Apple-Maps-style sheet over the map, above the
+    // keyboard (Views/SearchResultsSheetView, wired in +SearchSheet).
+    lazy var searchResultsSheet = SearchResultsSheetView()
+    /// The sheet's table — PlaceSearchable and the section code talk to this.
+    var searchResultsTableView: UITableView { searchResultsSheet.tableView }
+    /// Unused here (the sheet sizes itself); PlaceSearchable requires it.
     var searchResultsHeightConstraint: NSLayoutConstraint?
-    var searchResultsTopConstraint: NSLayoutConstraint?
+    /// The map is lifted under the mode control and fills the screen.
+    var isSearchLayoutActive = false
+    var mapTopToPeopleRowConstraint: NSLayoutConstraint!
+    var mapTopSearchingConstraint: NSLayoutConstraint!
+    var mapBottomSearchingConstraint: NSLayoutConstraint!
 
 
     let loadingIndicator: UIActivityIndicatorView = {
@@ -754,6 +748,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         setupNotifications()
         setupSearchBar()
         setupDropdownViews()
+        observeKeyboardForSearchSheet()
         
         // Setup user list delegate
         userListView.delegate = self
@@ -795,7 +790,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         startBackgroundImagePreloading()
     }
     
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: nil) { [weak self] _ in self?.refitSearchSheet() }
+    }
+
     deinit {
+        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         // Clean up timers
         mapUpdateTimer?.invalidate()
         loadDebounceTimer?.invalidate()
@@ -1558,9 +1559,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         loadingContentView.addSubview(loadingIndicator)
         loadingContentView.addSubview(loadingLabel)
         
-        // Add search results table view
-        view.addSubview(searchResultsTableView)
-
         // Add floating record button (for Reels tab) - now hidden in favor of camera button
         view.addSubview(floatingRecordButton)
         floatingRecordButton.addTarget(self, action: #selector(recordReelTapped), for: .touchUpInside)
@@ -1581,6 +1579,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         tapGesture.cancelsTouchesInView = false
         tapGesture.delegate = self
         view.addGestureRecognizer(tapGesture)
+
+        mapTopToPeopleRowConstraint = mapContainerView.topAnchor.constraint(equalTo: userListView.bottomAnchor)
+        // While searching, the map lifts under the mode control and runs to the
+        // bottom of the screen; the results sheet covers its lower part. A
+        // frame change never moves the camera (no auto-zoom on search).
+        mapTopSearchingConstraint = mapContainerView.topAnchor.constraint(
+            equalTo: contentView.topAnchor, constant: SearchSheetLayout.modeControlClearance)
+        mapBottomSearchingConstraint = mapContainerView.bottomAnchor.constraint(
+            equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         
         NSLayoutConstraint.activate([
             // Search bar (fixed at top). Unified search removed the scope
@@ -1636,8 +1643,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             filterStackView.trailingAnchor.constraint(equalTo: filterContainer.trailingAnchor, constant: -6),
             filterStackView.bottomAnchor.constraint(equalTo: filterContainer.bottomAnchor, constant: -2),
             
-            // Map container - directly after userListView
-            mapContainerView.topAnchor.constraint(equalTo: userListView.bottomAnchor),
+            // Map container - directly after userListView (swapped while searching)
+            mapTopToPeopleRowConstraint,
             mapContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             mapContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             
@@ -1794,18 +1801,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         ])
         view.bringSubviewToFront(searchModeControl)
 
-        // Search results table view constraints. It hangs off the mode control
-        // when that is visible, so the two never overlap.
-        searchResultsTopConstraint = searchResultsTableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 8)
-        NSLayoutConstraint.activate([
-            searchResultsTopConstraint!,
-            searchResultsTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
-            searchResultsTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium)
-        ])
-        view.bringSubviewToFront(searchResultsTableView)
-        
-        searchResultsHeightConstraint = searchResultsTableView.heightAnchor.constraint(equalToConstant: 0)
-        searchResultsHeightConstraint?.isActive = true
+        installSearchResultsSheet()
         
         // Search scope dropdown constraints
         NSLayoutConstraint.activate([
@@ -1821,12 +1817,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         searchScopeDropdownHeightConstraint = searchScopeDropdownView.heightAnchor.constraint(equalToConstant: 0)
         searchScopeDropdownHeightConstraint?.isActive = true
-        
-        // Setup search results table view
-        searchResultsTableView.delegate = self
-        searchResultsTableView.dataSource = self
-        searchResultsTableView.rowHeight = UITableView.automaticDimension
-        searchResultsTableView.estimatedRowHeight = 60
         
         quickAddPlaceButton.addTarget(self, action: #selector(quickAddPlaceButtonTapped), for: .touchUpInside)
         mapExpandButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
@@ -1888,12 +1878,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         placesListTableView.delegate = self
         placesListTableView.dataSource = self
 
-        // Also configure search results table view
-        searchResultsTableView.delegate = self
-        searchResultsTableView.dataSource = self
-        searchResultsTableView.delaysContentTouches = false
-        searchResultsTableView.canCancelContentTouches = true
-        
         // Configure search scope table view
         searchScopeTableView.delegate = self
         searchScopeTableView.dataSource = self
@@ -2425,9 +2409,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
         
         if isSearching {
-            // The overlay itself shows results; only surface the empty state
-            // when NEITHER places nor people matched.
-            emptyStateView.isHidden = !(filteredPlaces.isEmpty && searchedUsers.isEmpty)
+            // The sheet shows results; only surface the empty state when it
+            // has nothing at all (no places, no nearby venues, no people).
+            emptyStateView.isHidden = searchPlan.hasRows
             emptyStateLabel.text = "No results found"
         } else {
             let isEmpty = isShowingNetworkCircles ? networkCircles.isEmpty : circles.isEmpty
@@ -3582,11 +3566,19 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // stays visible and pannable above it. Grow the map container in list
         // mode so both the map slice and the list get usable room.
         placesListTableView.isHidden = !isShowingPlacesList
-        mapHeightConstraint?.constant = isShowingPlacesList ? 500 : 320
+        applyMapHeightForCurrentMode()
         // Map controls stay put now that the map is still shown; the place-count
         // label is pinned low (behind the sheet), so it still hides.
         mapPlaceCountLabel.isHidden = isShowingPlacesList
         UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
+    }
+
+    /// The map's rest height: 320, or 500 with its list open. Left alone while
+    /// the search layout owns the map (exitSearchLayout re-applies it).
+    func applyMapHeightForCurrentMode() {
+        guard !isSearchLayoutActive else { return }
+        mapHeightConstraint?.constant = isShowingPlacesList ? 500 : 320
+        mapHeightConstraint?.isActive = true
     }
 
     /// Force the home map's list overlay back to the map (no-op if already on
@@ -3826,17 +3818,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             }
         }
 
-        // Tap on the visible map (anywhere outside the results list and the
-        // bar) while results are up = "show me the MAP": drop the list into a
-        // peek — the search stays live, the pins stay filtered, and the
-        // floating Show List pill (or refocusing the bar) brings the list back.
-        if isSearching && !isSearchOverlayDismissed && !searchResultsTableView.isHidden,
+        // Tap on the visible map while results are up = "show me the MAP":
+        // the sheet collapses to its handle; the search and the filtered pins
+        // stay live, and the handle (or refocusing the bar) brings it back.
+        if isSearching && !isSearchSheetCollapsed && searchResultsSheet.isVisible,
            let gesture = gesture {
             let location = gesture.location(in: view)
-            let overlayFrame = searchResultsTableView.convert(searchResultsTableView.bounds, to: view)
+            let sheetFrame = searchResultsSheet.convert(searchResultsSheet.bounds, to: view)
             let searchBarFrame = searchBar.convert(searchBar.bounds, to: view)
-            if !overlayFrame.contains(location) && !searchBarFrame.contains(location) {
-                enterSearchMapPeek()
+            let modeFrame = searchModeControl.convert(searchModeControl.bounds, to: view)
+            let onModeControl = !searchModeControl.isHidden && modeFrame.contains(location)
+            if !sheetFrame.contains(location) && !searchBarFrame.contains(location) && !onModeControl {
+                collapseSearchSheet()
             }
         }
 
