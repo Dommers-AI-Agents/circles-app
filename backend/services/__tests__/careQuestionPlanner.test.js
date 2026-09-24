@@ -68,6 +68,16 @@ describe('question planner', () => {
     expect(picks).not.toContain('energy'); // every 2 days: yesterday's ask blocks today
   });
 
+  test('an own question that is word for word a bank question yields to the bank (the old mood defaults)', () => {
+    const custom = [{ id: 'old_default', text: 'Did you get outside today?' }, { id: 'own', text: 'Did you water the plants?' }];
+    const rot = planner.rotation({ custom });
+    expect(rot.filter((q) => q.text === 'Did you get outside today?').map((q) => q.source)).toEqual(['bank']);
+    expect(rot.find((q) => q.id === 'own')).toMatchObject({ source: 'custom', kind: 'mood' });
+    // On an old parent app the mood-kind duplicate must not sneak back in as a mood question.
+    const everythingMood = ['mood_morning', 'mood_midday', 'mood_evening', 'own'].map((id) => ({ questionId: id, dateKey: base.dateKey }));
+    expect(planner.pick({ ...base, capable: false, custom, recent: everythingMood })).toBeNull();
+  });
+
   test('muted bank questions stay out; custom questions join the rotation daily', () => {
     const profile = { chronicPain: true };
     expect(planner.pick({ ...base, profile, slot: '13:00' }).id).toBe('pain');

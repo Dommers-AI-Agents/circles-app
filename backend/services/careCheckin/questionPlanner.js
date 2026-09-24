@@ -18,7 +18,7 @@
 //      days since it was last asked, scaled down when the time of day is
 //      wrong for it (sleep at 7 PM), and up when the profile boosts it.
 // Ties break on bank order so the result is stable.
-const { applicable, phaseOf } = require('./questionBank');
+const { BANK_BY_TEXT, applicable, phaseOf } = require('./questionBank');
 
 const CUSTOM_EVERY_DAYS = 1;
 const OFF_PHASE_FACTOR = 0.3;
@@ -53,7 +53,7 @@ function pick({ profile = {}, custom = [], muted = [], capable = false, slot, sl
   const daySlots = [...new Set([...(Array.isArray(slots) && slots.length ? slots : []), slot])].sort();
   const pool = [
     ...applicable(profile).filter((q) => !mutedSet.has(q.id)),
-    ...custom.map((q) => ({ everyDays: CUSTOM_EVERY_DAYS, ...q, kind: q.kind || 'mood', custom: true }))
+    ...ownQuestions(custom)
   ].filter((q) => capable || q.kind === 'mood');
 
   const lastAsked = new Map();
@@ -81,6 +81,18 @@ function pick({ profile = {}, custom = [], muted = [], capable = false, slot, sl
   return best ? best.q : null;
 }
 
+/**
+ * The owner's own questions, as the planner sees them. One that is word for
+ * word a bank question is dropped: the bank asks it with the right answers
+ * (plans from before kinds carried the old defaults as mood questions —
+ * "Did you get outside today?" with Doing great / Okay / Not so good).
+ */
+function ownQuestions(custom) {
+  return custom
+    .filter((q) => q && q.text && !BANK_BY_TEXT.has(q.text))
+    .map((q) => ({ everyDays: CUSTOM_EVERY_DAYS, ...q, kind: q.kind || 'mood', custom: true }));
+}
+
 /** The slot a weekday-pinned question goes out at: the last one in its preferred time of day, else the day's last. */
 function pinnedSlot(q, daySlots) {
   const suited = q.phases ? daySlots.filter((s) => q.phases.includes(phaseOf(s))) : daySlots;
@@ -92,7 +104,7 @@ function rotation({ profile = {}, custom = [], muted = [] }) {
   const mutedSet = new Set(muted);
   return [
     ...applicable(profile).map((q) => ({ ...q, source: 'bank', muted: mutedSet.has(q.id) })),
-    ...custom.map((q) => ({ everyDays: CUSTOM_EVERY_DAYS, ...q, kind: q.kind || 'mood', source: 'custom', muted: false }))
+    ...ownQuestions(custom).map((q) => ({ ...q, source: 'custom', muted: false }))
   ];
 }
 
