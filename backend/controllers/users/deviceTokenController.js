@@ -3,6 +3,7 @@
 // Split out of firebaseUserController.js (handlers unchanged).
 const { getFirestore } = require('../../config/firebase');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
+const { clientFromRequest } = require('../../utils/appVersion');
 
 const db = getFirestore();
 
@@ -12,6 +13,9 @@ const db = getFirestore();
 exports.registerDeviceToken = async (req, res, next) => {
   try {
     const { deviceToken, platform, replaceExisting } = req.body;
+    // Which build registered this token, so a push whose Lock Screen buttons
+    // only exist in newer builds can be held back from older ones.
+    const client = clientFromRequest(req);
     
     if (!deviceToken || !platform) {
       return res.status(400).json({
@@ -45,8 +49,11 @@ exports.registerDeviceToken = async (req, res, next) => {
     if (existingTokenIndex !== -1) {
       // Update existing token
       deviceTokens[existingTokenIndex] = {
+        ...deviceTokens[existingTokenIndex],
         token: deviceToken,
         platform: platform,
+        appVersion: client.version,
+        appBuild: client.build,
         updatedAt: new Date().toISOString()
       };
     } else {
@@ -54,6 +61,8 @@ exports.registerDeviceToken = async (req, res, next) => {
       deviceTokens.push({
         token: deviceToken,
         platform: platform,
+        appVersion: client.version,
+        appBuild: client.build,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });

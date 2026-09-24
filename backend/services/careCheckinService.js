@@ -4,7 +4,9 @@
 // Constants and pure helpers live in ./careCheckin/shared.js.
 // A resent invitation is a nudge to a real phone; ten minutes between them.
 const RESEND_INVITE_COOLDOWN_MS = 10 * 60 * 1000;
-const { ANSWERS, COLLECTIONS, CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, DUE_AFTER_MS, NOTE_MAX, TYPES, buildConnectionMap, clean, friendlyTime, getFirestore, localDateKey, normalizeQuestions, normalizeTimes, normalizeUserId, notificationService, nowIso } = require('./careCheckin/shared');
+const { ANSWERS, COLLECTIONS, CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, DUE_AFTER_MS, NOTE_MAX, RICH_ASKS_MIN_CLIENT, TYPES, bank, buildConnectionMap, clean, friendlyTime, getFirestore, localDateKey, normalizeMuted, normalizeProfile, normalizeQuestions, normalizeTimes, normalizeUserId, notificationService, nowIso } = require('./careCheckin/shared');
+const planner = require('./careCheckin/questionPlanner');
+const { atLeast } = require('../utils/appVersion');
 
 class CareCheckinService {
   constructor() {
@@ -55,9 +57,19 @@ class CareCheckinService {
       parentId: plan.parentId,
       parentName: plan.parentName || '',
       status: plan.status,
-      questions: (plan.questions || []).map((q) => ({ id: q.id, text: q.text })),
+      questions: (plan.questions || []).map((q) => CareCheckinService.presentQuestion(q)),
       usesDefaultQuestions: !(plan.questions || []).length,
       defaultQuestions: DEFAULT_QUESTIONS,
+      // The care profile (owner's answers about the parent) and what it
+      // puts in rotation. `profile` null = the questionnaire hasn't been done.
+      profile: plan.profile || null,
+      profileFields: bank.PROFILE_FIELDS,
+      mutedQuestionIds: plan.mutedQuestionIds || [],
+      rotation: planner.rotation({ profile: plan.profile || {}, custom: plan.questions || [], muted: plan.mutedQuestionIds || [] })
+        .map((q) => CareCheckinService.presentQuestion(q)),
+      // Whether the parent's app can answer more than the three mood buttons.
+      // Until it can, only mood questions go out (see the scheduler).
+      parentCanAnswerRich: plan.parentCanAnswerRich === true,
       times: plan.times || DEFAULT_TIMES,
       timezone: plan.timezone || null,
       createdAt: plan.createdAt || null,
@@ -75,18 +87,38 @@ class CareCheckinService {
     };
   }
 
+  static presentQuestion(q) {
+    const out = { id: q.id, text: q.text, ...bank.kindMeta(q) };
+    out.source = q.source || 'custom';
+    out.muted = q.muted === true;
+    out.cadence = bank.cadenceLabel(q);
+    out.requires = q.requires || null;
+    return out;
+  }
+
   presentAsk(ask) {
+    const kind = bank.KINDS.includes(ask.kind) ? ask.kind : 'mood';
     return {
       askId: ask.id,
       planId: ask.planId,
       questionText: ask.questionText,
+      kind,
+      short: ask.short || null,
+      low: ask.low || null,
+      high: ask.high || null,
       slot: ask.slot,
       dateKey: ask.dateKey,
       askedAt: ask.askedAt,
       dueBy: ask.dueBy,
       status: ask.status,
+      // `answer` is the choice key (older clients render the mood ones);
+      // `answerValue`/`answerScore` carry scales and typed answers;
+      // `answerText` is always the words to show.
       answer: ask.answer || null,
-      answerText: ask.answer ? ANSWERS[ask.answer] || ask.answer : null,
+      answerValue: ask.answerValue !== undefined && ask.answerValue !== null ? String(ask.answerValue) : (ask.answer || null),
+      answerScore: Number.isInteger(ask.answerScore) ? ask.answerScore : null,
+      answerText: ask.answerText || (ask.answer ? ANSWERS[ask.answer] || ask.answer : null),
+      alert: ask.alert === true,
       note: ask.note || '',
       answeredAt: ask.answeredAt || null,
       pushDelivered: ask.pushDelivered !== false
@@ -140,7 +172,7 @@ class CareCheckinService {
 
   // MARK: - Owner
 
-  async createPlan({ ownerId, parentId, times, questions }) {
+  async createPlan({ ownerId, parentId, times, questions, profile }) {
     const parent = normalizeUserId(parentId);
     if (!parent || parent === ownerId) throw new CareError(400, 'bad_parent', 'Pick someone from your connections.');
     const connections = await buildConnectionMap(ownerId);
@@ -177,6 +209,8 @@ class CareCheckinService {
       ownerId, parentId: parent, ownerName, parentName,
       status: 'invited',
       questions: normalizeQuestions(questions) || [],
+      profile: normalizeProfile(profile),
+      mutedQuestionIds: [],
       times: normalizeTimes(times) || DEFAULT_TIMES,
       timezone: parentPrefs.timezone || prior.timezone || null,
       nextQuestionIndex: 0,
@@ -240,10 +274,20 @@ class CareCheckinService {
     for (const userId of CareCheckinService.careTeam(plan)) this.notify(userId, payload);
   }
 
-  async updatePlan({ userId, planId, times, questions, status }) {
+  async updatePlan({ userId, planId, times, questions, status, profile, mutedQuestionIds }) {
     const plan = await this.requirePlan(planId);
     if (plan.ownerId !== userId) throw new CareError(403, 'not_owner', 'Only the person who set this up can change it.');
     const patch = { updatedAt: nowIso() };
+    if (profile !== undefined) {
+      const p = normalizeProfile(profile);
+      if (!p) throw new CareError(400, 'bad_profile', 'The care profile must be a set of yes/no answers.');
+      patch.profile = p;
+    }
+    if (mutedQuestionIds !== undefined) {
+      const m = normalizeMuted(mutedQuestionIds);
+      if (!m) throw new CareError(400, 'bad_muted', 'Muted questions must be a list.');
+      patch.mutedQuestionIds = m;
+    }
     if (times !== undefined) {
       const t = normalizeTimes(times);
       if (!t) throw new CareError(400, 'bad_times', 'Pick between one and five times, like 08:30.');
@@ -253,7 +297,6 @@ class CareCheckinService {
       const q = normalizeQuestions(questions, plan.questions || []);
       if (!q) throw new CareError(400, 'bad_questions', 'Questions must be a list.');
       patch.questions = q;
-      patch.nextQuestionIndex = 0;
     }
     if (status !== undefined) {
       if (!['active', 'paused'].includes(status)) throw new CareError(400, 'bad_status', 'Status must be active or paused.');
@@ -274,11 +317,13 @@ class CareCheckinService {
 
   // MARK: - Parent
 
-  async respondToInvite({ userId, planId, accept, timezone }) {
+  async respondToInvite({ userId, planId, accept, timezone, client }) {
     const plan = await this.requirePlan(planId);
     if (plan.parentId !== userId) throw new CareError(403, 'not_parent', 'This invitation is for someone else.');
     if (plan.status === 'ended') throw new CareError(409, 'ended', 'This check-in was ended.');
     const patch = { updatedAt: nowIso() };
+    // The parent's own app just spoke to us: the surest word on what it can render.
+    if (client && atLeast(client, RICH_ASKS_MIN_CLIENT)) patch.parentCanAnswerRich = true;
     if (accept) {
       patch.status = 'active';
       patch.acceptedAt = plan.acceptedAt || nowIso();
@@ -304,28 +349,53 @@ class CareCheckinService {
     return this.presentPlan(merged, { viewerId: userId });
   }
 
-  async answerAsk({ userId, askId, answer, note }) {
+  /**
+   * The parent answers. `answer` is a choice key (mood / done / yesno);
+   * `value` is the number for a 0–10 question or the words for a typed one.
+   * Either field is accepted for any kind so an older client's `answer`
+   * keeps working. An answer the question names as worrying (pain 7+,
+   * "no" to medicine, "yes" to a fall) reaches the family as a heads-up.
+   */
+  async answerAsk({ userId, askId, answer, value, note, client }) {
     const doc = await this.asks.doc(askId).get();
     if (!doc.exists) throw new CareError(404, 'no_ask', 'That question has expired.');
     const ask = { id: doc.id, ...doc.data() };
     if (ask.parentId !== userId) throw new CareError(403, 'not_parent', 'This question is for someone else.');
-    if (!ANSWERS[answer]) throw new CareError(400, 'bad_answer', 'Answer must be great, okay or not_great.');
+    const question = { kind: ask.kind || 'mood', short: ask.short, alert: ask.alertRule || null };
+    const resolved = bank.resolveAnswer(question, { answer, value });
+    if (!resolved) throw new CareError(400, 'bad_answer', CareCheckinService.badAnswerMessage(question.kind));
     if (ask.status === 'answered') {
       return this.presentAsk(ask);
     }
-    const patch = { status: 'answered', answer, note: clean(note, NOTE_MAX), answeredAt: nowIso() };
+    const alert = bank.isAlertAnswer(question, resolved);
+    const patch = {
+      status: 'answered', answer: resolved.answer, answerValue: resolved.answerValue, answerScore: resolved.answerScore,
+      answerText: resolved.answerText, alert, note: clean(note, NOTE_MAX), answeredAt: nowIso()
+    };
     await this.asks.doc(askId).update(patch);
-    await this.plans.doc(ask.planId).update({ lastAnsweredAt: patch.answeredAt, updatedAt: nowIso() });
+    const planPatch = { lastAnsweredAt: patch.answeredAt, updatedAt: nowIso() };
+    if (client && atLeast(client, RICH_ASKS_MIN_CLIENT)) planPatch.parentCanAnswerRich = true;
+    await this.plans.doc(ask.planId).update(planPatch);
     const plan = await this.plans.doc(ask.planId).get();
     const parentName = (plan.exists && plan.data().parentName) || 'They';
     const noteLine = patch.note ? ` — "${patch.note}"` : '';
     this.notifyTeam(plan.exists ? { id: plan.id, ...plan.data() } : { ownerId: ask.ownerId }, {
       type: TYPES.answer,
-      title: `${parentName}: ${ANSWERS[answer]}`,
+      title: `${alert ? 'Heads up · ' : ''}${parentName}: ${resolved.answerText}`,
       body: `“${ask.questionText}”${noteLine}`,
-      data: { planId: ask.planId, askId, answer }
+      data: { planId: ask.planId, askId, answer: resolved.answerValue, kind: resolved.kind, alert: alert ? '1' : '0' }
     });
     return this.presentAsk({ ...ask, ...patch });
+  }
+
+  static badAnswerMessage(kind) {
+    switch (kind) {
+      case 'scale': return 'Answer with a number from 0 to 10.';
+      case 'text': return 'Type a few words.';
+      case 'done': return 'Answer must be yes, not_yet or no.';
+      case 'yesno': return 'Answer must be yes or no.';
+      default: return 'Answer must be great, okay or not_great.';
+    }
   }
 
   // MARK: - The scheduler
@@ -358,5 +428,5 @@ class CareCheckinService {
 
 Object.assign(CareCheckinService.prototype, require('./careCheckin/membership'), require('./careCheckin/scheduler'));
 module.exports = Object.assign(new CareCheckinService(), {
-  CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, ANSWERS, TYPES, DUE_AFTER_MS, localDateKey, friendlyTime
+  CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, ANSWERS, TYPES, DUE_AFTER_MS, RICH_ASKS_MIN_CLIENT, localDateKey, friendlyTime
 });

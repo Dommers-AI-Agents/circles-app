@@ -27,7 +27,8 @@ struct NotificationTapRouterTests {
         #expect(route(["type": "postcard_order", "data": ["orderId": "o2"]]) == .postcardOrder(id: "o2"))
         #expect(route(["type": "postcard_order", "orderId": ""]) == .homeWidget(id: "postcard"))
         #expect(route(["type": "water_reminder"]) == .homeWidget(id: "water"))
-        for t in ["care_invite", "care_ask", "care_answer", "care_accepted", "care_silence"] {
+        // One push type per question kind (the Lock Screen buttons differ); all open the widget.
+        for t in ["care_invite", "care_ask", "care_ask_done", "care_ask_yesno", "care_ask_scale", "care_ask_text", "care_answer", "care_accepted", "care_silence"] {
             #expect(route(["type": t]) == .homeWidget(id: "howareyou"))
         }
     }

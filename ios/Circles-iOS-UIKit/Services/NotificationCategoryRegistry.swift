@@ -101,14 +101,58 @@ enum NotificationCategoryRegistry {
             options: [.customDismissAction]
         )
 
-        // "How Are You?" question to a parent: three answers right on the
-        // Lock Screen. Background actions with NO authentication required,
-        // so an older parent answers without unlocking the phone.
+        // "How Are You?" question to a parent, answered right on the Lock
+        // Screen. Background actions with NO authentication required, so an
+        // older parent answers without unlocking the phone. One category per
+        // question KIND, because the buttons are baked in here: the server
+        // only sends a kind to builds that registered it (X-App-Build).
         let careCategory = UNNotificationCategory(
             identifier: NotificationActionHandler.CareAnswerAction.categoryIdentifier,
             actions: NotificationActionHandler.CareAnswerAction.allCases.map {
                 UNNotificationAction(identifier: $0.rawValue, title: $0.title, options: [])
             },
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+        let careDoneCategory = UNNotificationCategory(
+            identifier: NotificationActionHandler.CareDoneAction.categoryIdentifier,
+            actions: NotificationActionHandler.CareDoneAction.allCases.map {
+                UNNotificationAction(identifier: $0.rawValue, title: $0.title, options: [])
+            },
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+        let careYesNoCategory = UNNotificationCategory(
+            identifier: NotificationActionHandler.CareYesNoAction.categoryIdentifier,
+            actions: NotificationActionHandler.CareYesNoAction.allCases.map {
+                UNNotificationAction(identifier: $0.rawValue, title: $0.title, options: [])
+            },
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+        // 0–10 is typed (eleven buttons don't fit a Lock Screen); a tap on
+        // the notification itself opens the widget on a big slider.
+        let careScaleCategory = UNNotificationCategory(
+            identifier: NotificationActionHandler.careScaleCategory,
+            actions: [UNTextInputNotificationAction(
+                identifier: NotificationActionHandler.careScaleInputAction,
+                title: "Answer 0 to 10",
+                options: [],
+                textInputButtonTitle: "Send",
+                textInputPlaceholder: "A number from 0 to 10"
+            )],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+        let careTextCategory = UNNotificationCategory(
+            identifier: NotificationActionHandler.careTextCategory,
+            actions: [UNTextInputNotificationAction(
+                identifier: NotificationActionHandler.careTextInputAction,
+                title: "Reply",
+                options: [],
+                textInputButtonTitle: "Send",
+                textInputPlaceholder: "A few words is plenty"
+            )],
             intentIdentifiers: [],
             options: [.customDismissAction]
         )
@@ -129,6 +173,10 @@ enum NotificationCategoryRegistry {
             activityCategory,
             checkInPromptCategory,
             careCategory,
+            careDoneCategory,
+            careYesNoCategory,
+            careScaleCategory,
+            careTextCategory,
             waterCategory
         ]
     }

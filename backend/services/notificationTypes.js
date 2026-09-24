@@ -45,6 +45,13 @@ const TYPES = {
   fridgemail:              { category: null,                      pref: 'socialActivity',         badge: false },
   care_invite:             { category: null,                      pref: 'careCheckins',           badge: false },
   care_ask:                { category: 'CARE_ASK',                pref: 'careCheckins',           badge: false },
+  // One push type per question kind: the Lock Screen buttons differ (see
+  // careCheckin/questionBank.js). Only builds that registered the category
+  // are sent these; older parents keep getting plain care_ask.
+  care_ask_done:           { category: 'CARE_DONE',               pref: 'careCheckins',           badge: false },
+  care_ask_yesno:          { category: 'CARE_YESNO',              pref: 'careCheckins',           badge: false },
+  care_ask_scale:          { category: 'CARE_SCALE',              pref: 'careCheckins',           badge: false },
+  care_ask_text:           { category: 'CARE_TEXT',               pref: 'careCheckins',           badge: false },
   care_answer:             { category: null,                      pref: 'careCheckins',           badge: false },
   care_accepted:           { category: null,                      pref: 'careCheckins',           badge: false },
   care_silence:            { category: null,                      pref: 'careCheckins',           badge: false }

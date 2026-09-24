@@ -8,7 +8,8 @@ const OLD_CATEGORIES = {
   daily_summary: 'DAILY_SUMMARY', discovery_prompt: 'DISCOVERY_PROMPT', weekend_recommendations: 'WEEKEND_RECOMMENDATIONS',
   social_activity: 'SOCIAL_ACTIVITY', milestone: 'MILESTONE', check_in: 'CHECK_IN', engagement_reminder: 'ENGAGEMENT_REMINDER',
   weekly_summary: 'WEEKLY_SUMMARY', monthly_summary: 'MONTHLY_SUMMARY', special_event: 'SPECIAL_EVENT',
-  network_growth: 'NETWORK_GROWTH', care_ask: 'CARE_ASK'
+  network_growth: 'NETWORK_GROWTH', care_ask: 'CARE_ASK',
+  care_ask_done: 'CARE_DONE', care_ask_yesno: 'CARE_YESNO', care_ask_scale: 'CARE_SCALE', care_ask_text: 'CARE_TEXT'
 };
 const OLD_TYPE_MAP = {
   new_message: 'newMessages', new_suggestion: 'newSuggestions', new_place: 'newPlaces',
@@ -19,6 +20,7 @@ const OLD_TYPE_MAP = {
   engagement_reminder: 'reengagement', milestone: 'milestones', did_you_know: 'tips',
   nextbar_round: 'socialActivity', nextbar_result: 'socialActivity', postcard_order: 'socialActivity', fridgemail: 'socialActivity',
   care_invite: 'careCheckins', care_ask: 'careCheckins', care_answer: 'careCheckins', care_accepted: 'careCheckins', care_silence: 'careCheckins',
+  care_ask_done: 'careCheckins', care_ask_yesno: 'careCheckins', care_ask_scale: 'careCheckins', care_ask_text: 'careCheckins',
   daily_quote: 'dailyQuote'
 };
 const OLD_BADGE_WORTHY = ['new_message', 'connection_request', 'connection_accepted', 'place_like', 'place_comment', 'new_follower',

@@ -38,6 +38,45 @@ final class NotificationActionHandler {
         }
     }
 
+    /// "Did you … today?" — Yes / Not yet / No.
+    enum CareDoneAction: String, CaseIterable {
+        static let categoryIdentifier = "CARE_DONE"
+        case yes = "CARE_DONE_YES"
+        case notYet = "CARE_DONE_NOT_YET"
+        case no = "CARE_DONE_NO"
+
+        var title: String {
+            switch self {
+            case .yes: return "Yes"
+            case .notYet: return "Not yet"
+            case .no: return "No"
+            }
+        }
+        var answer: String {
+            switch self {
+            case .yes: return "yes"
+            case .notYet: return "not_yet"
+            case .no: return "no"
+            }
+        }
+    }
+
+    /// A state, not a task — Yes / No.
+    enum CareYesNoAction: String, CaseIterable {
+        static let categoryIdentifier = "CARE_YESNO"
+        case yes = "CARE_YES"
+        case no = "CARE_NO"
+
+        var title: String { self == .yes ? "Yes" : "No" }
+        var answer: String { self == .yes ? "yes" : "no" }
+    }
+
+    static let careScaleCategory = "CARE_SCALE"
+    static let careScaleInputAction = "CARE_SCALE_INPUT"
+    static let careTextCategory = "CARE_TEXT"
+    static let careTextInputAction = "CARE_TEXT_INPUT"
+
+
     /// Sends a Lock Screen answer to the server, then releases the
     /// notification. If the phone is offline the tap opens the widget so
 
@@ -126,7 +165,37 @@ final class NotificationActionHandler {
             // the request returns: a background action's process can be
             // suspended as soon as we call it.
             if let askId = userInfo["askId"] as? String, let action = CareAnswerAction(rawValue: response.actionIdentifier) {
-                handleCareAnswer(askId: askId, action: action, completion: completion)
+                handleCareAnswer(askId: askId, body: ["answer": action.answer, "note": ""], completion: completion)
+                return
+            }
+
+        case CareDoneAction.yes.rawValue, CareDoneAction.notYet.rawValue, CareDoneAction.no.rawValue:
+            if let askId = userInfo["askId"] as? String, let action = CareDoneAction(rawValue: response.actionIdentifier) {
+                handleCareAnswer(askId: askId, body: ["answer": action.answer, "note": ""], completion: completion)
+                return
+            }
+
+        case CareYesNoAction.yes.rawValue, CareYesNoAction.no.rawValue:
+            if let askId = userInfo["askId"] as? String, let action = CareYesNoAction(rawValue: response.actionIdentifier) {
+                handleCareAnswer(askId: askId, body: ["answer": action.answer, "note": ""], completion: completion)
+                return
+            }
+
+        case Self.careScaleInputAction:
+            // A typed 0–10. Anything else opens the widget, where the slider is.
+            if let askId = userInfo["askId"] as? String, let typed = (response as? UNTextInputNotificationResponse)?.userText {
+                if let n = CareScaleInput.value(from: typed) {
+                    handleCareAnswer(askId: askId, body: ["value": n, "note": ""], completion: completion)
+                } else {
+                    NotificationCenter.default.post(name: .navigateToHomeWidget, object: "howareyou")
+                    completion()
+                }
+                return
+            }
+
+        case Self.careTextInputAction:
+            if let askId = userInfo["askId"] as? String, let typed = (response as? UNTextInputNotificationResponse)?.userText {
+                handleCareAnswer(askId: askId, body: ["value": typed, "note": ""], completion: completion)
                 return
             }
 
@@ -146,11 +215,14 @@ final class NotificationActionHandler {
         completion()
     }
 
-    private func handleCareAnswer(askId: String, action: CareAnswerAction, completion: @escaping () -> Void) {
+    /// Sends a Lock Screen answer (a choice key as `answer`, or a number or
+    /// words as `value`), then releases the notification. A failure opens
+    /// the widget so the question isn't lost.
+    private func handleCareAnswer(askId: String, body: [String: Any], completion: @escaping () -> Void) {
         APIService.shared.request(
             endpoint: "widgets/care/asks/\(askId)/answer",
             method: .post,
-            body: ["answer": action.answer, "note": ""]
+            body: body
         ) { (result: Result<EmptyResponse, APIError>) in
             DispatchQueue.main.async {
                 if case .failure(let error) = result {

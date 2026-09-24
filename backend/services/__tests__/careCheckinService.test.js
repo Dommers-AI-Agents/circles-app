@@ -65,7 +65,10 @@ describe('setting up', () => {
     expect(plan.status).toBe('invited');
     expect(plan.parentName).toBe('Mom');
     expect(plan.times).toEqual(['08:30']); // invalid and duplicate times dropped
-    expect(plan.questions.map((q) => q.text)).toEqual(['Did you sleep?', 'Did you sleep?']);
+    expect(plan.questions.map((q) => [q.text, q.kind])).toEqual([['Did you sleep?', 'yesno']]); // duplicates dropped; a typed question is a yes/no
+    expect(plan.profile).toBeNull(); // the care questionnaire hasn't been done
+    expect(plan.rotation.map((q) => q.id)).toContain('mood_morning');
+    expect(plan.rotation.map((q) => q.id)).not.toContain('pt_week'); // no profile → no PT
     expect(plan.timezone).toBe('America/New_York'); // from the parent's preferences
     expect(notificationService.sendToUser).toHaveBeenCalledWith(PARENT, expect.objectContaining({
       type: 'care_invite', title: 'Wes wants to check in on you', data: expect.objectContaining({ type: 'care_invite', planId: PLAN })
@@ -159,17 +162,50 @@ describe('asking', () => {
     expect((await care.runDue({ now: new Date('2026-09-19T15:40:00Z') })).asked).toBe(1); // 08:40 in LA
   });
 
-  test('questions rotate through the child\'s own list and survive edits', async () => {
+  test('a parent on an older app only gets mood questions, one per time of day', async () => {
     await activePlan();
-    await care.updatePlan({ userId: CHILD, planId: PLAN, questions: ['Sleep ok?', 'Eat yet?'] });
+    await care.updatePlan({ userId: CHILD, planId: PLAN, questions: ['Sleep ok?', 'Eat yet?'] }); // yes/no kind: no buttons on an old build
     await care.runDue({ now: T_0835_NY });
     await care.runDue({ now: new Date('2026-09-19T17:05:00Z') });
     await care.runDue({ now: new Date('2026-09-19T23:05:00Z') });
-    const texts = [...asks().values()].sort((a, b) => (a.askedAt < b.askedAt ? -1 : 1)).map((a) => a.questionText);
-    expect(texts).toEqual(['Sleep ok?', 'Eat yet?', 'Sleep ok?']);
+    const sent = [...asks().values()].sort((a, b) => (a.askedAt < b.askedAt ? -1 : 1));
+    expect(sent.map((a) => a.questionText)).toEqual(['How are you feeling today?', 'How is your afternoon going?', 'How was your day?']);
+    expect(sent.every((a) => a.kind === 'mood')).toBe(true);
+    expect(notificationService.sendToUser.mock.calls.filter(([to]) => to === PARENT).every(([, p]) => p.type === 'care_ask')).toBe(true);
+    expect(plans().get(PLAN).parentCanAnswerRich).toBe(false);
     // Editing the list later doesn't rewrite what was already asked.
     await care.updatePlan({ userId: CHILD, planId: PLAN, questions: ['Something new?'] });
     expect([...asks().values()].every((a) => a.questionText !== 'Something new?')).toBe(true);
+  });
+
+  test('a parent on a new app gets the kinds, the profile picks the questions, and each push type matches its kind', async () => {
+    await activePlan();
+    await mockDb.collection(COLLECTIONS.USERS).doc(PARENT).set({ displayName: 'Mom', deviceTokens: [{ token: 't', platform: 'ios', appVersion: '1.3.3', appBuild: 6 }] });
+    await care.updatePlan({ userId: CHILD, planId: PLAN, profile: { takesMeds: true, hasPT: true, chronicPain: true } });
+    // Friday 2026-09-25: the PT week question is due, and takes the day's last evening slot.
+    await care.runDue({ now: new Date('2026-09-25T12:35:00Z') }); // 08:35 NY
+    await care.runDue({ now: new Date('2026-09-25T17:05:00Z') }); // 13:05 NY
+    await care.runDue({ now: new Date('2026-09-25T23:05:00Z') }); // 19:05 NY
+    const sent = [...asks().values()].sort((a, b) => (a.askedAt < b.askedAt ? -1 : 1));
+    expect(sent.map((a) => a.questionId)).toEqual(['meds_today', 'pain', 'pt_week']);
+    expect(sent.map((a) => a.kind)).toEqual(['done', 'scale', 'yesno']);
+    expect(sent[1]).toMatchObject({ short: 'Pain', low: 'No pain', high: 'Worst pain', alertRule: { min: 7 } });
+    const types = notificationService.sendToUser.mock.calls.filter(([to]) => to === PARENT).map(([, p]) => p.type);
+    expect(types).toEqual(['care_ask_done', 'care_ask_scale', 'care_ask_yesno']);
+    expect(notificationService.sendToUser.mock.calls.find(([, p]) => p.type === 'care_ask_scale')[1].data).toMatchObject({ kind: 'scale' });
+    expect(plans().get(PLAN).parentCanAnswerRich).toBe(true);
+    // The next day, PT waits for Friday.
+    await care.runDue({ now: new Date('2026-09-26T17:05:00Z') });
+    const saturday = [...asks().values()].find((a) => a.dateKey === '2026-09-26');
+    expect(saturday.questionId).not.toBe('pt_week');
+    // Muting a bank question keeps it out; the owner sees the rotation with the reason.
+    const plan = await care.updatePlan({ userId: CHILD, planId: PLAN, mutedQuestionIds: ['pain', 'not_a_question'] });
+    expect(plan.mutedQuestionIds).toEqual(['pain']);
+    expect(plan.rotation.find((q) => q.id === 'pain')).toMatchObject({ muted: true, source: 'bank', cadence: 'Daily', kind: 'scale' });
+    expect(plan.rotation.find((q) => q.id === 'pt_week')).toMatchObject({ cadence: 'Weekly · Fridays', requires: 'hasPT' });
+    expect(plan.rotation.find((q) => q.id === 'falls')).toBeUndefined();
+    expect(plan.profile).toEqual(expect.objectContaining({ takesMeds: true, hasPT: true, chronicPain: true, livesAlone: false }));
+    expect(plan.profileFields.length).toBeGreaterThan(5);
   });
 
   test('paused plans are silent', async () => {
@@ -203,6 +239,74 @@ describe('answering', () => {
     const plan = (await care.listPlans(CHILD)).asOwner[0];
     expect(plan.lastAnswer.answerText).toBe('Doing great 👍');
     expect(plan.openAsk).toBeNull();
+  });
+});
+
+describe('answering by kind', () => {
+  async function richPlan(profile) {
+    await activePlan();
+    await mockDb.collection(COLLECTIONS.USERS).doc(PARENT).set({ displayName: 'Mom', deviceTokens: [{ token: 't', platform: 'ios', appVersion: '1.3.4' }] });
+    await care.updatePlan({ userId: CHILD, planId: PLAN, profile });
+    notificationService.sendToUser.mockClear();
+  }
+
+  test('a 0–10 question takes a number, words it, and a bad day is a heads-up to the family', async () => {
+    await richPlan({ chronicPain: true });
+    await care.runDue({ now: new Date('2026-09-21T17:05:00Z') }); // Monday 13:05 NY: pain (daily, weight) beats the rest
+    const [askId, ask] = [...asks().entries()].find(([, a]) => a.questionId === 'pain');
+    expect(ask.kind).toBe('scale');
+    notificationService.sendToUser.mockClear();
+    await expect(care.answerAsk({ userId: PARENT, askId, value: 11 })).rejects.toMatchObject({ code: 'bad_answer', message: 'Answer with a number from 0 to 10.' });
+    await expect(care.answerAsk({ userId: PARENT, askId, answer: 'great' })).rejects.toMatchObject({ code: 'bad_answer' });
+    const answered = await care.answerAsk({ userId: PARENT, askId, value: '8', note: 'my hip' });
+    expect(answered).toMatchObject({ kind: 'scale', answer: null, answerValue: '8', answerScore: 8, answerText: 'Pain 8/10', alert: true, low: 'No pain', high: 'Worst pain' });
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(CHILD, expect.objectContaining({
+      type: 'care_answer', title: 'Heads up · Mom: Pain 8/10', body: '“How much pain are you in today?” — "my hip"',
+      data: expect.objectContaining({ kind: 'scale', answer: '8', alert: '1' })
+    }));
+  });
+
+  test('a did-you question takes yes / not yet / no, and "no" to medicine is a heads-up', async () => {
+    await richPlan({ takesMeds: true });
+    await care.runDue({ now: new Date('2026-09-22T12:35:00Z') }); // Tuesday 08:35 NY
+    const [askId, ask] = [...asks().entries()].find(([, a]) => a.questionId === 'meds_today');
+    expect(ask.kind).toBe('done');
+    await expect(care.answerAsk({ userId: PARENT, askId, answer: 'great' })).rejects.toMatchObject({ code: 'bad_answer', message: 'Answer must be yes, not_yet or no.' });
+    const answered = await care.answerAsk({ userId: PARENT, askId, answer: 'no' });
+    expect(answered).toMatchObject({ kind: 'done', answer: 'no', answerValue: 'no', answerText: 'No', alert: true });
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(CHILD, expect.objectContaining({ title: 'Heads up · Mom: No' }));
+    // "Yes" on a later day is a plain answer. (Morning slots are shared with sleep and the rest, so find the next one.)
+    let next = null;
+    for (let day = 23; day <= 27 && !next; day += 1) {
+      await care.runDue({ now: new Date(`2026-09-${day}T12:35:00Z`) });
+      next = [...asks().entries()].find(([, a]) => a.questionId === 'meds_today' && a.dateKey === `2026-09-${day}`);
+    }
+    const [askId2] = next;
+    notificationService.sendToUser.mockClear();
+    expect(await care.answerAsk({ userId: PARENT, askId: askId2, answer: 'yes' })).toMatchObject({ answerText: 'Yes', alert: false });
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(CHILD, expect.objectContaining({ title: 'Mom: Yes' }));
+  });
+
+  test('a typed answer is kept as words; blank is refused', async () => {
+    await richPlan({ needsRides: true });
+    await care.runDue({ now: new Date('2026-09-23T23:05:00Z') }); // Wednesday 19:05 NY: rides is pinned to Wednesdays
+    const [askId, ask] = [...asks().entries()].find(([, a]) => a.questionId === 'rides');
+    expect(ask.kind).toBe('text');
+    await expect(care.answerAsk({ userId: PARENT, askId, value: '   ' })).rejects.toMatchObject({ code: 'bad_answer', message: 'Type a few words.' });
+    const answered = await care.answerAsk({ userId: PARENT, askId, value: 'Eye doctor Thursday  at 2' });
+    expect(answered).toMatchObject({ kind: 'text', answer: null, answerValue: 'Eye doctor Thursday at 2', answerText: 'Eye doctor Thursday at 2', alert: false });
+    const history = await care.listAsks({ userId: CHILD, planId: PLAN });
+    expect(history[0]).toMatchObject({ kind: 'text', answerText: 'Eye doctor Thursday at 2' });
+  });
+
+  test('the parent answering from a new build marks the plan as able to take rich questions', async () => {
+    await activePlan();
+    await care.runDue({ now: T_0835_NY });
+    const askId = [...asks().keys()][0];
+    await care.answerAsk({ userId: PARENT, askId, answer: 'okay', client: { version: '1.3.3', build: 6 } });
+    expect(plans().get(PLAN).parentCanAnswerRich).toBe(true);
+    await care.respondToInvite({ userId: PARENT, planId: PLAN, accept: true, client: { version: '1.3.3', build: null } });
+    expect(plans().get(PLAN).parentCanAnswerRich).toBe(true); // never un-set by an older-looking request
   });
 });
 

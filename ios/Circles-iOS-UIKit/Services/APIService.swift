@@ -643,6 +643,12 @@ class APIService {
         if let build = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
             request.addValue(build, forHTTPHeaderField: "X-App-Version")
         }
+        // The build number too: a push whose Lock Screen buttons only exist in
+        // newer builds (the care check-in kinds) is held back from older ones
+        // by the build the device token was registered from.
+        if let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
+            request.addValue(build, forHTTPHeaderField: "X-App-Build")
+        }
         
         // Add cache control headers to prevent 304 responses
         if method == .get {

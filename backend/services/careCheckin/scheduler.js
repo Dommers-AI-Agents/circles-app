@@ -1,5 +1,10 @@
 // services/careCheckin/scheduler.js — methods of CareCheckinService (mixed into its prototype by the facade).
-const { DEFAULT_QUESTIONS, DEFAULT_TIMES, DUE_AFTER_MS, RUN_WINDOW_MINUTES, TYPES, friendlyTime, localClock, localDateKey, nowIso } = require('./shared');
+const { COLLECTIONS, DEFAULT_TIMES, DUE_AFTER_MS, RICH_ASKS_MIN_CLIENT, RUN_WINDOW_MINUTES, TYPES, bank, friendlyTime, localClock, localDateKey, nowIso } = require('./shared');
+const planner = require('./questionPlanner');
+const { anyDeviceAtLeast } = require('../../utils/appVersion');
+
+/** How much history the planner sees: ~a month at three questions a day. */
+const RECENT_FOR_PLANNING = 90;
 
 module.exports = {
   nextSlot(plan, now = new Date()) {
@@ -11,11 +16,23 @@ module.exports = {
     }) || times[0];
   },
 
-  /** Questions in rotation: the owner's own, or the defaults. */
-  pickQuestion(plan) {
-    const pool = (plan.questions || []).length ? plan.questions : DEFAULT_QUESTIONS.map((text, i) => ({ id: `default_${i}`, text }));
-    const index = Number.isInteger(plan.nextQuestionIndex) ? plan.nextQuestionIndex % pool.length : 0;
-    return { question: pool[index], nextIndex: (index + 1) % pool.length };
+  /**
+   * The question for one slot: the bank filtered by the care profile, the
+   * owner's own questions, what was asked lately, and whether the parent's
+   * app can answer anything beyond the three mood buttons. Pure inside
+   * (questionPlanner.js); this only gathers the inputs.
+   */
+  pickQuestion(plan, { slot, dateKey, weekday, recent = [], capable = false }) {
+    return planner.pick({
+      profile: plan.profile || {}, custom: plan.questions || [], muted: plan.mutedQuestionIds || [],
+      capable, slot, slots: plan.times || DEFAULT_TIMES, dateKey, weekday, recent
+    });
+  },
+
+  /** Whether the parent's app has the Lock Screen buttons for non-mood questions. */
+  async parentCanAnswerRich(plan) {
+    const doc = await this.db.collection(COLLECTIONS.USERS).doc(plan.parentId).get();
+    return doc.exists && anyDeviceAtLeast(doc.data().deviceTokens, RICH_ASKS_MIN_CLIENT);
   },
 
   /**
@@ -51,37 +68,47 @@ module.exports = {
     const clock = localClock(plan.timezone, now);
     const dateKey = localDateKey(plan.timezone, now);
     let sent = 0;
-    let nextIndex = plan.nextQuestionIndex;
+    let context = null; // gathered once, only when a slot is actually due
     for (const slot of plan.times || DEFAULT_TIMES) {
       const [h, m] = slot.split(':').map((n) => parseInt(n, 10));
       const slotMinutes = h * 60 + m;
       const delta = clock.minutes - slotMinutes;
       if (delta < 0 || delta >= RUN_WINDOW_MINUTES) continue;
       const askId = this.constructor.askId(plan.id, dateKey, slot);
-      const { question, nextIndex: after } = this.pickQuestion({ ...plan, nextQuestionIndex: nextIndex });
+      if (!context) {
+        const [recent, capable] = await Promise.all([this.recentAsks(plan.id, RECENT_FOR_PLANNING), this.parentCanAnswerRich(plan)]);
+        context = { recent: recent.map((a) => ({ questionId: a.questionId, dateKey: a.dateKey })), capable, weekday: clock.weekday };
+      }
+      const question = this.pickQuestion(plan, { slot, dateKey, ...context });
+      if (!question) continue; // everything in rotation was already asked today
+      const meta = bank.kindMeta(question);
       const ask = {
         planId: plan.id, ownerId: plan.ownerId, parentId: plan.parentId,
         slot, dateKey, questionId: question.id, questionText: question.text,
+        kind: meta.kind, short: meta.short || null, low: meta.low || null, high: meta.high || null,
+        alertRule: question.alert || null,
         askedAt: now.toISOString(), dueBy: new Date(now.getTime() + DUE_AFTER_MS).toISOString(),
-        status: 'open', answer: null, note: '', answeredAt: null, alertedAt: null, pushDelivered: null, pushError: null
+        status: 'open', answer: null, answerValue: null, answerScore: null, answerText: null, alert: false,
+        note: '', answeredAt: null, alertedAt: null, pushDelivered: null, pushError: null
       };
       try {
         await this.asks.doc(askId).create(ask);
       } catch (error) {
         continue; // already asked this slot today (a retried run)
       }
-      nextIndex = after;
+      // The same question again in this run's planning window
+      context.recent.unshift({ questionId: question.id, dateKey });
       const result = await this.push(plan.parentId, {
-        type: TYPES.ask,
+        type: TYPES.askByKind[meta.kind] || TYPES.ask,
         title: `${plan.ownerName || 'Your family'} asks`,
         body: question.text,
-        data: { planId: plan.id, askId, questionText: question.text }
+        data: { planId: plan.id, askId, questionText: question.text, kind: meta.kind }
       });
       await this.asks.doc(askId).update({ pushDelivered: !!(result && result.success), pushError: result && result.error ? String(result.error) : null });
       sent += 1;
     }
     if (sent > 0) {
-      await this.plans.doc(plan.id).update({ nextQuestionIndex: nextIndex, lastAskedAt: now.toISOString(), updatedAt: nowIso() });
+      await this.plans.doc(plan.id).update({ lastAskedAt: now.toISOString(), parentCanAnswerRich: context.capable, updatedAt: nowIso() });
     }
     return sent;
   },

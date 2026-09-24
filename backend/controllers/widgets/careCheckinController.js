@@ -2,6 +2,7 @@
 // "How Are You?" check-ins. Handlers pass named fields to the service —
 // never a body spread — and the service enforces who may do what.
 const care = require('../../services/careCheckinService');
+const { clientFromRequest } = require('../../utils/appVersion');
 
 const { sendServiceError } = require('../../utils/serviceError');
 const fail = (res, error) => sendServiceError(res, error, {
@@ -13,14 +14,14 @@ exports.listPlans = async (req, res) => {
 };
 
 exports.createPlan = async (req, res) => {
-  const { parentId, times, questions } = req.body || {};
-  try { res.status(201).json({ success: true, plan: await care.createPlan({ ownerId: req.user.uid, parentId, times, questions }) }); }
+  const { parentId, times, questions, profile } = req.body || {};
+  try { res.status(201).json({ success: true, plan: await care.createPlan({ ownerId: req.user.uid, parentId, times, questions, profile }) }); }
   catch (e) { fail(res, e); }
 };
 
 exports.updatePlan = async (req, res) => {
-  const { times, questions, status } = req.body || {};
-  try { res.json({ success: true, plan: await care.updatePlan({ userId: req.user.uid, planId: req.params.id, times, questions, status }) }); }
+  const { times, questions, status, profile, mutedQuestionIds } = req.body || {};
+  try { res.json({ success: true, plan: await care.updatePlan({ userId: req.user.uid, planId: req.params.id, times, questions, status, profile, mutedQuestionIds }) }); }
   catch (e) { fail(res, e); }
 };
 
@@ -31,7 +32,7 @@ exports.endPlan = async (req, res) => {
 
 exports.respond = async (req, res) => {
   const { accept, timezone } = req.body || {};
-  try { res.json({ success: true, plan: await care.respondToInvite({ userId: req.user.uid, planId: req.params.id, accept: accept === true, timezone }) }); }
+  try { res.json({ success: true, plan: await care.respondToInvite({ userId: req.user.uid, planId: req.params.id, accept: accept === true, timezone, client: clientFromRequest(req) }) }); }
   catch (e) { fail(res, e); }
 };
 
@@ -48,9 +49,11 @@ exports.listAsks = async (req, res) => {
   catch (e) { fail(res, e); }
 };
 
+// `answer` is a choice key; `value` a 0–10 number or typed words. Which one
+// applies is decided by the question's kind, in the service.
 exports.answer = async (req, res) => {
-  const { answer, note } = req.body || {};
-  try { res.json({ success: true, ask: await care.answerAsk({ userId: req.user.uid, askId: req.params.id, answer, note }) }); }
+  const { answer, value, note } = req.body || {};
+  try { res.json({ success: true, ask: await care.answerAsk({ userId: req.user.uid, askId: req.params.id, answer, value, note, client: clientFromRequest(req) }) }); }
   catch (e) { fail(res, e); }
 };
 
