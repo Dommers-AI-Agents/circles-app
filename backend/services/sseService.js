@@ -303,10 +303,13 @@ class SSEService {
       }).length === 1;
     };
 
-    buildViewerContext(userId)
-      .then(ctx => {
+    const { getConnectedUserIds } = require('../utils/networkAccess');
+    Promise.all([buildViewerContext(userId), getConnectedUserIds(userId)])
+      .then(([ctx, rawConnectionIds]) => {
         ctxCache = { ctx, builtAt: Date.now() };
-        const connectedUserIds = new Set(ctx.connections);
+        // The listener matches the stored actorId, which is the RAW id; the
+        // context's sets are normalised and serve the gate only.
+        const connectedUserIds = new Set((rawConnectionIds || []).map(String));
         connectedUserIds.add(userId); // Include self
 
         if (connectedUserIds.size > 0) {

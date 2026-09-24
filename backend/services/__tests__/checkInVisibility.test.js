@@ -121,3 +121,16 @@ describe('context shapes', () => {
     expect(await isCheckInVisibleTo(base, 'friend', stranger)).toBe(false);
   });
 });
+
+describe('id shapes', () => {
+  // Apple accounts can arrive as "a.uid.b"; a viewerContext keys by the
+  // normalised middle part, and the check-in doc keeps the raw one.
+  test('a normalised context still finds a check-in stored under a dotted id', async () => {
+    const dotted = { ...base, userId: 'apple.uid123.x', audience: null };
+    const normalizedCtx = { connections: new Set(['uid123']), innerCircleGrantors: new Set(['uid123']), innerCircleLists: new Map([['uid123', new Set(['family'])]]), isInAnyGroup: async () => false };
+    expect(await isCheckInVisibleTo(dotted, 'friend', normalizedCtx)).toBe(true);
+    expect(await isCheckInVisibleTo({ ...dotted, audience: 'innerCircle' }, 'friend', normalizedCtx)).toBe(true);
+    expect(await isCheckInVisibleTo({ ...dotted, audience: 'innerCircle', audienceListId: 'family' }, 'friend', normalizedCtx)).toBe(true);
+    expect(await isCheckInVisibleTo({ ...dotted, audience: 'innerCircle', audienceListId: 'work' }, 'friend', normalizedCtx)).toBe(false);
+  });
+});

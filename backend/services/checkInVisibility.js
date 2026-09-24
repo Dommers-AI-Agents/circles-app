@@ -12,7 +12,14 @@
 // `audienceListId` names WHICH of the owner's lists. A check-in written
 // before lists existed carries none, and means any of them.
 
+const { normalizeUserId } = require('./idService');
+
 const isPrivateCheckIn = (checkIn) => checkIn.isPrivate === true;
+
+// A viewerContext keys its sets by NORMALISED id; the older hand-rolled ctx
+// used raw ids. Ask with both so neither shape loses a check-in.
+const setHas = (set, id) => !!set && (set.has(id) || set.has(normalizeUserId(id)));
+const mapGet = (map, id) => (map && (map.get(id) || map.get(normalizeUserId(id)))) || null;
 
 /**
  * @param {object} checkIn  the stored check-in (userId, notifiedUsers,
@@ -29,17 +36,17 @@ const isCheckInVisibleTo = async (checkIn, viewerId, ctx) => {
   if ((checkIn.notifiedUsers || []).includes(viewerId)) return true;
   if (checkIn.audience === 'innerCircle') {
     if (!checkIn.audienceListId) {
-      return !!(ctx.innerCircleGrantors && ctx.innerCircleGrantors.has(checkIn.userId));
+      return setHas(ctx.innerCircleGrantors, checkIn.userId);
     }
     // Named a list, so only that list — and if the caller didn't bring the
     // per-list map, nobody, because guessing here shows it to the wrong people.
-    const lists = ctx.innerCircleLists && ctx.innerCircleLists.get(checkIn.userId);
+    const lists = mapGet(ctx.innerCircleLists, checkIn.userId);
     return !!(lists && lists.has(checkIn.audienceListId));
   }
   // `connections` is the viewerContext shape; `connectionIds` the older
   // hand-rolled one — both accepted for a release.
   const connections = ctx.connections || ctx.connectionIds;
-  if (connections && connections.has(checkIn.userId) && checkIn.showInActivityFeed) return true;
+  if (setHas(connections, checkIn.userId) && checkIn.showInActivityFeed) return true;
   if (ctx.isInAnyGroup && (checkIn.notifiedGroups || []).length > 0) {
     return ctx.isInAnyGroup(viewerId, checkIn.notifiedGroups);
   }
