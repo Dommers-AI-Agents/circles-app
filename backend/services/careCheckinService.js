@@ -88,7 +88,8 @@ class CareCheckinService {
   }
 
   static presentQuestion(q) {
-    const out = { id: q.id, text: q.text, ...bank.kindMeta(q) };
+    // An own question from before kinds has none stored: it is a plain yes/no.
+    const out = { id: q.id, text: q.text, ...bank.kindMeta({ ...q, kind: bank.KINDS.includes(q.kind) ? q.kind : planner.LEGACY_OWN_KIND }) };
     out.source = q.source || 'custom';
     out.muted = q.muted === true;
     out.cadence = bank.cadenceLabel(q);

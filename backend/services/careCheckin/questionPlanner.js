@@ -21,6 +21,8 @@
 const { BANK_BY_TEXT, applicable, phaseOf } = require('./questionBank');
 
 const CUSTOM_EVERY_DAYS = 1;
+/** An own question stored without a kind (written before kinds) is a plain yes/no. */
+const LEGACY_OWN_KIND = 'yesno';
 const OFF_PHASE_FACTOR = 0.3;
 const BOOST_FACTOR = 1.6;
 /** A question never asked counts as this overdue: new questions get their turn soon, without swamping the daily ones. */
@@ -85,12 +87,14 @@ function pick({ profile = {}, custom = [], muted = [], capable = false, slot, sl
  * The owner's own questions, as the planner sees them. One that is word for
  * word a bank question is dropped: the bank asks it with the right answers
  * (plans from before kinds carried the old defaults as mood questions —
- * "Did you get outside today?" with Doing great / Okay / Not so good).
+ * "Did you get outside today?" with Doing great / Okay / Not so good). One
+ * written before kinds existed has none stored; it is a plain yes/no, like a
+ * freshly typed one — never a mood question with the wrong buttons.
  */
 function ownQuestions(custom) {
   return custom
     .filter((q) => q && q.text && !BANK_BY_TEXT.has(q.text))
-    .map((q) => ({ everyDays: CUSTOM_EVERY_DAYS, ...q, kind: q.kind || 'mood', custom: true }));
+    .map((q) => ({ everyDays: CUSTOM_EVERY_DAYS, ...q, kind: q.kind || LEGACY_OWN_KIND, custom: true }));
 }
 
 /** The slot a weekday-pinned question goes out at: the last one in its preferred time of day, else the day's last. */
@@ -108,4 +112,4 @@ function rotation({ profile = {}, custom = [], muted = [] }) {
   ];
 }
 
-module.exports = { daysBetween, pick, pinnedSlot, rotation };
+module.exports = { LEGACY_OWN_KIND, daysBetween, pick, pinnedSlot, rotation };

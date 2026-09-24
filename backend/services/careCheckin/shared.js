@@ -78,8 +78,9 @@ function normalizeTimes(times) {
 }
 
 /**
- * The owner's own questions. Each carries a kind (default: a plain yes/no
- * for a newly typed one; a question already on the plan keeps its kind).
+ * The owner's own questions. Each carries a kind (default: a plain yes/no,
+ * for a newly typed one and for one written before kinds existed; a question
+ * already on the plan keeps the kind it has).
  * A string that is one of the bank's questions is dropped: the bank already
  * asks it, and an older owner build sends the whole default list back when
  * it adds one question of its own.
@@ -94,7 +95,7 @@ function normalizeQuestions(questions, existing = []) {
     seen.add(text);
     const prior = existing.find((e) => e.text === text) || (q && q.id ? existing.find((e) => e.id === q.id) : null);
     const askedKind = q && typeof q === 'object' && bank.KINDS.includes(q.kind) ? q.kind : null;
-    const kind = askedKind || (prior && prior.kind) || (prior ? 'mood' : 'yesno');
+    const kind = askedKind || (prior && prior.kind) || 'yesno';
     const row = { id: prior ? prior.id : newId(), text, kind, createdAt: prior ? prior.createdAt : nowIso() };
     if (kind === 'scale') {
       const src = q && typeof q === 'object' ? q : {};

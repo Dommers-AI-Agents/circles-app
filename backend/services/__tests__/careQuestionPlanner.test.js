@@ -28,10 +28,13 @@ describe('question planner', () => {
     expect(planner.pick({ ...base, capable: false }).id).toBe('mood_morning');
     expect(planner.pick({ ...base, capable: false, slot: '13:00' }).id).toBe('mood_midday');
     expect(planner.pick({ ...base, capable: false, slot: '19:00' }).id).toBe('mood_evening');
-    // The owner's own yes/no question waits for the app update; a legacy custom question (no kind) still goes out.
-    const custom = [{ id: 'c1', text: 'Did you call Sue?', kind: 'yesno' }, { id: 'c2', text: 'How are things?' }];
+    // The owner's own questions wait for the app update — including one written before kinds
+    // (no kind stored), which is a yes/no, never a mood question with the wrong buttons.
+    const custom = [{ id: 'c1', text: 'Did you call Sue?', kind: 'yesno' }, { id: 'c2', text: 'Did you wade in the pool today?' }];
     const recent = [{ questionId: 'mood_morning', dateKey: base.dateKey }];
-    expect(planner.pick({ ...base, capable: false, custom, recent }).id).toBe('c2');
+    expect(planner.pick({ ...base, capable: false, custom, recent }).id).not.toBe('c2');
+    expect(planner.pick({ ...base, capable: true, custom, recent: [...recent, { questionId: 'c1', dateKey: base.dateKey }] , slot: '13:00', muted: bank.BANK.map((q) => q.id) }).id).toBe('c2');
+    expect(planner.rotation({ custom }).find((q) => q.id === 'c2').kind).toBe('yesno');
   });
 
   test('profile flags open their questions; a weekday-pinned one goes first on its day', () => {
@@ -74,9 +77,9 @@ describe('question planner', () => {
     expect(rot.filter((q) => q.text === 'Did you get outside today?').map((q) => q.source)).toEqual(['bank']);
     expect(rot.find((q) => q.id === 'old_sleep')).toBeUndefined(); // the old wording of a bank question, too
     expect(Object.keys(bank.LEGACY_TEXTS).every((t) => bank.BANK_BY_TEXT.has(t))).toBe(true);
-    expect(rot.find((q) => q.id === 'own')).toMatchObject({ source: 'custom', kind: 'mood' });
-    // On an old parent app the mood-kind duplicate must not sneak back in as a mood question.
-    const everythingMood = ['mood_morning', 'mood_midday', 'mood_evening', 'own'].map((id) => ({ questionId: id, dateKey: base.dateKey }));
+    expect(rot.find((q) => q.id === 'own')).toMatchObject({ source: 'custom', kind: 'yesno' });
+    // On an old parent app nothing of the owner's goes out with the wrong buttons: only the mood bank.
+    const everythingMood = ['mood_morning', 'mood_midday', 'mood_evening'].map((id) => ({ questionId: id, dateKey: base.dateKey }));
     expect(planner.pick({ ...base, capable: false, custom, recent: everythingMood })).toBeNull();
   });
 
