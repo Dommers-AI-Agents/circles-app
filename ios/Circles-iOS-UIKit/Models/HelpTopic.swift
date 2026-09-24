@@ -167,7 +167,7 @@ class HelpContentProvider {
                 2. Select "Create Circle"
                 3. Choose a name (e.g., "Date Night Spots")
                 4. Select a category (Food, Travel, Shopping, etc.)
-                5. Set privacy (Public, My Network, or Private)
+                5. Set privacy (Public, Connections, Inner Circle, or Private)
                 6. Add an optional description
                 7. Tap "Create"
                 

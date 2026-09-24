@@ -54,7 +54,8 @@ extension User {
         matchType: String? = nil,
         suggestionReason: String? = nil,
         isBusiness: Bool? = nil,
-        storefront: UserStorefront? = nil
+        storefront: UserStorefront? = nil,
+        activityPrivacy: ActivityPrivacy? = nil
     ) -> User {
         return User(
             id: id ?? self.id,
@@ -104,7 +105,8 @@ extension User {
             followsYou: followsYou ?? self.followsYou,
             suggestionReason: suggestionReason ?? self.suggestionReason,
             isBusiness: isBusiness ?? self.isBusiness,
-            storefront: storefront ?? self.storefront
+            storefront: storefront ?? self.storefront,
+            activityPrivacy: activityPrivacy ?? self.activityPrivacy
         )
     }
     

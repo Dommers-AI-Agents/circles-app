@@ -174,6 +174,9 @@ struct User: Codable, Identifiable {
     /// saves cluster. Own profile only; the home search's last resorts.
     var lastKnownLocation: UserCoordinate? = nil
     var assumedLocation: UserCoordinate? = nil
+    /// Account-level "who can see my activity" grid. Own profile only (the
+    /// server strips it from everyone else's view); nil means all allowed.
+    let activityPrivacy: ActivityPrivacy?
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -184,10 +187,11 @@ struct User: Codable, Identifiable {
         case followsYou, suggestionReason
         case isBusiness, storefront
         case lastKnownLocation, assumedLocation
+        case activityPrivacy
     }
     
     // Convenience initializer for creating User objects directly
-    public init(id: String, email: String? = nil, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, zipcode: String? = nil, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, placesCount: Int? = nil, circlesCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil, notificationPreferences: NotificationPreferences? = nil, subscriptionStatus: String? = nil, subscriptionExpiryDate: Date? = nil, trialStartDate: Date? = nil, trialEndDate: Date? = nil, referralCode: String? = nil, referredBy: String? = nil, referralCount: Int = 0, referralRewards: [ReferralReward]? = nil, isVerified: Bool? = nil, username: String? = nil, discoveryType: String? = nil, distance: Double? = nil, mutualConnectionsCount: Int? = nil, mutualConnectionNames: [String]? = nil, matchType: String? = nil, followsYou: Bool? = nil, suggestionReason: String? = nil, isBusiness: Bool? = nil, storefront: UserStorefront? = nil) {
+    public init(id: String, email: String? = nil, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, zipcode: String? = nil, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, placesCount: Int? = nil, circlesCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil, notificationPreferences: NotificationPreferences? = nil, subscriptionStatus: String? = nil, subscriptionExpiryDate: Date? = nil, trialStartDate: Date? = nil, trialEndDate: Date? = nil, referralCode: String? = nil, referredBy: String? = nil, referralCount: Int = 0, referralRewards: [ReferralReward]? = nil, isVerified: Bool? = nil, username: String? = nil, discoveryType: String? = nil, distance: Double? = nil, mutualConnectionsCount: Int? = nil, mutualConnectionNames: [String]? = nil, matchType: String? = nil, followsYou: Bool? = nil, suggestionReason: String? = nil, isBusiness: Bool? = nil, storefront: UserStorefront? = nil, activityPrivacy: ActivityPrivacy? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -236,6 +240,7 @@ struct User: Codable, Identifiable {
         self.suggestionReason = suggestionReason
         self.isBusiness = isBusiness
         self.storefront = storefront
+        self.activityPrivacy = activityPrivacy
     }
     
     // Custom decoder for JSON decoding
@@ -319,6 +324,9 @@ struct User: Codable, Identifiable {
         
         // Notification preferences
         notificationPreferences = try container.decodeIfPresent(NotificationPreferences.self, forKey: .notificationPreferences)
+        // Activity privacy grid (own profile only). Tolerant: a grid this build
+        // can't read must never sink the whole user.
+        activityPrivacy = try? container.decodeIfPresent(ActivityPrivacy.self, forKey: .activityPrivacy)
         
         // Subscription fields
         subscriptionStatus = try container.decodeIfPresent(String.self, forKey: .subscriptionStatus)
