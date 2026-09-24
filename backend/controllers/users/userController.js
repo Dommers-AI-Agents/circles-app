@@ -6,6 +6,7 @@ const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../../mod
 const { normalizeUserId, isSameUser } = require('../../services/idService');
 const { buildConnectionMap } = require('../../services/connectionMap');
 const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
+const { normalizeActivityPrivacy } = require('../../services/activityPrivacy');
 
 const db = getFirestore();
 
@@ -128,6 +129,8 @@ exports.getUser = async (req, res, next) => {
       profileData.following = user.following;
       profileData.deviceTokens = user.deviceTokens; // Include device tokens for own profile
       profileData.preferences = user.preferences || null;
+      // Owner only: the "who can see my activity" grid (full, defaults filled)
+      profileData.activityPrivacy = normalizeActivityPrivacy(user.activityPrivacy);
     } else {
       // For other users, check if current user is following them
       const currentUserDoc = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();

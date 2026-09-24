@@ -6,9 +6,11 @@ const cacheInvalidationService = require('../services/cacheInvalidationService')
 const { fetchActivitiesByActors } = require('../services/activityFeedService');
 const { queryInChunks } = require('../utils/firestoreChunks');
 const { sortCirclesByUserOrder } = require('../utils/circleOrder');
-const { canViewCircle } = require('../services/visibility');
-const { makeViewerContext } = require('../services/viewerContext');
+const { makeViewerContext, buildViewerContext } = require('../services/viewerContext');
 const { getInnerCircleGrantorLists } = require('../utils/networkAccess');
+const { filterActivitiesForViewer, activityPrivacyFromUserDocs, loadActivityPrivacyByActor } = require('../services/activityPrivacy');
+const { projectPublicUser } = require('../services/publicUserProjection');
+const { excludedUserIds } = require('../services/moderationService');
 const db = getFirestore();
 
 // Helper function to calculate map center from places
@@ -110,7 +112,8 @@ exports.getDashboard = async (req, res, next) => {
       viewerId: userId,
       connections: connectionSet,
       following: followedUserIds,
-      innerCircleLists: await getInnerCircleGrantorLists(userId)
+      innerCircleLists: await getInnerCircleGrantorLists(userId),
+      excluded: currentUserDoc.exists ? excludedUserIds(currentUserDoc.data()) : []
     });
     
     // Get network circles if there are connections (chunked — 'in' caps at 30
@@ -220,7 +223,7 @@ exports.getDashboard = async (req, res, next) => {
     const enrichCircles = (circles) => {
       return circles.map(circle => ({
         ...circle,
-        ownerDetails: usersMap[circle.owner] || null,
+        ownerDetails: projectPublicUser(usersMap[circle.owner]) || null,
         places: placesByCircleId[circle._id] || []
       }));
     };
@@ -228,17 +231,15 @@ exports.getDashboard = async (req, res, next) => {
     const enrichedMyCircles = enrichCircles(myCircles);
     const enrichedNetworkCircles = enrichCircles(networkCircles);
     
-    // Filter activities based on privacy
+    // Item gates and each actor's activity grid — the same filter the
+    // network feed applies, so the dashboard can't show what the feed hides.
     const circlesMap = new Map(allCircles.map(c => [c._id, c]));
-    
-    const privacyFilteredActivities = filteredActivities.filter(activity => {
-      let circleId = activity.targetType === 'circle' ? activity.targetId : activity.circleId;
-      if (!circleId) return true;
-      
-      const circle = circlesMap.get(circleId);
-      if (!circle) return false;
-      
-      return canViewCircle(circle, userId, viewerCtx);
+    const privacyFilteredActivities = filterActivitiesForViewer({
+      activities: filteredActivities,
+      viewerId: userId,
+      viewerCtx,
+      circlesById: circlesMap,
+      settingsByActor: activityPrivacyFromUserDocs(usersMap)
     }).slice(0, parseInt(activityLimit)); // Take only requested amount after filtering
     
     // Enrich activities with actor details and convert timestamps
@@ -254,7 +255,7 @@ exports.getDashboard = async (req, res, next) => {
       
       return {
         ...activity,
-        actor: usersMap[activity.actorId] || null,
+        actor: projectPublicUser(usersMap[activity.actorId]) || null,
         isRead: activity.viewers?.includes(userId) || false
       };
     });
@@ -361,17 +362,31 @@ exports.getHomeScreen = async (req, res, next) => {
     const cachedData = backgroundAggregationService.getCacheData(userId);
     if (cachedData) {
       console.log('⚡ [HomeScreen] Using background aggregated data');
+      // The cache was filtered by the item gates when it was built (up to 15
+      // minutes ago, as before); the actors' activity grids are re-read here
+      // so a setting someone just tightened takes effect at once.
+      const cachedRows = cachedData.recentActivities || [];
+      const viewerCtx = await buildViewerContext(userId);
+      const settingsByActor = await loadActivityPrivacyByActor(cachedRows.map(a => a.actorId));
+      const recentActivities = filterActivitiesForViewer({
+        activities: cachedRows,
+        viewerId: userId,
+        viewerCtx,
+        circlesById: null,
+        settingsByActor,
+        skipItemGates: true
+      });
       const totalTime = Date.now() - startTime;
       
       return res.status(200).json({
         success: true,
         data: {
           userList: cachedData.userList,
-          recentActivities: cachedData.recentActivities,
+          recentActivities,
           stats: {
             loadTimeMs: totalTime,
             totalUsers: cachedData.userList.length,
-            totalActivities: cachedData.recentActivities.length,
+            totalActivities: recentActivities.length,
             source: 'background_cache'
           }
         }
@@ -456,7 +471,30 @@ exports.getHomeScreen = async (req, res, next) => {
     const networkUserIds = new Set([...connectedUserIds, userId]);
     const networkActivities = await fetchActivitiesByActors(networkUserIds, 10);
 
-    const recentActivities = networkActivities
+    // Same gates as the feed. This path used to apply none at all.
+    const viewerCtx = makeViewerContext({
+      viewerId: userId,
+      connections: [...connections1.docs.map(d => d.data().connectedUserId), ...connections2.docs.map(d => d.data().userId)],
+      following: currentUserDoc.exists ? (currentUserDoc.data().following || []) : [],
+      innerCircleLists: await getInnerCircleGrantorLists(userId),
+      excluded: currentUserDoc.exists ? excludedUserIds(currentUserDoc.data()) : []
+    });
+    const referencedCircleIds = [...new Set(networkActivities
+      .map(a => (a.targetType === 'circle' ? a.targetId : a.circleId)).filter(Boolean))];
+    const circleDocs = referencedCircleIds.length
+      ? await queryInChunks(referencedCircleIds, chunk =>
+          db.collection(COLLECTIONS.CIRCLES).where(admin.firestore.FieldPath.documentId(), 'in', chunk).get())
+      : [];
+    const circlesById = new Map(circleDocs.map(doc => [doc.id, doc.data()]));
+    const settingsByActor = await loadActivityPrivacyByActor(
+      networkActivities.map(a => a.actorId),
+      { seed: activityPrivacyFromUserDocs(usersMap) }
+    );
+    const visibleActivities = filterActivitiesForViewer({
+      activities: networkActivities, viewerId: userId, viewerCtx, circlesById, settingsByActor
+    });
+
+    const recentActivities = visibleActivities
       .map(activity => {
         // Convert timestamp
         if (activity.timestamp && activity.timestamp._seconds) {
@@ -467,7 +505,7 @@ exports.getHomeScreen = async (req, res, next) => {
         
         return {
           ...activity,
-          actor: usersMap[activity.actorId] || { _id: activity.actorId, displayName: 'Unknown User' },
+          actor: projectPublicUser(usersMap[activity.actorId]) || { _id: activity.actorId, displayName: 'Unknown User' },
           isRead: activity.viewers?.includes(userId) || false
         };
       });

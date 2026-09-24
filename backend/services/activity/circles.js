@@ -27,7 +27,7 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
       circleName = circleData.name || 'Unknown Circle';
       circlePrivacy = circleData.privacy || 'private';
       circleCover = circleData.coverImage || null;
-      audience = await circleAudience(circleData, circleData.owner || createdByUserId);
+      audience = await circleAudience(circleData, circleData.owner || createdByUserId, { category: 'circles' });
     }
 
     // Skip only when nobody but the owner could ever see it. An innerCircle

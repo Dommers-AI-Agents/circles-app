@@ -1292,7 +1292,7 @@ exports.createPlace = async (req, res, next) => {
       // point-in-time event that can't be taken back, so it is decided here
       // rather than left to a read gate.
       const audience = await narrowedByPlace(
-        await circleAudience(circle, circle.owner),
+        await circleAudience(circle, circle.owner, { category: 'savedPlaces' }),
         place,
         req.user.uid
       );

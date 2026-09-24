@@ -1141,7 +1141,8 @@ exports.getMe = async (req, res, next) => {
         friends: user.friends,
         followersCount: user.followersCount || 0,
         followingCount: user.followingCount || 0,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
+        activityPrivacy: require('../services/activityPrivacy').normalizeActivityPrivacy(user.activityPrivacy)
       }
     });
   } catch (error) {

@@ -16,6 +16,7 @@ const { getFirestore } = require('../../config/firebase');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { normalizePrivacy, PRIVACY } = require('../visibility');
 const { listsFrom } = require('../innerCircleLists');
+const { fanOutAllows } = require('../activityPrivacy');
 
 const db = getFirestore();
 
@@ -27,7 +28,13 @@ const db = getFirestore();
  *   `emits` is false when nobody but the owner could ever see it, so callers
  *   can skip the whole block. `allows` filters individual recipients.
  */
-const circleAudience = async (circleData, ownerId) => {
+const circleAudience = async (circleData, ownerId, { category } = {}) => {
+  const base = await tierAudience(circleData, ownerId);
+  if (!category) return base;
+  return narrowedByGrid(base, ownerId, category);
+};
+
+const tierAudience = async (circleData, ownerId) => {
   // A circle doc with no privacy field predates the setting; treat it as the
   // closed end rather than guessing it was meant to be public.
   const tier = normalizePrivacy(circleData && circleData.privacy) || PRIVACY.PRIVATE;
@@ -59,6 +66,30 @@ const circleAudience = async (circleData, ownerId) => {
     allows: (userId) => sharedWith.has(String(userId))
   };
 };
+
+/**
+ * The owner's account-level "who can see my activity" grid, applied to a
+ * fan-out. Recipients of a fan-out are the owner's connections, so a checked
+ * Public or Connections column admits them all; Inner Circle only admits the
+ * owner's list; nothing checked tells nobody. Composes with (never widens)
+ * whatever the item's tier already decided.
+ *
+ * @param {object} audience  {emits, allows, tier}
+ * @param {string} ownerId   whose grid
+ * @param {string} category  a services/activityPrivacy CATEGORIES value
+ */
+const narrowedByGrid = async (audience, ownerId, category) => {
+  const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(String(ownerId)).get();
+  const owner = ownerDoc.exists ? ownerDoc.data() : {};
+  const gridAllows = fanOutAllows(owner.activityPrivacy, category, owner.innerCircle || []);
+  const allows = (userId) => audience.allows(userId) && gridAllows(userId);
+  const anyone = gridAllows('__probe__') || (owner.innerCircle || []).some(id => gridAllows(id));
+  return { tier: audience.tier, emits: audience.emits && anyone, allows };
+};
+
+/** The grid alone, for fan-outs that hang on no circle (photos, likes). */
+const gridAudience = (ownerId, category) =>
+  narrowedByGrid({ tier: null, emits: true, allows: () => true }, ownerId, category);
 
 /**
  * Narrow a circle's audience by a PLACE's own privacy.
@@ -97,4 +128,4 @@ const narrowedByPlace = async (audience, place, ownerId) => {
   return { tier, emits: allowed.size > 0, allows };
 };
 
-module.exports = { circleAudience, narrowedByPlace };
+module.exports = { circleAudience, narrowedByPlace, narrowedByGrid, gridAudience };

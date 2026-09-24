@@ -9,7 +9,7 @@ const { createActivity } = require('../../controllers/activityController');
 const SSEService = require('../sseService');
 const notificationService = require('../notificationService');
 const { resolvePlacePhoto } = require('./core');
-const { circleAudience, narrowedByPlace } = require('./audience');
+const { circleAudience, narrowedByPlace, gridAudience } = require('./audience');
 
 
 // Track when a user adds a new place
@@ -29,7 +29,7 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
     const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
     const placeData = placeDoc.exists ? placeDoc.data() : null;
     const audience = await narrowedByPlace(
-      await circleAudience(circleData, circleData.owner || addedByUserId),
+      await circleAudience(circleData, circleData.owner || addedByUserId, { category: 'savedPlaces' }),
       placeData,
       addedByUserId
     );
@@ -58,7 +58,8 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
           placeAddress: placeAddress,
           // Stamped so the feed can re-check the place's own tier at read time
           // — the circle gate alone can't see it.
-          placePrivacy: placeData ? (placeData.privacy || null) : null
+          placePrivacy: placeData ? (placeData.privacy || null) : null,
+          placeAudienceListId: placeData ? (placeData.audienceListId || null) : null
         }
       );
     }
@@ -367,8 +368,13 @@ const trackPlaceLiked = async (placeId, placeName, circleId, circleName, likedBy
     ]);
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    // The actor's own "who can see my activity" grid decides who is told.
+    const grid = await gridAudience(likedByUserId, 'likesComments');
+    if (!grid.emits) return;
+    const otherOf = (doc) => (doc.data().userId === likedByUserId ? doc.data().connectedUserId : doc.data().userId);
+    const toldConnections = allConnections.filter(doc => grid.allows(otherOf(doc)));
     
-    allConnections.forEach(doc => {
+    toldConnections.forEach(doc => {
       const connectionData = doc.data();
       const otherUserId = connectionData.userId === likedByUserId 
         ? connectionData.connectedUserId 
@@ -646,8 +652,13 @@ const trackPhotoUploaded = async (photoId, placeId, placeName, photoUrl, uploade
     ]);
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    // The actor's own "who can see my activity" grid decides who is told.
+    const grid = await gridAudience(uploadedByUserId, 'photos');
+    if (!grid.emits) return;
+    const otherOf = (doc) => (doc.data().userId === uploadedByUserId ? doc.data().connectedUserId : doc.data().userId);
+    const toldConnections = allConnections.filter(doc => grid.allows(otherOf(doc)));
     
-    allConnections.forEach(doc => {
+    toldConnections.forEach(doc => {
       const connectionData = doc.data();
       const otherUserId = connectionData.userId === uploadedByUserId 
         ? connectionData.connectedUserId 
@@ -764,8 +775,13 @@ const trackGlobalPlaceLiked = async (uploadId, globalPlaceId, placeName, likedBy
     ]);
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
+    // The actor's own "who can see my activity" grid decides who is told.
+    const grid = await gridAudience(likedByUserId, 'likesComments');
+    if (!grid.emits) return;
+    const otherOf = (doc) => (doc.data().userId === likedByUserId ? doc.data().connectedUserId : doc.data().userId);
+    const toldConnections = allConnections.filter(doc => grid.allows(otherOf(doc)));
     
-    allConnections.forEach(doc => {
+    toldConnections.forEach(doc => {
       const connectionData = doc.data();
       const otherUserId = connectionData.userId === likedByUserId 
         ? connectionData.connectedUserId 
@@ -841,7 +857,7 @@ const markPlaceAsViewed = async (userId, placeId, circleId) => {
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     let updateCount = 0;
 
-    allConnections.forEach(doc => {
+    toldConnections.forEach(doc => {
       const connectionData = doc.data();
       const recentActivity = connectionData.recentActivity || [];
       

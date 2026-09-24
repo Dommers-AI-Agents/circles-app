@@ -2,8 +2,7 @@
 const { admin, getFirestore } = require('../config/firebase');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
-const { canViewCircle, canViewMoment, isPlaceVisibleToViewer } = require('../services/visibility');
-const { normalizeUserId } = require('../services/idService');
+const { filterActivitiesForViewer, activityPrivacyFromUserDocs } = require('../services/activityPrivacy');
 const { makeViewerContext } = require('../services/viewerContext');
 const { getInnerCircleGrantorLists } = require('../utils/networkAccess');
 const db = getFirestore();
@@ -113,7 +112,11 @@ exports.getNetworkActivities = async (req, res, next) => {
     // pull the entire activities collection just to render one page.
     const startIndex = parseInt(offset) || 0;
     const limitCount = parseInt(limit) || 20;
-    const fetchCap = startIndex + limitCount;
+    // Privacy filtering happens after the fetch, so pull a wider window than
+    // one page and cut to size after the gates — otherwise a viewer whose
+    // network narrowed its activity would see short pages and a false end.
+    const windowCount = limitCount * 3;
+    const fetchCap = startIndex + windowCount;
     const sinceDate = since ? new Date(since) : null;
 
     const buildActivityQuery = (actorBatch) => {
@@ -143,7 +146,7 @@ exports.getNetworkActivities = async (req, res, next) => {
     }
 
     // Apply limit and offset after merging (for batched queries)
-    const activities = allActivities.slice(startIndex, startIndex + limitCount);
+    const activities = allActivities.slice(startIndex, startIndex + windowCount);
     
     // Found activities
     
@@ -169,11 +172,16 @@ exports.getNetworkActivities = async (req, res, next) => {
     );
     
     const actorsMap = new Map();
+    const rawActors = new Map();
     actorResults.forEach(snapshot => {
       snapshot.docs.forEach(doc => {
+        rawActors.set(doc.id, doc.data());
         actorsMap.set(doc.id, projectPublicUser(serializeDoc(doc)));
       });
     });
+    // Each actor's "who can see my activity" grid, read off the docs we
+    // already have — never off the projected card, which must not carry it.
+    const settingsByActor = activityPrivacyFromUserDocs(rawActors);
 
     // Place actors ('place_<globalPlaceId>') aren't users — synthesize a
     // minimal actor from the canonical globalPlaces record so clients render
@@ -333,66 +341,21 @@ exports.getNetworkActivities = async (req, res, next) => {
       return activity;
     });
     
-    // Filter activities based on privacy using cached circles
-    const filteredActivities = enrichedActivities.filter(activity => {
-      try {
-        // Moment privacy gate: a video_uploaded/video_liked row is only shown
-        // to a viewer entitled to the underlying moment, judged by their
-        // relationship to the moment OWNER (the uploader, or — for a like —
-        // the moment's owner, not the liker). Legacy rows lack the stamp and
-        // fall through as public so existing content isn't hidden.
-        if (activity.type === 'video_uploaded' || activity.type === 'video_liked') {
-          const vis = activity.metadata && activity.metadata.momentVisibility;
-          const ownerId = activity.metadata && activity.metadata.momentOwnerId;
-          if (vis && ownerId && ownerId !== userId) {
-            return canViewMoment({ userId: ownerId, visibility: vis }, userId, viewerCtx);
-          }
-          return true;
-        }
-
-        // A check-in has no circle to gate on, so its audience rides on the
-        // row itself.
-        if (activity.type === 'check_in' && activity.metadata
-            && activity.metadata.checkInAudience === 'innerCircle') {
-          return activity.actorId === userId
-            || viewerCtx.innerCircleGrantors.has(normalizeUserId(activity.actorId));
-        }
-
-        let circleId = null;
-
-        if (activity.targetType === 'circle') {
-          circleId = activity.targetId;
-        } else if (activity.circleId) {
-          circleId = activity.circleId;
-        }
-
-        if (!circleId) return true; // Include if no circle reference
-        
-        const circle = circlesMap.get(circleId);
-        if (!circle) return false; // Exclude if circle not found
-        
-        if (!canViewCircle(circle, userId, viewerCtx)) return false;
-
-        // The place's own privacy narrows the circle's, and the circle gate
-        // can't see it. Rows written before this was stamped carry no value,
-        // which reads as "inherit the circle" — their old behaviour.
-        const stampedPlacePrivacy = activity.metadata && activity.metadata.placePrivacy;
-        if (stampedPlacePrivacy) {
-          return isPlaceVisibleToViewer(
-            { addedBy: activity.actorId, privacy: stampedPlacePrivacy },
-            userId,
-            viewerCtx
-          );
-        }
-        return true;
-      } catch (error) {
-        console.error('Error checking activity privacy:', error);
-        return false;
-      }
+    // Item gates (circle, place, moment, check-in audience) and the actor's
+    // own "who can see my activity" grid, in one shared filter.
+    const visibleActivities = filterActivitiesForViewer({
+      activities: enrichedActivities,
+      viewerId: userId,
+      viewerCtx,
+      circlesById: circlesMap,
+      settingsByActor
     });
-    
-    // Check if there are more activities available for pagination
-    const hasMore = allActivities.length > startIndex + limitCount;
+    const filteredActivities = visibleActivities.slice(0, limitCount);
+
+    // More to show if the window held more than a page after filtering, or
+    // the store held more than the window.
+    const hasMore = visibleActivities.length > limitCount
+      || allActivities.length > startIndex + windowCount;
     
     res.status(200).json({
       success: true,
@@ -551,7 +514,18 @@ exports.createActivity = async (type, actorId, targetType, targetId, targetName,
         // video_liked row to viewers entitled to the moment, judged by their
         // relationship to momentOwnerId.
         momentVisibility: metadata.momentVisibility || null,
-        momentOwnerId: metadata.momentOwnerId || null
+        momentOwnerId: metadata.momentOwnerId || null,
+        // Check-in and place audience stamps the read gates key on. These
+        // were passed by the writers but dropped here, so an Inner Circle
+        // check-in reached every connection (2026-09-23).
+        checkInAudience: metadata.checkInAudience || null,
+        audienceListId: metadata.audienceListId || null,
+        placePrivacy: metadata.placePrivacy || null,
+        placeAudienceListId: metadata.placeAudienceListId || null,
+        latitude: metadata.latitude ?? null,
+        longitude: metadata.longitude ?? null,
+        placeCategory: metadata.placeCategory || null,
+        contentType: metadata.contentType || null
       },
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       viewers: [], // Track who has seen this activity

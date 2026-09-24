@@ -144,6 +144,12 @@ router.route('/me/pinned-places/reorder')
 router.route('/me/pinned-places/:placeId')
   .delete(removePinnedPlace);
 
+// "Who can see my activity": the account-level audience × category grid.
+const { getMyActivityPrivacy, replaceMyActivityPrivacy } = require('../controllers/users/activityPrivacyController');
+router.route('/me/activity-privacy')
+  .get(getMyActivityPrivacy)
+  .put(replaceMyActivityPrivacy);
+
 // Inner Circle: the reusable list behind the innerCircle privacy tier.
 // Sits above the /:id routes for the same reason pinned-places does.
 router.route('/me/inner-circle')

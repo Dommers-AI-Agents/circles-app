@@ -31,13 +31,16 @@ const toIdSet = (values) =>
  * blocked the other — the grant evaporates at the next read. No cleanup job is
  * needed for correctness; tidying the stored list is cosmetic.
  */
-const makeViewerContext = ({ viewerId, connections, following, innerCircleGrantors, innerCircleLists }) => {
-  const connectionSet = toIdSet(connections);
+const makeViewerContext = ({ viewerId, connections, following, innerCircleGrantors, innerCircleLists, excluded }) => {
+  // Blocked either way contributes nothing, on any surface that builds a
+  // context — the feed used to be the only reader that stripped them.
+  const banned = toIdSet(excluded);
+  const connectionSet = new Set([...toIdSet(connections)].filter(id => !banned.has(id)));
   // A caller with the per-list map need not also pass the owners.
   const owners = innerCircleGrantors !== undefined
     ? toIdSet(innerCircleGrantors)
     : toIdSet(innerCircleLists ? [...innerCircleLists.keys()] : []);
-  const grantors = new Set([...owners].filter(id => connectionSet.has(id)));
+  const grantors = new Set([...owners].filter(id => connectionSet.has(id) && !banned.has(id)));
   // The same intersection applied per list, so a grant cannot outlive the
   // connection it was qualified by on either shape of the question.
   const lists = new Map();
@@ -48,8 +51,9 @@ const makeViewerContext = ({ viewerId, connections, following, innerCircleGranto
   return {
     viewerId: viewerId ? String(viewerId) : null,
     connections: connectionSet,
-    following: toIdSet(following),
+    following: new Set([...toIdSet(following)].filter(id => !banned.has(id))),
     innerCircleGrantors: grantors,
+    excluded: banned,
     innerCircleLists: lists
   };
 };
@@ -64,11 +68,13 @@ const buildViewerContext = async (viewerId) => {
     getInnerCircleGrantorLists(viewerId)
   ]);
 
+  const { excludedUserIds } = require('./moderationService');
   return makeViewerContext({
     viewerId,
     connections,
     following: userDoc.exists ? userDoc.data().following : [],
-    innerCircleLists
+    innerCircleLists,
+    excluded: userDoc.exists ? excludedUserIds(userDoc.data()) : []
   });
 };
 

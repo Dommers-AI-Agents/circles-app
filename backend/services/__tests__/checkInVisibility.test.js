@@ -110,3 +110,14 @@ describe('a named Inner Circle list', () => {
     expect(await isCheckInVisibleTo(old, 'viewer', { connectionIds: new Set(['owner']), innerCircleGrantors: new Set() })).toBe(false);
   });
 });
+
+describe('context shapes', () => {
+  test('accepts the viewerContext `connections` set as well as the legacy `connectionIds`', async () => {
+    const legacy = { connectionIds: new Set(['owner']), innerCircleGrantors: new Set(), isInAnyGroup: async () => false };
+    const modern = { connections: new Set(['owner']), innerCircleGrantors: new Set(), isInAnyGroup: async () => false };
+    const stranger = { connections: new Set(), innerCircleGrantors: new Set(), isInAnyGroup: async () => false };
+    expect(await isCheckInVisibleTo(base, 'friend', legacy)).toBe(true);
+    expect(await isCheckInVisibleTo(base, 'friend', modern)).toBe(true);
+    expect(await isCheckInVisibleTo(base, 'friend', stranger)).toBe(false);
+  });
+});

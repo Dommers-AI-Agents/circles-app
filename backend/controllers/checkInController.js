@@ -15,12 +15,27 @@ const { createActivity } = require('./activityController');
 const notificationService = require('../services/notificationService');
 const { isCheckInVisibleTo } = require('../services/checkInVisibility');
 
-const { getInnerCircleGrantorLists } = require('../utils/networkAccess');
-/// Both halves of the Inner Circle question in one query: whose lists the
-/// viewer is on, and which of those lists.
-const innerCircleContext = async (userId) => {
-  const innerCircleLists = await getInnerCircleGrantorLists(userId);
-  return { innerCircleLists, innerCircleGrantors: new Set(innerCircleLists.keys()) };
+const { buildViewerContext } = require('../services/viewerContext');
+const { allowedAudiences, qualifyingAudiences, loadActivityPrivacyByActor } = require('../services/activityPrivacy');
+
+/// The read rule for a list of check-ins: the check-in's own visibility, then
+/// the owner's "who can see my activity" grid for check-ins. One context and
+/// one grid read per request, shared by the active feed and the at-place list.
+const visibleCheckIns = async (docs, userId) => {
+  const ctx = { ...(await buildViewerContext(userId)), isInAnyGroup: isUserInAnyGroup };
+  const settings = await loadActivityPrivacyByActor(docs.map(doc => doc.data().userId));
+  const out = [];
+  for (const doc of docs) {
+    const data = doc.data();
+    if (!(await isCheckInVisibleTo(data, userId, ctx))) continue;
+    const qualifying = qualifyingAudiences(ctx, data.userId);
+    if (qualifying !== null) {
+      const allowed = allowedAudiences(settings.get(String(data.userId)), 'checkIns');
+      if (!qualifying.some(audience => allowed[audience])) continue;
+    }
+    out.push(serializeDoc(doc));
+  }
+  return out;
 };
 const sseService = require('../services/sseService');
 const { Client } = require('@googlemaps/google-maps-services-js');
@@ -661,7 +676,8 @@ exports.createCheckIn = async (req, res) => {
           // moments. A check-in activity carries no circle to hang privacy
           // on, so without this an Inner Circle check-in posted to the feed
           // would reach every connection.
-          checkInAudience: checkIn.audience || null
+          checkInAudience: checkIn.audience || null,
+          audienceListId: checkIn.audienceListId || null
         }
       );
     }
@@ -693,9 +709,6 @@ exports.getActiveCheckIns = async (req, res) => {
     const userId = req.user.uid;
     const now = new Date();
     
-    // Get user's connections
-    const connectionIds = await acceptedConnectionIds(userId);
-    
     // Get active check-ins from connections
     const checkInsQuery = await db.collection(COLLECTIONS.CHECK_INS)
       .where('active', '==', true)
@@ -705,18 +718,11 @@ exports.getActiveCheckIns = async (req, res) => {
       .get();
     
     // Filter check-ins based on visibility (owner / notified / group /
-    // connection-with-feed; private check-ins are owner-only)
-    const visibleCheckIns = [];
-    const ctx = { connectionIds, ...(await innerCircleContext(userId)), isInAnyGroup: isUserInAnyGroup };
-    for (const doc of checkInsQuery.docs) {
-      if (await isCheckInVisibleTo(doc.data(), userId, ctx)) {
-        visibleCheckIns.push(serializeDoc(doc));
-      }
-    }
-    
+    // connection-with-feed; private check-ins are owner-only) and the
+    // owner's activity grid
     res.json({
       success: true,
-      data: visibleCheckIns
+      data: await visibleCheckIns(checkInsQuery.docs, userId)
     });
   } catch (error) {
     console.error('Error getting active check-ins:', error);
@@ -921,12 +927,7 @@ exports.getCheckInsAtPlace = async (req, res) => {
     
     // Same visibility rule as the active feed — this used to return every
     // check-in at the place to any signed-in user
-    const connectionIds = await acceptedConnectionIds(userId);
-    const ctx = { connectionIds, ...(await innerCircleContext(userId)), isInAnyGroup: isUserInAnyGroup };
-    const checkIns = [];
-    for (const doc of checkInsQuery.docs) {
-      if (await isCheckInVisibleTo(doc.data(), userId, ctx)) checkIns.push(serializeDoc(doc));
-    }
+    const checkIns = await visibleCheckIns(checkInsQuery.docs, userId);
     
     res.json({
       success: true,

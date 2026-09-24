@@ -125,7 +125,10 @@ class FakeFirestore {
   }
 
   /** Batch read by reference, like the admin SDK's db.getAll(...refs). */
-  async getAll(...refs) {
+  async getAll(...args) {
+    // The admin SDK accepts a trailing { fieldMask } options object; a ref
+    // always has an id, so drop anything without one.
+    const refs = args.filter((ref) => ref && typeof ref === 'object' && ref.id !== undefined);
     return refs.map((ref) => {
       const store = ref.store || this;
       return store.snapshot(ref.id, store.docs.get(ref.id));

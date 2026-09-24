@@ -36,7 +36,10 @@ const isCheckInVisibleTo = async (checkIn, viewerId, ctx) => {
     const lists = ctx.innerCircleLists && ctx.innerCircleLists.get(checkIn.userId);
     return !!(lists && lists.has(checkIn.audienceListId));
   }
-  if (ctx.connectionIds && ctx.connectionIds.has(checkIn.userId) && checkIn.showInActivityFeed) return true;
+  // `connections` is the viewerContext shape; `connectionIds` the older
+  // hand-rolled one — both accepted for a release.
+  const connections = ctx.connections || ctx.connectionIds;
+  if (connections && connections.has(checkIn.userId) && checkIn.showInActivityFeed) return true;
   if (ctx.isInAnyGroup && (checkIn.notifiedGroups || []).length > 0) {
     return ctx.isInAnyGroup(viewerId, checkIn.notifiedGroups);
   }

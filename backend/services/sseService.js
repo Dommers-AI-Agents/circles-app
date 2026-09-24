@@ -265,53 +265,82 @@ class SSEService {
       });
     unsubscribers.push(notificationListener);
 
-    // Listen for new activities in user's network
-    // First, get user's connections to know which activities to listen for
-    db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', userId)
-      .where('status', '==', 'accepted')
-      .get()
-      .then(connections1 => {
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('connectedUserId', '==', userId)
-          .where('status', '==', 'accepted')
-          .get()
-          .then(connections2 => {
-            const connectedUserIds = new Set();
-            connections1.docs.forEach(doc => connectedUserIds.add(doc.data().connectedUserId));
-            connections2.docs.forEach(doc => connectedUserIds.add(doc.data().userId));
-            connectedUserIds.add(userId); // Include self
-            
-            if (connectedUserIds.size > 0) {
-              // Firestore caps 'in' at 30 values and a listener can't be
-              // paged, so a well-connected user gets one listener per chunk
-              // of connections (same chunking as the one-shot feed queries).
-              // A listener error is logged, not thrown: an unhandled error
-              // here used to take the whole SSE session's watches down.
-              for (const idsChunk of chunk(Array.from(connectedUserIds))) {
-                const activityListener = db.collection(COLLECTIONS.ACTIVITIES)
-                  .where('actorId', 'in', idsChunk)
-                  .orderBy('timestamp', 'desc')
-                  .limit(5)
-                  .onSnapshot((snapshot) => {
-                    snapshot.docChanges().forEach(change => {
-                      if (change.type === 'added') {
-                        const activity = { id: change.doc.id, ...change.doc.data() };
-                        this.sendEvent(userId, {
-                          type: 'new_activity',
-                          data: activity,
-                          timestamp: new Date().toISOString()
-                        });
-                      }
-                    });
-                  }, (error) => {
-                    console.error(`📡 SSE: activity listener failed for ${userId}:`, error.message);
-                  });
-                unsubscribers.push(activityListener);
-              }
-            }
-          })
-          .catch(error => console.error(`📡 SSE: connection lookup failed for ${userId}:`, error.message));
+    // Listen for new activities in user's network. The viewer context is
+    // built once per session (and rebuilt when it goes stale) so every row
+    // the listener sees is judged by the same gates as the feed: circle,
+    // place, moment, check-in audience, and the actor's "who can see my
+    // activity" grid. This push used to send every raw row to every
+    // connection.
+    const { buildViewerContext } = require('./viewerContext');
+    const { filterActivitiesForViewer, loadActivityPrivacyByActor } = require('./activityPrivacy');
+    const CTX_TTL_MS = 60 * 1000;
+    let ctxCache = null;
+    const viewerContextFor = async () => {
+      if (!ctxCache || Date.now() - ctxCache.builtAt > CTX_TTL_MS) {
+        ctxCache = { ctx: await buildViewerContext(userId), builtAt: Date.now() };
+      }
+      return ctxCache.ctx;
+    };
+    const gridCache = new Map(); // actorId → { settingsByActor, at }
+    const settingsFor = async (actorId) => {
+      const hit = gridCache.get(actorId);
+      if (hit && Date.now() - hit.at < CTX_TTL_MS) return hit.settingsByActor;
+      const settingsByActor = await loadActivityPrivacyByActor([actorId]);
+      gridCache.set(actorId, { settingsByActor, at: Date.now() });
+      return settingsByActor;
+    };
+    const mayShow = async (activity) => {
+      const ctx = await viewerContextFor();
+      const circleId = activity.targetType === 'circle' ? activity.targetId : activity.circleId;
+      const circlesById = new Map();
+      if (circleId) {
+        const doc = await db.collection(COLLECTIONS.CIRCLES).doc(String(circleId)).get();
+        if (doc.exists) circlesById.set(doc.id, doc.data());
+      }
+      return filterActivitiesForViewer({
+        activities: [activity], viewerId: userId, viewerCtx: ctx, circlesById,
+        settingsByActor: await settingsFor(activity.actorId)
+      }).length === 1;
+    };
+
+    buildViewerContext(userId)
+      .then(ctx => {
+        ctxCache = { ctx, builtAt: Date.now() };
+        const connectedUserIds = new Set(ctx.connections);
+        connectedUserIds.add(userId); // Include self
+
+        if (connectedUserIds.size > 0) {
+          // Firestore caps 'in' at 30 values and a listener can't be
+          // paged, so a well-connected user gets one listener per chunk
+          // of connections (same chunking as the one-shot feed queries).
+          // A listener error is logged, not thrown: an unhandled error
+          // here used to take the whole SSE session's watches down.
+          for (const idsChunk of chunk(Array.from(connectedUserIds))) {
+            const activityListener = db.collection(COLLECTIONS.ACTIVITIES)
+              .where('actorId', 'in', idsChunk)
+              .orderBy('timestamp', 'desc')
+              .limit(5)
+              .onSnapshot((snapshot) => {
+                snapshot.docChanges().forEach(change => {
+                  if (change.type !== 'added') return;
+                  const activity = { id: change.doc.id, ...change.doc.data() };
+                  mayShow(activity)
+                    .then(ok => {
+                      if (!ok) return;
+                      this.sendEvent(userId, {
+                        type: 'new_activity',
+                        data: activity,
+                        timestamp: new Date().toISOString()
+                      });
+                    })
+                    .catch(error => console.error(`📡 SSE: activity gate failed for ${userId}:`, error.message));
+                });
+              }, (error) => {
+                console.error(`📡 SSE: activity listener failed for ${userId}:`, error.message);
+              });
+            unsubscribers.push(activityListener);
+          }
+        }
       })
       .catch(error => console.error(`📡 SSE: connection lookup failed for ${userId}:`, error.message));
 

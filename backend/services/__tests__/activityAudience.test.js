@@ -129,3 +129,36 @@ describe('narrowedByPlace with a per-place guest list', () => {
     expect(result.allows('insider')).toBe(true);
   });
 });
+
+describe('the owner\'s activity grid narrows every fan-out', () => {
+  const { gridAudience } = require('../activity/audience');
+
+  test('a tracker fans out only to recipients the actor\'s grid allows', async () => {
+    put('users', 'owner', {
+      innerCircle: ['insider'],
+      activityPrivacy: { savedPlaces: { public: false, myNetwork: false, innerCircle: true } }
+    });
+    // Public circle, but saved places are Inner Circle only → the list, not every connection.
+    const audience = await circleAudience({ owner: 'owner', privacy: 'public' }, 'owner', { category: 'savedPlaces' });
+    expect(audience.emits).toBe(true);
+    expect(audience.allows('insider')).toBe(true);
+    expect(audience.allows('some-other-connection')).toBe(false);
+    // Another category is untouched by that row.
+    const circles = await circleAudience({ owner: 'owner', privacy: 'public' }, 'owner', { category: 'circles' });
+    expect(circles.allows('some-other-connection')).toBe(true);
+    // No category → the tier alone, as before.
+    const untouched = await circleAudience({ owner: 'owner', privacy: 'public' }, 'owner');
+    expect(untouched.allows('some-other-connection')).toBe(true);
+  });
+
+  test('every column unchecked tells nobody; no grid at all tells everyone the tier admits', async () => {
+    put('users', 'owner', { innerCircle: ['insider'], activityPrivacy: { photos: { public: false, myNetwork: false, innerCircle: false } } });
+    const none = await gridAudience('owner', 'photos');
+    expect(none.emits).toBe(false);
+    expect(none.allows('insider')).toBe(false);
+    put('users', 'owner', { innerCircle: ['insider'] });
+    const open = await gridAudience('owner', 'photos');
+    expect(open.emits).toBe(true);
+    expect(open.allows('anyone')).toBe(true);
+  });
+});

@@ -3,6 +3,9 @@ const { admin, getFirestore } = require('../config/firebase');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
 const { fetchActivitiesByActors } = require('./activityFeedService');
 const { sortCirclesByUserOrder } = require('../utils/circleOrder');
+const { buildViewerContext } = require('./viewerContext');
+const { filterActivitiesForViewer, activityPrivacyFromUserDocs } = require('./activityPrivacy');
+const { projectPublicUser } = require('./publicUserProjection');
 const db = getFirestore();
 
 class BackgroundAggregationService {
@@ -154,8 +157,28 @@ class BackgroundAggregationService {
                     isOnline: user.lastSeen ? (Date.now() - new Date(user.lastSeen).getTime()) < 300000 : false
                 }));
 
+            // Item gates, as the feed applies them. The actors' activity
+            // grids are applied again when the cache is served (dashboard
+            // getHomeScreen), so a tightened setting never waits on the TTL.
+            const viewerCtx = await buildViewerContext(userId);
+            const circleIdsInRows = [...new Set(filteredActivities
+                .map(a => (a.targetType === 'circle' ? a.targetId : a.circleId)).filter(Boolean))];
+            const circlesById = new Map([...myCircles, ...networkCircles].map(c => [c._id, c]));
+            const missingCircleIds = circleIdsInRows.filter(id => !circlesById.has(id));
+            if (missingCircleIds.length) {
+                const docs = await db.getAll(...missingCircleIds.map(id => db.collection(COLLECTIONS.CIRCLES).doc(id)));
+                docs.forEach(doc => { if (doc.exists) circlesById.set(doc.id, doc.data()); });
+            }
+            const gatedActivities = filterActivitiesForViewer({
+                activities: filteredActivities,
+                viewerId: userId,
+                viewerCtx,
+                circlesById,
+                settingsByActor: activityPrivacyFromUserDocs(usersMap)
+            });
+
             // Enrich activities
-            const enrichedActivities = filteredActivities.map(activity => {
+            const enrichedActivities = gatedActivities.map(activity => {
                 // Convert timestamp
                 if (activity.timestamp && activity.timestamp._seconds) {
                     activity.timestamp = new Date(activity.timestamp._seconds * 1000).toISOString();
@@ -167,7 +190,7 @@ class BackgroundAggregationService {
 
                 return {
                     ...activity,
-                    actor: usersMap[activity.actorId] || { _id: activity.actorId, displayName: 'Unknown User' },
+                    actor: projectPublicUser(usersMap[activity.actorId]) || { _id: activity.actorId, displayName: 'Unknown User' },
                     isRead: activity.viewers?.includes(userId) || false
                 };
             });
