@@ -73,6 +73,10 @@ function downgradeFollowersVisibility(node, depth = 0) {
 // into the device gate on every profile load, so forcing it false here turns
 // the banner off on phones that will never see the new build. Nothing is
 // written to the user record; flip PROXIMITY_BANNERS_ENABLED and it is back.
+// Builds that send X-FC-Dwell-Checkin decide for themselves: they only ever
+// prompt Always-location users, after a real stop. The override is for the
+// builds before that, whose banner fired on region entry.
+const DWELL_HEADER = 'x-fc-dwell-checkin';
 const bannersOff = () => process.env.PROXIMITY_BANNERS_ENABLED === '0';
 const isUserPath = (path) => path.includes('/users') || path.includes('/auth');
 function forceLocationPromptsOff(node, depth = 0) {
@@ -94,6 +98,7 @@ module.exports = (req, res, next) => {
   const clientKnowsInnerCircle = req.headers[INNER_CIRCLE_HEADER] === '1';
   const momentPath = isMomentPath(req.path || '');
   const userPath = isUserPath(req.originalUrl || req.path || '');
+  const clientDecidesBanner = req.headers[DWELL_HEADER] === '1';
 
   res.json = (body) => {
     if (res.statusCode >= 400 && body && typeof body === 'object' && !Array.isArray(body)) {
@@ -105,7 +110,7 @@ module.exports = (req, res, next) => {
     } else if (res.statusCode < 400 && body && typeof body === 'object') {
       if (momentPath && !clientKnowsFollowers) downgradeFollowersVisibility(body);
       if (!clientKnowsInnerCircle) downgradeInnerCircle(body);
-      if (userPath && bannersOff()) forceLocationPromptsOff(body);
+      if (userPath && bannersOff() && !clientDecidesBanner) forceLocationPromptsOff(body);
     }
     return originalJson(body);
   };

@@ -3,10 +3,10 @@
 // the device gate on every profile load.
 const normalizer = require('../responseNormalizer');
 
-function run(path, body, env = {}) {
+function run(path, body, env = {}, headers = {}) {
   const prev = process.env.PROXIMITY_BANNERS_ENABLED;
   Object.assign(process.env, env);
-  const req = { headers: {}, path, originalUrl: `/api${path}` };
+  const req = { headers, path, originalUrl: `/api${path}` };
   let sent;
   const res = { statusCode: 200, json: (b) => { sent = b; return b; } };
   normalizer(req, res, () => {});
@@ -28,6 +28,12 @@ describe('nearby banner kill switch', () => {
     expect(auth.user.notificationPreferences.locationPrompts).toBe(false);
     const merge = run('/users/merge-accounts', { success: true, primaryAccount: { notificationPreferences: { locationPrompts: true } } }, { PROXIMITY_BANNERS_ENABLED: '0' });
     expect(merge.primaryAccount.notificationPreferences.locationPrompts).toBe(false);
+  });
+
+  test('a build that decides the banner itself is left alone', () => {
+    const out = run('/users/abc', { user: { notificationPreferences: { locationPrompts: true } } },
+      { PROXIMITY_BANNERS_ENABLED: '0' }, { 'x-fc-dwell-checkin': '1' });
+    expect(out.user.notificationPreferences.locationPrompts).toBe(true);
   });
 
   test('leaves everything alone when the switch is not set, and off user paths', () => {
