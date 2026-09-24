@@ -46,15 +46,31 @@ extension POIDuplicateMatcher {
         return words.joined(separator: " ")
     }
 
-    /// Whether a venue found by name and coordinate IS this saved place:
-    /// within 75 m, or the same normalised name.
+    /// Words that say nothing about WHICH venue it is.
+    private static let fillerWords: Set<String> = [
+        "the", "and", "of", "at", "on", "in", "a", "an", "co", "inc", "llc",
+        "bar", "grill", "restaurant", "cafe", "kitchen", "shop", "store"
+    ]
+
+    /// The words of a name that can tell it apart from its neighbours.
+    static func significantWords(_ name: String) -> Set<String> {
+        Set(normalizedName(name).split(separator: " ").map(String.init)
+            .filter { $0.count >= 3 && !fillerWords.contains($0) })
+    }
+
+    /// Whether a venue found by name and coordinate IS this saved place: the
+    /// same normalised name, or within 75 m AND sharing a telling word.
+    /// Proximity alone is not enough — downtown, "Pizz" claimed every save
+    /// within a block of a pizzeria as a match (70 rows for four pizzerias).
     static func isSearchHit(name: String, coordinate: CLLocationCoordinate2D, place: Place) -> Bool {
-        let target = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        if let placeLocation = place.location?.clLocation, placeLocation.distance(from: target) <= searchHitRadiusMeters {
-            return true
-        }
         let mine = normalizedName(place.name)
-        return !mine.isEmpty && mine == normalizedName(name)
+        let theirs = normalizedName(name)
+        guard !mine.isEmpty, !theirs.isEmpty else { return false }
+        if mine == theirs { return true }
+        let target = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        guard let placeLocation = place.location?.clLocation,
+              placeLocation.distance(from: target) <= searchHitRadiusMeters else { return false }
+        return !significantWords(place.name).isDisjoint(with: significantWords(name))
     }
 
     /// Splits search results into the saved places they turn out to be and

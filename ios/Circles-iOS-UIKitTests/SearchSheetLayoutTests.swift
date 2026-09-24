@@ -9,9 +9,9 @@ struct SearchSheetLayoutTests {
     }
 
     @Test func contentIsTheHandlePlusEachNonEmptySection() {
-        #expect(SearchSheetLayout.contentHeight(for: plan(places: 3, nearby: 3)) == 468)
-        #expect(SearchSheetLayout.contentHeight(for: plan(places: 1)) == 140)
-        #expect(SearchSheetLayout.contentHeight(for: plan(places: 0, people: 2)) == 200)
+        #expect(SearchSheetLayout.contentHeight(for: plan(places: 3, nearby: 3)) == 540)
+        #expect(SearchSheetLayout.contentHeight(for: plan(places: 1)) == 152)
+        #expect(SearchSheetLayout.contentHeight(for: plan(places: 0, people: 2)) == 224)
     }
 
     @Test func aboutHalfTheRoomButTheMapKeepsItsStrip() {
@@ -23,17 +23,17 @@ struct SearchSheetLayoutTests {
     }
 
     @Test func neverBelowOneRowEvenOnASmallPhone() {
-        // SE-class with the keyboard up: 253 pt of room would leave 103 → one row wins.
+        // SE-class with the keyboard up: 253 pt of room would leave 103 → one row (152) wins.
         let content = SearchSheetLayout.contentHeight(for: plan(places: 3, nearby: 3))
         #expect(SearchSheetLayout.expandedHeight(available: 253, content: content) == SearchSheetLayout.minSheetHeight)
     }
 
     @Test func neverTallerThanItsContent() {
-        #expect(SearchSheetLayout.expandedHeight(available: 620, content: 140) == 140)
+        #expect(SearchSheetLayout.expandedHeight(available: 620, content: 152) == 152)
     }
 
     @Test func collapsedIsJustTheHandle() {
-        #expect(SearchSheetLayout.height(for: .collapsed, available: 620, content: 468) == 52)
-        #expect(SearchSheetLayout.height(for: .expanded, available: 620, content: 468) == 341)
+        #expect(SearchSheetLayout.height(for: .collapsed, available: 620, content: 540) == 52)
+        #expect(SearchSheetLayout.height(for: .expanded, available: 620, content: 540) == 341)
     }
 }

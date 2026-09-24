@@ -19,7 +19,8 @@ enum SearchSheetState: Equatable {
 struct SearchSheetLayout {
     static let handleHeight: CGFloat = 52
     static let headerHeight: CGFloat = 28
-    static let rowHeight: CGFloat = 60
+    /// Title + distance/address line (same as the map's own list rows).
+    static let rowHeight: CGFloat = 72
     /// Chip bar (8–44) and expand button (56–92) stay clear above the sheet.
     static let minMapStrip: CGFloat = 150
     /// Handle + one header + one row.

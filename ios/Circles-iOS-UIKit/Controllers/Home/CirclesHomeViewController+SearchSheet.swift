@@ -25,11 +25,23 @@ extension CirclesHomeViewController {
         }
     }
 
-    /// Room between the mode control and the keyboard (or the safe-area
-    /// bottom when there is none); the sheet takes about half of it.
+    /// What the sheet must stay above: the tab bar (floating, and not part
+    /// of the home view's safe area) or the safe-area bottom, whichever is more.
+    var searchSheetBottomInset: CGFloat {
+        var inset = view.safeAreaInsets.bottom
+        if let tabBar = tabBarController?.tabBar, !tabBar.isHidden, tabBar.window != nil {
+            let tabBarTop = view.convert(tabBar.bounds, from: tabBar).minY
+            inset = max(inset, view.bounds.maxY - tabBarTop)
+        }
+        return inset
+    }
+
+    /// Room between the mode control and the keyboard (or the tab bar when
+    /// there is none); the sheet takes about half of it.
     func searchSheetAvailableHeight(keyboardTop: CGFloat? = nil) -> CGFloat {
         view.layoutIfNeeded()
-        let safeBottom = view.bounds.maxY - view.safeAreaInsets.bottom
+        searchResultsSheet.setBottomInset(searchSheetBottomInset)
+        let safeBottom = view.bounds.maxY - searchSheetBottomInset
         let top = min(keyboardTop ?? view.keyboardLayoutGuide.layoutFrame.minY, safeBottom)
         let above = searchModeControl.isHidden ? searchBar.frame.maxY : searchModeControl.frame.maxY
         return max(top - (above + 8), 0)

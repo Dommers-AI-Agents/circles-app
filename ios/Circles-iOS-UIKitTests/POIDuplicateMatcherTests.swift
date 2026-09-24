@@ -52,10 +52,14 @@ struct POIDuplicateMatcherTests {
               circleId: "c", addedBy: "me", addedByUser: nil, privacy: .public, createdAt: Date(), updatedAt: Date())
     }
 
-    @Test func aSearchHitIsWithinSeventyFiveMetresOrTheSameName() {
+    @Test func aSearchHitIsTheSameNameOrCloseWithASharedWord() {
         let saved = located("Pasta & Provisions", 35.2175, -80.8640)
-        // 40 m away, a different name: the same place.
-        #expect(POIDuplicateMatcher.isSearchHit(name: "P&P Deli", coordinate: CLLocationCoordinate2D(latitude: 35.21785, longitude: -80.8640), place: saved))
+        // 40 m away with a telling word in common: the same place.
+        #expect(POIDuplicateMatcher.isSearchHit(name: "Pasta and Provisions Deli", coordinate: CLLocationCoordinate2D(latitude: 35.21785, longitude: -80.8640), place: saved))
+        // 40 m away with nothing in common: a neighbour, not it. (Downtown,
+        // proximity alone made "Pizz" claim every save near a pizzeria.)
+        #expect(!POIDuplicateMatcher.isSearchHit(name: "P&P Deli", coordinate: CLLocationCoordinate2D(latitude: 35.21785, longitude: -80.8640), place: saved))
+        #expect(!POIDuplicateMatcher.isSearchHit(name: "CIBO", coordinate: CLLocationCoordinate2D(latitude: 35.21785, longitude: -80.8640), place: saved))
         // 3 km away, the same name spelled differently: the same place.
         #expect(POIDuplicateMatcher.isSearchHit(name: "The Pasta and Provisions", coordinate: CLLocationCoordinate2D(latitude: 35.24, longitude: -80.86), place: saved))
         // Neither: not it.

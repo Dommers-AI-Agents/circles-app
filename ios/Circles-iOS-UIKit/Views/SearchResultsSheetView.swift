@@ -31,6 +31,7 @@ final class SearchResultsSheetView: UIView {
     private let titleLabel = UILabel()
     private let chevron = UIImageView()
     private var heightConstraint: NSLayoutConstraint!
+    private var bottomCap: NSLayoutConstraint!
 
     private var availableHeight: CGFloat = 0
     private var contentHeight: CGFloat = SearchSheetLayout.handleHeight
@@ -48,18 +49,31 @@ final class SearchResultsSheetView: UIView {
     // MARK: - Public
 
     /// Pins the sheet to the container's sides and to `bottomAnchor` (the
-    /// keyboard layout guide's top, so it rides above the keyboard).
+    /// keyboard layout guide's top, so it rides above the keyboard). With no
+    /// keyboard — or a hardware one — that guide sits at the very bottom of
+    /// the view, under the tab bar; `setBottomInset` keeps the sheet above it.
     func install(in containerView: UIView, bottomAnchor: NSLayoutYAxisAnchor) {
         translatesAutoresizingMaskIntoConstraints = false
         heightConstraint = heightAnchor.constraint(equalToConstant: SearchSheetLayout.handleHeight)
+        let ridesKeyboard = self.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ridesKeyboard.priority = .defaultHigh
+        bottomCap = self.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor)
         NSLayoutConstraint.activate([
             leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            self.bottomAnchor.constraint(equalTo: bottomAnchor),
+            ridesKeyboard,
+            bottomCap,
             heightConstraint
         ])
         isHidden = true
         alpha = 0
+    }
+
+    /// How far above the container's bottom the sheet must stop (the tab
+    /// bar, which the home view's safe area does not cover).
+    func setBottomInset(_ inset: CGFloat) {
+        guard bottomCap != nil, bottomCap.constant != -inset else { return }
+        bottomCap.constant = -inset
     }
 
     func present(state: SearchSheetState, availableHeight: CGFloat) {

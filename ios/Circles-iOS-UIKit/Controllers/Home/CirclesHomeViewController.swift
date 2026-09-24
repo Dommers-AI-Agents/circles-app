@@ -790,6 +790,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         startBackgroundImagePreloading()
     }
     
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        searchResultsSheet.setBottomInset(searchSheetBottomInset)
+    }
+
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
         coordinator.animate(alongsideTransition: nil) { [weak self] _ in self?.refitSearchSheet() }
