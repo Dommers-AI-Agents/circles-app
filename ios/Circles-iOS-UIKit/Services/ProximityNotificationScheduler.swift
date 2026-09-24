@@ -28,6 +28,14 @@ final class ProximityNotificationScheduler {
     /// gate works before the profile has loaded. Absent = on.
     static let preferenceKey = "proximityCheckInBannersEnabled"
 
+    /// Kill switch (Wes, 2026-09-24): the banner fires on region ENTRY and no
+    /// app code runs on delivery, so a drive down a road of saved places is
+    /// five buzzes in ten minutes. Off until there is a way to tell a stop
+    /// from a drive-by without Always location; the in-app chip (app open,
+    /// within 50 m) stays. Flip to true to bring the banner and its Settings
+    /// row back. The server mirrors this with PROXIMITY_BANNERS_ENABLED=0.
+    static let bannersAvailable = false
+
     private let center = UNUserNotificationCenter.current()
     private let minimumReplanInterval: TimeInterval = 5 * 60
     private var lastReplanAt: Date?
@@ -37,12 +45,18 @@ final class ProximityNotificationScheduler {
     // MARK: - Preference
 
     static var isEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: preferenceKey) as? Bool ?? true }
+        get { bannersAvailable && preferenceOn }
         set { UserDefaults.standard.set(newValue, forKey: preferenceKey) }
     }
 
+    /// The stored preference alone. `DwellCheckInMonitor` (Always users)
+    /// reads this; `isEnabled` is the entry banner's gate, which is off.
+    static var preferenceOn: Bool {
+        UserDefaults.standard.object(forKey: preferenceKey) as? Bool ?? true
+    }
+
     /// Called by the preferences screen. Off cancels immediately; on replans
-    /// from the disk cache.
+    /// from the disk cache. The dwell monitor follows the same switch.
     func setEnabled(_ enabled: Bool) {
         Self.isEnabled = enabled
         if enabled {
@@ -50,6 +64,7 @@ final class ProximityNotificationScheduler {
         } else {
             cancelAll()
         }
+        DwellCheckInMonitor.shared.start()
     }
 
     // MARK: - Day gate (shared with the in-app chip)
@@ -84,6 +99,8 @@ final class ProximityNotificationScheduler {
     /// `around`. Skipped (plan left as is) when a gate fails or when nothing
     /// forced it within the last five minutes.
     func replan(places: [Place], around: CLLocation?, force: Bool = false) {
+        // The Always-location monitor follows the same saved set and fix
+        DwellCheckInMonitor.shared.replan(places: places, around: around)
         guard AuthService.shared.isLoggedIn, Self.isEnabled else {
             cancelAll()
             return
@@ -130,6 +147,7 @@ final class ProximityNotificationScheduler {
     /// Drop every proximity request, pending and delivered (logout, toggle off).
     func cancelAll() {
         lastReplanAt = nil
+        if !AuthService.shared.isLoggedIn { DwellCheckInMonitor.shared.stop() }
         removePendingProximityRequests {}
         center.getDeliveredNotifications { [weak self] delivered in
             let ids = delivered.map { $0.request.identifier }

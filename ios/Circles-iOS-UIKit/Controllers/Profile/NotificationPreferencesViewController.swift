@@ -47,6 +47,14 @@ class NotificationPreferencesViewController: BaseTableViewController {
         case nearbyCheckIns
         case discoveryPrompts
         case weekendRecommendations
+
+        /// The nearby banner exists only for people who allow location
+        /// Always (it waits until they've stopped at the place); everyone
+        /// else gets the in-app chip and no row, rather than a toggle that
+        /// does nothing.
+        static var visible: [ActivityRow] {
+            allCases.filter { $0 != .nearbyCheckIns || DwellCheckInMonitor.shared.isOffered }
+        }
     }
     
     private enum SocialRow: Int, CaseIterable {
@@ -220,7 +228,7 @@ extension NotificationPreferencesViewController {
         case .dailySummary:
             return showingTimePicker ? 3 : DailySummaryRow.allCases.count
         case .activityNotifications:
-            return ActivityRow.allCases.count
+            return ActivityRow.visible.count
         case .socialNotifications:
             return SocialRow.allCases.count
         case .quietHours:
@@ -281,7 +289,7 @@ extension NotificationPreferencesViewController {
             }
             
         case .activityNotifications:
-            let row = ActivityRow(rawValue: indexPath.row)!
+            let row = ActivityRow.visible[indexPath.row]
             let cell = tableView.dequeueReusableCell(withIdentifier: "SwitchCell", for: indexPath) as! SwitchTableViewCell
             
             switch row {
@@ -308,7 +316,7 @@ extension NotificationPreferencesViewController {
                 // Takes effect on the device immediately; the account record
                 // saves with the rest.
                 cell.configure(
-                    title: "Nearby Check-in Reminders",
+                    title: "Check-in Reminders When You Stop Somewhere",
                     isOn: preferences.locationPrompts,
                     onToggle: { [weak self] isOn in
                         self?.preferences.locationPrompts = isOn

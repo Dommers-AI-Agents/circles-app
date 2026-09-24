@@ -633,6 +633,9 @@ class APIService {
         // one unrecognised value threw mid-decode and dropped the circle (or
         // the whole moments response) rather than failing visibly.
         request.addValue("1", forHTTPHeaderField: "X-FC-Inner-Circle")
+        // This build decides the nearby check-in banner itself (dwell-based,
+        // Always users only); the server forces it off for older builds.
+        request.addValue("1", forHTTPHeaderField: "X-FC-Dwell-Checkin")
 
         // This build's marketing version, so a backend-scheduled home card
         // about a new feature can be held back from builds that don't have it.

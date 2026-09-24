@@ -112,6 +112,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         
         // Initialize Visit Detection Service
         VisitDetectionService.shared.configure()
+
+        // Nearby check-in banners are off app-wide; clear any regions a
+        // previous build registered so nothing fires from a closed app.
+        if !ProximityNotificationScheduler.bannersAvailable {
+            ProximityNotificationScheduler.shared.cancelAll()
+        }
+        // Always-location users: the stop-detecting version. No-op for
+        // everyone else. Also the hook for an iOS relaunch on a region event.
+        DwellCheckInMonitor.shared.start()
         Logger.debug("📍 Visit Detection Service initialized")
         
         // Set up Apple ID credential state observer
