@@ -792,7 +792,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        searchResultsSheet.setBottomInset(searchSheetBottomInset)
+        let inset = searchSheetBottomInset
+        searchResultsSheet.setBottomInset(inset)
+        mapBottomSearchingConstraint?.constant = -(inset + SearchSheetLayout.handleHeight)
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -1591,8 +1593,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // frame change never moves the camera (no auto-zoom on search).
         mapTopSearchingConstraint = mapContainerView.topAnchor.constraint(
             equalTo: contentView.topAnchor, constant: SearchSheetLayout.modeControlClearance)
+        // ...down to the top of the collapsed sheet's handle (the constant is
+        // kept current in viewDidLayoutSubviews), so the map's own corner
+        // controls stay reachable when the sheet is collapsed.
         mapBottomSearchingConstraint = mapContainerView.bottomAnchor.constraint(
-            equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+            equalTo: view.bottomAnchor, constant: -SearchSheetLayout.handleHeight)
         
         NSLayoutConstraint.activate([
             // Search bar (fixed at top). Unified search removed the scope
