@@ -157,7 +157,11 @@ extension CirclesHomeViewController {
         let split = POIDuplicateMatcher.partition(candidates: appleCandidates, saved: searchSource)
         appleMatchedPlaceIds = Set(split.matched.map(\.id))
         appleVenues = split.unsaved
-        filteredPlaces = searchSource.filter { appleMatchedPlaceIds.contains($0.id) || $0.matches(searchQuery: searchText) }
+        let matched = searchSource.filter { appleMatchedPlaceIds.contains($0.id) || $0.matches(searchQuery: searchText) }
+        // One row per real-world venue, however many people saved it (the
+        // same collapse the map's list uses) — every match gets a row now,
+        // so two copies of Indaco were two rows.
+        filteredPlaces = Place.dedupedByVenue(matched, preferredOwnerId: AuthService.shared.getUserId() ?? "")
 
         // Nearest first, with the distance shown on each row ("looking for
         // pizza NEAR ME" is the whole query) — same reference the places
