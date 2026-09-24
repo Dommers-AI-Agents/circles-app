@@ -105,4 +105,46 @@ struct PrivacyTierTests {
         #expect(!VideoVisibility.selectable.contains(.unknown))
         #expect(VideoVisibility.selectable.count == PrivacyTier.options(for: .moment).count)
     }
+
+    // MARK: - Menu sections (Inner Circle demoted under "Advanced")
+
+    /// Since the account-level activity grid arrived, Inner Circle on a single
+    /// circle or place is the rare override, so the picker files it under an
+    /// "Advanced" heading. Filed, not hidden.
+    @Test func circlesAndPlacesDemoteInnerCircleUnderAdvanced() {
+        for entity in [PrivacyEntity.circle, .place] {
+            let sections = PrivacyTier.menuSections(for: entity)
+            #expect(sections.count == 2)
+            #expect(sections[0].title == nil)
+            #expect(!sections[0].options.contains(.tier(.innerCircle)))
+            #expect(sections[1].title == PrivacyTier.advancedSectionTitle)
+            #expect(sections[1].options == [.tier(.innerCircle)])
+        }
+        #expect(PrivacyTier.menuSections(for: .place)[0].options.first == .inheritCircle)
+    }
+
+    @Test func momentsKeepOneFlatSection() {
+        let sections = PrivacyTier.menuSections(for: .moment)
+        #expect(sections.count == 1)
+        #expect(sections[0].title == nil)
+        #expect(sections[0].options == PrivacyTier.options(for: .moment))
+    }
+
+    /// Demotion regroups; it never adds, drops or duplicates an option, and
+    /// each group keeps the ladder's open → closed order.
+    @Test func sectionsCoverTheOptionSetExactlyOnce() {
+        for entity in [PrivacyEntity.circle, .place, .moment] {
+            let expected = PrivacyTier.options(for: entity)
+            let sections = PrivacyTier.menuSections(for: entity)
+            let flattened = sections.flatMap(\.options)
+            #expect(flattened.count == expected.count)
+            for option in expected {
+                #expect(flattened.filter { $0 == option }.count == 1, "\(option) once for \(entity)")
+            }
+            for section in sections {
+                let inLadderOrder = expected.filter { section.options.contains($0) }
+                #expect(section.options == inLadderOrder)
+            }
+        }
+    }
 }

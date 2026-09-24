@@ -312,6 +312,40 @@ class UserService {
         }
     }
     
+    // MARK: - Activity privacy
+
+    /// `PUT users/me/activity-privacy`. The whole grid is sent every time (the
+    /// server stores it whole). On success the grid we sent is what's saved;
+    /// the response is decoded only so an unexpected shape can't fail a write
+    /// that succeeded.
+    func updateActivityPrivacy(_ privacy: ActivityPrivacy, completion: @escaping (Result<ActivityPrivacy, Error>) -> Void) {
+        let sent = privacy.normalized
+        let body: [String: Any] = ["activityPrivacy": sent.requestBody()]
+
+        APIService.shared.request(
+            endpoint: "users/me/activity-privacy",
+            method: .put,
+            body: body,
+            requiresAuth: true
+        ) { [weak self] (result: Result<ActivityPrivacyResponse, APIError>) in
+            guard let self = self else { return }
+
+            switch result {
+            case .success(let response):
+                completion(.success(response.saved ?? sent))
+            case .failure(let error):
+                // An older backend has no such route. Express answers that with
+                // its own message, which the mapper would faithfully surface;
+                // say something a person can act on instead.
+                if case .httpError(404, _) = error {
+                    completion(.failure(UserError.serverRejected(ActivityPrivacy.Copy.notAvailable)))
+                    return
+                }
+                completion(.failure(self.mapAPIErrorToUserError(error)))
+            }
+        }
+    }
+
     // MARK: - User Search
     
     func searchUsers(query: String, completion: @escaping (Result<[User], Error>) -> Void) {
@@ -736,4 +770,32 @@ struct UploadResponse: Decodable {
 struct UsersSearchResponse: Decodable {
     let success: Bool
     let users: [User]
+}
+
+/// `{success, data: {activityPrivacy}}` today; tolerant of a top-level
+/// `activityPrivacy` or a whole `user` in case the shape moves.
+private struct ActivityPrivacyResponse: Decodable {
+    let saved: ActivityPrivacy?
+
+    private struct Payload: Decodable {
+        let activityPrivacy: ActivityPrivacy?
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            activityPrivacy = try? c.decodeIfPresent(ActivityPrivacy.self, forKey: .activityPrivacy)
+        }
+        private enum CodingKeys: String, CodingKey { case activityPrivacy }
+    }
+
+    private enum CodingKeys: String, CodingKey { case data, activityPrivacy, user }
+
+    init(from decoder: Decoder) throws {
+        guard let c = try? decoder.container(keyedBy: CodingKeys.self) else {
+            saved = nil
+            return
+        }
+        let data = try? c.decodeIfPresent(Payload.self, forKey: .data)
+        let user = try? c.decodeIfPresent(Payload.self, forKey: .user)
+        let top = try? c.decodeIfPresent(ActivityPrivacy.self, forKey: .activityPrivacy)
+        saved = data?.activityPrivacy ?? top ?? user?.activityPrivacy
+    }
 }

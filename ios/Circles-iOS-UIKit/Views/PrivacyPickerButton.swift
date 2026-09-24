@@ -21,6 +21,7 @@ final class PrivacyPickerButton: UIView {
     private(set) var selected: PrivacyOption
     /// The named Inner Circle list behind the selection, when one was chosen.
     private(set) var selectedListId: String?
+    private let entity: PrivacyEntity
     private let options: [PrivacyOption]
 
     private let button = UIButton.menuFieldButton()
@@ -29,6 +30,7 @@ final class PrivacyPickerButton: UIView {
     /// - Parameter entity: which option set to offer — a circle has four tiers,
     ///   a place adds "same as circle", a moment adds the followers audience.
     init(entity: PrivacyEntity, selected: PrivacyOption) {
+        self.entity = entity
         self.options = PrivacyTier.options(for: entity)
         self.selected = options.contains(selected) ? selected : (options.first ?? .tier(.public))
         super.init(frame: .zero)
@@ -94,7 +96,14 @@ final class PrivacyPickerButton: UIView {
     }
 
     @objc private func refresh() {
-        button.menu = UIMenu(children: options.flatMap(entries(for:)))
+        // One inline sub-menu per section, so a demoted option sits under its
+        // own heading ("Advanced") instead of vanishing from the list.
+        let sections = PrivacyTier.menuSections(for: entity)
+        button.menu = UIMenu(children: sections.map { section in
+            UIMenu(title: section.title ?? "",
+                   options: .displayInline,
+                   children: section.options.flatMap(entries(for:)))
+        })
 
         var config = button.configuration
         config?.title = currentTitle

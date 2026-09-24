@@ -75,14 +75,16 @@ class SettingsViewController: BaseTableViewController {
     }
     
     private enum PrivacyRow: Int, CaseIterable {
-        case profileVisibility
+        // Replaced "Profile Visibility", an action sheet whose three choices
+        // did nothing. This one opens the account-level activity grid.
+        case activityVisibility
         // Replaced the old "Circle Sharing" stub, which only offered a
         // Public/Private default and never did anything.
         case innerCircle
         
         var title: String {
             switch self {
-            case .profileVisibility: return "Profile Visibility"
+            case .activityVisibility: return ActivityPrivacy.Copy.screenTitle
             case .innerCircle: return "Inner Circle"
             }
         }
@@ -152,6 +154,11 @@ class SettingsViewController: BaseTableViewController {
         super.viewWillAppear(animated)
         // Re-check permissions when returning from settings
         checkNotificationPermissions()
+        // Detail text on the privacy rows ("Custom", the Inner Circle count)
+        // can change on the screens this one pushes.
+        if isViewLoaded {
+            tableView.reloadSections(IndexSet(integer: Section.privacy.rawValue), with: .none)
+        }
     }
     
     // MARK: - UI Setup
@@ -244,20 +251,6 @@ class SettingsViewController: BaseTableViewController {
         alert.addAction(UIAlertAction(title: "OK", style: .cancel))
         
         present(alert, animated: true)
-    }
-    
-    private func showProfileVisibility() {
-        AlertPresenter.showActionSheet(
-            title: "Profile Visibility",
-            message: "Choose who can see your profile",
-            actions: [
-                (title: "Everyone", style: .default, handler: { /* Handle selection */ }),
-                (title: "Connections Only", style: .default, handler: { /* Handle selection */ }),
-                (title: "No One", style: .default, handler: { /* Handle selection */ })
-            ],
-            from: self,
-            sourceView: view
-        )
     }
     
     private func openNotificationSettings() {
@@ -702,12 +695,22 @@ extension SettingsViewController {
 
         case .privacy:
             if let row = PrivacyRow(rawValue: indexPath.row) {
-                cell.textLabel?.text = row.title
-                cell.accessoryType = .disclosureIndicator
-                if row == .innerCircle {
+                // The registered cell is `.default` style, whose
+                // detailTextLabel is nil, so detail text only shows through a
+                // content configuration (the notification rows do the same).
+                var config = cell.defaultContentConfiguration()
+                config.text = row.title
+                config.secondaryTextProperties.color = .secondaryLabel
+                switch row {
+                case .activityVisibility:
+                    let grid = AuthService.shared.currentUser?.activityPrivacy
+                    config.secondaryText = (grid?.isDefault ?? true) ? "Everyone" : "Custom"
+                case .innerCircle:
                     let count = InnerCircleManager.shared.memberCount
-                    cell.detailTextLabel?.text = count == 0 ? "No one yet" : "\(count)"
+                    config.secondaryText = count == 0 ? "No one yet" : "\(count)"
                 }
+                cell.contentConfiguration = config
+                cell.accessoryType = .disclosureIndicator
             }
             
         case .notifications:
@@ -846,8 +849,8 @@ extension SettingsViewController {
         case .privacy:
             if let row = PrivacyRow(rawValue: indexPath.row) {
                 switch row {
-                case .profileVisibility:
-                    showProfileVisibility()
+                case .activityVisibility:
+                    navigationController?.pushViewController(ActivityPrivacyViewController(), animated: true)
                 case .innerCircle:
                     navigationController?.pushViewController(InnerCircleListsViewController(), animated: true)
                 }

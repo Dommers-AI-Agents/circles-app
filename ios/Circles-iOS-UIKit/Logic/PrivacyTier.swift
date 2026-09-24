@@ -129,3 +129,36 @@ extension PrivacyTier {
         }
     }
 }
+
+/// One group of a picker's menu. `title` is nil for the main group and a
+/// heading ("Advanced") for a demoted one.
+struct PrivacyMenuSection: Equatable {
+    let title: String?
+    let options: [PrivacyOption]
+}
+
+extension PrivacyTier {
+    static let advancedSectionTitle = "Advanced"
+
+    /// `options(for:)` grouped for display.
+    ///
+    /// Circles and places put Inner Circle under an "Advanced" heading: since
+    /// the account-level activity grid arrived, it is the rare per-item
+    /// override rather than a tier most people should weigh every time they
+    /// save. The option set itself is unchanged — nothing is hidden, and an
+    /// item already set to Inner Circle still shows as such. Moments keep one
+    /// flat list; their picker was left alone on purpose.
+    static func menuSections(for entity: PrivacyEntity) -> [PrivacyMenuSection] {
+        let all = options(for: entity)
+        switch entity {
+        case .moment:
+            return [PrivacyMenuSection(title: nil, options: all)]
+        case .circle, .place:
+            let demoted: PrivacyOption = .tier(.innerCircle)
+            return [
+                PrivacyMenuSection(title: nil, options: all.filter { $0 != demoted }),
+                PrivacyMenuSection(title: advancedSectionTitle, options: all.filter { $0 == demoted })
+            ]
+        }
+    }
+}
