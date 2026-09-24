@@ -37,6 +37,10 @@ struct HomePlaceFilter {
         var everyoneAuthorIds: Set<String> = []
     }
 
+    private static func normalizedSet<S: Sequence>(_ ids: S) -> Set<String> where S.Element == String {
+        Set(ids.compactMap { IDNormalizer.normalize($0) })
+    }
+
     /// Circles whose owner toggled them off the home map.
     static func hiddenCircleIds(in circles: [Circle]) -> Set<String> {
         Set(circles.filter { $0.showOnMap == false }.map { $0.id })
@@ -78,19 +82,24 @@ struct HomePlaceFilter {
                     }
                 }
             } else if connectionId == myConnectionsOnlyId {
-                let connected = context.acceptedConnectionUserIds
+                // Normalise the people once, then one lookup per place. The
+                // pairwise isSameUser scan was places × people normalisations
+                // on every viewport fetch — 150 ms on the main thread with a
+                // thousand places, the stall felt as map lag (2026-09-24).
+                let connected = normalizedSet(context.acceptedConnectionUserIds)
                 scoped = places.filter { place in
-                    let who = author(of: place)
-                    return connected.contains { IDNormalizer.isSameUser(who, $0) }
+                    guard let who = IDNormalizer.normalize(author(of: place)) else { return false }
+                    return connected.contains(who)
                 }
             } else {
-                scoped = places.filter { IDNormalizer.isSameUser(author(of: $0), connectionId) }
+                let person = IDNormalizer.normalize(connectionId)
+                scoped = places.filter { IDNormalizer.normalize(author(of: $0)) == person }
             }
         } else {
-            let authors = context.everyoneAuthorIds
+            let authors = normalizedSet(context.everyoneAuthorIds)
             scoped = places.filter { place in
-                let who = author(of: place)
-                return authors.contains { IDNormalizer.isSameUser(who, $0) }
+                guard let who = IDNormalizer.normalize(author(of: place)) else { return false }
+                return authors.contains(who)
             }
         }
 

@@ -47,7 +47,7 @@ extension POIDuplicateMatcher {
     }
 
     /// Words that say nothing about WHICH venue it is.
-    private static let fillerWords: Set<String> = [
+    static let fillerWords: Set<String> = [
         "the", "and", "of", "at", "on", "in", "a", "an", "co", "inc", "llc",
         "bar", "grill", "restaurant", "cafe", "kitchen", "shop", "store"
     ]
@@ -58,32 +58,67 @@ extension POIDuplicateMatcher {
             .filter { $0.count >= 3 && !fillerWords.contains($0) })
     }
 
+    /// A name, normalised once. Every comparison of a search result against
+    /// a saved place used to normalise both names (and split both into
+    /// words) on the spot — with a thousand saved places and twenty results
+    /// that was a hundred thousand normalisations per pass, several passes
+    /// per keystroke, and the whole search sheet stuttered (2026-09-24).
+    struct NameKey {
+        let normalized: String
+        let words: Set<String>
+
+        init(_ name: String) {
+            let normalized = POIDuplicateMatcher.normalizedName(name)
+            self.normalized = normalized
+            self.words = Set(normalized.split(separator: " ").map(String.init)
+                .filter { $0.count >= 3 && !POIDuplicateMatcher.fillerWords.contains($0) })
+        }
+    }
+
+    /// A saved place with its key computed once per pass.
+    struct KeyedPlace {
+        let place: Place
+        let key: NameKey
+        let location: CLLocation?
+
+        init(_ place: Place) {
+            self.place = place
+            self.key = NameKey(place.name)
+            self.location = place.location?.clLocation
+        }
+    }
+
     /// Whether a venue found by name and coordinate IS this saved place: the
     /// same normalised name, or within 75 m AND sharing a telling word.
     /// Proximity alone is not enough — downtown, "Pizz" claimed every save
     /// within a block of a pizzeria as a match (70 rows for four pizzerias).
     static func isSearchHit(name: String, coordinate: CLLocationCoordinate2D, place: Place) -> Bool {
-        let mine = normalizedName(place.name)
-        let theirs = normalizedName(name)
-        guard !mine.isEmpty, !theirs.isEmpty else { return false }
-        if mine == theirs { return true }
+        isSearchHit(key: NameKey(name), coordinate: coordinate, saved: KeyedPlace(place))
+    }
+
+    static func isSearchHit(key theirs: NameKey, coordinate: CLLocationCoordinate2D, saved: KeyedPlace) -> Bool {
+        let mine = saved.key
+        guard !mine.normalized.isEmpty, !theirs.normalized.isEmpty else { return false }
+        if mine.normalized == theirs.normalized { return true }
+        guard let placeLocation = saved.location else { return false }
         let target = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        guard let placeLocation = place.location?.clLocation,
-              placeLocation.distance(from: target) <= searchHitRadiusMeters else { return false }
-        return !significantWords(place.name).isDisjoint(with: significantWords(name))
+        guard placeLocation.distance(from: target) <= searchHitRadiusMeters else { return false }
+        return !mine.words.isDisjoint(with: theirs.words)
     }
 
     /// Splits search results into the saved places they turn out to be and
     /// the venues nobody has saved. Each saved place is claimed once.
     static func partition(candidates: [Place], saved: [Place]) -> (matched: [Place], unsaved: [Place]) {
+        let keyedSaved = saved.map(KeyedPlace.init)
         var matched: [Place] = []
         var claimed = Set<String>()
         var unsaved: [Place] = []
         for candidate in candidates {
             guard let coordinate = candidate.location?.clLocation?.coordinate else { unsaved.append(candidate); continue }
-            if let hit = saved.first(where: { !claimed.contains($0.id) && isSearchHit(name: candidate.name, coordinate: coordinate, place: $0) }) {
-                claimed.insert(hit.id)
-                matched.append(hit)
+            let key = NameKey(candidate.name)
+            if let hit = keyedSaved.first(where: { !claimed.contains($0.place.id) && isSearchHit(key: key, coordinate: coordinate, saved: $0) }) {
+                claimed.insert(hit.place.id)
+                matched.append(hit.place)
             } else {
                 unsaved.append(candidate)
             }

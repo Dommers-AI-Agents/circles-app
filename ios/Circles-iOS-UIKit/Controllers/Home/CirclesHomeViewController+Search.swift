@@ -147,7 +147,13 @@ extension CirclesHomeViewController {
     // Unified place search: always searches your places AND your network's
     // (deduplicated) — the old "your places / all places" scope split was
     // low value since "all" already includes yours and the text narrows it.
-    func filterPlaces(searchText: String) {
+    /// - Parameter refetchSuggestions: whether this pass may schedule the
+    ///   nearby lookups (catalog + Apple). Only a change of query or origin
+    ///   should; a pass run BECAUSE a lookup came back must not, or the
+    ///   completions schedule the lookups that schedule the completions —
+    ///   the search sheet re-ran the whole match every half second while
+    ///   the person was just scrolling it (2026-09-24).
+    func filterPlaces(searchText: String, refetchSuggestions: Bool = true) {
         let interval = Signposts.search.begin("filterPlaces")
         defer { Signposts.search.end(interval) }
         let searchSource = deduplicatePlaces(userPlaces: userOwnPlaces, networkPlaces: networkPlaces)
@@ -180,7 +186,11 @@ extension CirclesHomeViewController {
         // venues instead of a dead end. Centralized here so every caller
         // (keystroke, scope change, late network-places load) keeps the rule:
         // suggested exists only while the local sections are empty.
-        updateSuggestedPlaces(for: searchText)
+        if refetchSuggestions {
+            updateSuggestedPlaces(for: searchText)
+        } else {
+            rebuildSuggestedRows()
+        }
 
         // Network places power the search superset — load them once in the
         // background (previously only loaded when the user picked the scope).
@@ -291,10 +301,10 @@ extension CirclesHomeViewController {
                   self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) == typedQuery else { return }
             guard case .success(let venues) = result else { return }   // throttled/offline: silently nothing
             self.appleCandidates = venues
-            self.filterPlaces(searchText: typedQuery)
+            // A completion re-matches; it never re-schedules the lookups
+            self.filterPlaces(searchText: typedQuery, refetchSuggestions: false)
             self.mapViewController?.setSearchFilter(self.searchMode.filtersMap(typedQuery),
                                                     matchedPlaceIds: self.searchMode == .places ? self.appleMatchedPlaceIds : [])
-            self.rebuildSuggestedRows()
             self.refreshSearchOverlay()
             self.updateEmptyState()
         }

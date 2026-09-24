@@ -15,9 +15,8 @@ class IDNormalizer {
         if userId.contains(".") {
             let parts = userId.split(separator: ".")
             if parts.count >= 2 {
-                let normalizedId = String(parts[1])
-                Logger.debug("📋 IDNormalizer: Normalized \(userId) → \(normalizedId)")
-                return normalizedId
+                // No logging here: this runs per place per filter pass
+                return String(parts[1])
             }
         }
         

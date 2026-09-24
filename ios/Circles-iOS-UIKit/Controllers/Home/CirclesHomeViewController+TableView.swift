@@ -241,7 +241,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             
             // If currently searching, refresh the search results with new scope
             if isSearching {
-                filterPlaces(searchText: searchBar.text ?? "")
+                // Scope only changes which saved places match; the nearby
+                // lookups depend on the query and origin, not the scope
+                filterPlaces(searchText: searchBar.text ?? "", refetchSuggestions: false)
             }
             
             // Load network places if switching to network search and not already loaded

@@ -34,25 +34,31 @@ enum SuggestedNearbyMerger {
 
     static func merge(global: [GlobalPlace], apple: [Place], saved: [Place],
                       from origin: CLLocation?) -> [(row: SuggestedRow, distance: CLLocationDistance?)] {
+        // Names normalised once per pass, not once per pair (see NameKey)
+        let keyedSaved = saved.map(POIDuplicateMatcher.KeyedPlace.init)
         let isSaved: (Place) -> Bool = { place in
+            let key = POIDuplicateMatcher.NameKey(place.name)
             guard let coordinate = place.location?.clLocation?.coordinate else {
-                return saved.contains { POIDuplicateMatcher.normalizedName($0.name) == POIDuplicateMatcher.normalizedName(place.name) }
+                return keyedSaved.contains { $0.key.normalized == key.normalized }
             }
-            return saved.contains { POIDuplicateMatcher.isSearchHit(name: place.name, coordinate: coordinate, place: $0) }
+            return keyedSaved.contains { POIDuplicateMatcher.isSearchHit(key: key, coordinate: coordinate, saved: $0) }
         }
         var rows: [SuggestedRow] = []
         var places: [Place] = []
+        var keptKeys: [POIDuplicateMatcher.KeyedPlace] = []
         for g in global {
             let place = g.toLegacyPlace()
             guard !isSaved(place) else { continue }
-            rows.append(.global(g)); places.append(place)
+            rows.append(.global(g)); places.append(place); keptKeys.append(.init(place))
         }
         for a in apple {
             guard !isSaved(a) else { continue }
             // Already offered by the catalog? Keep the catalog copy.
-            if let coordinate = a.location?.clLocation?.coordinate,
-               places.contains(where: { POIDuplicateMatcher.isSearchHit(name: a.name, coordinate: coordinate, place: $0) }) { continue }
-            rows.append(.apple(a)); places.append(a)
+            if let coordinate = a.location?.clLocation?.coordinate {
+                let key = POIDuplicateMatcher.NameKey(a.name)
+                if keptKeys.contains(where: { POIDuplicateMatcher.isSearchHit(key: key, coordinate: coordinate, saved: $0) }) { continue }
+            }
+            rows.append(.apple(a)); places.append(a); keptKeys.append(.init(a))
         }
         let byId = Dictionary(uniqueKeysWithValues: zip(places.map(\.id), rows))
         return DistancePlaceSorter.sorted(places, from: origin).prefix(cap).compactMap { entry in

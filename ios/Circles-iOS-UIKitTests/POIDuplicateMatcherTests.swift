@@ -74,3 +74,13 @@ struct POIDuplicateMatcherTests {
         #expect(split.unsaved.map(\.name) == ["Pasta & Provisions Deli", "Other Deli"])
     }
 }
+
+/// The keyed fast path must answer exactly like the per-pair one.
+struct POIDuplicateMatcherKeyTests {
+    @Test func aKeyIsTheNormalisedNameAndItsTellingWords() {
+        let key = POIDuplicateMatcher.NameKey("The Pasta & Provisions Café")
+        #expect(key.normalized == POIDuplicateMatcher.normalizedName("The Pasta & Provisions Café"))
+        #expect(key.words == POIDuplicateMatcher.significantWords("The Pasta & Provisions Café"))
+        #expect(key.words == ["pasta", "provisions"])
+    }
+}

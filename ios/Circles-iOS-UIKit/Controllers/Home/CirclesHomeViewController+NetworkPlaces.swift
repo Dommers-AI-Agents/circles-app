@@ -70,7 +70,8 @@ extension CirclesHomeViewController {
             // If a search is active, fold the newly-loaded network places into
             // the current results
             if self.isSearching, let text = self.searchBar.text, !text.isEmpty {
-                self.filterPlaces(searchText: text)
+                // Same query, same origin: re-match, don't re-fetch suggestions
+                self.filterPlaces(searchText: text, refetchSuggestions: false)
                 self.refreshSearchOverlay()
                 self.updateEmptyState()
             }
