@@ -123,7 +123,16 @@ final class CheckInComposeViewController: BaseViewController {
     /// or one of your named Inner Circle lists. A list is a ceiling the
     /// server enforces, so it holds even with "Show in activity feed" on —
     /// that switch decides where it appears, not who may see it.
-    private var selectedListId: String?
+    /// Who this check-in is for. Connections is the historic default; a named
+    /// Inner Circle list narrows it; Everyone widens it to followers and
+    /// anyone else, past the account's activity grid (Wes, 2026-09-25:
+    /// "some like being public").
+    private enum Audience: Equatable { case connections, everyone, list(String) }
+    private var selectedAudience: Audience = .connections
+    private var selectedListId: String? {
+        if case .list(let id) = selectedAudience { return id }
+        return nil
+    }
     private var audienceSection: UIView?
     private lazy var audienceButton: UIButton = {
         let button = UIButton.menuFieldButton()
@@ -247,32 +256,42 @@ final class CheckInComposeViewController: BaseViewController {
         return text == notePlaceholder ? "" : text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// One entry for everyone, then one per named list. A menu rather than a
+    /// Everyone, connections, then one per named list. A menu rather than a
     /// switch because there is no longer a single Inner Circle to be "only".
     private func refreshAudienceMenu() {
         let lists = InnerCircleManager.shared.usableLists
-        audienceSection?.isHidden = lists.isEmpty
+        audienceSection?.isHidden = false
         // A list that went away (deleted, or everyone removed) must not stay
         // selected: it would send an audience nobody is on.
-        if let id = selectedListId, !lists.contains(where: { $0.id == id }) { selectedListId = nil }
-        guard !lists.isEmpty else { return }
-        let everyone = UIAction(title: "Everyone in my circles",
-                                subtitle: "People you're connected with",
-                                state: selectedListId == nil ? .on : .off) { [weak self] _ in
-            self?.selectedListId = nil
+        if let id = selectedListId, !lists.contains(where: { $0.id == id }) { selectedAudience = .connections }
+        let everyone = UIAction(title: "Everyone",
+                                subtitle: "Connections, followers and anyone who finds the place",
+                                state: selectedAudience == .everyone ? .on : .off) { [weak self] _ in
+            self?.selectedAudience = .everyone
+            self?.refreshAudienceMenu()
+        }
+        let connections = UIAction(title: "My connections",
+                                   subtitle: "People you're connected with",
+                                   state: selectedAudience == .connections ? .on : .off) { [weak self] _ in
+            self?.selectedAudience = .connections
             self?.refreshAudienceMenu()
         }
         let listActions = lists.map { list in
             UIAction(title: list.name,
                      subtitle: list.userIds.count == 1 ? "1 person" : "\(list.userIds.count) people",
                      state: selectedListId == list.id ? .on : .off) { [weak self] _ in
-                self?.selectedListId = list.id
+                self?.selectedAudience = .list(list.id)
                 self?.refreshAudienceMenu()
             }
         }
-        audienceButton.menu = UIMenu(children: [everyone] + listActions)
-        let name = lists.first { $0.id == selectedListId }?.name
-        audienceButton.setTitle("\(name ?? "Everyone in my circles")  ›", for: .normal)
+        audienceButton.menu = UIMenu(children: [everyone, connections] + listActions)
+        let title: String
+        switch selectedAudience {
+        case .everyone: title = "Everyone"
+        case .connections: title = "My connections"
+        case .list(let id): title = lists.first { $0.id == id }?.name ?? "My connections"
+        }
+        audienceButton.setTitle("\(title)  ›", for: .normal)
         audienceButton.setTitleColor(Constants.Colors.label, for: .normal)
     }
 
@@ -321,11 +340,11 @@ final class CheckInComposeViewController: BaseViewController {
         AlertPresenter.showInfo(
             title: "Who sees this check-in?",
             message: """
-            On: people you're connected with see it in their activity feed. Not your followers, and not the public.
+            On: the people under "Who's it for?" see it in their activity feed — your connections, one of your Inner Circle lists, or, with Everyone, your followers and anyone else too.
 
             Anyone you choose under "Notify people" sees it either way.
 
-            Pick one of your Inner Circle lists under "Who's it for?" and it stops there — turning this on can't widen it.
+            An Inner Circle list stops there — turning this on can't widen it. Everyone is the one choice that reaches past your "Who can see my activity" settings, for this check-in only.
 
             Off, with nobody notified: it's yours alone, kept in your own history here.
             """,
@@ -347,9 +366,16 @@ final class CheckInComposeViewController: BaseViewController {
             // A note on a public check-in is also a comment on the place
             "postComment": isPrivate ? false : postOnPlaceSwitch.isOn
         ]
-        if !isPrivate, let selectedListId {
-            data["audience"] = "innerCircle"
-            data["audienceListId"] = selectedListId
+        if !isPrivate {
+            switch selectedAudience {
+            case .everyone:
+                data["audience"] = "public"
+            case .list(let id):
+                data["audience"] = "innerCircle"
+                data["audienceListId"] = id
+            case .connections:
+                break
+            }
         }
         if let rating = ratingPills.selectedRating { data["rating"] = rating }
         // Duration is optional: nothing picked = the server's two-hour default

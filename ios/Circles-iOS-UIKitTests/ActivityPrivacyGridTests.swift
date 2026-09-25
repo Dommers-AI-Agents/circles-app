@@ -207,12 +207,14 @@ struct ActivityPrivacyGridTests {
         #expect(nobody.summary(for: .photos, innerCircleIsEmpty: false) == "Everyone")
     }
 
-    @Test func anEmptyInnerCircleReadsOnlyYou() {
+    /// Was "Only you" — since 2026-09-25 an empty Inner Circle falls back to
+    /// Connections (server rule too), and the row says so.
+    @Test func anEmptyInnerCircleReadsAsConnectionsForNow() {
         let innerOnly = ActivityPrivacy.allAllowed
             .toggled(category: .moments, audience: .public)
             .toggled(category: .moments, audience: .myNetwork)
         #expect(innerOnly.allows(.moments, .innerCircle))
-        #expect(innerOnly.summary(for: .moments, innerCircleIsEmpty: true) == "Only you")
+        #expect(innerOnly.summary(for: .moments, innerCircleIsEmpty: true) == "Inner Circle · Connections until you add someone")
     }
 
     @Test func copyIsFilledIn() {
@@ -220,5 +222,18 @@ struct ActivityPrivacyGridTests {
         #expect(!ActivityPrivacy.Copy.emptyInnerCircleTitle.isEmpty)
         #expect(!ActivityPrivacy.Copy.emptyInnerCircleDetail.isEmpty)
         #expect(Set(ActivityPrivacyCategory.allCases.map(\.title)).count == ActivityPrivacyCategory.allCases.count)
+    }
+
+    /// Wes, 2026-09-25: "Inner Circle" on an empty circle is not "only you" —
+    /// it is Connections until someone is added, and the row says so.
+    @Test func innerCircleOnlyFallsBackToConnectionsWhileEmpty() {
+        let grid = ActivityPrivacy.standard
+            .toggled(category: .checkIns, audience: .myNetwork)      // off → Inner Circle alone
+        #expect(!grid.allows(.checkIns, .myNetwork))
+        #expect(grid.allows(.checkIns, .innerCircle))
+        #expect(grid.summary(for: .checkIns, innerCircleIsEmpty: true) == "Inner Circle · Connections until you add someone")
+        #expect(grid.summary(for: .checkIns, innerCircleIsEmpty: false) == "Inner Circle")
+        let nothing = grid.toggled(category: .checkIns, audience: .innerCircle)
+        #expect(nothing.summary(for: .checkIns, innerCircleIsEmpty: true) == "Only you")
     }
 }

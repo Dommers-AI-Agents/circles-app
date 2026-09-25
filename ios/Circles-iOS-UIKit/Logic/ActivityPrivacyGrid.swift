@@ -289,12 +289,13 @@ struct ActivityPrivacy: Codable, Equatable {
     /// The line under a row's title.
     ///
     /// - Parameter innerCircleIsEmpty: an Inner Circle with nobody on it reaches
-    ///   nobody, so a row checked only there is, in practice, "Only you".
+    ///   nobody — so a row checked only there falls back to Connections until
+    ///   people are added (the server applies the same rule), and says so.
     func summary(for category: ActivityPrivacyCategory, innerCircleIsEmpty: Bool) -> String {
         let row = self[category]
         if row.allows(.public) { return "Everyone" }
         if row.allows(.myNetwork) { return "Connections" }
-        if row.allows(.innerCircle) && !innerCircleIsEmpty { return "Inner Circle" }
+        if row.allows(.innerCircle) { return innerCircleIsEmpty ? "Inner Circle · Connections until you add someone" : "Inner Circle" }
         return "Only you"
     }
 
@@ -315,9 +316,9 @@ extension ActivityPrivacy {
     enum Copy {
         static let screenTitle = "Who can see my activity"
         static let headerTitle = "Activity"
-        static let footer = "A place's own privacy still narrows this; it never widens it. Unchecking all three means only you."
+        static let footer = "A place's own privacy still narrows this; it never widens it. A check-in you mark Everyone is the one exception. Unchecking all three means only you."
         static let emptyInnerCircleTitle = "Your Inner Circle is empty"
-        static let emptyInnerCircleDetail = "An Inner Circle box reaches no one until you add people. Tap to build your lists."
+        static let emptyInnerCircleDetail = "Until you add people, an Inner Circle box reaches your connections instead. Tap to build your lists."
         static let impliedInnerCircleHint = "Included with Connections"
         static let saved = "Privacy saved"
         static let notAvailable = "Activity privacy isn't available yet. Please try again later."
