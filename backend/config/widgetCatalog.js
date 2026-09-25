@@ -8,19 +8,19 @@
  * adding a row later only improves the link preview.
  */
 const WIDGETS = {
-  billsplit: { title: 'Bill Split', blurb: 'Split the check, add the tip', emoji: '🧾' },
-  calories: { title: 'Calories', blurb: 'Quick-add meals and macros', emoji: '🥗' },
-  fridgemail: { title: 'Fridge Mail', blurb: "Kids' drawings, mailed to Grandma every week", emoji: '🎨' },
-  habits: { title: 'Habits', blurb: 'Daily check-ins and streaks', emoji: '✅' },
-  heartbeat: { title: 'Heartbeat', blurb: 'Your pulse, from the camera or a strap', emoji: '❤️' },
-  howareyou: { title: 'How Are You?', blurb: 'Check on Mom or Dad, a few times a day', emoji: '💬' },
-  nextbar: { title: 'NextBar', blurb: 'Your next bar, picked from your circles', emoji: '🍸' },
-  postcard: { title: 'Postcard', blurb: 'Send a postcard from your trip', emoji: '📮' },
-  quotes: { title: 'Quotes', blurb: 'Good lines at the times you pick', emoji: '💭' },
-  sleepsounds: { title: 'Sleep Sounds', blurb: 'Rain, ocean, fire — mix and drift off', emoji: '🌙' },
-  stocks: { title: 'Stocks', blurb: 'Indexes, rates, crypto and the stocks you follow', emoji: '📈' },
-  water: { title: 'Water', blurb: 'Tap to log each glass', emoji: '💧' },
-  workouts: { title: 'Workouts', blurb: 'Log sets, reps and PRs', emoji: '🏋️' }
+  billsplit: { title: 'Bill Split', blurb: 'Split the check and the tip with friends in seconds.', emoji: '🧾' },
+  calories: { title: 'Calories', blurb: 'Log meals and macros in a couple of taps.', emoji: '🥗' },
+  fridgemail: { title: 'Fridge Mail', blurb: "Your kids' drawings, printed and mailed to Grandma every week.", emoji: '🎨' },
+  habits: { title: 'Habits', blurb: 'Keep daily habits with one-tap check-ins and streaks.', emoji: '✅' },
+  heartbeat: { title: 'Heartbeat', blurb: 'Measure your heart rate directly from your phone camera.', emoji: '❤️' },
+  howareyou: { title: 'How Are You?', blurb: 'Check on Mom or Dad a few times a day — they answer with one tap from their Lock Screen.', emoji: '💬' },
+  nextbar: { title: 'NextBar', blurb: 'Your next bar, picked from the places your friends actually go.', emoji: '🍸' },
+  postcard: { title: 'Postcard', blurb: 'Send a real postcard from a trip photo, printed and mailed for you.', emoji: '📮' },
+  quotes: { title: 'Quotes', blurb: 'A good line a few times a day, on the topics you pick.', emoji: '💭' },
+  sleepsounds: { title: 'Sleep Sounds', blurb: 'Mix rain, ocean and fire into a sleep sound that fades out on its own.', emoji: '🌙' },
+  stocks: { title: 'Stocks', blurb: 'Follow your stocks, indexes, rates and crypto at a glance.', emoji: '📈' },
+  water: { title: 'Water', blurb: 'Track your water through the day and get a nudge when you fall behind.', emoji: '💧' },
+  workouts: { title: 'Workouts', blurb: 'Log sets, reps and PRs, and see your progress over time.', emoji: '🏋️' }
 };
 
 const GENERIC = { title: 'A widget', blurb: 'One of the mini-apps inside FavCircles', emoji: '✨' };
