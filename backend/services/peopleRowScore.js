@@ -7,7 +7,9 @@
 //
 // Points:
 //   their latest activity (a place, check-in, moment, comment, like):
-//     today 40 · this week 30 (≤3d) / 20 (≤7d) · this month 8 · older 0
+//     40 for right now, sliding down by 1.2 a day to 4 at 30 days, then 0 —
+//     so more recent always ranks higher, and a month of silence is worth
+//     next to nothing
 //   a message between you: this week +10 · this month +4
 //   something of theirs you haven't seen yet: +5
 //   places: no points — only a hair of a tie-break, so among equally quiet
@@ -18,7 +20,9 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RECENT_DAYS = 7;
 
-const RECENCY = [[1, 40], [3, 30], [7, 20], [30, 8]];
+const RECENCY_MAX = 40;
+const RECENCY_PER_DAY = 1.2;
+const RECENCY_WINDOW_DAYS = 30;
 const MESSAGES = [[7, 10], [30, 4]];
 const UNVIEWED = 5;
 const PLACES_TIEBREAK_CAP = 500;
@@ -35,6 +39,12 @@ const tiered = (days, tiers) => {
   return 0;
 };
 
+/** 40 today, sliding to 4 at 30 days, 0 after; rounded to a tenth so the score reads. */
+const recencyPoints = (days) => {
+  if (days > RECENCY_WINDOW_DAYS) return 0;
+  return Math.round(Math.max(0, RECENCY_MAX - RECENCY_PER_DAY * days) * 10) / 10;
+};
+
 /**
  * @param {object} person
  * @param {Date|string|null} [person.lastActivityAt]  when they last did something
@@ -49,10 +59,10 @@ function scorePerson(person = {}, now = Date.now()) {
     messages: tiered(ageInDays(person.lastMessageAt, now), MESSAGES),
     engagement: 0,
     content: person.hasUnviewedActivity ? UNVIEWED : 0,
-    recency: tiered(activityDays, RECENCY),
+    recency: recencyPoints(activityDays),
     total: 0
   };
-  components.total = components.messages + components.content + components.recency;
+  components.total = Math.round((components.messages + components.content + components.recency) * 10) / 10;
   const tieBreak = Math.min(Math.max(0, person.totalPlaces || 0), PLACES_TIEBREAK_CAP) / 1000;
   return {
     score: components.total + tieBreak,

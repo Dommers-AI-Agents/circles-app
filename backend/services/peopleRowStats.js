@@ -13,7 +13,7 @@ const { COLLECTIONS } = require('../models/FirestoreModels');
 const { chunk } = require('../utils/firestoreChunks');
 const { RECENT_DAYS } = require('./peopleRowScore');
 
-const USERS_PER_BATCH = 20;
+const USERS_PER_BATCH = 40;
 
 const toDate = (value) => {
   if (!value) return null;

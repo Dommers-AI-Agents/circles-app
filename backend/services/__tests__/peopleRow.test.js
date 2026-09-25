@@ -23,20 +23,23 @@ describe('scorePerson', () => {
     expect(brand.hasRecentActivity).toBe(false);
   });
 
-  test('recency tiers: today, this week, this month, then nothing', () => {
-    expect(scorePerson({ lastActivityAt: ago(0.5) }, now).components.recency).toBe(40);
-    expect(scorePerson({ lastActivityAt: ago(2) }, now).components.recency).toBe(30);
-    expect(scorePerson({ lastActivityAt: ago(6) }, now).components.recency).toBe(20);
-    expect(scorePerson({ lastActivityAt: ago(20) }, now).components.recency).toBe(8);
+  test('recency slides: more recent always scores higher, a month of silence is worth nothing', () => {
+    expect(scorePerson({ lastActivityAt: ago(0) }, now).components.recency).toBe(40);
+    expect(scorePerson({ lastActivityAt: ago(5) }, now).components.recency).toBe(34);
+    expect(scorePerson({ lastActivityAt: ago(30) }, now).components.recency).toBe(4);
     expect(scorePerson({ lastActivityAt: ago(31) }, now).components.recency).toBe(0);
+    // Sep 12 beats Sep 7 whatever the place counts (the band Knight ATV sat in).
+    const sep12 = scorePerson({ lastActivityAt: ago(13), totalPlaces: 2 }, now).score;
+    const sep7 = scorePerson({ lastActivityAt: ago(18), totalPlaces: 20 }, now).score;
+    expect(sep12).toBeGreaterThan(sep7);
     expect(scorePerson({ lastActivityAt: 'not a date' }, now).components.recency).toBe(0);
     expect(scorePerson({ lastActivityAt: ago(RECENT_DAYS + 0.1) }, now).hasRecentActivity).toBe(false);
   });
 
   test('messages and unseen activity add a little; the components keep their shape', () => {
     const s = scorePerson({ lastActivityAt: ago(1), lastMessageAt: ago(2).toISOString(), hasUnviewedActivity: true, totalPlaces: 30 }, now);
-    expect(s.components).toEqual({ messages: 10, engagement: 0, content: 5, recency: 40, total: 55 });
-    expect(s.score).toBeCloseTo(55.03, 5);
+    expect(s.components).toEqual({ messages: 10, engagement: 0, content: 5, recency: 38.8, total: 53.8 });
+    expect(s.score).toBeCloseTo(53.83, 5);
     expect(scorePerson({ lastMessageAt: ago(20) }, now).components.messages).toBe(4);
     expect(scorePerson({}, now).components).toEqual({ messages: 0, engagement: 0, content: 0, recency: 0, total: 0 });
   });
@@ -89,6 +92,6 @@ describe('peopleRowStats', () => {
     const ids = Array.from({ length: 30 }, (_, i) => `u${i}`);
     const db = fakeDb({}, {});
     await peopleRowStats(db, ids, now);
-    expect(db.peak()).toBeGreaterThanOrEqual(20);
+    expect(db.peak()).toBeGreaterThanOrEqual(30);
   });
 });
