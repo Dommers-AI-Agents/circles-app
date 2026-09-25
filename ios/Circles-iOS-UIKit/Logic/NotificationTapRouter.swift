@@ -63,7 +63,9 @@ enum NotificationTapRouter {
             if let quoteId = string("quoteId", in: userInfo) { return .dailyQuote(id: quoteId) }
             return .homeWidget(id: "quotes")
         case "care_invite", "care_ask", "care_ask_done", "care_ask_yesno", "care_ask_scale", "care_ask_text",
-             "care_answer", "care_accepted", "care_silence": return .homeWidget(id: "howareyou")
+             "care_answer", "care_accepted", "care_silence",
+             "care_watcher_request", "care_watcher_invite", "care_watcher_accepted", "care_watcher_declined",
+             "care_watcher_joined", "care_watcher_removed": return .homeWidget(id: "howareyou")
 
         case "new_suggestion":
             return .suggestions(placeId: placeId, suggestionId: userInfo["suggestionId"] as? String)
