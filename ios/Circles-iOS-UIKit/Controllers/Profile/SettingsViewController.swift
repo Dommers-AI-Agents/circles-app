@@ -549,11 +549,18 @@ extension SettingsViewController {
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
         
-        // Reset cell to default state to prevent reuse issues
+        // Reset cell to default state to prevent reuse issues. The content
+        // configuration must go too: rows that set one (Privacy, Data,
+        // Notifications) left it on the recycled cell, and a configuration
+        // outranks textLabel — so "Inner Circle · 3" appeared under
+        // Subscription once the list had been scrolled (Wes, 2026-09-25).
+        cell.contentConfiguration = nil
         cell.textLabel?.text = ""
         cell.textLabel?.textColor = Constants.Colors.label
         cell.textLabel?.numberOfLines = 1
         cell.detailTextLabel?.text = nil
+        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.detailTextLabel?.font = UIFont.systemFont(ofSize: 15)
         cell.accessoryType = .none
         cell.accessoryView = nil
         
