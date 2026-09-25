@@ -745,18 +745,13 @@ extension HomeMomentsViewController: VideoReelCellDelegate {
                 loadingAlert.dismiss(animated: false) {
                     switch result {
                     case .success(let response):
-                        var shareItems: [Any] = [response.data.shareText]
-                        if let url = URL(string: response.data.shareUrl) {
-                            shareItems.append(url)
-                        }
-                        // Add thumbnail image if available
-                        if let thumbnailUrl = response.data.thumbnailUrl,
-                           let cachedImage = ImageService.shared.getCachedImage(for: thumbnailUrl) {
-                            shareItems.append(cachedImage)
-                        }
-
-                        let activityVC = UIActivityViewController(activityItems: shareItems, applicationActivities: nil)
-                        activityVC.setValue(response.data.videoTitle ?? "Check out this moment", forKey: "subject")
+                        // The link alone: its card (place in the title, badged
+                        // thumbnail) is the message. A text bubble on top was
+                        // too much — see MomentShareItem.
+                        guard let url = URL(string: response.data.shareUrl) else { return }
+                        let title = MomentShareCopy.title(placeName: response.data.placeName ?? reel.placeName)
+                        let image = response.data.thumbnailUrl.flatMap { ImageService.shared.getCachedImage(for: $0) } ?? cell.currentPhoto
+                        let activityVC = UIActivityViewController(activityItems: [MomentShareItem(url: url, title: title, image: image)], applicationActivities: nil)
                         if let popover = activityVC.popoverPresentationController {
                             popover.sourceView = cell
                             popover.sourceRect = cell.bounds
@@ -764,9 +759,8 @@ extension HomeMomentsViewController: VideoReelCellDelegate {
                         self?.present(activityVC, animated: true)
 
                     case .failure(let error):
-                        // Fallback to basic sharing if API fails
-                        let shareText = "Check out this moment at \(reel.placeName) on Circles!"
-                        let activityVC = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
+                        // No link to send: fall back to the App Store link
+                        let activityVC = UIActivityViewController(activityItems: [MomentShareCopy.title(placeName: reel.placeName), ShareLinks.appStoreURL], applicationActivities: nil)
                         if let popover = activityVC.popoverPresentationController {
                             popover.sourceView = cell
                             popover.sourceRect = cell.bounds

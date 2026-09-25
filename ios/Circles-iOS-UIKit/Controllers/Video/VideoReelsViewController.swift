@@ -487,14 +487,15 @@ extension VideoReelsViewController: VideoReelCellDelegate {
                 loadingAlert.dismiss(animated: false) {
                     var shareItems: [Any]
                     switch result {
-                    case .success(let response):
-                        shareItems = [response.data.shareText]
-                        if let url = URL(string: response.data.shareUrl) {
-                            shareItems.append(url)
-                        }
-                    case .failure:
-                        // Fallback: text + App Store link still promotes the app
-                        shareItems = ["Check out this place on Circles: \(reel.placeName)", ShareLinks.appStoreURL]
+                    case .success(let response) where URL(string: response.data.shareUrl) != nil:
+                        // The link alone — its card is the message (MomentShareItem)
+                        let url = URL(string: response.data.shareUrl)!
+                        let title = MomentShareCopy.title(placeName: response.data.placeName ?? reel.placeName)
+                        let image = response.data.thumbnailUrl.flatMap { ImageService.shared.getCachedImage(for: $0) } ?? cell.currentPhoto
+                        shareItems = [MomentShareItem(url: url, title: title, image: image)]
+                    default:
+                        // No link to send: the App Store link still promotes the app
+                        shareItems = [MomentShareCopy.title(placeName: reel.placeName), ShareLinks.appStoreURL]
                     }
 
                     let activityVC = UIActivityViewController(activityItems: shareItems, applicationActivities: nil)

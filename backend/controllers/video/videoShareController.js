@@ -2,9 +2,58 @@
 // Moment share links and share metadata
 // Split out of videoController.js (handlers unchanged).
 // backend/controllers/videoController.js
+const fs = require('fs');
+const path = require('path');
 const { getFirestore } = require('../../config/firebase');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
+const { momentMeta, renderMoment } = require('../../views/momentPage');
+const { composePreview, fetchImage } = require('../../services/momentPreview');
 const db = getFirestore();
+
+const PAGE_TEMPLATE = path.join(__dirname, '..', '..', 'public', 'video-share.html');
+const SHARE_BASE = () => process.env.SHARE_LINK_BASE_URL || 'https://api.favcircles.com';
+
+// @route GET /share/video/:videoId (public)
+// The share page with this moment's title, place and preview image in its
+// head, so the link card in Messages says what it is. The body is the
+// static page (its script loads the moment); a missing moment still gets
+// the page, which shows "no longer available".
+exports.renderSharePage = async (req, res) => {
+  const { videoId } = req.params;
+  let video = null;
+  try {
+    const doc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
+    if (doc.exists) video = doc.data();
+  } catch (error) {
+    console.error('share page: moment read failed:', error.message);
+  }
+  let template;
+  try {
+    template = fs.readFileSync(PAGE_TEMPLATE, 'utf8');
+  } catch (error) {
+    return res.status(500).send('Share page unavailable');
+  }
+  res.set('Cache-Control', 'public, max-age=300');
+  res.type('html').send(renderMoment(template, momentMeta(video || {}, { videoId, base: SHARE_BASE() })));
+};
+
+// @route GET /share/video/:videoId/preview.jpg (public)
+// The link card's image: the thumbnail with a play badge for videos.
+exports.sharePreviewImage = async (req, res) => {
+  const { videoId } = req.params;
+  try {
+    const doc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
+    const video = doc.exists ? doc.data() : null;
+    if (!video || !video.thumbnailUrl) return res.redirect(302, `${SHARE_BASE()}/images/circles-preview.png`);
+    const source = await fetchImage(video.thumbnailUrl);
+    const jpeg = await composePreview(source, { play: (video.contentType || 'video') !== 'photo' });
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.type('jpeg').send(jpeg);
+  } catch (error) {
+    console.error('share preview failed:', error.message);
+    res.redirect(302, `${SHARE_BASE()}/images/circles-preview.png`);
+  }
+};
 
 // Public metadata for the share landing page (no auth — the link is the
 // grant). Lightweight fields only; watching the moment happens in the app.

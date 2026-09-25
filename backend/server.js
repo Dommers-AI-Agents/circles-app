@@ -450,10 +450,10 @@ app.use('/api/visits', visitRoutes);
 app.use('/api/check-ins', checkInRoutes);
 app.use('/api/videos', videoRoutes);
 
-// Share page route - serves HTML for shared video links
-app.get('/share/video/:videoId', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'video-share.html'));
-});
+// Shared moment: the page (per-moment link-card tags) and its preview image
+const videoShare = require('./controllers/video/videoShareController');
+app.get('/share/video/:videoId/preview.jpg', videoShare.sharePreviewImage);
+app.get('/share/video/:videoId', videoShare.renderSharePage);
 app.use('/api/users/referral', require('./routes/referralRoutes'));
 app.use('/api/rewards', require('./routes/rewardRoutes'));
 app.use('/api/clip', require('./routes/clipRoutes')); // iOS App Clip (public venue preview + install conversion)
