@@ -177,6 +177,11 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         if navigationController?.topViewController is HomeWidgetDetailViewController {
             navigationController?.popViewController(animated: false)
         }
+        // Same as arriving by link: a widget they had turned off comes back
+        // on, so Back lands on a list that has the page they were just in.
+        if !model.visible.contains(where: { $0.id == descriptor.id }) {
+            model.setEnabled(true, id: descriptor.id)
+        }
         let context = model.context(for: descriptor)
         context.launchPhoto = WidgetLaunchPhoto(image: photo, place: place)
         open(widget, context: context)
