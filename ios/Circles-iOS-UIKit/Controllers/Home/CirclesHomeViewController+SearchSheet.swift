@@ -109,7 +109,16 @@ extension CirclesHomeViewController {
         let plan = searchPlan
         searchResultsSheet.present(state: isSearchSheetCollapsed ? .collapsed : .expanded,
                                    availableHeight: searchSheetAvailableHeight())
-        searchResultsSheet.setContent(plan: plan, title: plan.handleTitle)
+        searchResultsSheet.setContent(plan: plan, title: plan.handleTitle, signature: searchRowsSignature)
+    }
+
+    /// The ids of the rows the sheet would draw, in order — unchanged rows
+    /// mean nothing to redraw.
+    var searchRowsSignature: String {
+        let places = visibleFilteredPlaces.map(\.id)
+        let nearby = visibleSuggestedRows.map(\.id)
+        let people = searchedUsers.prefix(searchPlan.peopleRows).map(\.id)
+        return (places + ["|"] + nearby + ["|"] + people + ["|", searchMode.title]).joined(separator: ",")
     }
 
     /// Sheet gone. When the search itself is over (every teardown path sets

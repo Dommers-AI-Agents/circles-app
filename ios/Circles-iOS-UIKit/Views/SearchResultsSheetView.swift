@@ -37,6 +37,8 @@ final class SearchResultsSheetView: UIView {
     private var contentHeight: CGFloat = SearchSheetLayout.handleHeight
     private var isRowHighlighted = false
     private var pendingUpdate: (() -> Void)?
+    /// What the table last rendered; the same rows again are not re-rendered.
+    private var renderedSignature: String?
     private var dragStartHeight: CGFloat = 0
 
     override init(frame: CGRect) {
@@ -100,6 +102,7 @@ final class SearchResultsSheetView: UIView {
 
     func hide() {
         pendingUpdate = nil
+        renderedSignature = nil
         guard !isHidden else { return }
         UIView.animate(withDuration: 0.2, animations: { self.alpha = 0 }) { _ in
             if self.alpha == 0 { self.isHidden = true }
@@ -116,12 +119,20 @@ final class SearchResultsSheetView: UIView {
     /// New rows and a new height. Applied now — unless a finger is on the
     /// list, in which case it waits: a reload or a frame change landing
     /// mid-touch cancels the tap (the "tapped a result, nothing happened" bug).
-    func setContent(plan: HomeSearchPlan, title: String) {
+    func setContent(plan: HomeSearchPlan, title: String, signature: String? = nil) {
         titleLabel.text = title
         let newContent = SearchSheetLayout.contentHeight(for: plan)
+        // Every late lookup (people, catalog, Apple) refreshes the sheet, most
+        // of them with exactly the rows already on screen — those re-render
+        // nothing (and never queue a reload for the end of a scroll).
+        if let signature, signature == renderedSignature, newContent == contentHeight {
+            pendingUpdate = nil
+            return
+        }
         let apply = { [weak self] in
             guard let self else { return }
             self.contentHeight = newContent
+            self.renderedSignature = signature
             self.applyHeight(animated: true)
             self.tableView.reloadData()
         }

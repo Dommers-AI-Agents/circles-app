@@ -576,9 +576,17 @@ final class HomeDataLoader {
         var radiusM = ((latMeters * latMeters + lngMeters * lngMeters).squareRoot() / 2) * 1.1
         radiusM = min(max(radiusM, 100), 100_000) // match server clamp
 
-        // Skip if an earlier fetch already fully covered this area
-        if state.isViewportCovered(center: region.center, radiusM: radiusM) {
-            Logger.debug("🗺️ [Viewport] Region already covered, skipping fetch")
+        // Skip if an earlier fetch already covered this area — and, while a
+        // search is up, skip small pans and zooms altogether: a fetch rebuilds
+        // the map and the results sheet under the person's finger. Only a big
+        // zoom-out or a move to a new area loads (ViewportFetchPolicy).
+        let viewport = ViewportFetchPolicy.Viewport(latitude: region.center.latitude,
+                                                    longitude: region.center.longitude,
+                                                    radiusM: radiusM)
+        let fetched = state.fetchedViewportCircles.map {
+            ViewportFetchPolicy.Viewport(latitude: $0.center.latitude, longitude: $0.center.longitude, radiusM: $0.radiusM)
+        }
+        guard ViewportFetchPolicy.shouldFetch(searching: state.isSearching, viewport: viewport, fetched: fetched) else {
             return
         }
 
