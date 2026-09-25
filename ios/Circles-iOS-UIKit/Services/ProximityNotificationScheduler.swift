@@ -21,8 +21,11 @@ final class ProximityNotificationScheduler {
 
     static let notificationType = "proximity_check_in"
     static let categoryIdentifier = "CHECK_IN_PROMPT"
+    /// From the second banner of a day: the same, plus "Turn off reminders".
+    static let optOutCategoryIdentifier = "CHECK_IN_PROMPT_OPTOUT"
     static let checkInAction = "CHECK_IN"
     static let notNowAction = "NOT_NOW"
+    static let turnOffAction = "TURN_OFF_CHECKIN_REMINDERS"
 
     /// Device-local mirror of `NotificationPreferences.locationPrompts`, so the
     /// gate works before the profile has loaded. Absent = on.

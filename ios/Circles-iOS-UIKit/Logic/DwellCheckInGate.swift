@@ -3,17 +3,14 @@ import Foundation
 /// The rules behind the "you're at <saved place> — check in?" banner for
 /// people who allow location Always.
 ///
-/// The old banner fired the moment the phone crossed into a 100 m circle,
-/// which on a road of saved places is a burst of buzzes. This one arms a
-/// timer on entry and fires only if the phone is STILL in the circle
-/// `dwellSeconds` later — leaving cancels it. Five minutes inside a 100 m
-/// circle is a stop, not a drive-by.
+/// Whether the phone is really AT the place is `ArrivalVerifier`'s question;
+/// this is the budget: once per place per day, a few a day at most, never
+/// two close together — and, from the second of a day, an offer to turn
+/// them off, so the reminder gets people going without wearing them down.
 ///
 /// Pure so the rules are testable; `DwellCheckInMonitor` owns the location
 /// manager and the notification requests.
 enum DwellCheckInGate {
-    /// How long the phone must stay inside the region before the banner fires.
-    static let dwellSeconds: TimeInterval = 5 * 60
     /// Never more than this many banners in a calendar day.
     static let dailyCap = 3
     /// And never two within this window, whatever the places.
@@ -37,15 +34,22 @@ enum DwellCheckInGate {
     struct EntryContext: Equatable {
         var promptedTodayForPlace: Bool
         var promptsToday: Int
-        var lastArmedAt: Date?
+        var lastFiredAt: Date?
         var now: Date
     }
 
-    /// On region entry: arm the dwell timer, or stay quiet.
-    static func shouldArm(_ c: EntryContext) -> Bool {
+    /// Asked on region entry (is a watch worth starting?) and again at the
+    /// moment of arrival (is the banner still allowed?).
+    static func shouldPrompt(_ c: EntryContext) -> Bool {
         if c.promptedTodayForPlace { return false }
         if c.promptsToday >= dailyCap { return false }
-        if let last = c.lastArmedAt, c.now.timeIntervalSince(last) < globalCooldown { return false }
+        if let last = c.lastFiredAt, c.now.timeIntervalSince(last) < globalCooldown { return false }
         return true
+    }
+
+    /// From the second banner of a day the notification carries a
+    /// "Turn off reminders" action.
+    static func offersOptOut(promptsToday: Int) -> Bool {
+        promptsToday >= 1
     }
 }

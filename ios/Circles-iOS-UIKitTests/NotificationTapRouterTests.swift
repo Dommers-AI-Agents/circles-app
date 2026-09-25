@@ -67,6 +67,9 @@ struct NotificationTapRouterTests {
         #expect(route(["type": "create_wallet"]) == .postOrStash(navName: "NavigateToCreateWallet", pending: "create-wallet", object: nil))
         #expect(route(["type": ProximityNotificationScheduler.notificationType, "placeId": "p"]) == .proximityCheckIn(placeId: "p"))
         #expect(route(["type": ProximityNotificationScheduler.notificationType, "placeId": ""]) == nil)
+        // The opt-out banner is the same notification with one more button.
+        #expect(route(["type": ProximityNotificationScheduler.notificationType, "placeId": "p",
+                       "category": ProximityNotificationScheduler.optOutCategoryIdentifier]) == .proximityCheckIn(placeId: "p"))
         #expect(route(["type": "favcoin_claim_settled"]) == .piggyBank)
     }
 

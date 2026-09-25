@@ -143,6 +143,14 @@ final class NotificationActionHandler {
             // Same as tapping the banner: open the pre-filled check-in sheet
             onTap(userInfo)
 
+        case ProximityNotificationScheduler.turnOffAction:
+            // Off on this device at once; the account record follows so the
+            // next build, or another device, agrees. Held until the write
+            // returns, like the care answers.
+            ProximityNotificationScheduler.shared.setEnabled(false)
+            turnOffCheckInRemindersOnServer(completion: completion)
+            return
+
         case WaterQuickLog.logCupAction:
             // Held until the write lands, like the care answers.
             Task {
@@ -218,6 +226,18 @@ final class NotificationActionHandler {
     /// Sends a Lock Screen answer (a choice key as `answer`, or a number or
     /// words as `value`), then releases the notification. A failure opens
     /// the widget so the question isn't lost.
+    private func turnOffCheckInRemindersOnServer(completion: @escaping () -> Void) {
+        UserService.shared.fetchUserProfile { result in
+            guard case .success(let user) = result else { completion(); return }
+            var preferences = user.notificationPreferences ?? NotificationPreferences()
+            preferences.locationPrompts = false
+            UserService.shared.updateNotificationPreferences(preferences) { saved in
+                if case .failure(let error) = saved { Logger.debug("📍 Dwell check-in: turn-off didn't reach the server — \(error)") }
+                completion()
+            }
+        }
+    }
+
     private func handleCareAnswer(askId: String, body: [String: Any], completion: @escaping () -> Void) {
         APIService.shared.request(
             endpoint: "widgets/care/asks/\(askId)/answer",

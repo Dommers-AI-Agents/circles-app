@@ -77,4 +77,18 @@ struct ProximityRegionPlannerTests {
         #expect(ProximityRegionPlanner.placeId(fromIdentifier: "proximity.") == nil)
         #expect(ProximityRegionPlanner.placeId(fromIdentifier: "test") == nil)
     }
+
+    /// A place under an arrival watch must keep its region whatever the plan
+    /// says: it is inside the radius, it has been stamped for the day, and
+    /// twenty-five nearer places would otherwise push it past the cap.
+    @Test func pinnedPlaceSurvivesInsideExcludedAndTheCap() {
+        var places = (1...25).map { place("near\($0)", meters: Double(200 + 40 * $0)) }  // spaced past sameVenueMeters
+        places.append(place("watched", meters: 10))
+        let plan = ProximityRegionPlanner.plan(places: places, around: origin,
+                                               excludedPlaceIds: ["watched"], pinnedPlaceIds: ["watched"])
+        #expect(plan.count == ProximityRegionPlanner.regionLimit)
+        #expect(plan.first?.placeId == "watched")
+        let unpinned = ProximityRegionPlanner.plan(places: places, around: origin, excludedPlaceIds: ["watched"])
+        #expect(!unpinned.contains { $0.placeId == "watched" })
+    }
 }

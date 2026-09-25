@@ -51,6 +51,10 @@ struct ProximityRegionPlanner {
     ///   - places: the user's own saved places (the disk cache set).
     ///   - around: where the user is; nil means no plan (keep whatever is scheduled).
     ///   - excludedPlaceIds: places already prompted today, so they are not rescheduled.
+    ///   - pinnedPlaceIds: places that must stay in the plan whatever else is
+    ///     true — a place under an arrival watch, whose region exit still has
+    ///     to be heard. They bypass the exclusions and the "already inside"
+    ///     filter and come first, so the cap can't drop them.
     ///
     /// Places whose region already contains `around` are skipped: the banner
     /// is for arriving somewhere, and "you're here right now" is the in-app
@@ -58,18 +62,24 @@ struct ProximityRegionPlanner {
     static func plan(places: [Place],
                      around: CLLocation?,
                      excludedPlaceIds: Set<String> = [],
+                     pinnedPlaceIds: Set<String> = [],
                      limit: Int = regionLimit,
                      radius: CLLocationDistance = defaultRadiusMeters) -> [PlannedRegion] {
         guard let around = around, limit > 0 else { return [] }
 
         let located: [(Place, CLLocation)] = places.compactMap { place in
+            guard !place.name.trimmingCharacters(in: .whitespaces).isEmpty,
+                  let location = place.location?.clLocation else { return nil }
+            if pinnedPlaceIds.contains(place.id) { return (place, location) }
             guard !excludedPlaceIds.contains(place.id),
-                  !place.name.trimmingCharacters(in: .whitespaces).isEmpty,
-                  let location = place.location?.clLocation,
                   location.distance(from: around) > radius else { return nil }
             return (place, location)
         }
-        .sorted { $0.1.distance(from: around) < $1.1.distance(from: around) }
+        .sorted { a, b in
+            let pa = pinnedPlaceIds.contains(a.0.id), pb = pinnedPlaceIds.contains(b.0.id)
+            if pa != pb { return pa }
+            return a.1.distance(from: around) < b.1.distance(from: around)
+        }
 
         var regions: [PlannedRegion] = []
         var kept: [CLLocation] = []
