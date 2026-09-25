@@ -805,7 +805,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
-        coordinator.animate(alongsideTransition: nil) { [weak self] _ in self?.refitSearchSheet() }
+        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+            guard let self else { return }
+            self.refitSearchSheet()
+            // The reel's page height is the visible height; re-measure it.
+            if self.selectedContentSegment == .moments { self.anchorMomentsTab(animated: false) }
+        }
     }
 
     deinit {
@@ -1801,8 +1806,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         mapHeightConstraint?.isActive = true
         
         // The content area is a fixed 600pt; the tabs scroll inside it. This
-        // one constraint sizes the whole activity section.
-        contentTabHeightConstraint = tabContentContainer.heightAnchor.constraint(equalToConstant: 600)
+        // one constraint sizes the whole activity section. Moments is the
+        // exception: it grows to the visible area (anchorMomentsTab).
+        contentTabHeightConstraint = tabContentContainer.heightAnchor.constraint(equalToConstant: Self.defaultContentTabHeight)
         contentTabHeightConstraint?.isActive = true
 
         dailyCardCollapsedHeight = dailyCardContainer.heightAnchor.constraint(equalToConstant: 0)
@@ -2074,7 +2080,43 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
         momentsCameraButton.isHidden = !segment.showsCameraButton
         activityHeaderLabel.text = segment.headerTitle
+        sizeContentSlot(for: segment)
         contentTab(for: segment).setTabVisible(true)
+        if segment == .moments { anchorMomentsTab(animated: true) }
+    }
+
+    /// The usual height of the content slot under the segment bar.
+    static let defaultContentTabHeight: CGFloat = 600
+
+    /// Moments gets the whole visible area under the bar so one moment is on
+    /// screen at a time; every other tab keeps the fixed slot.
+    func sizeContentSlot(for segment: HomeContentSegment) {
+        guard segment != .moments else { return } // anchorMomentsTab sizes it
+        if contentTabHeightConstraint?.constant != Self.defaultContentTabHeight {
+            contentTabHeightConstraint?.constant = Self.defaultContentTabHeight
+            view.layoutIfNeeded()
+        }
+    }
+
+    /// Pins the feed section to the top of the page and sizes the slot to
+    /// what's left, so the moment fills the screen and a swipe is the next
+    /// moment, not the page. Pure arithmetic in MomentsTabAnchor.
+    func anchorMomentsTab(animated: Bool) {
+        view.layoutIfNeeded()
+        let insets = scrollView.adjustedContentInset
+        let visible = scrollView.bounds.height - insets.top - insets.bottom
+        guard visible > 0 else { return }
+        let sectionTop = activityFeedSection.convert(activityFeedSection.bounds, to: contentView).minY
+        let chrome = tabContentContainer.frame.minY // relative to activityFeedSection
+        let layout = MomentsTabAnchor.layout(visibleHeight: visible, sectionTop: sectionTop, chromeHeight: chrome, topInset: insets.top)
+        if contentTabHeightConstraint?.constant != layout.slotHeight {
+            contentTabHeightConstraint?.constant = layout.slotHeight
+            view.layoutIfNeeded()
+            momentsTab.collectionView.collectionViewLayout.invalidateLayout()
+        }
+        let maxY = max(-insets.top, scrollView.contentSize.height - scrollView.bounds.height + insets.bottom)
+        let target = CGPoint(x: 0, y: min(layout.contentOffsetY, maxY))
+        scrollView.setContentOffset(target, animated: animated)
     }
 
     /// Deep link / push: switch to the Widgets segment and optionally open one widget's page.
@@ -2167,6 +2209,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         momentsCameraButton.isHidden = false
         activityHeaderLabel.text = HomeContentSegment.moments.headerTitle
         momentsTab.present(moment: video)
+        anchorMomentsTab(animated: false)
     }
 
     // MARK: - Data Fetching (forwarded to HomeDataLoader)
