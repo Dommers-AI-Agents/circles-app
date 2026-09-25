@@ -3,7 +3,8 @@ const { getFirestore } = require('../config/firebase');
 const { isLiveConnection } = require('../services/connectionMap');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { serializeDates } = require('../utils/wireDates');
-const { followedUserStats } = require('../services/followedUserStats');
+const { peopleRowStats } = require('../services/peopleRowStats');
+const { scorePerson } = require('../services/peopleRowScore');
 const { compareRelationships } = require('../services/relationshipRanking');
 const { FieldValue } = require('firebase-admin/firestore');
 const { 
@@ -1422,11 +1423,12 @@ const getActiveRelationships = async (req, res) => {
     }
 
     // Get user data for all relationships in one batched read, and everyone's
-    // place stats (count + a place this week) in parallel with it. Connection
-    // documents carry no totalPlaces of their own, so the score needs these.
+    // row stats (latest activity + place count) in parallel with it. One
+    // scale for connections and followed users alike (peopleRowScore): what
+    // they did lately decides the order, never how many places they own.
     const [userDocs, placeStats] = await Promise.all([
       db.getAll(...allUserIds.map(id => db.collection(COLLECTIONS.USERS).doc(id))),
-      followedUserStats(db, allUserIds)
+      peopleRowStats(db, allUserIds)
     ]);
     const userDataMap = new Map();
     
@@ -1446,13 +1448,17 @@ const getActiveRelationships = async (req, res) => {
     for (const [otherUserId, connectionData] of connectionMap) {
       const userData = userDataMap.get(otherUserId);
       if (userData) {
-        const stats = placeStats.get(otherUserId) || { hasRecentPlace: false, totalPlaces: 0 };
-        // Calculate activity score for connection from what THEY did
-        const scored = { ...connectionData, totalPlaces: stats.totalPlaces, hasRecentPlace: stats.hasRecentPlace };
-        const scoreData = scoringService.calculateConnectionScore(scored, userId);
-        
+        const stats = placeStats.get(otherUserId) || { lastActivityAt: null, hasRecentPlace: false, totalPlaces: 0 };
+        // What THEY did lately, plus the one mutual signal (messages).
+        const hasUnviewedActivity = (connectionData.recentActivity || []).some((a) =>
+          a && (a.actorId || (a.viewedBy && a.viewedBy[0])) !== userId && !(a.viewedBy || []).includes(userId));
+        const scoreData = scorePerson({
+          lastActivityAt: stats.lastActivityAt, lastMessageAt: connectionData.lastMessageAt,
+          totalPlaces: stats.totalPlaces, hasUnviewedActivity
+        });
+
         relationships.push({
-          ...scored,
+          ...connectionData,
           // The public card only — this row went out with the whole user document
           // (email, device tokens, last known location) to every connection.
           connectedUser: projectPublicUser(userData, ['email']),
@@ -1460,6 +1466,7 @@ const getActiveRelationships = async (req, res) => {
           connectionScore: scoreData.score,
           scoreComponents: scoreData.components,
           hasRecentPlace: stats.hasRecentPlace,
+          lastActivityAt: stats.lastActivityAt ? stats.lastActivityAt.toISOString() : null,
           lastMessageAt: connectionData.lastMessageAt || null,
           totalPlaces: stats.totalPlaces
         });
@@ -1470,7 +1477,8 @@ const getActiveRelationships = async (req, res) => {
     for (const followedId of followedOnlyIds) {
       const userData = userDataMap.get(followedId);
       if (userData) {
-        const { hasRecentPlace, totalPlaces, score } = placeStats.get(followedId);
+        const stats = placeStats.get(followedId) || { lastActivityAt: null, hasRecentPlace: false, totalPlaces: 0 };
+        const scoreData = scorePerson({ lastActivityAt: stats.lastActivityAt, totalPlaces: stats.totalPlaces });
 
         relationships.push({
           id: `follow_${followedId}`, // Synthetic ID for followed relationships
@@ -1481,9 +1489,11 @@ const getActiveRelationships = async (req, res) => {
           connectedUser: projectPublicUser(userData, ['email']),
           relationshipType: 'following',
           status: 'following', // Not a connection status, but indicates following
-          connectionScore: score,
-          hasRecentPlace: hasRecentPlace,
-          totalPlaces: totalPlaces,
+          connectionScore: scoreData.score,
+          scoreComponents: scoreData.components,
+          hasRecentPlace: stats.hasRecentPlace,
+          lastActivityAt: stats.lastActivityAt ? stats.lastActivityAt.toISOString() : null,
+          totalPlaces: stats.totalPlaces,
           createdAt: userData.createdAt || new Date()
         });
       }
