@@ -1037,9 +1037,11 @@ const createCheckIn = (checkInData, userId, userData) => {
     // Audience tier. null = the historic behaviour (connections see it if it's
     // on the feed). 'innerCircle' narrows it to the owner's Inner Circle list
     // however the feed flag is set, so it can't be widened by accident.
+    // 'public' (Wes, 2026-09-25: "some like being public") widens THIS
+    // check-in to followers and anyone else, past the owner's activity grid.
     audience: checkInData.isPrivate === true
       ? null
-      : (checkInData.audience === 'innerCircle' ? 'innerCircle' : null),
+      : (['innerCircle', 'public'].includes(checkInData.audience) ? checkInData.audience : null),
     // Which named list, when the person picked one. Absent means any of
     // them, which is what every check-in written before lists existed meant.
     audienceListId: checkInData.isPrivate !== true

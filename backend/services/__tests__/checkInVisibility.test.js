@@ -133,4 +133,12 @@ describe('id shapes', () => {
     expect(await isCheckInVisibleTo({ ...dotted, audience: 'innerCircle', audienceListId: 'family' }, 'friend', normalizedCtx)).toBe(true);
     expect(await isCheckInVisibleTo({ ...dotted, audience: 'innerCircle', audienceListId: 'work' }, 'friend', normalizedCtx)).toBe(false);
   });
+
+  test('a check-in marked Everyone reaches a stranger once posted, and nobody when kept off the feed', async () => {
+    const base = { userId: 'owner', audience: 'public', notifiedUsers: [], notifiedGroups: [] };
+    expect(await isCheckInVisibleTo({ ...base, showInActivityFeed: true }, 'stranger', ctx())).toBe(true);
+    expect(await isCheckInVisibleTo({ ...base, showInActivityFeed: false }, 'stranger', ctx())).toBe(false);
+    // Private still wins over everything.
+    expect(await isCheckInVisibleTo({ ...base, isPrivate: true, showInActivityFeed: true }, 'stranger', ctx())).toBe(false);
+  });
 });

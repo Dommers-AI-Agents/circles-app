@@ -59,6 +59,23 @@ const DEFAULT_ROW = {
 
 const defaultActivityPrivacy = () => Object.fromEntries(CATEGORIES.map((c) => [c, DEFAULT_ROW[c]()]));
 
+const isInnerCircleOnly = (row) => !!row && row.innerCircle === true && row.myNetwork !== true && row.public !== true;
+
+/**
+ * "Inner Circle" with nobody on it would mean "only me" — and most people
+ * never build one. So an Inner-Circle-only row falls back to Connections
+ * until the owner adds someone (Wes, 2026-09-25). Applied wherever a grid is
+ * read alongside the owner's list members, so every gate agrees.
+ */
+const withInnerCircleFallback = (grid, innerCircleIds) => {
+  if (!grid || (innerCircleIds || []).length > 0) return grid;
+  const out = { ...grid };
+  for (const category of CATEGORIES) {
+    if (isInnerCircleOnly(out[category])) out[category] = { ...out[category], myNetwork: true };
+  }
+  return out;
+};
+
 /** Whatever is stored → a full grid. Missing or malformed cells read as the category's default. */
 const normalizeActivityPrivacy = (raw) => {
   const grid = defaultActivityPrivacy();
@@ -129,6 +146,9 @@ const canViewActivity = (activity, viewerId, viewerCtx, settingsByActor) => {
   if (isVenueActor(activity.actorId)) return true;
   const category = categoryOf(activity);
   if (!category) return true;
+  // A check-in its owner marked "Everyone" is the one thing that widens
+  // past the grid: the grid is what applies when nothing was chosen.
+  if (activity.type === 'check_in' && (activity.metadata || {}).checkInAudience === 'public') return true;
   const allowed = allowedAudiences(settingsByActor && settingsByActor.get(String(activity.actorId)), category);
   const qualifying = qualifyingAudiences(viewerCtx, activity.actorId);
   if (qualifying === null) return true;
@@ -205,7 +225,9 @@ const activityPrivacyFromUserDocs = (docsById) => {
   for (const [id, doc] of entries) {
     if (!doc) continue;
     const data = typeof doc.data === 'function' ? doc.data() : doc;
-    if (data && data.activityPrivacy) out.set(String(id), normalizeActivityPrivacy(data.activityPrivacy));
+    if (data && data.activityPrivacy) {
+      out.set(String(id), withInnerCircleFallback(normalizeActivityPrivacy(data.activityPrivacy), data.innerCircle));
+    }
   }
   return out;
 };
@@ -223,9 +245,11 @@ const loadActivityPrivacyByActor = async (actorIds, { seed } = {}) => {
   for (let i = 0; i < wanted.length; i += GETALL_CHUNK) {
     const chunk = wanted.slice(i, i + GETALL_CHUNK);
     const refs = chunk.map((id) => db.collection(COLLECTIONS.USERS).doc(id));
-    const docs = await db.getAll(...refs, { fieldMask: ['activityPrivacy'] });
+    const docs = await db.getAll(...refs, { fieldMask: ['activityPrivacy', 'innerCircle'] });
     docs.forEach((doc) => {
-      if (doc.exists && doc.data().activityPrivacy) out.set(doc.id, normalizeActivityPrivacy(doc.data().activityPrivacy));
+      if (doc.exists && doc.data().activityPrivacy) {
+        out.set(doc.id, withInnerCircleFallback(normalizeActivityPrivacy(doc.data().activityPrivacy), doc.data().innerCircle));
+      }
     });
   }
   return out;
@@ -239,7 +263,7 @@ const loadActivityPrivacyByActor = async (actorIds, { seed } = {}) => {
  * `myNetwork` alone admits them all.
  */
 const fanOutAllows = (settings, category, innerCircleIds) => {
-  const allowed = allowedAudiences(settings, category);
+  const allowed = allowedAudiences(withInnerCircleFallback(settings, innerCircleIds), category);
   if (allowed.public || allowed.myNetwork) return () => true;
   if (!allowed.innerCircle) return () => false;
   const list = new Set((innerCircleIds || []).map(String));
@@ -254,6 +278,7 @@ module.exports = {
   normalizeActivityPrivacy,
   validateActivityPrivacy,
   allowedAudiences,
+  withInnerCircleFallback,
   isVenueActor,
   qualifyingAudiences,
   categoryOf,

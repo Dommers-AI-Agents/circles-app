@@ -76,6 +76,43 @@ describe('the grid itself', () => {
   });
 });
 
+describe('inner circle fallback and the public check-in', () => {
+  const innerOnly = { public: false, myNetwork: false, innerCircle: true };
+
+  test('an Inner-Circle-only row reaches connections until the owner adds someone', () => {
+    const g = ap.normalizeActivityPrivacy({ checkIns: innerOnly });
+    expect(ap.withInnerCircleFallback(g, []).checkIns).toEqual({ public: false, myNetwork: true, innerCircle: true });
+    expect(ap.withInnerCircleFallback(g, undefined).checkIns).toEqual({ public: false, myNetwork: true, innerCircle: true });
+    // With a list, it means what it says.
+    expect(ap.withInnerCircleFallback(g, ['u9']).checkIns).toEqual(innerOnly);
+    // Other rows are untouched either way.
+    expect(ap.withInnerCircleFallback(g, []).circles).toEqual({ public: true, myNetwork: true, innerCircle: true });
+    expect(ap.withInnerCircleFallback(undefined, [])).toBeUndefined();
+  });
+
+  test('the loaders apply the fallback from the user doc, so every gate agrees', () => {
+    const docs = new Map([
+      ['empty', { activityPrivacy: { checkIns: innerOnly }, innerCircle: [] }],
+      ['full', { activityPrivacy: { checkIns: innerOnly }, innerCircle: ['u9'] }]
+    ]);
+    const grids = ap.activityPrivacyFromUserDocs(docs);
+    expect(grids.get('empty').checkIns.myNetwork).toBe(true);
+    expect(grids.get('full').checkIns.myNetwork).toBe(false);
+    // Fan-out too: an empty circle means every connection is told.
+    expect(ap.fanOutAllows({ checkIns: innerOnly }, 'checkIns', [])('anyone')).toBe(true);
+    expect(ap.fanOutAllows({ checkIns: innerOnly }, 'checkIns', ['u9'])('anyone')).toBe(false);
+  });
+
+  test('a check-in marked Everyone passes the grid for a follower; an unmarked one does not', () => {
+    const s = settings({ checkIns: { public: false, myNetwork: true, innerCircle: true } });
+    const marked = row('check_in', { metadata: { checkInAudience: 'public' } });
+    const plain = row('check_in', { metadata: {} });
+    expect(ap.canViewActivity(marked, FOLLOWER, ctxFor(FOLLOWER), s)).toBe(true);
+    expect(ap.canViewActivity(plain, FOLLOWER, ctxFor(FOLLOWER), s)).toBe(false);
+    expect(ap.canViewActivity(plain, FRIEND, ctxFor(FRIEND), s)).toBe(true);
+  });
+});
+
 describe('who qualifies for which column', () => {
   test('self, inner-circle member, connection, follower, stranger', () => {
     expect(ap.qualifyingAudiences(ctxFor(ACTOR), ACTOR)).toBeNull();

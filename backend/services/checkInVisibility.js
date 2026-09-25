@@ -34,6 +34,10 @@ const isCheckInVisibleTo = async (checkIn, viewerId, ctx) => {
   if (checkIn.userId === viewerId) return true;
   if (isPrivateCheckIn(checkIn)) return false;
   if ((checkIn.notifiedUsers || []).includes(viewerId)) return true;
+  // Marked "Everyone" when it was posted: followers and anyone else, not
+  // only connections. The feed switch still has to be on — off with nobody
+  // notified is a personal record whatever the audience says.
+  if (checkIn.audience === 'public') return checkIn.showInActivityFeed !== false;
   if (checkIn.audience === 'innerCircle') {
     if (!checkIn.audienceListId) {
       return setHas(ctx.innerCircleGrantors, checkIn.userId);
