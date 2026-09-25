@@ -341,6 +341,7 @@ exports.initiateVideoUpload = async (req, res) => {
       title,
       description,
       visibility,
+      audienceListId,
       tags,
       contentType, // 'photo' or 'video'
       // New place data for creating places
@@ -480,6 +481,10 @@ exports.initiateVideoUpload = async (req, res) => {
       title,
       description,
       visibility,
+      // The named Inner Circle list, only meaningful at that tier. The edit
+      // path stored this; the create paths dropped it, so a moment shared
+      // to "charlotte homies" reached anyone on any list (2026-09-25).
+      audienceListId: listIdFor(visibility, audienceListId),
       tags,
       taggedUserIds: resolvedTags.taggedUserIds,
       taggedUsers: resolvedTags.taggedUsers,
@@ -998,6 +1003,7 @@ exports.addEmbeddedVideo = async (req, res) => {
       title,
       description,
       visibility = 'followers',
+      audienceListId,
       tags = [],
       taggedUserIds = []
     } = req.body;
@@ -1033,6 +1039,7 @@ exports.addEmbeddedVideo = async (req, res) => {
         title: title || metadata.title,
         description: description || '',
         visibility,
+        audienceListId: listIdFor(visibility, audienceListId),
         tags,
         
         // Direct video specific fields
@@ -1071,6 +1078,7 @@ exports.addEmbeddedVideo = async (req, res) => {
         title: title || metadata.title,
         description: description || '',
         visibility,
+        audienceListId: listIdFor(visibility, audienceListId),
         tags,
         
         // Embedded video specific fields
