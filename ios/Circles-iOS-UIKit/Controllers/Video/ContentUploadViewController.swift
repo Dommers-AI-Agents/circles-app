@@ -15,6 +15,8 @@ class ContentUploadViewController: UIViewController {
     private var selectedPlace: Place?
     private var pendingContent: ContentType?
     private var selectedVisibility: VideoVisibility = .followers // Default to followers
+    /// The named Inner Circle list behind an Inner Circle moment, if one was picked.
+    private var selectedAudienceListId: String?
     private var selectedTaggedUsers: [TaggedMomentUser] = []
     private var shouldNavigateToMomentsOnSuccess = false // Flag to control navigation behavior
     
@@ -324,6 +326,7 @@ class ContentUploadViewController: UIViewController {
             let mark = selectedVisibility == level ? "✓ " : ""
             let action = UIAlertAction(title: "\(mark)\(level.displayLabel) — \(level.pickerSubtitle)", style: .default) { [weak self] _ in
                 self?.selectedVisibility = level
+                self?.selectedAudienceListId = nil
                 completion()
             }
             alertController.addAction(action)
@@ -589,9 +592,10 @@ extension ContentUploadViewController: VideoLinkInputDelegate {
 
 // MARK: - MomentPlacePickerDelegate
 extension ContentUploadViewController: MomentPlacePickerDelegate {
-    func momentPlacePicker(_ picker: MomentPlacePickerViewController, didSelect place: Place, visibility: VideoVisibility, taggedUsers: [TaggedMomentUser]) {
+    func momentPlacePicker(_ picker: MomentPlacePickerViewController, didSelect place: Place, visibility: VideoVisibility, audienceListId: String?, taggedUsers: [TaggedMomentUser]) {
         guard let content = pendingContent else { return }
         selectedVisibility = visibility
+        selectedAudienceListId = visibility == .innerCircle ? audienceListId : nil
         selectedTaggedUsers = taggedUsers
         selectedPlace = place
         pendingContent = nil
@@ -817,6 +821,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             "title": place.name,
             "description": "",
             "visibility": selectedVisibility.rawValue,
+            "audienceListId": selectedAudienceListId ?? NSNull(),
             "tags": [],
             "taggedUserIds": selectedTaggedUsers.map { $0.id },
             "contentType": "photo",
@@ -930,6 +935,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             "title": "Moment at \(place.name)",
             "description": "",
             "visibility": selectedVisibility.rawValue,
+            "audienceListId": selectedAudienceListId ?? NSNull(),
             "tags": [],
             "taggedUserIds": selectedTaggedUsers.map { $0.id },
             "contentType": "video",

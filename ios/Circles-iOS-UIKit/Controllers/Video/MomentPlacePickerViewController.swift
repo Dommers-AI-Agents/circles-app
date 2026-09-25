@@ -7,6 +7,7 @@ protocol MomentPlacePickerDelegate: AnyObject {
     func momentPlacePicker(_ picker: MomentPlacePickerViewController,
                            didSelect place: Place,
                            visibility: VideoVisibility,
+                           audienceListId: String?,
                            taggedUsers: [TaggedMomentUser])
 }
 
@@ -19,6 +20,8 @@ class MomentPlacePickerViewController: BaseViewController {
 
     weak var delegate: MomentPlacePickerDelegate?
     private var visibility: VideoVisibility
+    /// The named Inner Circle list, when the person chose one.
+    private var audienceListId: String?
     private var taggedUsers: [TaggedMomentUser] = []
 
     private var currentLocation: CLLocation?
@@ -44,19 +47,16 @@ class MomentPlacePickerViewController: BaseViewController {
         l.translatesAutoresizingMaskIntoConstraints = false
         return l
     }()
-    private lazy var privacyControl: UISegmentedControl = {
-        let c = UISegmentedControl(items: VideoVisibility.selectable.map { $0.displayLabel })
-        c.selectedSegmentIndex = VideoVisibility.selectable.firstIndex(of: visibility) ?? 0
-        c.addTarget(self, action: #selector(privacyChanged), for: .valueChanged)
-        c.translatesAutoresizingMaskIntoConstraints = false
-        return c
-    }()
-    private let privacySubtitle: UILabel = {
-        let l = UILabel()
-        l.font = .systemFont(ofSize: 12)
-        l.textColor = Constants.Colors.secondaryLabel
-        l.translatesAutoresizingMaskIntoConstraints = false
-        return l
+    /// The same control every other form uses, so the named Inner Circle
+    /// lists show here too. A segmented control sat here before with a lone
+    /// "Inner Circle" segment — three lists, one choice (Wes, 2026-09-25).
+    private lazy var privacyControl: PrivacyPickerButton = {
+        let picker = PrivacyPickerButton(entity: .moment, selected: visibility.option ?? .followers)
+        picker.onChange = { [weak self] option in self?.privacyChanged(option) }
+        picker.onEditInnerCircle = { [weak self] in
+            self?.navigationController?.pushViewController(InnerCircleListsViewController(), animated: true)
+        }
+        return picker
     }()
 
     private lazy var tagPeopleButton: UIButton = {
@@ -109,10 +109,11 @@ class MomentPlacePickerViewController: BaseViewController {
         tableView.dataSource = self
         nearbySearch.delegate = self
 
-        [privacyLabel, privacyControl, privacySubtitle, tagPeopleButton, sourceControl, searchBar, tableView, loadingIndicator].forEach { view.addSubview($0) }
+        [privacyLabel, privacyControl, tagPeopleButton, sourceControl, searchBar, tableView, loadingIndicator].forEach { view.addSubview($0) }
         refreshTagButton()
         setupConstraints()
-        updatePrivacySubtitle()
+        // The lists must be in hand before the menu is opened
+        InnerCircleManager.shared.primeIfNeeded()
 
         // Load My Places right away (sorts alphabetically until we have a
         // location), then re-sort by distance and load the active tab once the
@@ -145,11 +146,7 @@ class MomentPlacePickerViewController: BaseViewController {
             privacyControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             privacyControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
 
-            privacySubtitle.topAnchor.constraint(equalTo: privacyControl.bottomAnchor, constant: 6),
-            privacySubtitle.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            privacySubtitle.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-
-            tagPeopleButton.topAnchor.constraint(equalTo: privacySubtitle.bottomAnchor, constant: 8),
+            tagPeopleButton.topAnchor.constraint(equalTo: privacyControl.bottomAnchor, constant: 8),
             tagPeopleButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             tagPeopleButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             tagPeopleButton.heightAnchor.constraint(equalToConstant: 30),
@@ -199,7 +196,7 @@ class MomentPlacePickerViewController: BaseViewController {
         // it. Otherwise the tag notification lands on someone who taps through
         // to a 403 — and tells them the moment exists at all.
         if visibility == .innerCircle {
-            picker.eligibleUserIds = Set(InnerCircleManager.shared.list.userIds)
+            picker.eligibleUserIds = audienceUserIds
             picker.emptyStateOverride = "Add people to your Inner Circle to tag them here"
         }
         picker.onDone = { [weak self] chosen in
@@ -212,20 +209,28 @@ class MomentPlacePickerViewController: BaseViewController {
 
     // MARK: - Privacy bubble
 
-    @objc private func privacyChanged() {
-        visibility = VideoVisibility.selectable[privacyControl.selectedSegmentIndex]
+    /// Who an Inner Circle moment can reach: the chosen list, else anyone on
+    /// any list (the flat index the server keeps).
+    private var audienceUserIds: Set<String> {
+        if let audienceListId,
+           let list = InnerCircleManager.shared.usableLists.first(where: { $0.id == audienceListId }) {
+            return Set(list.userIds)
+        }
+        return Set(InnerCircleManager.shared.list.userIds)
+    }
+
+    private func privacyChanged(_ option: PrivacyOption) {
+        guard let chosen = option.videoVisibility else { return }
+        visibility = chosen
+        audienceListId = visibility == .innerCircle ? privacyControl.selectedListId : nil
         if visibility == .private { taggedUsers = [] }
         // Narrowing to Inner Circle drops anyone tagged who isn't on the list,
         // rather than leaving them to be notified about something they can't see.
         if visibility == .innerCircle {
-            let allowed = Set(InnerCircleManager.shared.list.userIds)
+            let allowed = audienceUserIds
             taggedUsers = taggedUsers.filter { allowed.contains($0.id) }
         }
         refreshTagButton()
-        updatePrivacySubtitle()
-    }
-    private func updatePrivacySubtitle() {
-        privacySubtitle.text = visibility.pickerSubtitle
     }
 
     // MARK: - Source (My Places / Nearby)
@@ -351,7 +356,7 @@ extension MomentPlacePickerViewController: UITableViewDataSource, UITableViewDel
             return
         }
         let place = rows[indexPath.row]
-        delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility, taggedUsers: taggedUsers)
+        delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility, audienceListId: audienceListId, taggedUsers: taggedUsers)
     }
 }
 
@@ -389,7 +394,7 @@ extension MomentPlacePickerViewController: NearbyPlaceSearchDelegate {
 
     func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didResolve place: Place) {
         setLoading(false)
-        delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility, taggedUsers: taggedUsers)
+        delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility, audienceListId: audienceListId, taggedUsers: taggedUsers)
     }
 
     func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didFailWith error: Error) {

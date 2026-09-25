@@ -14,10 +14,15 @@ final class InnerCircleListsViewController: BaseViewController {
 
     override var showsLoadingIndicator: Bool { true }
     override var enablesPullToRefresh: Bool { true }
+    /// The member editor pushed from here writes the list and comes back;
+    /// this screen must show the new count, not the one it loaded with
+    /// ("Nobody yet" on a list with three people — Wes, 2026-09-25).
+    override var reloadsDataOnAppear: Bool { true }
 
     private var lists: [InnerCircleNamedList] = []
     private var maxLists: Int = 20
     private let tableView = UITableView(frame: .zero, style: .insetGrouped)
+    private var changeObserver: NSObjectProtocol?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -34,6 +39,16 @@ final class InnerCircleListsViewController: BaseViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+        // Every write anywhere (the member editor, a picker's Edit list)
+        // lands in the manager; mirror it here at once, no round-trip.
+        changeObserver = NotificationCenter.default.addObserver(forName: .innerCircleDidChange, object: nil, queue: .main) { [weak self] _ in
+            guard let self, InnerCircleManager.shared.hasLoaded else { return }
+            self.apply(InnerCircleManager.shared.list)
+        }
+    }
+
+    deinit {
+        if let changeObserver { NotificationCenter.default.removeObserver(changeObserver) }
     }
 
     override func loadData(completion: (() -> Void)? = nil) {
