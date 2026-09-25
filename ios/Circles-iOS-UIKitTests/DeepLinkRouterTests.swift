@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 @testable import Circles_iOS
+import FavWidgets
 
 /// Every link shape the emails, QR stickers, widget, share extension and App
 /// Clip produce, pinned to the screen it must open.
@@ -137,9 +138,17 @@ struct WidgetShareLinkTests {
         #expect(WidgetShareLink.url(widgetId: "../../etc") == nil)
     }
 
-    @Test func messageNamesTheWidgetAndSurvivesAnEmptySubtitle() {
-        #expect(WidgetShareLink.message(title: "Water", subtitle: "Tap to log each glass")
-                == "Water on FavCircles — Tap to log each glass")
+    /// The pitch Wes asked for, word for word, from the widget's own share
+    /// blurb — and nothing else: the link already names the widget.
+    @Test @MainActor func heartbeatSharesAsTheCameraPitch() {
+        let heartbeat = HeartbeatWidget().descriptor
+        #expect(WidgetShareLink.message(title: heartbeat.title, subtitle: heartbeat.shareText)
+                == "Measure your heart rate directly from your phone camera.")
+    }
+
+    @Test func messageIsOneSentenceAndSurvivesAnEmptySubtitle() {
+        #expect(WidgetShareLink.message(title: "Water", subtitle: "Tap to log each glass") == "Tap to log each glass.")
+        #expect(WidgetShareLink.message(title: "Water", subtitle: "Check on Mom or Dad?") == "Check on Mom or Dad?")
         #expect(WidgetShareLink.message(title: "Water", subtitle: "  ") == "Water on FavCircles")
     }
 }

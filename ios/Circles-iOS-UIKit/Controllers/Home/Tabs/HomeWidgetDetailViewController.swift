@@ -69,7 +69,7 @@ final class HomeWidgetDetailViewController: BaseViewController {
         guard let url = WidgetShareLink.url(widgetId: descriptor.id) else { return }
         AnalyticsService.shared.logEvent("widget_shared", parameters: ["widget_id": descriptor.id])
         let share = UIActivityViewController(
-            activityItems: [WidgetShareLink.message(title: descriptor.title, subtitle: descriptor.subtitle), url],
+            activityItems: [WidgetShareLink.message(title: descriptor.title, subtitle: descriptor.shareText), url],
             applicationActivities: nil
         )
         // An unanchored activity sheet is a crash on iPad, which is the device

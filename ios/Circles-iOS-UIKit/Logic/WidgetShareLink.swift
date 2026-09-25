@@ -24,11 +24,15 @@ enum WidgetShareLink {
         return URL(string: "https://\(host)/app/widget/\(trimmed)")
     }
 
-    /// What rides above the link in the share sheet. The title carries the
-    /// widget; the subtitle says why anyone would want it.
+    /// What rides above the link in the share sheet: the pitch alone, as one
+    /// sentence. The link's landing page already names the widget and
+    /// FavCircles, so the message doesn't repeat them. A widget with no pitch
+    /// falls back to naming itself.
     static func message(title: String, subtitle: String) -> String {
         let blurb = subtitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        return blurb.isEmpty ? "\(title) on FavCircles" : "\(title) on FavCircles — \(blurb)"
+        guard let first = blurb.first else { return "\(title) on FavCircles" }
+        let sentence = String(first).uppercased() + blurb.dropFirst()
+        return sentence.last.map { ".!?".contains($0) } == true ? sentence : sentence + "."
     }
 
     private static let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
