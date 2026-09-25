@@ -795,6 +795,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        sizeContentSlotToVisibleArea()
         let inset = searchSheetBottomInset
         searchResultsSheet.setBottomInset(inset)
         let mapBottom = -(inset + SearchSheetLayout.handleHeight)
@@ -808,8 +809,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         coordinator.animate(alongsideTransition: nil) { [weak self] _ in
             guard let self else { return }
             self.refitSearchSheet()
-            // The reel's page height is the visible height; re-measure it.
-            if self.selectedContentSegment == .moments { self.anchorMomentsTab(animated: false) }
+            // The slot is the visible height; re-measure and re-pin after a rotation.
+            self.anchorContentTab(animated: false)
         }
     }
 
@@ -1805,9 +1806,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         mapHeightConstraint = mapContainerView.heightAnchor.constraint(equalToConstant: 320)
         mapHeightConstraint?.isActive = true
         
-        // The content area is a fixed 600pt; the tabs scroll inside it. This
-        // one constraint sizes the whole activity section. Moments is the
-        // exception: it grows to the visible area (anchorMomentsTab).
+        // The content slot is the height left under the segment bar (sized in
+        // viewDidLayoutSubviews via ContentTabAnchor); the tabs scroll inside
+        // it. This one constraint sizes the whole activity section.
         contentTabHeightConstraint = tabContentContainer.heightAnchor.constraint(equalToConstant: Self.defaultContentTabHeight)
         contentTabHeightConstraint?.isActive = true
 
@@ -2080,40 +2081,43 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
         momentsCameraButton.isHidden = !segment.showsCameraButton
         activityHeaderLabel.text = segment.headerTitle
-        sizeContentSlot(for: segment)
         contentTab(for: segment).setTabVisible(true)
-        if segment == .moments { anchorMomentsTab(animated: true) }
+        anchorContentTab(animated: true)
     }
 
-    /// The usual height of the content slot under the segment bar.
+    /// The slot's height before the first layout pass sizes it to the screen.
     static let defaultContentTabHeight: CGFloat = 600
 
-    /// Moments gets the whole visible area under the bar so one moment is on
-    /// screen at a time; every other tab keeps the fixed slot.
-    func sizeContentSlot(for segment: HomeContentSegment) {
-        guard segment != .moments else { return } // anchorMomentsTab sizes it
-        if contentTabHeightConstraint?.constant != Self.defaultContentTabHeight {
-            contentTabHeightConstraint?.constant = Self.defaultContentTabHeight
-            view.layoutIfNeeded()
-        }
-    }
-
-    /// Pins the feed section to the top of the page and sizes the slot to
-    /// what's left, so the moment fills the screen and a swipe is the next
-    /// moment, not the page. Pure arithmetic in MomentsTabAnchor.
-    func anchorMomentsTab(animated: Bool) {
-        view.layoutIfNeeded()
+    /// The slot and the page position for the tab under the bar, from the
+    /// current scroll geometry (pure arithmetic in ContentTabAnchor).
+    private func contentTabLayout() -> ContentTabAnchor.Layout? {
         let insets = scrollView.adjustedContentInset
         let visible = scrollView.bounds.height - insets.top - insets.bottom
-        guard visible > 0 else { return }
+        guard visible > 0, activityFeedSection.superview != nil else { return nil }
         let sectionTop = activityFeedSection.convert(activityFeedSection.bounds, to: contentView).minY
         let chrome = tabContentContainer.frame.minY // relative to activityFeedSection
-        let layout = MomentsTabAnchor.layout(visibleHeight: visible, sectionTop: sectionTop, chromeHeight: chrome, topInset: insets.top)
-        if contentTabHeightConstraint?.constant != layout.slotHeight {
-            contentTabHeightConstraint?.constant = layout.slotHeight
-            view.layoutIfNeeded()
-            momentsTab.collectionView.collectionViewLayout.invalidateLayout()
-        }
+        return ContentTabAnchor.layout(visibleHeight: visible, sectionTop: sectionTop, chromeHeight: chrome, topInset: insets.top)
+    }
+
+    /// Keeps the slot exactly the height left under the segment bar, so no
+    /// tab ever extends below the fold. Called from every layout pass;
+    /// touches the constraint only when the number changes.
+    func sizeContentSlotToVisibleArea() {
+        guard let layout = contentTabLayout(), let constraint = contentTabHeightConstraint,
+              abs(constraint.constant - layout.slotHeight) >= 1 else { return }
+        constraint.constant = layout.slotHeight
+        momentsTab.collectionView.collectionViewLayout.invalidateLayout()
+    }
+
+    /// Pins the feed section to the top of the page so the whole tab is on
+    /// screen: a moment fills it and a swipe is the next moment; a widget
+    /// list's last card is reachable.
+    func anchorContentTab(animated: Bool) {
+        view.layoutIfNeeded()
+        sizeContentSlotToVisibleArea()
+        view.layoutIfNeeded()
+        guard let layout = contentTabLayout() else { return }
+        let insets = scrollView.adjustedContentInset
         let maxY = max(-insets.top, scrollView.contentSize.height - scrollView.bounds.height + insets.bottom)
         let target = CGPoint(x: 0, y: min(layout.contentOffsetY, maxY))
         scrollView.setContentOffset(target, animated: animated)
@@ -2125,7 +2129,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     func showWidgetsTab(openingWidget widgetId: String?, postcardOrderId: String? = nil, quoteId: String? = nil) {
         contentSegmentedControl.selectedSegmentIndex = HomeContentSegment.widgets.rawValue
         showContentTab(.widgets)
-        scrollView.scrollRectToVisible(activityFeedSection.frame, animated: false)
         if let widgetId {
             widgetsTab.open(widgetId: widgetId, postcardOrderId: postcardOrderId, quoteId: quoteId)
         }
@@ -2136,7 +2139,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     func openPostcardComposer(photo: UIImage, place: WidgetPlaceRef?) {
         contentSegmentedControl.selectedSegmentIndex = HomeContentSegment.widgets.rawValue
         showContentTab(.widgets)
-        scrollView.scrollRectToVisible(activityFeedSection.frame, animated: false)
         widgetsTab.openPostcard(photo: photo, place: place)
     }
 
@@ -2209,7 +2211,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         momentsCameraButton.isHidden = false
         activityHeaderLabel.text = HomeContentSegment.moments.headerTitle
         momentsTab.present(moment: video)
-        anchorMomentsTab(animated: false)
+        anchorContentTab(animated: false)
     }
 
     // MARK: - Data Fetching (forwarded to HomeDataLoader)

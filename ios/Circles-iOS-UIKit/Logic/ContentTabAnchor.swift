@@ -1,16 +1,18 @@
 import CoreGraphics
 
-/// Where the home page scrolls to, and how tall the content slot becomes,
-/// when the Moments segment is picked.
+/// Where the home page scrolls to, and how tall the content slot is, for
+/// the tab under the segment bar.
 ///
 /// The home is one long scroll view: map, then the feed section (header row,
-/// segment bar, content slot). The Moments feed pages one moment per slot
-/// height, so with the slot at its usual fixed height and the page scrolled
-/// wherever it was, a moment sat partly off-screen and a swipe moved the page
-/// instead of the reel. Picking Moments now pins the feed section's top to
-/// the top of the visible area and makes the slot exactly the height left
-/// under the bar, so one full moment is on screen and each swipe is the next.
-enum MomentsTabAnchor {
+/// segment bar, content slot). The slot used to be a fixed 600pt, so with the
+/// page scrolled wherever it was its bottom sat below the fold — and every
+/// tab scrolls inside the slot, so a drag on a short widget list (which
+/// bounces rather than passing the drag up) could never reveal the last
+/// card, and a moment sat half off-screen with swipes moving the page. The
+/// slot is now exactly the height left under the bar, and picking a tab pins
+/// the section's top to the top of the visible area: the whole tab is on
+/// screen, and it scrolls inside a frame that is fully visible.
+enum ContentTabAnchor {
     struct Layout: Equatable {
         /// New height for the content slot.
         var slotHeight: CGFloat
