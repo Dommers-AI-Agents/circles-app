@@ -100,6 +100,21 @@ enum NotificationCategoryRegistry {
             intentIdentifiers: [],
             options: [.customDismissAction]
         )
+        // The second banner of a day (and later) also offers a way out, right
+        // on the notification — the reminder should get people going, not
+        // wear them down. Runs in the background: it flips the preference
+        // and tells the server.
+        let turnOffAction = UNNotificationAction(
+            identifier: ProximityNotificationScheduler.turnOffAction,
+            title: "Turn off reminders",
+            options: [.destructive]
+        )
+        let checkInPromptOptOutCategory = UNNotificationCategory(
+            identifier: ProximityNotificationScheduler.optOutCategoryIdentifier,
+            actions: [checkInAction, notNowAction, turnOffAction],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
 
         // "How Are You?" question to a parent, answered right on the Lock
         // Screen. Background actions with NO authentication required, so an
@@ -172,6 +187,7 @@ enum NotificationCategoryRegistry {
             suggestionCategory,
             activityCategory,
             checkInPromptCategory,
+            checkInPromptOptOutCategory,
             careCategory,
             careDoneCategory,
             careYesNoCategory,

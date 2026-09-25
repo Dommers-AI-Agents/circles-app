@@ -29,7 +29,12 @@ class NotificationPreferencesViewController: BaseTableViewController {
         var footer: String? {
             switch self {
             case .dailySummary: return "Every Monday: what happened in your network this week, plus your FavCoins 🌵"
-            case .activityNotifications: return "Notifications about places and circles. Nearby check-in reminders use the location access you already granted and only fire at places you saved."
+            case .activityNotifications:
+                // The reminder row exists only for people who allow location
+                // Always; don't promise it to everyone else.
+                return DwellCheckInMonitor.shared.isOffered
+                    ? "Notifications about places and circles. Check-in reminders fire when you arrive at a saved place."
+                    : "Notifications about places and circles."
             case .socialNotifications: return "Notifications about connections and messages"
             case .quietHours: return "Pause notifications during specific hours"
             }
@@ -316,7 +321,7 @@ extension NotificationPreferencesViewController {
                 // Takes effect on the device immediately; the account record
                 // saves with the rest.
                 cell.configure(
-                    title: "Check-in Reminders When You Stop Somewhere",
+                    title: "Check-in Reminders When You Arrive",
                     isOn: preferences.locationPrompts,
                     onToggle: { [weak self] isOn in
                         self?.preferences.locationPrompts = isOn
