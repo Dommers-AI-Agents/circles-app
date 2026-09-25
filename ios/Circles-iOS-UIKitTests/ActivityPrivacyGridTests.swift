@@ -76,8 +76,10 @@ struct ActivityPrivacyGridTests {
 
     @Test func malformedRowsAndBoxesReadAsTheStandard() throws {
         let grid = try decode(ActivityPrivacy.self, #"{"checkIns": "nope", "photos": {"public": "yes", "moments": 3}}"#)
-        // A malformed box inside a present row reads as true (the row was sent).
-        #expect(grid.checkIns == .connections)
+        // A row that is present but unreadable, and a malformed box inside a
+        // present row, read as checked (the server sent the row); only an
+        // ABSENT row takes the category default.
+        #expect(grid.checkIns == .allAllowed)
         #expect(grid.photos == .allAllowed)
         #expect(grid.moments == .connections)
         let scalar = try decode(ActivityPrivacy.self, #""nonsense""#)
@@ -169,8 +171,11 @@ struct ActivityPrivacyGridTests {
         #expect(fromServer.isImplied(.photos, .innerCircle))
         let sent = fromServer.requestBody()["photos"] as? [String: Bool]
         #expect(sent?["innerCircle"] == true)
-        #expect(fromServer.isDefault)
-        #expect(fromServer.normalized == .allAllowed)
+        // Photos was sent (and reads as every box); the rows the server left
+        // out take their category defaults.
+        #expect(fromServer.normalized.photos == .allAllowed)
+        #expect(fromServer.normalized.checkIns == .connections)
+        #expect(!fromServer.isDefault)
 
         // ...and unchecking Connections on it leaves Inner Circle checked, as
         // the box showed, rather than dropping to the stored false.
