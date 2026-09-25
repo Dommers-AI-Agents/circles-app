@@ -82,6 +82,11 @@ exports.respondToWatcher = async (req, res) => {
   catch (e) { fail(res, e); }
 };
 
+exports.resendWatcherInvite = async (req, res) => {
+  try { res.json({ success: true, ...(await care.resendWatcherInvite({ userId: req.user.uid, planId: req.params.id, watcherId: req.params.watcherId })) }); }
+  catch (e) { fail(res, e); }
+};
+
 exports.removeWatcher = async (req, res) => {
   try { res.json({ success: true, plan: await care.removeWatcher({ userId: req.user.uid, planId: req.params.id, watcherId: req.params.watcherId }) }); }
   catch (e) { fail(res, e); }

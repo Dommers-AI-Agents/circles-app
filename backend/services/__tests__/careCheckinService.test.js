@@ -407,21 +407,102 @@ describe('siblings joining (watchers)', () => {
     }));
   });
 
-  test('the owner may invite; anyone else may only ask for themselves', async () => {
+  test('the owner invites a family member; THEY accept, and the parent is told who joined', async () => {
     await activePlan();
     await seedSibling();
     await expect(care.requestWatcher({ userId: SIBLING, planId: PLAN, watcherId: 'someone_else' }))
       .rejects.toMatchObject({ code: 'not_owner' });
+
     const invited = await care.requestWatcher({ userId: CHILD, planId: PLAN, watcherId: SIBLING });
     expect(invited.watchers[0]).toMatchObject({ userId: SIBLING, status: 'invited', invitedBy: CHILD });
+    // The invitation goes to the person invited (as a bell row too), not to Mom.
+    expect(notificationService.sendToUserWithRecord).toHaveBeenCalledWith(SIBLING, expect.objectContaining({
+      type: 'care_watcher_invite', title: expect.stringContaining('Wes invited you')
+    }));
+    expect(notificationService.sendToUser).not.toHaveBeenCalledWith(PARENT, expect.objectContaining({ type: 'care_watcher_request' }));
+    // Until they answer, their own widget shows the arrangement without answers.
+    const theirs = await care.listPlans(SIBLING);
+    expect(theirs.asPending.map((p) => p.planId)).toEqual([PLAN]);
+    expect(theirs.asPending[0].openAsk).toBeNull();
+    expect(theirs.asWatcher).toEqual([]);
+
+    // Neither Mom nor the owner can answer an invitation for them.
+    await expect(care.respondToWatcher({ userId: PARENT, planId: PLAN, watcherId: SIBLING, accept: true }))
+      .rejects.toMatchObject({ code: 'not_invited' });
+    await expect(care.respondToWatcher({ userId: CHILD, planId: PLAN, watcherId: SIBLING, accept: true }))
+      .rejects.toMatchObject({ code: 'not_invited' });
+
+    notificationService.sendToUser.mockClear();
+    const joined = await care.respondToWatcher({ userId: SIBLING, planId: PLAN, watcherId: SIBLING, accept: true });
+    expect(joined.role).toBe('watcher');
+    expect(plans().get(PLAN).watcherIds).toEqual([SIBLING]);
+    expect(plans().get(PLAN).pendingWatcherIds).toEqual([]);
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(CHILD, expect.objectContaining({ type: 'care_watcher_accepted' }));
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(PARENT, expect.objectContaining({
+      type: 'care_watcher_joined', title: 'Kate is now on your check-ins'
+    }));
+    expect((await care.listPlans(SIBLING)).asWatcher.map((p) => p.planId)).toEqual([PLAN]);
   });
 
-  test('a watcher must be connected to the PARENT, not just to the sibling', async () => {
+  test('an invited family member may say no; the owner hears it and the row is gone', async () => {
+    await activePlan();
+    await seedSibling();
+    await care.requestWatcher({ userId: CHILD, planId: PLAN, watcherId: SIBLING });
+    notificationService.sendToUser.mockClear();
+    const after = await care.respondToWatcher({ userId: SIBLING, planId: PLAN, watcherId: SIBLING, accept: false });
+    expect(after.watchers).toEqual([]);
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(CHILD, expect.objectContaining({ type: 'care_watcher_declined' }));
+    expect((await care.listPlans(SIBLING)).asPending).toEqual([]);
+  });
+
+  test('a family member the owner invites may be connected to the owner OR the parent', async () => {
+    await activePlan();
+    await mockDb.collection(COLLECTIONS.USERS).doc(SIBLING).set({ displayName: 'Kate' });
+    // Connected to the child only: the fake map is shared, so "connected" here
+    // means the owner's lookup finds them after the parent's does not.
+    mockConnections.delete(SIBLING);
+    await expect(care.requestWatcher({ userId: CHILD, planId: PLAN, watcherId: SIBLING }))
+      .rejects.toMatchObject({ code: 'not_connected' });
+    mockConnections.set(SIBLING, { status: 'accepted' });
+    await expect(care.requestWatcher({ userId: CHILD, planId: PLAN, watcherId: SIBLING })).resolves.toBeDefined();
+  });
+
+  test('a watcher asking for THEMSELVES must be connected to the PARENT, not just to the sibling', async () => {
     await activePlan();
     await mockDb.collection(COLLECTIONS.USERS).doc(SIBLING).set({ displayName: 'Kate' });
     mockConnections.delete(SIBLING);          // connected to the child, not to Mom
     await expect(care.requestWatcher({ userId: SIBLING, planId: PLAN }))
       .rejects.toMatchObject({ code: 'not_connected' });
+  });
+
+  test('the owner can send a family invitation again, after a cooldown', async () => {
+    await activePlan();
+    await seedSibling();
+    await care.requestWatcher({ userId: CHILD, planId: PLAN, watcherId: SIBLING });
+    await expect(care.resendWatcherInvite({ userId: CHILD, planId: PLAN, watcherId: SIBLING }))
+      .rejects.toMatchObject({ code: 'too_soon' });
+    await expect(care.resendWatcherInvite({ userId: SIBLING, planId: PLAN, watcherId: SIBLING }))
+      .rejects.toMatchObject({ code: 'not_owner' });
+    const later = new Date(Date.now() + 11 * 60 * 1000);
+    notificationService.sendToUserWithRecord.mockClear();
+    const sent = await care.resendWatcherInvite({ userId: CHILD, planId: PLAN, watcherId: SIBLING, now: later });
+    expect(sent.delivered).toBe(true);
+    expect(notificationService.sendToUserWithRecord).toHaveBeenCalledWith(SIBLING, expect.objectContaining({ type: 'care_watcher_invite' }));
+    expect(plans().get(PLAN).watchers[0].inviteCount).toBe(2);
+    // A sibling's own request is the parent's to answer — there is nothing to resend.
+    await care.respondToWatcher({ userId: SIBLING, planId: PLAN, watcherId: SIBLING, accept: false });
+    await care.requestWatcher({ userId: SIBLING, planId: PLAN });
+    await expect(care.resendWatcherInvite({ userId: CHILD, planId: PLAN, watcherId: SIBLING, now: later }))
+      .rejects.toMatchObject({ code: 'no_watcher' });
+  });
+
+  test('a sibling still waiting on the parent sees the wait in their own widget', async () => {
+    await activePlan();
+    await seedSibling();
+    await care.requestWatcher({ userId: SIBLING, planId: PLAN });
+    const listed = await care.listPlans(SIBLING);
+    expect(listed.asPending.map((p) => p.role)).toEqual(['pending_watcher']);
+    expect(listed.asPending[0].watchers[0]).toMatchObject({ userId: SIBLING, invitedBy: 'self' });
   });
 
   test('duplicate requests are refused, and the owner cannot join their own plan', async () => {
@@ -495,8 +576,11 @@ describe('siblings joining (watchers)', () => {
     expect((await care.removeWatcher({ userId: SIBLING, planId: PLAN, watcherId: SIBLING })).watchers).toEqual([]);
     await care.requestWatcher({ userId: SIBLING, planId: PLAN });
     await care.respondToWatcher({ userId: PARENT, planId: PLAN, watcherId: SIBLING, accept: true });
+    notificationService.sendToUser.mockClear();
     expect((await care.removeWatcher({ userId: PARENT, planId: PLAN, watcherId: SIBLING })).watchers).toEqual([]);
     expect(plans().get(PLAN).watcherIds).toEqual([]);
+    // The person removed is told; someone who leaves is not.
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(SIBLING, expect.objectContaining({ type: 'care_watcher_removed' }));
   });
 });
 

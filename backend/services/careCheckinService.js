@@ -3,8 +3,7 @@
 // Plans, asks and answers here; membership (watchers) and scheduler (ask creation, silence alerts) are mixed in from ./careCheckin.
 // Constants and pure helpers live in ./careCheckin/shared.js.
 // A resent invitation is a nudge to a real phone; ten minutes between them.
-const RESEND_INVITE_COOLDOWN_MS = 10 * 60 * 1000;
-const { ANSWERS, COLLECTIONS, CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, DUE_AFTER_MS, NOTE_MAX, RICH_ASKS_MIN_CLIENT, TYPES, bank, buildConnectionMap, clean, friendlyTime, getFirestore, localDateKey, normalizeMuted, normalizeProfile, normalizeQuestions, normalizeTimes, normalizeUserId, notificationService, nowIso } = require('./careCheckin/shared');
+const { ANSWERS, COLLECTIONS, CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, DUE_AFTER_MS, NOTE_MAX, RICH_ASKS_MIN_CLIENT, TYPES, bank, buildConnectionMap, clean, friendlyTime, getFirestore, localDateKey, normalizeMuted, normalizeProfile, normalizeQuestions, normalizeTimes, normalizeUserId, notificationService, nowIso, RESEND_INVITE_COOLDOWN_MS } = require('./careCheckin/shared');
 const planner = require('./careCheckin/questionPlanner');
 const { atLeast } = require('../utils/appVersion');
 
@@ -31,6 +30,11 @@ class CareCheckinService {
 
   static activeWatcherIds(plan) {
     return (plan.watchers || []).filter((w) => w.status === 'active').map((w) => w.userId);
+  }
+
+  /** Invited or asking, not yet in — so their own widget can show the wait. */
+  static pendingWatcherIds(plan) {
+    return (plan.watchers || []).filter((w) => w.status !== 'active').map((w) => w.userId);
   }
 
   // Everyone who should hear about an answer or a silence: the child who set it
@@ -79,7 +83,7 @@ class CareCheckinService {
       lastAnsweredAt: plan.lastAnsweredAt || null,
       watchers: (plan.watchers || []).map((w) => ({
         userId: w.userId, name: w.name || 'Someone', status: w.status,
-        invitedBy: w.invitedBy || null, acceptedAt: w.acceptedAt || null
+        invitedBy: w.invitedBy || null, invitedAt: w.invitedAt || null, acceptedAt: w.acceptedAt || null
       })),
       openAsk: open[0] ? this.presentAsk({ id: open[0].id, ...open[0] }) : null,
       lastAnswer: answered[0] ? this.presentAsk({ id: answered[0].id, ...answered[0] }) : null,
@@ -129,27 +133,30 @@ class CareCheckinService {
   // MARK: - Reads
 
   async listPlans(userId) {
-    const [owned, parenting, watching] = await Promise.all([
+    const [owned, parenting, watching, pending] = await Promise.all([
       this.plans.where('ownerId', '==', userId).get(),
       this.plans.where('parentId', '==', userId).get(),
       // Equality on an array field: Firestore matches if the array contains it,
       // so no composite index and no second shape to keep in step.
-      this.plans.where('watcherIds', 'array-contains', userId).get()
+      this.plans.where('watcherIds', 'array-contains', userId).get(),
+      this.plans.where('pendingWatcherIds', 'array-contains', userId).get()
     ]);
     const seen = new Set();
-    const rows = [...owned.docs, ...parenting.docs, ...watching.docs]
+    const rows = [...owned.docs, ...parenting.docs, ...watching.docs, ...pending.docs]
       .filter((d) => (seen.has(d.id) ? false : seen.add(d.id)))
       .map((d) => ({ id: d.id, ...d.data() }))
       .filter((p) => p.status !== 'ended');
     const withAsks = await Promise.all(rows.map(async (plan) => {
-      const asks = await this.recentAsks(plan.id, 6);
+      // Someone invited or still asking sees the arrangement, never the answers.
+      const asks = CareCheckinService.canRead(plan, userId) ? await this.recentAsks(plan.id, 6) : [];
       return this.presentPlan(plan, { asks, viewerId: userId });
     }));
     withAsks.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     return {
       asOwner: withAsks.filter((p) => p.role === 'owner'),
       asParent: withAsks.filter((p) => p.role === 'parent'),
-      asWatcher: withAsks.filter((p) => p.role === 'watcher')
+      asWatcher: withAsks.filter((p) => p.role === 'watcher'),
+      asPending: withAsks.filter((p) => p.role === 'pending_watcher')
     };
   }
 
@@ -223,6 +230,18 @@ class CareCheckinService {
     await this.plans.doc(planId).set(plan);
     this.notify(parent, CareCheckinService.inviteMessage(ownerName, planId));
     return this.presentPlan({ id: planId, ...plan }, { viewerId: ownerId });
+  }
+
+  /** What the family member the owner invited receives; sent again on resend. */
+  static watcherInviteMessage(plan, planId) {
+    const owner = plan.ownerName || 'Someone';
+    const parent = plan.parentName || 'a family member';
+    return {
+      type: TYPES.watcherInvite,
+      title: `${owner} invited you to take part in checking in on ${parent}`,
+      body: `You'd see ${parent}'s answers and hear about it when a question goes unanswered. Open Circles to accept.`,
+      data: { planId }
+    };
   }
 
   static inviteMessage(ownerName, planId) {
@@ -411,7 +430,8 @@ class CareCheckinService {
       const payload = { type, title, body, data: { type, ...(data || {}) } };
       // An invitation and its answer are things people go back to look for;
       // they get a bell row as well as the push. The rest are moment-to-moment.
-      const keep = type === TYPES.invite || type === TYPES.accepted;
+      const keep = [TYPES.invite, TYPES.accepted, TYPES.watcherInvite, TYPES.watcherRequest,
+        TYPES.watcherAccepted, TYPES.watcherJoined].includes(type);
       return keep
         ? await notificationService.sendToUserWithRecord(userId, payload)
         : await notificationService.sendToUser(userId, payload);

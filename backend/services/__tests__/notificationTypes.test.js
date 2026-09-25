@@ -21,6 +21,8 @@ const OLD_TYPE_MAP = {
   nextbar_round: 'socialActivity', nextbar_result: 'socialActivity', postcard_order: 'socialActivity', fridgemail: 'socialActivity',
   care_invite: 'careCheckins', care_ask: 'careCheckins', care_answer: 'careCheckins', care_accepted: 'careCheckins', care_silence: 'careCheckins',
   care_ask_done: 'careCheckins', care_ask_yesno: 'careCheckins', care_ask_scale: 'careCheckins', care_ask_text: 'careCheckins',
+  care_watcher_request: 'careCheckins', care_watcher_invite: 'careCheckins', care_watcher_accepted: 'careCheckins',
+  care_watcher_declined: 'careCheckins', care_watcher_joined: 'careCheckins', care_watcher_removed: 'careCheckins',
   daily_quote: 'dailyQuote'
 };
 const OLD_BADGE_WORTHY = ['new_message', 'connection_request', 'connection_accepted', 'place_like', 'place_comment', 'new_follower',

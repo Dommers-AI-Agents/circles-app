@@ -54,6 +54,14 @@ const TYPES = {
   care_ask_text:           { category: 'CARE_TEXT',               pref: 'careCheckins',           badge: false },
   care_answer:             { category: null,                      pref: 'careCheckins',           badge: false },
   care_accepted:           { category: null,                      pref: 'careCheckins',           badge: false },
+  // Family members on a check-in: asked for (parent decides) or invited by the
+  // owner (they decide); the parent hears who joined and can remove anyone.
+  care_watcher_request:    { category: null,                      pref: 'careCheckins',           badge: false },
+  care_watcher_invite:     { category: null,                      pref: 'careCheckins',           badge: false },
+  care_watcher_accepted:   { category: null,                      pref: 'careCheckins',           badge: false },
+  care_watcher_declined:   { category: null,                      pref: 'careCheckins',           badge: false },
+  care_watcher_joined:     { category: null,                      pref: 'careCheckins',           badge: false },
+  care_watcher_removed:    { category: null,                      pref: 'careCheckins',           badge: false },
   care_silence:            { category: null,                      pref: 'careCheckins',           badge: false }
 };
 

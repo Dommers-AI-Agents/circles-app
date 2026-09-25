@@ -52,10 +52,15 @@ const TYPES = {
   answer: 'care_answer',
   accepted: 'care_accepted',
   watcherRequest: 'care_watcher_request',
+  watcherInvite: 'care_watcher_invite',
   watcherAccepted: 'care_watcher_accepted',
   watcherDeclined: 'care_watcher_declined',
+  watcherJoined: 'care_watcher_joined',
+  watcherRemoved: 'care_watcher_removed',
   silence: 'care_silence'
 };
+/** An invitation may be sent again after this long. */
+const RESEND_INVITE_COOLDOWN_MS = 10 * 60 * 1000;
 
 const { newId, nowIso } = require('../../utils/ids');
 const { clean } = require('../../utils/text');
@@ -122,4 +127,4 @@ function normalizeMuted(ids) {
   return [...new Set(ids.map((id) => clean(id, 40)).filter((id) => bank.BANK_BY_ID.has(id)))];
 }
 
-module.exports = { ANSWERS, RICH_ASKS_MIN_CLIENT, bank, normalizeMuted, normalizeProfile, COLLECTIONS, CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, DUE_AFTER_MS, MAX_QUESTIONS, MAX_TIMES, NOTE_MAX, QUESTION_MAX, RUN_WINDOW_MINUTES, TIME_RE, TYPES, buildConnectionMap, clean, friendlyTime, getFirestore, localClock, localDateKey, newId, normalizeQuestions, normalizeTimes, normalizeUserId, notificationService, nowIso };
+module.exports = { ANSWERS, RESEND_INVITE_COOLDOWN_MS, RICH_ASKS_MIN_CLIENT, bank, normalizeMuted, normalizeProfile, COLLECTIONS, CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, DUE_AFTER_MS, MAX_QUESTIONS, MAX_TIMES, NOTE_MAX, QUESTION_MAX, RUN_WINDOW_MINUTES, TIME_RE, TYPES, buildConnectionMap, clean, friendlyTime, getFirestore, localClock, localDateKey, newId, normalizeQuestions, normalizeTimes, normalizeUserId, notificationService, nowIso };

@@ -75,11 +75,13 @@ router.put('/care/plans/:id', care.updatePlan);
 router.delete('/care/plans/:id', care.endPlan);
 router.post('/care/plans/:id/respond', care.respond);
 router.post('/care/plans/:id/invite', messageLimiter, care.resendInvite);
-// Watchers: the other siblings. Joining is requested by them or offered by the
-// owner, and accepted by the parent — never by the owner on their behalf.
+// Watchers: the rest of the family. A sibling's own request is accepted by
+// the parent; an owner's invitation is accepted by the person invited, and
+// the parent is told who joined and can remove anyone.
 router.post('/care/plans/:id/watchers', messageLimiter, care.requestWatcher);
 router.post('/care/join', messageLimiter, care.joinForParent);
 router.post('/care/plans/:id/watchers/:watcherId/respond', care.respondToWatcher);
+router.post('/care/plans/:id/watchers/:watcherId/invite', messageLimiter, care.resendWatcherInvite);
 router.delete('/care/plans/:id/watchers/:watcherId', care.removeWatcher);
 router.get('/care/asks', care.listAsks);
 router.post('/care/asks/:id/answer', care.answer);
