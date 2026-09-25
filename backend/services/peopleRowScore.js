@@ -65,7 +65,7 @@ function scorePerson(person = {}, now = Date.now()) {
   components.total = Math.round((components.messages + components.content + components.recency) * 10) / 10;
   const tieBreak = Math.min(Math.max(0, person.totalPlaces || 0), PLACES_TIEBREAK_CAP) / 1000;
   return {
-    score: components.total + tieBreak,
+    score: Math.round((components.total + tieBreak) * 1000) / 1000,
     components,
     hasRecentActivity: activityDays <= RECENT_DAYS,
     calculatedAt: new Date(now)

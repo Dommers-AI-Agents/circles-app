@@ -89,9 +89,9 @@ describe('peopleRowStats', () => {
   });
 
   test('runs a batch of users at once', async () => {
-    const ids = Array.from({ length: 30 }, (_, i) => `u${i}`);
+    const ids = Array.from({ length: 90 }, (_, i) => `u${i}`);
     const db = fakeDb({}, {});
     await peopleRowStats(db, ids, now);
-    expect(db.peak()).toBeGreaterThanOrEqual(30);
+    expect(db.peak()).toBeGreaterThanOrEqual(80);
   });
 });
