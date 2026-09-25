@@ -46,30 +46,42 @@ struct ActivityPrivacyGridTests {
 
     // MARK: - Defaults and lenient decoding
 
-    @Test func defaultAllowsEveryone() {
-        let grid = ActivityPrivacy.allAllowed
-        for category in ActivityPrivacyCategory.allCases {
-            for audience in ActivityAudience.allCases {
-                #expect(grid.allows(category, audience))
-            }
+    /// Wes, 2026-09-25: check-ins, photos and moments reach connections by
+    /// default; saved places, likes & comments and circles reach everyone.
+    @Test func theStandardGridIsConnectionsForDoingsAndEveryoneForCuration() {
+        let grid = ActivityPrivacy.standard
+        for category in [ActivityPrivacyCategory.checkIns, .photos, .moments] {
+            #expect(!grid.allows(category, .public))
+            #expect(grid.allows(category, .myNetwork))
+            #expect(grid.allows(category, .innerCircle))
+            #expect(grid.summary(for: category, innerCircleIsEmpty: false) == "Connections")
+        }
+        for category in [ActivityPrivacyCategory.savedPlaces, .likesComments, .circles] {
+            #expect(grid.allows(category, .public))
+            #expect(grid.summary(for: category, innerCircleIsEmpty: false) == "Everyone")
         }
         #expect(grid.isDefault)
+        #expect(!ActivityPrivacy.allAllowed.isDefault)
     }
 
-    @Test func partialJSONFillsTheGapsWithTrue() throws {
-        let grid = try decode(ActivityPrivacy.self, #"{"checkIns": {"public": false}}"#)
-        #expect(grid.checkIns.public == false)
+    @Test func partialJSONFillsTheGapsWithTheCategoryDefault() throws {
+        let grid = try decode(ActivityPrivacy.self, #"{"checkIns": {"public": true}}"#)
+        #expect(grid.checkIns.public == true)
         #expect(grid.checkIns.myNetwork == true)
         #expect(grid.checkIns.innerCircle == true)
-        #expect(grid.photos == .allAllowed)
+        #expect(grid.photos == .connections)
+        #expect(grid.circles == .allAllowed)
         #expect(!grid.isDefault)
     }
 
-    @Test func malformedRowsAndBoxesReadAsAllowed() throws {
+    @Test func malformedRowsAndBoxesReadAsTheStandard() throws {
         let grid = try decode(ActivityPrivacy.self, #"{"checkIns": "nope", "photos": {"public": "yes", "moments": 3}}"#)
-        #expect(grid == .allAllowed)
+        // A malformed box inside a present row reads as true (the row was sent).
+        #expect(grid.checkIns == .connections)
+        #expect(grid.photos == .allAllowed)
+        #expect(grid.moments == .connections)
         let scalar = try decode(ActivityPrivacy.self, #""nonsense""#)
-        #expect(scalar == .allAllowed)
+        #expect(scalar == .standard)
     }
 
     @Test func roundTripsThroughCodable() throws {
@@ -87,7 +99,7 @@ struct ActivityPrivacyGridTests {
     @Test func userDecodesWithoutAGrid() throws {
         let u = try decode(User.self, user(""))
         #expect(u.activityPrivacy == nil)
-        #expect((u.activityPrivacy ?? .allAllowed).isDefault)
+        #expect((u.activityPrivacy ?? .standard).isDefault)
     }
 
     @Test func userDecodesWithAGrid() throws {
@@ -96,13 +108,13 @@ struct ActivityPrivacyGridTests {
         #expect(grid.photos.public == false)
         #expect(grid.photos.myNetwork == false)
         #expect(grid.photos.innerCircle == true)
-        #expect(grid.checkIns == .allAllowed)
+        #expect(grid.checkIns == .connections)
     }
 
     @Test func userSurvivesAMalformedGrid() throws {
         let u = try decode(User.self, user(#""activityPrivacy": 42"#))
         #expect(u.displayName == "Brit")
-        #expect(u.activityPrivacy == nil || u.activityPrivacy == .allAllowed)
+        #expect(u.activityPrivacy == nil || u.activityPrivacy == .standard)
     }
 
     @Test func userCopyCarriesTheGrid() {

@@ -21,6 +21,16 @@ enum ActivityPrivacyCategory: String, CaseIterable, Codable {
     case likesComments
     case circles
 
+    /// The row until its owner changes it (Wes, 2026-09-25): what you did
+    /// somewhere — check-ins, photos, moments — reaches connections; what
+    /// you curate — saved places, likes & comments, circles — everyone.
+    var defaultAudience: AudienceSet {
+        switch self {
+        case .checkIns, .photos, .moments: return .connections
+        case .savedPlaces, .likesComments, .circles: return .allAllowed
+        }
+    }
+
     var title: String {
         switch self {
         case .checkIns: return "Check-ins"
@@ -88,6 +98,8 @@ struct AudienceSet: Codable, Equatable {
     }
 
     static let allAllowed = AudienceSet()
+    /// Connections and the Inner Circle, not the public.
+    static let connections = AudienceSet(public: false, myNetwork: true, innerCircle: true)
 
     private enum CodingKeys: String, CodingKey {
         case `public`, myNetwork, innerCircle
@@ -177,26 +189,31 @@ struct ActivityPrivacy: Codable, Equatable {
         self.circles = circles
     }
 
-    /// The rollout default: every box checked, so the grid changes nothing
-    /// until someone narrows it.
+    /// Every box checked.
     static let allAllowed = ActivityPrivacy()
+    /// What an account has until it changes something: each category's
+    /// `defaultAudience` — the same rule the server applies to an absent grid.
+    static let standard = ActivityPrivacy(
+        checkIns: .connections, photos: .connections, moments: .connections,
+        savedPlaces: .allAllowed, likesComments: .allAllowed, circles: .allAllowed)
 
     private enum CodingKeys: String, CodingKey {
         case checkIns, photos, moments, savedPlaces, likesComments, circles
     }
 
     /// Never throws: a grid the app can't read is the same as no grid, which
-    /// the server treats as all-allowed.
+    /// the server treats as the standard defaults.
     init(from decoder: Decoder) throws {
         guard let container = try? decoder.container(keyedBy: CodingKeys.self) else {
-            self.init()
+            self = .standard
             return
         }
-        func row(_ key: CodingKeys) -> AudienceSet {
-            (try? container.decodeIfPresent(AudienceSet.self, forKey: key)) ?? .allAllowed
+        func row(_ key: CodingKeys, _ category: ActivityPrivacyCategory) -> AudienceSet {
+            (try? container.decodeIfPresent(AudienceSet.self, forKey: key)) ?? category.defaultAudience
         }
-        self.init(checkIns: row(.checkIns), photos: row(.photos), moments: row(.moments),
-                  savedPlaces: row(.savedPlaces), likesComments: row(.likesComments), circles: row(.circles))
+        self.init(checkIns: row(.checkIns, .checkIns), photos: row(.photos, .photos), moments: row(.moments, .moments),
+                  savedPlaces: row(.savedPlaces, .savedPlaces), likesComments: row(.likesComments, .likesComments),
+                  circles: row(.circles, .circles))
     }
 
     subscript(category: ActivityPrivacyCategory) -> AudienceSet {
@@ -267,7 +284,7 @@ struct ActivityPrivacy: Codable, Equatable {
         return copy
     }
 
-    var isDefault: Bool { normalized == .allAllowed }
+    var isDefault: Bool { normalized == .standard }
 
     /// The line under a row's title.
     ///

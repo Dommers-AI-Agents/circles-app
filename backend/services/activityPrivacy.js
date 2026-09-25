@@ -12,8 +12,10 @@
 // sees their own rows; a venue actor (`place_<id>`) is not a person and is
 // never gated here.
 //
-// Absent grid, or absent category, means every column checked: the whole
-// thing is opt-in narrowing, and rolling it out changed nobody's feed.
+// Absent grid, or absent category, means the DEFAULT for that category
+// (Wes, 2026-09-25): check-ins, photos at a place and moments go to
+// connections (and so the Inner Circle); saved places, likes & comments and
+// new circles go to everyone. A stored box always wins over the default.
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
@@ -44,10 +46,20 @@ const ACTIVITY_CATEGORY = {
 const GETALL_CHUNK = 100;
 
 const allTrue = () => Object.fromEntries(AUDIENCES.map((a) => [a, true]));
+const connectionsOnly = () => ({ public: false, myNetwork: true, innerCircle: true });
+/** The row a category has until its owner changes it. */
+const DEFAULT_ROW = {
+  checkIns: connectionsOnly,
+  photos: connectionsOnly,
+  moments: connectionsOnly,
+  savedPlaces: allTrue,
+  likesComments: allTrue,
+  circles: allTrue
+};
 
-const defaultActivityPrivacy = () => Object.fromEntries(CATEGORIES.map((c) => [c, allTrue()]));
+const defaultActivityPrivacy = () => Object.fromEntries(CATEGORIES.map((c) => [c, DEFAULT_ROW[c]()]));
 
-/** Whatever is stored → a full grid. Missing or malformed cells read as true. */
+/** Whatever is stored → a full grid. Missing or malformed cells read as the category's default. */
 const normalizeActivityPrivacy = (raw) => {
   const grid = defaultActivityPrivacy();
   if (!raw || typeof raw !== 'object') return grid;
@@ -89,7 +101,7 @@ const validateActivityPrivacy = (body) => {
 };
 
 const allowedAudiences = (settings, category) =>
-  ({ ...allTrue(), ...((settings && settings[category]) || {}) });
+  ({ ...(DEFAULT_ROW[category] ? DEFAULT_ROW[category]() : allTrue()), ...((settings && settings[category]) || {}) });
 
 const isVenueActor = (actorId) => typeof actorId === 'string' && actorId.startsWith('place_');
 

@@ -33,21 +33,24 @@ const row = (type, extra = {}) => ({ id: `${type}-1`, type, actorId: ACTOR, ...e
 beforeEach(() => mockDb.rows(COLLECTIONS.USERS).clear());
 
 describe('the grid itself', () => {
-  test('absent settings allow every audience for every category', () => {
-    for (const category of ap.CATEGORIES) {
-      expect(ap.allowedAudiences(undefined, category)).toEqual({ public: true, myNetwork: true, innerCircle: true });
-    }
+  test('absent settings: check-ins, photos and moments reach connections; the rest everyone (Wes, 2026-09-25)', () => {
+    const connections = { public: false, myNetwork: true, innerCircle: true };
+    const everyone = { public: true, myNetwork: true, innerCircle: true };
+    for (const category of ['checkIns', 'photos', 'moments']) expect(ap.allowedAudiences(undefined, category)).toEqual(connections);
+    for (const category of ['savedPlaces', 'likesComments', 'circles']) expect(ap.allowedAudiences(undefined, category)).toEqual(everyone);
   });
 
-  test('a missing category defaults to all three audiences', () => {
-    const s = { checkIns: { public: false, myNetwork: false, innerCircle: true } };
-    expect(ap.allowedAudiences(s, 'photos')).toEqual({ public: true, myNetwork: true, innerCircle: true });
-    expect(ap.allowedAudiences(s, 'checkIns')).toEqual({ public: false, myNetwork: false, innerCircle: true });
+  test("a missing category defaults to that category's default; a stored box wins", () => {
+    const s = { checkIns: { public: true, myNetwork: false, innerCircle: true } };
+    expect(ap.allowedAudiences(s, 'photos')).toEqual({ public: false, myNetwork: true, innerCircle: true });
+    expect(ap.allowedAudiences(s, 'circles')).toEqual({ public: true, myNetwork: true, innerCircle: true });
+    expect(ap.allowedAudiences(s, 'checkIns')).toEqual({ public: true, myNetwork: false, innerCircle: true });
   });
 
-  test('normalize fills gaps and reads non-booleans as true', () => {
-    const g = ap.normalizeActivityPrivacy({ checkIns: { public: false, myNetwork: 'no' }, junk: 1 });
+  test("normalize fills gaps and reads non-booleans as the category's default", () => {
+    const g = ap.normalizeActivityPrivacy({ checkIns: { public: false, myNetwork: 'no' }, circles: { public: 'yes' }, junk: 1 });
     expect(g.checkIns).toEqual({ public: false, myNetwork: true, innerCircle: true });
+    expect(g.circles).toEqual({ public: true, myNetwork: true, innerCircle: true });
     expect(Object.keys(g).sort()).toEqual([...ap.CATEGORIES].sort());
     expect(g.junk).toBeUndefined();
   });

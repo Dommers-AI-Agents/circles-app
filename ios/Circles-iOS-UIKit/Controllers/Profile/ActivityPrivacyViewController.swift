@@ -19,7 +19,7 @@ final class ActivityPrivacyViewController: BaseTableViewController {
     /// What the server last confirmed. Nil until the load succeeds.
     private var loaded: ActivityPrivacy?
     /// What the boxes show.
-    private var privacy: ActivityPrivacy = .allAllowed
+    private var privacy: ActivityPrivacy = .standard
     private var didStartLoading = false
     private var isSaving = false
 
@@ -74,7 +74,7 @@ final class ActivityPrivacyViewController: BaseTableViewController {
                     guard let self = self else { return }
                     switch result {
                     case .success(let user):
-                        let grid = (user.activityPrivacy ?? .allAllowed).normalized
+                        let grid = (user.activityPrivacy ?? .standard).normalized
                         self.loaded = grid
                         self.privacy = grid
                         self.hideEmptyState()
