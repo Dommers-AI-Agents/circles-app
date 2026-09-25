@@ -227,8 +227,10 @@ final class DwellCheckInMonitor: NSObject {
     }
 
     private func deadlineReached() {
+        // The one-shot timer is spent either way; never leave GPS running.
         guard watch != nil else { return }
-        if watch!.verifier.deadlineReached(at: Date()) != .watching { abortWatch(reason: "no arrival within the window") }
+        watch!.verifier.deadlineReached(at: Date())
+        abortWatch(reason: "no arrival within the window")
     }
 
     private func fire(placeId: String) {
@@ -251,7 +253,7 @@ final class DwellCheckInMonitor: NSObject {
         let content = UNMutableNotificationContent()
         content.title = "You're at \(name)"
         content.body = offersOptOut
-            ? "Check in and let your people know? (You've had two today — tap Turn off reminders any time.)"
+            ? "Check in and let your people know? Getting too many? Tap Turn off reminders any time."
             : "Check in and let your people know?"
         content.sound = .default
         content.categoryIdentifier = offersOptOut
