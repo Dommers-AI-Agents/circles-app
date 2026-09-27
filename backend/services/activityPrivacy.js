@@ -143,6 +143,8 @@ const categoryOf = (activity) => (activity && ACTIVITY_CATEGORY[activity.type]) 
 const canViewActivity = (activity, viewerId, viewerCtx, settingsByActor) => {
   if (!activity) return false;
   if (isSameUser(activity.actorId, viewerId)) return true;
+  // The owner's own history (a private check-in, a postcard sent): never anyone else's feed.
+  if ((activity.metadata || {}).ownerOnly === true) return false;
   if (isVenueActor(activity.actorId)) return true;
   const category = categoryOf(activity);
   if (!category) return true;
@@ -171,6 +173,7 @@ const canViewActivity = (activity, viewerId, viewerCtx, settingsByActor) => {
 const passesItemGates = (activity, viewerId, viewerCtx, circlesById) => {
   const meta = activity.metadata || {};
   if (isSameUser(activity.actorId, viewerId)) return true;
+  if (meta.ownerOnly === true) return false;
 
   if (activity.type === 'video_uploaded' || activity.type === 'video_liked') {
     if (meta.momentVisibility && meta.momentOwnerId && !isSameUser(meta.momentOwnerId, viewerId)) {

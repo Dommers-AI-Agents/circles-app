@@ -2,6 +2,7 @@
 // Printed-and-mailed postcards: the order state machine.
 // Order CRUD + presentation here; fulfilment (release/reject/public page), reconcile (stale sweeps) and webhooks (Stripe/Lob) are mixed in from ./postcardMail.
 // Constants and pure helpers live in ./postcardMail/shared.js.
+const { recordPostcardMailed } = require('./ownActivity/record');
 const { CANCEL_WINDOW_MINUTES, COLLECTIONS, MAX_LOB_ATTEMPTS, MESSAGE_MAX_CHARS, MailError, OPEN_STATUSES, ORDER_ID_RE, STATUS, buildBackHtml, getFirestore, isEnabled, lobClient, normalizeMessage, normalizeRecipient, postcardShareService, priceCents, requireEnabled, stripeClient } = require('./postcardMail/shared');
 
 class PostcardMailService {
@@ -137,7 +138,12 @@ class PostcardMailService {
     };
     const changed = await this.transition(ref, STATUS.CREATED, patch);
     if (!changed) return null;
-    return { ...(await ref.get()).data() };
+    const row = { ...(await ref.get()).data() };
+    // The sender's own Activity tab ("Mailed a postcard to Mom").
+    recordPostcardMailed(row.userId, {
+      orderId, recipientName: row.recipient && row.recipient.name, imageUrl: row.imageUrl, placeName: row.placeName || null
+    });
+    return row;
   }
 
   /**

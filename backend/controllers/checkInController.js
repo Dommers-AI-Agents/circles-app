@@ -12,6 +12,7 @@ const {
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
 const { createActivity } = require('./activityController');
+const { recordPrivateCheckIn } = require('../services/ownActivity/record');
 const notificationService = require('../services/notificationService');
 const { isCheckInVisibleTo } = require('../services/checkInVisibility');
 
@@ -654,7 +655,11 @@ exports.createCheckIn = async (req, res) => {
       }
     }
 
-    // Add to activity feed if enabled
+    // Add to activity feed if enabled; otherwise it still goes on the owner's
+    // own Activity tab as a private row nobody else sees.
+    if (!checkIn.showInActivityFeed) {
+      recordPrivateCheckIn(userId, checkIn, { checkInId, placeId: finalPlaceId, placePhoto, rating: ratingApplied });
+    }
     if (checkIn.showInActivityFeed) {
       await createActivity(
         'check_in',

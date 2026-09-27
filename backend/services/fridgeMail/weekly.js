@@ -1,4 +1,5 @@
 // services/fridgeMail/weekly.js — methods of FridgeMailService (mixed into its prototype by the facade).
+const { recordFridgeMailSent } = require('../ownActivity/record');
 const { FieldValue, KIND, RESEND_AFTER_MS, buildFridgeBackHtml, dryRun, entitlement, formatLongDate, isDue, isEnabled, lobClient, newId, nowIso } = require('./shared');
 
 module.exports = {
@@ -136,6 +137,8 @@ module.exports = {
           })
         });
       }
+      // The parent's own Activity tab ("Mailed Grandma a drawing").
+      recordFridgeMailSent(plan.userId, { rowId, recipientName: recipient.name, imageUrl: item.imageUrl, childName: item.childName || '' });
       await ref.update({
         status: 'submitted', lobPostcardId: lob.id, lobExpectedDeliveryDate: lob.expectedDeliveryDate || null,
         lobPreviewUrl: lob.previewUrl || null, updatedAt: nowIso()

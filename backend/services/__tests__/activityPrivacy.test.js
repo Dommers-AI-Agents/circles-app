@@ -103,6 +103,16 @@ describe('inner circle fallback and the public check-in', () => {
     expect(ap.fanOutAllows({ checkIns: innerOnly }, 'checkIns', ['u9'])('anyone')).toBe(false);
   });
 
+  test('an owner-only row (a private check-in, a postcard sent) is the actor\'s alone', () => {
+    const s = settings({ checkIns: { public: true, myNetwork: true, innerCircle: true } });
+    const own = row('check_in', { metadata: { ownerOnly: true, checkInAudience: 'public' } });
+    expect(ap.canViewActivity(own, ACTOR, ctxFor(ACTOR), s)).toBe(true);
+    expect(ap.canViewActivity(own, FRIEND, ctxFor(FRIEND), s)).toBe(false);
+    expect(ap.canViewActivity(own, FOLLOWER, ctxFor(FOLLOWER), s)).toBe(false);
+    expect(ap.passesItemGates(own, FRIEND, ctxFor(FRIEND), new Map())).toBe(false);
+    expect(ap.passesItemGates(own, ACTOR, ctxFor(ACTOR), new Map())).toBe(true);
+  });
+
   test('a check-in marked Everyone passes the grid for a follower; an unmarked one does not', () => {
     const s = settings({ checkIns: { public: false, myNetwork: true, innerCircle: true } });
     const marked = row('check_in', { metadata: { checkInAudience: 'public' } });

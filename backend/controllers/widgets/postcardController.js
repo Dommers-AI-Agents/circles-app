@@ -39,6 +39,7 @@ const fail = (res, status, code, message) =>
 // Firestore rejects undefined field values, so every metadata scalar is
 // coerced to a string or null. Flat map only: Message.swift keeps just the
 // flat metadata values.
+const { recordPostcardSent } = require('../../services/ownActivity/record');
 const scalarOrNull = (v, max = 200) =>
   (typeof v === 'string' && v.trim()) ? v.trim().slice(0, max) : null;
 
@@ -86,6 +87,12 @@ exports.sendPostcard = async (req, res) => {
         globalPlaceId: scalarOrNull(placeRef?.globalPlaceId),
         sentAt: new Date().toISOString()
       }
+    });
+
+    // The sender's own Activity tab ("Sent a postcard to Mom").
+    recordPostcardSent(senderId, {
+      messageId: sent.id, recipientName: recipientDoc.data().displayName || null, imageUrl,
+      placeName: scalarOrNull(placeRef?.name), globalPlaceId: scalarOrNull(placeRef?.globalPlaceId)
     });
 
     let piggyBank;

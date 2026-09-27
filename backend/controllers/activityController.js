@@ -525,7 +525,18 @@ exports.createActivity = async (type, actorId, targetType, targetId, targetName,
         latitude: metadata.latitude ?? null,
         longitude: metadata.longitude ?? null,
         placeCategory: metadata.placeCategory || null,
-        contentType: metadata.contentType || null
+        contentType: metadata.contentType || null,
+        // The owner's Activity tab: rows nobody else sees (private check-ins,
+        // postcards, Fridge Mail) and the details it shows for them.
+        ownerOnly: metadata.ownerOnly === true,
+        isPrivate: metadata.isPrivate === true,
+        rating: Number.isFinite(metadata.rating) ? metadata.rating : null,
+        companions: Array.isArray(metadata.companions) ? metadata.companions.slice(0, 6) : [],
+        recipientName: metadata.recipientName || null,
+        imageUrl: metadata.imageUrl || null,
+        placeName: metadata.placeName || null,
+        childName: metadata.childName || null,
+        mailStatus: metadata.mailStatus || null
       },
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       viewers: [], // Track who has seen this activity

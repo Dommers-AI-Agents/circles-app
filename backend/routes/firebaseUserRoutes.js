@@ -62,6 +62,12 @@ const router = express.Router();
 // Apply auth middleware to all routes
 router.use(protect);
 
+// The profile's Activity tab (owner only): own history + the month's summary.
+// Before any '/:id' route so "me" is never read as a user id.
+const ownActivityController = require('../controllers/users/ownActivityController');
+router.get('/me/activity', ownActivityController.list);
+router.get('/me/activity/summary', ownActivityController.summary);
+
 // User routes
 router.route('/search')
   .get(searchUsers);
