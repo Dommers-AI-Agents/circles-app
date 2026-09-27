@@ -314,33 +314,30 @@ class ContentUploadViewController: UIViewController {
         present(alert, animated: true)
     }
     
+    /// The link flow's audience sheet: every tier plus one row per named
+    /// Inner Circle list, the same audiences the place picker offers.
     private func showPrivacySelection(completion: @escaping () -> Void) {
-        let alertController = UIAlertController(
-            title: "Who can see this moment?",
-            message: "Choose who can view your moment",
-            preferredStyle: .actionSheet
-        )
-        
-        // One action per privacy tier, with a checkmark on the current selection.
-        for level in VideoVisibility.selectable {
-            let mark = selectedVisibility == level ? "✓ " : ""
-            let action = UIAlertAction(title: "\(mark)\(level.displayLabel) — \(level.pickerSubtitle)", style: .default) { [weak self] _ in
-                self?.selectedVisibility = level
-                self?.selectedAudienceListId = nil
-                completion()
+        InnerCircleManager.shared.primeIfNeeded { [weak self] in
+            DispatchQueue.main.async { self?.presentPrivacySheet(completion: completion) }
+        }
+    }
+
+    private func presentPrivacySheet(completion: @escaping () -> Void) {
+        let choices = MomentAudienceChoices.choices(lists: InnerCircleManager.shared.usableLists,
+                                                    current: selectedVisibility,
+                                                    currentListId: selectedAudienceListId)
+        let actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] =
+            choices.map { choice in
+                let mark = choice.isSelected ? "✓ " : ""
+                return ("\(mark)\(choice.title) — \(choice.subtitle)", .default, { [weak self] in
+                    self?.selectedVisibility = choice.visibility
+                    self?.selectedAudienceListId = choice.listId
+                    completion()
+                })
             }
-            alertController.addAction(action)
-        }
-        alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        // iPad support
-        if let popover = alertController.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
-            popover.permittedArrowDirections = []
-        }
-        
-        present(alertController, animated: true)
+        AlertPresenter.showActionSheet(title: "Who can see this moment?",
+                                       message: "Choose who can view your moment",
+                                       actions: actions, from: self)
     }
     
     private func handleQuotaError() {
@@ -515,7 +512,8 @@ extension ContentUploadViewController: MediaCaptureServiceDelegate {
     
     private func showPlaceSelection(for content: ContentType) {
         self.pendingContent = content
-        let picker = MomentPlacePickerViewController(initialVisibility: selectedVisibility)
+        let picker = MomentPlacePickerViewController(initialVisibility: selectedVisibility,
+                                                     initialAudienceListId: selectedAudienceListId)
         picker.delegate = self
         let nav = UINavigationController(rootViewController: picker)
         present(nav, animated: true)
@@ -524,7 +522,8 @@ extension ContentUploadViewController: MediaCaptureServiceDelegate {
     private func startUploadAndShowPlaceSelection(for content: ContentType) {
         // Show place selection UI immediately (check-in style, with the
         // privacy bubble on top)
-        let placeSearchVC = MomentPlacePickerViewController(initialVisibility: selectedVisibility)
+        let placeSearchVC = MomentPlacePickerViewController(initialVisibility: selectedVisibility,
+                                                     initialAudienceListId: selectedAudienceListId)
         placeSearchVC.delegate = self
 
         // Store content for upload completion

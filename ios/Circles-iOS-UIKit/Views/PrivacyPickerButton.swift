@@ -92,6 +92,11 @@ final class PrivacyPickerButton: UIView {
         // The caption is only live while the list count can change under us.
         NotificationCenter.default.addObserver(self, selector: #selector(refresh),
                                                name: .innerCircleDidChange, object: nil)
+        // The menu names each list, so it needs them loaded — not every form
+        // that hosts a picker loads them itself (the circle and place editors
+        // didn't, and offered a bare "Inner Circle"). The change notification
+        // above rebuilds the menu when they arrive.
+        InnerCircleManager.shared.primeIfNeeded()
         refresh()
     }
 

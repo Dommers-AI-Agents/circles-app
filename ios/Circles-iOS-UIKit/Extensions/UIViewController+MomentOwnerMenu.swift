@@ -6,15 +6,16 @@ import UIKit
 extension UIViewController {
 
     /// Presents the owner menu for a moment: Change Privacy + Delete.
-    /// - onPrivacyChanged: the host updates its local model to the new visibility.
+    /// - onPrivacyChanged: the host updates its local model to the new
+    ///   visibility and named Inner Circle list (nil unless Inner Circle).
     /// - onDeleted: the host removes the moment from its list / collection view.
     func presentMomentOwnerMenu(for reel: PlaceVideo,
                                 sourceView: UIView? = nil,
-                                onPrivacyChanged: @escaping (VideoVisibility) -> Void,
+                                onPrivacyChanged: @escaping (VideoVisibility, String?) -> Void,
                                 onDeleted: @escaping () -> Void) {
         AlertPresenter.showActionSheet(
             title: "Moment options",
-            message: "Privacy: \(reel.visibility.displayLabel)",
+            message: "Privacy: \(Self.momentPrivacyLabel(for: reel))",
             actions: [
                 ("Change Privacy", .default, { [weak self] in
                     self?.presentMomentPrivacyPicker(for: reel, onPrivacyChanged: onPrivacyChanged)
@@ -66,21 +67,46 @@ extension UIViewController {
         )
     }
 
+    /// "Family" for a moment limited to that list, else the tier's label.
+    private static func momentPrivacyLabel(for reel: PlaceVideo) -> String {
+        if reel.visibility == .innerCircle, let listId = reel.audienceListId,
+           let list = InnerCircleManager.shared.usableLists.first(where: { $0.id == listId }) {
+            return list.name
+        }
+        return reel.visibility.displayLabel
+    }
+
+    /// One row per tier, and one per named Inner Circle list — the same
+    /// audiences the moment composer's picker offers.
     private func presentMomentPrivacyPicker(for reel: PlaceVideo,
-                                            onPrivacyChanged: @escaping (VideoVisibility) -> Void) {
+                                            onPrivacyChanged: @escaping (VideoVisibility, String?) -> Void) {
+        InnerCircleManager.shared.primeIfNeeded { [weak self] in
+            DispatchQueue.main.async {
+                self?.showMomentPrivacySheet(for: reel, onPrivacyChanged: onPrivacyChanged)
+            }
+        }
+    }
+
+    private func showMomentPrivacySheet(for reel: PlaceVideo,
+                                        onPrivacyChanged: @escaping (VideoVisibility, String?) -> Void) {
+        let choices = MomentAudienceChoices.choices(lists: InnerCircleManager.shared.usableLists,
+                                                    current: reel.visibility,
+                                                    currentListId: reel.audienceListId)
         let actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] =
-            VideoVisibility.selectable.map { level in
-                let mark = level == reel.visibility ? "  ✓" : ""
-                return ("\(level.displayLabel) — \(level.pickerSubtitle)\(mark)", .default, { [weak self] in
-                    guard let self = self, level != reel.visibility else { return }
+            choices.map { choice in
+                let mark = choice.isSelected ? "  ✓" : ""
+                return ("\(choice.title) — \(choice.subtitle)\(mark)", .default, { [weak self] in
+                    guard let self = self, !choice.isSelected else { return }
                     let loading = AlertPresenter.showLoading(message: "Updating…", from: self)
-                    APIService.shared.updateVideoVisibility(videoId: reel.id, visibility: level) { result in
+                    APIService.shared.updateMomentAudience(videoId: reel.id,
+                                                           visibility: choice.visibility,
+                                                           audienceListId: choice.listId) { result in
                         DispatchQueue.main.async {
                             loading.dismiss(animated: true) {
                                 switch result {
                                 case .success:
-                                    onPrivacyChanged(level)
-                                    self.showSuccess("Privacy updated to \(level.displayLabel)")
+                                    onPrivacyChanged(choice.visibility, choice.listId)
+                                    self.showSuccess("Privacy updated to \(choice.title)")
                                 case .failure(let error):
                                     self.showError(error)
                                 }
@@ -123,6 +149,23 @@ extension UIViewController {
     }
 }
 
+
+extension APIService {
+    /// Change a moment's audience: its tier plus, for Inner Circle, which named
+    /// list. PUT /videos/:id (owner-checked); the server clears the list for
+    /// any other tier, and NSNull clears it when "anyone on my lists" is picked.
+    func updateMomentAudience(videoId: String, visibility: VideoVisibility, audienceListId: String?,
+                              completion: @escaping (Result<Void, APIError>) -> Void) {
+        request(
+            endpoint: "videos/\(videoId)",
+            method: .put,
+            body: ["visibility": visibility.rawValue, "audienceListId": audienceListId ?? NSNull()],
+            requiresAuth: true
+        ) { (result: Result<SimpleAPIResponse, APIError>) in
+            completion(result.map { _ in () })
+        }
+    }
+}
 
 struct UntagResponse: Decodable {
     struct Payload: Decodable { let removed: Bool }

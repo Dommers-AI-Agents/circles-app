@@ -16,6 +16,9 @@ struct PlaceVideo: Codable {
     let originalSize: Int64? // bytes before compression - optional for embedded videos
     let compressionRatio: Float? // optional for embedded videos
     var visibility: VideoVisibility
+    /// The named Inner Circle list an Inner Circle moment is limited to; nil
+    /// means anyone on any of the owner's lists (and for every other tier).
+    var audienceListId: String?
     let viewCount: Int
     let lastViewedAt: Date?
     var likeCount: Int
@@ -65,6 +68,7 @@ struct PlaceVideo: Codable {
         case originalSize
         case compressionRatio
         case visibility
+        case audienceListId
         case viewCount
         case lastViewedAt
         case likeCount

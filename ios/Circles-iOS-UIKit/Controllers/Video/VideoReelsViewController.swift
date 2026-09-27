@@ -736,9 +736,10 @@ extension VideoReelsViewController: VideoReelCellDelegate {
         presentMomentOwnerMenu(
             for: reel,
             sourceView: cell,
-            onPrivacyChanged: { [weak self] newVisibility in
+            onPrivacyChanged: { [weak self] newVisibility, listId in
                 guard let self = self, let idx = self.reels.firstIndex(where: { $0.id == reel.id }) else { return }
                 self.reels[idx].visibility = newVisibility
+                self.reels[idx].audienceListId = listId
             },
             onDeleted: { [weak self] in
                 guard let self = self, let idx = self.reels.firstIndex(where: { $0.id == reel.id }) else { return }

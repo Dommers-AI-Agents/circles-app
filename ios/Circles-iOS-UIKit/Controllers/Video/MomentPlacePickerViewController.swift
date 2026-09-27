@@ -31,8 +31,9 @@ class MomentPlacePickerViewController: BaseViewController {
     private let nearbySearch = NearbyPlaceSearch()             // shared with check-in
     private var isLoading = false
 
-    init(initialVisibility: VideoVisibility) {
+    init(initialVisibility: VideoVisibility, initialAudienceListId: String? = nil) {
         self.visibility = initialVisibility
+        self.audienceListId = initialVisibility == .innerCircle ? initialAudienceListId : nil
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -52,6 +53,7 @@ class MomentPlacePickerViewController: BaseViewController {
     /// "Inner Circle" segment — three lists, one choice (Wes, 2026-09-25).
     private lazy var privacyControl: PrivacyPickerButton = {
         let picker = PrivacyPickerButton(entity: .moment, selected: visibility.option ?? .followers)
+        if let audienceListId { picker.select(visibility.option, listId: audienceListId) }
         picker.onChange = { [weak self] option in self?.privacyChanged(option) }
         picker.onEditInnerCircle = { [weak self] in
             self?.navigationController?.pushViewController(InnerCircleListsViewController(), animated: true)
