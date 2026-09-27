@@ -9,6 +9,7 @@ jest.mock('../../config/firebase', () => ({
   getFirestore: () => ({
     collection: () => ({
       doc: (id) => ({
+        __id: id,
         get: async () => ({
           exists: mockUserDocs.has(id),
           data: () => mockUserDocs.get(id)
@@ -56,33 +57,52 @@ describe('premium gate', () => {
 
   it('checks the subscription before anything else, so a free account never reaches the counters', async () => {
     mockSubscriptionStatus = 'none';
-    mockUserDocs.set('u1', { date: today(), count: 999 });
+    mockUserDocs.set('u1', { runTimes: [new Date().toISOString(), new Date().toISOString()] });
     const gate = await quota.check('u1', circles);
     // Would have been a limit error if the counters were consulted first.
     expect(gate.reason).toBe('premium_required');
   });
 });
 
-describe('per-user daily limit', () => {
+describe('per-user weekly limit', () => {
+  const daysAgo = (n) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
+
   it('allows a run below the limit and reports what remains', async () => {
-    mockUserDocs.set('u1', { date: today(), count: 2 });
+    mockUserDocs.set('u1', { runTimes: [daysAgo(3)] });
     const gate = await quota.check('u1', circles);
     expect(gate.allowed).toBe(true);
-    expect(gate.remaining).toBe(quota.PER_USER_DAILY - 3);
+    expect(gate.remaining).toBe(quota.PER_USER_WEEKLY - 2);
   });
 
-  it('blocks once the limit is reached', async () => {
-    mockUserDocs.set('u1', { date: today(), count: quota.PER_USER_DAILY });
+  it('blocks once the week is spent and says when the next run frees up', async () => {
+    mockUserDocs.set('u1', { runTimes: [daysAgo(1), daysAgo(5)] });
     const gate = await quota.check('u1', circles);
     expect(gate.allowed).toBe(false);
-    expect(gate.reason).toBe('user_daily_limit');
-    expect(gate.limit).toBe(quota.PER_USER_DAILY);
+    expect(gate.reason).toBe('user_weekly_limit');
+    expect(gate.limit).toBe(quota.PER_USER_WEEKLY);
+    // The run from 5 days ago ages out in 2 days.
+    const inDays = (new Date(gate.nextAvailableAt) - Date.now()) / (24 * 60 * 60 * 1000);
+    expect(inDays).toBeCloseTo(2, 1);
   });
 
-  it("ignores yesterday's count", async () => {
-    mockUserDocs.set('u1', { date: '2020-01-01', count: 999 });
-    const gate = await quota.check('u1', circles);
-    expect(gate.allowed).toBe(true);
+  it('ignores runs older than a week', async () => {
+    mockUserDocs.set('u1', { runTimes: [daysAgo(8), daysAgo(9), daysAgo(10)] });
+    expect((await quota.check('u1', circles)).allowed).toBe(true);
+  });
+
+  it('defaults to 2 runs a week', () => {
+    expect(quota.PER_USER_WEEKLY).toBe(2);
+  });
+
+  it('record() keeps only this week\'s runs plus the new one', async () => {
+    mockUserDocs.set('u1', { runTimes: [daysAgo(9), daysAgo(2)] });
+    await quota.record('u1', 'key', { schemes: [], merges: [] }, 3.5);
+    const doc = mockUserDocs.get('u1');
+    expect(doc.runTimes).toHaveLength(2);
+    // The 9-day-old run is gone; the 2-day-old one and the new one remain.
+    expect(Date.now() - new Date(doc.runTimes[0])).toBeGreaterThan(1.9 * 24 * 60 * 60 * 1000);
+    expect(Date.now() - new Date(doc.runTimes[1])).toBeLessThan(60 * 1000);
+    expect((await quota.check('u1', circles)).reason).toBe('user_weekly_limit');
   });
 });
 
@@ -117,10 +137,9 @@ describe('result cache', () => {
     expect(gate.cached).toEqual(cached);
   });
 
-  it('serves from cache even when the daily limit is spent — re-opening is not rationed', async () => {
+  it('serves from cache even when the weekly limit is spent — re-opening is not rationed', async () => {
     mockUserDocs.set('u1', {
-      date: today(),
-      count: quota.PER_USER_DAILY,
+      runTimes: [new Date().toISOString(), new Date().toISOString()],
       cacheKey: quota.fingerprint(circles),
       cachedResult: cached,
       cachedAt: new Date().toISOString()
@@ -154,12 +173,21 @@ describe('result cache', () => {
     expect((await quota.check('u1', grown)).cached).toBeUndefined();
   });
 
+  it('still serves a 6-day-old answer — two runs a week must not be spent on unchanged circles', async () => {
+    mockUserDocs.set('u1', {
+      cacheKey: quota.fingerprint(circles),
+      cachedResult: cached,
+      cachedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString()
+    });
+    expect((await quota.check('u1', circles)).cached).toEqual(cached);
+  });
+
   it('misses once the entry is older than its TTL', async () => {
     mockUserDocs.set('u1', {
       date: today(), count: 1,
       cacheKey: quota.fingerprint(circles),
       cachedResult: cached,
-      cachedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
+      cachedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
     });
     expect((await quota.check('u1', circles)).cached).toBeUndefined();
   });

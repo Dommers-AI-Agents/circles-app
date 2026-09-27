@@ -1735,13 +1735,18 @@ exports.getCircleAdvice = async (req, res, next) => {
       }
 
       const isGlobal = gate.reason === 'global_daily_limit';
+      const nextDay = gate.nextAvailableAt
+        ? new Date(gate.nextAvailableAt).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+        : null;
       return res.status(429).json({
         success: false,
         reason: gate.reason,
         limit: gate.limit,
+        nextAvailableAt: gate.nextAvailableAt,
         message: isGlobal
           ? 'Circle suggestions are at capacity for today. Try again tomorrow.'
-          : `You've used all ${gate.limit} circle suggestions for today. They reset tomorrow.`
+          : `You've used your ${gate.limit} circle suggestions for this week. `
+            + (nextDay ? `The next one is available ${nextDay}.` : 'They free up a week after each one.')
       });
     }
 
@@ -1798,7 +1803,7 @@ const runAdvisor = async (userId, circles, cacheKey) => {
   }
 
   // Recorded only after a real answer — a failed call shouldn't cost somebody
-  // one of their five.
+  // one of their weekly runs.
   await circleAdvisorQuota.record(userId, cacheKey, payload, cents);
   return payload;
 };

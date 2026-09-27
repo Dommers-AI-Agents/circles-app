@@ -6,7 +6,7 @@
 //
 //   1. Premium gate     — only paying accounts can call it at all.
 //   2. Result cache     — unchanged circles never hit the model twice.
-//   3. Per-user daily   — bounds one enthusiastic account.
+//   3. Per-user weekly  — 2 runs per rolling 7 days bounds one account.
 //   4. Global daily     — a kill switch a bug or an abuser can't get past.
 //
 // The cache does most of the work: circles change rarely, so re-opening the
@@ -22,14 +22,23 @@ const db = getFirestore();
 const COLLECTION = 'circleAdvisorUsage';
 const GLOBAL_DOC = '__global';
 
-const PER_USER_DAILY = parseInt(process.env.CIRCLE_ADVISOR_DAILY_RUNS_PER_USER || '5', 10);
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const PER_USER_WEEKLY = parseInt(process.env.CIRCLE_ADVISOR_WEEKLY_RUNS_PER_USER || '2', 10);
 const GLOBAL_DAILY = parseInt(process.env.CIRCLE_ADVISOR_DAILY_RUNS_GLOBAL || '200', 10);
-const CACHE_TTL_MS = parseInt(process.env.CIRCLE_ADVISOR_CACHE_TTL_MS || String(24 * 60 * 60 * 1000), 10);
+// As long as the weekly window: with two runs a week, an unchanged circle set
+// re-asked after a day must not spend one of them.
+const CACHE_TTL_MS = parseInt(process.env.CIRCLE_ADVISOR_CACHE_TTL_MS || String(WEEK_MS), 10);
 
 /** Statuses that count as paying. Trial included — that's what a trial is for. */
 const PREMIUM_STATUSES = ['active', 'trial'];
 
 const today = () => new Date().toISOString().slice(0, 10);
+
+/** Run timestamps (ISO) inside the rolling week ending at `now`, oldest first. */
+const runsThisWeek = (usage, now = Date.now()) =>
+  (usage.runTimes || [])
+    .filter((t) => now - new Date(t).getTime() < WEEK_MS)
+    .sort();
 
 /**
  * Fingerprint of the circle set. Only the fields the advisor actually reasons
@@ -54,7 +63,8 @@ const isPremium = async (userId) => {
  *
  * Returns one of:
  *   { allowed: false, reason: 'premium_required' }
- *   { allowed: false, reason: 'user_daily_limit' | 'global_daily_limit', limit }
+ *   { allowed: false, reason: 'user_weekly_limit', limit, nextAvailableAt }
+ *   { allowed: false, reason: 'global_daily_limit', limit }
  *   { allowed: true, cached: <advice> }   — serve this, spend nothing
  *   { allowed: true, cacheKey, remaining }
  */
@@ -80,9 +90,11 @@ const check = async (userId, circles) => {
   }
 
   const day = today();
-  const userCount = usage.date === day ? (usage.count || 0) : 0;
-  if (userCount >= PER_USER_DAILY) {
-    return { allowed: false, reason: 'user_daily_limit', limit: PER_USER_DAILY };
+  const weekRuns = runsThisWeek(usage);
+  if (weekRuns.length >= PER_USER_WEEKLY) {
+    // The oldest run in the window is the next to age out.
+    const nextAvailableAt = new Date(new Date(weekRuns[0]).getTime() + WEEK_MS).toISOString();
+    return { allowed: false, reason: 'user_weekly_limit', limit: PER_USER_WEEKLY, nextAvailableAt };
   }
 
   const globalSnapshot = await db.collection(COLLECTION).doc(GLOBAL_DOC).get();
@@ -95,7 +107,7 @@ const check = async (userId, circles) => {
   return {
     allowed: true,
     cacheKey,
-    remaining: PER_USER_DAILY - userCount - 1
+    remaining: PER_USER_WEEKLY - weekRuns.length - 1
   };
 };
 
@@ -124,7 +136,15 @@ const record = async (userId, cacheKey, result, cents = 0) => {
     }, { merge: true });
   });
 
-  await bump(db.collection(COLLECTION).doc(userId), {
+  const userRef = db.collection(COLLECTION).doc(userId);
+  const userSnapshot = await userRef.get();
+  const runTimes = [
+    ...runsThisWeek(userSnapshot.exists ? userSnapshot.data() : {}),
+    new Date().toISOString()
+  ];
+
+  await bump(userRef, {
+    runTimes,
     cacheKey,
     cachedResult: result,
     cachedAt: new Date().toISOString()
@@ -154,7 +174,7 @@ module.exports = {
   invalidateCache,
   fingerprint,
   isPremium,
-  PER_USER_DAILY,
+  PER_USER_WEEKLY,
   GLOBAL_DAILY,
   PREMIUM_STATUSES
 };

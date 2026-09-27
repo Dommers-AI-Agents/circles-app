@@ -20,7 +20,9 @@
 // hot path.
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = process.env.CIRCLE_ADVISOR_MODEL || 'claude-opus-5';
+// Sonnet 5 at a fraction of Opus's price (~3.5¢ vs ~9¢ a run): labelling
+// circles and spotting overlaps doesn't need the biggest model.
+const MODEL = process.env.CIRCLE_ADVISOR_MODEL || 'claude-sonnet-5';
 const MAX_CIRCLES = 60;
 
 /** $ per million tokens [input, output], for logging and the spend counters. */

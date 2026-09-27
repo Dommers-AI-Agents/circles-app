@@ -217,7 +217,7 @@ final class OrganizeCirclesViewController: BaseViewController {
             // Out of runs — a real answer, not a fault. Say what happened and
             // when it changes, rather than showing a generic error.
             showEmptyState(message: error.serverMessage
-                ?? "You've used today's circle suggestions. They reset tomorrow.")
+                ?? "You've used this week's circle suggestions. Try again in a few days.")
         default:
             showError(error)
         }
