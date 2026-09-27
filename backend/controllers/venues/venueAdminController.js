@@ -7,7 +7,10 @@ const { validateStickerVenue, STICKER_COLLECTIONS } = require('../../models/Stic
 const rewardService = require('../../services/rewardService');
 const emailService = require('../../services/emailService');
 const db = getFirestore();
-const { venueManagerIds } = require('../../services/venueHelpers.js');
+const { venueManagerIds, venueGlobalPlaceId, ownerVenueInfo } = require('../../services/venueHelpers.js');
+const { venueLoyaltyStatus } = require('../../services/ownerSubscriptionService');
+const { GLOBAL_COLLECTIONS } = require('../../models/GlobalPlace');
+const { serializeDates } = require('../../utils/wireDates');
 
 // @desc    Create a venue from the app; QR codes are emailed to the requester
 // @route   POST /api/rewards/venues
@@ -221,5 +224,126 @@ exports.listVenues = async (req, res) => {
   } catch (error) {
     console.error('❌ Venue listing failed:', error);
     res.status(500).json({ success: false, error: 'Failed to list venues' });
+  }
+};
+
+// Lightweight account row for the admin store page
+const accountRow = async (userId) => {
+  try {
+    const doc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    const u = doc.exists ? doc.data() : {};
+    return {
+      userId,
+      displayName: u.displayName || u.name || null,
+      email: u.email || null,
+      username: u.username || null,
+      subscriptionStatus: u.ownerSubscriptionStatus || null,
+      subscriptionExpiresAt: u.ownerSubscriptionExpiryDate || null,
+      subscriptionVenueId: u.ownerSubscriptionVenueId || null,
+      manuallyVerified: u.ownerManuallyVerified === true,
+      // Super-users pass every Business gate, so their stores read as live
+      isSuperUser: u.isSuperUser === true
+    };
+  } catch (error) {
+    return { userId, displayName: null, email: null, username: null };
+  }
+};
+
+// @desc    Everything a super-user needs about one store on one page:
+//          identity, both QR codes, loyalty status and why, owner + team,
+//          pending claims, all counters and this month's, storefront size.
+// @route   GET /api/rewards/venues/:venueId/admin
+// @access  Super user (requireVenueOwner loads req.venue)
+exports.getVenueAdminDetail = async (req, res) => {
+  try {
+    const venue = req.venue;
+    const globalPlaceId = await venueGlobalPlaceId(venue);
+    const monthKey = rewardService.currentMonthKey();
+
+    const [loyalty, owner, managers, claimsSnap, globalDoc, saveDocs] = await Promise.all([
+      venueLoyaltyStatus(venue),
+      venue.ownerUserId ? accountRow(venue.ownerUserId) : null,
+      Promise.all(venueManagerIds(venue).map(accountRow)),
+      db.collection(STICKER_COLLECTIONS.VENUE_CLAIM_REQUESTS)
+        .where('venueId', '==', venue.venueId).get(),
+      globalPlaceId
+        ? db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId).get()
+        : null,
+      // Everyone who saved the place (any route in), distinct by saver
+      globalPlaceId
+        ? db.collection(COLLECTIONS.PLACES)
+          .where('globalPlaceId', '==', globalPlaceId)
+          .where('deletedAt', '==', null)
+          .select('addedBy')
+          .get()
+          .then((snap) => snap.docs.map((d) => d.data()))
+        : []
+    ]);
+
+    const pendingClaims = claimsSnap.docs
+      .map((doc) => ({ claimId: doc.id, ...doc.data() }))
+      .filter((c) => c.status === 'pending')
+      .map((c) => ({
+        claimId: c.claimId,
+        name: c.contactName || c.userDisplayName || null,
+        email: c.contactEmail || c.userEmail || null,
+        phone: c.contactPhone || null,
+        message: c.message || null,
+        createdAt: c.createdAt || null
+      }));
+
+    const stats = venue.stats || {};
+    const month = (venue.statsMonthly || {})[monthKey] || {};
+    const storefront = venue.storefront || {};
+    const count = (v) => (Array.isArray(v) ? v.length : 0);
+
+    const data = {
+      venue: {
+        ...ownerVenueInfo(venue),
+        registerCardUrl: rewardService.stickerUrl(venue.registerCode),
+        active: venue.active !== false,
+        updatedAt: venue.updatedAt || null
+      },
+      loyalty: {
+        active: loyalty.active,
+        reason: loyalty.reason,
+        comped: venue.loyaltyComped === true,
+        compedUntil: venue.loyaltyCompedUntil || null,
+        compReason: venue.loyaltyCompReason || null
+      },
+      owner,
+      managers,
+      pendingClaims,
+      stats: {
+        scans: stats.scans || 0,
+        signups: stats.signups || 0,
+        stickerSaves: stats.saves || 0,
+        savers: new Set(saveDocs.map((d) => d.addedBy).filter(Boolean)).size,
+        followers: (globalDoc && globalDoc.exists && globalDoc.data().followersCount) || 0,
+        visits: stats.visits || 0,
+        redemptions: stats.redemptions || 0,
+        codeRedemptions: stats.codeRedemptions || 0,
+        clipScans: stats.clipScans || 0,
+        clipSignups: stats.clipSignups || 0,
+        clipInstalls: stats.clipInstalls || 0
+      },
+      thisMonth: {
+        scans: month.scans || 0,
+        signups: month.signups || 0,
+        stickerSaves: month.saves || 0,
+        visits: month.visits || 0,
+        redemptions: month.redemptions || 0
+      },
+      storefront: {
+        actions: count(storefront.actions),
+        offerings: count(storefront.offerings),
+        gallery: count(storefront.gallery)
+      }
+    };
+
+    res.json({ success: true, data: serializeDates(data) });
+  } catch (error) {
+    console.error('❌ Venue admin detail failed:', error);
+    res.status(500).json({ success: false, error: 'Failed to load store' });
   }
 };

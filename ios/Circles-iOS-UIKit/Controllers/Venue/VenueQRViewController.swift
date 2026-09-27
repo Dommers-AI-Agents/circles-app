@@ -11,10 +11,21 @@ class VenueQRViewController: BaseViewController {
 
     private let venueName: String
     private let stickerUrl: String
+    private let screenTitle: String
+    private let caption: String
 
-    init(venueName: String, stickerUrl: String) {
+    /// Defaults describe the window sticker; the super-user store page reuses
+    /// this screen for the register card with its own title and caption.
+    init(
+        venueName: String,
+        stickerUrl: String,
+        screenTitle: String = "Scan-to-Save QR",
+        caption: String = "Customers scan this to save your place and start earning points. Display it in your window or share it anywhere."
+    ) {
         self.venueName = venueName
         self.stickerUrl = stickerUrl
+        self.screenTitle = screenTitle
+        self.caption = caption
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -50,7 +61,6 @@ class VenueQRViewController: BaseViewController {
 
     private let captionLabel: UILabel = {
         let label = UILabel()
-        label.text = "Customers scan this to save your place and start earning points. Display it in your window or share it anywhere."
         label.font = UIFont.systemFont(ofSize: 14)
         label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
@@ -65,7 +75,8 @@ class VenueQRViewController: BaseViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Scan-to-Save QR"
+        title = screenTitle
+        captionLabel.text = caption
         view.backgroundColor = Constants.Colors.background
 
         nameLabel.text = venueName

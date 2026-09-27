@@ -1,8 +1,9 @@
 import UIKit
 
 /// Super-user screen: venues enrolled in the sticker program, with their
-/// per-sticker stats. From here you can sign up a new venue, re-send QR codes
-/// to your email, and grant super-user access to other users.
+/// per-sticker stats. Tapping a store opens its full admin page
+/// (VenueAdminDetailViewController); from here you can also sign up a new
+/// venue and grant super-user access to other users.
 class VenueAdminViewController: BaseViewController {
 
     // MARK: - Properties
@@ -219,56 +220,6 @@ class VenueAdminViewController: BaseViewController {
             }
         }
     }
-
-    /// Link the venue to its owner's FavCircles account so they can manage
-    /// offers and earn rates themselves (their profile gains the storefront
-    /// button). The email must belong to an existing account.
-    private func assignOwner(for venue: AdminVenue) {
-        AlertPresenter.showTextInput(
-            title: "Assign Owner",
-            message: "Email of the FavCircles account that owns \(venue.venueName). They'll be able to manage its offers, earn rate, and QR codes.",
-            placeholder: "owner@example.com",
-            initialText: venue.contactEmail,
-            keyboardType: .emailAddress,
-            from: self
-        ) { [weak self] email in
-            guard let self = self,
-                  let email = email?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !email.isEmpty else { return }
-
-            let loading = AlertPresenter.showLoading(message: "Assigning...", from: self)
-            RewardsService.shared.assignVenueOwner(venueId: venue.venueId, email: email) { [weak self] result in
-                DispatchQueue.main.async {
-                    loading.dismiss(animated: true) {
-                        guard let self = self else { return }
-                        switch result {
-                        case .success(let ownerEmail):
-                            AlertPresenter.showSuccess("\(ownerEmail) now owns \(venue.venueName)", from: self)
-                        case .failure(let error):
-                            self.showError(error)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func emailQR(for venue: AdminVenue) {
-        let loading = AlertPresenter.showLoading(message: "Sending QR codes...", from: self)
-        RewardsService.shared.emailVenueQR(venueId: venue.venueId) { [weak self] result in
-            DispatchQueue.main.async {
-                loading.dismiss(animated: true) {
-                    guard let self = self else { return }
-                    switch result {
-                    case .success(let email):
-                        AlertPresenter.showSuccess("QR codes for \(venue.venueName) sent to \(email)", from: self)
-                    case .failure(let error):
-                        self.showError(error)
-                    }
-                }
-            }
-        }
-    }
 }
 
 // MARK: - UITableViewDataSource / Delegate
@@ -287,7 +238,8 @@ extension VenueAdminViewController: UITableViewDataSource, UITableViewDelegate {
         config.text = venue.venueName
 
         let stats = venue.stats
-        let prefix = venue.isVirtual == true ? "Online store · " : ""
+        var prefix = venue.isVirtual == true ? "Online store · " : ""
+        if venue.ownerUserId == nil { prefix += "No owner · " }
         config.secondaryText = "\(prefix)Scans \(stats?.scans ?? 0) · Signups \(stats?.signups ?? 0) · Saves \(stats?.saves ?? 0) · Visits \(stats?.visits ?? 0) · Redeemed \(stats?.redemptions ?? 0)"
         config.secondaryTextProperties.color = .secondaryLabel
         config.secondaryTextProperties.font = UIFont.systemFont(ofSize: 12)
@@ -301,25 +253,11 @@ extension VenueAdminViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        let venue = venues[indexPath.row]
-
-        AlertPresenter.showActionSheet(
-            title: venue.venueName,
-            message: "Window code \(venue.windowCode) · Register code \(venue.registerCode)",
-            actions: [
-                (title: "Manage offers & earn rate", style: .default, handler: { [weak self] in
-                    let manageVC = VenueManageViewController(venue: venue)
-                    self?.navigationController?.pushViewController(manageVC, animated: true)
-                }),
-                (title: "Assign owner", style: .default, handler: { [weak self] in
-                    self?.assignOwner(for: venue)
-                }),
-                (title: "Email QR codes to me", style: .default, handler: { [weak self] in
-                    self?.emailQR(for: venue)
-                })
-            ],
-            from: self
-        )
+        let detailVC = VenueAdminDetailViewController(venue: venues[indexPath.row])
+        detailVC.onVenueChanged = { [weak self] in
+            self?.loadData()
+        }
+        navigationController?.pushViewController(detailVC, animated: true)
     }
 }
 

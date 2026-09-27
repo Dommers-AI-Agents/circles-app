@@ -10,40 +10,12 @@ const { GLOBAL_COLLECTIONS } = require('../../models/GlobalPlace');
 const { isOwnerPremiumUser, isOwnerPremiumForVenue, isOwnerPremiumById } = require('../../services/ownerSubscriptionService');
 const { normalizeUserId, isSameUser } = require('../../services/idService');
 const db = getFirestore();
-const { venueManagerIds, isVenueTeamMember, venueGlobalPlaceId } = require('../../services/venueHelpers.js');
+const { isVenueTeamMember, venueGlobalPlaceId, ownerVenueInfo } = require('../../services/venueHelpers.js');
 const { canViewCircle } = require('../../services/visibility');
 const { makeViewerContext } = require('../../services/viewerContext');
 const { getInnerCircleGrantorLists } = require('../../utils/networkAccess');
 
 // ---------- Venue owner endpoints (self-service offer/earn-rate management) ----------
-
-// What an owner sees about their own venue: everything except internals.
-// Owners legitimately hold their codes — they print and display them.
-const ownerVenueInfo = (venue) => ({
-  venueId: venue.venueId,
-  venueName: venue.venueName,
-  placeName: venue.placeName,
-  placeAddress: venue.placeAddress,
-  category: venue.category || 'restaurant',
-  contactName: venue.contactName || null,
-  contactEmail: venue.contactEmail || null,
-  googlePlaceId: venue.googlePlaceId,
-  globalPlaceId: venue.globalPlaceId,
-  location: venue.location || null,
-  isVirtual: venue.isVirtual === true,
-  windowCode: venue.windowCode,
-  registerCode: venue.registerCode,
-  // Exact URL encoded in the printed window sticker, so the in-app QR
-  // renders identically to the physical one
-  windowStickerUrl: rewardService.stickerUrl(venue.windowCode),
-  ownerUserId: venue.ownerUserId || null,
-  managerUserIds: venueManagerIds(venue),
-  earnRate: rewardService.effectiveEarnRate(venue),
-  offers: venue.offers || [],
-  announcements: venue.announcements || [],
-  stats: venue.stats || {},
-  createdAt: venue.createdAt
-});
 
 // Route middleware: loads req.venue and allows the venue's owner or any
 // super-user through.

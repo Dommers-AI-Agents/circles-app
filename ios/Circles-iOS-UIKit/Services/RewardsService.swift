@@ -452,6 +452,24 @@ class RewardsService {
         }
     }
 
+    /// Super-user: one store's full admin picture (owner, loyalty status,
+    /// codes, claims, every counter)
+    func getAdminVenueDetail(venueId: String, completion: @escaping (Result<AdminVenueDetail, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/admin",
+            method: .get,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<AdminVenueDetail>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     func getVenueDashboard(venueId: String, completion: @escaping (Result<VenueDashboardData, Error>) -> Void) {
         apiService.request(
             endpoint: "rewards/venues/\(venueId)/dashboard",
@@ -1267,6 +1285,102 @@ struct AdminVenue: Codable {
     let ownerUserId: String?
     let managerUserIds: [String]?
     let isPrimaryOwner: Bool?
+}
+
+// MARK: - Super-user store page
+
+struct AdminVenueDetail: Codable {
+    let venue: AdminVenueDetailVenue
+    let loyalty: AdminVenueLoyalty
+    let owner: AdminVenueAccount?
+    let managers: [AdminVenueAccount]
+    let pendingClaims: [AdminVenueClaim]
+    let stats: AdminVenueDetailStats
+    let thisMonth: AdminVenueMonthStats
+    let storefront: AdminVenueStorefrontCounts
+}
+
+struct AdminVenueDetailVenue: Codable {
+    let venueId: String
+    let venueName: String
+    let placeAddress: String?
+    let category: String?
+    let contactName: String?
+    let contactEmail: String?
+    let googlePlaceId: String?
+    let globalPlaceId: String?
+    let isVirtual: Bool?
+    let windowCode: String
+    let registerCode: String
+    let windowStickerUrl: String?
+    let registerCardUrl: String?
+    let ownerUserId: String?
+    let managerUserIds: [String]?
+    let earnRate: Int?
+    let offers: [RewardOffer]?
+    let announcements: [VenueAnnouncement]?
+    let active: Bool?
+    let createdAt: String?
+}
+
+struct AdminVenueLoyalty: Codable {
+    let active: Bool
+    /// comp | owner_premium | lapsed | no_owner | none
+    let reason: String
+    let comped: Bool?
+    let compedUntil: String?
+    let compReason: String?
+}
+
+struct AdminVenueAccount: Codable {
+    let userId: String
+    let displayName: String?
+    let email: String?
+    let username: String?
+    let subscriptionStatus: String?
+    let subscriptionExpiresAt: String?
+    let subscriptionVenueId: String?
+    let manuallyVerified: Bool?
+    let isSuperUser: Bool?
+}
+
+struct AdminVenueClaim: Codable {
+    let claimId: String
+    let name: String?
+    let email: String?
+    let phone: String?
+    let message: String?
+    let createdAt: String?
+}
+
+struct AdminVenueDetailStats: Codable {
+    let scans: Int
+    let signups: Int
+    /// Saves made right after a window-sticker scan
+    let stickerSaves: Int
+    /// Everyone who has the place saved, any route in
+    let savers: Int
+    let followers: Int
+    let visits: Int
+    let redemptions: Int
+    let codeRedemptions: Int
+    let clipScans: Int
+    let clipSignups: Int
+    let clipInstalls: Int
+}
+
+struct AdminVenueMonthStats: Codable {
+    let scans: Int
+    let signups: Int
+    let stickerSaves: Int
+    let visits: Int
+    let redemptions: Int
+}
+
+struct AdminVenueStorefrontCounts: Codable {
+    let actions: Int
+    let offerings: Int
+    let gallery: Int
 }
 
 struct VenueManager: Codable {

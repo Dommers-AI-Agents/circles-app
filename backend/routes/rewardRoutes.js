@@ -18,7 +18,8 @@ const {
   setSuperUser,
   setVenueOwner,
   createVenue,
-  listVenues
+  listVenues,
+  getVenueAdminDetail
 } = require('../controllers/venues/venueAdminController');
 const {
   requireVenueOwner,
@@ -116,6 +117,8 @@ router.post('/venues', requireSuperUser, createVenueFromApp);
 router.get('/venues', requireSuperUser, listVenues);
 router.post('/superusers', requireSuperUser, setSuperUser);
 router.post('/venues/:venueId/owner', requireSuperUser, setVenueOwner);
+// One store's full admin picture (requireVenueOwner just loads req.venue here)
+router.get('/venues/:venueId/admin', requireSuperUser, requireVenueOwner, getVenueAdminDetail);
 router.get('/claims', requireSuperUser, listClaims);
 router.post('/claims/:claimId/approve', requireSuperUser, approveClaim);
 router.post('/claims/:claimId/deny', requireSuperUser, denyClaim);
