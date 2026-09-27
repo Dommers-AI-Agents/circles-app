@@ -520,6 +520,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         control.translatesAutoresizingMaskIntoConstraints = false
         return control
     }()
+    /// Scrolls the tab control sideways so four tabs keep their full names.
+    lazy var contentTypeTabHost = ScrollingSegmentHost(segmentedControl: contentTypeSegmentedControl)
 
     // MARK: - Sticky tab bar
     // A mirror of the tab control (+ add-circle button) pinned to the top,
@@ -1014,7 +1016,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         notificationsContainer.addSubview(activityNotificationsToggle)
         
         contentView.addSubview(separatorLine)
-        contentView.addSubview(contentTypeSegmentedControl)
+        contentView.addSubview(contentTypeTabHost)
         contentView.addSubview(searchBarContainer)
         searchBarContainer.addSubview(searchBar)
         searchBarContainer.addSubview(searchScopeButton)
@@ -1223,10 +1225,11 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             separatorLine.heightAnchor.constraint(equalToConstant: 0.5),
             
             // Content type segmented control
-            contentTypeSegmentedControl.topAnchor.constraint(equalTo: separatorLine.bottomAnchor, constant: Constants.Spacing.medium),
-            contentTypeSegmentedControl.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            contentTypeSegmentedControl.widthAnchor.constraint(equalToConstant: 200),
-            contentTypeSegmentedControl.heightAnchor.constraint(equalToConstant: 32),
+            // (it scrolls when the tabs are wider than the row)
+            contentTypeTabHost.topAnchor.constraint(equalTo: separatorLine.bottomAnchor, constant: Constants.Spacing.medium),
+            contentTypeTabHost.leadingAnchor.constraint(equalTo: floatingAddButton.trailingAnchor, constant: 8),
+            contentTypeTabHost.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            contentTypeTabHost.heightAnchor.constraint(equalToConstant: 32),
             
             // Search bar container (top constraint will be set dynamically)
             searchBarContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
@@ -1338,9 +1341,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             versionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
             versionLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
             
-            // Add-circle button: compact, just left of the tab control
-            floatingAddButton.centerYAnchor.constraint(equalTo: contentTypeSegmentedControl.centerYAnchor),
-            floatingAddButton.trailingAnchor.constraint(equalTo: contentTypeSegmentedControl.leadingAnchor, constant: -12),
+            // Add-circle button: compact, just left of the tab control. Its
+            // slot stays reserved on the other tabs so the tabs don't shift.
+            floatingAddButton.centerYAnchor.constraint(equalTo: contentTypeTabHost.centerYAnchor),
+            floatingAddButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
             floatingAddButton.widthAnchor.constraint(equalToConstant: 38),
             floatingAddButton.heightAnchor.constraint(equalToConstant: 38)
         ])
@@ -2534,6 +2538,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         logoutButton.isHidden = !isCurrentUser
         versionLabel.isHidden = !isCurrentUser
         contentTypeSegmentedControl.isHidden = !isCurrentUser
+        contentTypeTabHost.isHidden = !isCurrentUser
         floatingAddButton.isHidden = !isCurrentUser || contentTypeSegmentedControl.selectedSegmentIndex != 0
         
         // Switch constraints based on user type with animation
@@ -2912,6 +2917,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 
     @objc private func stickySegmentChanged() {
         contentTypeSegmentedControl.selectedSegmentIndex = stickyTabBar.segmentedControl.selectedSegmentIndex
+        contentTypeTabHost.scrollSelectedSegmentIntoView(animated: false)
         contentTypeChanged()
     }
 
@@ -2919,6 +2925,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     /// the inline controls. Call after any inline tab/visibility change.
     func syncStickyTabBar() {
         stickyTabBar.segmentedControl.selectedSegmentIndex = contentTypeSegmentedControl.selectedSegmentIndex
+        stickyTabBar.tabHost.scrollSelectedSegmentIntoView(animated: false)
         // Add-circle only on the Circles tab; mirror the inline button's state
         stickyTabBar.addButton.isHidden = floatingAddButton.isHidden
     }

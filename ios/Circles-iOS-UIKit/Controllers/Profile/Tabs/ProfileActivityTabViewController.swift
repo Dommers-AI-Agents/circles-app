@@ -232,9 +232,7 @@ final class ProfileActivityTabViewController: BaseViewController {
         tableView.reloadData()
         moreWrap?.isHidden = !hasMore
         if items.isEmpty {
-            emptyLabel.text = filter == .all
-                ? "Nothing yet. Check in, add a place or post a moment and it lands here."
-                : "No \(filter.title.lowercased()) yet."
+            emptyLabel.text = filter.emptyMessage
             emptyLabel.isHidden = false
         } else {
             emptyLabel.isHidden = true

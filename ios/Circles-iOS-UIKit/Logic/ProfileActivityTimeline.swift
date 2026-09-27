@@ -14,7 +14,20 @@ enum ProfileActivityTimeline {
             case .checkins: return "Check-ins"
             case .places: return "Places"
             case .moments: return "Moments"
-            case .sent: return "Sent"
+            // Server category "sent": postcards, Fridge Mail and place
+            // suggestions. A bare "Sent" didn't say what was in it.
+            case .sent: return "Postcards & suggestions"
+            }
+        }
+
+        /// What the timeline says when this filter has nothing.
+        var emptyMessage: String {
+            switch self {
+            case .all: return "Nothing yet. Check in, add a place or post a moment and it lands here."
+            case .checkins: return "No check-ins yet. Check in at a place and it shows up here."
+            case .places: return "No places yet. Places you add to your circles show up here."
+            case .moments: return "No moments yet. Moments you post show up here."
+            case .sent: return "Nothing sent yet. Postcards, Fridge Mail drawings and places you suggest to people show up here."
             }
         }
     }

@@ -89,4 +89,14 @@ struct ProfileActivityTimelineTests {
         #expect(item.companions.isEmpty)
         #expect(item.likeCount == nil)
     }
+
+    @Test func sentFilterSaysWhatItHolds() {
+        // A bare "Sent" chip with "No sent yet." didn't explain itself.
+        #expect(ProfileActivityTimeline.Filter.sent.title == "Postcards & suggestions")
+        let empty = ProfileActivityTimeline.Filter.sent.emptyMessage
+        #expect(empty.contains("Postcards") && empty.contains("Fridge Mail") && empty.contains("suggest"))
+        for filter in ProfileActivityTimeline.Filter.allCases {
+            #expect(!filter.emptyMessage.isEmpty)
+        }
+    }
 }

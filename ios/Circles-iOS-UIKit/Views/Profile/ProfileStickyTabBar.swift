@@ -13,6 +13,9 @@ final class ProfileStickyTabBar: UIView {
         return c
     }()
 
+    /// Scrolls the tabs sideways so each keeps its full name.
+    private(set) lazy var tabHost = ScrollingSegmentHost(segmentedControl: segmentedControl)
+
     let addButton: UIButton = ProfileViewController.makeNewCircleButton()
 
     private let separator: UIView = {
@@ -29,21 +32,22 @@ final class ProfileStickyTabBar: UIView {
         alpha = 0
         translatesAutoresizingMaskIntoConstraints = false
 
-        addSubview(segmentedControl)
+        addSubview(tabHost)
         addSubview(addButton)
         addSubview(separator)
 
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: 48),
 
-            segmentedControl.centerXAnchor.constraint(equalTo: centerXAnchor),
-            segmentedControl.centerYAnchor.constraint(equalTo: centerYAnchor),
-            // Wide enough for the owner's fourth segment (Activity)
-            segmentedControl.widthAnchor.constraint(equalToConstant: 270),
-            segmentedControl.heightAnchor.constraint(equalToConstant: 32),
+            // Same row layout as the inline tabs: add button, then the
+            // scrolling tabs to the trailing edge.
+            addButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            addButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Constants.Spacing.medium),
 
-            addButton.centerYAnchor.constraint(equalTo: segmentedControl.centerYAnchor),
-            addButton.trailingAnchor.constraint(equalTo: segmentedControl.leadingAnchor, constant: -12),
+            tabHost.centerYAnchor.constraint(equalTo: centerYAnchor),
+            tabHost.leadingAnchor.constraint(equalTo: addButton.trailingAnchor, constant: 8),
+            tabHost.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Constants.Spacing.medium),
+            tabHost.heightAnchor.constraint(equalToConstant: 32),
             addButton.widthAnchor.constraint(equalToConstant: 38),
             addButton.heightAnchor.constraint(equalToConstant: 38),
 
