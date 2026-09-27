@@ -566,6 +566,11 @@ class APIService {
         if endpoint.hasPrefix("import/") {
             request.timeoutInterval = 120
         }
+        // The circle advisor is one model call that routinely runs 25–30 s;
+        // at 30 s the client gave up on a run the server finished (and paid for).
+        if endpoint == "circles/advisor" {
+            request.timeoutInterval = 120
+        }
         
         // GETs use protocol caching: the server's Cache-Control: no-cache +
         // ETag mean every request revalidates (fresh data guaranteed) but an

@@ -2,7 +2,7 @@
 // the sanitizer that stands between a model reply and somebody's saved places.
 // No network — `advise()` itself is not exercised here.
 
-const { buildPrompt, sanitize, isEnabled } = require('../circleAdvisor');
+const { buildPrompt, sanitize, isEnabled, costCents } = require('../circleAdvisor');
 
 const circle = (id, name, extra = {}) => ({
   id,
@@ -158,5 +158,21 @@ describe('isEnabled', () => {
     process.env.CIRCLE_ADVISOR_ENABLED = 'true';
     process.env.ANTHROPIC_API_KEY = 'sk-test';
     expect(isEnabled()).toBe(true);
+  });
+});
+
+describe('costCents', () => {
+  it('prices a logged Opus 5 run the way the bill does', () => {
+    // 2026-09-27 production run: 4028 in, 2624 out ≈ 8.57¢
+    expect(costCents({ input_tokens: 4028, output_tokens: 2624 }, 'claude-opus-5')).toBeCloseTo(8.574, 2);
+  });
+
+  it('uses the cheaper rates for smaller models', () => {
+    expect(costCents({ input_tokens: 1e6, output_tokens: 0 }, 'claude-sonnet-5')).toBe(200);
+    expect(costCents({ input_tokens: 0, output_tokens: 1e6 }, 'claude-haiku-4-5')).toBe(500);
+  });
+
+  it('is zero without usage', () => {
+    expect(costCents(undefined)).toBe(0);
   });
 });

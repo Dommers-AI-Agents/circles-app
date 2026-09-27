@@ -23,6 +23,23 @@ const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = process.env.CIRCLE_ADVISOR_MODEL || 'claude-opus-5';
 const MAX_CIRCLES = 60;
 
+/** $ per million tokens [input, output], for logging and the spend counters. */
+const PRICING = {
+  'claude-opus-5': [5, 25],
+  'claude-opus-5-5': [4, 20],
+  'claude-sonnet-5': [2, 10],
+  'claude-haiku-4-5': [1, 5]
+};
+
+/** What one call cost, in cents. Unknown models are priced as Opus 5. */
+const costCents = (usage, model = MODEL) => {
+  if (!usage) return 0;
+  const [inRate, outRate] = PRICING[model] || PRICING['claude-opus-5'];
+  const inTok = usage.input_tokens || 0;
+  const outTok = usage.output_tokens || 0;
+  return (inTok * inRate + outTok * outRate) / 1e6 * 100;
+};
+
 const isEnabled = () =>
   process.env.CIRCLE_ADVISOR_ENABLED === 'true' && !!process.env.ANTHROPIC_API_KEY;
 
@@ -205,4 +222,4 @@ const advise = async (circles) => {
   };
 };
 
-module.exports = { advise, buildPrompt, sanitize, isEnabled, SCHEMES, MAX_CIRCLES };
+module.exports = { advise, buildPrompt, sanitize, isEnabled, costCents, MODEL, SCHEMES, MAX_CIRCLES };

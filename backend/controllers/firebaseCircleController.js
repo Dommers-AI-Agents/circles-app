@@ -1757,20 +1757,17 @@ exports.getCircleAdvice = async (req, res, next) => {
       });
     }
 
-    const advice = await circleAdvisor.advise(circles);
-    const payload = { schemes: advice.schemes, merges: advice.merges };
-
-    // Real spend per run, greppable in Cloud Run logs. Opus 5 pricing is
-    // $5/M input, $25/M output, so cost ≈ (in*5 + out*25) / 1e6.
-    if (advice.usage) {
-      const { input_tokens: inTok = 0, output_tokens: outTok = 0 } = advice.usage;
-      const cents = ((inTok * 5 + outTok * 25) / 1e6 * 100).toFixed(2);
-      console.log(`💸 circleAdvisor run: user=${userId} circles=${circles.length} in=${inTok} out=${outTok} ≈ ${cents}¢`);
+    // One model run per user + circle set at a time. A run takes 25–30 s, and
+    // a second tap (or a client retry after a timeout) used to start a second
+    // paid run for the identical answer; now it waits on the first.
+    const flightKey = `${userId}:${gate.cacheKey}`;
+    let flight = advisorInFlight.get(flightKey);
+    if (!flight) {
+      flight = runAdvisor(userId, circles, gate.cacheKey)
+        .finally(() => advisorInFlight.delete(flightKey));
+      advisorInFlight.set(flightKey, flight);
     }
-
-    // Recorded only after a real answer — a failed call shouldn't cost somebody
-    // one of their five.
-    await circleAdvisorQuota.record(userId, gate.cacheKey, payload);
+    const payload = await flight;
 
     res.status(200).json({
       success: true,
@@ -1783,6 +1780,27 @@ exports.getCircleAdvice = async (req, res, next) => {
     console.error('Error building circle advice:', error);
     next(error);
   }
+};
+
+/** Advisor runs in progress on this instance, keyed by user + circle set. */
+const advisorInFlight = new Map();
+
+/** One paid model call: advise, log the cost, cache and count it. */
+const runAdvisor = async (userId, circles, cacheKey) => {
+  const advice = await circleAdvisor.advise(circles);
+  const payload = { schemes: advice.schemes, merges: advice.merges };
+
+  // Real spend per run, greppable in Cloud Run logs.
+  const cents = circleAdvisor.costCents(advice.usage);
+  if (advice.usage) {
+    const { input_tokens: inTok = 0, output_tokens: outTok = 0 } = advice.usage;
+    console.log(`💸 circleAdvisor run: user=${userId} model=${circleAdvisor.MODEL} circles=${circles.length} in=${inTok} out=${outTok} ≈ ${cents.toFixed(2)}¢`);
+  }
+
+  // Recorded only after a real answer — a failed call shouldn't cost somebody
+  // one of their five.
+  await circleAdvisorQuota.record(userId, cacheKey, payload, cents);
+  return payload;
 };
 
 /** "123 Main St, Belmar, NJ 07719" -> "Belmar". Null when the shape doesn't match. */

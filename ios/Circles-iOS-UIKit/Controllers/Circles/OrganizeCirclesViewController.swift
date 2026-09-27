@@ -60,6 +60,8 @@ final class OrganizeCirclesViewController: BaseViewController {
     private var merges: [MergeProposal] = []
     /// Merges already acted on this session, so an approved row doesn't linger.
     private var resolvedMergeIndices = Set<Int>()
+    /// A run is in progress. Pull-to-refresh during one must not start another.
+    private var isFetching = false
 
     private let tableView: UITableView = {
         let table = UITableView(frame: .zero, style: .insetGrouped)
@@ -68,6 +70,9 @@ final class OrganizeCirclesViewController: BaseViewController {
     }()
 
     override var enablesPullToRefresh: Bool { true }
+    /// The base spinner sits under the table and says nothing; a model run
+    /// takes half a minute, so this screen shows its own explained progress.
+    override var showsLoadingIndicator: Bool { false }
     override var emptyStateMessage: String? {
         "Nothing to reorganize — your circles already look tidy."
     }
@@ -102,6 +107,46 @@ final class OrganizeCirclesViewController: BaseViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+        // Keep the base empty-state label (quota and "tidy" messages) above
+        // the table rather than hidden behind it.
+        view.sendSubviewToBack(tableView)
+    }
+
+    /// Shown in the table's background while the advisor reads the circles.
+    private lazy var progressView: UIView = {
+        let spinner = UIActivityIndicatorView(style: .large)
+        spinner.startAnimating()
+
+        let title = UILabel()
+        title.text = "Reading your circles…"
+        title.font = .preferredFont(forTextStyle: .headline)
+        title.textAlignment = .center
+
+        let detail = UILabel()
+        detail.text = "Sorting each circle by place, type, person or trip and looking for overlaps. This usually takes about 30 seconds."
+        detail.font = .preferredFont(forTextStyle: .subheadline)
+        detail.textColor = .secondaryLabel
+        detail.textAlignment = .center
+        detail.numberOfLines = 0
+
+        let stack = UIStackView(arrangedSubviews: [spinner, title, detail])
+        stack.axis = .vertical
+        stack.spacing = 12
+        stack.alignment = .center
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let container = UIView()
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 32),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -32)
+        ])
+        return container
+    }()
+
+    private func setProgressVisible(_ visible: Bool) {
+        tableView.backgroundView = visible ? progressView : nil
     }
 
     @objc private func dismissSelf() {
@@ -111,6 +156,18 @@ final class OrganizeCirclesViewController: BaseViewController {
     // MARK: Data
 
     override func loadData(completion: (() -> Void)? = nil) {
+        guard !isFetching else {
+            completion?()
+            return
+        }
+        isFetching = true
+        hideEmptyState()
+        // Pull-to-refresh already shows its own spinner; only a first load
+        // (nothing on screen yet) needs the explained progress view.
+        if schemes.isEmpty && merges.isEmpty {
+            setProgressVisible(true)
+        }
+
         APIService.shared.request(
             endpoint: "circles/advisor",
             method: .get,
@@ -118,6 +175,8 @@ final class OrganizeCirclesViewController: BaseViewController {
         ) { [weak self] (result: Result<AdviceResponse, APIError>) in
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                self.isFetching = false
+                self.setProgressVisible(false)
                 completion?()
 
                 switch result {

@@ -13,6 +13,7 @@
 // screen is free. The counters exist for the cases the cache can't cover.
 
 const crypto = require('crypto');
+const admin = require('firebase-admin');
 const { getFirestore } = require('../config/firebase');
 const subscriptionLimitService = require('./subscriptionLimitService');
 
@@ -99,36 +100,36 @@ const check = async (userId, circles) => {
 };
 
 /**
- * Records a completed run and caches its result.
+ * Records a completed run, caches its result, and adds what it cost to the
+ * user's and the global spend counters (daily and lifetime, in cents).
  *
  * Called only after the model actually answered — a failed call shouldn't burn
  * somebody's daily allowance for a result they never saw.
  */
-const record = async (userId, cacheKey, result) => {
+const record = async (userId, cacheKey, result, cents = 0) => {
   const day = today();
-  const userRef = db.collection(COLLECTION).doc(userId);
+  const increment = admin.firestore.FieldValue.increment;
 
-  await db.runTransaction(async (transaction) => {
-    const snapshot = await transaction.get(userRef);
+  const bump = (ref, extra = {}) => db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
     const usage = snapshot.exists ? snapshot.data() : {};
-    const count = usage.date === day ? (usage.count || 0) : 0;
-
-    transaction.set(userRef, {
+    const sameDay = usage.date === day;
+    transaction.set(ref, {
       date: day,
-      count: count + 1,
-      cacheKey,
-      cachedResult: result,
-      cachedAt: new Date().toISOString()
+      count: (sameDay ? (usage.count || 0) : 0) + 1,
+      spendCents: (sameDay ? (usage.spendCents || 0) : 0) + cents,
+      totalRuns: increment(1),
+      totalSpendCents: increment(cents),
+      ...extra
     }, { merge: true });
   });
 
-  const globalRef = db.collection(COLLECTION).doc(GLOBAL_DOC);
-  await db.runTransaction(async (transaction) => {
-    const snapshot = await transaction.get(globalRef);
-    const usage = snapshot.exists ? snapshot.data() : {};
-    const count = usage.date === day ? (usage.count || 0) : 0;
-    transaction.set(globalRef, { date: day, count: count + 1 }, { merge: true });
+  await bump(db.collection(COLLECTION).doc(userId), {
+    cacheKey,
+    cachedResult: result,
+    cachedAt: new Date().toISOString()
   });
+  await bump(db.collection(COLLECTION).doc(GLOBAL_DOC));
 };
 
 /**
