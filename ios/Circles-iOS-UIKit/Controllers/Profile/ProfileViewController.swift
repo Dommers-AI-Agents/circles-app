@@ -10,8 +10,26 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             updateOrganizeButtonVisibility()
             momentsTab.userId = user?.id
             uploadsTab.userId = user?.id
+            updateActivitySegmentAvailability()
         }
     }
+
+    /// The Activity tab is the owner's own history, so its segment exists
+    /// only on your own profile (both the inline control and the sticky mirror).
+    private func updateActivitySegmentAvailability() {
+        let title = ProfileViewController.activitySegmentTitle
+        let isCurrentUser = user?.id == AuthService.shared.getUserId()
+        for control in [contentTypeSegmentedControl, stickyTabBar.segmentedControl] {
+            let has = control.numberOfSegments == 4
+            if isCurrentUser && !has {
+                control.insertSegment(withTitle: title, at: 3, animated: false)
+            } else if !isCurrentUser && has {
+                if control.selectedSegmentIndex == 3 { control.selectedSegmentIndex = 0 }
+                control.removeSegment(at: 3, animated: false)
+            }
+        }
+    }
+    static let activitySegmentTitle = "Activity"
     var circles: [Circle] = []
     var displayItems: [CircleDisplayItem] = []
     var circleGroups: [CircleGroup] = []
@@ -620,8 +638,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     // profile sizes them.
     lazy var momentsTab = ProfileMomentsTabViewController()
     lazy var uploadsTab = ProfileUploadsTabViewController()
+    lazy var activityTab = ProfileActivityTabViewController()
     var momentsTabHeightConstraint: NSLayoutConstraint?
     var uploadsTabHeightConstraint: NSLayoutConstraint?
+    var activityTabHeightConstraint: NSLayoutConstraint?
 
     /// The log-out button sits under whichever tab content is showing
     /// (circles grid, map, Moments grid, Uploads grid) — one slot, re-pinned
@@ -1259,6 +1279,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             uploadsTab.view.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
             uploadsTab.view.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             uploadsTab.view.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            activityTab.view.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
+            activityTab.view.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            activityTab.view.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             
             // Map container (same position as circles collection)
             mapContainerView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
@@ -1331,6 +1354,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         
         uploadsTabHeightConstraint = uploadsTab.view.heightAnchor.constraint(equalToConstant: 200)
         uploadsTabHeightConstraint?.isActive = true
+
+        activityTabHeightConstraint = activityTab.view.heightAnchor.constraint(equalToConstant: 200)
+        activityTabHeightConstraint?.isActive = true
         
         // Create switchable constraints for logout button
         
@@ -1612,6 +1638,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             circlesCollectionView.isHidden = isShowingMap
             momentsTab.setActive(false)
             uploadsTab.setActive(false)
+            activityTab.setActive(false)
             searchBar.placeholder = "Search places..."
             mapToggleButton.isHidden = false
             
@@ -1648,6 +1675,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             
             circlesCollectionView.isHidden = true
             uploadsTab.setActive(false)
+            activityTab.setActive(false)
             mapContainerView.isHidden = true
             searchBar.placeholder = "Search videos..."
             mapToggleButton.isHidden = true
@@ -1660,12 +1688,29 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             
             // Update logout button constraint to videos collection
             pinLogoutButton(below: momentsTab.view.bottomAnchor)
+        } else if contentTypeSegmentedControl.selectedSegmentIndex == 3 {
+            // Show the owner's own activity (tab index 3, own profile only)
+            Logger.debug("🗓 Switching to Activity tab")
+
+            circlesCollectionView.isHidden = true
+            momentsTab.setActive(false)
+            uploadsTab.setActive(false)
+            mapContainerView.isHidden = true
+            searchBar.placeholder = "Search places..."
+            mapToggleButton.isHidden = true
+            floatingAddButton.isHidden = true
+
+            // Loads on first visit, refreshes after a minute
+            activityTab.setActive(true)
+
+            pinLogoutButton(below: activityTab.view.bottomAnchor)
         } else {
             // Show uploads (tab index 2)
             Logger.debug("📷 Switching to Uploads tab")
             
             circlesCollectionView.isHidden = true
             momentsTab.setActive(false)
+            activityTab.setActive(false)
             mapContainerView.isHidden = true
             searchBar.placeholder = "Search uploads..."
             mapToggleButton.isHidden = true
@@ -2928,6 +2973,18 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         uploadsTab.onContentHeightChanged = { [weak self] height in
             self?.uploadsTabHeightConstraint?.constant = height
             UIView.animate(withDuration: 0.3) { self?.view.layoutIfNeeded() }
+        }
+        // The Activity tab (own history) shares the slot; it isn't a grid, so
+        // it is embedded on its own with the same height-reporting contract.
+        addChild(activityTab)
+        activityTab.view.translatesAutoresizingMaskIntoConstraints = false
+        activityTab.view.isHidden = true
+        contentView.addSubview(activityTab.view)
+        activityTab.didMove(toParent: self)
+        activityTab.onContentHeightChanged = { [weak self] height in
+            guard let self, abs((self.activityTabHeightConstraint?.constant ?? 0) - height) >= 1 else { return }
+            self.activityTabHeightConstraint?.constant = height
+            UIView.animate(withDuration: 0.3) { self.view.layoutIfNeeded() }
         }
     }
 }

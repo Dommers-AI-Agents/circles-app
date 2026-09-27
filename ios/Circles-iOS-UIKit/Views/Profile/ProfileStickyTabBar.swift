@@ -38,7 +38,8 @@ final class ProfileStickyTabBar: UIView {
 
             segmentedControl.centerXAnchor.constraint(equalTo: centerXAnchor),
             segmentedControl.centerYAnchor.constraint(equalTo: centerYAnchor),
-            segmentedControl.widthAnchor.constraint(equalToConstant: 200),
+            // Wide enough for the owner's fourth segment (Activity)
+            segmentedControl.widthAnchor.constraint(equalToConstant: 270),
             segmentedControl.heightAnchor.constraint(equalToConstant: 32),
 
             addButton.centerYAnchor.constraint(equalTo: segmentedControl.centerYAnchor),
