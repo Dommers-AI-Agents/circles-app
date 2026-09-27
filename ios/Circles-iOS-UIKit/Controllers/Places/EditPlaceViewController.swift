@@ -376,7 +376,7 @@ class EditPlaceViewController: BaseViewController {
     
     private let deleteButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Delete Place", for: .normal)
+        button.setTitle("Unsave Place", for: .normal)
         button.setTitleColor(.red, for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .semibold)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -1085,13 +1085,13 @@ class EditPlaceViewController: BaseViewController {
         }
         
         let alert = UIAlertController(
-            title: "Delete Place",
-            message: "Are you sure you want to delete \(place.name)? This action cannot be undone.",
+            title: "Unsave Place",
+            message: "Take \(place.name) out of your circles? Your notes, photos and rating on it go too. This can't be undone.",
             preferredStyle: .alert
         )
         
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: "Unsave", style: .destructive) { [weak self] _ in
             self?.deletePlace()
         })
         
@@ -1349,7 +1349,7 @@ class EditPlaceViewController: BaseViewController {
     
     private func deletePlace() {
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Deleting Place", message: "Please wait...", preferredStyle: .alert)
+        let loadingAlert = UIAlertController(title: "Unsaving Place", message: "Please wait...", preferredStyle: .alert)
         present(loadingAlert, animated: true)
         
         PlaceService.shared.deletePlace(id: place.id) { [weak self] result in

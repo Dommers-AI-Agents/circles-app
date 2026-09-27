@@ -81,10 +81,10 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
         // Only allow actions if user can edit
         guard circle.canEdit else { return nil }
         
-        let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
+        let deleteAction = UIContextualAction(style: .destructive, title: "Unsave") { [weak self] _, _, completion in
             self?.confirmDeletePlace(at: indexPath, completion: completion)
         }
-        deleteAction.image = UIImage(systemName: "trash")
+        deleteAction.image = UIImage(systemName: "bookmark.slash")
         
         let moveAction = UIContextualAction(style: .normal, title: "Move") { [weak self] _, _, completion in
             self?.movePlaceToCircle(at: indexPath)
@@ -113,7 +113,7 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
             }
 
             let deleteAction = UIAction(
-                title: "Delete",
+                title: "Unsave",
                 image: UIImage(systemName: "trash"),
                 attributes: .destructive
             ) { _ in
@@ -128,9 +128,9 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
         let place = filteredPlaces[indexPath.row]
         
         AlertPresenter.showConfirmation(
-            title: "Delete Place",
-            message: "Are you sure you want to remove \"\(place.name)\" from this circle?",
-            confirmTitle: "Delete",
+            title: "Unsave Place",
+            message: "Take \"\(place.name)\" out of this circle? The place itself stays — this is only your save of it.",
+            confirmTitle: "Unsave",
             isDestructive: true,
             from: self,
             onConfirm: { [weak self] in
@@ -145,7 +145,7 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
         let place = filteredPlaces[indexPath.row]
         
         // Show loading indicator
-        let loadingAlert = AlertPresenter.showLoading(message: "Removing place...", from: self)
+        let loadingAlert = AlertPresenter.showLoading(message: "Unsaving place...", from: self)
         
         PlaceService.shared.deletePlace(id: place.id) { [weak self] result in
             DispatchQueue.main.async {

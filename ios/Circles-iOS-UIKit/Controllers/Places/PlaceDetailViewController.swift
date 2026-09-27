@@ -1854,12 +1854,12 @@ class PlaceDetailViewController: BaseViewController {
             }))
         }
 
-        // Last, and destructive: unsaving your own place. It lived only
-        // behind Edit Place and a swipe in the circle list, which is not
-        // where someone looks for it (Wes, 2026-09-27).
+        // Last, and destructive: taking this place out of your circles.
+        // "Unsave", not "Delete" — the venue itself stays for everyone else,
+        // and only this person's copy of it goes (Wes, 2026-09-27).
         if place.isAddedByCurrentUser && !ownerEdit.isVenueOwner {
-            actions.append((title: "Delete Place", style: .destructive, handler: { [weak self] in
-                self?.confirmDeletePlace()
+            actions.append((title: "Unsave Place", style: .destructive, handler: { [weak self] in
+                self?.confirmUnsavePlace()
             }))
         }
 
@@ -1873,20 +1873,20 @@ class PlaceDetailViewController: BaseViewController {
     /// Removes the viewer's own save. The venue itself survives — other
     /// people's saves of it, and its likes and comments, are untouched —
     /// so the confirmation says what actually goes.
-    private func confirmDeletePlace() {
+    private func confirmUnsavePlace() {
         let fromCircle = place.circleName.map { " from \($0)" } ?? ""
         AlertPresenter.showConfirmation(
-            title: "Delete Place",
-            message: "Remove \(place.name)\(fromCircle)? Your notes, photos and rating on it go too. This can't be undone.",
-            confirmTitle: "Delete",
+            title: "Unsave Place",
+            message: "Take \(place.name)\(fromCircle) out of your circles? Your notes, photos and rating on it go too. This can't be undone.",
+            confirmTitle: "Unsave",
             isDestructive: true,
             from: self,
-            onConfirm: { [weak self] in self?.performDeletePlace() }
+            onConfirm: { [weak self] in self?.performUnsavePlace() }
         )
     }
 
-    private func performDeletePlace() {
-        let loading = AlertPresenter.showLoading(message: "Removing place...", from: self)
+    private func performUnsavePlace() {
+        let loading = AlertPresenter.showLoading(message: "Unsaving place...", from: self)
         PlaceService.shared.deletePlace(id: place.id) { [weak self] result in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) {
