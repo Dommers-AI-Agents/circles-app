@@ -1854,11 +1854,61 @@ class PlaceDetailViewController: BaseViewController {
             }))
         }
 
+        // Last, and destructive: unsaving your own place. It lived only
+        // behind Edit Place and a swipe in the circle list, which is not
+        // where someone looks for it (Wes, 2026-09-27).
+        if place.isAddedByCurrentUser && !ownerEdit.isVenueOwner {
+            actions.append((title: "Delete Place", style: .destructive, handler: { [weak self] in
+                self?.confirmDeletePlace()
+            }))
+        }
+
         AlertPresenter.showActionSheet(
             actions: actions,
             from: self,
             sourceView: navigationItem.rightBarButtonItems?.first?.value(forKey: "view") as? UIView
         )
+    }
+
+    /// Removes the viewer's own save. The venue itself survives — other
+    /// people's saves of it, and its likes and comments, are untouched —
+    /// so the confirmation says what actually goes.
+    private func confirmDeletePlace() {
+        let fromCircle = place.circleName.map { " from \($0)" } ?? ""
+        AlertPresenter.showConfirmation(
+            title: "Delete Place",
+            message: "Remove \(place.name)\(fromCircle)? Your notes, photos and rating on it go too. This can't be undone.",
+            confirmTitle: "Delete",
+            isDestructive: true,
+            from: self,
+            onConfirm: { [weak self] in self?.performDeletePlace() }
+        )
+    }
+
+    private func performDeletePlace() {
+        let loading = AlertPresenter.showLoading(message: "Removing place...", from: self)
+        PlaceService.shared.deletePlace(id: place.id) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success:
+                        // The circle screen behind already listens for this
+                        NotificationCenter.default.post(name: Notification.Name("PlaceDeleted"),
+                                                        object: nil,
+                                                        userInfo: ["placeId": self.place.id])
+                        // Pushed from a circle, presented from the map: leave the way we came
+                        if let nav = self.navigationController, nav.viewControllers.count > 1 {
+                            nav.popViewController(animated: true)
+                        } else {
+                            self.dismiss(animated: true)
+                        }
+                    case .failure(let error):
+                        AlertPresenter.showError(error, from: self)
+                    }
+                }
+            }
+        }
     }
     
     @objc private func editButtonTapped() {
