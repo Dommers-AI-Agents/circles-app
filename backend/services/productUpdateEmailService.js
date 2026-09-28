@@ -213,7 +213,6 @@ const CAMPAIGNS = {
         </tr></table>
         <div style="font-family:${FONT};font-size:13px;color:#8C97AB;padding-top:12px;">In the app: Home → Widgets → Postcard, or from any Moment.</div>
       </td></tr>
-      ${map.html}
       <tr><td class="pad" style="padding:34px 36px 8px;">
         <div style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#8C97AB;border-top:1px solid ${LINE};padding-top:26px;">Also new</div>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:6px;">
@@ -222,6 +221,7 @@ const CAMPAIGNS = {
           ${featureRow('🔒', '#EEF8F1', 'Inner Circle', 'Share places, moments and check-ins with only the people you pick.')}
         </table>
       </td></tr>
+      ${map.html}
       <tr><td class="pad" style="padding:22px 36px 34px;">
         <p style="margin:0;font-family:${FONT};font-size:14px;line-height:22px;color:${MUTED};">Get the latest version from the <a href="${APP_STORE_URL}" style="color:${BRAND_BLUE};text-decoration:none;font-weight:600;">App Store</a> to try all of it.</p>
       </td></tr>`;
@@ -236,12 +236,12 @@ const CAMPAIGNS = {
         `Send a postcard: ${APP_OPEN_URL}`,
         'In the app: Home > Widgets > Postcard, or from any Moment.',
         '',
-        ...map.text,
-        '',
         'ALSO NEW',
         "- Fridge Mail: queue up your kids' drawings. We mail one to the grandparents every week as a real postcard.",
         '- Widgets: a new Home tab of little tools: water, habits, workouts, sleep sounds, quotes, and How Are You? check-ins for Mom or Dad.',
         '- Inner Circle: share places, moments and check-ins with only the people you pick.',
+        '',
+        ...map.text,
         '',
         `Get the latest version from the App Store: ${APP_STORE_URL}`
       ].join('\n');
