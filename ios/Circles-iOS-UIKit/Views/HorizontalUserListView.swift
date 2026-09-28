@@ -723,8 +723,16 @@ class HorizontalUserListView: UIView {
             let bName = b.connectedUser?.displayName ?? ""
             return aName < bName
         }
-        
-        return sortedConnections
+
+        // One entry per person. Two people who accept each other at the same
+        // moment can end up with a connection doc in each direction (Dan
+        // Wickner showed twice in the map's people menu, 2026-09-28), so keep
+        // the best-ranked one and drop the rest.
+        var seen = Set<String>()
+        return sortedConnections.filter { connection in
+            guard let otherId = connection.connectedUser?.id, !otherId.isEmpty else { return true }
+            return seen.insert(otherId).inserted
+        }
     }
     
     // MARK: - Shared Display Logic
