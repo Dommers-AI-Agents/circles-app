@@ -1,10 +1,10 @@
 import UIKit
 
 /// The check-in screen once the place is known: one tap on Check In is a
-/// complete check-in (feed on, connections see it, two-hour window). Every
-/// other field is visible and optional — a rating, a note that also lands on
-/// the place as a comment, people to notify, how long, the feed switch —
-/// and "Just me" makes it a private record with one tap.
+/// complete check-in (connections see it, the server's two-hour window).
+/// Every other field is visible and optional — a rating, a note that also
+/// lands on the place as a comment, people to notify — and "Who's it for?"
+/// decides who sees it, down to "Just me" for a private record.
 final class CheckInComposeViewController: BaseViewController {
 
     private let place: Place
@@ -106,28 +106,13 @@ final class CheckInComposeViewController: BaseViewController {
         return button
     }()
 
-    private let durationControl: UISegmentedControl = {
-        let control = UISegmentedControl(items: ["30 min", "1 hour", "2 hours", "Until I leave"])
-        control.selectedSegmentIndex = UISegmentedControl.noSegment
-        return control
-    }()
-
-    private lazy var feedSwitch: UISwitch = {
-        let toggle = UISwitch()
-        toggle.isOn = true
-        toggle.onTintColor = Constants.Colors.primary
-        return toggle
-    }()
-
-    /// Which audience this check-in is for: everyone you're connected with,
-    /// or one of your named Inner Circle lists. A list is a ceiling the
-    /// server enforces, so it holds even with "Show in activity feed" on —
-    /// that switch decides where it appears, not who may see it.
     /// Who this check-in is for. Connections is the historic default; a named
     /// Inner Circle list narrows it; Everyone widens it to followers and
     /// anyone else, past the account's activity grid (Wes, 2026-09-25:
-    /// "some like being public").
-    private enum Audience: Equatable { case connections, everyone, list(String) }
+    /// "some like being public"). Just me is a private record: no feed, no
+    /// notifications, no comment. This replaced the separate feed switch and
+    /// "Just me" button (Wes, 2026-09-28) — one question, one answer.
+    private enum Audience: Equatable { case justMe, connections, everyone, list(String) }
     private var selectedAudience: Audience = .connections
     private var selectedListId: String? {
         if case .list(let id) = selectedAudience { return id }
@@ -147,7 +132,7 @@ final class CheckInComposeViewController: BaseViewController {
         button.tintColor = .white
         return button
     }()
-    private lazy var privateButton = UIButton.secondaryButton(title: "Just me — check in privately")
+    private var postOnPlaceRow: UIView?
 
     // MARK: - Lifecycle
 
@@ -169,13 +154,11 @@ final class CheckInComposeViewController: BaseViewController {
     }
 
     private func setupUI() {
-        let footer = UIStackView(arrangedSubviews: [checkInButton, privateButton])
+        let footer = UIStackView(arrangedSubviews: [checkInButton])
         footer.axis = .vertical
-        footer.spacing = 10
         footer.translatesAutoresizingMaskIntoConstraints = false
         checkInButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
         checkInButton.addTarget(self, action: #selector(checkInTapped), for: .touchUpInside)
-        privateButton.addTarget(self, action: #selector(privateTapped), for: .touchUpInside)
 
         view.addSubview(scrollView)
         view.addSubview(footer)
@@ -184,14 +167,12 @@ final class CheckInComposeViewController: BaseViewController {
         contentStack.addArrangedSubview(placeCard)
         contentStack.addArrangedSubview(section("How was it? (optional)", ratingPills))
         contentStack.addArrangedSubview(noteTextView)
-        contentStack.addArrangedSubview(switchRow("Also post as a comment", postOnPlaceSwitch))
+        let commentRow = switchRow("Also post as a comment", postOnPlaceSwitch)
+        postOnPlaceRow = commentRow
+        contentStack.addArrangedSubview(commentRow)
         contentStack.addArrangedSubview(notifyButton)
-        contentStack.addArrangedSubview(section("How long? (optional)", durationControl))
-        contentStack.addArrangedSubview(switchRow("Show in activity feed", feedSwitch, info: #selector(feedInfoTapped)))
-        // Only worth offering once there is a list with someone on it; an
-        // empty one is indistinguishable from the private button below. The
-        // row is built either way and hidden until the lists arrive, because
-        // they may still be loading when this screen opens.
+        // Lists may still be loading when this screen opens; the menu is
+        // rebuilt when they arrive.
         audienceSection = section("Who's it for?", audienceButton)
         contentStack.addArrangedSubview(audienceSection!)
         refreshAudienceMenu()
@@ -228,9 +209,7 @@ final class CheckInComposeViewController: BaseViewController {
         return stack
     }
 
-    /// A switch and its label, and — when the setting has consequences worth
-    /// explaining — an "i" at the end of the row that says what they are.
-    private func switchRow(_ title: String, _ toggle: UISwitch, info: Selector? = nil) -> UIView {
+    private func switchRow(_ title: String, _ toggle: UISwitch) -> UIView {
         let label = UILabel()
         label.text = title
         label.font = UIFont.systemFont(ofSize: 16)
@@ -240,14 +219,6 @@ final class CheckInComposeViewController: BaseViewController {
         row.axis = .horizontal
         row.spacing = 12
         row.alignment = .center
-        if let info {
-            let button = UIButton.iconButton(systemName: "info.circle", pointSize: 17)
-            button.tintColor = Constants.Colors.secondaryLabel
-            button.accessibilityLabel = "What does \(title) mean?"
-            button.setContentHuggingPriority(.required, for: .horizontal)
-            button.addTarget(self, action: info, for: .touchUpInside)
-            row.addArrangedSubview(button)
-        }
         return row
     }
 
@@ -256,8 +227,9 @@ final class CheckInComposeViewController: BaseViewController {
         return text == notePlaceholder ? "" : text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Everyone, connections, then one per named list. A menu rather than a
-    /// switch because there is no longer a single Inner Circle to be "only".
+    /// Everyone, connections, one per named list, then Just me. A menu
+    /// rather than a switch because there is no longer a single Inner
+    /// Circle to be "only".
     private func refreshAudienceMenu() {
         let lists = InnerCircleManager.shared.usableLists
         audienceSection?.isHidden = false
@@ -276,6 +248,13 @@ final class CheckInComposeViewController: BaseViewController {
             self?.selectedAudience = .connections
             self?.refreshAudienceMenu()
         }
+        let justMe = UIAction(title: "Just me",
+                              subtitle: "Only you — kept in your own history",
+                              image: UIImage(systemName: "lock.fill"),
+                              state: selectedAudience == .justMe ? .on : .off) { [weak self] _ in
+            self?.selectedAudience = .justMe
+            self?.refreshAudienceMenu()
+        }
         let listActions = lists.map { list in
             UIAction(title: list.name,
                      subtitle: list.userIds.count == 1 ? "1 person" : "\(list.userIds.count) people",
@@ -284,15 +263,21 @@ final class CheckInComposeViewController: BaseViewController {
                 self?.refreshAudienceMenu()
             }
         }
-        audienceButton.menu = UIMenu(children: [everyone, connections] + listActions)
+        audienceButton.menu = UIMenu(children: [everyone, connections] + listActions + [justMe])
         let title: String
         switch selectedAudience {
+        case .justMe: title = "Just me"
         case .everyone: title = "Everyone"
         case .connections: title = "My connections"
         case .list(let id): title = lists.first { $0.id == id }?.name ?? "My connections"
         }
         audienceButton.setTitle("\(title)  ›", for: .normal)
         audienceButton.setTitleColor(Constants.Colors.label, for: .normal)
+        // A private check-in notifies nobody and posts no comment, so those
+        // rows would only promise something that won't happen.
+        let isPrivate = selectedAudience == .justMe
+        notifyButton.isHidden = isPrivate
+        postOnPlaceRow?.isHidden = isPrivate
     }
 
     private func updateNotifyTitle() {
@@ -332,34 +317,12 @@ final class CheckInComposeViewController: BaseViewController {
 
     @objc private func postOnPlaceChanged() { postOnPlaceSetByHand = true }
 
-    /// Says exactly who ends up seeing this, because "activity feed" on its
-    /// own does not tell anyone whether that means followers, connections or
-    /// the world.
-    @objc private func feedInfoTapped() {
+    @objc private func checkInTapped() {
         view.endEditing(true)
-        AlertPresenter.showInfo(
-            title: "Who sees this check-in?",
-            message: """
-            On: the people under "Who's it for?" see it in their activity feed — your connections, one of your Inner Circle lists, or, with Everyone, your followers and anyone else too.
-
-            Anyone you choose under "Notify people" sees it either way.
-
-            An Inner Circle list stops there — turning this on can't widen it. Everyone is the one choice that reaches past your "Who can see my activity" settings, for this check-in only.
-
-            Off, with nobody notified: it's yours alone, kept in your own history here.
-            """,
-            from: self
-        )
-    }
-
-    @objc private func checkInTapped() { submit(isPrivate: false) }
-    @objc private func privateTapped() { submit(isPrivate: true) }
-
-    private func submit(isPrivate: Bool) {
-        view.endEditing(true)
+        let isPrivate = selectedAudience == .justMe
         var data: [String: Any] = [
             "message": noteText,
-            "showInActivityFeed": isPrivate ? false : feedSwitch.isOn,
+            "showInActivityFeed": !isPrivate,
             "isPrivate": isPrivate,
             "notifiedGroups": isPrivate ? [] : Array(selectedGroups),
             "notifiedUsers": isPrivate ? [] : Array(selectedUsers),
@@ -373,16 +336,12 @@ final class CheckInComposeViewController: BaseViewController {
             case .list(let id):
                 data["audience"] = "innerCircle"
                 data["audienceListId"] = id
-            case .connections:
+            case .connections, .justMe:
                 break
             }
         }
         if let rating = ratingPills.selectedRating { data["rating"] = rating }
-        // Duration is optional: nothing picked = the server's two-hour default
-        let durations = ["30", "60", "120", "until_leave"]
-        if durationControl.selectedSegmentIndex != UISegmentedControl.noSegment {
-            data["duration"] = durations[durationControl.selectedSegmentIndex]
-        }
+        // No duration: the server's two-hour default applies
 
         // Place: a resolved POI that isn't saved yet has an empty circleId —
         // the backend creates the save from name/address/coordinates. A saved
@@ -403,13 +362,11 @@ final class CheckInComposeViewController: BaseViewController {
 
         let loading = showLoading(message: "Checking in...")
         checkInButton.isEnabled = false
-        privateButton.isEnabled = false
         APIService.shared.createCheckIn(data) { [weak self] result in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) {
                     guard let self = self else { return }
                     self.checkInButton.isEnabled = true
-                    self.privateButton.isEnabled = true
                     switch result {
                     case .success(let created):
                         var message = isPrivate ? "Checked in privately — no one was notified." : "You're checked in!"
