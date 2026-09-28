@@ -1,9 +1,11 @@
 import UIKit
 
-/// Self-service venue management for store owners (and super-users): adjust
-/// the points-per-purchase earn rate, add/edit/deactivate offers, and rotate
-/// the register QR code. Reached from OwnerVenuesViewController or the
-/// super-user VenueAdminViewController.
+/// The store owner's page for one store (managers and super-users see it too),
+/// grouped the way an owner thinks: at a glance, the place page, the loyalty
+/// program, announcements, the window sticker, owner & team, help. Which rows
+/// show and which need Business lives in VenueManageLayout; the copy in
+/// VenueManageCopy. Reached from OwnerVenuesViewController, the place page and
+/// the super-user store page.
 class VenueManageViewController: BaseViewController {
 
     // MARK: - Properties
@@ -34,56 +36,58 @@ class VenueManageViewController: BaseViewController {
     // avoid flashing locks; the server enforces regardless.
     private var ownerPremium: Bool
     private var managerCount: Int = 0
+    private let stats: AdminVenueStats?
+    /// Online-only brand store: no window sticker, register card, hours or cover
+    private let isVirtual: Bool
+    /// Summary line for the hours row, once the place has been read
+    private var hoursSummary: String?
 
-    private enum Section: Int, CaseIterable {
-        case dashboard
-        case businessInfo
-        case storefront
-        case windowQR
-        case earnRate
-        case offers
-        case announcements
-        case registerCode
-        case codes
+    private typealias Row = VenueManageLayout.Row
+
+    /// Rebuilt on every reload so offers/announcements added in place show up
+    private var layout: [(section: VenueManageLayout.Section, rows: [Row])] = []
+
+    private func rebuildLayout() {
+        layout = VenueManageLayout.sections(.init(
+            isVirtual: isVirtual,
+            hasPlace: venuePlaceId != nil,
+            hasStats: stats != nil,
+            offerCount: offers.count,
+            announcementCount: announcements.count
+        ))
     }
 
-    /// Free owner tier: everything else is business-tier (paywalled)
-    private static let freeSections: Set<Section> = [.dashboard, .businessInfo, .storefront, .windowQR]
+    private func reload() {
+        rebuildLayout()
+        tableView.reloadData()
+    }
 
     // MARK: - Storefront (menu, buttons, photos)
 
-    private enum StorefrontRow: Int, CaseIterable { case buttons, offerings, gallery }
     /// Loaded once on appear; the editors hand back the saved copy.
     private var storefront: VenueStorefront?
-    /// The one storefront row a free owner can use. A working Reserve button
-    /// helps the customer whoever is paying; menu and photos are Business.
-    private static let freeStorefrontRows: Set<StorefrontRow> = [.buttons]
 
     private func loadStorefront() {
         RewardsService.shared.fetchStorefront(venueId: venueId) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self, case .success(let storefront) = result else { return }
                 self.storefront = storefront
-                self.tableView.reloadSections([Section.storefront.rawValue], with: .none)
+                self.reload()
             }
         }
     }
 
-    private func openStorefrontRow(_ row: StorefrontRow) {
-        if !ownerPremium && !Self.freeStorefrontRows.contains(row) {
-            presentOwnerPaywall()
-            return
-        }
+    private func openStorefrontRow(_ row: Row) {
         let onSaved: (VenueStorefront) -> Void = { [weak self] saved in
             self?.storefront = saved
-            self?.tableView.reloadSections([Section.storefront.rawValue], with: .none)
+            self?.reload()
         }
         switch row {
-        case .buttons:
+        case .storefrontButtons:
             let vc = VenueStorefrontActionsViewController(venueId: venueId, actions: storefront?.actions)
             vc.onSaved = onSaved
             navigationController?.pushViewController(vc, animated: true)
-        case .offerings:
+        case .menu:
             let vc = VenueStorefrontOfferingsViewController(venueId: venueId, label: storefront?.offeringsLabel ?? "Menu", offerings: storefront?.offerings)
             vc.onSaved = onSaved
             navigationController?.pushViewController(vc, animated: true)
@@ -91,6 +95,8 @@ class VenueManageViewController: BaseViewController {
             let vc = VenueStorefrontGalleryViewController(venueId: venueId, photos: storefront?.gallery ?? [])
             vc.onSaved = onSaved
             navigationController?.pushViewController(vc, animated: true)
+        default:
+            break
         }
     }
 
@@ -119,6 +125,8 @@ class VenueManageViewController: BaseViewController {
         self.windowStickerUrl = venue.windowStickerUrl
         self.venuePlaceId = venue.globalPlaceId ?? venue.googlePlaceId
         self.managerCount = venue.managerUserIds?.count ?? 0
+        self.stats = venue.stats
+        self.isVirtual = venue.isVirtual == true
         // Default LOCKED until the server confirms — an optimistic-true here
         // showed free owners unlocked tools that then 403'd on tap
         self.ownerPremium = venue.ownerPremium ?? false
@@ -165,6 +173,8 @@ class VenueManageViewController: BaseViewController {
         tableView.dataSource = self
         tableView.delegate = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "ManageCell")
+        tableView.register(StatGridCell.self, forCellReuseIdentifier: StatGridCell.reuseId)
+        rebuildLayout()
 
         view.addSubview(tableView)
         NSLayoutConstraint.activate([
@@ -176,6 +186,7 @@ class VenueManageViewController: BaseViewController {
 
         refreshOwnerPremium()
         loadStorefront()
+        loadHoursSummary()
     }
 
     // MARK: - Business gate
@@ -200,13 +211,12 @@ class VenueManageViewController: BaseViewController {
     }
 
     private func applyOwnerPremium(_ premium: Bool) {
-        if premium != ownerPremium {
-            ownerPremium = premium
-            tableView.reloadData()
-        }
+        ownerPremium = premium
         // Header only on server confirmation — ownerPremium may start
         // optimistic, and neither state should flash before it's known.
         updateBusinessHeader(premium: premium)
+        // The plan row reads the confirmed state, so reload either way
+        reload()
     }
 
     private func presentOwnerPaywall() {
@@ -353,7 +363,7 @@ class VenueManageViewController: BaseViewController {
                         switch result {
                         case .success(let newRate):
                             self.earnRate = newRate
-                            self.tableView.reloadData()
+                            self.reload()
                         case .failure(let error):
                             self.showError(error)
                         }
@@ -393,7 +403,7 @@ class VenueManageViewController: BaseViewController {
                             switch result {
                             case .success(let offers):
                                 self.offers = offers
-                                self.tableView.reloadData()
+                                self.reload()
                             case .failure(let error):
                                 self.showError(error)
                             }
@@ -458,7 +468,7 @@ class VenueManageViewController: BaseViewController {
                     switch result {
                     case .success(let offers):
                         self.offers = offers
-                        self.tableView.reloadData()
+                        self.reload()
                     case .failure(let error):
                         self.showError(error)
                     }
@@ -642,7 +652,7 @@ class VenueManageViewController: BaseViewController {
                 switch result {
                 case .success(let announcements):
                     self.announcements = announcements
-                    self.tableView.reloadData()
+                    self.reload()
                 case .failure(let error):
                     self.showError(error)
                 }
@@ -694,7 +704,7 @@ class VenueManageViewController: BaseViewController {
                     case .success(let venue):
                         self.contactName = venue.contactName
                         self.contactEmail = venue.contactEmail
-                        self.tableView.reloadData()
+                        self.reload()
                     case .failure(let error):
                         self.showError(error)
                     }
@@ -746,7 +756,7 @@ class VenueManageViewController: BaseViewController {
                     case .success(let rotated):
                         self.registerCode = rotated.registerCode
                         self.earnRate = rotated.earnRate
-                        self.tableView.reloadData()
+                        self.reload()
                         self.showConfirmation(
                             title: "New register code: \(rotated.registerCode)",
                             message: "Email the printable QR codes to yourself now?",
@@ -778,59 +788,164 @@ class VenueManageViewController: BaseViewController {
             }
         }
     }
+
+    // MARK: - Place page: hours & cover photo
+
+    private func loadHoursSummary() {
+        guard let placeId = venuePlaceId, !isVirtual else { return }
+        GlobalPlaceService.shared.getGlobalPlace(id: placeId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, case .success(let response) = result else { return }
+                self.applyHoursSummary(response.globalPlace.googleData?.openingHours)
+            }
+        }
+    }
+
+    private func applyHoursSummary(_ hours: [OpeningHour]?) {
+        let draft = VenueHoursDraft(hours: hours)
+        let openDays = draft.days.filter { !$0.isClosed }.count
+        hoursSummary = (hours ?? []).isEmpty
+            ? "Add your hours so customers know when to come"
+            : "Open \(openDays) day\(openDays == 1 ? "" : "s") a week"
+        reload()
+    }
+
+    private func openHours() {
+        guard let placeId = venuePlaceId else { return }
+        let hoursVC = VenueHoursViewController(venueId: venueId, placeId: placeId)
+        hoursVC.onSaved = { [weak self] hours in
+            self?.applyHoursSummary(hours)
+            self?.showSuccess("Hours updated on your place page")
+        }
+        navigationController?.pushViewController(hoursVC, animated: true)
+    }
+
+    /// Same flow as the place page's owner menu: pick which photo leads the page
+    private func openCoverPhoto() {
+        guard let placeId = venuePlaceId else { return }
+        let loading = AlertPresenter.showLoading(message: "Loading photos...", from: self)
+        GlobalPlaceService.shared.getGlobalPlace(id: placeId) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let response):
+                        let place = response.globalPlace
+                        let urls = (place.photos ?? []).map(\.url)
+                        guard !urls.isEmpty else {
+                            AlertPresenter.showError(
+                                title: "No Photos Yet",
+                                message: "Add photos to your place first — then pick which one leads the page.",
+                                from: self
+                            )
+                            return
+                        }
+                        let picker = CoverPhotoPickerViewController(photoUrls: urls, currentCoverUrl: place.coverPhotoUrl)
+                        picker.onSelect = { [weak self] url in self?.saveCoverPhoto(url) }
+                        self.present(UINavigationController(rootViewController: picker), animated: true)
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+    }
+
+    private func saveCoverPhoto(_ url: String?) {
+        RewardsService.shared.setVenueCoverPhoto(venueId: venueId, url: url) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success: self?.showSuccess("Cover photo updated")
+                case .failure(let error): self?.showError(error)
+                }
+            }
+        }
+    }
+
+    // MARK: - Register card
+
+    private func showRegisterCard() {
+        let qrVC = VenueQRViewController(
+            venueName: venueName,
+            stickerUrl: "\(ShareLinks.base)/s/\(registerCode)",
+            screenTitle: "Register Card QR",
+            caption: VenueAdminCopy.registerCardExplanation(earnRate: earnRate, loyaltyActive: ownerPremium)
+        )
+        navigationController?.pushViewController(qrVC, animated: true)
+    }
+
+    // MARK: - Plan & more
+
+    private func openPlan() {
+        if businessHeaderState == true {
+            if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                UIApplication.shared.open(url)
+            }
+        } else {
+            presentOwnerPaywall()
+        }
+    }
+
+    private func openOwnerGuide() {
+        guard let topic = HelpContentProvider.shared.topic(withId: "store-video-tutorial") else { return }
+        navigationController?.pushViewController(HelpTopicViewController(topic: topic), animated: true)
+    }
+
+    private func openBrandStorefront() {
+        guard let userId = AuthService.shared.getUserId() else { return }
+        RewardsService.shared.getStorefront(userId: userId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                let editor = StorefrontEditViewController()
+                if case .success(let data) = result {
+                    editor.initialStorefront = data.storefront
+                    editor.initialFindUsAtCircleId = nil
+                }
+                self.navigationController?.pushViewController(editor, animated: true)
+            }
+        }
+    }
+
+    private func openManagers() {
+        let managersVC = VenueManagersViewController(venueId: venueId, venueName: venueName)
+        managersVC.onManagersChanged = { [weak self] count in
+            self?.managerCount = count
+            self?.reload()
+        }
+        navigationController?.pushViewController(managersVC, animated: true)
+    }
 }
+
+
 
 // MARK: - UITableViewDataSource / Delegate
 
 extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate {
 
+    private func row(at indexPath: IndexPath) -> Row? {
+        guard layout.indices.contains(indexPath.section) else { return nil }
+        let rows = layout[indexPath.section].rows
+        return rows.indices.contains(indexPath.row) ? rows[indexPath.row] : nil
+    }
+
     func numberOfSections(in tableView: UITableView) -> Int {
-        return Section.allCases.count
+        layout.count
     }
 
-    /// Header title + the plain-language explanation behind its ⓘ button.
-    /// Every tool here gets one — store owners shouldn't have to guess what
-    /// anything is for.
-    private func headerInfo(for section: Section) -> (title: String, explanation: String) {
-        switch section {
-        case .dashboard:
-            return ("Dashboard",
-                    "Your store's numbers: how many people saved your place, follow it, and scan your QR codes. Headline stats are free; detailed monthly trends come with FavCircles Business.")
-        case .businessInfo:
-            return ("Business info",
-                    "How FavCircles reaches you about this venue, plus a link to your public place page. Monthly reports and printable QR codes go to the contact email.")
-        case .storefront:
-            return ("Your storefront",
-                    "What customers see on your place page beyond points: buttons that make money (Reserve, Order, Catering, Book — free), and with FavCircles Business your menu, a few featured items with photos and prices, and your own photos of the place.")
-        case .windowQR:
-            return ("Scan-to-save QR",
-                    "Print this code and put it in your window. Customers scan it to save your place in FavCircles and start earning points. Free for every venue.")
-        case .earnRate:
-            return ("Points per purchase",
-                    "How many points a customer earns each time they scan your register card after buying something (limited to once per day per customer).")
-        case .offers:
-            return ("Offers for points",
-                    "Rewards customers can redeem with the points they earn at your store — for example \"Free coffee — 100 points\". The customer taps Redeem at your counter and shows you the confirmation screen; you hand over the reward.")
-        case .announcements:
-            return ("Announcements",
-                    "Short updates shown on your place's page and in your followers' feeds — deals, happy hours, events. Expired announcements hide automatically.")
-        case .registerCode:
-            return ("Register QR card",
-                    "The QR card you keep at the register. Customers scan it after a purchase to collect their points. Rotating it invalidates the old printed card — do this if a code leaks or is being abused.")
-        case .codes:
-            return ("Loyalty codes",
-                    "Single-use codes worth loyalty points. Pack one into every shipped order or hand them out at your conference booth — customers redeem them in the app and become followers of your store.")
-        }
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        layout[section].rows.count
     }
 
+    /// Uppercase title plus an ⓘ that explains the group in plain words —
+    /// store owners shouldn't have to guess what anything is for.
     func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-        let info = headerInfo(for: Section(rawValue: section)!)
+        let info = VenueManageCopy.header(layout[section].section, isVirtual: isVirtual)
 
         let header = UIView()
 
         let label = UILabel()
         label.text = info.title.uppercased()
-        label.font = UIFont.systemFont(ofSize: 13)
+        label.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
         label.textColor = .secondaryLabel
         label.translatesAutoresizingMaskIntoConstraints = false
 
@@ -856,194 +971,35 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
     }
 
     @objc private func sectionInfoTapped(_ sender: UIButton) {
-        guard let section = Section(rawValue: sender.tag) else { return }
-        let info = headerInfo(for: section)
+        guard layout.indices.contains(sender.tag) else { return }
+        let info = VenueManageCopy.header(layout[sender.tag].section, isVirtual: isVirtual)
         AlertPresenter.showInfo(title: info.title, message: info.explanation, from: self)
     }
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        switch Section(rawValue: section)! {
-        case .dashboard:
-            return nil
-        case .businessInfo:
-            return "Where FavCircles reaches you about your venue. Monthly reports and printable QR codes go to the contact email."
-        case .storefront:
-            return "Buttons are free for every venue. Menu, featured items and photos come with FavCircles Business."
-        case .windowQR:
-            return "Free for every venue: customers scan this in your window (or from your phone) to save your place and start earning points."
-        case .earnRate:
-            return "Customers earn these points each time they scan your register card after a purchase (once per day)."
-        case .offers:
-            return "Offers are what customers redeem their points for at your counter."
-        case .announcements:
-            return "Announcements show on your place's page to everyone — deals, happy hours, events. Expired ones hide automatically."
-        case .registerCode:
-            return "Generating a new QR immediately invalidates the old printed card — useful if a code leaks."
-        case .codes:
-            return "Mint a batch, share the list to your printer, and pack one code into every order."
-        }
-    }
-
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        switch Section(rawValue: section)! {
-        case .dashboard: return 1
-        case .businessInfo: return venuePlaceId != nil ? 4 : 3 // place page + contact name + contact email + managers
-        case .storefront: return StorefrontRow.allCases.count
-        case .windowQR: return 2 // show QR + email QR codes
-        case .earnRate: return 1
-        case .offers: return offers.count + 1 // + "Add offer" row
-        case .announcements: return announcements.count + 1 // + "Add announcement" row
-        case .registerCode: return 1 // rotate
-        case .codes: return 1
-        }
+        VenueManageCopy.footer(layout[section].section, isVirtual: isVirtual)
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "ManageCell", for: indexPath)
-        var config = cell.defaultContentConfiguration()
-        cell.accessoryType = .none
+        guard let row = row(at: indexPath) else { return UITableViewCell() }
 
-        switch Section(rawValue: indexPath.section)! {
-        case .dashboard:
-            config.text = "Stats & Insights"
-            config.secondaryText = "Saves, followers, visits, redemptions"
-            config.image = UIImage(systemName: "chart.bar.fill")
-            config.imageProperties.tintColor = Constants.Colors.primary
-            cell.accessoryType = .disclosureIndicator
-
-        case .businessInfo:
-            let contactRow = indexPath.row - (venuePlaceId != nil ? 1 : 0)
-            if contactRow < 0 {
-                config.text = "Your place page"
-                config.secondaryText = "View and update your public listing"
-                config.image = UIImage(systemName: "storefront")
-            } else if contactRow == 0 {
-                config.text = "Contact name"
-                config.secondaryText = contactName?.isEmpty == false ? contactName : "Add your name"
-                config.image = UIImage(systemName: "person.crop.circle")
-            } else if contactRow == 1 {
-                config.text = "Contact email"
-                config.secondaryText = contactEmail?.isEmpty == false ? contactEmail : "Add an email"
-                config.image = UIImage(systemName: "envelope.badge")
-            } else {
-                config.text = "Managers"
-                config.secondaryText = managerCount > 0
-                    ? "\(managerCount) manager\(managerCount == 1 ? "" : "s") help\(managerCount == 1 ? "s" : "") run this store"
-                    : "Invite someone to run this store with you"
-                config.image = UIImage(systemName: "person.2.badge.gearshape")
+        if row == .statTiles {
+            let cell = tableView.dequeueReusableCell(withIdentifier: StatGridCell.reuseId, for: indexPath) as! StatGridCell
+            if let stats = stats {
+                cell.configure(tiles: VenueManageCopy.statTiles(stats))
             }
-            config.imageProperties.tintColor = Constants.Colors.primary
-            cell.accessoryType = .disclosureIndicator
-
-        case .storefront:
-            let row = StorefrontRow(rawValue: indexPath.row)!
-            let label = storefront?.offeringsLabel ?? "Menu"
-            switch row {
-            case .buttons:
-                let count = storefront?.actions?.buttons.count ?? 0
-                config.text = "Reserve · Order · Catering · Book"
-                config.secondaryText = count > 0 ? "\(count) button\(count == 1 ? "" : "s") on your page" : "Add the links customers tap to spend money"
-                config.image = UIImage(systemName: "hand.tap")
-            case .offerings:
-                let o = storefront?.offerings
-                let featured = o?.featured.count ?? 0
-                let pages = o?.files.count ?? 0
-                var parts: [String] = []
-                if featured > 0 { parts.append("\(featured) featured") }
-                if pages > 0 { parts.append("\(pages) photo\(pages == 1 ? "" : "s")") }
-                if !(o?.link ?? "").isEmpty { parts.append("link") }
-                config.text = "\(label) & featured items"
-                config.secondaryText = parts.isEmpty ? "A link or photos of your \(label.lowercased()), plus a few dishes with a picture and a price" : parts.joined(separator: " · ")
-                config.image = UIImage(systemName: "menucard")
-            case .gallery:
-                let count = storefront?.gallery.count ?? 0
-                config.text = "Your photos"
-                config.secondaryText = count > 0 ? "\(count) photo\(count == 1 ? "" : "s") — yours, not Google's" : "Food, the room, the team. Yours, not Google's."
-                config.image = UIImage(systemName: "photo.on.rectangle.angled")
-            }
-            config.imageProperties.tintColor = Constants.Colors.primary
-            cell.accessoryType = .disclosureIndicator
-        case .windowQR:
-            if indexPath.row == 0 {
-                config.text = "Show scan-to-save QR"
-                config.secondaryText = "Display or share your window sticker"
-                config.image = UIImage(systemName: "qrcode.viewfinder")
-                cell.accessoryType = .disclosureIndicator
-            } else {
-                config.text = "Email QR codes to me"
-                config.secondaryText = "Printable window + register stickers"
-                config.image = UIImage(systemName: "envelope")
-            }
-            config.imageProperties.tintColor = Constants.Colors.primary
-
-        case .earnRate:
-            config.text = "\(earnRate) points"
-            config.secondaryText = "Tap to change"
-            config.image = UIImage(systemName: "dollarsign.circle")
-            config.imageProperties.tintColor = Constants.Colors.primary
-
-        case .offers:
-            if indexPath.row < offers.count {
-                let offer = offers[indexPath.row]
-                let isActive = offer.active != false
-                config.text = offer.title
-                config.secondaryText = "\(offer.pointsCost) pts\(isActive ? "" : " · inactive")"
-                config.textProperties.color = isActive ? .label : .secondaryLabel
-                config.image = UIImage(systemName: isActive ? "gift" : "gift.fill")
-                config.imageProperties.tintColor = isActive ? Constants.Colors.primary : .systemGray3
-                cell.accessoryType = .disclosureIndicator
-            } else {
-                config.text = "Add offer"
-                config.textProperties.color = Constants.Colors.primary
-                config.image = UIImage(systemName: "plus.circle")
-                config.imageProperties.tintColor = Constants.Colors.primary
-            }
-
-        case .announcements:
-            if indexPath.row < announcements.count {
-                let announcement = announcements[indexPath.row]
-                let expired = announcement.isExpired
-                var detail = announcement.message
-                if let expiry = announcement.expiryDate {
-                    let formatter = DateFormatter()
-                    formatter.dateStyle = .medium
-                    formatter.timeStyle = .none
-                    detail += expired
-                        ? " · expired \(formatter.string(from: expiry))"
-                        : " · until \(formatter.string(from: expiry))"
-                }
-                config.text = announcement.title
-                config.secondaryText = detail
-                config.textProperties.color = expired ? .secondaryLabel : .label
-                config.image = UIImage(systemName: expired ? "megaphone" : "megaphone.fill")
-                config.imageProperties.tintColor = expired ? .systemGray3 : .systemOrange
-                cell.accessoryType = .disclosureIndicator
-            } else {
-                config.text = "Add announcement"
-                config.textProperties.color = Constants.Colors.primary
-                config.image = UIImage(systemName: "plus.circle")
-                config.imageProperties.tintColor = Constants.Colors.primary
-            }
-
-        case .registerCode:
-            config.text = "Generate new register QR"
-            config.secondaryText = "Current code: \(registerCode)"
-            config.image = UIImage(systemName: "qrcode")
-            config.imageProperties.tintColor = Constants.Colors.primary
-
-        case .codes:
-            config.text = "Loyalty codes"
-            config.secondaryText = "Order-box cards & booth handouts"
-            config.image = UIImage(systemName: "ticket")
-            config.imageProperties.tintColor = Constants.Colors.primary
-            cell.accessoryType = .disclosureIndicator
+            cell.selectionStyle = .none
+            return cell
         }
 
+        let cell = tableView.dequeueReusableCell(withIdentifier: "ManageCell", for: indexPath)
+        var config = cell.defaultContentConfiguration()
+        config.imageProperties.tintColor = Constants.Colors.primary
+        cell.accessoryType = .disclosureIndicator
+        describe(row, into: &config)
+
         // Business-tier tools show a lock for free owners
-        let storefrontLocked = Section(rawValue: indexPath.section) == .storefront
-            && !ownerPremium
-            && !Self.freeStorefrontRows.contains(StorefrontRow(rawValue: indexPath.row)!)
-        if storefrontLocked || (!ownerPremium && !Self.freeSections.contains(Section(rawValue: indexPath.section)!)) {
+        if !ownerPremium && VenueManageLayout.isBusiness(row) {
             let lock = UIImageView(image: UIImage(systemName: "lock.fill"))
             lock.tintColor = .systemGray2
             cell.accessoryView = lock
@@ -1052,69 +1008,195 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         }
 
         config.secondaryTextProperties.color = .secondaryLabel
-        config.secondaryTextProperties.font = UIFont.systemFont(ofSize: 12)
+        config.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
         cell.contentConfiguration = config
         return cell
     }
 
+    /// Title, detail and symbol for one row
+    private func describe(_ row: Row, into config: inout UIListContentConfiguration) {
+        func set(_ text: String, _ detail: String?, _ symbol: String) {
+            config.text = text
+            config.secondaryText = detail
+            config.image = UIImage(systemName: symbol)
+        }
+        func addRow(_ text: String) {
+            set(text, nil, "plus.circle.fill")
+            config.textProperties.color = Constants.Colors.primary
+        }
+
+        switch row {
+        case .statTiles:
+            break
+        case .fullStats:
+            set("Stats & Insights", "Monthly trends for saves, visits and redemptions", "chart.bar.fill")
+        case .savers:
+            set("Who saved your place", "The people with you in their circles", "bookmark.fill")
+        case .followers:
+            set("Followers", "People who get your announcements", "person.2.fill")
+        case .activity:
+            set("Visits & redemptions", "Every check-in and reward, newest first", "list.bullet.rectangle")
+
+        case .viewPage:
+            set("View your place page", "Exactly what customers see", "eye")
+        case .hours:
+            set("Opening hours", hoursSummary ?? "Set the hours shown on your page", "clock")
+        case .coverPhoto:
+            set("Cover photo", "Choose the photo that leads your page", "photo")
+        case .storefrontButtons:
+            let count = storefront?.actions?.buttons.count ?? 0
+            set("Reserve · Order · Catering · Book",
+                count > 0 ? "\(count) button\(count == 1 ? "" : "s") on your page" : "Add the links customers tap to spend money",
+                "hand.tap")
+        case .menu:
+            let label = storefront?.offeringsLabel ?? "Menu"
+            let o = storefront?.offerings
+            var parts: [String] = []
+            if let featured = o?.featured.count, featured > 0 { parts.append("\(featured) featured") }
+            if let pages = o?.files.count, pages > 0 { parts.append("\(pages) photo\(pages == 1 ? "" : "s")") }
+            if !(o?.link ?? "").isEmpty { parts.append("link") }
+            set("\(label) & featured items",
+                parts.isEmpty ? "A link or photos of your \(label.lowercased()), plus a few items with a picture and a price" : parts.joined(separator: " · "),
+                "menucard")
+        case .gallery:
+            let count = storefront?.gallery.count ?? 0
+            set("Your photos",
+                count > 0 ? "\(count) photo\(count == 1 ? "" : "s") — yours, not Google's" : "Food, the room, the team. Yours, not Google's.",
+                "photo.on.rectangle.angled")
+
+        case .earnRate:
+            set("Points per purchase", "\(earnRate) points each time a customer scans", "dollarsign.circle")
+        case .offer(let index):
+            let offer = offers[index]
+            let isActive = offer.active != false
+            set(offer.title, "\(offer.pointsCost) points\(isActive ? "" : " · paused")", isActive ? "gift" : "gift.fill")
+            config.textProperties.color = isActive ? .label : .secondaryLabel
+            config.imageProperties.tintColor = isActive ? Constants.Colors.primary : .systemGray3
+        case .addOffer:
+            addRow("Add an offer")
+        case .showRegisterCard:
+            set("Register card QR", "Code \(registerCode) · show or share it", "qrcode")
+        case .replaceRegisterCard:
+            set("Make a new register card", "Turns the printed card off right away", "arrow.triangle.2.circlepath")
+        case .loyaltyCodes:
+            set("Loyalty codes", "Single-use codes for orders and event handouts", "ticket")
+
+        case .announcement(let index):
+            let announcement = announcements[index]
+            let expired = announcement.isExpired
+            var detail = announcement.message
+            if let expiry = announcement.expiryDate {
+                let formatter = DateFormatter()
+                formatter.dateStyle = .medium
+                formatter.timeStyle = .none
+                detail += expired
+                    ? " · expired \(formatter.string(from: expiry))"
+                    : " · until \(formatter.string(from: expiry))"
+            }
+            set(announcement.title, detail, expired ? "megaphone" : "megaphone.fill")
+            config.textProperties.color = expired ? .secondaryLabel : .label
+            config.imageProperties.tintColor = expired ? .systemGray3 : .systemOrange
+        case .addAnnouncement:
+            addRow("Post an announcement")
+
+        case .showWindowSticker:
+            set("Window sticker QR", "Show or share the scan-to-save code", "qrcode.viewfinder")
+        case .emailStickers:
+            set("Email me printable QR codes", contactEmail.map { "Sent to \($0)" } ?? "Window sticker and register card", "envelope")
+
+        case .contactName:
+            set("Contact name", contactName?.isEmpty == false ? contactName : "Add your name", "person.crop.circle")
+        case .contactEmail:
+            set("Contact email", contactEmail?.isEmpty == false ? contactEmail : "Add an email", "envelope.badge")
+        case .managers:
+            set("Managers", VenueManageCopy.managersLine(managerCount), "person.2.badge.gearshape")
+        case .plan:
+            let line = VenueManageCopy.planLine(premium: businessHeaderState)
+            set(line.title, line.detail, businessHeaderState == true ? "checkmark.seal.fill" : "sparkles")
+            if businessHeaderState == true { config.imageProperties.tintColor = .systemGreen }
+
+        case .ownerGuide:
+            set("Store owner guide", "A 4-minute video tour of everything here", "play.rectangle")
+        case .brandStorefront:
+            set("Brand storefront", "How your brand appears on your profile", "storefront")
+        case .addBusiness:
+            set("Add another location", "Claim another store you run", "plus.square.on.square")
+        }
+    }
+
+    func tableView(_ tableView: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
+        row(at: indexPath) != .statTiles
+    }
+
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
+        guard let row = row(at: indexPath) else { return }
 
-        let section = Section(rawValue: indexPath.section)!
-
-        // Free owners get the paywall for any business-tier tool
-        if !ownerPremium && !Self.freeSections.contains(section) {
+        // Free owners get the paywall for any Business tool
+        if !ownerPremium && VenueManageLayout.isBusiness(row) {
             presentOwnerPaywall()
             return
         }
 
-        switch section {
-        case .dashboard:
-            let dashboardVC = VenueDashboardViewController(venueId: venueId, venueName: venueName)
-            navigationController?.pushViewController(dashboardVC, animated: true)
+        switch row {
+        case .statTiles:
+            break
+        case .fullStats:
+            navigationController?.pushViewController(VenueDashboardViewController(venueId: venueId, venueName: venueName), animated: true)
+        case .savers:
+            navigationController?.pushViewController(VenueAudienceViewController(venueId: venueId, mode: .savers), animated: true)
+        case .followers:
+            navigationController?.pushViewController(VenueAudienceViewController(venueId: venueId, mode: .followers), animated: true)
+        case .activity:
+            navigationController?.pushViewController(VenueActivityViewController(venueId: venueId), animated: true)
+
+        case .viewPage:
+            viewPublicPageTapped()
+        case .hours:
+            openHours()
+        case .coverPhoto:
+            openCoverPhoto()
+        case .storefrontButtons, .menu, .gallery:
+            openStorefrontRow(row)
+
         case .earnRate:
             editEarnRate()
-        case .offers:
-            if indexPath.row < offers.count {
-                manageOffer(offers[indexPath.row])
-            } else {
-                addOffer()
-            }
-        case .announcements:
-            if indexPath.row < announcements.count {
-                manageAnnouncement(announcements[indexPath.row])
-            } else {
-                addAnnouncement()
-            }
-        case .storefront:
-            openStorefrontRow(StorefrontRow(rawValue: indexPath.row)!)
-        case .businessInfo:
-            let contactRow = indexPath.row - (venuePlaceId != nil ? 1 : 0)
-            if contactRow < 0 {
-                viewPublicPageTapped()
-            } else if contactRow == 0 {
-                editContactName()
-            } else if contactRow == 1 {
-                editContactEmail()
-            } else {
-                let managersVC = VenueManagersViewController(venueId: venueId, venueName: venueName)
-                managersVC.onManagersChanged = { [weak self] count in
-                    self?.managerCount = count
-                    self?.tableView.reloadData()
-                }
-                navigationController?.pushViewController(managersVC, animated: true)
-            }
-        case .windowQR:
-            if indexPath.row == 0 {
-                showWindowQR()
-            } else {
-                emailQR()
-            }
-        case .registerCode:
+        case .offer(let index):
+            manageOffer(offers[index])
+        case .addOffer:
+            addOffer()
+        case .showRegisterCard:
+            showRegisterCard()
+        case .replaceRegisterCard:
             rotateRegisterCode()
-        case .codes:
-            let codesVC = VenueCodesViewController(venueId: venueId, venueName: venueName)
-            navigationController?.pushViewController(codesVC, animated: true)
+        case .loyaltyCodes:
+            navigationController?.pushViewController(VenueCodesViewController(venueId: venueId, venueName: venueName), animated: true)
+
+        case .announcement(let index):
+            manageAnnouncement(announcements[index])
+        case .addAnnouncement:
+            addAnnouncement()
+
+        case .showWindowSticker:
+            showWindowQR()
+        case .emailStickers:
+            emailQR()
+
+        case .contactName:
+            editContactName()
+        case .contactEmail:
+            editContactEmail()
+        case .managers:
+            openManagers()
+        case .plan:
+            openPlan()
+
+        case .ownerGuide:
+            openOwnerGuide()
+        case .brandStorefront:
+            openBrandStorefront()
+        case .addBusiness:
+            navigationController?.pushViewController(ClaimBusinessViewController(), animated: true)
         }
     }
 }
