@@ -17,9 +17,11 @@ struct AppleMapItemFormFillTests {
         #expect(f(.restaurant, nil) == M(.restaurant))
         #expect(f(.cafe, nil) == M(.cafe, "Coffee Shop"))
         #expect(f(.brewery, nil) == M(.bar, "Brewery"))
-        #expect(f(.campground, nil) == M(.hotel))
+        #expect(f(.campground, nil) == M(.outdoor, "Campground"))
         #expect(f(.foodMarket, nil) == M(.retail, "Grocery Store"))
-        #expect(f(.evCharger, nil) == M(.service))
+        #expect(f(.evCharger, nil) == M(.transport))
+        #expect(f(.gasStation, nil) == M(.transport))
+        #expect(f(.laundry, nil) == M(.service))
         #expect(f(.atm, nil) == M(.finance))
         #expect(f(.hospital, nil) == M(.healthcare, "Hospital"))
         #expect(f(.parking, nil) == M(.transport, "Parking"))
@@ -89,5 +91,18 @@ struct AppleMapItemFormFillTests {
         #expect(AppleMapItemFormFill.description(poiCategory: nil, locality: "Phoenix", phone: nil, website: nil) == "Located in Phoenix")
         #expect(AppleMapItemFormFill.description(poiCategory: .restaurant, locality: nil, phone: nil, website: nil) == "A dining establishment")
         #expect(AppleMapItemFormFill.description(poiCategory: nil, locality: nil, phone: "1", website: nil) == "\nPhone: 1")
+    }
+
+    /// Charlotte Country Club (Apple: golf) was guessed "Fitness".
+    @Test func golfIsOutdoorsNotFitness() {
+        let f = AppleMapItemFormFill.categoryMapping
+        if #available(iOS 18.0, *) {
+            #expect(f(.golf, "Charlotte Country Club") == M(.outdoor, "Golf Course"))
+            #expect(f(.tennis, nil) == M(.fitness))
+        }
+        // No Apple category: the name decides
+        #expect(f(nil, "Carmel Golf Club") == M(.outdoor))
+        #expect(f(nil, "Monster Mini Golf") == M(.entertainment))
+        #expect(f(nil, "Putt-Putt Fun Center") == M(.entertainment))
     }
 }

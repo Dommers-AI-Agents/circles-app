@@ -32,7 +32,10 @@ enum AppleMapItemFormFill {
         return mapping(forName: name) ?? CategoryMapping(.other)
     }
 
-    /// nil = a POI category we have no mapping for.
+    /// nil = a POI category we have no mapping for. Kept in step with the
+    /// server's APPLE_POI_MAP (backend/services/placeCategoryDerivation.js):
+    /// the server keeps whatever category the app sends, so this table is
+    /// the one users live with.
     static func mapping(forPOICategory poiCategory: MKPointOfInterestCategory) -> CategoryMapping? {
         switch poiCategory {
         case .restaurant: return CategoryMapping(.restaurant)
@@ -41,10 +44,12 @@ enum AppleMapItemFormFill {
         case .nightlife: return CategoryMapping(.bar, "Nightclub")
         case .brewery: return CategoryMapping(.bar, "Brewery")
         case .winery: return CategoryMapping(.bar, "Wine Bar")
-        case .hotel, .campground: return CategoryMapping(.hotel)
+        case .hotel: return CategoryMapping(.hotel)
+        case .campground: return CategoryMapping(.outdoor, "Campground")
         case .store: return CategoryMapping(.retail)
         case .foodMarket: return CategoryMapping(.retail, "Grocery Store")
-        case .gasStation, .evCharger, .carRental, .laundry, .postOffice: return CategoryMapping(.service)
+        case .gasStation, .evCharger, .carRental: return CategoryMapping(.transport)
+        case .laundry, .postOffice: return CategoryMapping(.service)
         case .bank, .atm: return CategoryMapping(.finance)
         case .pharmacy: return CategoryMapping(.healthcare, "Pharmacy")
         case .hospital: return CategoryMapping(.healthcare, "Hospital")
@@ -77,7 +82,10 @@ enum AppleMapItemFormFill {
                 case .bowling, .miniGolf, .goKart, .fairground, .conventionCenter: return CategoryMapping(.entertainment)
                 case .castle, .landmark, .fortress, .nationalMonument: return CategoryMapping(.attraction, "Landmark")
                 case .planetarium: return CategoryMapping(.attraction)
-                case .golf, .tennis, .swimming, .rockClimbing, .skating, .baseball, .basketball, .soccer, .volleyball:
+                // A golf course or country club is somewhere you go outside,
+                // not a gym — Charlotte Country Club came up "Fitness"
+                case .golf: return CategoryMapping(.outdoor, "Golf Course")
+                case .tennis, .swimming, .rockClimbing, .skating, .baseball, .basketball, .soccer, .volleyball:
                     return CategoryMapping(.fitness)
                 case .hiking, .kayaking, .fishing, .surfing, .skiing, .skatePark: return CategoryMapping(.outdoor)
                 default: return nil
@@ -98,7 +106,8 @@ enum AppleMapItemFormFill {
         (#"\b(hotel|hostel|motel|inn|resort|lodge|bed & breakfast|b&b)\b"#, CategoryMapping(.hotel)),
         (#"\b(restaurant|kitchen|grill|pizza|pizzeria|burger|sushi|taco|taqueria|bbq|barbecue|steakhouse|diner|bistro|trattoria|ramen|noodle|deli|sandwich|eatery|cantina)\b"#, CategoryMapping(.restaurant)),
         (#"\b(school|university|college|library|academy)\b"#, CategoryMapping(.education)),
-        (#"\b(park|trail|beach|campground|garden|gardens|marina|preserve)\b"#, CategoryMapping(.outdoor)),
+        (#"\b(mini golf|miniature golf|putt putt|putt-putt)\b"#, CategoryMapping(.entertainment)),
+        (#"\b(park|trail|beach|campground|garden|gardens|marina|preserve|golf)\b"#, CategoryMapping(.outdoor)),
         (#"\b(airport|train station|metro|subway|bus station|ferry|gas station|parking)\b"#, CategoryMapping(.transport)),
         (#"\b(bank|credit union|atm)\b"#, CategoryMapping(.finance)),
         (#"\b(museum|gallery|monument|landmark|memorial|cathedral|church|temple|mosque|synagogue)\b"#, CategoryMapping(.attraction)),
