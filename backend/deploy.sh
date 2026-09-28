@@ -172,6 +172,11 @@ if [ ! -z "$SMTP_HOST" ]; then
     ENV_VARS="$ENV_VARS,SMTP_PASS=$SMTP_PASS"
     ENV_VARS="$ENV_VARS,EMAIL_FROM_ADDRESS=$EMAIL_FROM_ADDRESS"
     ENV_VARS="$ENV_VARS,EMAIL_FROM_NAME=$EMAIL_FROM_NAME"
+    # DKIM: the backend signs its own mail (GoDaddy won't). Base64 has no commas.
+    if [ ! -z "$DKIM_PRIVATE_KEY_B64" ]; then
+        ENV_VARS="$ENV_VARS,DKIM_PRIVATE_KEY_B64=$DKIM_PRIVATE_KEY_B64"
+        ENV_VARS="$ENV_VARS,DKIM_SELECTOR=${DKIM_SELECTOR:-fc1}"
+    fi
 fi
 
 # Add Apple Shared Secret for subscription receipt validation

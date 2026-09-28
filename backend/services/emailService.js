@@ -49,7 +49,8 @@ class EmailService {
           tls: {
             // Do not fail on invalid certs (useful for self-signed)
             rejectUnauthorized: false
-          }
+          },
+          ...EmailService.dkimOptions()
         });
         this.isConfigured = true;
         
@@ -88,6 +89,25 @@ class EmailService {
     // Store email configuration
     this.fromAddress = process.env.EMAIL_FROM_ADDRESS || process.env.GMAIL_USER || process.env.SMTP_USER || 'noreply@circles-app.com';
     this.fromName = process.env.EMAIL_FROM_NAME || 'Circles';
+  }
+
+  // We sign our own mail. GoDaddy disabled DKIM on the cPanel account
+  // ("You do not have the feature emailauth"), and unsigned mail through its
+  // shared relay was refused by iCloud (554 5.7.1 [HM08], 2026-09-28). The
+  // public half lives in Cloudflare DNS at <selector>._domainkey.favcircles.com;
+  // the private key rides in as one base64 line (DKIM_PRIVATE_KEY_B64).
+  static dkimOptions() {
+    const encoded = process.env.DKIM_PRIVATE_KEY_B64;
+    if (!encoded) return {};
+    const privateKey = Buffer.from(encoded, 'base64').toString('utf8');
+    if (!privateKey.includes('PRIVATE KEY')) {
+      console.error('❌ DKIM_PRIVATE_KEY_B64 is not a PEM private key; sending unsigned');
+      return {};
+    }
+    const keySelector = process.env.DKIM_SELECTOR || 'fc1';
+    const domainName = process.env.DKIM_DOMAIN || 'favcircles.com';
+    console.log(`📧 DKIM signing on: d=${domainName} s=${keySelector}`);
+    return { dkim: { domainName, keySelector, privateKey } };
   }
 
   createMockTransporter() {
