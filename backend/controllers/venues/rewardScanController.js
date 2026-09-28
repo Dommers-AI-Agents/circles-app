@@ -442,6 +442,9 @@ exports.getVenueByPlace = async (req, res) => {
           ...publicVenueInfo(venue),
           earnRate: rewardService.effectiveEarnRate(venue)
         },
+        // Whether a register scan here earns right now (the same check the
+        // scan makes) — the place page's "Get Rewards" hides when it wouldn't.
+        rewardsLive: venueLoyaltyLive,
         offers: (venueLoyaltyLive ? activeOffers(venue) : []).map(({ offerId, title, pointsCost }) => ({
           offerId, title, pointsCost
         })),

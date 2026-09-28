@@ -665,7 +665,7 @@
 				INFOPLIST_FILE = "Circles-iOS-UIKit/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Circles needs access to your camera to take photos of places and update your profile picture.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Circles uses your camera to take photos of places, update your profile picture, and scan a store's QR code for rewards.";
 				INFOPLIST_KEY_NSContactsUsageDescription = "Circles needs access to your contacts to help you find friends.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Circles needs your location to show places near you and add new places to your circles.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Circles needs your location to show places near you and add new places to your circles.";
@@ -713,7 +713,7 @@
 				INFOPLIST_FILE = "Circles-iOS-UIKit/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Circles needs access to your camera to take photos of places and update your profile picture.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Circles uses your camera to take photos of places, update your profile picture, and scan a store's QR code for rewards.";
 				INFOPLIST_KEY_NSContactsUsageDescription = "Circles needs access to your contacts to help you find friends.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Circles needs your location to show places near you and add new places to your circles.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Circles needs your location to show places near you and add new places to your circles.";

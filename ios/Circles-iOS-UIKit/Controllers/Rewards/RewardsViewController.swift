@@ -295,50 +295,8 @@ class RewardsViewController: BaseViewController {
     }()
 
     @objc private func redeemCodeTapped() {
-        let alert = UIAlertController(
-            title: "Redeem a Code",
-            message: "Enter the code from your order card or booth handout",
-            preferredStyle: .alert
-        )
-        alert.addTextField { field in
-            field.placeholder = "CODE"
-            field.autocapitalizationType = .allCharacters
-            field.autocorrectionType = .no
-        }
-        alert.addAction(UIAlertAction(title: "Redeem", style: .default) { [weak self, weak alert] _ in
-            guard let self = self,
-                  let code = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
-                  !code.isEmpty else { return }
-            self.submitRedemptionCode(code)
-        })
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        present(alert, animated: true)
-    }
-
-    private func submitRedemptionCode(_ code: String) {
-        RewardsService.shared.redeemCode(code) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                switch result {
-                case .success(let data):
-                    if let awarded = data.awarded {
-                        let store = awarded.venueName ?? "the store"
-                        self.showSuccess("+\(awarded.points) points from \(store)!")
-                    } else {
-                        self.showSuccess("Code accepted")
-                    }
-                    self.loadData()
-                case .failure(let error):
-                    // Not a brand code? It may be a sticker code — same entry
-                    // point works for both
-                    let message = (error as? APIError)?.serverMessage ?? error.localizedDescription
-                    if message.localizedCaseInsensitiveContains("not found") {
-                        StickerRewardCoordinator.shared.handleScannedCode(code)
-                    } else {
-                        self.showError(message)
-                    }
-                }
-            }
+        StickerRewardCoordinator.shared.promptForCode(from: self) { [weak self] in
+            self?.loadData()
         }
     }
 

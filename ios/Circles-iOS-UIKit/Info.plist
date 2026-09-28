@@ -198,7 +198,7 @@
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Circles connects to a Bluetooth heart-rate strap so the Heartbeat widget can show your live pulse.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Circles needs access to your camera to take photos and record videos for your places.</string>
+	<string>Circles uses your camera to take photos and record videos of your places, and to scan a store's QR code for rewards.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Circles needs access to your microphone to record audio in videos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

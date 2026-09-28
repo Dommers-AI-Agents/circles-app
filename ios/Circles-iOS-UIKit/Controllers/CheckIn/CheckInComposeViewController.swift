@@ -10,6 +10,9 @@ final class CheckInComposeViewController: BaseViewController {
     private let place: Place
     private var selectedGroups: Set<String> = []
     private var selectedUsers: Set<String> = []
+    /// The store's rewards, fetched quietly on open so the confirmation can
+    /// say how to collect points here. nil = no rewards or lookup failed.
+    private var venueRewards: PlaceVenueData?
 
     init(place: Place) {
         self.place = place
@@ -178,6 +181,12 @@ final class CheckInComposeViewController: BaseViewController {
         refreshAudienceMenu()
         InnerCircleManager.shared.primeIfNeeded { [weak self] in
             DispatchQueue.main.async { self?.refreshAudienceMenu() }
+        }
+        RewardsService.shared.getVenueByPlace(placeId: place.globalPlaceId ?? place.id,
+                                              googlePlaceId: place.googlePlaceId) { [weak self] result in
+            DispatchQueue.main.async {
+                if case .success(let data) = result { self?.venueRewards = data }
+            }
         }
         contentStack.setCustomSpacing(8, after: noteTextView)
 
@@ -373,9 +382,7 @@ final class CheckInComposeViewController: BaseViewController {
                         if let count = created.stats?.count, count > 1 {
                             message = "You're checked in\(isPrivate ? " privately" : ""). That's your \(CheckInHistoryFormatter.ordinal(count)) time here!"
                         }
-                        self.showSuccess(message) {
-                            (self.navigationController ?? self).dismiss(animated: true)
-                        }
+                        self.confirmCheckIn(message)
                     case .failure(let error):
                         self.showError("Failed to check in: \(error.localizedDescription)")
                     }
@@ -414,5 +421,34 @@ extension CheckInComposeViewController: UITextViewDelegate {
             textView.text = notePlaceholder
             textView.textColor = Constants.Colors.secondaryLabel
         }
+    }
+}
+
+// MARK: - Rewards nudge
+
+extension CheckInComposeViewController {
+    /// The check-in confirmation. At a store with rewards it also says how to
+    /// collect them — the check-in itself earns nothing; the register scan
+    /// is the proof of purchase — and offers the Get Rewards page.
+    fileprivate func confirmCheckIn(_ message: String) {
+        let host = navigationController ?? self
+        guard let details = RewardsAvailability(venueRewards).details,
+              let rewards = GetRewardsViewController(place: place, data: venueRewards) else {
+            showSuccess(message) { host.dismiss(animated: true) }
+            return
+        }
+        showConfirmation(
+            title: message,
+            message: RewardsAvailability.checkInNudge(details),
+            confirmTitle: "Get Rewards",
+            cancelTitle: "Done",
+            onConfirm: {
+                let presenter = host.presentingViewController
+                host.dismiss(animated: true) {
+                    presenter?.present(UINavigationController(rootViewController: rewards), animated: true)
+                }
+            },
+            onCancel: { host.dismiss(animated: true) }
+        )
     }
 }

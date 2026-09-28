@@ -50,6 +50,18 @@ extension PlaceDetailViewFactory {
         return button
     }
 
+    /// Shown beside the check-in control at stores that give rewards —
+    /// including to regulars, who need it most.
+    static func getRewardsButton() -> UIButton {
+        let button = UIButton.smallActionButton(title: "Get Rewards", style: .secondary)
+        button.setImage(UIImage(systemName: "gift"), for: .normal)
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        button.isHidden = true
+        return button
+    }
+
     static func checkInInfoButton() -> UIButton {
         let button = UIButton.iconButton(systemName: "info.circle", pointSize: 17)
         button.tintColor = Constants.Colors.secondaryLabel

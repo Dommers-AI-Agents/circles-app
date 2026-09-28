@@ -975,6 +975,9 @@ struct OfferVenue: Codable {
 /// enrolled venue — the whole rewards section should be hidden.
 struct PlaceVenueData: Codable {
     let venue: PlaceVenue?
+    /// Whether a register scan earns here right now — false while the
+    /// owner's subscription has lapsed. nil from servers before 2026-09-28.
+    let rewardsLive: Bool?
     let offers: [RewardOffer]?
     let announcements: [VenueAnnouncement]?
     let balance: Int?

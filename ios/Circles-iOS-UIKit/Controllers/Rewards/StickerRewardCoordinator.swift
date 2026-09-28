@@ -7,6 +7,12 @@ import CoreLocation
 ///
 /// SceneDelegate calls `handleScannedCode` and this coordinator owns the rest,
 /// including the CircleSelection delegate round-trip.
+extension Notification.Name {
+    /// A scan or a typed code may have changed the user's store points.
+    /// Screens showing a balance refetch.
+    static let rewardPointsDidChange = Notification.Name("rewardPointsDidChange")
+}
+
 final class StickerRewardCoordinator: NSObject {
 
     static let shared = StickerRewardCoordinator()
@@ -40,6 +46,7 @@ final class StickerRewardCoordinator: NSObject {
                 loading.dismiss(animated: true) {
                     switch result {
                     case .success(let scan):
+                        NotificationCenter.default.post(name: .rewardPointsDidChange, object: nil)
                         if scan.kind == "register" {
                             self?.handleRegisterScan(scan)
                         } else {
@@ -49,6 +56,52 @@ final class StickerRewardCoordinator: NSObject {
                         if let presenter = self?.presenter {
                             AlertPresenter.showError(error, from: presenter)
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Typed codes
+
+    /// "Type a code": a brand redemption code from an order card or handout,
+    /// or a store sticker's code typed by hand — one box takes both.
+    /// `onRedeemed` runs after a brand code is accepted (sticker codes carry
+    /// on through the scan flow above).
+    func promptForCode(from presenter: UIViewController, onRedeemed: (() -> Void)? = nil) {
+        AlertPresenter.showTextInput(
+            title: "Type a Code",
+            message: "Enter the code from the store's QR card, your receipt, or an order card",
+            placeholder: "CODE",
+            confirmTitle: "Redeem",
+            from: presenter
+        ) { [weak self] text in
+            let code = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            guard !code.isEmpty else { return }
+            self?.submitTypedCode(code, from: presenter, onRedeemed: onRedeemed)
+        }
+    }
+
+    private func submitTypedCode(_ code: String, from presenter: UIViewController, onRedeemed: (() -> Void)?) {
+        RewardsService.shared.redeemCode(code) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let data):
+                    NotificationCenter.default.post(name: .rewardPointsDidChange, object: nil)
+                    if let awarded = data.awarded {
+                        let store = awarded.venueName ?? "the store"
+                        AlertPresenter.showSuccess("+\(awarded.points) points from \(store)!", from: presenter)
+                    } else {
+                        AlertPresenter.showSuccess("Code accepted", from: presenter)
+                    }
+                    onRedeemed?()
+                case .failure(let error):
+                    // Not a brand code? It may be a sticker code typed by hand.
+                    let message = (error as? APIError)?.serverMessage ?? error.localizedDescription
+                    if message.localizedCaseInsensitiveContains("not found") {
+                        self?.handleScannedCode(code)
+                    } else {
+                        AlertPresenter.showError(message: message, from: presenter)
                     }
                 }
             }

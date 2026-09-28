@@ -167,6 +167,7 @@ class PlaceDetailViewController: BaseViewController {
     private let checkInHistoryLabel: UILabel = PlaceDetailViewFactory.checkInHistoryLabel()
     private let checkInHereButton: UIButton = PlaceDetailViewFactory.checkInHereButton()
     private let checkInInfoButton: UIButton = PlaceDetailViewFactory.checkInInfoButton()
+    private let getRewardsButton: UIButton = PlaceDetailViewFactory.getRewardsButton()
 
     // Add to Circle: compact pill in the action row, left of Follow — same
     // size and style family (they're sibling actions; this one also picks
@@ -562,12 +563,16 @@ class PlaceDetailViewController: BaseViewController {
         contentView.addSubview(checkInStripView)
         checkInStripView.addArrangedSubview(checkInHistoryLabel)
         checkInStripView.addArrangedSubview(checkInHereButton)
+        checkInStripView.addArrangedSubview(getRewardsButton)
+        // A long history line gives way before either button does.
+        checkInHistoryLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let checkInSpacer = UIView()
         checkInSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         checkInStripView.addArrangedSubview(checkInSpacer)
         checkInStripView.addArrangedSubview(checkInInfoButton)
         checkInHereButton.addTarget(self, action: #selector(checkInRowButtonTapped), for: .touchUpInside)
         checkInInfoButton.addTarget(self, action: #selector(checkInInfoTapped), for: .touchUpInside)
+        getRewardsButton.addTarget(self, action: #selector(getRewardsTapped), for: .touchUpInside)
 
         // Add info container after image view
         contentView.addSubview(infoContainerView)
@@ -1621,6 +1626,11 @@ class PlaceDetailViewController: BaseViewController {
         present(activityViewController, animated: true)
     }
     
+    @objc private func getRewardsTapped() {
+        guard let rewards = GetRewardsViewController(place: place, data: placeVenueData) else { return }
+        navigationController?.pushViewController(rewards, animated: true)
+    }
+
     @objc private func checkInRowButtonTapped() {
         CheckInViewController.present(from: self, prefilledPlace: place)
     }
@@ -3440,6 +3450,7 @@ extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
 
     func loader(_ loader: VenueRewardsLoader, didLoadVenueData data: PlaceVenueData) {
         placeVenueData = data
+        getRewardsButton.isHidden = RewardsAvailability(data) == .none
         venueRewardsView.configure(with: data)
         // The card shows for enrolled venues AND for the venue-less
         // "Is this your store?" claim states — collapsing on
