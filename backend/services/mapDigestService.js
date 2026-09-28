@@ -303,3 +303,6 @@ class MapDigestService {
 }
 
 module.exports = new MapDigestService();
+// Shared with the product-update email's "your map" section.
+module.exports.distanceKm = distanceKm;
+module.exports.cityFromAddress = cityFromAddress;

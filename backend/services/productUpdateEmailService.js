@@ -81,11 +81,115 @@ const optionCard = ({ label, price, color, tint, body }) => `
     </table>
   </td>`;
 
+// ---- "your map": each person's own saved places, drawn on a map
+
+const MAP_URL = 'https://api.favcircles.com/app/map';
+const MAP_CLUSTER_KM = 30;   // "around home": the densest 30 km of their places
+
+/** Renders pins on OpenStreetMap tiles (free, same as the weekly map digest). */
+const renderPlacesMap = async (places, { distanceKm }) => {
+  const StaticMaps = require('staticmaps');
+  const map = new StaticMaps({
+    width: 1200,
+    height: 640,
+    paddingX: 110,
+    paddingY: 110,
+    tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    tileRequestHeader: { 'User-Agent': 'FavCircles-product-update/1.0 (wesley@favcircles.com)' }
+  });
+  const lats = places.map((p) => p.lat);
+  const lngs = places.map((p) => p.lng);
+  const spanKm = distanceKm({ lat: Math.min(...lats), lng: Math.min(...lngs) },
+    { lat: Math.max(...lats), lng: Math.max(...lngs) });
+  const radiusMeters = Math.max(45, Math.min(700, (Math.max(spanKm, 1) * 1000) / 48));
+  for (const p of places) {
+    map.addCircle({ coord: [p.lng, p.lat], radius: radiusMeters, fill: '#E53E3ECC', color: '#FFFFFF', width: 4 });
+  }
+  if (spanKm < 0.4) {
+    // One place, or a few on one block: auto-fit would zoom to the pavement
+    const center = [lngs.reduce((a, b) => a + b, 0) / lngs.length, lats.reduce((a, b) => a + b, 0) / lats.length];
+    await map.render(center, 15);
+  } else {
+    await map.render();
+  }
+  return map.image.buffer('image/png');
+};
+
+/**
+ * What the "your map" section needs for one person: how many places they
+ * have saved, and a hosted picture of the densest cluster (usually home).
+ * No places: { count: 0 }, and the section becomes "start your map".
+ */
+const mapBlockFor = async (user) => {
+  const mapDigest = require('./mapDigestService');
+  const places = await mapDigest.mappedPlaces(user.id);
+  if (!places.length) return { count: 0 };
+  let best = [];
+  for (const center of places) {
+    const cluster = places.filter((p) => mapDigest.distanceKm(center, p) <= MAP_CLUSTER_KM);
+    if (cluster.length > best.length) best = cluster;
+  }
+  const votes = new Map();
+  for (const p of best) {
+    const city = mapDigest.cityFromAddress(p.address);
+    if (city) votes.set(city, (votes.get(city) || 0) + 1);
+  }
+  const top = [...votes.entries()].sort((a, b) => b[1] - a[1])[0];
+  const city = top && top[1] >= Math.ceil(best.length / 2) ? top[0] : null;
+  let imageUrl = null;
+  try {
+    const buffer = await renderPlacesMap(best, mapDigest);
+    const { uploadImage } = require('./storage');
+    imageUrl = await uploadImage(buffer.toString('base64'), 'product-update-map.png');
+  } catch (e) {
+    // Tiles or storage hiccup: keep the count and the nudge, drop the picture
+    console.warn(`📣 map image for ${user.id} failed: ${e.message}`);
+  }
+  return { count: places.length, shown: best.length, city, imageUrl };
+};
+
+const mapSection = (block) => {
+  const label = `<div style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#8C97AB;border-top:1px solid ${LINE};padding-top:26px;">Your map</div>`;
+  const button = (text, href) => `
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:18px;"><tr>
+          <td style="border:2px solid ${NAVY};border-radius:12px;">
+            <a href="${href}" style="display:inline-block;padding:12px 26px;font-family:${FONT};font-size:15px;font-weight:700;color:${NAVY};text-decoration:none;">${text}</a>
+          </td>
+        </tr></table>`;
+  if (!block) return { html: '', text: [] };   // places couldn't be read: leave the section out
+  if (!block.count) {
+    const html = `
+      <tr><td class="pad" style="padding:34px 36px 4px;">
+        ${label}
+        <h2 style="margin:10px 0 0;font-family:${FONT};font-size:22px;line-height:28px;font-weight:800;color:${INK};">Start your own map</h2>
+        <p style="margin:8px 0 0;font-family:${FONT};font-size:15px;line-height:23px;color:${MUTED};">Save the restaurants, shops and spots you love so you never forget them. Every one lands on your map, ready the next time someone asks where to go.</p>
+        ${button('Save your first place', APP_OPEN_URL)}
+      </td></tr>`;
+    const text = ['YOUR MAP', 'Start your own map: save the restaurants, shops and spots you love so you never forget them. Every one lands on your map.', `Save your first place: ${APP_OPEN_URL}`];
+    return { html, text };
+  }
+  const n = block.count;
+  const where = !block.imageUrl ? '' : block.shown < n
+    ? `Here are the ${block.shown}${block.city ? ` around ${esc(block.city)}` : ' closest together'}.`
+    : (block.city ? `Here they are around ${esc(block.city)}.` : 'Here they are, all on one map.');
+  const html = `
+      <tr><td class="pad" style="padding:34px 36px 4px;">
+        ${label}
+        <h2 style="margin:10px 0 0;font-family:${FONT};font-size:22px;line-height:28px;font-weight:800;color:${INK};">You've saved ${n} favorite ${n === 1 ? 'place' : 'places'}</h2>
+        <p style="margin:8px 0 14px;font-family:${FONT};font-size:15px;line-height:23px;color:${MUTED};">${where} Keep adding the places you love so you never forget a great one. They're always on your map.</p>
+        ${block.imageUrl ? `<a href="${MAP_URL}"><img src="${block.imageUrl}" width="528" alt="Your saved places on a map" style="display:block;width:100%;max-width:528px;height:auto;border:0;border-radius:14px;"></a>
+        <div style="font-family:${FONT};font-size:11px;color:#A3ADBF;padding-top:6px;">Map data © OpenStreetMap contributors</div>` : ''}
+        ${button('Add a place', APP_OPEN_URL)}
+      </td></tr>`;
+  const text = ['YOUR MAP', `You've saved ${n} favorite ${n === 1 ? 'place' : 'places'}. Keep adding the places you love so you never forget a great one. They're always on your map.`, `Open your map: ${MAP_URL}`];
+  return { html, text };
+};
+
 const CAMPAIGNS = {
   '2026-09-postcards': {
     subject: 'Send a postcard from anywhere, now in FavCircles',
     preheader: 'Share it free as a link, or we print and mail a real one for $3.99.',
-    build: ({ greeting }) => {
+    build: ({ greeting, map }) => {
       const html = `
       <tr><td style="padding:0;">
         <a href="${APP_OPEN_URL}"><img src="${IMG}/postcards-hero.jpg" width="600" alt="A FavCircles postcard, front and back" style="display:block;width:100%;max-width:600px;height:auto;border:0;"></a>
@@ -109,6 +213,7 @@ const CAMPAIGNS = {
         </tr></table>
         <div style="font-family:${FONT};font-size:13px;color:#8C97AB;padding-top:12px;">In the app: Home → Widgets → Postcard, or from any Moment.</div>
       </td></tr>
+      ${map.html}
       <tr><td class="pad" style="padding:34px 36px 8px;">
         <div style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#8C97AB;border-top:1px solid ${LINE};padding-top:26px;">Also new</div>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:6px;">
@@ -131,6 +236,8 @@ const CAMPAIGNS = {
         `Send a postcard: ${APP_OPEN_URL}`,
         'In the app: Home > Widgets > Postcard, or from any Moment.',
         '',
+        ...map.text,
+        '',
         'ALSO NEW',
         "- Fridge Mail: queue up your kids' drawings. We mail one to the grandparents every week as a real postcard.",
         '- Widgets: a new Home tab of little tools: water, habits, workouts, sleep sounds, quotes, and How Are You? check-ins for Mom or Dad.',
@@ -147,12 +254,12 @@ const CAMPAIGNS = {
 const COMPANY_MAILING_ADDRESS = 'PO Box 1540, Charlotte, NC 28203';
 const mailingAddress = () => (process.env.COMPANY_MAILING_ADDRESS || COMPANY_MAILING_ADDRESS).trim();
 
-const buildEmail = ({ user, campaign }) => {
+const buildEmail = ({ user, campaign, mapBlock = null }) => {
   const spec = CAMPAIGNS[campaign];
   if (!spec) throw new Error(`Unknown campaign ${campaign}`);
   const name = firstName(user);
   const greeting = name ? `Hi ${esc(name)},` : 'Hi there,';
-  const { html: body, text: bodyText } = spec.build({ greeting });
+  const { html: body, text: bodyText } = spec.build({ greeting, map: mapSection(mapBlock) });
   // Lazy: that module touches Firestore on load, before a CLI run has initialised it.
   const { unsubscribeUrl } = require('./followSuggestionEmailService');
   const unsub = unsubscribeUrl(user.id, PREFERENCE_KEY);
@@ -220,7 +327,13 @@ const run = async ({ campaign, dryRun = true, onlyTo = null, log = console.log }
     return results;
   }
   for (const user of selected) {
-    const email = buildEmail({ user, campaign });
+    let mapBlock = null;
+    try {
+      mapBlock = await mapBlockFor(user);
+    } catch (e) {
+      log(`📣 map for ${user.email} failed, sending without it: ${e.message}`);
+    }
+    const email = buildEmail({ user, campaign, mapBlock });
     let delivered = false;
     for (let attempt = 1; attempt <= 2 && !delivered; attempt++) {
       try {
@@ -255,7 +368,7 @@ const run = async ({ campaign, dryRun = true, onlyTo = null, log = console.log }
 
 const db = () => getFirestore();
 
-module.exports = { PREFERENCE_KEY, CAMPAIGNS, selectRecipients, buildEmail, run };
+module.exports = { PREFERENCE_KEY, CAMPAIGNS, selectRecipients, buildEmail, mapBlockFor, mapSection, run };
 
 if (require.main === module) {
   const arg = (name) => {
