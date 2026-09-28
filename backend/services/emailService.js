@@ -1038,7 +1038,7 @@ Rewards redeemed: ${safeStats.redemptions}`;
     throw lastError;
   }
 
-  async sendEmail({ to, subject, html, text, attachments }) {
+  async sendEmail({ to, subject, html, text, attachments, headers }) {
     try {
       // Check if transporter is configured
       if (!this.transporter || !this.transporter.sendMail) {
@@ -1052,7 +1052,8 @@ Rewards redeemed: ${safeStats.redemptions}`;
         subject: subject,
         html: html,
         text: text || subject, // Fallback text if not provided
-        ...(attachments && attachments.length ? { attachments } : {})
+        ...(attachments && attachments.length ? { attachments } : {}),
+        ...(headers ? { headers } : {})
       };
 
       console.log(`📧 Attempting to send email to ${to} with subject: ${subject}`);

@@ -9,10 +9,11 @@ const followSuggestions = require('../services/followSuggestionEmailService');
 
 const router = express.Router();
 
-const KNOWN_KINDS = new Set([followSuggestions.PREFERENCE_KEY, 'weeklyMapDigest']);
+const KNOWN_KINDS = new Set([followSuggestions.PREFERENCE_KEY, 'weeklyMapDigest', 'productUpdates']);
 const LABELS = {
   [followSuggestions.PREFERENCE_KEY]: '"People you may know" emails',
-  weeklyMapDigest: 'the weekly map email'
+  weeklyMapDigest: 'the weekly map email',
+  productUpdates: 'product update emails'
 };
 
 const page = (title, body) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -23,7 +24,9 @@ const page = (title, body) => `<!doctype html><meta charset="utf-8"><meta name="
   <p style="margin-top:28px;"><a href="https://favcircles.com" style="color:#3478F6;">favcircles.com</a></p>
 </div>`;
 
-router.get('/unsubscribe', async (req, res) => {
+// GET is the link in the email; POST is the mail app's own one-click
+// "Unsubscribe" button (RFC 8058), which posts to the List-Unsubscribe URL.
+const handleUnsubscribe = async (req, res) => {
   const uid = String(req.query.uid || '').replace(/[^a-zA-Z0-9._-]/g, '');
   const kind = String(req.query.kind || '');
   const sig = String(req.query.sig || '');
@@ -37,6 +40,9 @@ router.get('/unsubscribe', async (req, res) => {
     console.error('Unsubscribe failed:', e.message);
     return res.status(500).send(page('Something went wrong', 'Please try the link again in a moment.'));
   }
-});
+};
+
+router.get('/unsubscribe', handleUnsubscribe);
+router.post('/unsubscribe', express.urlencoded({ extended: false }), handleUnsubscribe);
 
 module.exports = router;
