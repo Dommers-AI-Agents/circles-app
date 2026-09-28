@@ -52,6 +52,8 @@ class EmailService {
           },
           ...EmailService.dkimOptions()
         });
+        // Every message passes the bounce list first (emailSuppression.js)
+        this.transporter.use('compile', require('./emailSuppression').transportPlugin);
         this.isConfigured = true;
         
         console.log('📧 Custom SMTP configured:', {
