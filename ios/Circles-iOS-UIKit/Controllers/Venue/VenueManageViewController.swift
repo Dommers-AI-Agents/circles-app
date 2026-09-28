@@ -373,291 +373,30 @@ class VenueManageViewController: BaseViewController {
         }
     }
 
-    // MARK: - Offers
+    // MARK: - Offers & announcements
 
-    private func addOffer() {
-        showTextInput(
-            title: "New Offer",
-            message: "What does the customer get? (e.g. \"Free coffee\", \"10% off\")",
-            placeholder: "Offer title"
-        ) { [weak self] title in
-            guard let self = self,
-                  let title = title?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !title.isEmpty else { return }
+    private func addOffer() { openOfferForm(nil) }
+    private func manageOffer(_ offer: RewardOffer) { openOfferForm(offer) }
 
-            self.showTextInput(
-                title: "Point Cost",
-                message: "How many points does \"\(title)\" cost?",
-                placeholder: "e.g. 250",
-                keyboardType: .numberPad
-            ) { [weak self] cost in
-                guard let self = self,
-                      let cost = cost?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      let pointsCost = Int(cost), pointsCost > 0 else { return }
-
-                let loading = AlertPresenter.showLoading(message: "Adding offer...", from: self)
-                RewardsService.shared.addOffer(venueId: self.venueId, title: title, pointsCost: pointsCost) { [weak self] result in
-                    DispatchQueue.main.async {
-                        loading.dismiss(animated: true) {
-                            guard let self = self else { return }
-                            switch result {
-                            case .success(let offers):
-                                self.offers = offers
-                                self.reload()
-                            case .failure(let error):
-                                self.showError(error)
-                            }
-                        }
-                    }
-                }
-            }
+    private func openOfferForm(_ offer: RewardOffer?) {
+        let form = VenueOfferFormViewController(venueId: venueId, earnRate: earnRate, offer: offer)
+        form.onSaved = { [weak self] offers in
+            self?.offers = offers
+            self?.reload()
         }
+        navigationController?.pushViewController(form, animated: true)
     }
 
-    private func manageOffer(_ offer: RewardOffer) {
-        let isActive = offer.active != false
-        showActionSheet(
-            title: offer.title,
-            message: "\(offer.pointsCost) points · \(isActive ? "active" : "inactive")",
-            actions: [
-                (title: "Edit title", style: .default, handler: { [weak self] in
-                    self?.editOfferTitle(offer)
-                }),
-                (title: "Edit point cost", style: .default, handler: { [weak self] in
-                    self?.editOfferCost(offer)
-                }),
-                (title: isActive ? "Deactivate" : "Activate", style: isActive ? .destructive : .default, handler: { [weak self] in
-                    self?.updateOffer(offer, active: !isActive)
-                })
-            ]
-        )
-    }
+    private func addAnnouncement() { openAnnouncementForm(nil) }
+    private func manageAnnouncement(_ announcement: VenueAnnouncement) { openAnnouncementForm(announcement) }
 
-    private func editOfferTitle(_ offer: RewardOffer) {
-        showTextInput(title: "Edit Offer", placeholder: "Offer title", initialText: offer.title) { [weak self] title in
-            guard let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else { return }
-            self?.updateOffer(offer, title: title)
+    private func openAnnouncementForm(_ announcement: VenueAnnouncement?) {
+        let form = VenueAnnouncementFormViewController(venueId: venueId, announcement: announcement)
+        form.onSaved = { [weak self] announcements in
+            self?.announcements = announcements
+            self?.reload()
         }
-    }
-
-    private func editOfferCost(_ offer: RewardOffer) {
-        showTextInput(
-            title: "Edit Point Cost",
-            message: "How many points does \"\(offer.title)\" cost?",
-            initialText: "\(offer.pointsCost)",
-            keyboardType: .numberPad
-        ) { [weak self] cost in
-            guard let cost = cost?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  let pointsCost = Int(cost), pointsCost > 0 else { return }
-            self?.updateOffer(offer, pointsCost: pointsCost)
-        }
-    }
-
-    private func updateOffer(_ offer: RewardOffer, title: String? = nil, pointsCost: Int? = nil, active: Bool? = nil) {
-        let loading = AlertPresenter.showLoading(message: "Updating offer...", from: self)
-        RewardsService.shared.updateOffer(
-            venueId: venueId,
-            offerId: offer.offerId,
-            title: title,
-            pointsCost: pointsCost,
-            active: active
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                loading.dismiss(animated: true) {
-                    guard let self = self else { return }
-                    switch result {
-                    case .success(let offers):
-                        self.offers = offers
-                        self.reload()
-                    case .failure(let error):
-                        self.showError(error)
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Announcements
-
-    private func addAnnouncement() {
-        showTextInput(
-            title: "New Announcement",
-            message: "A short headline shown on your place's page (e.g. \"Happy Hour\", \"Live Music Friday\")",
-            placeholder: "Headline"
-        ) { [weak self] title in
-            guard let self = self,
-                  let title = title?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !title.isEmpty else { return }
-
-            self.showTextInput(
-                title: "Message",
-                message: "The details visitors see under \"\(title)\"",
-                placeholder: "e.g. 2-for-1 drinks, 3–5pm weekdays"
-            ) { [weak self] message in
-                guard let self = self,
-                      let message = message?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      !message.isEmpty else { return }
-
-                self.pickExpiry(title: "When should it expire?") { [weak self] expiresAt, _ in
-                    guard let self = self else { return }
-                    let loading = AlertPresenter.showLoading(message: "Posting...", from: self)
-                    RewardsService.shared.addAnnouncement(
-                        venueId: self.venueId,
-                        title: title,
-                        message: message,
-                        expiresAt: expiresAt
-                    ) { [weak self] result in
-                        self?.handleAnnouncementsResult(result, loading: loading)
-                    }
-                }
-            }
-        }
-    }
-
-    private func manageAnnouncement(_ announcement: VenueAnnouncement) {
-        showActionSheet(
-            title: announcement.title,
-            message: announcement.message,
-            actions: [
-                (title: "Edit headline", style: .default, handler: { [weak self] in
-                    self?.editAnnouncementTitle(announcement)
-                }),
-                (title: "Edit message", style: .default, handler: { [weak self] in
-                    self?.editAnnouncementMessage(announcement)
-                }),
-                (title: "Change expiry", style: .default, handler: { [weak self] in
-                    self?.changeAnnouncementExpiry(announcement)
-                }),
-                (title: "Delete", style: .destructive, handler: { [weak self] in
-                    self?.confirmDeleteAnnouncement(announcement)
-                })
-            ]
-        )
-    }
-
-    private func editAnnouncementTitle(_ announcement: VenueAnnouncement) {
-        showTextInput(title: "Edit Headline", placeholder: "Headline", initialText: announcement.title) { [weak self] title in
-            guard let self = self,
-                  let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else { return }
-            let loading = AlertPresenter.showLoading(message: "Updating...", from: self)
-            RewardsService.shared.updateAnnouncement(
-                venueId: self.venueId,
-                announcementId: announcement.announcementId,
-                title: title
-            ) { [weak self] result in
-                self?.handleAnnouncementsResult(result, loading: loading)
-            }
-        }
-    }
-
-    private func editAnnouncementMessage(_ announcement: VenueAnnouncement) {
-        showTextInput(title: "Edit Message", placeholder: "Message", initialText: announcement.message) { [weak self] message in
-            guard let self = self,
-                  let message = message?.trimmingCharacters(in: .whitespacesAndNewlines), !message.isEmpty else { return }
-            let loading = AlertPresenter.showLoading(message: "Updating...", from: self)
-            RewardsService.shared.updateAnnouncement(
-                venueId: self.venueId,
-                announcementId: announcement.announcementId,
-                message: message
-            ) { [weak self] result in
-                self?.handleAnnouncementsResult(result, loading: loading)
-            }
-        }
-    }
-
-    private func changeAnnouncementExpiry(_ announcement: VenueAnnouncement) {
-        pickExpiry(title: "New expiry") { [weak self] expiresAt, clearExpiry in
-            guard let self = self else { return }
-            let loading = AlertPresenter.showLoading(message: "Updating...", from: self)
-            RewardsService.shared.updateAnnouncement(
-                venueId: self.venueId,
-                announcementId: announcement.announcementId,
-                expiresAt: expiresAt,
-                clearExpiry: clearExpiry
-            ) { [weak self] result in
-                self?.handleAnnouncementsResult(result, loading: loading)
-            }
-        }
-    }
-
-    private func confirmDeleteAnnouncement(_ announcement: VenueAnnouncement) {
-        showConfirmation(
-            title: "Delete \"\(announcement.title)\"?",
-            message: "It disappears from your place's page immediately.",
-            confirmTitle: "Delete",
-            isDestructive: true
-        ) { [weak self] in
-            guard let self = self else { return }
-            let loading = AlertPresenter.showLoading(message: "Deleting...", from: self)
-            RewardsService.shared.deleteAnnouncement(
-                venueId: self.venueId,
-                announcementId: announcement.announcementId
-            ) { [weak self] result in
-                self?.handleAnnouncementsResult(result, loading: loading)
-            }
-        }
-    }
-
-    /// Expiry picker shared by add/change flows. Calls back with an ISO8601
-    /// string (or nil for no expiry) plus a clear-expiry flag for updates.
-    private func pickExpiry(title: String, completion: @escaping (String?, Bool) -> Void) {
-        let iso = ISO8601DateFormatter()
-        let fromNow: (TimeInterval) -> String = { iso.string(from: Date().addingTimeInterval($0)) }
-
-        showActionSheet(
-            title: title,
-            message: "Expired announcements hide automatically.",
-            actions: [
-                (title: "No expiry", style: .default, handler: { completion(nil, true) }),
-                (title: "1 day", style: .default, handler: { completion(fromNow(24 * 60 * 60), false) }),
-                (title: "1 week", style: .default, handler: { completion(fromNow(7 * 24 * 60 * 60), false) }),
-                (title: "1 month", style: .default, handler: { completion(fromNow(30 * 24 * 60 * 60), false) }),
-                (title: "Custom date...", style: .default, handler: { [weak self] in
-                    self?.pickCustomExpiry(completion: completion)
-                })
-            ]
-        )
-    }
-
-    private func pickCustomExpiry(completion: @escaping (String?, Bool) -> Void) {
-        showTextInput(
-            title: "Expiry Date",
-            message: "The announcement stays up through this day (YYYY-MM-DD).",
-            placeholder: "2026-08-01"
-        ) { [weak self] value in
-            guard let self = self,
-                  let value = value?.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
-
-            let parser = DateFormatter()
-            parser.dateFormat = "yyyy-MM-dd"
-            parser.timeZone = .current
-            guard let day = parser.date(from: value) else {
-                self.showError("Enter the date as YYYY-MM-DD (e.g. 2026-08-01).")
-                return
-            }
-            // End of the chosen day, so "through this day" means what it says
-            let endOfDay = Calendar.current.date(byAdding: DateComponents(day: 1, second: -1), to: Calendar.current.startOfDay(for: day)) ?? day
-            guard endOfDay > Date() else {
-                self.showError("The expiry date must be in the future.")
-                return
-            }
-            completion(ISO8601DateFormatter().string(from: endOfDay), false)
-        }
-    }
-
-    private func handleAnnouncementsResult(_ result: Result<[VenueAnnouncement], Error>, loading: UIAlertController) {
-        DispatchQueue.main.async {
-            loading.dismiss(animated: true) { [weak self] in
-                guard let self = self else { return }
-                switch result {
-                case .success(let announcements):
-                    self.announcements = announcements
-                    self.reload()
-                case .failure(let error):
-                    self.showError(error)
-                }
-            }
-        }
+        navigationController?.pushViewController(form, animated: true)
     }
 
     // MARK: - Business info (free tier)
