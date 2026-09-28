@@ -7,6 +7,12 @@ class CirclePickerViewController: UIViewController {
     private var filteredCircles: [Circle]
     var onCircleSelected: ((Circle) -> Void)?
     var onCreateNewCircle: (() -> Void)?
+    /// Sheet title; callers adding a specific place can say so.
+    var pickerTitle = "Select Circle"
+    /// When set, a card above the list shows the place being added
+    /// (name + address), so the sheet says what it's for.
+    var placeName: String?
+    var placeAddress: String?
 
     // MARK: - UI Elements
     private lazy var searchController: UISearchController = {
@@ -57,7 +63,7 @@ class CirclePickerViewController: UIViewController {
     // MARK: - UI Setup
     private func setupUI() {
         view.backgroundColor = Constants.Colors.background
-        title = "Select Circle"
+        title = pickerTitle
         
         // Add cancel button
         navigationItem.leftBarButtonItem = UIBarButtonItem(
@@ -97,6 +103,67 @@ class CirclePickerViewController: UIViewController {
         tableView.dataSource = self
         tableView.register(CirclePickerCell.self, forCellReuseIdentifier: "CirclePickerCell")
         tableView.contentInset = UIEdgeInsets(top: Constants.Spacing.small, left: 0, bottom: Constants.Spacing.small, right: 0)
+        tableView.tableHeaderView = makePlaceHeader()
+    }
+
+    /// "📍 Ilios Crafted Greek / 123 Main St · Choose a circle for it."
+    private func makePlaceHeader() -> UIView? {
+        guard let name = placeName, !name.isEmpty else { return nil }
+        let icon = UIImageView(image: UIImage(systemName: "mappin.circle.fill"))
+        icon.tintColor = Constants.Colors.primary
+        icon.contentMode = .scaleAspectFit
+        icon.translatesAutoresizingMaskIntoConstraints = false
+
+        let nameLabel = UILabel()
+        nameLabel.text = name
+        nameLabel.font = .systemFont(ofSize: 20, weight: .bold)
+        nameLabel.textColor = Constants.Colors.label
+        nameLabel.numberOfLines = 2
+
+        let addressLabel = UILabel()
+        addressLabel.text = placeAddress
+        addressLabel.font = .systemFont(ofSize: 14)
+        addressLabel.textColor = Constants.Colors.secondaryLabel
+        addressLabel.numberOfLines = 2
+        addressLabel.isHidden = (placeAddress ?? "").isEmpty
+
+        let promptLabel = UILabel()
+        promptLabel.text = "Choose a circle to save it to"
+        promptLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        promptLabel.textColor = Constants.Colors.secondaryLabel
+
+        let textStack = UIStackView(arrangedSubviews: [nameLabel, addressLabel])
+        textStack.axis = .vertical
+        textStack.spacing = 2
+
+        let row = UIStackView(arrangedSubviews: [icon, textStack])
+        row.axis = .horizontal
+        row.spacing = 12
+        row.alignment = .center
+
+        let stack = UIStackView(arrangedSubviews: [row, promptLabel])
+        stack.axis = .vertical
+        stack.spacing = Constants.Spacing.medium
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let header = UIView()
+        header.addSubview(stack)
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: 40),
+            icon.heightAnchor.constraint(equalToConstant: 40),
+            stack.topAnchor.constraint(equalTo: header.topAnchor, constant: Constants.Spacing.small),
+            stack.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: Constants.Spacing.medium + 4),
+            stack.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -Constants.Spacing.medium),
+            stack.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -Constants.Spacing.small)
+        ])
+        let width = view.bounds.width
+        let size = header.systemLayoutSizeFitting(
+            CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
+            withHorizontalFittingPriority: .required,
+            verticalFittingPriority: .fittingSizeLevel
+        )
+        header.frame = CGRect(x: 0, y: 0, width: width, height: size.height)
+        return header
     }
     
     // MARK: - Actions
@@ -259,7 +326,8 @@ class CirclePickerCell: UITableViewCell {
         nameLabel.text = circle.name
         
         // Set detail text with place count
-        let placeCount = circle.places?.count ?? 0
+        // The circle list sends placesCount, not the ids, so prefer it
+        let placeCount = circle.placesCount ?? circle.places?.count ?? 0
         detailLabel.text = "\(placeCount) place\(placeCount == 1 ? "" : "s")"
         
         // Load circle image

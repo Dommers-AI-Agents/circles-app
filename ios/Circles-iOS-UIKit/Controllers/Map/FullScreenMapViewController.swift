@@ -1655,12 +1655,14 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// The map has no navigation stack of its own (home presents it bare), so
     /// the add screen goes up modally in its own nav controller — on save it
     /// dismisses itself and the user lands back on the map.
-    private func presentAddPlace(circleId: String, circles: [Circle]? = nil) {
+    private func presentAddPlace(circleId: String, circles: [Circle]? = nil, configure: ((AddPlaceViewController) -> Void)? = nil) {
         let addPlaceVC = AddPlaceViewController(circleId: circleId, circles: circles)
         let navController = UINavigationController(rootViewController: addPlaceVC)
         navController.modalPresentationStyle = .fullScreen
         awaitingPlaceAddedFromMap = true
-        present(navController, animated: true)
+        present(navController, animated: true) {
+            configure?(addPlaceVC)
+        }
     }
 
     private func presentCirclePickerForAddPlace(circles: [Circle]) {
@@ -2079,6 +2081,10 @@ extension FullScreenMapViewController: CreateCircleDelegate {
 extension FullScreenMapViewController: MapPOIAddCoordinatorDelegate {
     func poiCoordinator(_ coordinator: MapPOIAddCoordinator, existingPlaceNamed name: String, at coordinate: CLLocationCoordinate2D) -> Place? {
         findExistingPlace(name: name, coordinate: coordinate)
+    }
+
+    func poiCoordinator(_ coordinator: MapPOIAddCoordinator, openAddPlaceIn circleId: String, circles: [Circle]?, configure: @escaping (AddPlaceViewController) -> Void) {
+        presentAddPlace(circleId: circleId, circles: circles, configure: configure)
     }
 
     func poiCoordinator(_ coordinator: MapPOIAddCoordinator, didChooseExistingPlace place: Place) {

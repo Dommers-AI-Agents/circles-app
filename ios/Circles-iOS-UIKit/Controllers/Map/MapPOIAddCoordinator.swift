@@ -6,10 +6,13 @@ protocol MapPOIAddCoordinatorDelegate: AnyObject {
     func poiCoordinator(_ coordinator: MapPOIAddCoordinator, existingPlaceNamed name: String, at coordinate: CLLocationCoordinate2D) -> Place?
     /// "View Details" on a point of interest that is already saved.
     func poiCoordinator(_ coordinator: MapPOIAddCoordinator, didChooseExistingPlace place: Place)
+    /// Present AddPlace for `circleId`; `configure` runs once it's on screen
+    /// (to prefill the tapped point of interest).
+    func poiCoordinator(_ coordinator: MapPOIAddCoordinator, openAddPlaceIn circleId: String, circles: [Circle]?, configure: @escaping (AddPlaceViewController) -> Void)
 }
 
 /// The "tap a map point of interest → add it to a circle" flow: the action
-/// sheet, the circle slider picker, the create-a-circle detour, and the
+/// sheet, the circle picker sheet, the create-a-circle detour, and the
 /// hand-off into AddPlace with the POI prefilled. Owns the pending POI
 /// while the user is choosing, so the map controller doesn't have to.
 final class MapPOIAddCoordinator {
@@ -18,8 +21,6 @@ final class MapPOIAddCoordinator {
     weak var delegate: MapPOIAddCoordinatorDelegate?
 
     private var pendingPOIAnnotation: Any? // MKMapFeatureAnnotation for iOS 16+
-    private var pendingPOINotes: String? // Temporary storage for notes when creating new circle
-    private var currentCirclePicker: CirclePickerSliderView? // Reference to current circle picker
 
     init(presenter: UIViewController, mapView: MKMapView) {
         self.presenter = presenter
@@ -77,13 +78,11 @@ final class MapPOIAddCoordinator {
 
     @available(iOS 16.0, *)
     private func showCirclePickerForPOI(_ featureAnnotation: MKMapFeatureAnnotation) {
-        // First, load user's circles
-        let loadingAlert = UIAlertController(title: "Loading", message: "Fetching your circles...", preferredStyle: .alert)
-        presenter.present(loadingAlert, animated: true)
+        let loading = AlertPresenter.showLoading(message: "Loading your circles…", from: presenter)
 
         CircleService.shared.fetchUserCircles { [weak self] result in
             DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
+                loading.dismiss(animated: true) {
                     switch result {
                     case .success(let circles):
                         self?.presentCirclePicker(for: featureAnnotation, circles: circles)
@@ -95,62 +94,70 @@ final class MapPOIAddCoordinator {
         }
     }
 
+    /// The same circle sheet the map's "+" uses, with the tapped place shown
+    /// on top. Tapping a circle goes straight to AddPlace, prefilled.
     @available(iOS 16.0, *)
     private func presentCirclePicker(for featureAnnotation: MKMapFeatureAnnotation, circles: [Circle]) {
-        // Store the POI annotation for later use
-        pendingPOIAnnotation = featureAnnotation
-
         // Circles arrive in the user's own order (same as the profile grid).
-        // Create and configure the vertical slider picker
-        let circlePicker = CirclePickerSliderView()
-        circlePicker.delegate = self
-        circlePicker.configure(with: circles)
-
-        // Store reference to dismiss later
-        currentCirclePicker = circlePicker
-
-        // Show the picker
-        if let window = presenter.view.window {
-            circlePicker.show(in: window)
+        let picker = CirclePickerViewController(circles: circles)
+        picker.pickerTitle = "Add to a Circle"
+        picker.placeName = featureAnnotation.title ?? nil
+        picker.placeAddress = featureAnnotation.subtitle ?? nil
+        picker.onCircleSelected = { [weak self] circle in
+            self?.openAddPlace(circleId: circle.id, circles: circles, poi: featureAnnotation)
         }
+        picker.onCreateNewCircle = { [weak self] in
+            self?.createNewCircleForPOI(featureAnnotation)
+        }
+
+        let nav = UINavigationController(rootViewController: picker)
+        nav.presentationController?.delegate = dismissWatcher
+        dismissWatcher.onSwipeDismiss = { [weak self] in
+            self?.mapView.deselectAnnotation(featureAnnotation, animated: true)
+        }
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            nav.modalPresentationStyle = .formSheet
+            nav.preferredContentSize = CGSize(width: 400, height: 600)
+        } else {
+            nav.modalPresentationStyle = .pageSheet
+            if let sheet = nav.sheetPresentationController {
+                sheet.detents = [.medium(), .large()]
+                sheet.prefersGrabberVisible = true
+            }
+        }
+        presenter.present(nav, animated: true)
     }
 
     @available(iOS 16.0, *)
     private func createNewCircleForPOI(_ featureAnnotation: MKMapFeatureAnnotation) {
-        // Navigate to create circle view controller
+        // Remember the POI; didCreateCircle picks it back up
+        pendingPOIAnnotation = featureAnnotation
         let createCircleVC = CreateCircleViewController()
         createCircleVC.delegate = self
-
-        // Store the POI annotation to add after circle creation
-        pendingPOIAnnotation = featureAnnotation
-
         let navController = UINavigationController(rootViewController: createCircleVC)
         presenter.present(navController, animated: true)
     }
 
-    /// Pushes AddPlace for the chosen circle with the pending POI prefilled.
+    /// The map opens AddPlace itself (modally, in its own nav controller —
+    /// the expanded map has no navigation stack to push onto, which is why
+    /// the old push silently did nothing there).
     @available(iOS 16.0, *)
-    private func pushAddPlace(circleId: String, for pendingPOI: MKMapFeatureAnnotation) {
-        // Dismiss the circle picker if it exists
-        currentCirclePicker?.dismiss()
-        currentCirclePicker = nil
-
-        // Find the parent navigation controller
-        if let navController = presenter.navigationController
-            ?? presenter.presentingViewController as? UINavigationController
-            ?? presenter.parent?.navigationController {
-            let addPlaceVC = AddPlaceViewController(circleId: circleId)
-            navController.pushViewController(addPlaceVC, animated: true)
-
-            // Configure with POI data after a brief delay to ensure view is loaded
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                addPlaceVC.configureWithPOI(pendingPOI)
-            }
-
-            // Clear the pending POI
-            pendingPOIAnnotation = nil
-            pendingPOINotes = nil
+    private func openAddPlace(circleId: String, circles: [Circle]?, poi: MKMapFeatureAnnotation) {
+        pendingPOIAnnotation = nil
+        mapView.deselectAnnotation(poi, animated: false)
+        delegate?.poiCoordinator(self, openAddPlaceIn: circleId, circles: circles) { addPlaceVC in
+            addPlaceVC.configureWithPOI(poi)
         }
+    }
+
+    private let dismissWatcher = SheetDismissWatcher()
+}
+
+/// Deselects the tapped POI when its circle sheet is swiped away.
+private final class SheetDismissWatcher: NSObject, UIAdaptivePresentationControllerDelegate {
+    var onSwipeDismiss: (() -> Void)?
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        onSwipeDismiss?()
     }
 }
 
@@ -158,47 +165,13 @@ final class MapPOIAddCoordinator {
 
 extension MapPOIAddCoordinator: CreateCircleDelegate {
     func didCreateCircle(_ circle: Circle) {
-        // If we have a pending POI annotation, navigate to AddPlaceViewController
         if #available(iOS 16.0, *) {
             if let pendingPOI = pendingPOIAnnotation as? MKMapFeatureAnnotation {
-                pushAddPlace(circleId: circle.id, for: pendingPOI)
-            }
-        }
-    }
-}
-
-// MARK: - CirclePickerSliderViewDelegate
-
-extension MapPOIAddCoordinator: CirclePickerSliderViewDelegate {
-    func circlePickerDidSelectCircle(_ circle: Circle, notes: String?) {
-        // Navigate to AddPlaceViewController with the selected POI
-        if #available(iOS 16.0, *) {
-            if let pendingPOI = pendingPOIAnnotation as? MKMapFeatureAnnotation {
-                pushAddPlace(circleId: circle.id, for: pendingPOI)
-            }
-        }
-    }
-
-    func circlePickerDidSelectCreateNew(notes: String?) {
-        // Create a new circle for the POI
-        if #available(iOS 16.0, *) {
-            if let pendingPOI = pendingPOIAnnotation as? MKMapFeatureAnnotation {
-                // Store notes temporarily to use after circle creation
-                pendingPOINotes = notes
-                createNewCircleForPOI(pendingPOI)
-            }
-        }
-    }
-
-    func circlePickerDidCancel() {
-        // Clear the circle picker reference
-        currentCirclePicker = nil
-
-        // Deselect the annotation
-        if #available(iOS 16.0, *) {
-            if let pendingPOI = pendingPOIAnnotation as? MKMapFeatureAnnotation {
-                mapView.deselectAnnotation(pendingPOI, animated: true)
-                pendingPOIAnnotation = nil
+                // CreateCircle dismisses itself right after this callback;
+                // wait for it to clear or the add screen's present is dropped
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                    self?.openAddPlace(circleId: circle.id, circles: nil, poi: pendingPOI)
+                }
             }
         }
     }
