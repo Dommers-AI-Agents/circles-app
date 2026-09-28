@@ -26,7 +26,7 @@ final class InnerCircleListsViewController: BaseViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Inner Circle"
+        title = "Inner Circles"
         view.backgroundColor = Constants.Colors.background
 
         tableView.dataSource = self
@@ -172,7 +172,7 @@ extension InnerCircleListsViewController: UITableViewDataSource, UITableViewDele
         case 0:
             return "A list is a set of people you can share with by name. Pick one wherever you choose who can see something, and change who is on it at any time — it applies everywhere, straight away, to things they can already see."
         case 1:
-            return lists.isEmpty ? nil : "Tap a list to change who is on it."
+            return lists.isEmpty ? nil : "Tap a list to change who is on it or rename it. Swipe left to rename or delete."
         default:
             return nil
         }

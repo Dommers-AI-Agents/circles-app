@@ -85,7 +85,7 @@ class SettingsViewController: BaseTableViewController {
         var title: String {
             switch self {
             case .activityVisibility: return ActivityPrivacy.Copy.screenTitle
-            case .innerCircle: return "Inner Circle"
+            case .innerCircle: return "Inner Circles"
             }
         }
     }

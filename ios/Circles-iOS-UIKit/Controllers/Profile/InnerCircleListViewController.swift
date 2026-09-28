@@ -44,6 +44,11 @@ class InnerCircleListViewController: BaseViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+        // Only a named list can be renamed; the legacy single list has no id.
+        if listId != nil {
+            navigationItem.rightBarButtonItem = UIBarButtonItem(
+                title: "Rename", style: .plain, target: self, action: #selector(renameTapped))
+        }
     }
 
     override func loadData(completion: (() -> Void)? = nil) {
@@ -64,6 +69,35 @@ class InnerCircleListViewController: BaseViewController {
     }
 
     // MARK: - Editing
+
+    @objc private func renameTapped() {
+        guard let listId else { return }
+        AlertPresenter.showTextInput(
+            title: "Rename \(listName)",
+            placeholder: "Name",
+            initialText: listName,
+            confirmTitle: "Save",
+            from: self
+        ) { [weak self] name in
+            guard let self, let name = name?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty, name != self.listName else { return }
+            let loading = AlertPresenter.showLoading(message: "Saving…", from: self)
+            InnerCircleService.shared.updateList(id: listId, name: name) { [weak self] result in
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) {
+                        guard let self = self else { return }
+                        switch result {
+                        case .success(let list):
+                            self.listName = (list.lists ?? []).first { $0.id == listId }?.name ?? name
+                            self.title = self.listName
+                        case .failure(let error):
+                            self.showError(error)
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     @objc private func addPeopleTapped() {
         let picker = TagPeoplePickerViewController()
