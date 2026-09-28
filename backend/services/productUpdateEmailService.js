@@ -50,74 +50,102 @@ const selectRecipients = (users, campaign) => {
 
 // ---- the campaign content
 
+const NAVY = '#0F1E3A';
+const INK = '#1A2438';
+const MUTED = '#5B6780';
+const LINE = '#E6EAF1';
+const IMG = 'https://favcircles.com/img/email';
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
+
+// A row in "Also new": a tinted round badge with an emoji, then the words.
+const featureRow = (emoji, tint, title, body) => `
+  <tr>
+    <td width="52" valign="top" style="padding:14px 0 14px 0;">
+      <div style="width:40px;height:40px;border-radius:20px;background:${tint};text-align:center;font-size:20px;line-height:40px;">${emoji}</div>
+    </td>
+    <td valign="top" style="padding:14px 0;border-bottom:1px solid ${LINE};">
+      <div style="font-family:${FONT};font-size:16px;font-weight:700;color:${INK};">${title}</div>
+      <div style="font-family:${FONT};font-size:14px;line-height:21px;color:${MUTED};padding-top:3px;">${body}</div>
+    </td>
+  </tr>`;
+
+// One of the two "how it goes out" cards. Stacks on phones via .col.
+const optionCard = ({ label, price, color, tint, body }) => `
+  <td class="col" width="50%" valign="top" style="padding:0 6px 12px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${tint};border-radius:14px;">
+      <tr><td style="padding:18px 18px 20px;">
+        <div style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:${color};">${label}</div>
+        <div style="font-family:${FONT};font-size:30px;font-weight:800;color:${INK};padding:6px 0 6px;">${price}</div>
+        <div style="font-family:${FONT};font-size:14px;line-height:21px;color:${MUTED};">${body}</div>
+      </td></tr>
+    </table>
+  </td>`;
+
 const CAMPAIGNS = {
   '2026-09-postcards': {
     subject: 'Send a postcard from anywhere, now in FavCircles',
     preheader: 'Share it free as a link, or we print and mail a real one for $3.99.',
     build: ({ greeting }) => {
-      const featureRow = (title, body) => `
-        <tr><td style="padding:10px 0;border-top:1px solid #EEF1F5;">
-          <div style="font-size:15px;font-weight:700;color:#1a202c;">${title}</div>
-          <div style="font-size:14px;line-height:1.5;color:#4a5568;margin-top:2px;">${body}</div>
-        </td></tr>`;
       const html = `
-        <p style="font-size:16px;margin:0 0 16px;">${greeting}</p>
-        <h1 style="font-size:24px;line-height:1.25;margin:0 0 8px;color:#1a202c;">Send a postcard from where you are</h1>
-        <p style="font-size:15px;line-height:1.6;margin:0 0 16px;color:#4a5568;">
-          Pick a photo from your trip, add a note, and choose how it goes out:
-        </p>
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px;">
-          <tr>
-            <td style="padding:14px 16px;background:#F4F8FE;border-radius:12px;">
-              <div style="font-size:16px;font-weight:700;color:${BRAND_BLUE};">Digital · free</div>
-              <div style="font-size:14px;line-height:1.5;color:#4a5568;margin-top:4px;">Share it as a link or by email. It opens in any browser, so the people you send it to don't need the app.</div>
-            </td>
-          </tr>
-          <tr><td style="height:10px;"></td></tr>
-          <tr>
-            <td style="padding:14px 16px;background:#FEF3F2;border-radius:12px;">
-              <div style="font-size:16px;font-weight:700;color:${POSTCARD_RED};">Printed and mailed · $3.99</div>
-              <div style="font-size:14px;line-height:1.5;color:#4a5568;margin-top:4px;">We print a real 4×6 postcard and mail it anywhere in the US. Pay with Apple Pay; you can cancel within an hour of sending.</div>
-            </td>
-          </tr>
+      <tr><td style="padding:0;">
+        <a href="${APP_OPEN_URL}"><img src="${IMG}/postcards-hero.jpg" width="600" alt="A FavCircles postcard, front and back" style="display:block;width:100%;max-width:600px;height:auto;border:0;"></a>
+      </td></tr>
+      <tr><td class="pad" style="padding:32px 36px 8px;">
+        <div style="font-family:${FONT};font-size:15px;color:${MUTED};padding-bottom:10px;">${greeting}</div>
+        <h1 style="margin:0;font-family:${FONT};font-size:30px;line-height:36px;font-weight:800;color:${INK};letter-spacing:-0.3px;">Send a postcard from where you are</h1>
+        <p style="margin:12px 0 0;font-family:${FONT};font-size:16px;line-height:25px;color:${MUTED};">Pick a photo from your trip, write a note, and choose how it goes out.</p>
+      </td></tr>
+      <tr><td class="pad" style="padding:20px 30px 4px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+          ${optionCard({ label: 'Digital', price: 'Free', color: BRAND_BLUE, tint: '#EEF4FE', body: "Share it as a link or by email. It opens in any browser, so they don't need the app." })}
+          ${optionCard({ label: 'Printed &amp; mailed', price: '$3.99', color: POSTCARD_RED, tint: '#FDF0EF', body: 'A real 4×6 card, mailed anywhere in the US. Apple Pay, and an hour to change your mind.' })}
+        </tr></table>
+      </td></tr>
+      <tr><td align="center" style="padding:14px 36px 6px;">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td style="background:${NAVY};border-radius:12px;">
+            <a href="${APP_OPEN_URL}" style="display:inline-block;padding:15px 34px;font-family:${FONT};font-size:16px;font-weight:700;color:#ffffff;text-decoration:none;">Send a postcard</a>
+          </td>
+        </tr></table>
+        <div style="font-family:${FONT};font-size:13px;color:#8C97AB;padding-top:12px;">In the app: Home → Widgets → Postcard, or from any Moment.</div>
+      </td></tr>
+      <tr><td class="pad" style="padding:34px 36px 8px;">
+        <div style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#8C97AB;border-top:1px solid ${LINE};padding-top:26px;">Also new</div>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:6px;">
+          ${featureRow('🖍️', '#FFF4E0', 'Fridge Mail', "Queue up your kids' drawings. We mail one to the grandparents every week as a real postcard.")}
+          ${featureRow('🧩', '#EEF4FE', 'Widgets', 'A new Home tab of little tools: water, habits, workouts, sleep sounds, quotes, and How Are You? check-ins for Mom or Dad.')}
+          ${featureRow('🔒', '#EEF8F1', 'Inner Circle', 'Share places, moments and check-ins with only the people you pick.')}
         </table>
-        <p style="margin:0 0 8px;">
-          <a href="${APP_OPEN_URL}" style="display:inline-block;background:${BRAND_BLUE};color:#fff;text-decoration:none;font-weight:700;font-size:16px;padding:12px 22px;border-radius:10px;">Send a postcard</a>
-        </p>
-        <p style="font-size:13px;color:#718096;margin:0 0 28px;">In the app: Home → Widgets → Postcard. You can also send one from any Moment.</p>
-        <h2 style="font-size:17px;margin:0 0 4px;color:#1a202c;">Also new</h2>
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-          ${featureRow('Fridge Mail', "Queue up your kids' drawings and we mail one as a real postcard to the grandparents every week.")}
-          ${featureRow('Widgets', 'A new tab on Home with little tools: water and habits, workouts, sleep sounds, quotes, and How Are You? check-ins for Mom or Dad.')}
-          ${featureRow('Inner Circle', 'Share places, moments and check-ins with only the people you choose.')}
-        </table>
-        <p style="font-size:14px;line-height:1.6;color:#4a5568;margin:24px 0 0;">
-          Update FavCircles from the <a href="${APP_STORE_URL}" style="color:${BRAND_BLUE};">App Store</a> to get all of it.
-        </p>`;
+      </td></tr>
+      <tr><td class="pad" style="padding:22px 36px 34px;">
+        <p style="margin:0;font-family:${FONT};font-size:14px;line-height:22px;color:${MUTED};">Get the latest version from the <a href="${APP_STORE_URL}" style="color:${BRAND_BLUE};text-decoration:none;font-weight:600;">App Store</a> to try all of it.</p>
+      </td></tr>`;
       const text = [
         greeting,
         '',
         'Send a postcard from where you are',
-        'Pick a photo from your trip, add a note, and choose how it goes out:',
-        '- Digital, free: share it as a link or by email. It opens in any browser, so the people you send it to don\'t need the app.',
-        '- Printed and mailed, $3.99: we print a real 4x6 postcard and mail it anywhere in the US. Pay with Apple Pay; you can cancel within an hour of sending.',
+        'Pick a photo from your trip, write a note, and choose how it goes out:',
+        "- Digital, free: share it as a link or by email. It opens in any browser, so they don't need the app.",
+        '- Printed and mailed, $3.99: a real 4x6 card, mailed anywhere in the US. Apple Pay, and an hour to change your mind.',
         '',
         `Send a postcard: ${APP_OPEN_URL}`,
-        'In the app: Home > Widgets > Postcard. You can also send one from any Moment.',
+        'In the app: Home > Widgets > Postcard, or from any Moment.',
         '',
-        'Also new',
-        "- Fridge Mail: queue up your kids' drawings and we mail one as a real postcard to the grandparents every week.",
-        '- Widgets: a new tab on Home with little tools: water and habits, workouts, sleep sounds, quotes, and How Are You? check-ins for Mom or Dad.',
-        '- Inner Circle: share places, moments and check-ins with only the people you choose.',
+        'ALSO NEW',
+        "- Fridge Mail: queue up your kids' drawings. We mail one to the grandparents every week as a real postcard.",
+        '- Widgets: a new Home tab of little tools: water, habits, workouts, sleep sounds, quotes, and How Are You? check-ins for Mom or Dad.',
+        '- Inner Circle: share places, moments and check-ins with only the people you pick.',
         '',
-        `Update FavCircles from the App Store to get all of it: ${APP_STORE_URL}`
+        `Get the latest version from the App Store: ${APP_STORE_URL}`
       ].join('\n');
       return { html, text };
     }
   }
 };
 
-const mailingAddress = () => (process.env.COMPANY_MAILING_ADDRESS || '').trim();
+// Postal address for the footer: CAN-SPAM requires one on a commercial email.
+const COMPANY_MAILING_ADDRESS = 'PO Box 1540, Charlotte, NC 28203';
+const mailingAddress = () => (process.env.COMPANY_MAILING_ADDRESS || COMPANY_MAILING_ADDRESS).trim();
 
 const buildEmail = ({ user, campaign }) => {
   const spec = CAMPAIGNS[campaign];
@@ -129,23 +157,41 @@ const buildEmail = ({ user, campaign }) => {
   const { unsubscribeUrl } = require('./followSuggestionEmailService');
   const unsub = unsubscribeUrl(user.id, PREFERENCE_KEY);
   const address = mailingAddress();
-  const html = `<!doctype html><html><body style="margin:0;padding:0;background:#F7F9FC;">
-<div style="display:none;max-height:0;overflow:hidden;">${esc(spec.preheader)}</div>
-<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#F7F9FC;">
-  <tr><td align="center" style="padding:24px 12px;">
-    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;background:#ffffff;border-radius:16px;">
-      <tr><td style="padding:28px 28px 24px;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1a202c;">
-        <div style="font-size:14px;font-weight:700;color:${BRAND_BLUE};margin-bottom:18px;">FavCircles</div>
-        ${body}
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">
+<title>${esc(spec.subject)}</title>
+<style>
+  @media (max-width:620px){
+    .outer{padding:0 !important;}
+    .shell{width:100% !important;border-radius:0 !important;}
+    .pad{padding-left:22px !important;padding-right:22px !important;}
+    .col{display:block !important;width:100% !important;box-sizing:border-box;}
+    h1{font-size:26px !important;line-height:32px !important;}
+  }
+</style></head>
+<body style="margin:0;padding:0;background:#EEF1F6;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(spec.preheader)}&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EEF1F6;">
+  <tr><td align="center" class="outer" style="padding:28px 12px;">
+    <table role="presentation" class="shell" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:18px;overflow:hidden;">
+      <tr><td style="background:${NAVY};padding:18px 28px;">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td style="padding-right:10px;"><img src="https://favcircles.com/app-icon.png" width="30" height="30" alt="" style="display:block;border-radius:7px;border:0;"></td>
+          <td style="font-family:${FONT};font-size:18px;font-weight:800;color:#ffffff;letter-spacing:-0.2px;">FavCircles</td>
+        </tr></table>
+      </td></tr>
+      ${body}
+    </table>
+    <table role="presentation" width="600" class="shell" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;">
+      <tr><td class="pad" style="padding:20px 36px 8px;font-family:${FONT};font-size:12px;line-height:19px;color:#8C97AB;text-align:center;">
+        You're getting this because you have a FavCircles account.<br>
+        <a href="${unsub}" style="color:#8C97AB;text-decoration:underline;">Unsubscribe from product updates</a>
+        ${address ? `<br>FavCircles · ${esc(address)}` : ''}
       </td></tr>
     </table>
-    <div style="max-width:560px;font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#8896AB;padding:16px 12px 0;">
-      You're getting this because you have a FavCircles account.
-      <a href="${unsub}" style="color:#8896AB;">Unsubscribe from product updates</a>.
-      ${address ? `<br>FavCircles · ${esc(address)}` : ''}
-    </div>
   </td></tr>
-</table></body></html>`;
+</table>
+</body></html>`;
   const text = `${bodyText}\n\n--\nYou're getting this because you have a FavCircles account.\nUnsubscribe from product updates: ${unsub}${address ? `\nFavCircles · ${address}` : ''}\n`;
   return { subject: spec.subject, html, text, unsubscribe: unsub };
 };
