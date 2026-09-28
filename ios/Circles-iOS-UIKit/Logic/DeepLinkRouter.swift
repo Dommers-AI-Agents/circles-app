@@ -35,6 +35,9 @@ enum DeepLinkDestination: Equatable {
     /// recipient had it switched off; a link to something they can't see is
     /// the one way this share is worth nothing.
     case widget(id: String)
+    /// A shared quote — `/app/quote/<id>` or `circles://quote/<id>`. Opens the
+    /// Quotes reel on that quote, with more like it a swipe away.
+    case quote(id: String)
 }
 
 /// Interprets universal links (https://api.favcircles.com/…) and the custom
@@ -76,6 +79,8 @@ struct DeepLinkRouter {
                 return parts.count >= 3 ? .video(id: parts[2], promptsLogin: false) : nil
             case "widget":
                 return parts.count >= 3 ? .widget(id: parts[2]) : nil
+            case "quote":
+                return parts.count >= 3 ? .quote(id: parts[2]) : nil
             case "circle":
                 return parts.count >= 3 ? .circle(id: parts[2], shareToken: query(url, "share")) : nil
             case "connect":
@@ -149,6 +154,8 @@ struct DeepLinkRouter {
             return .upgradePaywall
         case "widget" where !hostPathId.isEmpty:
             return .widget(id: hostPathId)
+        case "quote" where !hostPathId.isEmpty:
+            return .quote(id: hostPathId)
         case "network":
             return .network
         case "settings" where url.path == "/notifications":
@@ -173,6 +180,8 @@ struct DeepLinkRouter {
             return .userProfile(id: parts[2])
         case "widget" where parts.count >= 3:
             return .widget(id: parts[2])
+        case "quote" where parts.count >= 3:
+            return .quote(id: parts[2])
         case "connect" where parts.count >= 3:
             return .connectionInvite(userId: parts[2], referralCode: query(url, "code"))
         default:

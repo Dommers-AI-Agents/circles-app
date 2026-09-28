@@ -807,6 +807,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // isn't up yet or nobody is signed in — which is the normal case
             // for a shared link, since it usually arrives on a cold launch.
             navigateToWidget(id: id)
+        case .quote(let id):
+            navigateToWidget(id: "quotes", quoteId: id)
         case .referral(let code):
             handleReferralCode(code)
         case .sticker(let code):

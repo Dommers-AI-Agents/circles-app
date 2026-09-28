@@ -152,3 +152,25 @@ struct WidgetShareLinkTests {
         #expect(WidgetShareLink.message(title: "Water", subtitle: "  ") == "Water on FavCircles")
     }
 }
+
+/// Shared quote links: the reel's Share button hands out the https form, the
+/// landing page fires the `circles://` form at a phone that has the app.
+@Suite("Quote share links")
+struct QuoteShareLinkTests {
+    private let router = DeepLinkRouter()
+
+    @Test func universalLinkOpensTheQuote() {
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/quote/angelou-rainbow")!)
+                == .quote(id: "angelou-rainbow"))
+    }
+
+    @Test func customSchemeFormsBothRoute() {
+        #expect(router.destination(for: URL(string: "circles://quote/ashe-start")!) == .quote(id: "ashe-start"))
+        #expect(router.destination(for: URL(string: "circles:///quote/ashe-start")!) == .quote(id: "ashe-start"))
+    }
+
+    @Test func quoteWithoutAnIdRoutesNowhere() {
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/quote")!) == nil)
+        #expect(router.destination(for: URL(string: "circles://quote")!) == nil)
+    }
+}

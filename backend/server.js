@@ -405,6 +405,60 @@ app.get('/app/widget/:id', (req, res) => {
 </body></html>`);
 });
 
+// Shared quote link (AASA /app/*). With the app installed the Universal Link
+// opens the quote reel on this quote. Everyone else sees the quote itself,
+// set like the reel, with the way to get more.
+//
+// Deliberately no og:image: Messages then draws a compact card (the quote as
+// its title, the app icon beside it) instead of a big image bubble.
+app.get('/app/quote/:id', async (req, res) => {
+  const id = String(req.params.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+  const iconUrl = 'https://favcircles.com/app-icon.png';
+
+  let quote = null;
+  try {
+    const { getFirestore } = require('./config/firebase');
+    const doc = id ? await getFirestore().collection('quotes').doc(id).get() : null;
+    if (doc && doc.exists && doc.data().enabled !== false) quote = doc.data();
+  } catch (e) {
+    console.warn('Quote share page: could not load quote:', e.message);
+  }
+
+  const esc = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const text = quote && quote.text ? String(quote.text).trim() : null;
+  const author = quote && quote.author ? String(quote.author).trim() : null;
+  const ogTitle = text ? `“${esc(text.length > 180 ? `${text.slice(0, 177)}…` : text)}”` : 'Quotes on FavCircles';
+  const ogDescription = author
+    ? `— ${esc(author)} · More quotes on FavCircles`
+    : 'A good line a few times a day, on the topics you pick.';
+
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${ogTitle}</title>
+<meta property="og:title" content="${ogTitle}">
+<meta property="og:description" content="${ogDescription}">
+<meta property="og:site_name" content="FavCircles">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://api.favcircles.com/app/quote/${id}">
+<link rel="apple-touch-icon" href="${iconUrl}">
+<link rel="icon" href="${iconUrl}">
+</head>
+<body style="font-family:-apple-system,Helvetica,Arial,sans-serif;min-height:100vh;margin:0;background:#000;color:#fff;display:flex;align-items:center;padding:32px;box-sizing:border-box">
+<div style="max-width:560px;margin:0 auto">
+${text ? `<p style="font-family:'New York',ui-serif,Georgia,serif;font-weight:600;font-size:30px;line-height:1.25;margin:0 0 20px">${esc(text)}</p>` : '<p style="font-family:ui-serif,Georgia,serif;font-size:28px;margin:0 0 20px">Quotes on FavCircles</p>'}
+${author ? `<p style="color:#7C6BD6;font-size:18px;font-weight:500;margin:0 0 36px">— ${esc(author)}</p>` : ''}
+<p style="color:#8e8e93;font-size:15px;margin:0 0 16px">Swipe through more quotes like this in FavCircles.</p>
+<a href="${appStoreUrl}" style="background:#7C6BD6;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:600;display:inline-block">Get FavCircles</a>
+</div>
+<script>
+  window.location = 'circles://quote/${id}';
+  setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
+</script>
+</body></html>`);
+});
+
 // Route debug middleware (reduced logging)
 app.use('/api/users', (req, res, next) => {
   next();
