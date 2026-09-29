@@ -6,6 +6,13 @@
 const { ANSWERS, COLLECTIONS, CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, DUE_AFTER_MS, NOTE_MAX, RICH_ASKS_MIN_CLIENT, TYPES, bank, buildConnectionMap, clean, friendlyTime, getFirestore, localDateKey, normalizeMuted, normalizeProfile, normalizeQuestions, normalizeTimes, normalizeUserId, notificationService, nowIso, RESEND_INVITE_COOLDOWN_MS } = require('./careCheckin/shared');
 const planner = require('./careCheckin/questionPlanner');
 const { atLeast } = require('../utils/appVersion');
+const emailService = require('./emailService');
+const { escapeHtml } = require('../utils/text');
+
+// Where an emailed invitation's button goes: the How Are You? widget, which
+// holds the invitation card (AASA /app/* opens the app; without it, the
+// landing page sends them to the App Store).
+const CARE_WIDGET_URL = 'https://api.favcircles.com/app/widget/howareyou';
 
 class CareCheckinService {
   constructor() {
@@ -228,7 +235,7 @@ class CareCheckinService {
       acceptedAt: null, lastAskedAt: null, lastAnsweredAt: null
     };
     await this.plans.doc(planId).set(plan);
-    this.notify(parent, CareCheckinService.inviteMessage(ownerName, planId));
+    this.invite(parent, CareCheckinService.inviteMessage(ownerName, planId)).catch(() => {});
     return this.presentPlan({ id: planId, ...plan }, { viewerId: ownerId });
   }
 
@@ -269,12 +276,13 @@ class CareCheckinService {
       const minutes = Math.max(1, Math.ceil(waitMs / 60000));
       throw new CareError(429, 'too_soon', `The invitation just went out. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`);
     }
-    const result = await this.push(plan.parentId, CareCheckinService.inviteMessage(plan.ownerName || 'Someone', planId));
+    const { delivered, emailed } = await this.invite(plan.parentId, CareCheckinService.inviteMessage(plan.ownerName || 'Someone', planId));
     const patch = { lastInvitedAt: now.toISOString(), inviteCount: (plan.inviteCount || 1) + 1, updatedAt: nowIso() };
     await this.plans.doc(planId).update(patch);
     return {
       plan: this.presentPlan({ ...plan, ...patch }, { viewerId: userId }),
-      delivered: !!(result && result.success)
+      delivered,
+      emailed
     };
   }
 
@@ -439,6 +447,54 @@ class CareCheckinService {
       console.error(`[care] push failed for ${userId}: ${error.message}`);
       return { success: false, error: error.message };
     }
+  }
+
+  // MARK: - Invitations (push AND email)
+
+  /**
+   * An invitation goes out as a push and an email together. Push alone
+   * failed people whose notifications are off, and those are often the very
+   * parents and relatives these invitations are for (Wes, 2026-09-29). Both
+   * are always sent: a push "succeeds" to a stale token as readily as to a
+   * phone someone looks at. `delivered` keeps meaning the push.
+   */
+  async invite(userId, message) {
+    const [result, emailed] = await Promise.all([this.push(userId, message), this.emailInvite(userId, message)]);
+    return { delivered: !!(result && result.success), emailed };
+  }
+
+  /** True when an email went out; never throws (the push is the other half). */
+  async emailInvite(userId, message) {
+    try {
+      const doc = await this.db.collection(COLLECTIONS.USERS).doc(userId).get();
+      const user = doc.exists ? doc.data() : {};
+      const to = typeof user.email === 'string' ? user.email.trim() : '';
+      if (!to) return false;
+      await emailService.sendEmail({
+        to,
+        subject: message.title,
+        html: CareCheckinService.inviteEmailHtml(message, user.displayName),
+        text: `${message.title}\n\n${message.body}\n\n${CARE_WIDGET_URL}`
+      });
+      return true;
+    } catch (error) {
+      console.error(`[care] invitation email failed for ${userId}: ${error.message}`);
+      return false;
+    }
+  }
+
+  static inviteEmailHtml(message, displayName) {
+    const first = String(displayName || '').trim().split(/\s+/)[0];
+    return `<!doctype html><html><body style="margin:0;padding:32px 16px;background:#f5f7fa;font-family:-apple-system,'Segoe UI',Arial,sans-serif">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:16px;padding:36px 32px;box-shadow:0 8px 24px rgba(14,42,71,.08)">
+    <p style="margin:0 0 20px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#E0457B;font-weight:700">How are you?</p>
+    ${first ? `<p style="margin:0 0 12px;font-size:16px;color:#334155">Hi ${escapeHtml(first)},</p>` : ''}
+    <p style="margin:0;font-size:21px;line-height:1.4;color:#0E2A47;font-weight:600">${escapeHtml(message.title)}</p>
+    <p style="margin:14px 0 28px;font-size:16px;line-height:1.5;color:#475569">${escapeHtml(message.body)}</p>
+    <a href="${CARE_WIDGET_URL}" style="display:inline-block;background:#E0457B;color:#fff;text-decoration:none;font-weight:600;font-size:16px;padding:13px 26px;border-radius:10px">Open FavCircles</a>
+    <p style="margin:28px 0 0;font-size:13px;color:#94a3b8">The invitation is waiting in the How Are You? widget on the Widgets tab. Nothing is shared until you say yes.</p>
+  </div>
+</body></html>`;
   }
 
   /** Fire-and-forget, for notices whose delivery nothing depends on. */

@@ -68,7 +68,7 @@ module.exports = {
     });
 
     if (ownerInvites) {
-      await this.push(candidate, this.constructor.watcherInviteMessage(plan, planId));
+      await this.invite(candidate, this.constructor.watcherInviteMessage(plan, planId));
     } else {
       this.notify(plan.parentId, {
         type: TYPES.watcherRequest,
@@ -169,13 +169,14 @@ module.exports = {
       const minutes = Math.max(1, Math.ceil(waitMs / 60000));
       throw new CareError(429, 'too_soon', `The invitation just went out. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`);
     }
-    const result = await this.push(target, this.constructor.watcherInviteMessage(plan, planId));
+    const { delivered, emailed } = await this.invite(target, this.constructor.watcherInviteMessage(plan, planId));
     const watchers = (plan.watchers || []).map((w) => (w.userId === target
       ? { ...w, invitedAt: now.toISOString(), inviteCount: (w.inviteCount || 1) + 1 } : w));
     await this.plans.doc(planId).update({ watchers, updatedAt: nowIso() });
     return {
       plan: this.presentPlan({ ...plan, watchers }, { viewerId: userId }),
-      delivered: !!(result && result.success)
+      delivered,
+      emailed
     };
   },
 

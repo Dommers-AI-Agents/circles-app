@@ -16,7 +16,11 @@ jest.mock('../notificationService', () => {
   return { sendToUser, sendToUserWithRecord: jest.fn((userId, payload) => sendToUser(userId, payload)) };
 });
 
+// Invitations are emailed as well as pushed; nothing reaches SMTP here.
+jest.mock('../emailService', () => ({ sendEmail: jest.fn(async () => ({})) }));
+
 const notificationService = require('../notificationService');
+const emailService = require('../emailService');
 const care = require('../careCheckinService');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 
@@ -52,6 +56,8 @@ beforeEach(() => {
   mockConnections.clear();
   notificationService.sendToUser.mockClear();
   notificationService.sendToUser.mockImplementation(async () => ({ success: true }));
+  emailService.sendEmail.mockClear();
+  emailService.sendEmail.mockImplementation(async () => ({}));
 });
 
 describe('setting up', () => {
@@ -74,6 +80,40 @@ describe('setting up', () => {
       type: 'care_invite', title: 'Wes wants to check in on you', data: expect.objectContaining({ type: 'care_invite', planId: PLAN })
     }));
     await expect(care.createPlan({ ownerId: CHILD, parentId: PARENT })).rejects.toMatchObject({ code: 'exists' });
+  });
+
+  test('every invitation is emailed as well as pushed, for phones with notifications off', async () => {
+    await seedUsers();
+    await mockDb.collection(COLLECTIONS.USERS).doc(PARENT).set({ displayName: 'Mom Sgroi', email: 'mom@example.com', notificationPreferences: { timezone: 'America/New_York' } });
+    await care.createPlan({ ownerId: CHILD, parentId: PARENT, times: ['08:30'] });
+    await new Promise((r) => setImmediate(r)); // the first invitation is fire-and-forget
+    expect(emailService.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'mom@example.com', subject: 'Wes wants to check in on you',
+      html: expect.stringContaining('https://api.favcircles.com/app/widget/howareyou')
+    }));
+    expect(emailService.sendEmail.mock.calls[0][0].html).toContain('Hi Mom,');
+
+    // Send again: the push didn't land, the email did — both are reported.
+    notificationService.sendToUser.mockImplementation(async () => ({ success: false, error: 'No device tokens' }));
+    const later = new Date(Date.parse(plans().get(PLAN).createdAt) + 11 * 60000);
+    const sent = await care.resendInvite({ userId: CHILD, planId: PLAN, now: later });
+    expect(sent).toMatchObject({ delivered: false, emailed: true });
+    expect(emailService.sendEmail).toHaveBeenCalledTimes(2);
+
+    // A failing mailbox never fails the invitation.
+    emailService.sendEmail.mockImplementation(async () => { throw new Error('SMTP down'); });
+    const again = await care.resendInvite({ userId: CHILD, planId: PLAN, now: new Date(later.getTime() + 11 * 60000) });
+    expect(again.emailed).toBe(false);
+    expect(plans().get(PLAN).inviteCount).toBe(3);
+  });
+
+  test('no email on file: the push alone goes, and emailed says so', async () => {
+    await seedUsers();
+    await care.createPlan({ ownerId: CHILD, parentId: PARENT, times: ['08:30'] });
+    const later = new Date(Date.parse(plans().get(PLAN).createdAt) + 11 * 60000);
+    const sent = await care.resendInvite({ userId: CHILD, planId: PLAN, now: later });
+    expect(sent).toMatchObject({ delivered: true, emailed: false });
+    expect(emailService.sendEmail).not.toHaveBeenCalled();
   });
 
   test('only the parent can accept; accepting activates, stores the device timezone and tells the child', async () => {
@@ -365,7 +405,7 @@ describe('reads', () => {
 
 describe('siblings joining (watchers)', () => {
   const seedSibling = async () => {
-    await mockDb.collection(COLLECTIONS.USERS).doc(SIBLING).set({ displayName: 'Kate' });
+    await mockDb.collection(COLLECTIONS.USERS).doc(SIBLING).set({ displayName: 'Kate', email: 'kate@example.com' });
     mockConnections.set(SIBLING, { status: 'accepted' });
   };
 
@@ -420,6 +460,8 @@ describe('siblings joining (watchers)', () => {
       type: 'care_watcher_invite', title: expect.stringContaining('Wes invited you')
     }));
     expect(notificationService.sendToUser).not.toHaveBeenCalledWith(PARENT, expect.objectContaining({ type: 'care_watcher_request' }));
+    // ...and by email, in case their notifications are off.
+    expect(emailService.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'kate@example.com' }));
     // Until they answer, their own widget shows the arrangement without answers.
     const theirs = await care.listPlans(SIBLING);
     expect(theirs.asPending.map((p) => p.planId)).toEqual([PLAN]);
@@ -485,8 +527,12 @@ describe('siblings joining (watchers)', () => {
       .rejects.toMatchObject({ code: 'not_owner' });
     const later = new Date(Date.now() + 11 * 60 * 1000);
     notificationService.sendToUserWithRecord.mockClear();
+    emailService.sendEmail.mockClear();
     const sent = await care.resendWatcherInvite({ userId: CHILD, planId: PLAN, watcherId: SIBLING, now: later });
-    expect(sent.delivered).toBe(true);
+    expect(sent).toMatchObject({ delivered: true, emailed: true });
+    expect(emailService.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'kate@example.com', subject: expect.stringContaining('Wes invited you')
+    }));
     expect(notificationService.sendToUserWithRecord).toHaveBeenCalledWith(SIBLING, expect.objectContaining({ type: 'care_watcher_invite' }));
     expect(plans().get(PLAN).watchers[0].inviteCount).toBe(2);
     // A sibling's own request is the parent's to answer — there is nothing to resend.
