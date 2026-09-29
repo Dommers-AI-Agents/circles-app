@@ -530,6 +530,9 @@ app.use('/', linkedinCallback);
 const appRedirectRoutes = require('./routes/appRedirectRoutes');
 app.use('/app', appRedirectRoutes);
 
+// Partner link-outs: the Reserve chip lands on the restaurant's OpenTable page
+app.get('/go/opentable', require('./controllers/opentableLinkController').redirect);
+
 // Physical sticker QR landing pages (public; AASA covers /s/* for Universal Links)
 app.use('/s', require('./routes/stickerPublicRoutes'));
 

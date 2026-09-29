@@ -179,6 +179,14 @@ if [ ! -z "$SMTP_HOST" ]; then
     fi
 fi
 
+# OpenTable link-out partnership (Directory API). OPENTABLE_ENV=sandbox|production.
+for var in OPENTABLE_ENV OPENTABLE_CLIENT_ID OPENTABLE_CLIENT_SECRET OPENTABLE_REF_ID; do
+    value="${!var}"
+    if [ ! -z "$value" ]; then
+        ENV_VARS="$ENV_VARS,$var=$value"
+    fi
+done
+
 # Add Apple Shared Secret for subscription receipt validation
 if [ ! -z "$APPLE_SHARED_SECRET" ]; then
     ENV_VARS="$ENV_VARS,APPLE_SHARED_SECRET=$APPLE_SHARED_SECRET"

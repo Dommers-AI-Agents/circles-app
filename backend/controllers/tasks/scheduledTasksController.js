@@ -13,6 +13,7 @@ const suggestionEngine = require('../../services/suggestionEngine');
 const followSuggestionEmail = require('../../services/followSuggestionEmailService');
 const { runCategorySweep } = require('../../services/categorySweep');
 const { sendVenueReports } = require('../../services/venueReportsTask');
+const opentableDirectorySync = require('../../services/opentable/directorySync');
 
 const flag = (req, key) => req.query[key] === 'true' || (req.body && req.body[key] === true);
 
@@ -166,3 +167,8 @@ exports.piggyBankResolveClaim = async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to resolve claim', details: error.message });
   }
 };
+
+exports.opentableDirectorySync = scheduledTask({
+  name: 'opentable directory sync', log: '🍽️ OpenTable directory sync triggered via API', failure: 'Failed to sync the OpenTable directory',
+  run: async () => ({ summary: await opentableDirectorySync.run() })
+});

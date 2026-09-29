@@ -51,6 +51,7 @@ router.post('/monthly-summary', verifyCloudScheduler, tasks.monthlySummary);
 router.post('/network-growth', verifyCloudScheduler, tasks.networkGrowth);
 router.post('/build-suggestions', verifyCloudScheduler, tasks.buildSuggestions);
 router.post('/follow-suggestions', verifyCloudScheduler, tasks.followSuggestions);
+router.post('/opentable-directory-sync', verifyCloudScheduler, tasks.opentableDirectorySync);
 router.post('/sweep-categories', verifyCloudScheduler, tasks.sweepCategories);
 router.post('/top-contributors', verifyCloudScheduler, tasks.topContributors);
 router.post('/special-event/:eventType', verifyCloudScheduler, tasks.specialEvent);
