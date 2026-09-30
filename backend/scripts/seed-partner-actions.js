@@ -50,7 +50,8 @@ const GROUPS = [
   },
   {
     id: 'reserve',
-    title: 'Reserve',
+    // OpenTable's affiliate rules: the link text must say "Reservations"
+    title: 'Reservations',
     icon: 'fork.knife',
     sheetTitle: 'Book a table with…',
     categories: ['restaurant'],
@@ -61,10 +62,13 @@ const GROUPS = [
       {
         id: 'opentable',
         title: 'OpenTable',
-        webUrlTemplate: 'https://www.opentable.com/s?term={name}&latitude={lat}&longitude={lng}&covers=2',
+        // Our redirect picks the restaurant's own OpenTable page (Directory
+        // API mirror) or falls back to search, and adds our referral ID
+        // (services/opentable/linkService.js). 2026-09-30.
+        webUrlTemplate: 'https://api.favcircles.com/go/opentable?name={name}&address={address}&lat={lat}&lng={lng}',
         // The OpenTable app intercepts opentable.com universal links but drops
         // the search params (lands on its home) — an in-app Safari sheet keeps
-        // the restaurant search results in view
+        // the restaurant page in view
         openMode: 'inAppBrowser',
         enabled: true
       }
