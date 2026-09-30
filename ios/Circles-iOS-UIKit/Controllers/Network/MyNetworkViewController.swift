@@ -107,7 +107,8 @@ class MyNetworkViewController: BaseViewController {
     // Child View Controllers
     private var allUsersListVC: AllUsersListViewController?
     private var requestsListVC: AllUsersListViewController?
-    private var discoveryListVC: DiscoveryListViewController?
+    /// Discover: what your people love, this month's board, people you might know
+    private var discoveryListVC: NetworkDiscoverViewController?
     private var popularListVC: DiscoveryListViewController?
     private var currentViewController: UIViewController?
     
@@ -306,7 +307,7 @@ class MyNetworkViewController: BaseViewController {
         let requestsVC = AllUsersListViewController()
         requestsVC.listMode = .requests
         requestsListVC = requestsVC
-        discoveryListVC = DiscoveryListViewController(mode: .discover)
+        discoveryListVC = NetworkDiscoverViewController()
         popularListVC = DiscoveryListViewController(mode: .popular)
     }
     
@@ -479,7 +480,8 @@ class MyNetworkViewController: BaseViewController {
         case .requests:
             requestsListVC?.updateSearchQuery(trimmed)
         case .discover:
-            discoveryListVC?.updateSearchQuery(trimmed)
+            // Search results show in the people list (see filterUsers)
+            break
         case .popular:
             popularListVC?.updateSearchQuery(trimmed)
         }
@@ -565,7 +567,7 @@ class MyNetworkViewController: BaseViewController {
     
     /// Shared child-swap for the Discover and Popular lists (same VC type,
     /// different mode).
-    private func showChildList(_ childVC: DiscoveryListViewController?) {
+    private func showChildList(_ childVC: BaseViewController?) {
         guard let childVC = childVC else { return }
 
         if currentViewController != nil {
