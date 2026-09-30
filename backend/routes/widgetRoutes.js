@@ -14,6 +14,7 @@ const fridgeMail = require('../controllers/widgets/fridgeMailController');
 const care = require('../controllers/widgets/careCheckinController');
 const quotes = require('../controllers/widgets/quotesController');
 const workoutFeed = require('../controllers/widgets/workoutFeedController');
+const { getMyInnerCircleLists } = require('../controllers/users/innerCircleController');
 
 const router = express.Router();
 router.use(protect);
@@ -89,6 +90,10 @@ router.post('/care/asks/:id/answer', care.answer);
 // Workouts shared with the Inner Circle (feed = grantors ∩ connections)
 router.post('/workouts/share', messageLimiter, workoutFeed.share);
 router.get('/workouts/feed', workoutFeed.feed);
+router.get('/workouts/posts/:postId', workoutFeed.post);
+// The widget may only call widgets/ paths; this is the Inner Circle lists
+// read the share picker needs (same handler as /users/me/inner-circle/lists)
+router.get('/workouts/lists', getMyInnerCircleLists);
 
 // NextBar voting rounds: shared docs (host + tagged connections vote)
 router.post('/nextbar/rounds', nextBarRounds.createRound);

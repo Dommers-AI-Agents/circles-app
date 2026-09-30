@@ -187,6 +187,20 @@ describe('item gates, moved here verbatim', () => {
     expect(ap.passesItemGates(named, FRIEND, ctxFor(FRIEND), circles)).toBe(false);
   });
 
+  test('a shared workout reaches its audience and never past connections', () => {
+    const toConnections = row('workout_shared', { metadata: { workoutAudience: 'connections', workoutPostId: 'p' } });
+    expect(ap.passesItemGates(toConnections, FRIEND, ctxFor(FRIEND), circles)).toBe(true);
+    expect(ap.passesItemGates(toConnections, FOLLOWER, ctxFor(FOLLOWER), circles)).toBe(false);
+    expect(ap.passesItemGates(toConnections, STRANGER, ctxFor(STRANGER), circles)).toBe(false);
+    const toFamily = row('workout_shared', { metadata: { workoutAudience: 'innerCircle', audienceListId: 'family' } });
+    expect(ap.passesItemGates(toFamily, INSIDER, ctxFor(INSIDER), circles)).toBe(true);
+    expect(ap.passesItemGates(toFamily, FRIEND, ctxFor(FRIEND), circles)).toBe(false);
+    const toAnyList = row('workout_shared', { metadata: { workoutAudience: 'innerCircle' } });
+    expect(ap.passesItemGates(toAnyList, INSIDER, ctxFor(INSIDER), circles)).toBe(true);
+    expect(ap.passesItemGates(toAnyList, FRIEND, ctxFor(FRIEND), circles)).toBe(false);
+    expect(ap.passesItemGates(toAnyList, ACTOR, ctxFor(ACTOR), circles)).toBe(true);
+  });
+
   test('a check-in with no list is shown to any grantor, and a plain one to anyone the circle admits', () => {
     const any = row('check_in', { metadata: { checkInAudience: 'innerCircle' } });
     expect(ap.passesItemGates(any, INSIDER, ctxFor(INSIDER), circles)).toBe(true);

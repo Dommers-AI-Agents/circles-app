@@ -99,3 +99,50 @@ test('a post shared to one named list reaches that list only', async () => {
   const r = await feed.share({ userId: 'b', summary: summary({ startedAt: '2026-09-18T12:00:00.000Z' }), audienceListId: '  ' });
   expect(r.audienceListId).toBeNull();
 });
+
+test('connections-audience posts reach every connection; Inner Circle posts only grantors', async () => {
+  await feed.share({ userId: 'brit', summary: summary({ name: 'Open', startedAt: '2026-09-18T11:00:00Z' }), audience: 'connections' });
+  await feed.share({ userId: 'brit', summary: summary({ name: 'Close', startedAt: '2026-09-19T11:00:00Z' }) });
+  mockConnections.add('brit'); // connected, NOT on her Inner Circle
+  const seen = (await feed.feed('viewer')).map((p) => p.summary.name);
+  expect(seen).toEqual(['Open']);
+  mockGrantors.add('brit');
+  expect((await feed.feed('viewer')).map((p) => p.summary.name).sort()).toEqual(['Close', 'Open']);
+});
+
+test('getPost: the author, their audience, and nobody else', async () => {
+  const open = await feed.share({ userId: 'brit', summary: summary({ startedAt: '2026-09-18T11:00:00Z' }), audience: 'connections' });
+  const close = await feed.share({ userId: 'brit', summary: summary({ startedAt: '2026-09-19T11:00:00Z' }), audienceListId: 'family' });
+  await expect(feed.getPost(open.postId, 'stranger')).rejects.toMatchObject({ code: 'not_found' });
+  mockConnections.add('brit');
+  expect((await feed.getPost(open.postId, 'viewer')).postId).toBe(open.postId);
+  await expect(feed.getPost(close.postId, 'viewer')).rejects.toMatchObject({ code: 'not_found' });
+  mockGrantors.add('brit'); mockLists.set('brit', new Set(['work']));
+  await expect(feed.getPost(close.postId, 'viewer')).rejects.toMatchObject({ code: 'not_found' });
+  mockLists.set('brit', new Set(['family']));
+  expect((await feed.getPost(close.postId, 'viewer')).summary.name).toBe('Push');
+  mockConnections.clear();
+  expect((await feed.getPost(close.postId, 'brit')).userId).toBe('brit');
+  await expect(feed.getPost('missing', 'brit')).rejects.toMatchObject({ code: 'not_found' });
+});
+
+test('share keeps a copyable routine and writes one feed row per workout', async () => {
+  const rows = [];
+  const onFirstShare = async (post) => rows.push(post);
+  const routine = [
+    { exerciseId: 'overhead_press', name: 'Overhead Press', muscleGroup: 'Shoulders', sets: 3, reps: 10, weight: 50 },
+    { exerciseId: 'custom-1', name: 'Shrug', muscleGroup: 'Back', sets: 99, reps: 20, weight: -5 }
+  ];
+  const first = await feed.share({ userId: 'b', summary: summary({ routine }), audience: 'connections', onFirstShare });
+  const stored = mockDb.rows(COLLECTIONS.WORKOUT_POSTS).get(first.postId);
+  expect(stored.audience).toBe('connections');
+  expect(stored.audienceListId).toBeNull();
+  expect(stored.summary.routine[0]).toEqual(routine[0]);
+  expect(stored.summary.routine[1]).toMatchObject({ sets: 20, weight: null });
+  await feed.share({ userId: 'b', summary: summary({ routine }), audience: 'connections', onFirstShare });
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ postId: first.postId, audience: 'connections' });
+  // An unknown audience falls back to the Inner Circle, never wider
+  const odd = await feed.share({ userId: 'c', summary: summary(), audience: 'everyone' });
+  expect(odd.audience).toBe('innerCircle');
+});

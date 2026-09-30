@@ -737,7 +737,28 @@ const clearActivityNotification = async (userId, connectedUserId, { excludeTypes
   }
 };
 
+/**
+ * A finished workout shared from the Workouts widget. One feed row per post,
+ * gated to the post's audience (activityPrivacy.passesItemGates); tapping
+ * it opens the post. No push: a workout is feed news, not a notification.
+ */
+const trackWorkoutShared = async (userId, { postId, summary, audience, audienceListId }) => {
+  const parts = [];
+  const exercises = (summary.exercises || []).length;
+  if (exercises > 0) parts.push(`${exercises} exercise${exercises === 1 ? '' : 's'}`);
+  const minutes = Math.round((summary.durationSeconds || 0) / 60);
+  if (minutes > 0) parts.push(`${minutes} min`);
+  if (summary.prCount > 0) parts.push(`${summary.prCount} PR${summary.prCount === 1 ? '' : 's'}`);
+  return createActivity('workout_shared', userId, 'workout', postId, summary.name || 'Workout', {
+    workoutPostId: postId,
+    workoutAudience: audience,
+    audienceListId: audienceListId || null,
+    workoutDetail: parts.join(' · ') || null
+  });
+};
+
 module.exports = {
+  trackWorkoutShared,
   trackReaction,
   trackComment,
   trackSuggestionSent,

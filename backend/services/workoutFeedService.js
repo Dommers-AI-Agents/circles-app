@@ -1,10 +1,13 @@
 // backend/services/workoutFeedService.js
 //
-// Workouts shared with the Inner Circle. The client posts a finished
-// workout's summary (custom exercise names live only on the phone); the
-// feed shows a viewer what the people who put them in their Inner Circle
-// have posted — intersected with the viewer's accepted connections, so a
-// disconnect revokes the grant with no cleanup ([[inner-circle-privacy-tier]]).
+// Shared workouts. The client posts a finished workout's summary (custom
+// exercise names live only on the phone) to one audience: all connections,
+// or the Inner Circle (optionally one named list). Every share also lands in
+// the activity feed as a `workout_shared` row gated to that same audience,
+// and the row opens the post (GET /widgets/workouts/posts/:id) where a
+// viewer can copy it as a routine. Readers are always intersected with the
+// author's accepted connections, so a disconnect revokes access with no
+// cleanup ([[inner-circle-privacy-tier]]).
 //
 // Queries are equality-only (monthKey + userId-in), sorted in memory.
 const { getFirestore } = require('../config/firebase');
@@ -20,6 +23,8 @@ const NAME_MAX = 80;
 const LINE_MAX = 60;
 const MAX_EXERCISES = 30;
 const MAX_CARDIO = 10;
+const MAX_ROUTINE = 30;
+const AUDIENCES = ['connections', 'innerCircle'];
 const MAX_POSTS = 60;
 const FEED_DAYS = 45;
 
@@ -45,6 +50,16 @@ function normalizeSummary(input) {
     detail: clean(c && c.detail, LINE_MAX)
   }));
   if (exercises.length === 0 && cardio.length === 0) throw new WorkoutFeedError(400, 'bad_summary', 'Nothing was logged in this workout.');
+  // What a viewer copies as their own routine: exercise identity plus the
+  // opening working set. Older app versions don't send it.
+  const routine = (Array.isArray(input.routine) ? input.routine : []).slice(0, MAX_ROUTINE).map((r) => ({
+    exerciseId: clean(r && r.exerciseId, LINE_MAX) || null,
+    name: clean(r && r.name, LINE_MAX) || 'Exercise',
+    muscleGroup: clean(r && r.muscleGroup, 30) || 'Other',
+    sets: Math.max(1, int(r && r.sets, 20)),
+    reps: int(r && r.reps, 200),
+    weight: Number.isFinite(Number(r && r.weight)) && Number(r.weight) > 0 ? Math.min(2000, Number(r.weight)) : null
+  }));
   return {
     name,
     startedAt: new Date(startedAt).toISOString(),
@@ -53,7 +68,8 @@ function normalizeSummary(input) {
     exercises,
     cardio,
     prCount: int(input.prCount, 99),
-    unit: input.unit === 'kg' ? 'kg' : 'lb'
+    unit: input.unit === 'kg' ? 'kg' : 'lb',
+    routine
   };
 }
 
@@ -65,35 +81,85 @@ class WorkoutFeedService {
   get posts() { return this.db.collection(COLLECTIONS.WORKOUT_POSTS); }
 
   /**
-   * One post per finished workout; re-sharing the same workout replaces it.
-   * `audienceListId` names which Inner Circle list may see it; none means
-   * anyone on any of the author's lists, as every post before lists did.
+   * One post per finished workout; re-sharing the same workout replaces it
+   * (and doesn't add a second feed row). `audience` is 'connections' or
+   * 'innerCircle' (the default, as before audiences existed); for the Inner
+   * Circle, `audienceListId` names one list, none means any of them.
    */
-  async share({ userId, summary, audienceListId = null }) {
+  async share({ userId, summary, audience = 'innerCircle', audienceListId = null, onFirstShare = null }) {
     const normalized = normalizeSummary(summary);
     const started = new Date(normalized.startedAt);
     const postId = `${userId}_${started.getTime()}`;
     const now = new Date();
-    const listId = listIdFor('innerCircle', audienceListId);
-    await this.posts.doc(postId).set({
+    const chosen = AUDIENCES.includes(audience) ? audience : 'innerCircle';
+    const listId = chosen === 'innerCircle' ? listIdFor('innerCircle', audienceListId) : null;
+    const ref = this.posts.doc(postId);
+    const existed = (await ref.get()).exists;
+    await ref.set({
       userId,
       summary: normalized,
+      audience: chosen,
       audienceListId: listId,
       monthKey: monthKeyOf(now),
       createdAt: now.toISOString()
     });
-    return { postId, audienceListId: listId, createdAt: now.toISOString() };
+    if (!existed && onFirstShare) {
+      // Best effort: the post is saved either way
+      try { await onFirstShare({ postId, summary: normalized, audience: chosen, audienceListId: listId }); } catch (e) {
+        console.error('[workout-feed] activity row failed', e.message);
+      }
+    }
+    return { postId, audience: chosen, audienceListId: listId, createdAt: now.toISOString() };
   }
 
   /**
-   * Posts by people who granted the viewer Inner Circle access AND are still
-   * connected, from this month and last, newest first.
+   * Whether `viewerId` may see a post: the author always; otherwise only a
+   * current connection, and for an Inner Circle post only someone the author
+   * put on (that list of) their Inner Circle.
+   */
+  async canView(post, viewerId) {
+    if (String(post.userId) === String(viewerId)) return true;
+    const connections = await getConnectedUserIds(viewerId);
+    if (!connections.has(post.userId)) return false;
+    if ((post.audience || 'innerCircle') === 'connections') return true;
+    const lists = (await getInnerCircleGrantorLists(viewerId)).get(post.userId);
+    if (!lists) return false;
+    return !post.audienceListId || lists.has(post.audienceListId);
+  }
+
+  /** One post, for the feed row's detail view. 404 when missing or not theirs to see. */
+  async getPost(postId, viewerId) {
+    const doc = await this.posts.doc(String(postId)).get();
+    if (!doc.exists || !(await this.canView(doc.data(), viewerId))) {
+      throw new WorkoutFeedError(404, 'not_found', 'This workout isn\'t available.');
+    }
+    const post = doc.data();
+    const users = await this.usersById([post.userId]);
+    const author = users[post.userId] || {};
+    return {
+      postId: doc.id,
+      userId: post.userId,
+      userName: author.displayName || 'Someone',
+      avatarUrl: author.profilePicture || null,
+      summary: post.summary,
+      createdAt: post.createdAt
+    };
+  }
+
+  /**
+   * Posts from the viewer's connections that they may see — shared with all
+   * connections, or with an Inner Circle the viewer is on — from this month
+   * and last, newest first.
    */
   async feed(viewerId, now = new Date()) {
     const [lists, connections] = await Promise.all([getInnerCircleGrantorLists(viewerId), getConnectedUserIds(viewerId)]);
-    const authors = [...lists.keys()].filter((id) => connections.has(id));
-    // A post that named a list is for that list only.
-    const allowed = (row) => !row.audienceListId || (lists.get(row.userId) || new Set()).has(row.audienceListId);
+    const authors = [...connections];
+    const allowed = (row) => {
+      if (row.audience === 'connections') return true;
+      const granted = lists.get(row.userId);
+      // A post that named a list is for that list only.
+      return !!granted && (!row.audienceListId || granted.has(row.audienceListId));
+    };
     if (authors.length === 0) return [];
     const previous = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
     const months = [monthKeyOf(now), monthKeyOf(previous)];

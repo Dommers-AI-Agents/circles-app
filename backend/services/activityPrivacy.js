@@ -191,6 +191,18 @@ const passesItemGates = (activity, viewerId, viewerCtx, circlesById) => {
     return !!(viewerCtx.innerCircleGrantors && viewerCtx.innerCircleGrantors.has(actor));
   }
 
+  // A shared workout: its own audience, never wider than connections
+  if (activity.type === 'workout_shared') {
+    const actor = normalizeUserId(activity.actorId);
+    if (!(viewerCtx.connections && viewerCtx.connections.has(actor))) return false;
+    if (meta.workoutAudience === 'connections') return true;
+    if (meta.audienceListId) {
+      const lists = viewerCtx.innerCircleLists && viewerCtx.innerCircleLists.get(actor);
+      return !!(lists && lists.has(meta.audienceListId));
+    }
+    return !!(viewerCtx.innerCircleGrantors && viewerCtx.innerCircleGrantors.has(actor));
+  }
+
   const circleId = activity.targetType === 'circle' ? activity.targetId : activity.circleId;
   if (!circleId) return true;
   const circle = circlesById && circlesById.get(circleId);
