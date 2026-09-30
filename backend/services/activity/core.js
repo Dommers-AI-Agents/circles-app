@@ -9,26 +9,9 @@ const db = getFirestore();
 
 // Resolve a place's thumbnail (photos are {url} objects or bare strings),
 // falling back to the canonical globalPlaces record. Best-effort → null.
-const resolvePlacePhoto = async (placeId) => {
-  const firstUrl = (data) => {
-    const first = (data.photos || [])[0];
-    return typeof first === 'string' ? first : (first && first.url) || null;
-  };
-  try {
-    const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
-    if (!placeDoc.exists) return null;
-    const data = placeDoc.data();
-    let url = firstUrl(data);
-    if (!url && data.globalPlaceId) {
-      const g = await db.collection('globalPlaces').doc(data.globalPlaceId).get();
-      if (g.exists) url = firstUrl(g.data());
-    }
-    return url;
-  } catch (e) {
-    console.error('⚠️ resolvePlacePhoto failed:', e.message);
-    return null;
-  }
-};
+// One picture per place, shared with the check-in path (services/placePhoto):
+// the save's own photo, else its venue's cover or first photo, either shape.
+const resolvePlacePhoto = (placeId) => require('../placePhoto').resolvePlacePhoto({ placeId });
 
 
 // General activity logging for various types

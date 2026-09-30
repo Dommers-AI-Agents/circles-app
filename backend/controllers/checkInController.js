@@ -1,5 +1,6 @@
 // backend/controllers/checkInController.js
 const { getFirestore, FieldValue, GeoPoint } = require('../config/firebase');
+const { firstPhotoUrl, venuePhotoUrl, resolvePlacePhoto } = require('../services/placePhoto');
 const { 
   COLLECTIONS, 
   createCheckIn, 
@@ -438,9 +439,7 @@ exports.createCheckIn = async (req, res) => {
         const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(checkIn.placeId).get();
         if (placeDoc.exists && !placeDoc.data().deletedAt && placeDoc.data().addedBy === userId) {
           const placeData = placeDoc.data();
-          if (placeData.photos && placeData.photos.length > 0) {
-            placePhoto = placeData.photos[0];
-          }
+          placePhoto = firstPhotoUrl(placeData.photos);
           circleIdForActivity = placeData.circleId || circleIdForActivity;
           globalPlaceId = placeData.globalPlaceId || await ensureGlobalPlaceLink(placeDoc);
         } else {
@@ -498,9 +497,7 @@ exports.createCheckIn = async (req, res) => {
           // Use existing place
           finalPlaceId = existingSave.id;
           const existingPlace = existingSave.data();
-          if (existingPlace.photos && existingPlace.photos.length > 0) {
-            placePhoto = existingPlace.photos[0];
-          }
+          placePhoto = firstPhotoUrl(existingPlace.photos);
           circleIdForActivity = existingPlace.circleId || circleIdForActivity;
           globalPlaceId = existingPlace.globalPlaceId || (canonicalDoc ? canonicalDoc.id : null)
             || checkInVenueHint || await ensureGlobalPlaceLink(existingSave);
@@ -565,13 +562,7 @@ exports.createCheckIn = async (req, res) => {
           // Use the first photo for activity thumbnail; canonical venues
           // contribute theirs (never a raw googleapis URL — those bill per
           // render)
-          if (placeData.photos && placeData.photos.length > 0) {
-            placePhoto = placeData.photos[0];
-          } else if (canonicalData && Array.isArray(canonicalData.photos)) {
-            placePhoto = canonicalData.photos.find(
-              (p) => typeof p === 'string' && !p.includes('maps.googleapis.com')
-            ) || null;
-          }
+          placePhoto = firstPhotoUrl(placeData.photos) || venuePhotoUrl(canonicalData);
 
           console.log(`✅ Created enriched place in check-in circle: ${placeData.name} (ID: ${finalPlaceId})`);
         }
@@ -597,6 +588,12 @@ exports.createCheckIn = async (req, res) => {
       });
       myCheckInStats = checkInStats.toApi(stats);
     }
+    // No photo of its own (a fresh check-in save, or one never given a
+    // picture): the venue's cover or first photo, whatever shape it's stored in.
+    if (!placePhoto && (finalPlaceId || globalPlaceId)) {
+      placePhoto = await resolvePlacePhoto({ placeId: finalPlaceId, globalPlaceId });
+    }
+
     const stamp = {};
     if (globalPlaceId && !checkIn.globalPlaceId) stamp.globalPlaceId = globalPlaceId;
     if (finalPlaceId && finalPlaceId !== checkIn.placeId) stamp.placeId = finalPlaceId;
@@ -675,6 +672,7 @@ exports.createCheckIn = async (req, res) => {
           circleName: null, // Could fetch circle name if needed
           placePhoto: placePhoto,
           placeId: finalPlaceId, // Use the guaranteed place ID
+          globalPlaceId: globalPlaceId || null,
           latitude: checkIn.location ? checkIn.location.latitude : null,
           longitude: checkIn.location ? checkIn.location.longitude : null,
           placeCategory: checkIn.placeCategory || 'other',
