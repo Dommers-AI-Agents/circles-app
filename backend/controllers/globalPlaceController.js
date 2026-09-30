@@ -254,32 +254,44 @@ exports.getGlobalPlace = async (req, res, next) => {
     }
 
     // Representative SAVE record: the venue doc carries no addedBy, so a
-    // client landing here from offers/rewards showed "Added by a connection"
-    // with no saver info, while the same venue opened from search (a real
-    // save doc) showed "Added by Wesley · saved by 2". Return the viewer's
-    // own save if they have one, else the oldest viewer-visible save (the
-    // original adder), shaped like the list endpoints shape places
-    // (venue overlay + addedByUser). Best-effort — never fails the request.
+    // client landing here (offers/rewards, a venue pin, a global search hit)
+    // showed "Added by a connection" with no saver info, while the same venue
+    // opened from a list (a real save doc) showed "Added by Wesley · saved by
+    // 2". Return the viewer's own save, else the oldest save they may see —
+    // decided by the same gate GET /places/:id applies to a single save
+    // (circle access, then the save's own tier) — shaped like the list
+    // endpoints shape places (venue overlay + addedByUser). Best-effort —
+    // never fails the request.
     let representativeSave = null;
     try {
       const savesSnap = await db.collection('places')
         .where('globalPlaceId', '==', placeDoc.id)
         .get();
       const viewerId = req.user?.uid || req.user?.id || null;
-      // Conservative visibility: own saves always; everyone else's only when
-      // the save is explicitly Public. This endpoint never loads the owning
-      // circle, so it cannot honour a tier that depends on one — and a place
-      // with no privacy field means "inherit the circle", which is exactly the
-      // case we can't evaluate. Attribution is best-effort; guessing here would
-      // name a saver on a venue page they never made public.
-      const visible = savesSnap.docs.map(serializeDoc).filter(p =>
-        !p.deletedAt
-        && (isSameUser(p.addedBy, viewerId) || normalizePrivacy(p.privacy) === PRIVACY.PUBLIC)
-      );
-      if (visible.length > 0) {
-        visible.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
-        const chosen = visible.find(p => p.addedBy === viewerId) || visible[0];
-        const { overlayVenueFields, buildAddedByUserMap } = require('../services/placeReadService');
+      const { overlayVenueFields, buildAddedByUserMap, isPlaceVisibleToViewer } = require('../services/placeReadService');
+      const { canViewCircleFor } = require('../services/circleAccess');
+      const { buildViewerContext } = require('../services/viewerContext');
+      const { pickRepresentativeSave } = require('../services/representativeSave');
+
+      let viewerContext = null;
+      const circleAccess = new Map(); // circleId → Promise<boolean>
+      const isVisibleToViewer = async (save) => {
+        if (!viewerId) return false;
+        // A save outside any circle has nothing to inherit: credit it only
+        // when it says Public itself (as before).
+        if (!save.circleId) return normalizePrivacy(save.privacy) === PRIVACY.PUBLIC;
+        if (!circleAccess.has(save.circleId)) {
+          circleAccess.set(save.circleId, db.collection('circles').doc(save.circleId).get()
+            .then(doc => (doc.exists ? canViewCircleFor(serializeDoc(doc), viewerId) : false)));
+        }
+        if (!(await circleAccess.get(save.circleId))) return false;
+        viewerContext = viewerContext || await buildViewerContext(viewerId);
+        return isPlaceVisibleToViewer(save, viewerId, viewerContext);
+      };
+
+      const chosen = await pickRepresentativeSave(
+        savesSnap.docs.map(serializeDoc), viewerId, isVisibleToViewer);
+      if (chosen) {
         representativeSave = overlayVenueFields(chosen, placeData);
         const userMap = await buildAddedByUserMap([chosen]);
         representativeSave.addedByUser = userMap.get(chosen.addedBy) || null;
