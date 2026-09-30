@@ -3,7 +3,7 @@
 // Plans, asks and answers here; membership (watchers) and scheduler (ask creation, silence alerts) are mixed in from ./careCheckin.
 // Constants and pure helpers live in ./careCheckin/shared.js.
 // A resent invitation is a nudge to a real phone; ten minutes between them.
-const { ANSWERS, COLLECTIONS, CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, DUE_AFTER_MS, NOTE_MAX, RICH_ASKS_MIN_CLIENT, TYPES, bank, buildConnectionMap, clean, friendlyTime, getFirestore, localDateKey, normalizeMuted, normalizeProfile, normalizeQuestions, normalizeTimes, normalizeUserId, notificationService, nowIso, RESEND_INVITE_COOLDOWN_MS } = require('./careCheckin/shared');
+const { ANSWERS, COLLECTIONS, CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, DUE_AFTER_MS, NOTE_MAX, RICH_ASKS_MIN_CLIENT, TYPES, bank, buildConnectionMap, clean, friendlyTime, getFirestore, localDateKey, normalizeMuted, normalizeProfile, normalizeQuestions, normalizeTimes, normalizeUserId, notificationService, nowIso, RESEND_INVITE_COOLDOWN_MS, throwIfTooSoon } = require('./careCheckin/shared');
 const planner = require('./careCheckin/questionPlanner');
 const { atLeast } = require('../utils/appVersion');
 const emailService = require('./emailService');
@@ -264,21 +264,24 @@ class CareCheckinService {
   // phone that was off). The plan itself is unchanged: it was already waiting
   // in their widget. Awaited so the child hears whether the phone got it.
   async resendInvite({ userId, planId, now = new Date() }) {
-    const plan = await this.requirePlan(planId);
-    if (plan.ownerId !== userId) throw new CareError(403, 'not_owner', 'Only the person who set this up can send the invitation again.');
-    if (plan.status !== 'invited') {
-      const why = plan.status === 'declined' ? `${plan.parentName} said no to this one.` : `${plan.parentName} already answered the invitation.`;
-      throw new CareError(409, 'not_invited', why);
-    }
-    const last = Date.parse(plan.lastInvitedAt || plan.createdAt || 0) || 0;
-    const waitMs = RESEND_INVITE_COOLDOWN_MS - (now.getTime() - last);
-    if (waitMs > 0) {
-      const minutes = Math.max(1, Math.ceil(waitMs / 60000));
-      throw new CareError(429, 'too_soon', `The invitation just went out. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`);
-    }
+    // Claim the cooldown slot before sending (the email takes seconds; a
+    // second tap during it must not send a second one) — see resendWatcherInvite.
+    const ref = this.plans.doc(planId);
+    const { plan, patch } = await this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new CareError(404, 'no_plan', 'That check-in no longer exists.');
+      const current = { id: snap.id, ...snap.data() };
+      if (current.ownerId !== userId) throw new CareError(403, 'not_owner', 'Only the person who set this up can send the invitation again.');
+      if (current.status !== 'invited') {
+        const why = current.status === 'declined' ? `${current.parentName} said no to this one.` : `${current.parentName} already answered the invitation.`;
+        throw new CareError(409, 'not_invited', why);
+      }
+      throwIfTooSoon(current.lastInvitedAt || current.createdAt, now);
+      const claimed = { lastInvitedAt: now.toISOString(), inviteCount: (current.inviteCount || 1) + 1, updatedAt: nowIso() };
+      tx.update(ref, claimed);
+      return { plan: current, patch: claimed };
+    });
     const { delivered, emailed } = await this.invite(plan.parentId, CareCheckinService.inviteMessage(plan.ownerName || 'Someone', planId));
-    const patch = { lastInvitedAt: now.toISOString(), inviteCount: (plan.inviteCount || 1) + 1, updatedAt: nowIso() };
-    await this.plans.doc(planId).update(patch);
     return {
       plan: this.presentPlan({ ...plan, ...patch }, { viewerId: userId }),
       delivered,

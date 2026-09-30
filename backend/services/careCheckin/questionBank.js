@@ -109,7 +109,11 @@ const BANK = [
   // Getting around and getting by
   { id: 'rides', text: 'Any appointments coming up that you need a ride to?', kind: 'text', requires: 'needsRides', everyDays: 7, weekday: 3 },
   { id: 'errands', text: 'Do you need anything from the store or around the house?', kind: 'text', requires: 'livesAlone', everyDays: 7, weekday: 4 },
-  { id: 'call', text: 'Would you like a call today?', kind: 'yesno', requires: 'livesAlone', everyDays: 3, phases: ['midday', 'evening'], alert: { value: 'yes' } }
+  { id: 'call', text: 'Would you like a call today?', kind: 'yesno', requires: 'livesAlone', everyDays: 3, phases: ['midday', 'evening'], alert: { value: 'yes' } },
+
+  // About the check-ins themselves (Wes, 2026-09-30): the person answering
+  // says what's working and what isn't. Every two weeks, a Saturday evening.
+  { id: 'feedback', text: "How are these check-ins working? Anything you'd change?", kind: 'text', everyDays: 14, weekday: 6, phases: ['evening'], weight: 0.8 }
 ];
 const BANK_BY_ID = new Map(BANK.map((q) => [q.id, q]));
 const BANK_BY_TEXT = new Map(BANK.map((q) => [q.text, q]));
