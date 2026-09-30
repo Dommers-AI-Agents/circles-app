@@ -62,6 +62,16 @@ const TYPES = {
 /** An invitation may be sent again after this long. */
 const RESEND_INVITE_COOLDOWN_MS = 10 * 60 * 1000;
 
+/** 429 'too_soon' while the last invitation (ISO time) is under the cooldown. */
+function throwIfTooSoon(lastIso, now) {
+  const last = Date.parse(lastIso || 0) || 0;
+  const waitMs = RESEND_INVITE_COOLDOWN_MS - (now.getTime() - last);
+  if (waitMs > 0) {
+    const minutes = Math.max(1, Math.ceil(waitMs / 60000));
+    throw new CareError(429, 'too_soon', `The invitation just went out. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`);
+  }
+}
+
 const { newId, nowIso } = require('../../utils/ids');
 const { clean } = require('../../utils/text');
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -127,4 +137,4 @@ function normalizeMuted(ids) {
   return [...new Set(ids.map((id) => clean(id, 40)).filter((id) => bank.BANK_BY_ID.has(id)))];
 }
 
-module.exports = { ANSWERS, RESEND_INVITE_COOLDOWN_MS, RICH_ASKS_MIN_CLIENT, bank, normalizeMuted, normalizeProfile, COLLECTIONS, CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, DUE_AFTER_MS, MAX_QUESTIONS, MAX_TIMES, NOTE_MAX, QUESTION_MAX, RUN_WINDOW_MINUTES, TIME_RE, TYPES, buildConnectionMap, clean, friendlyTime, getFirestore, localClock, localDateKey, newId, normalizeQuestions, normalizeTimes, normalizeUserId, notificationService, nowIso };
+module.exports = { ANSWERS, RESEND_INVITE_COOLDOWN_MS, RICH_ASKS_MIN_CLIENT, bank, normalizeMuted, normalizeProfile, COLLECTIONS, CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, DUE_AFTER_MS, MAX_QUESTIONS, MAX_TIMES, NOTE_MAX, QUESTION_MAX, RUN_WINDOW_MINUTES, TIME_RE, TYPES, buildConnectionMap, clean, friendlyTime, getFirestore, localClock, localDateKey, newId, normalizeQuestions, normalizeTimes, normalizeUserId, notificationService, nowIso, throwIfTooSoon };

@@ -1,5 +1,5 @@
 // services/careCheckin/membership.js — methods of CareCheckinService (mixed into its prototype by the facade).
-const { COLLECTIONS, CareError, TYPES, RESEND_INVITE_COOLDOWN_MS, buildConnectionMap, normalizeUserId, nowIso } = require('./shared');
+const { COLLECTIONS, CareError, TYPES, RESEND_INVITE_COOLDOWN_MS, buildConnectionMap, normalizeUserId, nowIso, throwIfTooSoon } = require('./shared');
 
 // Two ways onto a check-in, two people who say yes:
 // - A sibling ASKS to join → the PARENT decides (agreeing to one person seeing
@@ -157,22 +157,26 @@ module.exports = {
   // The owner sends an invitation again (a missed push, a phone that was off).
   // Awaited so the owner hears whether the phone got it.
   async resendWatcherInvite({ userId, planId, watcherId, now = new Date() }) {
-    const plan = await this.requirePlan(planId);
-    if (plan.ownerId !== userId) throw new CareError(403, 'not_owner', 'Only the person who set this up can send the invitation again.');
     const target = normalizeUserId(watcherId);
-    const watcher = (plan.watchers || []).find((w) => w.userId === target);
-    if (!watcher || isSelfRequest(watcher)) throw new CareError(404, 'no_watcher', 'There is no invitation to send again.');
-    if (watcher.status === 'active') throw new CareError(409, 'already_watching', 'They already accepted.');
-    const last = Date.parse(watcher.invitedAt || 0) || 0;
-    const waitMs = RESEND_INVITE_COOLDOWN_MS - (now.getTime() - last);
-    if (waitMs > 0) {
-      const minutes = Math.max(1, Math.ceil(waitMs / 60000));
-      throw new CareError(429, 'too_soon', `The invitation just went out. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`);
-    }
+    // Claim the cooldown slot BEFORE sending. The email takes seconds, and a
+    // second tap during it used to pass the check too — Amanda got two
+    // (2026-09-30). The transaction makes the second tap a 'too_soon'.
+    const ref = this.plans.doc(planId);
+    const { plan, watchers } = await this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new CareError(404, 'no_plan', 'That check-in no longer exists.');
+      const current = { id: snap.id, ...snap.data() };
+      if (current.ownerId !== userId) throw new CareError(403, 'not_owner', 'Only the person who set this up can send the invitation again.');
+      const watcher = (current.watchers || []).find((w) => w.userId === target);
+      if (!watcher || isSelfRequest(watcher)) throw new CareError(404, 'no_watcher', 'There is no invitation to send again.');
+      if (watcher.status === 'active') throw new CareError(409, 'already_watching', 'They already accepted.');
+      throwIfTooSoon(watcher.invitedAt, now);
+      const next = (current.watchers || []).map((w) => (w.userId === target
+        ? { ...w, invitedAt: now.toISOString(), inviteCount: (w.inviteCount || 1) + 1 } : w));
+      tx.update(ref, { watchers: next, updatedAt: nowIso() });
+      return { plan: current, watchers: next };
+    });
     const { delivered, emailed } = await this.invite(target, this.constructor.watcherInviteMessage(plan, planId));
-    const watchers = (plan.watchers || []).map((w) => (w.userId === target
-      ? { ...w, invitedAt: now.toISOString(), inviteCount: (w.inviteCount || 1) + 1 } : w));
-    await this.plans.doc(planId).update({ watchers, updatedAt: nowIso() });
     return {
       plan: this.presentPlan({ ...plan, watchers }, { viewerId: userId }),
       delivered,

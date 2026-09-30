@@ -542,6 +542,44 @@ describe('siblings joining (watchers)', () => {
       .rejects.toMatchObject({ code: 'no_watcher' });
   });
 
+  test('a second Send again tap while the email is still going out sends nothing', async () => {
+    // Amanda got two invitations (2026-09-30): the email took 15 s, the pop-up
+    // waited on it, and the second tap passed the cooldown check too.
+    await activePlan();
+    await seedSibling();
+    await care.requestWatcher({ userId: CHILD, planId: PLAN, watcherId: SIBLING });
+    const later = new Date(Date.now() + 11 * 60 * 1000);
+    emailService.sendEmail.mockClear();
+    let finishEmail;
+    emailService.sendEmail.mockImplementationOnce(() => new Promise((resolve) => { finishEmail = resolve; }));
+    const first = care.resendWatcherInvite({ userId: CHILD, planId: PLAN, watcherId: SIBLING, now: later });
+    await new Promise((r) => setImmediate(r));
+    await expect(care.resendWatcherInvite({ userId: CHILD, planId: PLAN, watcherId: SIBLING, now: new Date(later.getTime() + 9000) }))
+      .rejects.toMatchObject({ code: 'too_soon' });
+    finishEmail({ success: true });
+    await expect(first).resolves.toMatchObject({ emailed: true });
+    expect(emailService.sendEmail).toHaveBeenCalledTimes(1);
+    expect(plans().get(PLAN).watchers[0].inviteCount).toBe(2);
+  });
+
+  test('a second parent-invite resend while the first is sending is refused', async () => {
+    await seedUsers();
+    await mockDb.collection(COLLECTIONS.USERS).doc(PARENT).set({ displayName: 'Mom', email: 'mom@example.com' });
+    await care.createPlan({ ownerId: CHILD, parentId: PARENT, times: ['08:30'] });
+    await new Promise((r) => setImmediate(r));
+    const later = new Date(Date.parse(plans().get(PLAN).createdAt) + 11 * 60000);
+    let finishEmail;
+    emailService.sendEmail.mockClear();
+    emailService.sendEmail.mockImplementationOnce(() => new Promise((resolve) => { finishEmail = resolve; }));
+    const first = care.resendInvite({ userId: CHILD, planId: PLAN, now: later });
+    await new Promise((r) => setImmediate(r));
+    await expect(care.resendInvite({ userId: CHILD, planId: PLAN, now: new Date(later.getTime() + 9000) }))
+      .rejects.toMatchObject({ code: 'too_soon' });
+    finishEmail({ success: true });
+    await first;
+    expect(emailService.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
   test('a sibling still waiting on the parent sees the wait in their own widget', async () => {
     await activePlan();
     await seedSibling();
