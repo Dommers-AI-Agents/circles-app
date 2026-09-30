@@ -23,7 +23,22 @@ const db = getFirestore();
 // Tiers: direct id -> legacyPlaceIds mapping -> deduplicationKey -> googlePlaceId.
 // Tier 3/4 hits backfill legacyPlaceIds so future lookups hit tier 2.
 // Returns { globalPlaceDoc, legacyPlaceDoc } — either may be null.
+// A venue merged into another (scripts/merge-venue-pair.js) keeps its doc as
+// a tombstone with `mergedInto`; every lookup lands on the survivor, so old
+// links, cached app rows and saves still carrying the retired id keep working.
+async function followMerged(result) {
+  let doc = result.globalPlaceDoc;
+  for (let hops = 0; doc && doc.exists && doc.data().mergedInto && hops < 3; hops++) {
+    doc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(doc.data().mergedInto).get();
+  }
+  return doc === result.globalPlaceDoc ? result : { ...result, globalPlaceDoc: doc && doc.exists ? doc : null };
+}
+
 async function resolveGlobalPlace(placeId) {
+  return followMerged(await resolveGlobalPlaceDirect(placeId));
+}
+
+async function resolveGlobalPlaceDirect(placeId) {
   const directDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).get();
   if (directDoc.exists) {
     return { globalPlaceDoc: directDoc, legacyPlaceDoc: null };
@@ -317,6 +332,7 @@ const CACHED_VENUE_FIELDS = [
 // real-world venue; both criteria are deliberately conservative so distinct
 // same-brand branches (usually far apart) never merge.
 const NAME_MATCH_RADIUS_METERS = 150;
+const { SIMILAR_NAME_RADIUS_METERS, namesLikelySameVenue, googleIdsConflict } = require('./venueNameMatch');
 
 const normalizeVenueName = (name) => (name || '')
   .toLowerCase()
@@ -335,7 +351,11 @@ const haversineMeters = (lat1, lng1, lat2, lng2) => {
   return 2 * R * Math.asin(Math.sqrt(a));
 };
 
-async function findCanonicalByNameAndLocation(name, location, excludeId = null) {
+// Differently-worded names for the same building (services/venueNameMatch):
+// off until Wes flips VENUE_SIMILAR_NAME_MATCH=1 after reviewing the audit.
+const similarNameMatchEnabled = () => process.env.VENUE_SIMILAR_NAME_MATCH === '1';
+
+async function findCanonicalByNameAndLocation(name, location, excludeId = null, { googlePlaceId = null } = {}) {
   const normalized = normalizeVenueName(name);
   const coords = location && location.coordinates;
   if (!normalized || !Array.isArray(coords) || coords.length !== 2) return null;
@@ -354,24 +374,39 @@ async function findCanonicalByNameAndLocation(name, location, excludeId = null) 
 
   let best = null;
   let bestDistance = Infinity;
+  let similar = null;
+  let similarDistance = Infinity;
   snapshot.forEach((doc) => {
     if (excludeId && doc.id === excludeId) return;
     const data = doc.data();
     if (data.deletedAt) return;
-    const candidateName = normalizeVenueName(data.name);
-    // Exact normalized equality only. Containment matching linked distinct
-    // neighbors — "Chelsea Market Baskets" is 150m from "Chelsea Market" and
-    // is not the same venue (found during the 2026-08-12 dedup migration).
-    if (candidateName !== normalized) return;
     const candidateCoords = data.location && data.location.coordinates;
     if (!Array.isArray(candidateCoords) || candidateCoords.length !== 2) return;
     const distance = haversineMeters(lat, lng, candidateCoords[1], candidateCoords[0]);
-    if (distance <= NAME_MATCH_RADIUS_METERS && distance < bestDistance) {
-      best = doc;
-      bestDistance = distance;
+    const candidateName = normalizeVenueName(data.name);
+    // Exact normalized equality within 150 m. Containment matching linked
+    // distinct neighbors — "Chelsea Market Baskets" is 150m from "Chelsea
+    // Market" and is not the same venue (found during the 2026-08-12 dedup
+    // migration).
+    if (candidateName === normalized) {
+      if (distance <= NAME_MATCH_RADIUS_METERS && distance < bestDistance) {
+        best = doc;
+        bestDistance = distance;
+      }
+      return;
+    }
+    // Otherwise only the same building, two distinctive words in common, and
+    // never two different Google ids.
+    if (similarNameMatchEnabled()
+        && distance <= SIMILAR_NAME_RADIUS_METERS
+        && distance < similarDistance
+        && !googleIdsConflict(googlePlaceId, data.googlePlaceId)
+        && namesLikelySameVenue(name, data.name)) {
+      similar = doc;
+      similarDistance = distance;
     }
   });
-  return best;
+  return best || similar;
 }
 
 async function ensureGlobalPlaceLink(placeDoc) {
@@ -392,7 +427,8 @@ async function ensureGlobalPlaceLink(placeDoc) {
     // under a different key namespace (same name, within 150m)
     if (!globalPlaceId) {
       const matched = await findCanonicalByNameAndLocation(
-        placeDoc.data().name, placeDoc.data().location);
+        placeDoc.data().name, placeDoc.data().location, null,
+        { googlePlaceId: placeDoc.data().googlePlaceId || null });
       if (matched) {
         await matched.ref.update({
           legacyPlaceIds: admin.firestore.FieldValue.arrayUnion(placeDoc.id),

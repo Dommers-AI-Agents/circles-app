@@ -2331,8 +2331,12 @@ class PlaceDetailViewController: BaseViewController {
             self?.mediaCaptureService.presentCamera(from: self!, for: .video)
         })
         
-        actionSheet.addAction(UIAlertAction(title: "Photo Library", style: .default) { [weak self] _ in
-            self?.mediaCaptureService.presentPhotoLibrary(from: self!, for: .both)
+        actionSheet.addAction(UIAlertAction(title: "Choose Photos", style: .default) { [weak self] _ in
+            self?.presentMultiPhotoPicker()
+        })
+
+        actionSheet.addAction(UIAlertAction(title: "Choose Video", style: .default) { [weak self] _ in
+            self?.mediaCaptureService.presentPhotoLibrary(from: self!, for: .video)
         })
         
         // Owner-only entries: these mutate the place's own image via the
@@ -2765,6 +2769,34 @@ extension PlaceDetailViewController: CircleSelectionDelegate {
     }
 }
 
+// MARK: - PHPickerViewControllerDelegate (Choose Photos)
+extension PlaceDetailViewController: PHPickerViewControllerDelegate {
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        let providers = results.map(\.itemProvider).filter { $0.canLoadObject(ofClass: UIImage.self) }
+        guard !providers.isEmpty else { return }
+        // Load in parallel, keep the order they were picked in
+        var images = [UIImage?](repeating: nil, count: providers.count)
+        let group = DispatchGroup()
+        for (index, provider) in providers.enumerated() {
+            group.enter()
+            provider.loadObject(ofClass: UIImage.self) { object, _ in
+                DispatchQueue.main.async {
+                    images[index] = object as? UIImage
+                    group.leave()
+                }
+            }
+        }
+        group.notify(queue: .main) { [weak self] in
+            let loaded = images.compactMap { $0 }
+            if loaded.count < providers.count {
+                Logger.debug("📸 [PlaceDetailViewController] \(providers.count - loaded.count) picked photo(s) couldn't be read")
+            }
+            self?.uploadPhotos(loaded)
+        }
+    }
+}
+
 // MARK: - MediaCaptureServiceDelegate
 extension PlaceDetailViewController: MediaCaptureServiceDelegate {
     func mediaCaptureService(_ service: MediaCaptureService, didCapture media: CapturedMedia) {
@@ -2791,27 +2823,9 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
     // MARK: - Media Handling (Using Shared Services)
     
     private func handleCapturedPhoto(_ image: UIImage) {
-        isLoadingPhoto = true
-        updateImageView()
-        
-        // Show immediate feedback to user
-        showSuccess("Processing photo...")
-        
-        // Use MediaProcessingService for consistent compression (same as Moments)
-        mediaProcessingService.processPhoto(image) { [weak self] result in
-            switch result {
-            case .success(let processedPhoto):
-                self?.uploadProcessedPhoto(processedPhoto)
-            case .failure(let error):
-                DispatchQueue.main.async {
-                    self?.isLoadingPhoto = false
-                    self?.updateImageView()
-                    self?.showError(error)
-                }
-            }
-        }
+        uploadPhotos([image])
     }
-    
+
     private func handleCapturedVideo(url: URL) {
         isLoadingPhoto = true
         updateImageView()
@@ -2831,77 +2845,100 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
         }
     }
     
-    private func uploadProcessedPhoto(_ processedPhoto: ProcessedPhoto) {
-        // One loading alert whose text tracks progress. (This used to present
-        // a fresh "Success"/OK alert per progress step; the first one stayed
-        // up, every later present failed, and the finish — including the
-        // postcard offer — never got the screen.)
-        let loading = showLoading(message: "Uploading photo…")
+    /// Adds photos to the place one at a time, each attached to the place's
+    /// library as soon as it uploads, so one failure costs one photo. One
+    /// progress alert for the batch, one refresh and one summary at the end;
+    /// the postcard offer (for your own photo) stands in for the summary when
+    /// everything went up.
+    private func uploadPhotos(_ images: [UIImage]) {
+        guard !images.isEmpty else { return }
+        isLoadingPhoto = true
+        updateImageView()
+        let total = images.count
+        let loading = showLoading(message: PlacePhotoBatchSummary.progress(current: 1, total: total))
+        var added: [(image: UIImage, result: StorageResult)] = []
+        var failed = 0
 
-        // Use MediaStorageService for consistent upload handling (same as Moments)
-        mediaStorageService.uploadPhoto(
-            processedPhoto,
-            for: place,
-            type: .placePhoto,
-            visibility: "public",
-            progress: { progress in
-                DispatchQueue.main.async {
-                    let percentage = Int(progress.progress * 100)
-                    switch progress.phase {
-                    case .initiating: loading.message = "Preparing upload…"
-                    case .uploading: loading.message = "Uploading… \(percentage)%"
-                    case .finalizing: loading.message = "Finalizing…"
-                    case .completed: break // handled in completion
+        func finish() {
+            loading.dismiss(animated: true) { [weak self] in
+                guard let self else { return }
+                self.isLoadingPhoto = false
+                self.updateImageView()
+                if !added.isEmpty {
+                    for item in added {
+                        self.customImage = item.image
+                        self.placePhotos.append((image: item.image, url: item.result.storageUrls["photoUrl"]))
                     }
+                    self.addPhotoButton.isHidden = true
+                    self.photosEditButton.isHidden = false
+                    // Show the new photos at once; the refresh swaps in the
+                    // attributed server copies when it lands
+                    self.updateMediaCarousel()
+                    self.globalPlace = nil
+                    self.loadGlobalPlaceData()
+                }
+                if failed == 0, let first = added.first {
+                    let asked = PostSaveOfferPresenter.offerAfterPhotoUpload(
+                        place: self.place,
+                        photo: first.image,
+                        eligible: added.contains { $0.result.postcardNudgeEligible },
+                        from: self
+                    )
+                    if asked { return }
+                }
+                guard let summary = PlacePhotoBatchSummary.result(added: added.count, failed: failed) else { return }
+                if failed == 0 {
+                    self.showSuccess(summary.message)
+                } else {
+                    AlertPresenter.showError(title: summary.title, message: summary.message, from: self)
                 }
             }
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                loading.dismiss(animated: true) {
-                    guard let self = self else { return }
-                    self.isLoadingPhoto = false
-                    self.updateImageView()
+        }
 
-                    switch result {
-                    case .success(let storageResult):
-                        // Update place with new image - add to carousel
-                        self.customImage = processedPhoto.image
-                        self.placePhotos.append((image: processedPhoto.image, url: storageResult.storageUrls["photoUrl"]))
-
-                        // Update photo section buttons
-                        self.addPhotoButton.isHidden = true
-                        self.photosEditButton.isHidden = false
-
-                        // Show the new photo immediately; the GlobalPlace refresh below
-                        // replaces it with the attributed server copy when it lands
-                        self.updateMediaCarousel()
-
-                        Logger.debug("✅ [PlaceDetailViewController] Photo upload successful, refreshing Global Place data...")
-
-                        // Clear any cached data and refresh Global Place data
-                        self.globalPlace = nil
-                        self.loadGlobalPlaceData()
-
-                        // Their own photo is the best reason to offer a postcard;
-                        // the offer stands in for the success alert when it runs
-                        let asked = PostSaveOfferPresenter.offerAfterPhotoUpload(
-                            place: self.place,
-                            photo: processedPhoto.image,
-                            eligible: storageResult.postcardNudgeEligible,
-                            from: self
-                        )
-                        if !asked {
-                            self.showSuccess("Photo uploaded successfully")
+        func upload(_ index: Int) {
+            guard index < total else { finish(); return }
+            loading.message = PlacePhotoBatchSummary.progress(current: index + 1, total: total)
+            let image = images[index]
+            // MediaProcessingService / MediaStorageService: the same
+            // compression and upload path as Moments
+            mediaProcessingService.processPhoto(image) { [weak self] processed in
+                guard let self else { return }
+                guard case .success(let processedPhoto) = processed else {
+                    DispatchQueue.main.async { failed += 1; upload(index + 1) }
+                    return
+                }
+                self.mediaStorageService.uploadPhoto(
+                    processedPhoto,
+                    for: self.place,
+                    type: .placePhoto,
+                    visibility: "public",
+                    progress: { _ in }
+                ) { result in
+                    DispatchQueue.main.async {
+                        switch result {
+                        case .success(let storageResult): added.append((image: processedPhoto.image, result: storageResult))
+                        case .failure: failed += 1
                         }
-
-                    case .failure(let error):
-                        self.showError(error)
+                        upload(index + 1)
                     }
                 }
             }
         }
+        upload(0)
     }
-    
+
+    /// Choose several photos from the library at once (the camera and the
+    /// video picker stay one at a time).
+    private func presentMultiPhotoPicker() {
+        var configuration = PHPickerConfiguration()
+        configuration.filter = .images
+        configuration.selectionLimit = PlacePhotoBatchSummary.selectionLimit
+        configuration.selection = .ordered
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+
     private func uploadProcessedVideo(_ processedVideo: ProcessedVideo) {
         // Use MediaStorageService for consistent upload handling (same as Moments)
         mediaStorageService.uploadVideo(
