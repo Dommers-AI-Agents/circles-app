@@ -34,6 +34,8 @@ enum PendingLink: Equatable {
     /// "check-in": the static "Check In" Home Screen quick action; the sheet
     /// opens with its place picker.
     case quickCheckIn
+    /// A milestone push tapped on a cold start (see PushMilestone.pendingLink)
+    case milestone(PushMilestone)
 }
 
 /// Turns the stored string into a `PendingLink`. Pure; SceneDelegate keeps
@@ -75,6 +77,9 @@ enum PendingLinkParser {
         case "daily-summary": return .dailySummary
         case "check-in": return .checkIn(placeId: payload)
         case "settings": return payload == "notifications" ? .notificationSettings : nil
+        case "milestone":
+            let number = { (i: Int) -> Int? in components.count > i ? Int(components[i]).flatMap { $0 > 0 ? $0 : nil } : nil }
+            return .milestone(PushMilestone(kind: payload, value: number(2), position: number(3)))
         default: return nil
         }
     }

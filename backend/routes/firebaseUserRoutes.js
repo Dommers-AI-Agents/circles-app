@@ -67,6 +67,8 @@ router.use(protect);
 const ownActivityController = require('../controllers/users/ownActivityController');
 router.get('/me/activity', ownActivityController.list);
 router.get('/me/activity/summary', ownActivityController.summary);
+// Your month of adding places (the top-contributor / milestone push's screen)
+router.get('/me/contributions', require('../controllers/users/contributionsController').mine);
 
 // User routes
 router.route('/search')

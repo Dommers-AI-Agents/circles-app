@@ -206,23 +206,12 @@ class MilestoneService {
       monthAgo.setMonth(monthAgo.getMonth() - 1);
       const monthAgoStr = monthAgo.toISOString();
       
-      // Get all places added in the last month
-      const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
-        .where('createdAt', '>=', monthAgoStr)
-        .get();
-      
-      // Count by user
-      const userCounts = {};
-      placesSnapshot.forEach(doc => {
-        const place = doc.data();
-        const userId = place.addedBy;
-        userCounts[userId] = (userCounts[userId] || 0) + 1;
-      });
-      
-      // Get top 3 contributors
-      const sortedUsers = Object.entries(userCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3);
+      // Same window and counting as the screen the push opens (live places
+      // only — an unsaved place doesn't count), so the two never disagree
+      const contributionStats = require('./contributionStats');
+      const sortedUsers = contributionStats.topContributors(
+        contributionStats.countByAdder(await contributionStats.recentPlaces()), 3);
+      void monthAgoStr;
       
       // Send notifications to top contributors
       for (let i = 0; i < sortedUsers.length; i++) {

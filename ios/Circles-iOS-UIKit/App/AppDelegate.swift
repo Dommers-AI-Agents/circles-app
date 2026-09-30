@@ -675,6 +675,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             sceneDelegate?.navigateToVideo(videoId: id)
         case .meTab:
             sceneDelegate?.navigateToMeTab()
+        case .milestone(let milestone):
+            // Before the tab bar exists (a cold start from the tap), stash it
+            // for the scene; otherwise open it now
+            let ready = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }.contains { $0.rootViewController is CirclesTabBarController }
+            if ready, let sceneDelegate {
+                sceneDelegate.showMilestone(milestone)
+            } else {
+                UserDefaults.standard.set(milestone.pendingLink, forKey: "pendingDeepLink")
+            }
         case .deepLink(let url):
             sceneDelegate?.handleDeepLink(url)
         }

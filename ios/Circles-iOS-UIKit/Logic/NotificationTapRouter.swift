@@ -30,7 +30,21 @@ enum NotificationDestination: Equatable {
     case userProfile(id: String)
     case video(id: String)
     case meTab
+    /// A milestone / "2nd place this month" push: its celebration screen
+    case milestone(PushMilestone)
     case deepLink(URL)
+}
+
+/// What a milestone push celebrates. `kind`: top_contributor, places,
+/// connections, moments. `value`: the count reached; `position`: 1–3 for
+/// top_contributor.
+struct PushMilestone: Equatable {
+    let kind: String
+    let value: Int?
+    let position: Int?
+
+    /// "milestone:<kind>:<value>:<position>" for the cold-start stash (0 = none)
+    var pendingLink: String { "milestone:\(kind):\(value ?? 0):\(position ?? 0)" }
 }
 
 enum NotificationTapRouter {
@@ -125,6 +139,12 @@ enum NotificationTapRouter {
 
         case "store_claim", "store_claim_approved":
             return .meTab
+
+        case "milestone":
+            let kind = string("milestoneType", in: userInfo) ?? "places"
+            let value = (string("milestoneValue", in: userInfo) ?? string("placeCount", in: userInfo)).flatMap { Int($0) }
+            let position = string("position", in: userInfo).flatMap { Int($0) }
+            return .milestone(PushMilestone(kind: kind, value: value, position: position))
 
         default:
             // Unknown type: route on whatever data is present, in the old order.

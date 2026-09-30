@@ -1352,6 +1352,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case .connect(let fromUserId): self.handleConnectionInvite(from: fromUserId)
             case .video(let id): self.navigateToVideo(videoId: id)
             case .notificationSettings: self.navigateToNotificationSettings()
+            case .milestone(let milestone): self.showMilestone(milestone)
             case .checkIn(let id):
                 // Cold-start tap on the "you're near <place>" banner, or a
                 // "Check in at <place>" quick action
@@ -2210,6 +2211,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     // MARK: - Auto-Logout and Re-authentication
+
+    /// A milestone push's screen: the celebration, and your month underneath
+    func showMilestone(_ milestone: PushMilestone) {
+        guard AuthService.shared.isLoggedIn, window?.rootViewController is CirclesTabBarController else {
+            UserDefaults.standard.set(milestone.pendingLink, forKey: "pendingDeepLink")
+            return
+        }
+        let screen = UINavigationController(rootViewController: MilestoneMonthViewController(milestone: milestone))
+        topViewController()?.present(screen, animated: true)
+    }
 
     /// Returns the top-most presented view controller, for presenting alerts
     private func topViewController() -> UIViewController? {
