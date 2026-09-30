@@ -8,6 +8,7 @@ const {
   getUserCircles
 } = require('../controllers/circleSharingController');
 const { getNetworkPlacesInViewport } = require('../controllers/networkPlacesController');
+const lovedPlaces = require('../controllers/network/lovedPlacesController');
 const { protect } = require('../middleware/firebaseAuth');
 
 const router = express.Router();
@@ -38,5 +39,8 @@ router.route('/users-with-circles')
 // Get circles for a specific connected user
 router.route('/user-circles/:userId')
   .get(getUserCircles);
+
+// Places two or more of your connections saved (My Network → Discover)
+router.get('/loved-places', protect, lovedPlaces.list);
 
 module.exports = router;

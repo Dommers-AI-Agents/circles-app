@@ -212,8 +212,10 @@ const getDiscoverUsers = async (req, res) => {
       // The Popular tab: a scorecard, not a suggestion list. Everyone —
       // including people you follow or are connected to — ranked by the size
       // of their collection. Watching people you know climb is the fun.
+      // You're on it too ("Where do you land?" — the cell shows your own
+      // row as "This is you · Share").
       const pageIds = rankedIds
-        .filter((id) => id !== userId && !dismissed.has(id) && !blockedSet.has(id))
+        .filter((id) => !dismissed.has(id) && !blockedSet.has(id))
         .filter((id) => ((placeCounts.get(id) || {}).placesCount || 0) > 0)
         .slice(0, pageWindow);
       users = (await fetchDocsByIds(pageIds))
