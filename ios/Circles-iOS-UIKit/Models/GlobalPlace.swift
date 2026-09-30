@@ -71,11 +71,14 @@ struct AttributedPhoto: Codable, Identifiable {
     let fileSize: Int64?
     let likes: [String]?
     let likesCount: Int?
+    /// Added from a private save: only its uploader ever receives it
+    var isPrivate: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
         case photoId = "id"
         case url, uploadedBy, uploadedByName, uploadedAt, source
         case width, height, fileSize, likes, likesCount
+        case isPrivate = "private"
     }
 }
 
@@ -245,6 +248,9 @@ struct GlobalPlaceResponse: Codable {
     /// so the detail screen shows "Added by X · saved by N" instead of the
     /// anonymous venue shape. Optional: absent when nobody visible saved it.
     let representativeSave: Place?
+    /// What the viewer may do with the place's photo library (Manage = the
+    /// venue's owner, a manager, or a super-user). Absent on older servers.
+    let photoRights: PlacePhotoRights?
 
     /// The best Place to hand PlaceDetailViewController: the save record when
     /// one exists, else the venue converted to the legacy shape.

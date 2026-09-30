@@ -25,7 +25,8 @@ struct VenueManageLayoutTests {
         #expect(loyalty.contains(.loyaltyCodes))
         let page = rows(facts, .placePage) ?? []
         #expect(!page.contains(.hours))
-        #expect(!page.contains(.coverPhoto))
+        #expect(!page.contains(.photos))
+        #expect(page.contains(.gallery))
         #expect(page.contains(.storefrontButtons))
     }
 
@@ -46,7 +47,7 @@ struct VenueManageLayoutTests {
     }
 
     @Test func freePlanKeepsTheBasics() {
-        let free: [L.Row] = [.statTiles, .fullStats, .viewPage, .hours, .coverPhoto, .storefrontButtons,
+        let free: [L.Row] = [.statTiles, .fullStats, .viewPage, .hours, .photos, .storefrontButtons,
                              .showWindowSticker, .emailStickers, .contactName, .contactEmail, .managers,
                              .plan, .ownerGuide, .brandStorefront, .addBusiness]
         free.forEach { #expect(!L.isBusiness($0), "\($0) should be free") }

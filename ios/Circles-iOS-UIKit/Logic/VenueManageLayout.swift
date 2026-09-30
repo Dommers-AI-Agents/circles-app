@@ -26,7 +26,8 @@ enum VenueManageLayout {
         // Your place page
         case viewPage
         case hours
-        case coverPhoto
+        /// The place's one photo library: arrange, cover, remove (free)
+        case photos
         case storefrontButtons
         case menu
         case gallery
@@ -73,9 +74,11 @@ enum VenueManageLayout {
         glance += [.fullStats, .savers, .followers, .activity]
 
         var placePage: [Row] = []
-        if facts.hasPlace { placePage.append(.viewPage) }
-        if facts.hasPlace && physical { placePage += [.hours, .coverPhoto] }
-        placePage += [.storefrontButtons, .menu, .gallery]
+        if facts.hasPlace { placePage += [.viewPage, .photos] }
+        if facts.hasPlace && physical { placePage.append(.hours) }
+        placePage += [.storefrontButtons, .menu]
+        // No place page (online-only store): its own storefront gallery
+        if !facts.hasPlace { placePage.append(.gallery) }
 
         var loyalty: [Row] = [.earnRate]
         loyalty += (0..<facts.offerCount).map { Row.offer($0) }

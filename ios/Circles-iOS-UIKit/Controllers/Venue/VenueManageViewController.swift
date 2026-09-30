@@ -559,6 +559,13 @@ class VenueManageViewController: BaseViewController {
         navigationController?.pushViewController(hoursVC, animated: true)
     }
 
+    /// The place's one photo library, opened in Arrange: order, cover, remove
+    private func openPhotoLibrary() {
+        guard let placeId = venuePlaceId else { return }
+        let gallery = PlaceGalleryViewController(placeId: placeId, placeName: venueName, arranging: true)
+        navigationController?.pushViewController(gallery, animated: true)
+    }
+
     /// Same flow as the place page's owner menu: pick which photo leads the page
     private func openCoverPhoto() {
         guard let placeId = venuePlaceId else { return }
@@ -780,8 +787,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             set("View your place page", "Exactly what customers see", "eye")
         case .hours:
             set("Opening hours", hoursSummary ?? "Set the hours shown on your page", "clock")
-        case .coverPhoto:
-            set("Cover photo", "Choose the photo that leads your page", "photo")
+        case .photos:
+            set("Photos", "Arrange them, choose the cover, remove any — yours and customers'", "photo.on.rectangle.angled")
         case .storefrontButtons:
             let count = storefront?.actions?.buttons.count ?? 0
             set("Reserve · Order · Catering · Book",
@@ -893,8 +900,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             viewPublicPageTapped()
         case .hours:
             openHours()
-        case .coverPhoto:
-            openCoverPhoto()
+        case .photos:
+            openPhotoLibrary()
         case .storefrontButtons, .menu, .gallery:
             openStorefrontRow(row)
 

@@ -1167,6 +1167,21 @@ class EditPlaceViewController: BaseViewController {
     }
     
     private func loadExistingPhotos() {
+        // Photos belong to the place's one library now — added, arranged and
+        // removed from its Photos section (See all). Editing a copy here used
+        // to change only this save, invisibly to everyone else.
+        addPhotoButton.isHidden = true
+        let hint = UILabel()
+        hint.text = "Add or remove photos from the place's Photos section (See all)."
+        hint.font = .systemFont(ofSize: 14)
+        hint.textColor = .secondaryLabel
+        hint.numberOfLines = 0
+        photoStackView.insertArrangedSubview(hint, at: 0)
+        hint.widthAnchor.constraint(lessThanOrEqualToConstant: 320).isActive = true
+    }
+
+    /// The old per-save photo strip (kept for reference; no longer shown)
+    private func loadExistingPhotoStrip() {
         guard let photos = place.photos, !photos.isEmpty else { return }
         
         existingPhotoURLs = photos

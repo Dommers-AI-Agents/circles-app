@@ -66,6 +66,56 @@ class PlaceDetailViewController: BaseViewController {
     private var placePhotos: [(image: UIImage, url: String?)] = []
     private var currentPhotoIndex = 0
     
+    // MARK: - Photos & Moments section
+
+    private lazy var photosMomentsView: PlacePhotosMomentsView = {
+        let view = PlacePhotosMomentsView()
+        view.onAddPhoto = { [weak self] in
+            guard let self else { return }
+            self.editImageButtonTapped(self.editImageButton)
+        }
+        view.onSeeAllPhotos = { [weak self] in self?.openPhotoGallery() }
+        view.onPhotoTapped = { [weak self] index in
+            guard let self else { return }
+            let urls = (self.globalPlace?.photos?.map(\.url)).flatMap { $0.isEmpty ? nil : $0 } ?? (self.place.photos ?? [])
+            guard !urls.isEmpty else { return }
+            self.present(StorefrontPhotoViewerViewController(urls: urls, startingAt: index), animated: true)
+        }
+        view.onMomentTapped = { [weak self] index in
+            guard let self, self.placeMoments.indices.contains(index) else { return }
+            let reels = VideoReelsViewController(reels: self.placeMoments, startIndex: index)
+            reels.modalPresentationStyle = .fullScreen
+            self.present(reels, animated: true)
+        }
+        return view
+    }()
+
+    /// Every moment at this place the viewer may see (all saves, not just theirs)
+    private var placeMoments: [PlaceVideo] = []
+
+    private func loadPlaceMoments() {
+        PlacePhotoLibraryService.shared.moments(placeId: place.globalPlaceId ?? place.id) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, case .success(let moments) = result else { return }
+                self.placeMoments = moments
+                self.photosMomentsView.setMoments(moments)
+            }
+        }
+    }
+
+    /// The full library: everyone adds, deletes their own, reports; the
+    /// owner, managers and super-users arrange, set the cover and remove.
+    func openPhotoGallery(arranging: Bool = false) {
+        let gallery = PlaceGalleryViewController(placeId: place.globalPlaceId ?? place.id, placeName: place.name, arranging: arranging)
+        gallery.onAddPhoto = { [weak self] in
+            guard let self else { return }
+            self.navigationController?.popViewController(animated: true)
+            self.editImageButtonTapped(self.editImageButton)
+        }
+        gallery.onChanged = { [weak self] _ in self?.loadGlobalPlaceData() }
+        navigationController?.pushViewController(gallery, animated: true)
+    }
+
     private func updateMediaCarousel() {
         Logger.debug("📸 [PlaceDetailViewController] updateMediaCarousel() called for place: \(place.name)")
         // Merge rules (attributed venue photos first with the cover leading,
@@ -78,6 +128,13 @@ class PlaceDetailViewController: BaseViewController {
         assembler.localPhotos = placePhotos.map { PlaceMediaAssembler.LocalPhoto(image: $0.image, url: $0.url) }
         assembler.videoUrls = place.videos
         let mediaItems = assembler.assemble()
+        // The section below shows the same photos, in the same order
+        let attributed = globalPlace?.photos ?? []
+        if attributed.isEmpty {
+            photosMomentsView.setPhotos(urls: place.photos ?? [])
+        } else {
+            photosMomentsView.setPhotos(urls: attributed.map(\.url), privateFlags: attributed.map { $0.isPrivate == true })
+        }
 
         Logger.debug("📸 [PlaceDetailViewController] Configuring MediaCarouselView with \(mediaItems.count) items")
         mediaCarouselView.configure(with: mediaItems)
@@ -370,6 +427,7 @@ class PlaceDetailViewController: BaseViewController {
         
         // Try to load GlobalPlace data for better attribution
         loadGlobalPlaceData()
+        loadPlaceMoments()
 
         // Rewards venue (offers + announcements), if this place has one
         loadVenueRewards()
@@ -624,14 +682,10 @@ class PlaceDetailViewController: BaseViewController {
         notesButtonsStackView.addArrangedSubview(addNotesButton)
         infoContainerView.addSubview(notesLabel)
         
-        // Add photos section if user can edit
+        // Photos & Moments: the place's one photo library and every moment
+        // posted here — for everyone, not just the person who saved it
         let canEdit = place.isAddedByCurrentUser || isHomeOrWorkPlace
-        if canEdit {
-            infoContainerView.addSubview(photosTitleLabel)
-            infoContainerView.addSubview(photosButtonsStackView)
-            photosButtonsStackView.addArrangedSubview(photosEditButton)
-            photosButtonsStackView.addArrangedSubview(addPhotoButton)
-        }
+        infoContainerView.addSubview(photosMomentsView)
         
         if let tags = place.tags, !tags.isEmpty {
             infoContainerView.addSubview(tagsTitleLabel)
@@ -951,18 +1005,13 @@ class PlaceDetailViewController: BaseViewController {
         
         lastAnchor = notesLabel.bottomAnchor
         
-        // Add photos section constraints if user can edit
-        if canEdit {
-            NSLayoutConstraint.activate([
-                photosTitleLabel.topAnchor.constraint(equalTo: lastAnchor, constant: additionalSpacing),
-                photosTitleLabel.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
-                
-                photosButtonsStackView.centerYAnchor.constraint(equalTo: photosTitleLabel.centerYAnchor),
-                photosButtonsStackView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium)
-            ])
-            
-            lastAnchor = photosTitleLabel.bottomAnchor
-        }
+        NSLayoutConstraint.activate([
+            photosMomentsView.topAnchor.constraint(equalTo: lastAnchor, constant: additionalSpacing),
+            photosMomentsView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            photosMomentsView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium)
+        ])
+        lastAnchor = photosMomentsView.bottomAnchor
+        _ = canEdit
         
         // Add tags if available
         if let tags = place.tags, !tags.isEmpty {
@@ -1845,8 +1894,8 @@ class PlaceDetailViewController: BaseViewController {
         }
 
         if ownerEdit.isVenueOwner {
-            actions.append((title: "Set Cover Photo", style: .default, handler: { [weak self] in
-                self?.presentCoverPhotoPicker()
+            actions.append((title: "Arrange Photos", style: .default, handler: { [weak self] in
+                self?.openPhotoGallery(arranging: true)
             }))
             actions.append((title: ownerEdit.viewingAsCustomer ? "Back to Owner View" : "View as Customer", style: .default, handler: { [weak self] in
                 self?.ownerEdit.toggleViewAsCustomer()
@@ -2297,7 +2346,9 @@ class PlaceDetailViewController: BaseViewController {
             })
         }
 
-        if isPlaceOwner && (customImage != nil || (place.photos != nil && !place.photos!.isEmpty)) {
+        // Only Home/Work keep a device-local picture to remove; every other
+        // photo is managed in the place's Photos (See all)
+        if isHomeOrWorkPlace && (customImage != nil || (place.photos != nil && !place.photos!.isEmpty)) {
             actionSheet.addAction(UIAlertAction(title: "Remove Photo", style: .destructive) { [weak self] _ in
                 self?.removeCustomImage()
             })
@@ -2866,6 +2917,8 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
                 switch result {
                 case .success(let storageResult):
                     self?.showSuccess("Video uploaded successfully")
+                    // A video from here is a moment at this place: show it
+                    self?.loadPlaceMoments()
                     self?.updateMediaCarousel()
                     
                 case .failure(let error):
