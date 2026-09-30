@@ -199,9 +199,11 @@ class PlaceService {
                 let globalPlace = response.globalPlace
                 Logger.info("📍 PlaceService.fetchGlobalPlaceAsLegacy: Successfully fetched Global Place: \(globalPlace.name)")
                 
-                // Convert Global Place to legacy Place format
-                let legacyPlace = self.convertGlobalPlaceToLegacy(globalPlace: globalPlace)
-                completion(.success(legacyPlace))
+                // A real save of this venue (the viewer's own, else one they
+                // may see) carries who added it; the converted venue shape
+                // can only say "Added by a connection".
+                completion(.success(response.representativeSave
+                                    ?? self.convertGlobalPlaceToLegacy(globalPlace: globalPlace)))
                 
             case .failure(let error):
                 Logger.error("📍 PlaceService.fetchGlobalPlaceAsLegacy: Failed to fetch Global Place \(id): \(error.localizedDescription)")
