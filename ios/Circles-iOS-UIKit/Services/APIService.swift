@@ -1200,7 +1200,10 @@ class APIService {
     
     // MARK: - Check-In API
     
-    func createCheckIn(_ checkInData: [String: Any], completion: @escaping (Result<(checkIn: CheckIn, stats: CheckInStats?), APIError>) -> Void) {
+    /// `offersRatingAfterward`: false when the check-in screen already asked
+    /// "How was it?" — the one-screen composer does, so asking again once it
+    /// closes was a second prompt for the same visit.
+    func createCheckIn(_ checkInData: [String: Any], offersRatingAfterward: Bool = true, completion: @escaping (Result<(checkIn: CheckIn, stats: CheckInStats?), APIError>) -> Void) {
         request(
             endpoint: "check-ins",
             method: .post,
@@ -1217,8 +1220,9 @@ class APIService {
                 // On main: observers touch labels and layout constraints, and
                 // this completion arrives on URLSession's queue.
                 NotificationCenter.default.postOnMain(name: .checkInCreated, userInfo: info)
-                // "How was it this time?" — once the check-in flow is off screen
-                if let placeId = response.data.placeId {
+                // "How was it this time?" — once the check-in flow is off screen,
+                // and only if that flow didn't already ask
+                if offersRatingAfterward, let placeId = response.data.placeId {
                     PostCheckInRatePresenter.offer(placeId: placeId, checkInId: response.data.id, placeName: response.data.placeName)
                 }
                 completion(.success((checkIn: response.data, stats: response.myCheckInStats)))
