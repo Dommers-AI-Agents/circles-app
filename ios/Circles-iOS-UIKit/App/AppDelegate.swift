@@ -626,7 +626,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case .messages:
             center.post(name: Notification.Name("NavigateToMessages"), object: nil)
         case .homeWidget(let id):
-            center.post(name: .navigateToHomeWidget, object: id)
+            // A reminder tapped with the app closed arrives before the tab
+            // bar exists; a bare post then reached nobody and the tap just
+            // opened the app. Stash it for the scene like the other cold-start
+            // taps (Wes, 2026-09-30: "Drink water" opened home, not Water).
+            postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "widget:\(id)", object: id)
         case .postcardOrder(let id):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "postcard-order:\(id)",
                                 object: "postcard", userInfo: ["orderId": id])
@@ -639,13 +643,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             if let suggestionId { info["suggestionId"] = suggestionId }
             center.post(name: Notification.Name("NavigateToSuggestions"), object: nil, userInfo: info.isEmpty ? nil : info)
         case .circle(let id, let showComments):
-            center.post(name: Notification.Name("NavigateToCircle"), object: id, userInfo: showComments.map { ["showComments": $0] })
+            postOrStashDeepLink(navName: "NavigateToCircle", pending: "circle:\(id)",
+                                object: id, userInfo: showComments.map { ["showComments": $0] })
         case .place(let id, let showComments):
-            center.post(name: Notification.Name("NavigateToPlace"), object: id, userInfo: showComments.map { ["showComments": $0] })
+            postOrStashDeepLink(navName: "NavigateToPlace", pending: "place:\(id)",
+                                object: id, userInfo: showComments.map { ["showComments": $0] })
         case .activity(let id):
             center.post(name: Notification.Name("NavigateToActivity"), object: id)
         case .network(let showPending):
-            center.post(name: Notification.Name("NavigateToNetwork"), object: nil, userInfo: showPending ? ["showPending": true] : nil)
+            postOrStashDeepLink(navName: "NavigateToNetwork", pending: "network",
+                                userInfo: showPending ? ["showPending": true] : nil)
         case .connectionAccepted(let userId):
             UserDefaults.standard.set(userId, forKey: "newlyAcceptedConnectionId")
             UserDefaults.standard.set(Date(), forKey: "newlyAcceptedConnectionDate")
