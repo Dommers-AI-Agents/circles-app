@@ -38,6 +38,16 @@ describe('overlayVenuePhotos', () => {
     const out = svc.overlayVenuePhotos(place, { photos: ['a.jpg', 'b.jpg'] });
     expect(out.photos).toEqual(['a.jpg', 'b.jpg', 'c.jpg']);
   });
+  it('never serves a removed photo or someone else\'s private one, even from the save doc', () => {
+    const venue = { photos: [
+      { id: '1', url: 'a.jpg', uploadedBy: 'x' },
+      { id: '2', url: 'gone.jpg', uploadedBy: 'x', removedAt: '2026-09-30' },
+      { id: '3', url: 'mine.jpg', uploadedBy: 'me', private: true }
+    ] };
+    const saved = () => ({ photos: ['gone.jpg', 'mine.jpg', 'old.jpg'] });
+    expect(svc.overlayVenuePhotos(saved(), venue, 'other').photos.map((p) => p.url || p)).toEqual(['a.jpg', 'old.jpg']);
+    expect(svc.overlayVenuePhotos(saved(), venue, 'me').photos.map((p) => p.url || p)).toEqual(['a.jpg', 'mine.jpg', 'old.jpg']);
+  });
   it('keeps the save photos when the venue has none', () => {
     const place = { photos: ['c.jpg'] };
     expect(svc.overlayVenuePhotos(place, { photos: [] }).photos).toEqual(['c.jpg']);

@@ -22,6 +22,7 @@ const {
   getReelsFeed,
   getUserReels,
   getPlaceReels,
+  getVenueMoments,
   getPublicVideoDetails
 } = require('../controllers/video/videoFeedController');
 const {
@@ -54,7 +55,7 @@ router.post('/embed', protect, uploadLimiter, addEmbeddedVideo);
 router.get('/metadata', protect, getVideoMetadata);
 
 // Get videos
-router.get('/place/:placeId', getPlaceVideos);
+router.get('/place/:placeId', protect, getPlaceVideos);
 router.get('/user/:userId', getUserVideos);
 router.get('/feed', protect, getVideoFeed);
 
@@ -62,6 +63,8 @@ router.get('/feed', protect, getVideoFeed);
 router.get('/reels/feed', protect, getReelsFeed);
 router.get('/reels/user/:userId', protect, getUserReels);
 router.get('/reels/place/:placeId', protect, getPlaceReels);
+// Every moment at a place across all its saves (the place page's Moments row)
+router.get('/reels/venue/:globalPlaceId', protect, getVenueMoments);
 router.post('/reels/:videoId/like', protect, likeReel);
 router.delete('/reels/:videoId/like', protect, unlikeReel);
 router.post('/reels/:videoId/view', protect, trackReelView);

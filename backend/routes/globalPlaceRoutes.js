@@ -63,6 +63,12 @@ router.route('/global/:placeId/media/:photoId')
   .delete(deleteUserPhoto);
 
 // Like endpoints for Global Place uploads
+// One photo library per place: owner/manager/super-user arrange it
+router.route('/global/:placeId/photos/order')
+  .put(require('../controllers/globalPlaceController').reorderPlacePhotos);
+router.route('/global/:placeId/photos/cover')
+  .put(require('../controllers/globalPlaceController').setPlaceCoverPhoto);
+
 router.route('/global/:placeId/media/:photoId/like')
   .post(require('../controllers/globalPlaceController').likeGlobalPlaceUpload)
   .delete(require('../controllers/globalPlaceController').unlikeGlobalPlaceUpload);

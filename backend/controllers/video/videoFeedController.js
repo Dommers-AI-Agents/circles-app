@@ -14,25 +14,10 @@ const db = getFirestore();
 // Get videos for a place
 exports.getPlaceVideos = async (req, res) => {
   try {
-    const { placeId } = req.params;
-    const { limit = 20, offset = 0 } = req.query;
-    
-    const videosQuery = await db.collection(COLLECTIONS.PLACE_VIDEOS)
-      .where('placeId', '==', placeId)
-      .where('uploadStatus', '==', 'ready')
-      .where('deletedAt', '==', null)
-      .orderBy('createdAt', 'desc')
-      .limit(parseInt(limit))
-      .offset(parseInt(offset))
-      .get();
-    
-    const videos = serializeQuerySnapshot(videosQuery);
-    
-    res.json({
-      success: true,
-      data: videos,
-      hasMore: videos.length === parseInt(limit)
-    });
+    // Signed in, and each moment's own audience — this used to return every
+    // moment at a place to anyone, unauthenticated
+    const visible = await momentsVisibleTo(await readyMomentsAt([req.params.placeId]), req.user.uid);
+    res.json({ success: true, ...page(visible, req) });
   } catch (error) {
     console.error('Error getting place videos:', error);
     res.status(500).json({
@@ -717,92 +702,78 @@ exports.getUserReels = async (req, res) => {
 };
 
 // Get place's reels
-exports.getPlaceReels = async (req, res) => {
-  try {
-    const currentUserId = req.user.uid;
-    const { placeId } = req.params;
-    const { limit = 20, offset = 0 } = req.query;
-    
-    // First get all videos for this place
-    const allVideosQuery = await db.collection(COLLECTIONS.PLACE_VIDEOS)
-      .where('placeId', '==', placeId)
+/**
+ * The moments `currentUserId` may see out of `allVideos`: no one blocked
+ * either way, nothing under moderation (except your own under review), and
+ * each moment's own audience (canViewMoment). Shared by every per-place read.
+ */
+async function momentsVisibleTo(allVideos, currentUserId) {
+  if (allVideos.length === 0) return [];
+  const videoUserIds = [...new Set(allVideos.map(v => v.userId))];
+  // Relationships with every creator (chunked — more than 30 is possible)
+  const [connection1Docs, connection2Docs, currentUserDoc] = await Promise.all([
+    queryInChunks(videoUserIds, chunk =>
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', '==', currentUserId)
+        .where('connectedUserId', 'in', chunk)
+        .where('status', '==', 'accepted')
+        .get()
+    ),
+    queryInChunks(videoUserIds, chunk =>
+      db.collection(COLLECTIONS.CONNECTIONS)
+        .where('userId', 'in', chunk)
+        .where('connectedUserId', '==', currentUserId)
+        .where('status', '==', 'accepted')
+        .get()
+    ),
+    db.collection(COLLECTIONS.USERS).doc(currentUserId).get()
+  ]);
+  const connectedUserIds = new Set();
+  connection1Docs.forEach(doc => connectedUserIds.add(doc.data().connectedUserId));
+  connection2Docs.forEach(doc => connectedUserIds.add(doc.data().userId));
+  const followingUserIds = new Set(currentUserDoc.exists ? (currentUserDoc.data().following || []) : []);
+
+  // Blocked either way, or hidden by moderation → never surfaces here
+  const { excludedUserIds } = require('../../services/moderationService');
+  const excludedIds = excludedUserIds(currentUserDoc.exists ? currentUserDoc.data() : {});
+  const viewerCtx = makeViewerContext({
+    viewerId: currentUserId,
+    connections: connectedUserIds,
+    following: followingUserIds,
+    innerCircleLists: await getInnerCircleGrantorLists(currentUserId)
+  });
+  return allVideos.filter(video => {
+    if (excludedIds.has(video.userId)) return false;
+    if (video.moderationStatus === 'under_review' || video.moderationStatus === 'removed') {
+      return video.userId === currentUserId && video.moderationStatus === 'under_review';
+    }
+    return canViewMoment(video, currentUserId, viewerCtx);
+  });
+}
+
+const readyMomentsAt = async (placeIds) => {
+  const snaps = await queryInChunks(placeIds, chunk =>
+    db.collection(COLLECTIONS.PLACE_VIDEOS)
+      .where('placeId', 'in', chunk)
       .where('uploadStatus', '==', 'ready')
       .where('deletedAt', '==', null)
-      .orderBy('createdAt', 'desc')
-      .get();
-    
-    const allVideos = serializeQuerySnapshot(allVideosQuery);
-    
-    if (allVideos.length === 0) {
-      return res.json({
-        success: true,
-        data: [],
-        hasMore: false
-      });
-    }
-    
-    // Get unique user IDs from videos
-    const videoUserIds = [...new Set(allVideos.map(v => v.userId))];
-    
-    // Check relationships with all video creators (chunked — a feed page can
-    // reference more than 30 distinct creators)
-    const [connection1Docs, connection2Docs, currentUserDoc] = await Promise.all([
-      queryInChunks(videoUserIds, chunk =>
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', currentUserId)
-          .where('connectedUserId', 'in', chunk)
-          .where('status', '==', 'accepted')
-          .get()
-      ),
-      queryInChunks(videoUserIds, chunk =>
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', 'in', chunk)
-          .where('connectedUserId', '==', currentUserId)
-          .where('status', '==', 'accepted')
-          .get()
-      ),
-      db.collection(COLLECTIONS.USERS).doc(currentUserId).get()
-    ]);
+      .get()
+  );
+  const byId = new Map();
+  snaps.forEach(doc => byId.set(doc.id, { id: doc.id, ...doc.data() }));
+  return [...byId.values()].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+};
 
-    // Build sets of connected and following users
-    const connectedUserIds = new Set();
-    connection1Docs.forEach(doc => connectedUserIds.add(doc.data().connectedUserId));
-    connection2Docs.forEach(doc => connectedUserIds.add(doc.data().userId));
-    
-    const followingUserIds = new Set();
-    if (currentUserDoc.exists) {
-      const following = currentUserDoc.data().following || [];
-      following.forEach(id => followingUserIds.add(id));
-    }
-    
-    // Blocked either way, or hidden by moderation → never surfaces here
-    const { excludedUserIds } = require('../../services/moderationService');
-    const excludedIds = excludedUserIds(currentUserDoc.exists ? currentUserDoc.data() : {});
+const page = (items, req) => {
+  const limit = parseInt(req.query.limit || 20);
+  const offset = parseInt(req.query.offset || 0);
+  return { data: items.slice(offset, offset + limit), hasMore: items.length > offset + limit };
+};
 
-    const viewerCtx = makeViewerContext({
-      viewerId: currentUserId,
-      connections: connectedUserIds,
-      following: followingUserIds,
-      innerCircleLists: await getInnerCircleGrantorLists(currentUserId)
-    });
-
-    // Filter videos based on visibility and relationships
-    const filteredVideos = allVideos.filter(video => {
-      if (excludedIds.has(video.userId)) return false;
-      if (video.moderationStatus === 'under_review' || video.moderationStatus === 'removed') {
-        return video.userId === currentUserId && video.moderationStatus === 'under_review';
-      }
-      return canViewMoment(video, currentUserId, viewerCtx);
-    });
-    
-    // Apply pagination to filtered results
-    const paginatedVideos = filteredVideos.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
-    
-    res.json({
-      success: true,
-      data: paginatedVideos,
-      hasMore: filteredVideos.length > parseInt(offset) + parseInt(limit)
-    });
+exports.getPlaceReels = async (req, res) => {
+  try {
+    const visible = await momentsVisibleTo(await readyMomentsAt([req.params.placeId]), req.user.uid);
+    res.json({ success: true, ...page(visible, req) });
   } catch (error) {
     console.error('Error getting place reels:', error);
     res.status(500).json({
@@ -810,6 +781,27 @@ exports.getPlaceReels = async (req, res) => {
       message: 'Failed to get place reels',
       error: error.message
     });
+  }
+};
+
+// @desc    Every moment at a place, whoever's save it was posted from (moments
+//          are keyed by the uploader's own save id), as this viewer may see
+//          them. The place page's Moments row.
+// @route   GET /api/videos/reels/venue/:globalPlaceId
+// @access  Private
+exports.getVenueMoments = async (req, res) => {
+  try {
+    const { resolveGlobalPlace } = require('../../services/globalPlaceResolver');
+    const { saveIdsForPlace } = require('../../services/placePhotoService');
+    const { globalPlaceDoc } = await resolveGlobalPlace(req.params.globalPlaceId);
+    const placeIds = globalPlaceDoc
+      ? await saveIdsForPlace(globalPlaceDoc.id, globalPlaceDoc.data())
+      : [req.params.globalPlaceId];
+    const visible = await momentsVisibleTo(await readyMomentsAt(placeIds), req.user.uid);
+    res.json({ success: true, ...page(visible, req) });
+  } catch (error) {
+    console.error('Error getting venue moments:', error);
+    res.status(500).json({ success: false, message: 'Failed to get moments for this place' });
   }
 };
 

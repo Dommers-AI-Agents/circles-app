@@ -73,8 +73,11 @@ router.route('/needs-photo')
   .get(getPlacesNeedingPhoto);
 
 // Migration endpoint for Google API photos
+// Rewrites every place's photos: super-users only (it had no check at all)
 router.route('/migrate-photos')
-  .post(migrateGooglePhotosToFirebase);
+  .post((req, res, next) => (req.user && req.user.isSuperUser === true
+    ? next()
+    : res.status(403).json({ success: false, message: 'Super-users only' })), migrateGooglePhotosToFirebase);
 
 router.route('/search')
   .get(searchPlaces);

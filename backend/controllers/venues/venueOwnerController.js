@@ -14,6 +14,7 @@ const { isVenueTeamMember, venueGlobalPlaceId, ownerVenueInfo } = require('../..
 const { canViewCircle } = require('../../services/visibility');
 const { makeViewerContext } = require('../../services/viewerContext');
 const { getInnerCircleGrantorLists } = require('../../utils/networkAccess');
+const placePhotos = require('../../services/placePhotoService');
 
 // ---------- Venue owner endpoints (self-service offer/earn-rate management) ----------
 
@@ -402,16 +403,22 @@ exports.setVenueCoverPhoto = async (req, res) => {
       return res.status(400).json({ success: false, error: 'This venue has no linked place record' });
     }
     const gpRef = db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId);
-    if (url) {
+    if (!url) {
+      // "No cover": the place's first photo leads, as for any place
       const gpDoc = await gpRef.get();
-      const photos = (gpDoc.exists && gpDoc.data().photos) || [];
-      const known = photos.some((p) => (typeof p === 'string' ? p : p && p.url) === url);
-      if (!known) {
-        return res.status(400).json({ success: false, error: 'Cover photo must be one of the place\'s photos' });
-      }
+      const cover = placePhotos.coverUrl((gpDoc.exists && gpDoc.data().photos) || []);
+      await gpRef.set({ coverPhotoUrl: cover, updatedAt: new Date().toISOString() }, { merge: true });
+      return res.json({ success: true, data: { coverPhotoUrl: cover } });
     }
-    await gpRef.set({ coverPhotoUrl: url, updatedAt: new Date().toISOString() }, { merge: true });
-    res.json({ success: true, data: { coverPhotoUrl: url } });
+    // The cover IS the first photo (one library, one order): move it there
+    const gpDoc = await gpRef.get();
+    const photos = (gpDoc.exists && gpDoc.data().photos) || [];
+    const photo = photos.find((p) => placePhotos.urlOf(p) === url && placePhotos.canSee(p, null));
+    if (!photo || !photo.id) {
+      return res.status(400).json({ success: false, error: 'Cover photo must be one of the place\'s photos' });
+    }
+    const result = await placePhotos.setCover(globalPlaceId, photo.id, { canManage: true });
+    res.json({ success: true, data: { coverPhotoUrl: result.coverPhotoUrl } });
   } catch (error) {
     console.error('❌ Failed to set venue cover photo:', error);
     res.status(500).json({ success: false, error: 'Failed to set cover photo' });

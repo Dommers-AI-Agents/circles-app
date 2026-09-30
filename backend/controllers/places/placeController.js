@@ -312,7 +312,7 @@ exports.getPlacesByCircleId = async (req, res, next) => {
       // Only include privateNotes if the current user added this place
       const social = socialByGlobalId.get(place.globalPlaceId);
       const placeData = {
-        ...(social ? overlayVenuePhotos(overlayVenueFields(place, social.venueData), social.venueData) : place),
+        ...(social ? overlayVenuePhotos(overlayVenueFields(place, social.venueData), social.venueData, req.user.uid) : place),
         ...(social ? { likes: social.likes, likesCount: social.likes.length } : {}),
         addedByUser: userMap.get(place.addedBy) || null,
         commentsCount: social ? social.commentsCount : 0,
@@ -719,7 +719,7 @@ exports.getPlace = async (req, res, next) => {
       isFollowing: ((social.venueData && social.venueData.followers) || []).includes(req.user.uid)
     };
     if (social.venueData) {
-      placeData = overlayVenuePhotos(overlayVenueFields(placeData, social.venueData), social.venueData);
+      placeData = overlayVenuePhotos(overlayVenueFields(placeData, social.venueData), social.venueData, req.user.uid);
     }
     
     // Normalize photos array format for iOS compatibility
@@ -1112,6 +1112,15 @@ exports.createPlace = async (req, res, next) => {
         const linkedCategory = (await placeRef.get()).get('category');
         if (linkedCategory) place.category = linkedCategory;
       } catch (e) { /* response falls back to the pre-link category */ }
+      // One photo library per place: this save's photos join it (own
+      // uploads attributed, stock photos only fill an empty library)
+      await require('../../services/placePhotoService').adoptSavePhotos({
+        globalPlaceId,
+        user: req.user,
+        photos: placeData.photos || [],
+        ownUrls: ownPhotoUrls,
+        isPrivate: require('../../services/placePhotoService').effectivelyPrivate(placeData.privacy, circle && circle.privacy)
+      });
     }
 
     // Keep the browse location tree fresh: bump this circle's summary and drop
@@ -1573,7 +1582,12 @@ exports.updatePlace = async (req, res, next) => {
 
     // Handle photo operations
     let addedPhotoUrl = null;
+    let photoOps = null;
     if (updateData.addPhotos || updateData.removePhotos) {
+      photoOps = {
+        added: Array.isArray(updateData.addPhotos) ? updateData.addPhotos.filter((u) => typeof u === 'string') : [],
+        removed: Array.isArray(updateData.removePhotos) ? updateData.removePhotos.filter((u) => typeof u === 'string') : []
+      };
       console.log('📷 Processing photo operations:', {
         placeId: req.params.id,
         addPhotos: updateData.addPhotos ? `${updateData.addPhotos.length} photos` : 'none',
@@ -1632,6 +1646,19 @@ exports.updatePlace = async (req, res, next) => {
     }
 
     await placeRef.update(updateData);
+
+    // Edit Place's photos go to the place's one library, not just this copy:
+    // added ones attributed to this user, removed ones removed where they
+    // may (placePhotoService.adoptSavePhotos)
+    if (photoOps && place.globalPlaceId) {
+      await require('../../services/placePhotoService').adoptSavePhotos({
+        globalPlaceId: place.globalPlaceId,
+        user: req.user,
+        ownUrls: photoOps.added,
+        removedUrls: photoOps.removed,
+        isPrivate: await require('../../services/placePhotoService').saveIsPrivate({ ...place, ...updateData })
+      });
+    }
 
     // Piggy bank: 1 FavCoin for your first photo on this venue (dedup key is
     // per user+venue, so later photos and photo swaps pay nothing).
@@ -2670,7 +2697,7 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
       // photos as [String]. Without it the whole response fails to decode and
       // the screen renders empty.
       return normalizePhotosArray({
-        ...overlayVenuePhotos(overlayVenueFields(place, social.venueData), social.venueData),
+        ...overlayVenuePhotos(overlayVenueFields(place, social.venueData), social.venueData, req.user.uid),
         addedByUser,
         likes: social.likes,
         likesCount: social.likes.length,

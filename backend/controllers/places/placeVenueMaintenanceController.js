@@ -251,7 +251,11 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
             const { uploadedUrls, errors } = await downloadAndUploadMultipleImages(googlePhotoUrls);
             
             if (uploadedUrls.length > 0) {
-              updateData.photos = uploadedUrls;
+              // Never throw away the person's own photos: fresh stock photos
+              // replace stock ones, and join (after) a save that has its own
+              updateData.photos = place.hasOwnPhotos === true
+                ? [...new Set([...(place.photos || []).map((p) => (typeof p === 'string' ? p : p && p.url)).filter(Boolean), ...uploadedUrls])]
+                : uploadedUrls;
               console.log(`✅ Successfully uploaded ${uploadedUrls.length} photos to Firebase Storage`);
             }
             
@@ -267,6 +271,12 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
       
       // Update the place in Firestore
       await placeRef.update(updateData);
+      // Stock photos only ever fill an EMPTY place library
+      if (updateData.photos && place.globalPlaceId) {
+        await require('../../services/placePhotoService').adoptSavePhotos({
+          globalPlaceId: place.globalPlaceId, user: req.user, photos: updateData.photos
+        });
+      }
 
       // Fresh Google data (rating, review counts) is venue-level: push it to
       // the canonical record so every saver benefits (photos stay per-copy)
@@ -506,6 +516,13 @@ exports.setPlacePhotoFallback = async (req, res) => {
     });
     // The circle may have been cover-less until now (imports arrive photo-less)
     ensureCircleCoverImage(place.circleId, photoUrl);
+    // A place with no photos anywhere gets this one in its library too
+    if (place.globalPlaceId) {
+      await require('../../services/placePhotoService').adoptSavePhotos({
+        globalPlaceId: place.globalPlaceId, user: req.user, photos: [photoUrl],
+        isPrivate: await require('../../services/placePhotoService').saveIsPrivate(place)
+      });
+    }
     res.json({ success: true, data: { placeId: ref.id, applied: true } });
   } catch (error) {
     console.error('❌ setPlacePhotoFallback failed:', error);

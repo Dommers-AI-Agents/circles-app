@@ -291,6 +291,18 @@ const actionReport = async (req, res) => {
       return res.json({ success: true, action: 'dismissed' });
     }
 
+    if (action === 'remove_content' && report.reportedItemType === 'place_photo') {
+      // A place photo is "<globalPlaceId>:<photoId>"; removal is the owner/
+      // admin soft remove, so it stays gone (placePhotoService)
+      const [globalPlaceId, photoId] = String(report.reportedItemId).split(':');
+      if (!globalPlaceId || !photoId) {
+        return res.status(400).json({ success: false, message: 'Photo report has no place' });
+      }
+      await require('../services/placePhotoService').remove(globalPlaceId, photoId, req.user.uid, { canManage: true });
+      await reportRef.update({ status: 'resolved', resolution: 'content_removed', resolvedAt: stamp, resolvedBy: req.user.uid, updatedAt: stamp });
+      return res.json({ success: true, action: 'content_removed' });
+    }
+
     if (action === 'remove_content') {
       const ref = moderationService.contentRef(report.reportedItemType, report.reportedItemId);
       if (!ref) {

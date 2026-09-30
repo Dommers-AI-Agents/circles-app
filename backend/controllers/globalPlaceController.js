@@ -27,6 +27,8 @@ const db = getFirestore();
 const { resolveGlobalPlace, createGlobalPlaceFromLegacy } = require('../services/globalPlaceResolver');
 const { normalizePrivacy, PRIVACY } = require('../services/visibility');
 const { isSameUser } = require('../services/idService');
+const placePhotos = require('../services/placePhotoService');
+const { sendServiceError } = require('../utils/serviceError');
 
 
 // Mirror an uploaded media URL into the legacy places docs so legacy readers
@@ -188,17 +190,20 @@ exports.getGlobalPlace = async (req, res, next) => {
     const placeData = serializeDoc(placeDoc);
     console.log(`✅ [GlobalPlace API] Successfully found place: "${placeData.name}" (ID: ${placeDoc.id})`);
 
-    // Same URL twice in the stored array (writes that predate the append
-    // guards) renders as duplicate gallery tiles — collapse at read time;
-    // scripts/dedupe-global-place-photos.js repairs the data itself.
-    if (Array.isArray(placeData.photos) && placeData.photos.length > 1) {
-      const seenUrls = new Set();
-      placeData.photos = placeData.photos.filter(photo => {
-        const url = typeof photo === 'string' ? photo : photo?.url;
-        if (!url || seenUrls.has(url)) return false;
-        seenUrls.add(url);
-        return true;
-      });
+    // The place's photo library as this viewer sees it: the owner's order,
+    // minus removed photos and other people's private ones, one per URL
+    // (placePhotoService). The cover is the first photo everyone can see.
+    const viewerUid = req.user?.uid || req.user?.id || null;
+    const storedPhotos = Array.isArray(placeData.photos) ? placeData.photos : [];
+    placeData.photos = placePhotos.visiblePhotos(storedPhotos, viewerUid);
+    placeData.coverPhotoUrl = placePhotos.coverUrl(storedPhotos);
+    // What this viewer may do with them (the app shows Manage for true)
+    let photoRights = { canManage: false };
+    try {
+      const rights = await placePhotos.rightsFor(req.user, placeDoc.id, placeData);
+      photoRights = { canManage: rights.canManage };
+    } catch (e) {
+      console.error('⚠️ [GlobalPlace API] photo rights lookup failed:', e.message);
     }
     console.log(`📷 [GlobalPlace API] Returning ${placeData.photos?.length || 0} photos with attribution`);
     
@@ -288,7 +293,8 @@ exports.getGlobalPlace = async (req, res, next) => {
       data: {
         globalPlace: placeData,
         userRelation: userRelation,
-        representativeSave: representativeSave
+        representativeSave: representativeSave,
+        photoRights
       }
     });
   } catch (error) {
@@ -592,6 +598,7 @@ exports.uploadPlaceMedia = async (req, res, next) => {
     let updateField;
     let incrementField;
     
+    let isPrivatePhoto = false;
     if (mediaType === 'photo') {
       // Use standard ISO timestamp for compatibility
       const uploadedAt = new Date().toISOString();
@@ -603,6 +610,9 @@ exports.uploadPlaceMedia = async (req, res, next) => {
         source: source,
         uploadedAt: uploadedAt
       });
+      // Added by someone who keeps this place Private: theirs alone
+      isPrivatePhoto = await placePhotos.uploaderSaveIsPrivate(resolvedId, req.user.uid || req.user.id);
+      if (isPrivatePhoto) attributedMedia.private = true;
       updateField = 'photos';
       incrementField = 'userContributions.totalPhotos';
       
@@ -650,10 +660,17 @@ exports.uploadPlaceMedia = async (req, res, next) => {
       });
     }
 
-    // Add media to place
-    console.log(`🔄 [UploadMedia] Adding ${mediaType} to ${updateField} array using arrayUnion...`);
+    // Add media to place. Photos append in a transaction (after the owner's
+    // arrangement, and safe against a concurrent like/reorder rewriting the
+    // array); videos keep the old arrayUnion.
+    if (mediaType === 'photo') {
+      await placePhotos.append(resolvedId, attributedMedia);
+    } else {
+      await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).update({
+        [updateField]: admin.firestore.FieldValue.arrayUnion(attributedMedia)
+      });
+    }
     await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).update({
-      [updateField]: admin.firestore.FieldValue.arrayUnion(attributedMedia),
       [incrementField]: admin.firestore.FieldValue.increment(1),
       'userContributions.contributors': admin.firestore.FieldValue.arrayUnion(req.user.id),
       lastActivityAt: new Date().toISOString(),
@@ -661,10 +678,13 @@ exports.uploadPlaceMedia = async (req, res, next) => {
     });
 
     // Mirror into the legacy places docs so legacy readers (GET /places/:id,
-    // batch, older app builds) see the new media too
-    const legacyMirrorIds = new Set(resolvedData.legacyPlaceIds || []);
-    if (legacyPlaceDoc && legacyPlaceDoc.exists) legacyMirrorIds.add(legacyPlaceDoc.id);
-    await mirrorMediaToLegacyPlaces([...legacyMirrorIds], updateField, mediaUrl);
+    // batch, older app builds) see the new media too — never a private
+    // photo, which would reach other people's copies
+    if (!isPrivatePhoto) {
+      const legacyMirrorIds = new Set(resolvedData.legacyPlaceIds || []);
+      if (legacyPlaceDoc && legacyPlaceDoc.exists) legacyMirrorIds.add(legacyPlaceDoc.id);
+      await mirrorMediaToLegacyPlaces([...legacyMirrorIds], updateField, mediaUrl);
+    }
 
     // Verify the update worked
     const afterUpdate = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).get();
@@ -685,8 +705,9 @@ exports.uploadPlaceMedia = async (req, res, next) => {
     // Update quality score
     await updateGlobalPlaceStats(resolvedId);
 
-    // Track photo upload activity (only for photos, not videos)
-    if (mediaType === 'photo') {
+    // Track photo upload activity (only for photos, not videos; never a
+    // private one)
+    if (mediaType === 'photo' && !isPrivatePhoto) {
       try {
         const placeName = resolvedData.name || 'Unknown Place';
 
@@ -864,8 +885,8 @@ exports.getUserUploads = async (req, res, next) => {
       const placePhotos = placeData.photos || [];
       
       // Filter photos uploaded by this user
-      const userPhotos = placePhotos.filter(photo => 
-        photo.uploadedBy === userId
+      const userPhotos = placePhotos.filter(photo =>
+        photo && photo.uploadedBy === userId && !photo.removedAt
       );
       
       // Add place context to each photo
@@ -965,71 +986,85 @@ exports.getPhotosDebug = async (req, res, next) => {
 exports.deleteUserPhoto = async (req, res, next) => {
   try {
     const { placeId, photoId } = req.params;
-    // protect middleware populates req.user (there is no req.userId)
-    const currentUserId = req.user.id;
-    
-    console.log(`🗑️ [GlobalPlace API] Deleting photo ${photoId} from place ${placeId} for user ${currentUserId}`);
+    const currentUserId = req.user.uid || req.user.id;
 
     // Resolve the global place (the app may pass a legacy place id)
     const { globalPlaceDoc: placeDoc, legacyPlaceDoc } = await resolveGlobalPlace(placeId);
-
     if (!placeDoc || !placeDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: 'Place not found'
-      });
+      return res.status(404).json({ success: false, message: 'Place not found' });
     }
     const resolvedId = placeDoc.id;
-
     const placeData = placeDoc.data();
-    const photos = placeData.photos || [];
-    
-    // Find the photo to delete and verify ownership
-    const photoIndex = photos.findIndex(photo => 
-      (photo.id === photoId || photo.url.includes(photoId)) && 
-      photo.uploadedBy === currentUserId
-    );
-    
-    if (photoIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        message: 'Photo not found or not owned by user'
+
+    // Your own photo: deleted. Anyone's, for the place's owner, a manager or
+    // a super-user: removed (and it stays removed). See placePhotoService.
+    const rights = await placePhotos.rightsFor(req.user, resolvedId, placeData);
+    const outcome = await placePhotos.remove(resolvedId, photoId, currentUserId, rights);
+
+    if (outcome.mode === 'deleted') {
+      await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).update({
+        'userContributions.totalPhotos': Math.max(0, (placeData.userContributions?.totalPhotos || 1) - 1)
       });
     }
-    
-    const photoToDelete = photos[photoIndex];
-    console.log(`📸 [GlobalPlace API] Found photo to delete: ${photoToDelete.url}`);
-    
-    // Remove photo from array
-    photos.splice(photoIndex, 1);
 
-    // Update place document
-    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).update({
-      photos: photos,
-      'userContributions.totalPhotos': Math.max(0, (placeData.userContributions?.totalPhotos || 1) - 1),
-      updatedAt: new Date().toISOString()
-    });
-
-    // Remove the mirrored copy from the legacy places docs, or the merged
-    // carousel would resurrect the deleted photo from place.photos
+    // Scrub the mirrored copy from every save doc, or the merged carousel
+    // (and any older reader) would resurrect it from place.photos
     const legacyRemoveIds = new Set(placeData.legacyPlaceIds || []);
     if (legacyPlaceDoc && legacyPlaceDoc.exists) legacyRemoveIds.add(legacyPlaceDoc.id);
-    await removePhotoFromLegacyPlaces([...legacyRemoveIds], photoToDelete.url, resolvedId);
+    await removePhotoFromLegacyPlaces([...legacyRemoveIds], outcome.url, resolvedId);
 
-    // Update place statistics
     await updateGlobalPlaceStats(resolvedId);
 
-    console.log(`✅ [GlobalPlace API] Successfully deleted photo ${photoId} from place ${resolvedId}`);
-    
     res.status(200).json({
       success: true,
       data: 'Photo deleted successfully',
-      message: 'Photo removed from place'
+      message: 'Photo removed from place',
+      mode: outcome.mode,
+      coverPhotoUrl: outcome.coverPhotoUrl
     });
-    
   } catch (error) {
-    console.error('❌ [GlobalPlace API] Error deleting user photo:', error);
+    if (error.status) return sendServiceError(res, error, { log: '[place-photos] delete failed' });
+    console.error('❌ [GlobalPlace API] Error deleting photo:', error);
     next(error);
+  }
+};
+
+// @desc    Arrange a place's photos (owner, managers, super-users). The first
+//          photo everyone can see becomes the cover.
+// @route   PUT /api/places/global/:placeId/photos/order  { photoIds: [...] }
+// @access  Private
+exports.reorderPlacePhotos = async (req, res) => {
+  try {
+    const { globalPlaceDoc: placeDoc } = await resolveGlobalPlace(req.params.placeId);
+    if (!placeDoc || !placeDoc.exists) return res.status(404).json({ success: false, message: 'Place not found' });
+    const rights = await placePhotos.rightsFor(req.user, placeDoc.id, placeDoc.data());
+    const result = await placePhotos.reorder(placeDoc.id, (req.body || {}).photoIds, rights);
+    res.json({
+      success: true,
+      photos: placePhotos.visiblePhotos(result.photos, req.user.uid || req.user.id),
+      coverPhotoUrl: result.coverPhotoUrl
+    });
+  } catch (error) {
+    sendServiceError(res, error, { log: '[place-photos] reorder failed', fallbackCode: 'reorder_failed', fallbackMessage: 'Couldn\'t save the new order.' });
+  }
+};
+
+// @desc    Make one photo the cover (moves it to the front)
+// @route   PUT /api/places/global/:placeId/photos/cover  { photoId }
+// @access  Private (owner, managers, super-users)
+exports.setPlaceCoverPhoto = async (req, res) => {
+  try {
+    const { globalPlaceDoc: placeDoc } = await resolveGlobalPlace(req.params.placeId);
+    if (!placeDoc || !placeDoc.exists) return res.status(404).json({ success: false, message: 'Place not found' });
+    const rights = await placePhotos.rightsFor(req.user, placeDoc.id, placeDoc.data());
+    const result = await placePhotos.setCover(placeDoc.id, String((req.body || {}).photoId || ''), rights);
+    res.json({
+      success: true,
+      photos: placePhotos.visiblePhotos(result.photos, req.user.uid || req.user.id),
+      coverPhotoUrl: result.coverPhotoUrl
+    });
+  } catch (error) {
+    sendServiceError(res, error, { log: '[place-photos] cover failed', fallbackCode: 'cover_failed', fallbackMessage: 'Couldn\'t set the cover photo.' });
   }
 };
 
@@ -1055,63 +1090,27 @@ const { trackGlobalPlaceLiked, trackPhotoUploaded } = require('../services/activ
 exports.likeGlobalPlaceUpload = async (req, res, next) => {
   try {
     const { placeId, photoId } = req.params;
-    // protect middleware populates req.user (there is no req.user.uid contract here)
-    const userId = req.user.id;
+    const userId = req.user.uid || req.user.id;
 
-    console.log(`👍 [GlobalPlace API] User ${userId} attempting to like photo ${photoId} in place ${placeId}`);
-
-    // Resolve the global place (the app may pass a legacy place id)
     const { globalPlaceDoc: placeDoc } = await resolveGlobalPlace(placeId);
     if (!placeDoc || !placeDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: 'Global place not found'
-      });
+      return res.status(404).json({ success: false, message: 'Global place not found' });
     }
     const resolvedId = placeDoc.id;
 
-    const placeData = placeDoc.data();
-    const photos = placeData.photos || [];
-
-    // Find the photo
-    const photo = photos.find(p => p.id === photoId);
-    if (!photo) {
-      return res.status(404).json({
-        success: false,
-        message: 'Photo not found'
-      });
+    // In a transaction: a like never erases a concurrent upload or reorder
+    const result = await placePhotos.setLiked(resolvedId, photoId, userId, true);
+    if (!result.changed) {
+      return res.status(200).json({ success: true, message: 'Photo already liked', likesCount: result.likesCount });
     }
-
-    // Idempotent: liking an already-liked photo is a no-op success
-    const likes = photo.likes || [];
-    if (likes.includes(userId)) {
-      return res.status(200).json({
-        success: true,
-        message: 'Photo already liked',
-        likesCount: likes.length
-      });
-    }
-
-    // Add like
-    const updatedLikes = [...likes, userId];
-    const updatedPhotos = photos.map(p =>
-      p.id === photoId
-        ? { ...p, likes: updatedLikes, likesCount: updatedLikes.length }
-        : p
-    );
-
-    // Update the place document
-    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).update({
-      photos: updatedPhotos,
-      updatedAt: new Date().toISOString()
-    });
+    const photo = result.photo;
 
     // Track comprehensive activity (includes connection notifications)
-    if (photo.uploadedBy && photo.uploadedBy !== userId) {
+    if (photo.uploadedBy && !isSameUser(photo.uploadedBy, userId)) {
       await trackGlobalPlaceLiked(
         photoId,
         resolvedId,
-        placeData.name || 'Unknown Place',
+        result.placeName || 'Unknown Place',
         userId,
         photo.uploadedBy,
         photo.url || null
@@ -1123,7 +1122,7 @@ exports.likeGlobalPlaceUpload = async (req, res, next) => {
     // response can carry the credit and the app can play the leprechaun —
     // credit() never throws.
     let piggyBank = null;
-    if (photo.uploadedBy !== userId) {
+    if (!isSameUser(photo.uploadedBy, userId)) {
       piggyBank = await require('../services/piggyBankService').credit({
         userId,
         eventType: 'photo_liked',
@@ -1131,16 +1130,14 @@ exports.likeGlobalPlaceUpload = async (req, res, next) => {
       });
     }
 
-    console.log(`✅ [GlobalPlace API] Successfully liked photo ${photoId}`);
-
     res.status(200).json({
       success: true,
       message: 'Photo liked successfully',
-      likesCount: updatedLikes.length,
+      likesCount: result.likesCount,
       piggyBank
     });
-    
   } catch (error) {
+    if (error.status) return sendServiceError(res, error, { log: '[place-photos] like failed' });
     console.error('❌ [GlobalPlace API] Error liking Global Place upload:', error);
     next(error);
   }
@@ -1152,69 +1149,21 @@ exports.likeGlobalPlaceUpload = async (req, res, next) => {
 exports.unlikeGlobalPlaceUpload = async (req, res, next) => {
   try {
     const { placeId, photoId } = req.params;
-    // protect middleware populates req.user (there is no req.user.uid contract here)
-    const userId = req.user.id;
+    const userId = req.user.uid || req.user.id;
 
-    console.log(`👎 [GlobalPlace API] User ${userId} attempting to unlike photo ${photoId} in place ${placeId}`);
-
-    // Resolve the global place (the app may pass a legacy place id)
     const { globalPlaceDoc: placeDoc } = await resolveGlobalPlace(placeId);
     if (!placeDoc || !placeDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: 'Global place not found'
-      });
+      return res.status(404).json({ success: false, message: 'Global place not found' });
     }
-    const resolvedId = placeDoc.id;
-
-    const placeData = placeDoc.data();
-    const photos = placeData.photos || [];
-
-    // Find the photo
-    const photo = photos.find(p => p.id === photoId);
-    if (!photo) {
-      return res.status(404).json({
-        success: false,
-        message: 'Photo not found'
-      });
-    }
-
-    // Idempotent: unliking a not-liked photo is a no-op success
-    const likes = photo.likes || [];
-    if (!likes.includes(userId)) {
-      return res.status(200).json({
-        success: true,
-        message: 'Photo not liked',
-        likesCount: likes.length
-      });
-    }
-
-    // Remove like
-    const updatedLikes = likes.filter(id => id !== userId);
-    const updatedPhotos = photos.map(p =>
-      p.id === photoId
-        ? { ...p, likes: updatedLikes, likesCount: updatedLikes.length }
-        : p
-    );
-
-    // Update the place document
-    await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).update({
-      photos: updatedPhotos,
-      updatedAt: new Date().toISOString()
-    });
-    
-    console.log(`✅ [GlobalPlace API] Successfully unliked photo ${photoId}`);
-    
+    const result = await placePhotos.setLiked(placeDoc.id, photoId, userId, false);
     res.status(200).json({
       success: true,
-      message: 'Photo unliked successfully',
-      likesCount: updatedLikes.length
+      message: result.changed ? 'Photo unliked successfully' : 'Photo not liked',
+      likesCount: result.likesCount
     });
-    
   } catch (error) {
+    if (error.status) return sendServiceError(res, error, { log: '[place-photos] unlike failed' });
     console.error('❌ [GlobalPlace API] Error unliking Global Place upload:', error);
     next(error);
   }
 };
-
-// Functions are already exported using exports.functionName above

@@ -30,22 +30,22 @@ const normalizePhotosArray = (place) => {
   return place;
 };
 
-// Photos belong to the VENUE, not to any one person's save of it: a photo you
-// add is shared with everyone who saved that place (attributed to you, and
-// deletable only by you). Reads therefore serve the venue's pool, falling back
-// to the save's own array only when the place isn't linked to a venue yet.
-const overlayVenuePhotos = (place, venueData) => {
+// Photos belong to the VENUE, not to any one person's save of it: one library
+// per place (services/placePhotoService), in the owner's order. Reads serve
+// that library as `viewerId` sees it — no removed photos, no one else's
+// private ones — then any photo only this save still holds (the pooling
+// migration may not have reached it), minus anything the library hides.
+const overlayVenuePhotos = (place, venueData, viewerId = null) => {
   const venuePhotos = (venueData && venueData.photos) || [];
   if (venuePhotos.length === 0) return place;
+  const placePhotos = require('./placePhotoService');
 
-  // Union, venue order first, de-duped by URL — a save may still hold a photo
-  // the pooling backfill hasn't reached.
-  const urlOf = (p) => (typeof p === 'string' ? p : p && p.url) || null;
+  const hidden = placePhotos.hiddenUrls(venuePhotos, viewerId);
   const seen = new Set();
   const merged = [];
-  [...venuePhotos, ...(place.photos || [])].forEach((photo) => {
-    const url = urlOf(photo);
-    if (!url || seen.has(url)) return;
+  [...placePhotos.visiblePhotos(venuePhotos, viewerId), ...(place.photos || [])].forEach((photo) => {
+    const url = placePhotos.urlOf(photo);
+    if (!url || seen.has(url) || hidden.has(url)) return;
     seen.add(url);
     merged.push(photo);
   });
