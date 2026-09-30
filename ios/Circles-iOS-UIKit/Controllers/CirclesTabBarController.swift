@@ -513,8 +513,9 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         let widgetId = note.object as? String
         let orderId = note.userInfo?["orderId"] as? String
         let quoteId = note.userInfo?["quoteId"] as? String
+        let workoutPostId = note.userInfo?["workoutPostId"] as? String
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            circlesVC.showWidgetsTab(openingWidget: widgetId, postcardOrderId: orderId, quoteId: quoteId)
+            circlesVC.showWidgetsTab(openingWidget: widgetId, postcardOrderId: orderId, quoteId: quoteId, workoutPostId: workoutPostId)
         }
     }
 

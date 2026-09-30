@@ -754,6 +754,12 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
             if let globalPlaceId = activity.metadata?.globalPlaceId {
                 host?.navigateToGlobalPlace(withId: globalPlaceId, showComments: false)
             }
+        case .workoutShared:
+            // Opens in the Workouts widget, where the viewer can copy it
+            NotificationCenter.default.post(
+                name: .navigateToHomeWidget, object: "workouts",
+                userInfo: ["workoutPostId": activity.metadata?.workoutPostId ?? activity.targetId]
+            )
         case .suggestionSent, .suggestionAccepted,
              .profileUpdated, .userActivity, .reactionAdded, .unknown:
             // No reliable local destination for these

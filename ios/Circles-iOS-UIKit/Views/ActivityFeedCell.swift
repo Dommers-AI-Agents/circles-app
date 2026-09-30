@@ -421,6 +421,10 @@ class ActivityFeedCell: UITableViewCell {
         } else if activity.type == .checkIn, let message = activity.metadata?.message, !message.isEmpty {
             commentLabel.isHidden = false
             commentLabel.text = "\"" + message + "\""
+        } else if activity.type == .workoutShared, let detail = activity.metadata?.workoutDetail, !detail.isEmpty {
+            // "6 exercises · 42 min · 2 PRs" — tap opens the full workout
+            commentLabel.isHidden = false
+            commentLabel.text = "🏋️ " + detail
         }
         
         // Update reaction pills and counts

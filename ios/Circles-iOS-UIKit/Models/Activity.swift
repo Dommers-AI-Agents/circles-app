@@ -24,6 +24,8 @@ enum ActivityType: String, Codable {
     // Venue (store-owner) updates surfaced to place followers
     case venueAnnouncement = "venue_announcement"
     case venueOffer = "venue_offer"
+    /// A finished workout shared from the Workouts widget; opens the workout
+    case workoutShared = "workout_shared"
     /// Fallback for activity types this build doesn't know. The backend adds
     /// types over time; an unknown one must not fail the decode of an entire
     /// home screen response and blank the feed.
@@ -143,6 +145,8 @@ struct ActivityMetadata: Codable {
     let videoThumbnail: String?  // For video uploads
     let videoDuration: Double?  // For video uploads
     let contentType: String?  // Moment content: "photo" | "video" (photo moments ride the video pipeline)
+    let workoutPostId: String?  // Shared workout the row opens
+    let workoutDetail: String?  // "6 exercises · 42 min · 2 PRs"
 }
 
 // MARK: - Activity Helper Methods
@@ -209,6 +213,8 @@ extension Activity {
                 return "added a new offer: \(title)"
             }
             return "added a new offer"
+        case .workoutShared:
+            return "finished a workout: \(targetName)"
         case .unknown:
             return "shared an update"
         }
