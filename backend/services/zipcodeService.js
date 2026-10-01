@@ -30,6 +30,7 @@ async function readCachedZip(zipcode) {
     const doc = await zipCacheRef(zipcode).get();
     if (!doc.exists) return null;
     const data = doc.data();
+    if (data.notFound === true) return { notFound: true };
     return {
       city: data.city || null,
       state: data.state || null,
@@ -59,7 +60,27 @@ async function writeCachedZip(zipcode, result) {
   }
 }
 
-async function geocodeZipcode(zipcode) {
+// Remember a zip Google says doesn't exist, so it is never billed again either
+// — before, every save of an invalid zip re-ran Find Place (security audit
+// 2026-10-01). Only for a definitive ZERO_RESULTS, never for errors or quota.
+async function writeNotFoundZip(zipcode) {
+  try {
+    await zipCacheRef(zipcode).set({ notFound: true, resolvedAt: new Date().toISOString() });
+  } catch (error) {
+    console.warn(`⚠️ zipGeocodes negative cache write failed for ${zipcode}:`, error.message);
+  }
+}
+
+const US_ZIP_RE = /^\d{5}$/;
+
+async function geocodeZipcode(rawZipcode) {
+  // US 5-digit zips only (ZIP+4 is trimmed to its first five). Anything else
+  // never reaches Firestore or Google: arbitrary strings would each be a new
+  // billed lookup (security audit 2026-10-01).
+  const zipcode = String(rawZipcode == null ? '' : rawZipcode).trim().replace(/^(\d{5})-\d{4}$/, '$1');
+  if (!US_ZIP_RE.test(zipcode)) {
+    return getGenericLocationByZipcode(zipcode);
+  }
   try {
     // First try local database for instant lookup
     if (zipcodeDatabase && zipcodeDatabase[zipcode]) {
@@ -73,6 +94,9 @@ async function geocodeZipcode(zipcode) {
 
     // Second: past Google resolutions cached in Firestore
     const cached = await readCachedZip(zipcode);
+    if (cached && cached.notFound) {
+      return getGenericLocationByZipcode(zipcode);
+    }
     if (cached && (cached.city || cached.coordinates)) {
       console.log(`📍 Found ${zipcode} in zipGeocodes cache: ${cached.city}, ${cached.state}`);
       return cached;
@@ -120,6 +144,10 @@ async function geocodeZipcode(zipcode) {
       await writeCachedZip(zipcode, result);
 
       return result;
+    }
+
+    if (data.status === 'ZERO_RESULTS' || (data.status === 'OK' && !(data.candidates && data.candidates.length))) {
+      await writeNotFoundZip(zipcode);
     }
 
     // If Google API fails, use generic fallback

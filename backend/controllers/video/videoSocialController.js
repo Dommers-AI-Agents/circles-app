@@ -5,6 +5,7 @@
 const { getFirestore, FieldValue, admin } = require('../../config/firebase');
 const { COLLECTIONS, serializeDoc } = require('../../models/FirestoreModels');
 const { queryInChunks } = require('../../utils/firestoreChunks');
+const { clampPagination } = require('../../utils/pagination');
 const db = getFirestore();
 // Like a reel
 const sseService = require('../../services/sseService');
@@ -217,7 +218,9 @@ exports.trackReelView = async (req, res) => {
 exports.getVideoComments = async (req, res) => {
   try {
     const { videoId } = req.params;
-    const { limit = 20, offset = 0 } = req.query;
+    // Capped: unbounded ?limit / ?offset bill every document read or skipped
+    // (security audit 2026-10-01)
+    const { limit, offset } = clampPagination(req.query, { defaultLimit: 20, maxLimit: 100 });
     
     // Verify video exists
     const videoDoc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
@@ -233,10 +236,10 @@ exports.getVideoComments = async (req, res) => {
       .where('videoId', '==', videoId)
       .where('parentCommentId', '==', null)
       .orderBy('createdAt', 'desc')
-      .limit(parseInt(limit))
-      .offset(parseInt(offset))
+      .limit(limit)
+      .offset(offset)
       .get();
-    
+
     // Comments from blocked users (either direction) and moderation-hidden
     // comments are invisible
     const viewerDocForComments = await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get();
@@ -279,7 +282,7 @@ exports.getVideoComments = async (req, res) => {
     res.json({
       success: true,
       data: comments,
-      hasMore: comments.length === parseInt(limit)
+      hasMore: comments.length === limit
     });
   } catch (error) {
     console.error('Error getting video comments:', error);
@@ -453,14 +456,16 @@ exports.getVideoActivity = async (req, res) => {
 exports.getVideoLikes = async (req, res) => {
   try {
     const { videoId } = req.params;
-    const { limit = 50, offset = 0 } = req.query;
+    // Capped: unbounded ?limit / ?offset bill every document read or skipped
+    // (security audit 2026-10-01)
+    const { limit, offset } = clampPagination(req.query, { defaultLimit: 50, maxLimit: 100 });
     
     // Get likes for the video
     const likesQuery = await db.collection(COLLECTIONS.VIDEO_LIKES)
       .where('videoId', '==', videoId)
       .orderBy('timestamp', 'desc')
-      .limit(parseInt(limit))
-      .offset(parseInt(offset))
+      .limit(limit)
+      .offset(offset)
       .get();
     
     // Get user details for each like

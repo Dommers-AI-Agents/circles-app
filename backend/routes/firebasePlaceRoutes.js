@@ -41,6 +41,7 @@ const {
   getPlaceFollowers
 } = require('../controllers/placeFollowController');
 const { protect } = require('../middleware/firebaseAuth');
+const { perUserLimit } = require('../middleware/security');
 
 const router = express.Router();
 
@@ -83,8 +84,10 @@ router.route('/search')
   .get(searchPlaces);
 
 // More specific routes before generic :id route
+// Billed Google Places calls: 30 per account per day across all instances
+// (security audit 2026-10-01; no current client calls this route)
 router.route('/:id/refresh-google')
-  .post(refreshPlaceFromGoogle);
+  .post(perUserLimit({ bucket: 'refresh-google', windowMs: 24 * 60 * 60 * 1000, max: 30 }), refreshPlaceFromGoogle);
 
 router.route('/:id/update-address')
   .put(updatePlaceAddress);

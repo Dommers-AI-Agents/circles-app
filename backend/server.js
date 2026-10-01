@@ -157,10 +157,24 @@ app.use('/api', (req, res, next) => {
   app.post('/api/widgets/postcard/mail/lob-webhook', rawJson, postcardMail.lobWebhook);
 }
 
-app.use(express.json({ limit: '50mb' })); // Increased limit for image uploads
+// Body limits (security audit 2026-10-01): a 50 MB global JSON limit let any
+// anonymous caller make every instance buffer and parse 50 MB per request.
+// The global limit is 1 MB; the few routes that legitimately take bigger JSON
+// get their own parser first (body-parser skips a body already parsed):
+//   /api/upload                        base64 image, capped at 1 MB of chars + envelope
+//   /api/widgets/postcard/mail/upload  base64 print artwork, capped at 6 MB
+//   /api/import                        up to 300 places per call, with notes
+//   /api/users/contacts                the whole address book in one sync (unchunked on iOS)
+//   /api/users/subscription            base64 App Store receipt, grows with purchase history
+app.use('/api/upload', express.json({ limit: '2mb' }));
+app.use('/api/users/subscription', express.json({ limit: '2mb' }));
+app.use('/api/widgets/postcard/mail/upload', express.json({ limit: '8mb' }));
+app.use('/api/import', express.json({ limit: '5mb' }));
+app.use('/api/users/contacts', express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '1mb' }));
 // Mirror message<->error keys on all error responses (see middleware file)
 app.use(require('./middleware/responseNormalizer'));
-app.use(express.urlencoded({ limit: '50mb', extended: true })); // Also handle URL encoded data
+app.use(express.urlencoded({ limit: '1mb', extended: true })); // Also handle URL encoded data
 app.use(morgan('tiny'));
 
 // Security middleware

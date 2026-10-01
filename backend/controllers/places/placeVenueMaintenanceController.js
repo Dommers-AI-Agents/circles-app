@@ -19,6 +19,16 @@ const db = getFirestore();
 const googleMapsClient = new Client({});
 const { propagateVenueUpdates } = require('../../services/placeVenueSync.js');
 
+// The newer of the last successful Google refresh and the last attempt, or
+// null when neither is recorded.
+const latestRefreshTouch = (place) => {
+  const times = [place.lastRefreshedAt, place.googleRefreshAttemptAt]
+    .map((t) => (t ? new Date(t) : null))
+    .filter((d) => d && !Number.isNaN(d.getTime()));
+  return times.length ? new Date(Math.max(...times.map((d) => d.getTime()))) : null;
+};
+exports.latestRefreshTouch = latestRefreshTouch;
+
 // @desc    Refresh place data from Google Places API
 // @route   POST /api/places/:id/refresh-google
 // @access  Private (owner or circle member)
@@ -59,12 +69,15 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
       });
     }
     
-    // Check if place was refreshed recently (within 30 days)
-    if (place.lastRefreshedAt) {
-      const lastRefresh = new Date(place.lastRefreshedAt);
+    // Check if place was refreshed — or a refresh was attempted — recently
+    // (within 30 days). Attempts count too: lastRefreshedAt is only stamped
+    // on success, so a place Google can't match re-billed Find Place on every
+    // hit (security audit 2026-10-01).
+    const lastRefresh = latestRefreshTouch(place);
+    if (lastRefresh) {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
+
       if (lastRefresh > thirtyDaysAgo) {
         const daysAgo = Math.floor((Date.now() - lastRefresh.getTime()) / (1000 * 60 * 60 * 24));
         console.log(`ℹ️ Place was refreshed ${daysAgo} days ago, skipping refresh to save API costs`);
@@ -87,7 +100,14 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
     }
     
     let googlePlaceId = place.googlePlaceId;
-    
+
+    // Stamp the attempt before any billed Google call, so a failure (no
+    // match, API error) is still held to the 30-day gate above. Per-save
+    // bookkeeping, deliberately kept out of the venue propagation below.
+    if (googlePlaceId || (place.location && place.name)) {
+      await placeRef.update({ googleRefreshAttemptAt: new Date().toISOString() });
+    }
+
     // If no googlePlaceId, try to find it using place name and location
     if (!googlePlaceId && place.location && place.name) {
       console.log('🔍 No Google Place ID found, searching by name and location...');

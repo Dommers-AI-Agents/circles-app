@@ -67,11 +67,25 @@ async function verifyScheduler(req, res, next) {
   }
 
   // 2. Google-signed OIDC identity token from Cloud Scheduler.
+  const audience = process.env.SCHEDULER_OIDC_AUDIENCE || undefined;
+  const expectedAccount = process.env.SCHEDULER_SERVICE_ACCOUNT;
+  if (!audience && !expectedAccount) {
+    // With neither an expected caller nor an expected audience, any Google
+    // account's ID token would verify and pass — anyone could fire the
+    // all-user push/email/LLM jobs. Fail closed (security audit 2026-10-01).
+    // Production sets both (deploy.sh forwards them from .env).
+    console.warn(
+      `🚫 [tasks] OIDC rejected for ${req.originalUrl}: set SCHEDULER_SERVICE_ACCOUNT ` +
+      'and/or SCHEDULER_OIDC_AUDIENCE to accept Cloud Scheduler tokens'
+    );
+    return res.status(403).json({
+      success: false,
+      error: 'Forbidden - scheduled tasks require an authenticated caller'
+    });
+  }
   try {
-    const audience = process.env.SCHEDULER_OIDC_AUDIENCE || undefined;
     const ticket = await oauthClient.verifyIdToken({ idToken: token, audience });
     const payload = ticket.getPayload() || {};
-    const expectedAccount = process.env.SCHEDULER_SERVICE_ACCOUNT;
 
     const identityOk = !expectedAccount || payload.email === expectedAccount;
     if (payload.email_verified && identityOk) {
