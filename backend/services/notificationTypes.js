@@ -9,6 +9,13 @@
 // Lock Screen actions only for the categories listed; see
 // NotificationCategoryRegistry.swift). A type without a pref key can't be
 // muted from Settings; widget-driven types are switched off in the widget.
+//
+// `record: true` = the push also leaves a row in the in-app Notifications
+// list (the bell), written by notificationService.sendToUser itself, so a
+// person can catch up on anything they missed. For requests, answers and
+// news about YOUR things — never for reminders, digests or friends' activity
+// (that's the feed). Types whose senders write their own row (new_message,
+// connection_request, place_like …) leave this off, or they'd get two.
 const TYPES = {
   new_message:             { category: 'NEW_MESSAGE',             pref: 'newMessages',            badge: true },
   connection_request:      { category: 'CONNECTION_REQUEST',      pref: 'connectionRequests',     badge: true },
@@ -31,7 +38,7 @@ const TYPES = {
   store_claim:             { category: null,                      pref: null,                     badge: true },
   store_claim_approved:    { category: null,                      pref: null,                     badge: true },
   premium_signup:          { category: null,                      pref: null,                     badge: true },
-  milestone:               { category: 'MILESTONE',               pref: 'milestones',             badge: false },
+  milestone:               { category: 'MILESTONE',               pref: 'milestones',             badge: false, record: true },
   engagement_reminder:     { category: 'ENGAGEMENT_REMINDER',     pref: 'reengagement',           badge: false },
   weekly_summary:          { category: 'WEEKLY_SUMMARY',          pref: null,                     badge: false },
   monthly_summary:         { category: 'MONTHLY_SUMMARY',         pref: null,                     badge: false },
@@ -39,11 +46,11 @@ const TYPES = {
   network_growth:          { category: 'NETWORK_GROWTH',          pref: null,                     badge: false },
   did_you_know:            { category: null,                      pref: 'tips',                   badge: true },
   daily_quote:             { category: null,                      pref: 'dailyQuote',             badge: false },
-  nextbar_round:           { category: null,                      pref: 'socialActivity',         badge: false },
-  nextbar_result:          { category: null,                      pref: 'socialActivity',         badge: false },
-  postcard_order:          { category: null,                      pref: 'socialActivity',         badge: false },
-  fridgemail:              { category: null,                      pref: 'socialActivity',         badge: false },
-  care_invite:             { category: null,                      pref: 'careCheckins',           badge: false },
+  nextbar_round:           { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  nextbar_result:          { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  postcard_order:          { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  fridgemail:              { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  care_invite:             { category: null,                      pref: 'careCheckins',           badge: false, record: true },
   care_ask:                { category: 'CARE_ASK',                pref: 'careCheckins',           badge: false },
   // One push type per question kind: the Lock Screen buttons differ (see
   // careCheckin/questionBank.js). Only builds that registered the category
@@ -53,16 +60,21 @@ const TYPES = {
   care_ask_scale:          { category: 'CARE_SCALE',              pref: 'careCheckins',           badge: false },
   care_ask_text:           { category: 'CARE_TEXT',               pref: 'careCheckins',           badge: false },
   care_answer:             { category: null,                      pref: 'careCheckins',           badge: false },
-  care_accepted:           { category: null,                      pref: 'careCheckins',           badge: false },
+  care_accepted:           { category: null,                      pref: 'careCheckins',           badge: false, record: true },
   // Family members on a check-in: asked for (parent decides) or invited by the
   // owner (they decide); the parent hears who joined and can remove anyone.
-  care_watcher_request:    { category: null,                      pref: 'careCheckins',           badge: false },
-  care_watcher_invite:     { category: null,                      pref: 'careCheckins',           badge: false },
-  care_watcher_accepted:   { category: null,                      pref: 'careCheckins',           badge: false },
-  care_watcher_declined:   { category: null,                      pref: 'careCheckins',           badge: false },
-  care_watcher_joined:     { category: null,                      pref: 'careCheckins',           badge: false },
-  care_watcher_removed:    { category: null,                      pref: 'careCheckins',           badge: false },
-  care_silence:            { category: null,                      pref: 'careCheckins',           badge: false }
+  care_watcher_request:    { category: null,                      pref: 'careCheckins',           badge: false, record: true },
+  care_watcher_invite:     { category: null,                      pref: 'careCheckins',           badge: false, record: true },
+  care_watcher_accepted:   { category: null,                      pref: 'careCheckins',           badge: false, record: true },
+  care_watcher_declined:   { category: null,                      pref: 'careCheckins',           badge: false, record: true },
+  care_watcher_joined:     { category: null,                      pref: 'careCheckins',           badge: false, record: true },
+  care_watcher_removed:    { category: null,                      pref: 'careCheckins',           badge: false, record: true },
+  // Pushes that had no row in this table (no pref key, category or badge)
+  check_in_response:       { category: null,                      pref: 'checkIns',               badge: true, record: true },
+  favcoin_claim_settled:   { category: null,                      pref: null,                     badge: false, record: true },
+  reengagement:            { category: 'ENGAGEMENT_REMINDER',     pref: 'reengagement',           badge: false },
+  activity_notification:   { category: 'ACTIVITY_UPDATE',         pref: 'socialActivity',         badge: false },
+  care_silence:            { category: null,                      pref: 'careCheckins',           badge: false, record: true }
 };
 
 const row = (type) => TYPES[type] || {};
@@ -72,5 +84,9 @@ const categoryFor = (type) => row(type).category || null;
 const prefKeyFor = (type) => row(type).pref || null;
 /** Whether a push of this type adds to the app badge. */
 const shouldBadge = (type) => !!row(type).badge;
+/** Whether sending this push also writes its Notifications-list row. */
+const recordsRow = (type) => row(type).record === true;
+/** A type the server knows (and so may store in the Notifications list). */
+const isKnownType = (type) => Object.prototype.hasOwnProperty.call(TYPES, type);
 
-module.exports = { TYPES, categoryFor, prefKeyFor, shouldBadge };
+module.exports = { TYPES, categoryFor, prefKeyFor, shouldBadge, recordsRow, isKnownType };

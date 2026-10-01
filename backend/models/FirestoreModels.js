@@ -929,7 +929,11 @@ const validateNotification = (notificationData) => {
                      // a missed push still lives in the Notifications list
   ];
   
-  if (!notificationData.type || !validTypes.includes(notificationData.type)) {
+  // Every push type the server knows is storable — the hard-coded list above
+  // silently dropped any newer type's row (How Are You? invitations never
+  // reached the bell, 2026-10-01)
+  const { isKnownType } = require('../services/notificationTypes');
+  if (!notificationData.type || !(validTypes.includes(notificationData.type) || isKnownType(notificationData.type))) {
     errors.push('Valid notification type is required');
   }
   

@@ -20,6 +20,10 @@ jest.mock('../../utils/networkAccess', () => ({
 const feed = require('../workoutFeedService');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 
+// The month bucket comes from the share time; pin it so these don't break
+// when the real calendar moves on (they did on 2026-10-01)
+const SEPT = new Date('2026-09-19T11:30:00Z');
+
 const summary = (overrides = {}) => ({
   name: 'Push', startedAt: '2026-09-19T11:00:00.000Z', durationSeconds: 2700, completedSets: 4,
   exercises: [{ name: 'Bench Press', sets: 2, bestSet: '195 lb × 5', isPR: true }],
@@ -51,10 +55,10 @@ test('share validates, trims and replaces the same workout', async () => {
 test('feed shows grantors who are still connected, newest first, with names', async () => {
   await mockDb.collection(COLLECTIONS.USERS).doc('brit').set({ displayName: 'Brittany', profilePicture: 'https://x/b.jpg' });
   await mockDb.collection(COLLECTIONS.USERS).doc('ex').set({ displayName: 'Ex' });
-  await feed.share({ userId: 'brit', summary: summary({ startedAt: '2026-09-18T11:00:00Z', name: 'Legs' }) });
-  await feed.share({ userId: 'brit', summary: summary({ startedAt: '2026-09-19T11:00:00Z', name: 'Push' }) });
-  await feed.share({ userId: 'ex', summary: summary({ name: 'Should not show' }) });
-  await feed.share({ userId: 'stranger', summary: summary({ name: 'Nor this' }) });
+  await feed.share({ userId: 'brit', summary: summary({ startedAt: '2026-09-18T11:00:00Z', name: 'Legs' }), now: SEPT });
+  await feed.share({ userId: 'brit', summary: summary({ startedAt: '2026-09-19T11:00:00Z', name: 'Push' }), now: SEPT });
+  await feed.share({ userId: 'ex', summary: summary({ name: 'Should not show' }), now: SEPT });
+  await feed.share({ userId: 'stranger', summary: summary({ name: 'Nor this' }), now: SEPT });
   mockGrantors.add('brit'); mockGrantors.add('ex');
   mockConnections.add('brit'); // ex granted access once but is no longer connected
 
@@ -68,7 +72,7 @@ test('feed shows grantors who are still connected, newest first, with names', as
 test('feed spans this month and last, and drops old posts', async () => {
   mockGrantors.add('brit'); mockConnections.add('brit');
   await mockDb.collection(COLLECTIONS.USERS).doc('brit').set({ displayName: 'Brittany' });
-  await feed.share({ userId: 'brit', summary: summary({ name: 'Recent' }) });
+  await feed.share({ userId: 'brit', summary: summary({ name: 'Recent' }), now: SEPT });
   // A post from six weeks ago in a different month bucket.
   await mockDb.collection(COLLECTIONS.WORKOUT_POSTS).doc('brit_old').set({
     userId: 'brit', summary: summary({ name: 'Old' }), monthKey: '2026-08', createdAt: '2026-08-01T10:00:00.000Z'

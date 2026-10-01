@@ -602,6 +602,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         }
     }
 
+    /// The in-app Notifications list opens a row exactly as tapping its push would
+    func openNotification(userInfo: [AnyHashable: Any]) {
+        handleNotificationTap(userInfo: userInfo)
+    }
+
     private func handleNotificationTap(userInfo: [AnyHashable: Any]) {
         guard let type = NotificationTapRouter.type(in: userInfo) else {
             Logger.debug("⚠️ No notification type found")

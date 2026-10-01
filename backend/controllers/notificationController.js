@@ -156,6 +156,18 @@ exports.getUnreadCount = async (req, res, next) => {
   }
 };
 
+/**
+ * Apply one write to many notification docs, 450 per batch (a single
+ * Firestore batch caps at 500, so a big inbox used to fail outright).
+ */
+async function inBatches(docs, apply) {
+  for (let i = 0; i < docs.length; i += 450) {
+    const batch = db.batch();
+    docs.slice(i, i + 450).forEach((doc) => apply(batch, doc));
+    await batch.commit();
+  }
+}
+
 // @desc    Mark all notifications as read
 // @route   PUT /api/notifications/read-all
 // @access  Private
@@ -170,16 +182,7 @@ exports.markAllAsRead = async (req, res, next) => {
       .where('read', '==', false)
       .get();
     
-    // Batch update all unread notifications
-    const batch = db.batch();
-    unreadSnapshot.docs.forEach(doc => {
-      batch.update(doc.ref, {
-        read: true,
-        readAt: now
-      });
-    });
-    
-    await batch.commit();
+    await inBatches(unreadSnapshot.docs, (batch, doc) => batch.update(doc.ref, { read: true, readAt: now }));
     
     res.status(200).json({
       success: true,
@@ -199,33 +202,33 @@ exports.archiveAllNotifications = async (req, res, next) => {
     const userId = req.user.uid;
     const now = new Date().toISOString();
     
-    // Get all active (non-archived) notifications for the user
-    const activeSnapshot = await db.collection(COLLECTIONS.NOTIFICATIONS)
+    // Every row that isn't archived — exactly what the list shows as active.
+    // `archived in [false, null]` can't match a row with NO archived field
+    // (rows from before the field existed), so those survived every Clear
+    // All and came straight back.
+    const allSnapshot = await db.collection(COLLECTIONS.NOTIFICATIONS)
       .where('userId', '==', userId)
-      .where('archived', 'in', [false, null]) // Include null for existing notifications
       .get();
-    
-    if (activeSnapshot.empty) {
+    const active = allSnapshot.docs.filter((doc) => doc.data().archived !== true);
+
+    if (active.length === 0) {
       return res.status(200).json({
         success: true,
         message: 'No active notifications to archive'
       });
     }
     
-    // Batch update all active notifications to archived
-    const batch = db.batch();
-    activeSnapshot.docs.forEach(doc => {
-      batch.update(doc.ref, {
-        archived: true,
-        archivedAt: now
-      });
-    });
-    
-    await batch.commit();
-    
+    // Cleared means read too, or the bell dot and app badge stay lit
+    await inBatches(active, (batch, doc) => batch.update(doc.ref, {
+      archived: true,
+      archivedAt: now,
+      read: true,
+      readAt: doc.data().readAt || now
+    }));
+
     res.status(200).json({
       success: true,
-      message: `Archived ${activeSnapshot.size} notifications`
+      message: `Archived ${active.length} notifications`
     });
   } catch (error) {
     console.error('Error archiving all notifications:', error);
@@ -295,13 +298,7 @@ exports.clearArchivedNotifications = async (req, res, next) => {
       });
     }
     
-    // Batch delete all archived notifications
-    const batch = db.batch();
-    archivedSnapshot.docs.forEach(doc => {
-      batch.delete(doc.ref);
-    });
-    
-    await batch.commit();
+    await inBatches(archivedSnapshot.docs, (batch, doc) => batch.delete(doc.ref));
     
     res.status(200).json({
       success: true,

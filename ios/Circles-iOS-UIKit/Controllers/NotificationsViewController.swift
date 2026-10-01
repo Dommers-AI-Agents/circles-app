@@ -159,8 +159,10 @@ class NotificationsViewController: BaseViewController {
     
     // MARK: - Data Loading
     override func loadData(completion: (() -> Void)? = nil) {
-        Logger.debug("🚀 NotificationsViewController: loadData called")
-        loadNotifications(refresh: false, completion: completion)
+        // First load and pull-to-refresh both start from the top (paging
+        // calls loadNotifications() itself); a refresh used to append the
+        // next page instead, so new rows never showed until reopening
+        loadNotifications(refresh: true, completion: completion)
     }
     
     private func loadNotifications(refresh: Bool = false, completion: (() -> Void)? = nil) {
@@ -451,6 +453,16 @@ class NotificationsViewController: BaseViewController {
                 NotificationCenter.default.post(name: Notification.Name("NavigateToMessages"), object: nil)
             }
         default:
+            // Everything else goes where tapping its push goes (How Are You?,
+            // milestones, Next Bar, postcards, Fridge Mail, a moment tag …),
+            // so a row is never a dead end
+            var userInfo: [AnyHashable: Any] = notification.data?.raw ?? [:]
+            userInfo["type"] = notification.type
+            if NotificationTapRouter.destination(for: userInfo) != nil,
+               let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+                appDelegate.openNotification(userInfo: userInfo)
+                return
+            }
             // Place-centric (like/comment/new place/suggestion) → the place;
             // otherwise the person who triggered it; otherwise nothing to open.
             if let placeId = notification.data?.placeId, !placeId.isEmpty {
@@ -854,30 +866,10 @@ class NotificationCell: UITableViewCell {
             containerView.backgroundColor = .secondarySystemGroupedBackground
         }
 
-        // Configure icon based on type
-        switch notification.type {
-        case "place_like":
-            iconView.image = UIImage(systemName: "heart.fill")
-            iconBackgroundView.backgroundColor = .systemRed
-        case "place_comment":
-            iconView.image = UIImage(systemName: "bubble.left.fill")
-            iconBackgroundView.backgroundColor = .systemBlue
-        case "connection_request":
-            iconView.image = UIImage(systemName: "person.badge.plus.fill")
-            iconBackgroundView.backgroundColor = Constants.Colors.primary
-        case "new_follower":
-            iconView.image = UIImage(systemName: "person.fill.checkmark")
-            iconBackgroundView.backgroundColor = Constants.Colors.primary
-        case "store_claim":
-            iconView.image = UIImage(systemName: "storefront.fill")
-            iconBackgroundView.backgroundColor = .systemOrange
-        case "store_claim_approved":
-            iconView.image = UIImage(systemName: "storefront.fill")
-            iconBackgroundView.backgroundColor = .systemGreen
-        default:
-            iconView.image = UIImage(systemName: "bell.fill")
-            iconBackgroundView.backgroundColor = .systemGray
-        }
+        // Icon by type (NotificationRowStyle — one place, tested)
+        let style = NotificationRowStyle.style(for: notification.type)
+        iconView.image = UIImage(systemName: style.symbol)
+        iconBackgroundView.backgroundColor = style.color
 
         // Inline Accept/Decline only for a live, actionable connection request
         // (needs a connectionId; archived requests are read-only history)
@@ -1089,6 +1081,45 @@ struct NotificationData: Codable {
     let connectionId: String? // Present on connection_request notifications
     let senderId: String?        // new_message notifications
     let conversationId: String?  // new_message notifications
+    /// Every field the row carries, as strings (planId, videoId, orderId …) —
+    /// handed to NotificationTapRouter so a row opens what its push opens
+    let raw: [String: String]
+
+    private struct AnyKey: CodingKey {
+        let stringValue: String
+        var intValue: Int? { nil }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { nil }
+    }
+
+    /// Tolerant: a number or flag where a string was expected is kept as text
+    /// rather than failing the whole page (it used to)
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: AnyKey.self)
+        var raw: [String: String] = [:]
+        for key in container.allKeys {
+            if let s = try? container.decode(String.self, forKey: key) { raw[key.stringValue] = s }
+            else if let i = try? container.decode(Int.self, forKey: key) { raw[key.stringValue] = String(i) }
+            else if let d = try? container.decode(Double.self, forKey: key) { raw[key.stringValue] = String(d) }
+            else if let b = try? container.decode(Bool.self, forKey: key) { raw[key.stringValue] = b ? "true" : "false" }
+        }
+        self.raw = raw
+        fromUserId = raw["fromUserId"]
+        fromUserName = raw["fromUserName"]
+        fromUserPhoto = raw["fromUserPhoto"]
+        placeId = raw["placeId"]
+        placeName = raw["placeName"]
+        circleId = raw["circleId"]
+        commentText = raw["commentText"]
+        connectionId = raw["connectionId"]
+        senderId = raw["senderId"]
+        conversationId = raw["conversationId"]
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: AnyKey.self)
+        for (key, value) in raw { try container.encode(value, forKey: AnyKey(stringValue: key)!) }
+    }
 }
 
 // Response structure for notifications

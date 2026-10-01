@@ -5,7 +5,7 @@ const { COLLECTIONS, createNotification, validateNotification } = require('../mo
 const emailService = require('./emailService');
 const sseService = require('./sseService');
 const { computeBadgeCount } = require('./badgeService');
-const { categoryFor, prefKeyFor, shouldBadge } = require('./notificationTypes');
+const { categoryFor, prefKeyFor, shouldBadge, recordsRow } = require('./notificationTypes');
 
 const db = getFirestore();
 const messaging = getMessaging();
@@ -29,6 +29,13 @@ class NotificationService {
       }
 
       const userData = userDoc.data();
+
+      // The bell row, for types that keep one (notificationTypes `record`),
+      // whatever happens to the push below: muted, no phone, quiet hours —
+      // the list is where someone catches up.
+      if (recordsRow(notification.type) && !notification._rowWritten) {
+        await this.writeRow(userId, notification);
+      }
       
       const { deviceTokens = [], notificationPreferences = {} } = userData;
 
@@ -238,6 +245,12 @@ class NotificationService {
    * regardless of whether the row could be written.
    */
   async sendToUserWithRecord(userId, notification) {
+    await this.writeRow(userId, notification);
+    return this.sendToUser(userId, { ...notification, _rowWritten: true });
+  }
+
+  /** One Notifications-list row. Never throws; says so when it can't. */
+  async writeRow(userId, notification) {
     try {
       const row = createNotification({
         userId,
@@ -246,16 +259,20 @@ class NotificationService {
         body: notification.body,
         data: notification.data || {}
       });
-      if (validateNotification(row).length === 0) {
-        const ref = await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(row);
-        sseService.notifyUser(userId, 'new_notification', {
-          notificationId: ref.id, type: row.type, title: row.title, body: row.body
-        });
+      const errors = validateNotification(row);
+      if (errors.length > 0) {
+        console.error(`🔔 Not recording ${notification.type} for ${userId}: ${errors.join('; ')}`);
+        return null;
       }
+      const ref = await this.db.collection(COLLECTIONS.NOTIFICATIONS).add(row);
+      sseService.notifyUser(userId, 'new_notification', {
+        notificationId: ref.id, type: row.type, title: row.title, body: row.body
+      });
+      return ref.id;
     } catch (error) {
       console.error(`🔔 Could not record ${notification.type} for ${userId}: ${error.message}`);
+      return null;
     }
-    return this.sendToUser(userId, notification);
   }
 
   // Check if current time is in quiet hours.
@@ -389,16 +406,19 @@ class NotificationService {
     const creatorDoc = await db.collection(COLLECTIONS.USERS).doc(suggestionData.userId).get();
     const creatorName = creatorDoc.exists ? creatorDoc.data().displayName : 'Someone';
 
-    await this.sendToUsers(targetUserIds, {
+    // Each recipient also gets a bell row (a directed suggestion already did)
+    const message = {
       type: 'new_suggestion',
       title: 'New Suggestion',
       body: `${creatorName} created a suggestion: "${suggestionData.title}"`,
       data: {
         type: 'new_suggestion',
         suggestionId: suggestionData.id,
-        creatorId: suggestionData.userId
+        creatorId: suggestionData.userId,
+        fromUserId: suggestionData.userId
       }
-    });
+    };
+    await Promise.all((targetUserIds || []).map((id) => this.sendToUserWithRecord(id, message)));
   }
 
   // Someone tagged you in a Moment. Accepted connections only (validated at

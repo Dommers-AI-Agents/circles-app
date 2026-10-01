@@ -86,11 +86,10 @@ class WorkoutFeedService {
    * 'innerCircle' (the default, as before audiences existed); for the Inner
    * Circle, `audienceListId` names one list, none means any of them.
    */
-  async share({ userId, summary, audience = 'innerCircle', audienceListId = null, onFirstShare = null }) {
+  async share({ userId, summary, audience = 'innerCircle', audienceListId = null, onFirstShare = null, now = new Date() }) {
     const normalized = normalizeSummary(summary);
     const started = new Date(normalized.startedAt);
     const postId = `${userId}_${started.getTime()}`;
-    const now = new Date();
     const chosen = AUDIENCES.includes(audience) ? audience : 'innerCircle';
     const listId = chosen === 'innerCircle' ? listIdFor('innerCircle', audienceListId) : null;
     const ref = this.posts.doc(postId);
