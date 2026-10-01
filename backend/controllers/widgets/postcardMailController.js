@@ -213,6 +213,11 @@ exports.stripeWebhook = async (req, res) => {
     // Acknowledge anyway: Stripe retries on non-2xx, and the reconciler
     // already covers everything a missed event would have fixed.
     console.error('Stripe webhook handling failed:', error.message);
+    // …but someone should hear about it (security audit 2026-10-01)
+    require('../../services/adminAlerts').alertAdmin({
+      key: 'webhook_stripe', title: 'Stripe webhook handling failed',
+      body: `${event && event.type} ${event && event.id}\n${error.message}`
+    });
   }
   return res.json({ received: true });
 };
@@ -235,6 +240,9 @@ exports.lobWebhook = async (req, res) => {
     await mailService.handleLobEvent(event);
   } catch (error) {
     console.error('Lob webhook handling failed:', error.message);
+    require('../../services/adminAlerts').alertAdmin({
+      key: 'webhook_lob', title: 'Lob webhook handling failed', body: error.message
+    });
   }
   return res.json({ received: true });
 };

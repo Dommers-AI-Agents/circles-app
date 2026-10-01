@@ -38,6 +38,8 @@ const TYPES = {
   store_claim:             { category: null,                      pref: null,                     badge: true },
   store_claim_approved:    { category: null,                      pref: null,                     badge: true },
   premium_signup:          { category: null,                      pref: null,                     badge: true },
+  // Operational alerts to the admin account (services/adminAlerts.js)
+  admin_alert:             { category: null,                      pref: null,                     badge: false },
   milestone:               { category: 'MILESTONE',               pref: 'milestones',             badge: false, record: true },
   engagement_reminder:     { category: 'ENGAGEMENT_REMINDER',     pref: 'reengagement',           badge: false },
   weekly_summary:          { category: 'WEEKLY_SUMMARY',          pref: null,                     badge: false },

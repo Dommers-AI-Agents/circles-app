@@ -13,6 +13,10 @@ function scheduledTask({ name, log, failure, run }) {
       res.json({ success: true, ...body, timestamp: new Date().toISOString() });
     } catch (error) {
       console.error(`❌ Error in ${name} endpoint:`, error);
+      // A failed job used to fail silently (Cloud Scheduler just retries)
+      require('../services/adminAlerts').alertAdmin({
+        key: `task_${name}`, title: `Scheduled job failed: ${name}`, body: `${error.message}\n\n${(error.stack || '').split('\n').slice(0, 6).join('\n')}`
+      });
       res.status(500).json({ success: false, error: failure, details: error.message });
     }
   };
