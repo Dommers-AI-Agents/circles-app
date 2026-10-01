@@ -16,6 +16,7 @@ const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const emailService = require('./emailService');
 const { uploadImage } = require('./storage');
+const { pagedQuery } = require('../utils/firestorePaging');
 
 const db = getFirestore();
 
@@ -278,9 +279,11 @@ class MapDigestService {
 
   /** Weekly pass over active users. Gated behind WEEKLY_MAP_DIGEST_ENABLED. */
   async runWeeklyDigest() {
-    const usersSnap = await db.collection(COLLECTIONS.USERS).get();
     const results = { sent: 0, skipped: 0 };
-    for (const doc of usersSnap.docs) {
+    // Viral-growth review 2026-10-01: a page of users at a time, not one
+    // snapshot of every user doc held for the whole (slow, paced) run.
+    for await (const docs of pagedQuery(db.collection(COLLECTIONS.USERS)))
+    for (const doc of docs) {
       const user = { id: doc.id, ...doc.data() };
       try {
         const r = await this.sendDigestToUser(user);

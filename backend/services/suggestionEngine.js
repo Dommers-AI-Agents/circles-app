@@ -20,6 +20,7 @@
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
+const { forEachPage } = require('../utils/firestorePaging');
 
 const db = getFirestore();
 
@@ -96,23 +97,31 @@ const cosine = (a, b) => {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 };
 
+// The only fields each collection read uses. Viral-growth review 2026-10-01:
+// the four reads below used to be whole-collection snapshots of whole
+// documents held in memory at once; they now stream a page at a time and
+// read just these fields, so only the compact indexes stay resident.
+const INDEX_FIELDS = {
+  users: ['displayName', 'profilePicture', 'isVerified', 'following', 'followers', 'dismissedSuggestions', 'geohash', 'zipcode', 'location'],
+  circles: ['privacy', 'owner', 'placesCount'],
+  places: ['deletedAt', 'addedBy', 'globalPlaceId', 'privacy', 'circleId', 'name', 'category', 'geohash', 'neighborhood'],
+  connections: ['status', 'userId', 'connectedUserId']
+};
+
+/** Every doc of a collection, page by page, projected to `fields`. */
+const eachDoc = (collection, fields, fn) =>
+  forEachPage(db.collection(collection), (docs) => { docs.forEach(fn); }, { select: fields });
+
 /**
  * Reads everything once and builds the indexes every signal needs.
- * Four collection reads total, regardless of how many users exist. A caller
- * that has already read the users collection passes its snapshot so the
- * biggest of the four is not read twice.
+ * Four collection walks total, regardless of how many users exist. A caller
+ * that has already read the users collection may pass its snapshot so it is
+ * not read twice.
  */
 const buildIndexes = async ({ usersSnap: preloadedUsers = null } = {}) => {
-  const [usersSnap, circlesSnap, placesSnap, connectionsSnap] = await Promise.all([
-    preloadedUsers || db.collection(COLLECTIONS.USERS).get(),
-    db.collection(COLLECTIONS.CIRCLES).get(),
-    db.collection(COLLECTIONS.PLACES).get(),
-    db.collection(COLLECTIONS.CONNECTIONS).get()
-  ]);
-
   // --- users
   const users = new Map();
-  usersSnap.docs.forEach((doc) => {
+  const addUser = (doc) => {
     const u = doc.data();
     users.set(doc.id, {
       id: doc.id,
@@ -128,12 +137,12 @@ const buildIndexes = async ({ usersSnap: preloadedUsers = null } = {}) => {
       // in the reason when we have nothing more precise.
       locationLabel: (u.location || '').trim() || null
     });
-  });
+  };
 
   // --- circles: owner counts, and which circles are publicly visible
   const publicCircles = new Set();
   const counts = new Map(); // ownerId -> { placesCount, circlesCount }
-  circlesSnap.docs.forEach((doc) => {
+  const addCircle = (doc) => {
     const c = doc.data();
     if (c.privacy === 'public') publicCircles.add(doc.id);
     if (!c.owner) return;
@@ -141,7 +150,7 @@ const buildIndexes = async ({ usersSnap: preloadedUsers = null } = {}) => {
     cur.placesCount += (c.placesCount || 0);
     cur.circlesCount += 1;
     counts.set(c.owner, cur);
-  });
+  };
 
   // --- connections: anyone already connected or mid-request isn't a suggestion
   const connected = new Map(); // userId -> Set(otherId)
@@ -149,13 +158,23 @@ const buildIndexes = async ({ usersSnap: preloadedUsers = null } = {}) => {
     if (!connected.has(a)) connected.set(a, new Set());
     connected.get(a).add(b);
   };
-  connectionsSnap.docs.forEach((doc) => {
+  const addConnection = (doc) => {
     const c = doc.data();
     if (!['accepted', 'pending'].includes(c.status)) return;
     if (!c.userId || !c.connectedUserId) return;
     link(c.userId, c.connectedUserId);
     link(c.connectedUserId, c.userId);
-  });
+  };
+
+  // Users, circles and connections are independent; places needs the public
+  // circle set, so it walks after circles finish.
+  await Promise.all([
+    preloadedUsers
+      ? Promise.resolve(preloadedUsers.docs.forEach(addUser))
+      : eachDoc(COLLECTIONS.USERS, INDEX_FIELDS.users, addUser),
+    eachDoc(COLLECTIONS.CIRCLES, INDEX_FIELDS.circles, addCircle),
+    eachDoc(COLLECTIONS.CONNECTIONS, INDEX_FIELDS.connections, addConnection)
+  ]);
 
   // --- places: the taste signals
   const savers = new Map();       // globalPlaceId -> Set(userId)
@@ -165,7 +184,7 @@ const buildIndexes = async ({ usersSnap: preloadedUsers = null } = {}) => {
   const areas = new Map();        // userId -> { geohashPrefix: count }
   const areaNames = new Map();    // geohashPrefix -> most common neighborhood
 
-  placesSnap.docs.forEach((doc) => {
+  await eachDoc(COLLECTIONS.PLACES, INDEX_FIELDS.places, (doc) => {
     const p = doc.data();
     if (p.deletedAt) return;
     if (!p.addedBy || !p.globalPlaceId) return;
@@ -288,6 +307,48 @@ const areaMatch = (a, b, idx) => {
 };
 
 /**
+ * Everyone who could possibly area-match `myArea`, without comparing against
+ * every user. Viral-growth review 2026-10-01: suggestFor used to loop over all
+ * users with an area (and again over all with categories) for EVERY user —
+ * O(users²) per nightly build. areaMatch only ever succeeds on a shared metro
+ * cell (every near cell's 4-char prefix is also a metro cell, from the same
+ * source) or a shared 3-digit zip prefix (an exact zip shares it too), so an
+ * inverted index on those two keys finds exactly the same people.
+ *
+ * Results come back in the original Map orders so ties rank exactly as before.
+ * The index is built once per idx and cached on it.
+ */
+const areaCandidates = (myArea, idx) => {
+  if (!idx.areaIndex) {
+    const buckets = new Map(); // 'm:<metro>' | 'z:<zipPrefix>' -> Set(userId)
+    const add = (key, id) => {
+      if (!buckets.has(key)) buckets.set(key, new Set());
+      buckets.get(key).add(id);
+    };
+    const areaOrdinal = new Map();
+    for (const [id, area] of idx.userAreas) {
+      areaOrdinal.set(id, areaOrdinal.size);
+      for (const metro of area.metro) add(`m:${metro}`, id);
+      if (area.zipPrefix) add(`z:${area.zipPrefix}`, id);
+    }
+    const categoryOrdinal = new Map();
+    for (const id of idx.categories.keys()) categoryOrdinal.set(id, categoryOrdinal.size);
+    idx.areaIndex = { buckets, areaOrdinal, categoryOrdinal };
+  }
+  const { buckets, areaOrdinal, categoryOrdinal } = idx.areaIndex;
+  const found = new Set();
+  const collect = (key) => { const ids = buckets.get(key); if (ids) for (const id of ids) found.add(id); };
+  for (const metro of myArea.metro) collect(`m:${metro}`);
+  if (myArea.zipPrefix) collect(`z:${myArea.zipPrefix}`);
+  const ids = [...found];
+  return {
+    inAreaOrder: ids.slice().sort((a, b) => areaOrdinal.get(a) - areaOrdinal.get(b)),
+    inCategoryOrder: ids.filter((id) => categoryOrdinal.has(id))
+      .sort((a, b) => categoryOrdinal.get(a) - categoryOrdinal.get(b))
+  };
+};
+
+/**
  * How much a path through `viaId` is worth. Someone followed by three people
  * is a real signal; someone followed by the entire network is furniture.
  * Falls off logarithmically rather than cliff-edging at a threshold.
@@ -388,8 +449,10 @@ const suggestFor = (userId, idx) => {
   // identical taste three time zones away is not. This used to be only a gate
   // on the taste signal, so proximity was required but never rewarded.
   const myArea = idx.userAreas.get(userId);
+  const nearby = myArea ? areaCandidates(myArea, idx) : null;
   if (myArea) {
-    for (const [candidateId, theirArea] of idx.userAreas) {
+    for (const candidateId of nearby.inAreaOrder) {
+      const theirArea = idx.userAreas.get(candidateId);
       if (!eligible(candidateId)) continue;
       const match = areaMatch(myArea, theirArea, idx);
       if (!match) continue;
@@ -407,7 +470,8 @@ const suggestFor = (userId, idx) => {
   // rather than being invisible for never having saved a public place.
   const myCats = idx.categories.get(userId);
   if (myCats && myArea) {
-    for (const [candidateId, theirCats] of idx.categories) {
+    for (const candidateId of nearby.inCategoryOrder) {
+      const theirCats = idx.categories.get(candidateId);
       if (!eligible(candidateId)) continue;
 
       const theirArea = idx.userAreas.get(candidateId);
@@ -553,4 +617,5 @@ const getSuggestionsFor = async (userId) => {
   return doc.exists ? (doc.data().suggestions || []) : null;
 };
 
-module.exports = { buildAllSuggestions, getSuggestionsFor, suggestFor, buildIndexes };
+// areaMatch / areaCandidates are exported for the scale tests only.
+module.exports = { buildAllSuggestions, getSuggestionsFor, suggestFor, buildIndexes, areaMatch, areaCandidates };

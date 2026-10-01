@@ -38,27 +38,28 @@ const remember = (id, value) => {
 };
 
 /// Alternate ids a user doc can be known by (linked auth providers, legacy uid
-/// fields). Built lazily and cached — the users collection is small, and this
-/// only runs when a direct lookup missed.
-let altIndex = null;
-let altIndexAt = 0;
+/// fields). Viral-growth review 2026-10-01: this used to read the WHOLE users
+/// collection to build an index whenever a direct lookup missed — a full scan
+/// per request at tens of thousands of users. Now each field is one equality
+/// probe (Firestore's automatic single-field indexes, no composite index), and
+/// a miss is still negatively cached by resolveUser.
+///
+/// Provider keys are written dynamically (`linkedProviders[provider]` in the
+/// auth controllers), so this list must name every provider sign-in can set.
+const LINKED_PROVIDER_KEYS = ['google', 'apple', 'firebase', 'linkedin', 'manual', 'passkey', 'facebook', 'unknown'];
+const ALT_ID_FIELDS = [
+  ...LINKED_PROVIDER_KEYS.map((provider) => `linkedProviders.${provider}`),
+  'firebaseUid', 'uid', 'googleId', 'legacyId'
+];
 
-async function buildAltIndex() {
-  if (altIndex && Date.now() - altIndexAt < CACHE_TTL_MS) return altIndex;
-  const index = new Map();
-  const snap = await db.collection(COLLECTIONS.USERS).get();
-  snap.docs.forEach((doc) => {
-    const data = doc.data();
-    Object.values(data.linkedProviders || {}).forEach((value) => {
-      if (typeof value === 'string' && value) index.set(value, doc.id);
-    });
-    ['firebaseUid', 'uid', 'googleId', 'legacyId'].forEach((field) => {
-      if (typeof data[field] === 'string' && data[field]) index.set(data[field], doc.id);
-    });
-  });
-  altIndex = index;
-  altIndexAt = Date.now();
-  return index;
+async function findByAltId(altId) {
+  const hits = await Promise.all(ALT_ID_FIELDS.map((field) =>
+    db.collection(COLLECTIONS.USERS).where(field, '==', altId).limit(1).get()
+  ));
+  // Field order is precedence, so the answer never depends on which probe
+  // happened to come back first.
+  const hit = hits.find((snap) => snap && !snap.empty);
+  return hit ? hit.docs[0] : null;
 }
 
 /**
@@ -76,12 +77,8 @@ async function resolveUser(userId) {
     if (direct.exists) return remember(userId, serializeDoc(direct));
 
     // Not a doc id — maybe it's how another auth provider knows them.
-    const index = await buildAltIndex();
-    const mapped = index.get(userId);
-    if (mapped) {
-      const alt = await db.collection(COLLECTIONS.USERS).doc(mapped).get();
-      if (alt.exists) return remember(userId, serializeDoc(alt));
-    }
+    const alt = await findByAltId(userId);
+    if (alt && alt.exists) return remember(userId, serializeDoc(alt));
   } catch (error) {
     console.error(`⚠️ resolveUser(${userId}) failed:`, error.message);
     return null; // never cache a failure — it may be transient

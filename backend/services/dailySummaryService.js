@@ -3,6 +3,7 @@ const { localClock: userLocalClock } = require('../utils/localClock');
 const notificationService = require('./notificationService');
 const emailService = require('./emailService');
 const { COLLECTIONS } = require('../models/FirestoreModels');
+const { forEachPage } = require('../utils/firestorePaging');
 
 const db = getFirestore();
 
@@ -37,29 +38,41 @@ class DailySummaryService {
       console.log('🔒 Acquired weekly summary execution lock');
 
       try {
-        // Get all users with daily summary enabled
-        const usersSnapshot = await db.collection(COLLECTIONS.USERS)
-          .where('notificationPreferences.dailySummary', '==', true)
-          .get();
+        // Viral-growth review 2026-10-01: the preference defaults on, so this
+        // hourly query was a whole-users read every hour. Skip it in the hours
+        // when it is not the summary weekday in any timezone, and otherwise
+        // stream the enabled users a page at a time so memory stays flat.
+        if (!this.anyZoneOnSummaryDay()) {
+          console.log('📊 Not the summary weekday in any timezone — nothing to read');
+          return;
+        }
 
-      if (usersSnapshot.empty) {
-        console.log('No users have the weekly summary enabled');
-        return;
-      }
+        let enabled = 0;
+        let matched = 0;
+        await forEachPage(
+          db.collection(COLLECTIONS.USERS).where('notificationPreferences.dailySummary', '==', true),
+          async (docs) => {
+            const pageUsers = docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            enabled += pageUsers.length;
 
-      const allUsers = [];
-      usersSnapshot.forEach(doc => allUsers.push({ id: doc.id, ...doc.data() }));
+            // Only users whose local clock is at their chosen summary hour on summary day right now
+            const users = pageUsers.filter(user => this.isUsersSummaryHour(user));
+            matched += users.length;
 
-      // Only users whose local clock is at their chosen summary hour on summary day right now
-      const users = allUsers.filter(user => this.isUsersSummaryHour(user));
+            // Process users in batches
+            for (let i = 0; i < users.length; i += this.batchSize) {
+              const batch = users.slice(i, i + this.batchSize);
+              await Promise.all(batch.map(user => this.generateAndSendSummary(user)));
+            }
+          }
+        );
 
-      console.log(`📊 Processing weekly summaries for ${users.length} of ${allUsers.length} enabled users (local weekday+hour match)`);
+        if (enabled === 0) {
+          console.log('No users have the weekly summary enabled');
+          return;
+        }
 
-      // Process users in batches
-      for (let i = 0; i < users.length; i += this.batchSize) {
-        const batch = users.slice(i, i + this.batchSize);
-        await Promise.all(batch.map(user => this.generateAndSendSummary(user)));
-      }
+        console.log(`📊 Processed weekly summaries for ${matched} of ${enabled} enabled users (local weekday+hour match)`);
 
         console.log('✅ Weekly summaries completed');
       } finally {
@@ -517,6 +530,16 @@ class DailySummaryService {
   // summaryTime AND it's summary day (Monday) where they are. Invalid/missing
   // timezone falls back to America/New_York, which matches the historical
   // noon-ET behavior.
+  // True when some UTC offset (−12:00 … +14:00, every 15 minutes — every real
+  // timezone is one of these) is on the summary weekday right now. When none
+  // is, isUsersSummaryHour is false for everyone and the hourly run reads nothing.
+  anyZoneOnSummaryDay(now = new Date()) {
+    for (let minutes = -12 * 60; minutes <= 14 * 60; minutes += 15) {
+      if (new Date(now.getTime() + minutes * 60 * 1000).getUTCDay() === this.summaryWeekday) return true;
+    }
+    return false;
+  }
+
   isUsersSummaryHour(user, now = new Date()) {
     const prefs = user.notificationPreferences || {};
     const preferredHour = parseInt(String(prefs.summaryTime || '12:00').split(':')[0], 10);

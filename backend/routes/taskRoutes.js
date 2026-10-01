@@ -6,6 +6,7 @@ const fridgeMail = require('../controllers/widgets/fridgeMailController');
 const care = require('../controllers/widgets/careCheckinController');
 const quotes = require('../controllers/widgets/quotesController');
 const tasks = require('../controllers/tasks/scheduledTasksController');
+const orphanUploads = require('../controllers/tasks/orphanUploadsController');
 
 const router = express.Router();
 
@@ -61,6 +62,10 @@ router.post('/piggy-bank-clearing', verifyCloudScheduler, tasks.piggyBankClearin
 router.post('/piggy-bank-settlement', verifyCloudScheduler, tasks.piggyBankSettlement);
 router.post('/piggy-bank-resolve-claim', verifyCloudScheduler, tasks.piggyBankResolveClaim);
 
+// Hourly: moment uploads still unfinished 2 h after initiate are marked
+// 'abandoned' and their Storage objects deleted (≤200 per run, resumable).
+router.post('/orphan-uploads', verifyCloudScheduler, orphanUploads.sweep);
+
 // Health check endpoint for scheduled tasks
 router.get('/health', (req, res) => {
   res.json({
@@ -79,7 +84,8 @@ router.get('/health', (req, res) => {
       '/api/tasks/build-suggestions',
       '/api/tasks/special-event/:eventType',
       '/api/tasks/piggy-bank-clearing',
-      '/api/tasks/piggy-bank-settlement'
+      '/api/tasks/piggy-bank-settlement',
+      '/api/tasks/orphan-uploads'
     ]
   });
 });

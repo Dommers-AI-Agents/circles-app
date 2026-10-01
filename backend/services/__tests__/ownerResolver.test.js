@@ -29,10 +29,21 @@ describe('ownerResolver', () => {
     resolver = require('../ownerResolver');
   });
 
+  // Alternate ids resolve through equality probes; a whole-collection read is
+  // what this stopped doing (viral-growth review 2026-10-01), so it throws.
+  const fieldOf = (data, path) => path.split('.').reduce((acc, key) => (acc == null ? acc : acc[key]), data);
   const wireUsers = ({ byId = {}, all = [] }) => {
     mockCollection.mockImplementation(() => ({
       doc: (id) => ({ get: async () => (byId[id] ? makeDoc(id, byId[id]) : missingDoc) }),
-      get: async () => ({ docs: all })
+      where: (field, op, value) => ({
+        limit: () => ({
+          get: async () => {
+            const docs = all.filter((d) => fieldOf(d.data(), field) === value).slice(0, 1);
+            return { empty: docs.length === 0, docs };
+          }
+        })
+      }),
+      get: async () => { throw new Error('full users scan'); }
     }));
   };
 
@@ -49,6 +60,12 @@ describe('ownerResolver', () => {
     });
     const user = await resolver.resolveUser('google-123');
     expect(user.displayName).toBe('Wesley');
+  });
+
+  test('resolves a legacy uid field', async () => {
+    wireUsers({ all: [makeDoc('canonical', { displayName: 'Brittany', legacyId: 'abc123' })] });
+    const user = await resolver.resolveUser('abc123');
+    expect(user.id).toBe('canonical');
   });
 
   test('returns null for a deleted account rather than throwing', async () => {

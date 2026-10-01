@@ -28,8 +28,13 @@ const { getFirestore, FieldValue } = require('../config/firebase');
 const { COLLECTIONS, createNotification, validateNotification } = require('../models/FirestoreModels');
 const notificationService = require('./notificationService');
 const sseService = require('./sseService');
+const { forEachPage } = require('../utils/firestorePaging');
 
 const db = getFirestore();
+
+// Every user field the scheduled run reads (gate, cap, picker). The push
+// itself re-reads the user in notificationService, so nothing else is needed.
+const TIP_USER_FIELDS = ['notificationPreferences', 'lastTipSentAt', 'tipsSeen', 'placesCount', 'totalPlaces', 'placeCount'];
 
 // Local weekdays tips go out on (0=Sun … 6=Sat). Tue + Fri = the 2×/week
 // cadence. Overridable via env so the cadence can be tuned without a code change.
@@ -75,27 +80,38 @@ class TipsService {
         return { sent: 0, reason: 'empty_catalog' };
       }
 
-      const users = await this.loadCandidateUsers(userId);
-      const eligible = force ? users : users.filter(u => this.isUsersTipTime(u));
-
       const results = {
-        candidates: users.length,
-        matched: eligible.length,
+        candidates: 0,
+        matched: 0,
         sent: 0,
         dryRun,
         previews: []
       };
 
-      for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
-        const batch = eligible.slice(i, i + BATCH_SIZE);
-        await Promise.all(batch.map(async user => {
-          const outcome = await this.sendTipToUser(user, catalog, { dryRun, force });
-          if (outcome && outcome.sent) results.sent += 1;
-          if (outcome && outcome.preview && results.previews.length < 25) {
-            results.previews.push(outcome.preview);
-          }
-        }));
+      // Viral-growth review 2026-10-01: an hourly job that read every user
+      // doc whole, every hour. Most hours no timezone on Earth is at tip time,
+      // so skip the read entirely; otherwise stream the users a page at a
+      // time, reading only the fields the gate and the picker use.
+      if (!userId && !force && !this.anyZoneAtTipTime()) {
+        console.log('💡 No timezone is at tip time this hour — nothing to read');
+        return { ...results, reason: 'no_zone_at_tip_time' };
       }
+
+      await this.forEachCandidatePage(userId, async (users) => {
+        const eligible = force ? users : users.filter(u => this.isUsersTipTime(u));
+        results.candidates += users.length;
+        results.matched += eligible.length;
+        for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
+          const batch = eligible.slice(i, i + BATCH_SIZE);
+          await Promise.all(batch.map(async user => {
+            const outcome = await this.sendTipToUser(user, catalog, { dryRun, force });
+            if (outcome && outcome.sent) results.sent += 1;
+            if (outcome && outcome.preview && results.previews.length < 25) {
+              results.previews.push(outcome.preview);
+            }
+          }));
+        }
+      });
 
       console.log(`💡 Tips run complete — matched ${results.matched}, sent ${results.sent}${dryRun ? ' (dry run)' : ''}`);
       return results;
@@ -207,18 +223,31 @@ class TipsService {
     return tips;
   }
 
-  async loadCandidateUsers(userId) {
+  // Calls `fn(users)` per page of candidate users (one page for a userId run).
+  async forEachCandidatePage(userId, fn) {
     if (userId) {
       const doc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-      return doc.exists ? [{ id: doc.id, ...doc.data() }] : [];
+      await fn(doc.exists ? [{ id: doc.id, ...doc.data() }] : []);
+      return;
     }
     // Tips are opt-OUT (default on), so a `where tips == true` filter would
-    // exclude everyone who never touched the toggle. Fetch all and gate in
-    // memory, the same whole-base iteration the engagement service uses.
-    const snap = await db.collection(COLLECTIONS.USERS).get();
-    const users = [];
-    snap.forEach(doc => users.push({ id: doc.id, ...doc.data() }));
-    return users;
+    // exclude everyone who never touched the toggle. Walk every user and gate
+    // in memory — but a page at a time and only the fields read here
+    // (viral-growth review 2026-10-01), so memory stays flat as the base grows.
+    await forEachPage(db.collection(COLLECTIONS.USERS), async (docs) => {
+      await fn(docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, { select: TIP_USER_FIELDS });
+  }
+
+  // True when some UTC offset (−12:00 … +14:00, every 15 minutes — every
+  // real timezone is one of these) is on a tip weekday at the tip hour. When
+  // none is, no user can match isUsersTipTime, so the run reads nothing.
+  anyZoneAtTipTime(now = new Date()) {
+    for (let minutes = -12 * 60; minutes <= 14 * 60; minutes += 15) {
+      const local = new Date(now.getTime() + minutes * 60 * 1000);
+      if (TIP_DAYS.includes(local.getUTCDay()) && local.getUTCHours() === TIP_HOUR) return true;
+    }
+    return false;
   }
 
   // True when the user's local clock is on a configured tip weekday AND at the

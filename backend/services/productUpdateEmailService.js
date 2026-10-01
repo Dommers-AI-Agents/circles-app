@@ -14,6 +14,7 @@
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const emailService = require('./emailService');
+const { forEachPage } = require('../utils/firestorePaging');
 
 const PREFERENCE_KEY = 'productUpdates';
 const EXCLUDED_EMAILS = new Set(['appreview@favcircles.com', 'review@favcircles.com', 'test@favcircles.com']);
@@ -312,20 +313,50 @@ const run = async ({ campaign, dryRun = true, onlyTo = null, log = console.log }
   if (!dryRun && !onlyTo && !mailingAddress()) {
     throw new Error('Set COMPANY_MAILING_ADDRESS first: a commercial email needs a postal address (CAN-SPAM).');
   }
-  const snap = await db().collection(COLLECTIONS.USERS).get();
-  const users = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  let { selected, skipped } = selectRecipients(users, campaign);
+  const results = { campaign, dryRun, recipients: 0, sent: 0, failed: 0, skipped: selectRecipients([], campaign).skipped };
+  if (dryRun) results.emails = [];
+
+  // A test copy looks up just that address — no need to read every account.
   if (onlyTo) {
-    const target = onlyTo.toLowerCase();
-    const match = users.find((u) => (u.email || '').toLowerCase() === target);
-    selected = [{ ...(match || { id: 'test-recipient', firstName: 'Wes' }), email: onlyTo }];
-  }
-  const results = { campaign, dryRun, recipients: selected.length, sent: 0, failed: 0, skipped };
-  log(`📣 ${campaign}: ${selected.length} recipients${dryRun ? ' (dry run)' : ''}; skipped ${JSON.stringify(skipped)}`);
-  if (dryRun) {
-    results.emails = selected.map((u) => u.email);
+    const match = await findUserByEmail(onlyTo);
+    const selected = [{ ...(match || { id: 'test-recipient', firstName: 'Wes' }), email: onlyTo }];
+    results.recipients = 1;
+    log(`📣 ${campaign}: test copy to ${onlyTo}${dryRun ? ' (dry run)' : ''}`);
+    if (dryRun) results.emails.push(onlyTo);
+    else await sendTo(selected, { campaign, onlyTo, results, log });
+    log(`📣 ${campaign} done: ${results.sent} sent, ${results.failed} failed`);
     return results;
   }
+
+  // Viral-growth review 2026-10-01: stream accounts a page at a time and mail
+  // each page's recipients before reading the next, instead of loading every
+  // user doc first. The per-user stamp still makes a rerun resume safely.
+  log(`📣 ${campaign}: walking accounts${dryRun ? ' (dry run)' : ''}`);
+  await forEachPage(db().collection(COLLECTIONS.USERS), async (docs) => {
+    const { selected, skipped } = selectRecipients(docs.map((d) => ({ id: d.id, ...d.data() })), campaign);
+    for (const [reason, n] of Object.entries(skipped)) results.skipped[reason] += n;
+    results.recipients += selected.length;
+    if (dryRun) results.emails.push(...selected.map((u) => u.email));
+    else await sendTo(selected, { campaign, onlyTo, results, log });
+  });
+  log(`📣 ${campaign}: ${results.recipients} recipients${dryRun ? ' (dry run)' : ''}; skipped ${JSON.stringify(results.skipped)}`);
+  if (dryRun) return results;
+  log(`📣 ${campaign} done: ${results.sent} sent, ${results.failed} failed`);
+  return results;
+};
+
+/** Case-insensitive lookup of one account by address (equality probes, no scan). */
+const findUserByEmail = async (address) => {
+  const variants = [...new Set([address, address.toLowerCase()])];
+  for (const email of variants) {
+    const snap = await db().collection(COLLECTIONS.USERS).where('email', '==', email).limit(1).get();
+    if (!snap.empty) return { id: snap.docs[0].id, ...snap.docs[0].data() };
+  }
+  return null;
+};
+
+/** Sends to each user in turn, with the retry, pause and per-user stamp. */
+const sendTo = async (selected, { campaign, onlyTo, results, log }) => {
   for (const user of selected) {
     let mapBlock = null;
     try {
@@ -362,8 +393,6 @@ const run = async ({ campaign, dryRun = true, onlyTo = null, log = console.log }
     }
     await sleep(SEND_GAP_MS);
   }
-  log(`📣 ${campaign} done: ${results.sent} sent, ${results.failed} failed`);
-  return results;
 };
 
 const db = () => getFirestore();
