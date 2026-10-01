@@ -62,8 +62,12 @@ class EmailService {
           rateDelta: 1000,
           rateLimit: parseInt(process.env.SMTP_RATE_LIMIT || '3', 10), // messages per rateDelta
           tls: {
-            // Do not fail on invalid certs (useful for self-signed)
-            rejectUnauthorized: false
+            // Verify the server certificate (mail.favcircles.com has a valid
+            // Let's Encrypt cert). Accepting any cert let a network attacker
+            // read the SMTP password (security audit 2026-10-01). Escape hatch
+            // for a self-signed dev server: SMTP_ALLOW_INVALID_CERT=true.
+            rejectUnauthorized: process.env.SMTP_ALLOW_INVALID_CERT !== 'true',
+            servername: process.env.SMTP_HOST
           },
           ...EmailService.dkimOptions()
         });
