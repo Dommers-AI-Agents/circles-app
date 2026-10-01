@@ -1,4 +1,5 @@
 import UIKit
+import SafariServices
 import UserNotifications
 
 class SettingsViewController: BaseTableViewController {
@@ -7,6 +8,7 @@ class SettingsViewController: BaseTableViewController {
     private var notificationPermissionStatus: String = "Checking..."
     
     private enum Section: Int, CaseIterable {
+        case admin          // super users only: the web dashboard
         case subscription
         case data
         case account
@@ -18,6 +20,7 @@ class SettingsViewController: BaseTableViewController {
         
         var title: String {
             switch self {
+            case .admin: return "Admin"
             case .subscription: return "Subscription"
             case .data: return "Data"
             case .account: return "Account"
@@ -144,10 +147,49 @@ class SettingsViewController: BaseTableViewController {
     // MARK: - BaseViewController Configuration
     override var loadsDataOnViewDidLoad: Bool { false }
     
+    /// Super users see an Admin section; everyone else never knows it exists.
+    private var isAdmin = false
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         checkNotificationPermissions()
+        RewardsService.shared.getRewardsProfile { [weak self] result in
+            guard case .success(let profile) = result, profile.isSuperUser else { return }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isAdmin = true
+                self.tableView.reloadData()
+            }
+        }
+    }
+
+    /// Opens the admin dashboard already signed in: the server hands this
+    /// signed-in admin a one-time code (60 s, single use) that the page
+    /// trades for its own short session. No password changes hands.
+    private func openAdminDashboard() {
+        let loading = AlertPresenter.showLoading(message: "Opening dashboard…", from: self)
+        APIService.shared.request(
+            endpoint: "admin/dashboard/handoff",
+            method: .post,
+            body: [:],
+            requiresAuth: true
+        ) { [weak self] (result: Result<AdminHandoffResponse, APIError>) in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self else { return }
+                    switch result {
+                    case .success(let response):
+                        guard let url = URL(string: response.url) else { return }
+                        let safari = SFSafariViewController(url: url)
+                        safari.preferredControlTintColor = Constants.Colors.primary
+                        self.present(safari, animated: true)
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -506,6 +548,7 @@ extension SettingsViewController {
         guard let sectionType = Section(rawValue: section) else { return 0 }
         
         switch sectionType {
+        case .admin: return isAdmin ? 1 : 0
         case .subscription: return SubscriptionRow.allCases.count
         case .data: return DataRow.allCases.count
         case .account: return AccountRow.allCases.count
@@ -522,6 +565,7 @@ extension SettingsViewController {
     
     override func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
         guard let sectionType = Section(rawValue: section) else { return nil }
+        if sectionType == .admin && !isAdmin { return nil }
         
         let headerView = UIView()
         headerView.backgroundColor = Constants.Colors.background
@@ -543,6 +587,7 @@ extension SettingsViewController {
     }
     
     override func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        if Section(rawValue: section) == .admin && !isAdmin { return .leastNonzeroMagnitude }
         return 38
     }
     
@@ -777,6 +822,16 @@ extension SettingsViewController {
                 }
             }
             
+        case .admin:
+            var config = cell.defaultContentConfiguration()
+            config.text = "Admin Dashboard"
+            config.secondaryText = "Growth, people, money, email & push"
+            config.secondaryTextProperties.color = Constants.Colors.secondaryLabel
+            config.image = UIImage(systemName: "chart.bar.xaxis")
+            config.imageProperties.tintColor = Constants.Colors.primary
+            cell.contentConfiguration = config
+            cell.accessoryType = .disclosureIndicator
+
         case .tutorial:
             if let row = TutorialRow(rawValue: indexPath.row) {
                 var config = cell.defaultContentConfiguration()
@@ -815,6 +870,9 @@ extension SettingsViewController {
         guard let section = Section(rawValue: indexPath.section) else { return }
         
         switch section {
+        case .admin:
+            openAdminDashboard()
+
         case .subscription:
             if let row = SubscriptionRow(rawValue: indexPath.row) {
                 switch row {
@@ -919,4 +977,9 @@ extension SettingsViewController {
             UIApplication.shared.open(url)
         }
     }
+}
+
+/// POST /admin/dashboard/handoff
+private struct AdminHandoffResponse: Decodable {
+    let url: String
 }
