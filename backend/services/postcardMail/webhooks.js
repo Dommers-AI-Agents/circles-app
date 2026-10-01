@@ -148,7 +148,7 @@ module.exports = {
       if (row.prepaid === true) {
         // A Fridge Mail card: the money was a pack credit or a subscription
         // slot, so give the credit back rather than touching Stripe.
-        if (row.usesCredit) await require('./fridgeMailService').refundCredit(row.userId, `${type} on ${doc.id}`);
+        if (row.usesCredit) await require('../fridgeMailService').refundCredit(row.userId, `${type} on ${doc.id}`);
       } else if (row.capturedAt) {
         await stripeClient.refund(row.stripePaymentIntentId);
         status = STATUS.REFUNDED;
