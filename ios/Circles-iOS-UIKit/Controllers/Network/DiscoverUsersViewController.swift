@@ -251,7 +251,7 @@ class DiscoverUsersViewController: BaseViewController {
     
     // MARK: - Actions
     @objc private func closeTapped() {
-        dismiss(animated: true)
+        dismissSheet()
     }
     
     @objc private func segmentChanged() {

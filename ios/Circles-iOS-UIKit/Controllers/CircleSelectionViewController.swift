@@ -184,7 +184,7 @@ class CircleSelectionViewController: UIViewController {
     
     @objc private func cancelTapped() {
         delegate?.circleSelectionViewControllerDidCancel(self)
-        dismiss(animated: true)
+        dismissSheet()
     }
     
     
@@ -240,7 +240,7 @@ class CircleSelectionViewController: UIViewController {
             } else {
                 self.delegate?.circleSelectionViewController(self, didSelectCircle: existingCircle)
             }
-            self.dismiss(animated: true)
+            self.dismissSheet()
         }
         
         let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
@@ -269,7 +269,7 @@ class CircleSelectionViewController: UIViewController {
                     } else {
                         self.delegate?.circleSelectionViewController(self, didSelectCircle: circle)
                     }
-                    self.dismiss(animated: true)
+                    self.dismissSheet()
                     
                 case .failure(let error):
                     // At the free-tier circle cap the server says so with a
@@ -386,7 +386,7 @@ extension CircleSelectionViewController: UITableViewDelegate {
             } else {
                 delegate?.circleSelectionViewController(self, didSelectCircle: selectedCircle)
             }
-            dismiss(animated: true)
+            dismissSheet()
         } else {
             createNewCircle()
         }

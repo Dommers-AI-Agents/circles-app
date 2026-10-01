@@ -182,7 +182,7 @@ class GroupConnectionSelectionViewController: BaseViewController {
     
     // MARK: - Actions
     @objc private func cancelTapped() {
-        dismiss(animated: true)
+        dismissSheet()
     }
     
     @objc private func createButtonTapped() {
@@ -195,7 +195,7 @@ class GroupConnectionSelectionViewController: BaseViewController {
         let groupName = groupNameTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // Dismiss and notify delegate
-        dismiss(animated: true) { [weak self] in
+        dismissSheet { [weak self] in
             self?.delegate?.didSelectConnections(selected, groupName: groupName)
         }
     }

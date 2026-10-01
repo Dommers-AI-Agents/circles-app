@@ -127,7 +127,7 @@ class HelpViewController: BaseViewController {
     
     // MARK: - Actions
     @objc private func closeTapped() {
-        dismiss(animated: true)
+        dismissSheet()
     }
     
     @objc private func watchTutorialTapped() {
@@ -161,7 +161,7 @@ class HelpViewController: BaseViewController {
     
     private func launchOnboardingTour() {
         // Dismiss this view controller first
-        dismiss(animated: true) { [weak self] in
+        dismissSheet { [weak self] in
             // Post notification to show onboarding overlays
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 // Reset the onboarding flags temporarily

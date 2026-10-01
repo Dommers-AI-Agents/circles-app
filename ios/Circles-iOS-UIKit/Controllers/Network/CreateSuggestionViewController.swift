@@ -300,6 +300,6 @@ extension CreateSuggestionViewController: PlacePickerViewControllerDelegate {
         // Update UI
         updateShareButtonState()
         
-        controller.dismiss(animated: true)
+        controller.dismissSheet()
     }
 }

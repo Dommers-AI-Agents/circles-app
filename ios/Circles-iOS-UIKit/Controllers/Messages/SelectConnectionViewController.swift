@@ -93,7 +93,7 @@ class SelectConnectionViewController: BaseViewController {
     
     // MARK: - Actions
     @objc private func cancelTapped() {
-        dismiss(animated: true)
+        dismissSheet()
     }
     
     // MARK: - Helper Methods
@@ -137,8 +137,11 @@ extension SelectConnectionViewController: UITableViewDelegate {
         tableView.deselectRow(at: indexPath, animated: true)
         
         let connection = isSearching ? filteredConnections[indexPath.row] : connections[indexPath.row]
-        delegate?.didSelectConnection(connection)
-        dismiss(animated: true)
+        // Hand the person over only once the sheet (and an active search) is
+        // gone, so the conversation the delegate opens has a clear screen
+        dismissSheet { [weak self] in
+            self?.delegate?.didSelectConnection(connection)
+        }
     }
 }
 

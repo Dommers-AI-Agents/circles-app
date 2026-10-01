@@ -167,7 +167,7 @@ class UserSearchViewController: BaseViewController {
     
     // MARK: - Actions
     @objc private func cancelButtonTapped() {
-        dismiss(animated: true)
+        dismissSheet()
     }
     
     // MARK: - Search

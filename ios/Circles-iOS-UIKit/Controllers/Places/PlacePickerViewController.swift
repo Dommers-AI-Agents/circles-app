@@ -206,7 +206,7 @@ class PlacePickerViewController: BaseViewController {
 
     // MARK: - Actions
     @objc private func cancelTapped() {
-        dismiss(animated: true)
+        dismissSheet()
     }
     
     // MARK: - Filtering
