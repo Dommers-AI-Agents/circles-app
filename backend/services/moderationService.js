@@ -10,14 +10,12 @@
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
-const emailService = require('./emailService');
 
 const db = getFirestore();
 
 // Distinct reporters required before content is auto-hidden pending review.
 const AUTO_HIDE_THRESHOLD = 2;
 
-const ADMIN_EMAIL = process.env.MODERATION_ALERT_EMAIL || 'wesley@favcircles.com';
 
 // The union of "people I blocked" and "people who blocked me" — content in
 // either direction is invisible. Works straight off a loaded user doc
@@ -91,11 +89,13 @@ async function notifyAdmin(report, extra = {}) {
       'Action via: POST /api/reports/<reportId>/action {"action": "dismiss" | "remove_content" | "ban_user"}',
       `Report ID: ${report.id}`
     ].filter(Boolean);
-    await emailService.transporter.sendMail({
-      from: `"FavCircles Moderation" <${process.env.EMAIL_FROM_ADDRESS || 'wesley@favcircles.com'}>`,
-      to: ADMIN_EMAIL,
-      subject: `🛡️ Content report: ${report.reportedItemType || 'user'} — ${report.reason}${extra.autoHidden ? ' [AUTO-HIDDEN]' : ''}`,
-      text: lines.join('\n')
+    // Through the one admin channel (email with retries + push to the admin
+    // account); every report alerts — no de-duplication (security audit 2026-10-01)
+    await require('./adminAlerts').alertAdmin({
+      key: `report_${report.id}`,
+      minIntervalMs: 0,
+      title: `🛡️ Report: ${report.reportedItemType || 'user'} — ${report.reason}${extra.autoHidden ? ' [AUTO-HIDDEN]' : ''}`,
+      body: lines.join('\n')
     });
   } catch (e) {
     console.error('🛡️ moderation alert email failed:', e.message);

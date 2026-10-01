@@ -5,9 +5,11 @@
 
 const express = require('express');
 const { protect } = require('../middleware/firebaseAuth');
+const { perUserLimit } = require('../middleware/security');
 const { messageLimiter } = require('../middleware/security');
 const widgetData = require('../controllers/widgets/widgetDataController');
 const postcard = require('../controllers/widgets/postcardController');
+const drink = require('../controllers/widgets/drinkController');
 const nextBarRounds = require('../controllers/widgets/nextBarRoundController');
 const postcardMail = require('../controllers/widgets/postcardMailController');
 const fridgeMail = require('../controllers/widgets/fridgeMailController');
@@ -29,12 +31,16 @@ router.post('/postcard/send', messageLimiter, postcard.sendPostcard);
 router.post('/postcard/share', messageLimiter, postcard.createShareLink);
 router.post('/postcard/email', messageLimiter, postcard.emailPostcard);
 
+// Make Me a Drink: a recipe card to a connection's chat (a message, so the
+// messaging rate limit). Never posted to any feed.
+router.post('/drink/send', messageLimiter, drink.sendDrink);
+
 // Printed-and-mailed postcards. Print art bypasses /api/upload/image, which
 // caps at 1MB and would downsize below print resolution.
 router.post('/postcard/mail/upload', messageLimiter, postcardMail.uploadPrintImage);
 router.get('/postcard/mail/config', postcardMail.getConfig);
-router.post('/postcard/mail/quote', messageLimiter, postcardMail.quote);
-router.post('/postcard/mail/orders', messageLimiter, postcardMail.createOrder);
+router.post('/postcard/mail/quote', messageLimiter, perUserLimit({ bucket: 'postcard-quote', windowMs: 3600000, max: 60 }), postcardMail.quote);
+router.post('/postcard/mail/orders', messageLimiter, perUserLimit({ bucket: 'postcard-order', windowMs: 86400000, max: 30 }), postcardMail.createOrder);
 router.get('/postcard/mail/orders', postcardMail.listOrders);
 router.get('/postcard/mail/orders/:id', postcardMail.getOrder);
 router.post('/postcard/mail/orders/:id/confirm', postcardMail.confirmOrder);

@@ -488,6 +488,8 @@ exports.firebaseAuth = async (req, res, next) => {
             console.log(`✅ Onboarding completed for user ${simpleUid}${userCity ? ` (city: ${userCity})` : ''}`);
           }
 
+          // Bot-pattern watch (alerts the admin, never blocks)
+          require('../services/signupMonitor').recordSignup({ ip: req.ip, email: user.email, provider, userId: simpleUid });
           // Welcome email (fire-and-forget; never blocks signup)
           if (user.email) {
             const emailService = require('../services/emailService');
@@ -736,6 +738,8 @@ exports.register = async (req, res, next) => {
           console.log(`✅ Onboarding completed for user ${userId}${userCity ? ` (city: ${userCity})` : ''}`);
         }
 
+        // Bot-pattern watch (alerts the admin, never blocks)
+        require('../services/signupMonitor').recordSignup({ ip: req.ip, email: user.email, provider: 'password', userId });
         // Welcome email (fire-and-forget; never blocks signup)
         if (user.email) {
           const emailService = require('../services/emailService');

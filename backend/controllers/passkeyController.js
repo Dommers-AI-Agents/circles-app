@@ -238,6 +238,8 @@ exports.passkeyRegisterVerify = async (req, res) => {
     }
 
     // Welcome email — fire-and-forget
+    // Bot-pattern watch (alerts the admin, never blocks)
+    require('../services/signupMonitor').recordSignup({ ip: req.ip, email, provider: 'passkey', userId: uid });
     require('../services/emailService').sendWelcomeEmail(email, email.split('@')[0])
       .catch((e) => console.error('Welcome email failed:', e.message));
 

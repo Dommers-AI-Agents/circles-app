@@ -180,6 +180,8 @@ app.use(morgan('tiny'));
 // Security middleware
 app.use(securityHeaders);
 app.use(securityLogger);
+// 5xx spike → admin alert (security audit 2026-10-01)
+app.use(require('./middleware/errorRateMonitor').errorRateMonitor());
 app.use(sanitizeInput);
 
 // Apply general rate limiting to all requests

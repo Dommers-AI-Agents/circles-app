@@ -2,6 +2,7 @@
 const express = require('express');
 const { uploadImage } = require('../services/storage');
 const { protect } = require('../middleware/firebaseAuth');
+const { perUserLimit } = require('../middleware/security');
 
 const router = express.Router();
 
@@ -11,7 +12,7 @@ router.use(protect);
 // @desc    Upload an image
 // @route   POST /api/upload/image
 // @access  Private
-router.post('/image', async (req, res, next) => {
+router.post('/image', perUserLimit({ bucket: 'image-upload', windowMs: 3600000, max: 300 }), async (req, res, next) => {
   try {
     const { image, filename } = req.body;
     

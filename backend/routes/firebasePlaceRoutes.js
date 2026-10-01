@@ -50,7 +50,8 @@ router.use(protect);
 
 // Place routes
 router.route('/')
-  .post(createPlace);
+  // per-account ceiling: invisible to people, a wall for scripts (security audit 2026-10-01)
+  .post(perUserLimit({ bucket: 'place-create', windowMs: 86400000, max: 300 }), createPlace);
 
 // Batch endpoint for fetching places from multiple circles
 router.route('/batch')

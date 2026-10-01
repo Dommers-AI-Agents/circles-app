@@ -4,6 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/firebaseAuth');
+const { perUserLimit } = require('../middleware/security');
 
 const {
   getGlobalPlace,
@@ -23,7 +24,7 @@ router.use(protect);
 
 // Global place routes
 router.route('/global/search')
-  .get(searchGlobalPlaces);
+  .get(perUserLimit({ bucket: 'global-search', windowMs: 3600000, max: 600 }), searchGlobalPlaces);
 
 // Literal segment — must be declared before '/global/:placeId'
 router.route('/global/match')
