@@ -13,6 +13,12 @@ protocol VenueRewardsLoaderDelegate: AnyObject {
     func loader(_ loader: VenueRewardsLoader, didLoadGlobalPlace globalPlace: GlobalPlace)
     /// The legacy Place model stays in use; a retry may still be pending.
     func loaderGlobalPlaceLookupFailed(_ loader: VenueRewardsLoader)
+    /// Whether the viewer may change the place's shared details (store team or admin).
+    func loader(_ loader: VenueRewardsLoader, didLoadDetailRights canEdit: Bool)
+}
+
+extension VenueRewardsLoaderDelegate {
+    func loader(_ loader: VenueRewardsLoader, didLoadDetailRights canEdit: Bool) {}
 }
 
 /// Fetches the place page's venue-side data: partner action chips, the
@@ -97,6 +103,7 @@ final class VenueRewardsLoader {
                     // Refresh media carousel with attribution data
                     Logger.debug("🔄 [PlaceDetailViewController] Calling updateMediaCarousel() with GlobalPlace data")
                     delegate.loader(self, didLoadGlobalPlace: globalPlaceResponse.globalPlace)
+                    delegate.loader(self, didLoadDetailRights: globalPlaceResponse.detailRights?.canEdit ?? false)
                 }
             case .failure(let error):
                 Logger.debug("❌ [PlaceDetailViewController] Could not load GlobalPlace data: \(error)")
@@ -140,6 +147,7 @@ final class VenueRewardsLoader {
                     guard let self = self, let delegate = self.delegate else { return }
                     Logger.debug("✅ [PlaceDetailViewController] GlobalPlace data loaded on retry")
                     delegate.loader(self, didLoadGlobalPlace: globalPlaceResponse.globalPlace)
+                    delegate.loader(self, didLoadDetailRights: globalPlaceResponse.detailRights?.canEdit ?? false)
                 }
             case .failure(let error):
                 Logger.debug("❌ [PlaceDetailViewController] GlobalPlace retry failed: \(error)")

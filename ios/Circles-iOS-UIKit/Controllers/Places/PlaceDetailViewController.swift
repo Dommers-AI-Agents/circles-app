@@ -26,6 +26,9 @@ class PlaceDetailViewController: BaseViewController {
     private lazy var mediaCaptureService = MediaCaptureService()
     private let mediaProcessingService = MediaProcessingService.shared
     private let mediaStorageService = MediaStorageService.shared
+    /// The store's team or an admin: may change the place's shared details
+    /// (from the place record's detailRights)
+    private var canEditDetails = false
     
     // MARK: - Configuration
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -1849,30 +1852,32 @@ class PlaceDetailViewController: BaseViewController {
     @objc private func moreButtonTapped() {
         var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = []
 
-        // Edit/move/update-address all operate on the viewer's own save doc —
-        // someone else's place isn't editable from here (venue corrections go
-        // through the flag flow; owners manage venue data via the storefront)
-        // A venue owner is here to run their STORE, not organize a personal
-        // save — circle moves and save-level editing don't belong in their menu
-        if place.isAddedByCurrentUser && !ownerEdit.isVenueOwner {
+        // Edit Place: your own save, or — for the store's team and admins —
+        // any save, to correct the place's shared details (which only they
+        // may change; everyone else flags bad info).
+        if place.isAddedByCurrentUser || canEditDetails {
             actions.append((title: "Edit Place", style: .default, handler: { [weak self] in
                 self?.editButtonTapped()
             }))
+        }
+        // A venue owner is here to run their STORE, not organize a personal
+        // save — circle moves don't belong in their menu
+        if place.isAddedByCurrentUser && !ownerEdit.isVenueOwner {
             actions.append((title: "Move to Different Circle", style: .default, handler: { [weak self] in
                 self?.moveToCircleButtonTapped()
             }))
-            if place.location?.clLocation != nil {
-                actions.append((title: "Update Address", style: .default, handler: { [weak self] in
-                    self?.updateAddressButtonTapped()
-                }))
-            }
-        } else if ownerEdit.isVenueOwner {
-            // Verified owner: the page's fields are tap-to-edit directly, so
-            // no menu entry needed — their extras append below.
-        } else {
+        }
+        if canEditDetails && place.location?.clLocation != nil {
+            actions.append((title: "Update Address", style: .default, handler: { [weak self] in
+                self?.updateAddressButtonTapped()
+            }))
+        }
+        if !canEditDetails {
             actions.append((title: "Flag Incorrect Info", style: .default, handler: { [weak self] in
                 self?.flagPlaceInfoTapped()
             }))
+        }
+        if !place.isAddedByCurrentUser && !ownerEdit.isVenueOwner {
             // Someone else's save: their photos/notes are UGC, so it needs the
             // report/unfollow/block path too (App Review 1.2)
             actions.append((title: "Report Inappropriate Content", style: .destructive, handler: { [weak self] in
@@ -1893,6 +1898,11 @@ class PlaceDetailViewController: BaseViewController {
             }))
         }
 
+        if canEditDetails && !ownerEdit.isVenueOwner {
+            actions.append((title: "Arrange Photos", style: .default, handler: { [weak self] in
+                self?.openPhotoGallery(arranging: true)
+            }))
+        }
         if ownerEdit.isVenueOwner {
             actions.append((title: "Arrange Photos", style: .default, handler: { [weak self] in
                 self?.openPhotoGallery(arranging: true)
@@ -2854,13 +2864,11 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
         guard !images.isEmpty else { return }
         isLoadingPhoto = true
         updateImageView()
-        let total = images.count
-        let loading = showLoading(message: PlacePhotoBatchSummary.progress(current: 1, total: total))
-        var added: [(image: UIImage, result: StorageResult)] = []
-        var failed = 0
-
-        func finish() {
-            loading.dismiss(animated: true) { [weak self] in
+        let loading = showLoading(message: PlacePhotoBatchSummary.progress(current: 1, total: images.count))
+        PlacePhotoBatchUploader.upload(images, to: place, progress: { current, total in
+            loading.message = PlacePhotoBatchSummary.progress(current: current, total: total)
+        }) { [weak self] added, failed in
+            loading.dismiss(animated: true) {
                 guard let self else { return }
                 self.isLoadingPhoto = false
                 self.updateImageView()
@@ -2894,37 +2902,6 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
                 }
             }
         }
-
-        func upload(_ index: Int) {
-            guard index < total else { finish(); return }
-            loading.message = PlacePhotoBatchSummary.progress(current: index + 1, total: total)
-            let image = images[index]
-            // MediaProcessingService / MediaStorageService: the same
-            // compression and upload path as Moments
-            mediaProcessingService.processPhoto(image) { [weak self] processed in
-                guard let self else { return }
-                guard case .success(let processedPhoto) = processed else {
-                    DispatchQueue.main.async { failed += 1; upload(index + 1) }
-                    return
-                }
-                self.mediaStorageService.uploadPhoto(
-                    processedPhoto,
-                    for: self.place,
-                    type: .placePhoto,
-                    visibility: "public",
-                    progress: { _ in }
-                ) { result in
-                    DispatchQueue.main.async {
-                        switch result {
-                        case .success(let storageResult): added.append((image: processedPhoto.image, result: storageResult))
-                        case .failure: failed += 1
-                        }
-                        upload(index + 1)
-                    }
-                }
-            }
-        }
-        upload(0)
     }
 
     /// Choose several photos from the library at once (the camera and the
@@ -3575,6 +3552,10 @@ extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
     func loaderVenueLookupFailed(_ loader: VenueRewardsLoader) {
         // Additive section — a failed lookup just leaves it collapsed
         venueRewardsView.configure(with: nil)
+    }
+
+    func loader(_ loader: VenueRewardsLoader, didLoadDetailRights canEdit: Bool) {
+        canEditDetails = canEdit
     }
 
     func loader(_ loader: VenueRewardsLoader, didLoadGlobalPlace globalPlace: GlobalPlace) {

@@ -48,8 +48,56 @@ class EditPlaceViewController: BaseViewController {
     private var wantsCurrentLocation = false
     // Venue owner editing their store (not organizing a save): privacy/circle
     // controls hidden; the listing stays public
-    private var isVenueOwnerUnlocked = false
     weak var delegate: EditPlaceDelegate?
+
+    // Shared details (name, address, category, description, phone, website,
+    // hours) belong to the place record: editable only by the store's team
+    // and admins (the server's detailRights), saved through
+    // PlaceDetailsService. Locked until the rights arrive.
+    private var canEditDetails = false
+    private var globalPlaceId: String?
+    private var libraryURLs: [String] = []
+    private var selectedCategory: PlaceCategory = .other
+    /// The address boxes as first filled. The split-into-boxes form can't
+    /// round-trip every stored address ("1616, Camden Rd, …" lands one box
+    /// off), so an address is only a change when someone edits the boxes.
+    private var initialAddressText = ""
+    /// Home/Work are private, device-local pins — always the owner's to edit.
+    private var isHomeOrWork: Bool { place.id == "home-place" || place.id == "work-place" }
+    /// Personal fields only exist on your own save. An admin or store owner
+    /// may open Edit Place from someone else's save to fix shared details.
+    private var isOwnSave: Bool { isHomeOrWork || place.isAddedByCurrentUser }
+
+    private let formStack: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }()
+    private let photoStrip = PlacePhotoStripView()
+    private lazy var lockedNote: UIButton = {
+        let button = UIButton.captionLinkButton()
+        button.contentHorizontalAlignment = .leading
+        button.titleLabel?.numberOfLines = 0
+        button.setTitle("Details come from Google and Apple. Only the store's owner or an admin can change them. Report a problem ›", for: .normal)
+        button.addTarget(self, action: #selector(flagPlaceInfoTapped), for: .touchUpInside)
+        button.isHidden = true
+        return button
+    }()
+    private let categoryButton = UIButton.menuFieldButton()
+    private lazy var hoursButton: UIButton = {
+        let button = UIButton.menuFieldButton()
+        button.addTarget(self, action: #selector(hoursTapped), for: .touchUpInside)
+        button.isHidden = true
+        return button
+    }()
+    private let personalHeader: UILabel = {
+        let label = UILabel()
+        label.text = "Your save"
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .bold)
+        return label
+    }()
     
     // MARK: - Configuration
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -91,14 +139,6 @@ class EditPlaceViewController: BaseViewController {
         label.textColor = Constants.Colors.darkGray
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
-    }()
-    
-    private let categorySegmentedControl: UISegmentedControl = {
-        let categories = ["Restaurant", "Cafe", "Bar", "Hotel", "Retail", "Service", "Attraction", "Other"]
-        let segmentedControl = UISegmentedControl(items: categories)
-        segmentedControl.selectedSegmentIndex = 0
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        return segmentedControl
     }()
     
     private let customCategoryLabel: UILabel = {
@@ -321,47 +361,6 @@ class EditPlaceViewController: BaseViewController {
     }()
     
     // Photo UI elements
-    private let photoLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Photos"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let photoScrollView: UIScrollView = {
-        let scrollView = UIScrollView()
-        scrollView.showsHorizontalScrollIndicator = false
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        return scrollView
-    }()
-    
-    private let photoStackView: UIStackView = {
-        let stackView = UIStackView()
-        stackView.axis = .horizontal
-        stackView.spacing = 10
-        stackView.alignment = .center
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        return stackView
-    }()
-    
-    private let addPhotoButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "plus"), for: .normal)
-        button.tintColor = .systemBlue
-        button.backgroundColor = UIColor.systemGray6
-        button.layer.cornerRadius = 8
-        button.layer.borderWidth = 2
-        button.layer.borderColor = UIColor.systemBlue.cgColor
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    private var photoImageViews: [UIImageView] = []
-    private var selectedImages: [UIImage] = []
-    private var existingPhotoURLs: [String] = []
-    private var deletedPhotoURLs: [String] = []
     
     private let saveButton: UIButton = {
         let button = UIButton(type: .system)
@@ -409,75 +408,103 @@ class EditPlaceViewController: BaseViewController {
         setupLocationManager()
         setupActions()
         populateFields()
-        applyGoogleSourceLockIfNeeded()
+        applyDetailRights()
+        loadRightsAndPhotos()
     }
 
-    /// Google-backed places: venue fields (name, category, address, website,
-    /// phone) come from Google Places and are read-only — users flag bad data
-    /// instead of editing it. Per-user fields (custom category, description,
-    /// privacy, notes, tags, photos) stay editable. Super-users keep full
-    /// edit access for corrections.
-    private func applyGoogleSourceLockIfNeeded() {
-        guard place.googlePlaceId != nil else { return }
+    /// The controls for the place's shared details.
+    private var detailControls: [UIView] {
+        [nameTextField, categoryButton, descriptionTextView,
+         streetTextField, cityTextField, stateTextField, zipCodeTextField, countryTextField,
+         websiteTextField, phoneTextField, refreshAddressButton, useCurrentLocationButton, mapView]
+    }
 
-        let venueControls: [UIView] = [
-            nameTextField, categorySegmentedControl,
-            streetTextField, cityTextField, stateTextField, zipCodeTextField, countryTextField,
-            websiteTextField, phoneTextField,
-            refreshAddressButton, useCurrentLocationButton
-        ]
-        venueControls.forEach {
-            $0.isUserInteractionEnabled = false
-            $0.alpha = 0.55
+    /// Shared details: editable for the store's team and admins (and on a
+    /// Home/Work pin), read-only with a Report link for everyone else.
+    /// Personal fields show only on your own save.
+    private func applyDetailRights() {
+        let editable = canEditDetails || isHomeOrWork
+        detailControls.forEach {
+            $0.isUserInteractionEnabled = editable
+            $0.alpha = editable ? 1 : 0.55
         }
-        nameLabel.text = "Place Name (from Google Places)"
-        addressLabel.text = "Address (from Google Places)"
+        lockedNote.isHidden = editable
+        hoursButton.isHidden = !canEditDetails || globalPlaceId == nil
+        photoStrip.isHidden = isHomeOrWork
+        [personalHeader, privacyLabel, privacyPicker, notesLabel, notesTextView, tagsLabel, tagsTextField,
+         moveToCircleButton, deleteButton].forEach { $0.isHidden = !isOwnSave }
+        if isHomeOrWork { [personalHeader, privacyLabel, privacyPicker].forEach { $0.isHidden = true } }
+        updateCategoryUI()
+        title = isOwnSave ? "Edit Place" : "Edit Place Details"
+    }
 
-        // Report path replaces editing for venue data
-        let flagButton = UIBarButtonItem(
-            image: UIImage(systemName: "flag"),
-            style: .plain,
-            target: self,
-            action: #selector(flagPlaceInfoTapped)
-        )
-        flagButton.accessibilityLabel = "Report incorrect info"
-        navigationItem.rightBarButtonItems = [navigationItem.rightBarButtonItem, flagButton].compactMap { $0 }
-
-        // Super-users and the venue's verified owner (approved ownership
-        // claim) can still fix listings directly
-        let unlockVenueControls: () -> Void = { [weak self] in
-            venueControls.forEach {
-                $0.isUserInteractionEnabled = true
-                $0.alpha = 1.0
-            }
-            self?.nameLabel.text = "Place Name"
-            self?.addressLabel.text = "Address"
-        }
-
-        // The venue owner is editing THE STORE, not organizing a personal
-        // save: privacy and circle controls make no sense (a store's listing
-        // is always public), so they disappear along with the unlock.
-        let enterStoreOwnerMode: () -> Void = { [weak self] in
-            guard let self = self else { return }
-            self.isVenueOwnerUnlocked = true
-            self.title = "Edit Store Details"
-            [self.privacyLabel, self.privacyPicker, self.moveToCircleButton].forEach {
-                $0.isHidden = true
-            }
-        }
-
-        RewardsService.shared.getRewardsProfile { result in
+    /// Who may change the shared details, and the photo library, from the
+    /// place record (GET /places/global/:id).
+    private func loadRightsAndPhotos() {
+        guard !isHomeOrWork else { return }
+        GlobalPlaceService.shared.getGlobalPlace(id: place.globalPlaceId ?? place.id) { [weak self] result in
             DispatchQueue.main.async {
-                guard case .success(let profile) = result, profile.isSuperUser else { return }
-                unlockVenueControls()
+                guard let self, case .success(let response) = result else { return }
+                self.globalPlaceId = response.globalPlace.id
+                self.canEditDetails = response.detailRights?.canEdit ?? false
+                self.libraryURLs = response.globalPlace.photos?.map(\.url) ?? []
+                self.photoStrip.configure(urls: self.libraryURLs, canManage: response.photoRights?.canManage ?? false)
+                self.updateHoursTitle(response.globalPlace.googleData?.openingHours)
+                self.applyDetailRights()
             }
         }
+    }
 
-        RewardsService.shared.getVenueByPlace(placeId: place.id, googlePlaceId: place.googlePlaceId) { result in
-            DispatchQueue.main.async {
-                guard case .success(let data) = result, data.isOwner == true else { return }
-                unlockVenueControls()
-                enterStoreOwnerMode()
+    private func updateHoursTitle(_ hours: [OpeningHour]?) {
+        var config = hoursButton.configuration
+        config?.title = hours.map { OpeningHoursFormatter.todaySummary($0) }.flatMap { $0.isEmpty ? nil : "Hours · \($0)" } ?? "Set opening hours"
+        config?.image = UIImage(systemName: "clock")
+        config?.imagePadding = 8
+        hoursButton.configuration = config
+    }
+
+    @objc private func hoursTapped() {
+        guard let globalPlaceId else { return }
+        let hours = VenueHoursViewController(placeId: globalPlaceId)
+        hours.onSaved = { [weak self] saved in self?.updateHoursTitle(saved) }
+        navigationController?.pushViewController(hours, animated: true)
+    }
+
+    // MARK: - Photos (the place's one library)
+
+    private func openPhotoLibrary() {
+        let gallery = PlaceGalleryViewController(placeId: globalPlaceId ?? place.globalPlaceId ?? place.id,
+                                                 placeName: place.name, arranging: true)
+        gallery.onAddPhoto = { [weak self] in
+            self?.navigationController?.popViewController(animated: true)
+            self?.presentPhotoPicker()
+        }
+        gallery.onChanged = { [weak self] _ in self?.loadRightsAndPhotos() }
+        navigationController?.pushViewController(gallery, animated: true)
+    }
+
+    private func presentPhotoPicker() {
+        var configuration = PHPickerConfiguration()
+        configuration.filter = .images
+        configuration.selectionLimit = PlacePhotoBatchSummary.selectionLimit
+        configuration.selection = .ordered
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+
+    private func uploadToLibrary(_ images: [UIImage]) {
+        guard !images.isEmpty else { return }
+        let loading = showLoading(message: PlacePhotoBatchSummary.progress(current: 1, total: images.count))
+        PlacePhotoBatchUploader.upload(images, to: place, progress: { current, total in
+            loading.message = PlacePhotoBatchSummary.progress(current: current, total: total)
+        }) { [weak self] added, failed in
+            loading.dismiss(animated: true) {
+                guard let self else { return }
+                self.loadRightsAndPhotos()
+                guard let summary = PlacePhotoBatchSummary.result(added: added.count, failed: failed) else { return }
+                if failed == 0 { self.showSuccess(summary.message) }
+                else { AlertPresenter.showError(title: summary.title, message: summary.message, from: self) }
             }
         }
     }
@@ -491,221 +518,107 @@ class EditPlaceViewController: BaseViewController {
     private func setupUI() {
         view.backgroundColor = Constants.Colors.background
         title = "Edit Place"
-        
-        // Navigation bar buttons
+
         navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(cancelButtonTapped))
         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .save, target: self, action: #selector(saveButtonTapped))
-        
-        // Add subviews
+
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
-        
-        contentView.addSubview(nameLabel)
-        contentView.addSubview(nameTextField)
-        contentView.addSubview(categoryLabel)
-        contentView.addSubview(categorySegmentedControl)
-        contentView.addSubview(customCategoryLabel)
-        contentView.addSubview(customCategoryTextField)
-        contentView.addSubview(descriptionLabel)
-        contentView.addSubview(descriptionTextView)
-        contentView.addSubview(addressLabel)
-        contentView.addSubview(refreshAddressButton)
-        contentView.addSubview(streetTextField)
-        contentView.addSubview(cityTextField)
-        contentView.addSubview(stateTextField)
-        contentView.addSubview(zipCodeTextField)
-        contentView.addSubview(countryTextField)
-        contentView.addSubview(mapLabel)
-        contentView.addSubview(mapView)
-        contentView.addSubview(useCurrentLocationButton)
-        contentView.addSubview(privacyLabel)
-        contentView.addSubview(privacyPicker)
-        contentView.addSubview(notesLabel)
-        contentView.addSubview(notesTextView)
-        contentView.addSubview(tagsLabel)
-        contentView.addSubview(tagsTextField)
-        contentView.addSubview(websiteLabel)
-        contentView.addSubview(websiteTextField)
-        contentView.addSubview(phoneLabel)
-        contentView.addSubview(phoneTextField)
-        
-        // Add photo UI elements
-        contentView.addSubview(photoLabel)
-        contentView.addSubview(photoScrollView)
-        photoScrollView.addSubview(photoStackView)
-        photoStackView.addArrangedSubview(addPhotoButton)
-        
-        contentView.addSubview(moveToCircleButton)
-        contentView.addSubview(deleteButton)
-        
-        // Layout constraints
+        contentView.addSubview(formStack)
+
+        photoStrip.onAdd = { [weak self] in self?.presentPhotoPicker() }
+        photoStrip.onOpenLibrary = { [weak self] in self?.openPhotoLibrary() }
+        photoStrip.onPhotoTapped = { [weak self] index in
+            guard let self, !self.libraryURLs.isEmpty else { return }
+            self.present(StorefrontPhotoViewerViewController(urls: self.libraryURLs, startingAt: index), animated: true)
+        }
+
+        func row(_ views: [UIView], spacing: CGFloat = Constants.Spacing.medium) -> UIStackView {
+            let stack = UIStackView(arrangedSubviews: views)
+            stack.axis = .horizontal
+            stack.spacing = spacing
+            stack.distribution = .fillEqually
+            return stack
+        }
+        let addressHeader = UIStackView(arrangedSubviews: [addressLabel, UIView(), refreshAddressButton])
+        addressHeader.axis = .horizontal
+        let locationButtonRow = UIStackView(arrangedSubviews: [UIView(), useCurrentLocationButton])
+        locationButtonRow.axis = .horizontal
+        let cityRow = row([cityTextField, stateTextField])
+        let zipRow = row([zipCodeTextField, countryTextField])
+
+        // One column, top to bottom: the place's photos and shared details,
+        // then (on your own save) your personal fields. Hidden rows collapse.
+        let ordered: [UIView] = [
+            photoStrip, lockedNote,
+            nameLabel, nameTextField,
+            categoryLabel, categoryButton, customCategoryLabel, customCategoryTextField,
+            descriptionLabel, descriptionTextView,
+            addressHeader, streetTextField, cityRow, zipRow,
+            mapLabel, mapView, locationButtonRow,
+            websiteLabel, websiteTextField, phoneLabel, phoneTextField, hoursButton,
+            personalHeader, privacyLabel, privacyPicker, notesLabel, notesTextView, tagsLabel, tagsTextField,
+            moveToCircleButton, deleteButton
+        ]
+        ordered.forEach { formStack.addArrangedSubview($0) }
+        // A little more air before each section label than after it
+        [lockedNote, nameTextField, categoryButton, customCategoryTextField, descriptionTextView,
+         zipRow, locationButtonRow, websiteTextField, phoneTextField, hoursButton, privacyPicker,
+         notesTextView, tagsTextField, moveToCircleButton]
+            .forEach { formStack.setCustomSpacing(Constants.Spacing.large, after: $0) }
+        formStack.setCustomSpacing(Constants.Spacing.xlarge, after: hoursButton)
+
         NSLayoutConstraint.activate([
-            // Scroll view
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            
-            // Content view
+
             contentView.topAnchor.constraint(equalTo: scrollView.topAnchor),
             contentView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
             contentView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
             contentView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
-            
-            // Name label and text field
-            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.large),
-            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
-            nameTextField.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.small),
-            nameTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            nameTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+
+            formStack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.large),
+            formStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            formStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            formStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.xlarge),
+
             nameTextField.heightAnchor.constraint(equalToConstant: 40),
-            
-            // Category label and segmented control
-            categoryLabel.topAnchor.constraint(equalTo: nameTextField.bottomAnchor, constant: Constants.Spacing.medium),
-            categoryLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
-            categorySegmentedControl.topAnchor.constraint(equalTo: categoryLabel.bottomAnchor, constant: Constants.Spacing.small),
-            categorySegmentedControl.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            categorySegmentedControl.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            
-            // Custom category label and text field
-            customCategoryLabel.topAnchor.constraint(equalTo: categorySegmentedControl.bottomAnchor, constant: Constants.Spacing.medium),
-            customCategoryLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
-            customCategoryTextField.topAnchor.constraint(equalTo: customCategoryLabel.bottomAnchor, constant: Constants.Spacing.small),
-            customCategoryTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            customCategoryTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             customCategoryTextField.heightAnchor.constraint(equalToConstant: 40),
-            
-            // Description label and text view
-            descriptionLabel.topAnchor.constraint(equalTo: customCategoryTextField.bottomAnchor, constant: Constants.Spacing.medium),
-            descriptionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
-            descriptionTextView.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: Constants.Spacing.small),
-            descriptionTextView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            descriptionTextView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             descriptionTextView.heightAnchor.constraint(equalToConstant: 80),
-            
-            // Address label and text fields
-            addressLabel.topAnchor.constraint(equalTo: descriptionTextView.bottomAnchor, constant: Constants.Spacing.medium),
-            addressLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
-            // Refresh address button
-            refreshAddressButton.centerYAnchor.constraint(equalTo: addressLabel.centerYAnchor),
-            refreshAddressButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            
-            streetTextField.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: Constants.Spacing.small),
-            streetTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            streetTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             streetTextField.heightAnchor.constraint(equalToConstant: 40),
-            
-            cityTextField.topAnchor.constraint(equalTo: streetTextField.bottomAnchor, constant: Constants.Spacing.small),
-            cityTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            cityTextField.widthAnchor.constraint(equalTo: contentView.widthAnchor, multiplier: 0.4, constant: -Constants.Spacing.large),
             cityTextField.heightAnchor.constraint(equalToConstant: 40),
-            
-            stateTextField.topAnchor.constraint(equalTo: streetTextField.bottomAnchor, constant: Constants.Spacing.small),
-            stateTextField.leadingAnchor.constraint(equalTo: cityTextField.trailingAnchor, constant: Constants.Spacing.medium),
-            stateTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            stateTextField.heightAnchor.constraint(equalToConstant: 40),
-            
-            zipCodeTextField.topAnchor.constraint(equalTo: cityTextField.bottomAnchor, constant: Constants.Spacing.small),
-            zipCodeTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            zipCodeTextField.widthAnchor.constraint(equalTo: contentView.widthAnchor, multiplier: 0.4, constant: -Constants.Spacing.large),
             zipCodeTextField.heightAnchor.constraint(equalToConstant: 40),
-            
-            countryTextField.topAnchor.constraint(equalTo: stateTextField.bottomAnchor, constant: Constants.Spacing.small),
-            countryTextField.leadingAnchor.constraint(equalTo: zipCodeTextField.trailingAnchor, constant: Constants.Spacing.medium),
-            countryTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            countryTextField.heightAnchor.constraint(equalToConstant: 40),
-            
-            // Map label and view
-            mapLabel.topAnchor.constraint(equalTo: countryTextField.bottomAnchor, constant: Constants.Spacing.medium),
-            mapLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
-            mapView.topAnchor.constraint(equalTo: mapLabel.bottomAnchor, constant: Constants.Spacing.small),
-            mapView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            mapView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             mapView.heightAnchor.constraint(equalToConstant: 180),
-            
-            useCurrentLocationButton.topAnchor.constraint(equalTo: mapView.bottomAnchor, constant: Constants.Spacing.small),
-            useCurrentLocationButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            
-            // Privacy label and segmented control
-            privacyLabel.topAnchor.constraint(equalTo: useCurrentLocationButton.bottomAnchor, constant: Constants.Spacing.medium),
-            privacyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
-            privacyPicker.topAnchor.constraint(equalTo: privacyLabel.bottomAnchor, constant: Constants.Spacing.small),
-            privacyPicker.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            privacyPicker.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            
-            // Notes label and text view
-            notesLabel.topAnchor.constraint(equalTo: privacyPicker.bottomAnchor, constant: Constants.Spacing.medium),
-            notesLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
-            notesTextView.topAnchor.constraint(equalTo: notesLabel.bottomAnchor, constant: Constants.Spacing.small),
-            notesTextView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            notesTextView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             notesTextView.heightAnchor.constraint(equalToConstant: 80),
-            
-            // Tags label and text field
-            tagsLabel.topAnchor.constraint(equalTo: notesTextView.bottomAnchor, constant: Constants.Spacing.medium),
-            tagsLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
-            tagsTextField.topAnchor.constraint(equalTo: tagsLabel.bottomAnchor, constant: Constants.Spacing.small),
-            tagsTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            tagsTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             tagsTextField.heightAnchor.constraint(equalToConstant: 40),
-            
-            // Website label and text field
-            websiteLabel.topAnchor.constraint(equalTo: tagsTextField.bottomAnchor, constant: Constants.Spacing.medium),
-            websiteLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
-            websiteTextField.topAnchor.constraint(equalTo: websiteLabel.bottomAnchor, constant: Constants.Spacing.small),
-            websiteTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            websiteTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             websiteTextField.heightAnchor.constraint(equalToConstant: 40),
-            
-            // Phone label and text field
-            phoneLabel.topAnchor.constraint(equalTo: websiteTextField.bottomAnchor, constant: Constants.Spacing.medium),
-            phoneLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
-            phoneTextField.topAnchor.constraint(equalTo: phoneLabel.bottomAnchor, constant: Constants.Spacing.small),
-            phoneTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            phoneTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             phoneTextField.heightAnchor.constraint(equalToConstant: 40),
-            
-            // Photo label and scroll view
-            photoLabel.topAnchor.constraint(equalTo: phoneTextField.bottomAnchor, constant: Constants.Spacing.medium),
-            photoLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            
-            photoScrollView.topAnchor.constraint(equalTo: photoLabel.bottomAnchor, constant: Constants.Spacing.small),
-            photoScrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            photoScrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            photoScrollView.heightAnchor.constraint(equalToConstant: 100),
-            
-            photoStackView.topAnchor.constraint(equalTo: photoScrollView.topAnchor),
-            photoStackView.leadingAnchor.constraint(equalTo: photoScrollView.leadingAnchor),
-            photoStackView.trailingAnchor.constraint(equalTo: photoScrollView.trailingAnchor),
-            photoStackView.bottomAnchor.constraint(equalTo: photoScrollView.bottomAnchor),
-            photoStackView.heightAnchor.constraint(equalTo: photoScrollView.heightAnchor),
-            
-            addPhotoButton.widthAnchor.constraint(equalToConstant: 100),
-            addPhotoButton.heightAnchor.constraint(equalToConstant: 100),
-            
-            // Move to Circle button
-            moveToCircleButton.topAnchor.constraint(equalTo: photoScrollView.bottomAnchor, constant: Constants.Spacing.xlarge),
-            moveToCircleButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            
-            // Delete button
-            deleteButton.topAnchor.constraint(equalTo: moveToCircleButton.bottomAnchor, constant: Constants.Spacing.medium),
-            deleteButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            deleteButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
+            categoryButton.heightAnchor.constraint(equalToConstant: 44),
+            hoursButton.heightAnchor.constraint(equalToConstant: 44)
         ])
     }
-    
+
+    /// The full category list (the server's), as a menu.
+    private func updateCategoryUI() {
+        categoryButton.menu = UIMenu(children: PlaceCategory.allCases.map { category in
+            UIAction(title: category.displayName, state: category == selectedCategory ? .on : .off) { [weak self] _ in
+                self?.selectedCategory = category
+                self?.updateCategoryUI()
+            }
+        })
+        categoryButton.showsMenuAsPrimaryAction = true
+        var config = categoryButton.configuration
+        config?.title = selectedCategory.displayName
+        categoryButton.configuration = config
+        // The custom name is your own label for an "Other" place
+        let showCustom = selectedCategory == .other && isOwnSave
+        customCategoryLabel.isHidden = !showCustom
+        customCategoryTextField.isHidden = !showCustom
+    }
+
     private func setupLocationManager() {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
@@ -737,11 +650,8 @@ class EditPlaceViewController: BaseViewController {
         useCurrentLocationButton.addTarget(self, action: #selector(useCurrentLocationButtonTapped), for: .touchUpInside)
         deleteButton.addTarget(self, action: #selector(deleteButtonTapped), for: .touchUpInside)
         moveToCircleButton.addTarget(self, action: #selector(moveToCircleButtonTapped), for: .touchUpInside)
-        addPhotoButton.addTarget(self, action: #selector(addPhotoButtonTapped), for: .touchUpInside)
         refreshAddressButton.addTarget(self, action: #selector(refreshAddressButtonTapped), for: .touchUpInside)
         
-        // Add category change handler
-        categorySegmentedControl.addTarget(self, action: #selector(categoryChanged), for: .valueChanged)
         
         // Add gesture recognizer to dismiss keyboard when tapping on the view
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
@@ -753,19 +663,11 @@ class EditPlaceViewController: BaseViewController {
         nameTextField.text = place.name
         descriptionTextView.text = place.description
         
-        // Set category
-        let categories = [PlaceCategory.restaurant, .cafe, .bar, .hotel, .retail, .service, .attraction, .other]
-        if let index = categories.firstIndex(of: place.category) {
-            categorySegmentedControl.selectedSegmentIndex = index
-        }
-        
-        // Set custom category if it's "Other"
-        if place.category == .other {
-            customCategoryTextField.text = place.customCategoryId
-            customCategoryLabel.isHidden = false
-            customCategoryTextField.isHidden = false
-        }
-        
+        // Category (the full list) and, on an "Other" place, your own label
+        selectedCategory = place.category
+        customCategoryTextField.text = place.category == .other ? place.customCategoryId : nil
+        updateCategoryUI()
+
         // Show/hide refresh address button based on whether place has location
         refreshAddressButton.isHidden = place.location?.clLocation == nil
         
@@ -801,20 +703,11 @@ class EditPlaceViewController: BaseViewController {
         
         websiteTextField.text = place.website
         phoneTextField.text = place.phone
+        initialAddressText = addressBoxesText
         
-        // Load existing photos
-        loadExistingPhotos()
     }
     
     // MARK: - Actions
-    
-    @objc private func categoryChanged() {
-        let isOtherSelected = categorySegmentedControl.selectedSegmentIndex == 7 // "Other" is at index 7
-        UIView.animate(withDuration: 0.3) {
-            self.customCategoryLabel.isHidden = !isOtherSelected
-            self.customCategoryTextField.isHidden = !isOtherSelected
-        }
-    }
     
     @objc private func cancelButtonTapped() {
         dismiss(animated: true)
@@ -846,77 +739,121 @@ class EditPlaceViewController: BaseViewController {
             return
         }
         
-        // Get updated values
-        let description = descriptionTextView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : descriptionTextView.text
-        
-        // Get selected category
-        let categoryIndex = categorySegmentedControl.selectedSegmentIndex
-        let categories = [PlaceCategory.restaurant, .cafe, .bar, .hotel, .retail, .service, .attraction, .other]
-        let category = categories[categoryIndex]
-        
-        // Get custom category if "Other" is selected
-        let customCategory: String? = category == .other ? customCategoryTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) : nil
-        
-        // Log category changes for debugging
-        if let customCategory = customCategory, !customCategory.isEmpty {
-            Logger.debug("💾 Saving place with custom category: '\(customCategory)' (parent: \(category.rawValue))")
-        } else {
-            Logger.debug("💾 Saving place with standard category: \(category.rawValue)")
+        // Untouched boxes keep the stored address exactly
+        let addressText = addressBoxesText == initialAddressText ? place.address : addressBoxesText
+
+        // Shared details: only what changed, and only for the store's team or
+        // an admin (the fields are locked for everyone else)
+        let original = PlaceEditPlan.Details(
+            name: place.name, address: place.address, category: place.category.rawValue,
+            description: place.description, phone: place.phone, website: place.website,
+            coordinate: place.location?.clLocation?.coordinate)
+        let edited = PlaceEditPlan.Details(
+            name: name, address: addressText, category: selectedCategory.rawValue,
+            description: descriptionTextView.text, phone: phoneTextField.text, website: websiteTextField.text,
+            coordinate: selectedLocation)
+        let detailChanges = canEditDetails ? PlaceEditPlan.detailChanges(original: original, edited: edited) : [:]
+
+        // Personal fields, on your own save only
+        let privacy = privacyPicker.selectedPlacePrivacy ?? place.privacy
+        let notes = PlaceEditPlan.clean(notesTextView.text)
+        let tags = (tagsTextField.text ?? "").split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let customCategory = selectedCategory == .other ? PlaceEditPlan.clean(customCategoryTextField.text) : nil
+        let personalChanged = isOwnSave && (
+            privacy != place.privacy
+            || privacyPicker.selectedListId != place.audienceListId
+            || notes != PlaceEditPlan.clean(place.privateNotes)
+            || tags != (place.tags ?? [])
+            || customCategory != PlaceEditPlan.clean(place.category == .other ? place.customCategoryId : nil))
+
+        guard !detailChanges.isEmpty || personalChanged else {
+            dismiss(animated: true)
+            return
         }
-        
-        // Format the address string
-        let formattedAddress = [streetTextField.text, cityTextField.text, stateTextField.text, zipCodeTextField.text, countryTextField.text]
+
+        isSaving = true
+        navigationItem.rightBarButtonItem?.isEnabled = false
+        let loading = showLoading(message: "Saving…")
+        let fail: (Error) -> Void = { [weak self] error in
+            loading.dismiss(animated: true) {
+                guard let self else { return }
+                self.isSaving = false
+                self.navigationItem.rightBarButtonItem?.isEnabled = true
+                self.showError((error as? APIError)?.serverMessage ?? error.localizedDescription)
+            }
+        }
+        let finish: () -> Void = { [weak self] in
+            guard let self else { return }
+            // The place as everyone now sees it (shared details come from the
+            // place record), for the page underneath
+            PlaceService.shared.fetchPlaceById(id: self.place.id) { result in
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) {
+                        if case .success(let updated) = result { self.delegate?.didUpdatePlace(updated) }
+                        self.dismiss(animated: true)
+                    }
+                }
+            }
+        }
+        let savePersonal: () -> Void = { [weak self] in
+            guard let self else { return }
+            guard personalChanged else { finish(); return }
+            PlaceService.shared.updatePlace(
+                id: self.place.id,
+                customCategory: customCategory ?? "",
+                privacy: privacy,
+                audienceListId: self.privacyPicker.selectedListId,
+                tags: tags,
+                privateNotes: notes ?? ""
+            ) { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success: finish()
+                    case .failure(let error): fail(error)
+                    }
+                }
+            }
+        }
+        saveDetails(detailChanges, onError: fail, then: savePersonal)
+    }
+
+    private var addressBoxesText: String {
+        [streetTextField.text, cityTextField.text, stateTextField.text, zipCodeTextField.text, countryTextField.text]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
-        
-        let address = formattedAddress.isEmpty ? nil : formattedAddress
-        
-        // Get optional fields
-        let notes = notesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : notesTextView.text
-        let website = websiteTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true ? nil : websiteTextField.text
-        let phone = phoneTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true ? nil : phoneTextField.text
-        
-        // Get tags
-        var tags: [String]?
-        if let tagsText = tagsTextField.text, !tagsText.isEmpty {
-            tags = tagsText.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
-        }
-        
-        // Get privacy setting. A store owner's listing is always public —
-        // the privacy control is hidden for them.
-        // A locked picker (a tier this build doesn't understand) yields nil, and
-        // we keep what is stored rather than writing a stale default over it.
-        let privacy: PlacePrivacy = isVenueOwnerUnlocked
-            ? .public
-            : (privacyPicker.selectedPlacePrivacy ?? place.privacy)
-        
-        // Guard against a second tap while the update is in flight
-        isSaving = true
-        navigationItem.rightBarButtonItem?.isEnabled = false
-
-        // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Updating Place", message: "Please wait...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        // Update place with photos (PlaceService handles upload internally)
-        updatePlaceWithPhotos(
-            name: name,
-            description: description,
-            address: address,
-            category: category,
-            customCategory: customCategory,
-            privacy: privacy,
-            audienceListId: privacyPicker.selectedListId,
-            website: website,
-            phone: phone,
-            tags: tags,
-            notes: notes ?? "", // empty string clears the notes
-            photos: nil, // Not used anymore since we're using addPhotos/removePhotoUrls
-            loadingAlert: loadingAlert
-        )
     }
-    
+
+    /// Shared details through the one path. A new address with an unmoved pin
+    /// is geocoded first so the pin follows it; if that fails the address is
+    /// still saved and the pin stays where it was.
+    private func saveDetails(_ changes: [String: Any], onError: @escaping (Error) -> Void, then: @escaping () -> Void) {
+        guard !changes.isEmpty else { then(); return }
+        let placeId = globalPlaceId ?? place.globalPlaceId ?? place.id
+        let send: ([String: Any]) -> Void = { body in
+            PlaceDetailsService.shared.update(placeId: placeId, fields: body) { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success: then()
+                    case .failure(let error): onError(error)
+                    }
+                }
+            }
+        }
+        if let address = changes["address"] as? String, !address.isEmpty, changes["location"] == nil {
+            PlaceService.shared.geocodeAddress(address) { result in
+                var body = changes
+                if case .success(let coordinate) = result {
+                    body["location"] = ["type": "Point", "coordinates": [coordinate.longitude, coordinate.latitude]]
+                }
+                send(body)
+            }
+        } else {
+            send(changes)
+        }
+    }
+
     @objc private func useCurrentLocationButtonTapped() {
         wantsCurrentLocation = true
         // Request location authorization if not already granted
@@ -1102,195 +1039,13 @@ class EditPlaceViewController: BaseViewController {
         view.endEditing(true)
     }
     
-    @objc private func addPhotoButtonTapped() {
-        var configuration = PHPickerConfiguration()
-        configuration.selectionLimit = 5 - (existingPhotoURLs.count + selectedImages.count)
-        configuration.filter = .images
-        
-        let picker = PHPickerViewController(configuration: configuration)
-        picker.delegate = self
-        present(picker, animated: true)
-    }
     
     // MARK: - Photo Methods
     
-    private func updatePlaceWithPhotos(
-        name: String,
-        description: String?,
-        address: String?,
-        category: PlaceCategory,
-        customCategory: String?,
-        privacy: PlacePrivacy,
-        audienceListId: String?,
-        website: String?,
-        phone: String?,
-        tags: [String]?,
-        notes: String?,
-        photos: [String]?,
-        loadingAlert: UIAlertController
-    ) {
-        // Convert selected images to Data
-        let photosData = selectedImages.compactMap { $0.jpegData(compressionQuality: 0.8) }
-
-        PlaceService.shared.updatePlace(
-            id: place.id,
-            name: name,
-            description: description,
-            address: address,
-            category: category,
-            customCategory: customCategory,
-            privacy: privacy,
-            audienceListId: audienceListId,
-            website: website,
-            phone: phone,
-            tags: tags,
-            privateNotes: notes,
-            addPhotos: photosData.isEmpty ? nil : photosData,
-            removePhotoUrls: deletedPhotoURLs.isEmpty ? nil : deletedPhotoURLs
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    switch result {
-                    case .success(let updatedPlace):
-                        self?.delegate?.didUpdatePlace(updatedPlace)
-                        self?.dismiss(animated: true)
-
-                    case .failure(let error):
-                        // Re-arm Save so the user can retry
-                        self?.isSaving = false
-                        self?.navigationItem.rightBarButtonItem?.isEnabled = true
-                        self?.presentAlert(title: "Error", message: error.localizedDescription)
-                    }
-                }
-            }
-        }
-    }
     
-    private func loadExistingPhotos() {
-        // Photos belong to the place's one library now — added, arranged and
-        // removed from its Photos section (See all). Editing a copy here used
-        // to change only this save, invisibly to everyone else.
-        addPhotoButton.isHidden = true
-        let hint = UILabel()
-        hint.text = "Add or remove photos from the place's Photos section (See all)."
-        hint.font = .systemFont(ofSize: 14)
-        hint.textColor = .secondaryLabel
-        hint.numberOfLines = 0
-        photoStackView.insertArrangedSubview(hint, at: 0)
-        hint.widthAnchor.constraint(lessThanOrEqualToConstant: 320).isActive = true
-    }
-
-    /// The old per-save photo strip (kept for reference; no longer shown)
-    private func loadExistingPhotoStrip() {
-        guard let photos = place.photos, !photos.isEmpty else { return }
-        
-        existingPhotoURLs = photos
-        
-        for (index, photoURL) in photos.enumerated() {
-            let containerView = createPhotoImageView(tag: index)
-            
-            // Add to stack view before add button
-            photoStackView.insertArrangedSubview(containerView, at: photoStackView.arrangedSubviews.count - 1)
-            
-            if let imageView = containerView.subviews.first(where: { $0 is UIImageView }) as? UIImageView {
-                photoImageViews.append(imageView)
-                
-                // Load image from URL
-                if let url = URL(string: photoURL) {
-                    URLSession.shared.dataTask(with: url) { [weak imageView] data, _, _ in
-                        if let data = data, let image = UIImage(data: data) {
-                            DispatchQueue.main.async {
-                                imageView?.image = image
-                            }
-                        }
-                    }.resume()
-                }
-            }
-        }
-        
-        // Update add button visibility
-        updateAddPhotoButtonVisibility()
-    }
     
-    private func createPhotoImageView(tag: Int) -> UIView {
-        let containerView = UIView()
-        containerView.translatesAutoresizingMaskIntoConstraints = false
-        
-        let imageView = UIImageView()
-        imageView.contentMode = .scaleAspectFill
-        imageView.clipsToBounds = true
-        imageView.layer.cornerRadius = 8
-        imageView.backgroundColor = UIColor.systemGray6
-        imageView.tag = tag
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Add remove button
-        let removeButton = UIButton(type: .system)
-        removeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
-        removeButton.tintColor = .white
-        removeButton.backgroundColor = UIColor.black.withAlphaComponent(0.6)
-        removeButton.layer.cornerRadius = 12
-        removeButton.tag = tag
-        removeButton.addTarget(self, action: #selector(removePhotoTapped(_:)), for: .touchUpInside)
-        removeButton.translatesAutoresizingMaskIntoConstraints = false
-        
-        containerView.addSubview(imageView)
-        containerView.addSubview(removeButton)
-        
-        NSLayoutConstraint.activate([
-            imageView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            imageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            imageView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            imageView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            imageView.widthAnchor.constraint(equalToConstant: 100),
-            imageView.heightAnchor.constraint(equalToConstant: 100),
-            
-            removeButton.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 4),
-            removeButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -4),
-            removeButton.widthAnchor.constraint(equalToConstant: 24),
-            removeButton.heightAnchor.constraint(equalToConstant: 24)
-        ])
-        
-        return containerView
-    }
     
-    @objc private func removePhotoTapped(_ sender: UIButton) {
-        let index = sender.tag
-        
-        if index < existingPhotoURLs.count {
-            // Removing existing photo
-            let removedURL = existingPhotoURLs.remove(at: index)
-            deletedPhotoURLs.append(removedURL)
-        } else {
-            // Removing newly selected photo
-            let newPhotoIndex = index - existingPhotoURLs.count
-            selectedImages.remove(at: newPhotoIndex)
-        }
-        
-        // Remove from UI
-        if let containerView = sender.superview {
-            photoStackView.removeArrangedSubview(containerView)
-            containerView.removeFromSuperview()
-        }
-        
-        // Update photo image views array
-        photoImageViews.remove(at: index)
-        
-        // Re-tag remaining photos
-        for (newIndex, imageView) in photoImageViews.enumerated() {
-            imageView.tag = newIndex
-            if let removeButton = imageView.superview?.subviews.first(where: { $0 is UIButton }) as? UIButton {
-                removeButton.tag = newIndex
-            }
-        }
-        
-        updateAddPhotoButtonVisibility()
-    }
     
-    private func updateAddPhotoButtonVisibility() {
-        let totalPhotos = existingPhotoURLs.count + selectedImages.count
-        addPhotoButton.isHidden = totalPhotos >= 5
-    }
     
     // MARK: - Helper Methods
     
@@ -1304,9 +1059,7 @@ class EditPlaceViewController: BaseViewController {
         if currentDescription != originalDescription { return true }
         
         // Check category
-        let categoryIndex = categorySegmentedControl.selectedSegmentIndex
-        let categories = [PlaceCategory.restaurant, .cafe, .bar, .hotel, .retail, .service, .attraction, .other]
-        if categories[categoryIndex] != place.category { return true }
+        if selectedCategory != place.category { return true }
         
         // Check custom category if "Other" is selected
         if place.category == .other {
@@ -1346,8 +1099,6 @@ class EditPlaceViewController: BaseViewController {
         let originalPhone = place.phone ?? ""
         if currentPhone != originalPhone { return true }
         
-        // Check photos
-        if !selectedImages.isEmpty || !deletedPhotoURLs.isEmpty { return true }
         
         return false
     }
@@ -1436,36 +1187,22 @@ class EditPlaceViewController: BaseViewController {
 extension EditPlaceViewController: PHPickerViewControllerDelegate {
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
         picker.dismiss(animated: true)
-        
-        for result in results {
-            result.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
-                if let image = object as? UIImage {
-                    DispatchQueue.main.async {
-                        self?.addSelectedPhoto(image)
-                    }
+        let providers = results.map(\.itemProvider).filter { $0.canLoadObject(ofClass: UIImage.self) }
+        guard !providers.isEmpty else { return }
+        // Load in parallel, keep the order they were picked in
+        var images = [UIImage?](repeating: nil, count: providers.count)
+        let group = DispatchGroup()
+        for (index, provider) in providers.enumerated() {
+            group.enter()
+            provider.loadObject(ofClass: UIImage.self) { object, _ in
+                DispatchQueue.main.async {
+                    images[index] = object as? UIImage
+                    group.leave()
                 }
             }
         }
-    }
-    
-    private func addSelectedPhoto(_ image: UIImage) {
-        selectedImages.append(image)
-        
-        let tag = existingPhotoURLs.count + selectedImages.count - 1
-        let containerView = createPhotoImageView(tag: tag)
-        if let imageView = containerView.subviews.first(where: { $0 is UIImageView }) as? UIImageView {
-            imageView.image = image
-            photoImageViews.append(imageView)
-        }
-        
-        // Add to stack view before add button
-        photoStackView.insertArrangedSubview(containerView, at: photoStackView.arrangedSubviews.count - 1)
-        
-        updateAddPhotoButtonVisibility()
-        
-        // Scroll to show new photo
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.photoScrollView.scrollRectToVisible(containerView.frame, animated: true)
+        group.notify(queue: .main) { [weak self] in
+            self?.uploadToLibrary(images.compactMap { $0 })
         }
     }
 }

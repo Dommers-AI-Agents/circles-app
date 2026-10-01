@@ -251,6 +251,9 @@ struct GlobalPlaceResponse: Codable {
     /// What the viewer may do with the place's photo library (Manage = the
     /// venue's owner, a manager, or a super-user). Absent on older servers.
     let photoRights: PlacePhotoRights?
+    /// Whether the viewer may change the place's shared details (the store's
+    /// team or an admin). Absent on older servers.
+    let detailRights: PlaceDetailRights?
 
     /// The best Place to hand PlaceDetailViewController: the save record when
     /// one exists, else the venue converted to the legacy shape.

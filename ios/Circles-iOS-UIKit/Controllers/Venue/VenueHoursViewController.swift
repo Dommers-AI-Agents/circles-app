@@ -5,7 +5,9 @@ import UIKit
 /// owner-set hours are never overwritten by a Google refresh.
 final class VenueHoursViewController: BaseViewController {
 
-    private let venueId: String
+    /// The place whose hours these are. Saved through the shared-details path
+    /// (PlaceDetailsService) like every other detail, so it works on any place
+    /// an owner or admin can edit — with or without a store record.
     private let placeId: String
     private var draft = VenueHoursDraft(existing: [])
     /// Called with the saved hours so the store page can refresh its summary
@@ -20,10 +22,14 @@ final class VenueHoursViewController: BaseViewController {
         return table
     }()
 
-    init(venueId: String, placeId: String) {
-        self.venueId = venueId
+    init(placeId: String) {
         self.placeId = placeId
         super.init(nibName: nil, bundle: nil)
+    }
+
+    /// The store screens' entry point; the store id no longer matters to the save.
+    convenience init(venueId: String, placeId: String) {
+        self.init(placeId: placeId)
     }
 
     required init?(coder: NSCoder) {
@@ -70,7 +76,7 @@ final class VenueHoursViewController: BaseViewController {
             return
         }
         let loading = AlertPresenter.showLoading(message: "Saving hours...", from: self)
-        RewardsService.shared.updateVenueHours(venueId: venueId, draft: draft) { [weak self] result in
+        PlaceDetailsService.shared.update(placeId: placeId, fields: draft.requestBody) { [weak self] result in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) {
                     guard let self = self else { return }

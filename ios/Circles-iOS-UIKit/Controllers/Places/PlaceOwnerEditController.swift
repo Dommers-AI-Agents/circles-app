@@ -264,24 +264,31 @@ final class PlaceOwnerEditController: NSObject {
         phone: String? = nil
     ) {
         guard let host = host, let place = place else { return }
+        // The place's shared details, through the one path every editor uses
+        // (PlaceDetailsService → the place record, copied to every save)
+        var fields: [String: Any] = [:]
+        if let name { fields["name"] = name }
+        if let description { fields["description"] = description }
+        if let category { fields["category"] = category.rawValue }
+        if let website { fields["website"] = website }
+        if let phone { fields["phone"] = phone }
+        guard !fields.isEmpty else { return }
         let loading = AlertPresenter.showLoading(message: "Saving...", from: host)
-        PlaceService.shared.updatePlace(
-            id: place.id,
-            name: name,
-            description: description,
-            category: category,
-            website: website,
-            phone: phone
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                loading.dismiss(animated: true) {
-                    guard let self = self, let host = self.host else { return }
-                    switch result {
-                    case .success(let updated):
-                        host.ownerEditDidUpdatePlace(updated)
-                        self.refreshAffordances()
-                    case .failure(let error):
-                        host.showError(error)
+        PlaceDetailsService.shared.update(placeId: place.globalPlaceId ?? place.id, fields: fields) { [weak self] result in
+            switch result {
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) { self?.host?.showError(error) }
+                }
+            case .success:
+                // The place as everyone now sees it
+                PlaceService.shared.fetchPlaceById(id: place.id) { refreshed in
+                    DispatchQueue.main.async {
+                        loading.dismiss(animated: true) {
+                            guard let self = self, let host = self.host else { return }
+                            if case .success(let updated) = refreshed { host.ownerEditDidUpdatePlace(updated) }
+                            self.refreshAffordances()
+                        }
                     }
                 }
             }
