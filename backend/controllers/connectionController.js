@@ -165,7 +165,9 @@ const getConnections = async (req, res) => {
         try {
           const userDoc = otherUserDocMap.get(otherUserId);
           if (userDoc && userDoc.exists) {
-            connection.connectedUser = projectPublicUser(serializeDoc(userDoc), ['email']);
+            // Public card only — no email (security audit 2026-10-01; see
+            // services/publicUserProjection.js for what iOS reads).
+            connection.connectedUser = projectPublicUser(serializeDoc(userDoc));
             // DO NOT overwrite connectedUserId - it should remain as stored in database
 
             // Does this person follow the caller back? Drives the client's
@@ -706,7 +708,7 @@ const acceptConnection = async (req, res) => {
     // Populate connected user data
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(connection.userId).get();
     if (userDoc.exists) {
-      updatedConnection.connectedUser = projectPublicUser(serializeDoc(userDoc), ['email']);
+      updatedConnection.connectedUser = projectPublicUser(serializeDoc(userDoc)); // no email (security audit 2026-10-01)
     }
 
     // Piggy bank: FavCoins for the new connection — BOTH users earn (one
@@ -1138,7 +1140,9 @@ const getActiveConnections = async (req, res) => {
         try {
           const userDoc = await db.collection(COLLECTIONS.USERS).doc(otherUserId).get();
           if (userDoc.exists) {
-            connection.connectedUser = projectPublicUser(serializeDoc(userDoc), ['email']);
+            // Public card only — no email (security audit 2026-10-01; see
+            // services/publicUserProjection.js for what iOS reads).
+            connection.connectedUser = projectPublicUser(serializeDoc(userDoc));
             
             // Get total places count
             const userCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
@@ -1469,7 +1473,7 @@ const getActiveRelationships = async (req, res) => {
           ...connectionData,
           // The public card only — this row went out with the whole user document
           // (email, device tokens, last known location) to every connection.
-          connectedUser: projectPublicUser(userData, ['email']),
+          connectedUser: projectPublicUser(userData),
           relationshipType: 'connection',
           connectionScore: scoreData.score,
           scoreComponents: scoreData.components,
@@ -1494,7 +1498,7 @@ const getActiveRelationships = async (req, res) => {
           connectedUserId: followedId,
           // The public card only — this row went out with the whole user document
           // (email, device tokens, last known location) to every connection.
-          connectedUser: projectPublicUser(userData, ['email']),
+          connectedUser: projectPublicUser(userData),
           relationshipType: 'following',
           status: 'following', // Not a connection status, but indicates following
           connectionScore: scoreData.score,

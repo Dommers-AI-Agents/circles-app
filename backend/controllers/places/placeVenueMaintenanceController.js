@@ -391,42 +391,30 @@ exports.flagPlaceInfo = async (req, res) => {
     };
     const reportRef = await db.collection(COLLECTIONS.REPORTS).add(report);
 
-    // Notify the admin; a mail failure must not fail the report
-    try {
-      const emailService = require('../../services/emailService');
-      const adminEmail = process.env.ADMIN_EMAIL || 'wesley@favcircles.com';
-      await emailService.sendEmail({
-        to: adminEmail,
-        subject: `🚩 Place info flagged: ${placeName || req.params.id}`,
-        text: [
-          `A user flagged incorrect place information.`,
-          ``,
-          `Place: ${placeName || 'unknown'}`,
-          `Address: ${placeAddress || 'unknown'}`,
-          `Place ID: ${req.params.id}`,
-          `Global place ID: ${globalPlaceId || 'none'}`,
-          `Google place ID: ${googlePlaceId || 'none'}`,
-          ``,
-          `Reported by: ${report.reporterName || 'unknown'} (${report.reporterEmail || req.user.uid})`,
-          `What's wrong: ${message}`,
-          ``,
-          `Report ID: ${reportRef.id}`
-        ].join('\n'),
-        html: `
-          <h2>🚩 Place info flagged</h2>
-          <p><strong>Place:</strong> ${placeName || 'unknown'}<br>
-          <strong>Address:</strong> ${placeAddress || 'unknown'}<br>
-          <strong>Place ID:</strong> ${req.params.id}<br>
-          <strong>Global place ID:</strong> ${globalPlaceId || 'none'}<br>
-          <strong>Google place ID:</strong> ${googlePlaceId || 'none'}</p>
-          <p><strong>Reported by:</strong> ${report.reporterName || 'unknown'} (${report.reporterEmail || req.user.uid})</p>
-          <p><strong>What's wrong:</strong><br>${message}</p>
-          <p><em>Report ID: ${reportRef.id}</em></p>
-        `
-      });
-    } catch (emailError) {
-      console.error('⚠️ Flag-place admin email failed:', emailError.message);
-    }
+    // Notify the admin through the one admin channel (email + admin push).
+    // alertAdmin escapes the body into its HTML, so a reporter's message or a
+    // user-editable place name can't inject markup into the admin's inbox
+    // (security audit 2026-10-01). Every flag alerts — no de-duplication.
+    // alertAdmin never throws, so a mail failure can't fail the report.
+    await require('../../services/adminAlerts').alertAdmin({
+      key: `place_flag_${req.params.id}`,
+      minIntervalMs: 0,
+      title: `🚩 Place info flagged: ${placeName || req.params.id}`,
+      body: [
+        `A user flagged incorrect place information.`,
+        ``,
+        `Place: ${placeName || 'unknown'}`,
+        `Address: ${placeAddress || 'unknown'}`,
+        `Place ID: ${req.params.id}`,
+        `Global place ID: ${globalPlaceId || 'none'}`,
+        `Google place ID: ${googlePlaceId || 'none'}`,
+        ``,
+        `Reported by: ${report.reporterName || 'unknown'} (${report.reporterEmail || req.user.uid})`,
+        `What's wrong: ${message}`,
+        ``,
+        `Report ID: ${reportRef.id}`
+      ].join('\n')
+    });
 
     res.status(201).json({
       success: true,

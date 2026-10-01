@@ -7,6 +7,7 @@ const geofire = require('geofire-common');
 const { getPlaceCountMap } = require('../services/userStatsCache');
 const { getSuggestionsFor } = require('../services/suggestionEngine');
 const { coarseDistanceKm } = require('../services/publicProjection');
+const { clampPagination } = require('../utils/pagination');
 const {
   getAssumedLocation,
   effectiveCoords,
@@ -421,9 +422,10 @@ const searchUsersAdvanced = async (req, res) => {
 
       enrichedResults.push({
         id: user.id,
-        // The searcher typed this email themselves; name/username matches
-        // don't get to harvest addresses.
-        email: user.matchType === 'email' ? user.email : undefined,
+        // No email, even on an exact email match: the searcher already knows
+        // what they typed, and `matchedBy: 'email'` says that's why this card
+        // is here. Echoing the stored address back confirmed it verbatim
+        // (security audit 2026-10-01).
         displayName: user.displayName,
         profilePicture: user.profilePicture,
         bio: user.bio,
@@ -434,6 +436,7 @@ const searchUsersAdvanced = async (req, res) => {
         connectionStatus: connections.get(user.id) || 'none',
         isFollowing: userFollowing.has(user.id),
         matchType: user.matchType,
+        matchedBy: user.matchType,
         isVerified: user.isVerified || false
       });
     }
@@ -448,7 +451,8 @@ const searchUsersAdvanced = async (req, res) => {
       return (b.placesCount || 0) - (a.placesCount || 0);
     });
     
-    const finalResults = enrichedResults.slice(0, parseInt(limit));
+    // Clamp the client's ?limit (security audit 2026-10-01)
+    const finalResults = enrichedResults.slice(0, clampPagination({ limit }, { defaultLimit: 20, maxLimit: 50 }).limit);
     
     console.log(`✅ Found ${finalResults.length} users matching "${query}"`);
     

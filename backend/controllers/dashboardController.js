@@ -11,7 +11,13 @@ const { getInnerCircleGrantorLists } = require('../utils/networkAccess');
 const { filterActivitiesForViewer, activityPrivacyFromUserDocs, loadActivityPrivacyByActor } = require('../services/activityPrivacy');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { excludedUserIds } = require('../services/moderationService');
+const { canViewCircle, isPlaceVisibleToViewer } = require('../services/visibility');
+const { isSameUser } = require('../services/idService');
 const db = getFirestore();
+
+// Cap on the caller's own circles in one dashboard read — far above real use.
+const MAX_OWN_CIRCLES = 500;
+const isLive = (data) => !!data && (data.deletedAt === null || data.deletedAt === undefined);
 
 // Helper function to calculate map center from places
 const calculateMapCenter = (places) => {
@@ -62,10 +68,14 @@ exports.getDashboard = async (req, res, next) => {
       connections2,
       currentUserDoc
     ] = await Promise.all([
-      // User's own circles
+      // User's own circles. Circles key on `owner` (there is no `userId`
+      // field), and `userId ==` + `orderBy(updatedAt)` needed a composite
+      // index that never existed, so this endpoint 500'd on every call.
+      // Equality only, capped; sortCirclesByUserOrder below decides the order
+      // anyway (security audit 2026-10-01).
       db.collection(COLLECTIONS.CIRCLES)
-        .where('userId', '==', userId)
-        .orderBy('updatedAt', 'desc')
+        .where('owner', '==', userId)
+        .limit(MAX_OWN_CIRCLES)
         .get(),
 
       // Connections (both directions)
@@ -130,14 +140,17 @@ exports.getDashboard = async (req, res, next) => {
 
     // Process my circles — in the user's own profile order, same as /circles/me
     const myCircles = sortCirclesByUserOrder(
-      serializeQuerySnapshot(myCirclesSnapshot),
+      serializeQuerySnapshot(myCirclesSnapshot).filter(isLive),
       currentUserDoc.exists ? currentUserDoc.data().circleOrder : undefined
     );
 
-    // Process network circles
+    // Process network circles. The query fetches by owner across connections
+    // AND follows, so a mere follower got myNetwork / Inner Circle circles
+    // too; the same circle gate every other read path uses decides
+    // (security audit 2026-10-01).
     const networkCircles = networkCircleDocs
       .map(doc => serializeDoc(doc))
-      .filter(doc => doc !== null);
+      .filter(doc => doc !== null && isLive(doc) && canViewCircle(doc, userId, viewerCtx));
     
     // Combine all circles for place fetching
     const allCircles = [...myCircles, ...networkCircles];
@@ -205,8 +218,19 @@ exports.getDashboard = async (req, res, next) => {
         )
       );
       
+      // Each save's own privacy narrows its circle, trashed saves are gone,
+      // and another person's private notes / guest list are theirs alone
+      // (security audit 2026-10-01).
       placeSnapshots.forEach(snapshot => {
-        allPlaces = allPlaces.concat(serializeQuerySnapshot(snapshot));
+        allPlaces = allPlaces.concat(
+          serializeQuerySnapshot(snapshot)
+            .filter(place => isLive(place) && isPlaceVisibleToViewer(place, userId, viewerCtx))
+            .map(place => {
+              if (isSameUser(place.addedBy, userId)) return place;
+              const { privateNotes, sharedWith, ...shared } = place;
+              return shared;
+            })
+        );
       });
     }
     
@@ -223,7 +247,7 @@ exports.getDashboard = async (req, res, next) => {
     const enrichCircles = (circles) => {
       return circles.map(circle => ({
         ...circle,
-        ownerDetails: projectPublicUser(usersMap[circle.owner]) || null,
+        ownerDetails: projectPublicUser(usersMap[circle.owner], [], { viewerId: userId }) || null,
         places: placesByCircleId[circle._id] || []
       }));
     };
@@ -255,7 +279,7 @@ exports.getDashboard = async (req, res, next) => {
       
       return {
         ...activity,
-        actor: projectPublicUser(usersMap[activity.actorId]) || null,
+        actor: projectPublicUser(usersMap[activity.actorId], [], { viewerId: userId }) || null,
         isRead: activity.viewers?.includes(userId) || false
       };
     });

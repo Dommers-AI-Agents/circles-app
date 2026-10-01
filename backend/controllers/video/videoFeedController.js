@@ -10,6 +10,11 @@ const { normalizeUserId } = require('../../services/idService');
 const { buildViewerContext, makeViewerContext } = require('../../services/viewerContext');
 const { getInnerCircleGrantorIds, getInnerCircleGrantorLists } = require('../../utils/networkAccess');
 const { isModerationHidden, isPubliclyViewableMoment } = require('../../services/publicProjection');
+const { clampPagination } = require('../../utils/pagination');
+
+// Uncapped ?limit / ?offset let one request read (and bill) a whole feed;
+// Firestore charges for every doc an offset skips (security audit 2026-10-01).
+const FEED_PAGINATION = { defaultLimit: 20, maxLimit: 100, maxOffset: 1000 };
 const db = getFirestore();
 
 // Get videos for a place
@@ -85,7 +90,7 @@ async function momentTiersVisibleTo(viewerId, ownerId) {
 exports.getUserVideos = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { limit = 20, offset = 0 } = req.query;
+    const { limit, offset } = clampPagination(req.query, FEED_PAGINATION); // security audit 2026-10-01
     const viewerId = req.user?.uid || null;
 
     const visibilityFilter = await momentTiersVisibleTo(viewerId, userId);
@@ -154,7 +159,7 @@ exports.getUserVideos = async (req, res) => {
 exports.getVideoFeed = async (req, res) => {
   try {
     const userId = req.user.uid;
-    const { limit = 20, offset = 0 } = req.query;
+    const { limit, offset } = clampPagination(req.query, FEED_PAGINATION); // security audit 2026-10-01
     
     // Get user's connections
     const [connections1, connections2] = await Promise.all([
@@ -474,7 +479,7 @@ const fetchActivityDataForVideos = async (videos, userId) => {
 exports.getReelsFeed = async (req, res) => {
   try {
     const userId = req.user.uid;
-    const { limit = 20, offset = 0 } = req.query;
+    const { limit, offset } = clampPagination(req.query, FEED_PAGINATION); // security audit 2026-10-01
     
     // Get user's connections and following list
     const [connections1, connections2, userDoc] = await Promise.all([
@@ -637,7 +642,7 @@ exports.getUserReels = async (req, res) => {
   try {
     const currentUserId = req.user.uid;
     const { userId } = req.params;
-    const { limit = 20, offset = 0 } = req.query;
+    const { limit, offset } = clampPagination(req.query, FEED_PAGINATION); // security audit 2026-10-01
     
     // Check relationship with target user
     const visibilityFilter = await momentTiersVisibleTo(currentUserId, userId);
@@ -788,8 +793,7 @@ const readyMomentsAt = async (placeIds) => {
 };
 
 const page = (items, req) => {
-  const limit = parseInt(req.query.limit || 20);
-  const offset = parseInt(req.query.offset || 0);
+  const { limit, offset } = clampPagination(req.query, FEED_PAGINATION); // security audit 2026-10-01
   return { data: items.slice(offset, offset + limit), hasMore: items.length > offset + limit };
 };
 
