@@ -1,7 +1,8 @@
 import UIKit
 
-/// Full-screen pager for the owner's menu and gallery photos. Deliberately
-/// small: swipe between pages, pinch to zoom one, tap to close.
+/// Full-screen pager for a place's photos (the place page's carousel and
+/// Photos section, the gallery, the owner's menu). Deliberately small: swipe
+/// between pages, pinch or double-tap to zoom one, tap to close.
 final class StorefrontPhotoViewerViewController: BaseViewController {
     private let urls: [String]
     private let startIndex: Int
@@ -60,6 +61,22 @@ final class StorefrontPhotoViewerViewController: BaseViewController {
             counter.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12)
         ])
         updateCounter(startIndex)
+
+        // Double-tap zooms the photo on screen; a single tap closes, but only
+        // once it's clear the tap wasn't the first half of a double
+        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        pager.addGestureRecognizer(doubleTap)
+        let singleTap = UITapGestureRecognizer(target: self, action: #selector(closeTapped))
+        singleTap.require(toFail: doubleTap)
+        pager.addGestureRecognizer(singleTap)
+    }
+
+    @objc private func doubleTapped(_ gesture: UITapGestureRecognizer) {
+        let point = gesture.location(in: pager)
+        guard let indexPath = pager.indexPathForItem(at: point),
+              let cell = pager.cellForItem(at: indexPath) as? PageCell else { return }
+        cell.toggleZoom(at: gesture.location(in: cell))
     }
 
     override func viewDidLayoutSubviews() {
@@ -104,6 +121,16 @@ final class StorefrontPhotoViewerViewController: BaseViewController {
             }
         }
         func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+        func toggleZoom(at point: CGPoint) {
+            if scroll.zoomScale > 1 {
+                scroll.setZoomScale(1, animated: true)
+            } else {
+                let scale: CGFloat = 2.5
+                let size = CGSize(width: scroll.bounds.width / scale, height: scroll.bounds.height / scale)
+                scroll.zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2,
+                                       width: size.width, height: size.height), animated: true)
+            }
+        }
     }
 }
 

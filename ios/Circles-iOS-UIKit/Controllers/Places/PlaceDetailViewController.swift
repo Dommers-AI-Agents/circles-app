@@ -2968,6 +2968,11 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
 
 // MARK: - MediaCarouselViewDelegate
 extension PlaceDetailViewController: MediaCarouselViewDelegate {
+    func mediaCarouselView(_ carouselView: MediaCarouselView, didTapPhotoAt index: Int, items: [MediaItem]) {
+        guard let viewer = CarouselPhotoViewerMap.viewer(for: items, tappedAt: index) else { return }
+        present(StorefrontPhotoViewerViewController(urls: viewer.urls, startingAt: viewer.startIndex), animated: true)
+    }
+
     func mediaCarouselView(_ carouselView: MediaCarouselView, didTapVideoAt index: Int, url: String) {
         // Play video when tapped
         guard let videoURL = URL(string: url) else { return }

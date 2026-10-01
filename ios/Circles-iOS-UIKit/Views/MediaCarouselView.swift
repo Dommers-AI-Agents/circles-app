@@ -6,6 +6,12 @@ protocol MediaCarouselViewDelegate: AnyObject {
     /// Fired after the carousel optimistically toggles the heart — the delegate
     /// persists the change (and refreshes on failure).
     func mediaCarouselView(_ carouselView: MediaCarouselView, didSetPhotoLiked liked: Bool, photo: AttributedPhoto)
+    /// A photo was tapped: the host opens it full screen.
+    func mediaCarouselView(_ carouselView: MediaCarouselView, didTapPhotoAt index: Int, items: [MediaItem])
+}
+
+extension MediaCarouselViewDelegate {
+    func mediaCarouselView(_ carouselView: MediaCarouselView, didTapPhotoAt index: Int, items: [MediaItem]) {}
 }
 
 class MediaCarouselView: UIView {
@@ -452,6 +458,16 @@ class MediaCarouselView: UIView {
     }
     
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+        // A photo opens full screen (videos keep their play button)
+        if mediaItems.indices.contains(currentIndex) {
+            switch mediaItems[currentIndex] {
+            case .photo, .attributedPhoto, .photoImage:
+                delegate?.mediaCarouselView(self, didTapPhotoAt: currentIndex, items: mediaItems)
+                return
+            case .video:
+                break
+            }
+        }
         guard mediaItems.count > 1 else { return }
         
         if previousButton.alpha == 0 {
