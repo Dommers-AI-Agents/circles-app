@@ -398,7 +398,13 @@ final class PeopleStripView: UIView, UICollectionViewDataSource, UICollectionVie
         emptyLabel.font = .systemFont(ofSize: 14)
         emptyLabel.textColor = .secondaryLabel
         emptyLabel.numberOfLines = 0
-        let column = UIStackView(arrangedSubviews: [header, emptyLabel, collection])
+        // Header and empty note sit inset; the strip runs edge to edge
+        let inset = UIStackView(arrangedSubviews: [header, emptyLabel])
+        inset.axis = .vertical
+        inset.spacing = 8
+        inset.isLayoutMarginsRelativeArrangement = true
+        inset.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
+        let column = UIStackView(arrangedSubviews: [inset, collection])
         column.axis = .vertical
         column.spacing = 12
         column.translatesAutoresizingMaskIntoConstraints = false
@@ -408,13 +414,8 @@ final class PeopleStripView: UIView, UICollectionViewDataSource, UICollectionVie
             column.leadingAnchor.constraint(equalTo: leadingAnchor),
             column.trailingAnchor.constraint(equalTo: trailingAnchor),
             column.bottomAnchor.constraint(equalTo: bottomAnchor),
-            header.leadingAnchor.constraint(equalTo: column.leadingAnchor, constant: 16),
-            header.trailingAnchor.constraint(equalTo: column.trailingAnchor, constant: -16),
-            emptyLabel.leadingAnchor.constraint(equalTo: column.leadingAnchor, constant: 16),
-            emptyLabel.trailingAnchor.constraint(equalTo: column.trailingAnchor, constant: -16),
             collection.heightAnchor.constraint(equalToConstant: 178)
         ])
-        column.alignment = .fill
     }
 
     private let emptyLabel = UILabel()
