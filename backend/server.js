@@ -536,11 +536,30 @@ app.get('/go/opentable', require('./controllers/opentableLinkController').redire
 // Admin dashboard: the page is public HTML (it asks you to sign in); every
 // number comes from /api/admin/dashboard, which is super-user only.
 app.use('/api/admin/dashboard', require('./routes/adminDashboardRoutes'));
-app.get(['/admin', '/admin/'], (req, res) => {
+// The app-wide CSP only allows our own scripts; the dashboard also loads
+// Chart.js from cdnjs and the Inter font from Google Fonts.
+const ADMIN_CSP = [
+  "default-src 'self'",
+  "script-src 'self' https://cdnjs.cloudflare.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: https:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "script-src-attr 'none'"
+].join('; ');
+const adminFile = (file, type) => (req, res) => {
+  res.set('Content-Security-Policy', ADMIN_CSP);
   res.set('X-Robots-Tag', 'noindex, nofollow');
   res.set('Cache-Control', 'no-cache');
-  res.sendFile(path.join(__dirname, 'public', 'admin', 'index.html'));
-});
+  if (type) res.type(type);
+  res.sendFile(path.join(__dirname, 'public', 'admin', file));
+};
+app.get(['/admin', '/admin/'], adminFile('index.html'));
+app.get('/admin/app.js', adminFile('app.js', 'application/javascript'));
 
 // Physical sticker QR landing pages (public; AASA covers /s/* for Universal Links)
 app.use('/s', require('./routes/stickerPublicRoutes'));
