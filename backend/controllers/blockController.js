@@ -1,5 +1,6 @@
 const { admin, getFirestore } = require('../config/firebase');
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
+const { projectPublicUser } = require('../services/publicUserProjection');
 
 const db = getFirestore();
 
@@ -205,39 +206,33 @@ const unblockUser = async (req, res) => {
 const getBlockedUsers = async (req, res) => {
   try {
     const userId = req.user.firebaseDocId || req.user.uid;
-    const { limit = 50, startAfter } = req.query;
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+    const { startAfter } = req.query;
 
-    let query = db.collection(COLLECTIONS.BLOCKS)
-      .where('blockerId', '==', userId)
-      .orderBy('createdAt', 'desc')
-      .limit(parseInt(limit));
-
-    if (startAfter) {
-      const startDoc = await db.collection(COLLECTIONS.BLOCKS).doc(startAfter).get();
-      if (startDoc.exists) {
-        query = query.startAfter(startDoc);
-      }
-    }
-
-    const snapshot = await query.get();
+    // Equality-only and sorted here: the old orderBy needed a composite index
+    // that was never created, so the list always failed (500). A person's
+    // block list is short.
+    const snapshot = await db.collection(COLLECTIONS.BLOCKS).where('blockerId', '==', userId).limit(1000).get();
+    const all = snapshot.docs.map(serializeDoc).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    const from = startAfter ? all.findIndex((b) => b.id === startAfter) + 1 : 0;
+    const page = all.slice(from, from + limit);
     const blocks = [];
 
-    // Get user details for each blocked user
-    for (const doc of snapshot.docs) {
-      const block = serializeDoc(doc);
+    // The blocked person as a public card only — this returned their whole
+    // user doc (email, phone, device tokens) to the blocker
+    for (const block of page) {
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(block.blockedUserId).get();
-      
       if (userDoc.exists) {
-        block.blockedUser = serializeDoc(userDoc);
+        block.blockedUser = { ...projectPublicUser(serializeDoc(userDoc)), _id: userDoc.id, id: userDoc.id };
       }
-      
       blocks.push(block);
     }
+    const hasMoreBlocks = from + limit < all.length;
 
     res.status(200).json({
       success: true,
       blocks,
-      hasMore: snapshot.docs.length === parseInt(limit)
+      hasMore: hasMoreBlocks
     });
   } catch (error) {
     console.error('Error fetching blocked users:', error);
