@@ -100,11 +100,25 @@ describe('setting up', () => {
     expect(sent).toMatchObject({ delivered: false, emailed: true });
     expect(emailService.sendEmail).toHaveBeenCalledTimes(2);
 
-    // A failing mailbox never fails the invitation.
+    // A failing mailbox never fails the invitation. The reply doesn't wait
+    // for the email (SMTP took ~15 s and Send again sat on a spinner), so
+    // `emailed` means one is on its way to the address on file.
     emailService.sendEmail.mockImplementation(async () => { throw new Error('SMTP down'); });
     const again = await care.resendInvite({ userId: CHILD, planId: PLAN, now: new Date(later.getTime() + 11 * 60000) });
-    expect(again.emailed).toBe(false);
+    expect(again.emailed).toBe(true);
+    await new Promise((r) => setImmediate(r));
     expect(plans().get(PLAN).inviteCount).toBe(3);
+  });
+
+  test('Send again answers without waiting for the email', async () => {
+    await seedUsers();
+    await mockDb.collection(COLLECTIONS.USERS).doc(PARENT).set({ displayName: 'Mom Sgroi', email: 'mom@example.com' });
+    await care.createPlan({ ownerId: CHILD, parentId: PARENT, times: ['08:30'] });
+    await new Promise((r) => setImmediate(r));
+    emailService.sendEmail.mockImplementation(() => new Promise(() => {})); // an SMTP that never finishes
+    const later = new Date(Date.parse(plans().get(PLAN).createdAt) + 11 * 60000);
+    const sent = await care.resendInvite({ userId: CHILD, planId: PLAN, now: later });
+    expect(sent.emailed).toBe(true);
   });
 
   test('no email on file: the push alone goes, and emailed says so', async () => {

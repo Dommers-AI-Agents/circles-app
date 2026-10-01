@@ -462,26 +462,29 @@ class CareCheckinService {
    * phone someone looks at. `delivered` keeps meaning the push.
    */
   async invite(userId, message) {
-    const [result, emailed] = await Promise.all([this.push(userId, message), this.emailInvite(userId, message)]);
-    return { delivered: !!(result && result.success), emailed };
+    // The reply waits for the push only. The email goes out in the background:
+    // our SMTP takes ~15 s, and Send again sat on a spinner for all of it
+    // (2026-10-01). `emailed` = there's an address it's going to.
+    const doc = await this.db.collection(COLLECTIONS.USERS).doc(userId).get();
+    const user = doc.exists ? doc.data() : {};
+    const to = typeof user.email === 'string' ? user.email.trim() : '';
+    if (to) this.emailInvite(to, user.displayName, message).catch(() => {});
+    const result = await this.push(userId, message);
+    return { delivered: !!(result && result.success), emailed: !!to };
   }
 
   /** True when an email went out; never throws (the push is the other half). */
-  async emailInvite(userId, message) {
+  async emailInvite(to, displayName, message) {
     try {
-      const doc = await this.db.collection(COLLECTIONS.USERS).doc(userId).get();
-      const user = doc.exists ? doc.data() : {};
-      const to = typeof user.email === 'string' ? user.email.trim() : '';
-      if (!to) return false;
       await emailService.sendEmail({
         to,
         subject: message.title,
-        html: CareCheckinService.inviteEmailHtml(message, user.displayName),
+        html: CareCheckinService.inviteEmailHtml(message, displayName),
         text: `${message.title}\n\n${message.body}\n\n${CARE_WIDGET_URL}`
       });
       return true;
     } catch (error) {
-      console.error(`[care] invitation email failed for ${userId}: ${error.message}`);
+      console.error(`[care] invitation email to ${to} failed: ${error.message}`);
       return false;
     }
   }
