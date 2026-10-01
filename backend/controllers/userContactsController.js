@@ -2,8 +2,40 @@
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const emailService = require('../services/emailService');
+const dailyBudget = require('../services/dailyBudget');
+const { recordEmailInvite } = require('../services/connectionRequestPolicy');
+const { isValidEmailAddress, normalizeEmail } = require('../utils/emailAddress');
+const { clean } = require('../utils/text');
 
 const db = getFirestore();
+
+// Security audit 2026-10-01 limits. A phone address book is rarely past a
+// couple of thousand cards; an invite sheet sends a handful at a time.
+const MAX_SYNC_CONTACTS = 2000;
+const MAX_INVITES_PER_REQUEST = 20;
+
+// A matched user as the CALLER may see them: the public card, plus only the
+// identifiers the caller already holds (the email/phone they submitted that
+// matched). Echoing those back lets iOS drop matched people from the "invite"
+// list; returning the OTHER identifier turned contact sync into a reverse
+// lookup — submit an email, learn the phone number (security audit 2026-10-01).
+const matchedCard = (doc, submittedEmails, submittedPhones) => {
+  const userData = doc.data();
+  const email = typeof userData.email === 'string' ? userData.email.toLowerCase() : null;
+  const phone = userData.phoneNumber || null;
+  return {
+    id: doc.id,
+    displayName: userData.displayName,
+    profilePicture: userData.profilePicture,
+    ...(email && submittedEmails.has(email) ? { email } : {}),
+    ...(phone && submittedPhones.has(phone) ? { phoneNumber: phone } : {}),
+    placesCount: 0, // Will be calculated later
+    circlesCount: userData.circlesCount || 0,
+    followersCount: userData.followersCount || 0,
+    followingCount: userData.followingCount || 0,
+    isVerified: userData.isVerified || false
+  };
+};
 
 // Helper function to normalize phone numbers
 const normalizePhoneNumber = (phone) => {
@@ -34,24 +66,34 @@ const syncContacts = async (req, res) => {
       });
     }
 
+    if (contacts.length > MAX_SYNC_CONTACTS) {
+      return res.status(400).json({
+        success: false,
+        message: `Too many contacts in one sync (max ${MAX_SYNC_CONTACTS})`
+      });
+    }
+
     console.log(`📱 Syncing ${contacts.length} contacts for user ${userId}`);
 
     // Extract all emails and phone numbers from contacts
     const emails = [];
     const phoneNumbers = [];
-    
+
     contacts.forEach(contact => {
+      if (!contact || typeof contact !== 'object') return;
       if (contact.emails && Array.isArray(contact.emails)) {
-        emails.push(...contact.emails.map(e => e.toLowerCase()));
+        emails.push(...contact.emails.filter(e => typeof e === 'string').map(e => e.toLowerCase()));
       }
       if (contact.phoneNumbers && Array.isArray(contact.phoneNumbers)) {
-        phoneNumbers.push(...contact.phoneNumbers.map(p => normalizePhoneNumber(p)).filter(Boolean));
+        phoneNumbers.push(...contact.phoneNumbers.filter(p => typeof p === 'string').map(p => normalizePhoneNumber(p)).filter(Boolean));
       }
     });
 
     // Remove duplicates
     const uniqueEmails = [...new Set(emails)];
     const uniquePhoneNumbers = [...new Set(phoneNumbers)];
+    const submittedEmails = new Set(uniqueEmails);
+    const submittedPhones = new Set(uniquePhoneNumbers);
 
     console.log(`📧 Found ${uniqueEmails.length} unique emails and ${uniquePhoneNumbers.length} unique phone numbers`);
 
@@ -73,20 +115,7 @@ const syncContacts = async (req, res) => {
       emailQuery.forEach(doc => {
         if (doc.id !== userId && !processedUserIds.has(doc.id)) {
           processedUserIds.add(doc.id);
-          const userData = doc.data();
-          matchedUsers.push({
-            id: doc.id,
-            email: userData.email,
-            displayName: userData.displayName,
-            profilePicture: userData.profilePicture,
-            bio: userData.bio,
-            phoneNumber: userData.phoneNumber,
-            placesCount: 0, // Will be calculated later
-            circlesCount: userData.circlesCount || 0,
-            followersCount: userData.followersCount || 0,
-            followingCount: userData.followingCount || 0,
-            isVerified: userData.isVerified || false
-          });
+          matchedUsers.push(matchedCard(doc, submittedEmails, submittedPhones));
         }
       });
     }
@@ -105,20 +134,7 @@ const syncContacts = async (req, res) => {
       phoneQuery.forEach(doc => {
         if (doc.id !== userId && !processedUserIds.has(doc.id)) {
           processedUserIds.add(doc.id);
-          const userData = doc.data();
-          matchedUsers.push({
-            id: doc.id,
-            email: userData.email,
-            displayName: userData.displayName,
-            profilePicture: userData.profilePicture,
-            bio: userData.bio,
-            phoneNumber: userData.phoneNumber,
-            placesCount: 0, // Will be calculated later
-            circlesCount: userData.circlesCount || 0,
-            followersCount: userData.followersCount || 0,
-            followingCount: userData.followingCount || 0,
-            isVerified: userData.isVerified || false
-          });
+          matchedUsers.push(matchedCard(doc, submittedEmails, submittedPhones));
         }
       });
     }
@@ -363,6 +379,12 @@ const inviteContacts = async (req, res) => {
         message: 'Invites array is required'
       });
     }
+    if (invites.length > MAX_INVITES_PER_REQUEST) {
+      return res.status(400).json({
+        success: false,
+        message: `You can invite up to ${MAX_INVITES_PER_REQUEST} people at a time`
+      });
+    }
 
     // Get inviting user's info
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
@@ -388,17 +410,44 @@ const inviteContacts = async (req, res) => {
     const inviteLink = `https://api.favcircles.com/connect/${userId}`;
 
     // Send invitations
+    const emailedThisRequest = new Set();
     for (const invite of invites) {
+      if (!invite || typeof invite !== 'object') continue;
       try {
         if (invite.type === 'email' && invite.email) {
-          // Send email invitation
+          // Exactly one address per invite — "a@x.com, b@y.com" or a value
+          // with a newline used to fan out to several recipients (security
+          // audit 2026-10-01).
+          const to = normalizeEmail(invite.email);
+          if (!isValidEmailAddress(to)) {
+            results.failed.push({ recipient: String(invite.email).slice(0, 254), error: 'Invalid email address' });
+            continue;
+          }
+          if (emailedThisRequest.has(to)) continue;
+          emailedThisRequest.add(to);
+
+          // User-triggered mail to non-users spends the inviter's daily email
+          // budget, so one account can't turn invites into a spam cannon.
+          const budget = await dailyBudget.consumeEmail(userId);
+          if (!budget.allowed) {
+            results.failed.push({ recipient: to, error: 'Daily invite limit reached — try again tomorrow' });
+            continue;
+          }
+
+          // Send email invitation (names are escaped in the template)
           await emailService.sendAppInvitation(
-            invite.email,
+            to,
             inviterName,
-            invite.contactName,
+            clean(invite.contactName, 80) || null,
             inviteLink
           );
-          results.sent.push({ type: 'email', recipient: invite.email });
+          results.sent.push({ type: 'email', recipient: to });
+
+          // Remember the invite: when this person signs up with this address
+          // and opens the link, they connect in one tap — the server can
+          // verify the inviter really asked (see connectionRequestPolicy).
+          recordEmailInvite(userId, to).catch((error) =>
+            console.error('⚠️ Failed to record email invite:', error.message));
 
         } else if (invite.type === 'sms' && invite.phoneNumber) {
           // For SMS, we'll return the formatted message and let the client handle it

@@ -140,7 +140,11 @@ exports.createShareLink = async (req, res) => {
 };
 
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+// One shared rule for "a single address" (utils/emailAddress), and every
+// recipient spends the sender's daily email budget — postcards go to people
+// who aren't on FavCircles, so this is our domain's reputation on the line
+// (security audit 2026-10-01).
+const { isValidEmailAddress, normalizeEmail } = require('../../utils/emailAddress');
 const MAX_EMAILS_PER_SEND = 5;
 
 // @desc    Email a postcard to addresses the sender typed in (non-users welcome)
@@ -152,14 +156,23 @@ exports.emailPostcard = async (req, res) => {
     const emailService = require('../../services/emailService');
     const { imageUrl, message, templateId, placeRef, emails } = req.body || {};
 
-    const list = Array.isArray(emails) ? emails.map(e => String(e || '').trim().toLowerCase()).filter(Boolean) : [];
+    const list = Array.isArray(emails) ? emails.map(normalizeEmail).filter(Boolean) : [];
     const unique = [...new Set(list)];
     if (unique.length === 0 || unique.length > MAX_EMAILS_PER_SEND) {
       return res.status(400).json({ success: false, code: 'invalid_emails', message: `Enter 1–${MAX_EMAILS_PER_SEND} email addresses` });
     }
-    const bad = unique.find(e => !EMAIL_RE.test(e) || e.length > 254);
+    const bad = unique.find(e => !isValidEmailAddress(e));
     if (bad) {
-      return res.status(400).json({ success: false, code: 'invalid_emails', message: `"${bad}" doesn't look like an email address` });
+      return res.status(400).json({ success: false, code: 'invalid_emails', message: `"${bad.slice(0, 254)}" doesn't look like an email address` });
+    }
+
+    const budget = await require('../../services/dailyBudget').consumeEmail(req.user.uid, unique.length);
+    if (!budget.allowed) {
+      return res.status(429).json({
+        success: false,
+        code: 'email_limit',
+        message: 'You’ve sent a lot of emails today. Share the postcard link instead, or try again tomorrow.'
+      });
     }
 
     // One public page backs every copy, so the email can link to it.

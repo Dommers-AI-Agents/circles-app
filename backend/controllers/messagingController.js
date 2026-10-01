@@ -13,8 +13,24 @@ const {
 } = require('../models/FirestoreModels');
 const { normalizeUserId, isSameUser } = require('../services/idService');
 const sseService = require('../services/sseService');
+const { sendServiceError } = require('../utils/serviceError');
+const { clean } = require('../utils/text');
+const {
+  vetParticipants,
+  checkMessageContent,
+  directChatBlocked,
+  MAX_PARTICIPANTS
+} = require('../services/conversationAccess');
 
 const db = getFirestore();
+
+// Participant/sender cards go through the public projection — these used to
+// be serializeDoc() of the whole user doc (phone, device tokens, follower
+// graph, blocked lists) sent to the other side of every chat (security audit
+// 2026-10-01). Direct-chat partners keep `email`, a documented iOS contract
+// (publicUserProjection.js); new group conversations don't get it.
+const partnerCard = (doc) => projectPublicUser(serializeDoc(doc), ['email']);
+const publicCard = (doc) => projectPublicUser(serializeDoc(doc));
 
 // @desc    Get all conversations for a user
 // @route   GET /api/messages/conversations
@@ -87,7 +103,7 @@ const getConversations = async (req, res) => {
           const participantDocs = await Promise.all(participantPromises);
           conversation.participantDetails = participantDocs
             .filter(doc => doc.exists)
-            .map(doc => serializeDoc(doc));
+            .map(partnerCard);
         } else {
           // For group conversations, we'll fetch details on demand
           conversation.participantDetails = [];
@@ -289,7 +305,7 @@ const getOrCreateDirectConversation = async (req, res) => {
       const participantDocs = await Promise.all(participantPromises);
       existingConversation.participantDetails = participantDocs
         .filter(doc => doc.exists)
-        .map(doc => serializeDoc(doc));
+        .map(partnerCard);
 
       return res.status(200).json({
         success: true,
@@ -320,7 +336,7 @@ const getOrCreateDirectConversation = async (req, res) => {
       ...conversationData,
       participantDetails: participantDocs
         .filter(doc => doc.exists)
-        .map(doc => serializeDoc(doc))
+        .map(partnerCard)
     };
 
     res.status(201).json({
@@ -344,12 +360,18 @@ const getOrCreateDirectConversation = async (req, res) => {
 const createNewConversation = async (req, res) => {
   try {
     const userId = req.user.uid;
-    const { type, participants, name, avatar } = req.body;
+    const { type, participants, avatar } = req.body;
+    const name = clean(req.body.name, 100);
 
-    // Ensure the current user is included in participants
-    const allParticipants = participants.includes(userId) 
-      ? participants 
-      : [...participants, userId];
+    // Everyone added must be an accepted connection of the creator, nobody
+    // blocked, at most MAX_PARTICIPANTS people — the rule direct chats already
+    // had (security audit 2026-10-01). Throws ServiceError → 4xx below.
+    const others = await vetParticipants({
+      creatorId: userId,
+      creatorData: req.user,
+      participantIds: participants
+    });
+    const allParticipants = [...others, userId];
 
     // For direct conversations, ensure only 2 participants
     if (type === 'direct' && allParticipants.length !== 2) {
@@ -391,7 +413,7 @@ const createNewConversation = async (req, res) => {
         const otherUserId = conversation.participants.find(id => id !== userId);
         const otherUserDoc = await db.collection(COLLECTIONS.USERS).doc(otherUserId).get();
         if (otherUserDoc.exists) {
-          conversation.participantDetails = [projectPublicUser(serializeDoc(otherUserDoc), ['email'])];
+          conversation.participantDetails = [publicCard(otherUserDoc)];
         }
 
         return res.status(200).json({
@@ -407,7 +429,7 @@ const createNewConversation = async (req, res) => {
       type: type || 'direct',
       participants: allParticipants,
       name: name || null,
-      avatar: avatar || null,
+      avatar: typeof avatar === 'string' ? avatar.slice(0, 2048) : null,
       createdBy: userId,
       unreadCounts: allParticipants.reduce((acc, id) => {
         acc[id] = 0;
@@ -439,13 +461,16 @@ const createNewConversation = async (req, res) => {
     const participantDocs = await Promise.all(participantPromises);
     conversation.participantDetails = participantDocs
       .filter(doc => doc.exists)
-      .map(doc => serializeDoc(doc));
+      .map(publicCard);
 
     res.status(201).json({
       success: true,
       conversation
     });
   } catch (error) {
+    if (error && error.status && error.code) {
+      return sendServiceError(res, error, { log: 'Error creating conversation' });
+    }
     console.error('Error creating conversation:', error);
     res.status(500).json({
       success: false,
@@ -512,7 +537,7 @@ const getMessages = async (req, res) => {
       messages.map(async (message) => {
         const senderDoc = await db.collection(COLLECTIONS.USERS).doc(message.senderId).get();
         if (senderDoc.exists) {
-          message.senderDetails = serializeDoc(senderDoc);
+          message.senderDetails = partnerCard(senderDoc);
         }
         return message;
       })
@@ -540,6 +565,13 @@ const sendMessage = async (req, res) => {
     const userId = req.user.uid;
     const { conversationId } = req.params;
     const { type, content, mediaUrl, metadata } = req.body;
+
+    // Bounded message bodies (security audit 2026-10-01)
+    try {
+      checkMessageContent(content);
+    } catch (contentError) {
+      return sendServiceError(res, contentError, { log: 'Invalid message content' });
+    }
 
     // Verify user is part of this conversation
     const conversationDoc = await db.collection(COLLECTIONS.CONVERSATIONS).doc(conversationId).get();
@@ -579,7 +611,17 @@ const sendMessage = async (req, res) => {
     // Fetched before the write so the sender's name lands on the conversation
     // (the list endpoint doesn't load group participants).
     const senderDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-    const senderDetails = senderDoc.exists ? serializeDoc(senderDoc) : null;
+    const senderDetails = senderDoc.exists ? partnerCard(senderDoc) : null;
+
+    // A block in either direction closes the direct chat for new messages
+    // (security audit 2026-10-01); the history stays readable.
+    if (directChatBlocked(conversation, userId, senderDoc.exists ? senderDoc.data() : req.user)) {
+      return res.status(403).json({
+        success: false,
+        code: 'blocked',
+        message: 'You can’t send messages in this conversation'
+      });
+    }
 
     // Use a batch write for atomicity
     const batch = db.batch();
@@ -1247,7 +1289,23 @@ const addParticipant = async (req, res) => {
         message: 'User is already a participant'
       });
     }
-    
+
+    // Same rule as creating a group: only the adder's accepted connections,
+    // nobody blocked, and the group stays within MAX_PARTICIPANTS (security
+    // audit 2026-10-01).
+    if (conversation.participants.length + 1 > MAX_PARTICIPANTS) {
+      return res.status(400).json({
+        success: false,
+        code: 'too_many_participants',
+        message: `A conversation can have up to ${MAX_PARTICIPANTS} people`
+      });
+    }
+    try {
+      await vetParticipants({ creatorId: currentUserId, creatorData: req.user, participantIds: [userId] });
+    } catch (vetError) {
+      return sendServiceError(res, vetError, { log: 'Error vetting participant', fallbackMessage: 'Server error' });
+    }
+
     // Verify target user exists
     const targetUserDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
     if (!targetUserDoc.exists) {

@@ -147,7 +147,8 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
     /// Opens one widget's full page by id (push taps, deep links). A postcard
     /// order id is handed to the page through its context, like a launch
     /// photo, so the page opens on that card's status.
-    func open(widgetId: String, postcardOrderId: String? = nil, quoteId: String? = nil, workoutPostId: String? = nil) {
+    func open(widgetId: String, postcardOrderId: String? = nil, quoteId: String? = nil, workoutPostId: String? = nil,
+              drinkId: String? = nil) {
         guard ensureModel(), let model,
               let descriptor = model.descriptors.first(where: { $0.id == widgetId }),
               let widget = model.widget(for: descriptor) else { return }
@@ -165,6 +166,8 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         if widgetId == "quotes", let quoteId { context.launchQuoteId = quoteId }
         // A shared workout tapped in the activity feed opens over the page
         if widgetId == "workouts", let workoutPostId { context.launchWorkoutPostId = workoutPostId }
+        // A drink a friend sent, tapped in chat, opens on that recipe
+        if widgetId == "drink", let drinkId { context.launchDrinkId = drinkId }
         Task { await widget.refresh(context: context) }
         open(widget, context: context)
     }

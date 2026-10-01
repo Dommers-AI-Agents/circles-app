@@ -58,6 +58,8 @@ const {
 } = require('../controllers/users/accountAdminController');
 const { changePassword } = require('../controllers/firebaseAuthController');
 const { protect } = require('../middleware/firebaseAuth');
+// Profile names are checked on every update, not just at signup (security audit 2026-10-01)
+const { validateProfileUpdate } = require('../middleware/validation');
 
 const router = express.Router();
 
@@ -78,7 +80,7 @@ router.route('/search')
 
 router.route('/me')
   .get(getUser)
-  .put(updateUser)
+  .put(validateProfileUpdate, updateUser)
   // Settings → Delete account (App Store 5.1.1(v)); the app always called
   // this but the route was missing
   .delete(deleteMyAccount);
@@ -130,7 +132,7 @@ router.route('/:id/circles')
   .get(getUserPublicCircles);
 
 router.route('/me')
-  .put(updateUser);
+  .put(validateProfileUpdate, updateUser);
 
 router.route('/:id')
   .get(getUser);

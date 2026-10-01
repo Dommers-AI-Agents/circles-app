@@ -5,6 +5,8 @@ protocol MessageCellDelegate: AnyObject {
     func didTapProfileImage(for userId: String)
     /// A photo/postcard bubble was tapped.
     func didTapMessageImage(urlString: String)
+    /// A drink a friend sent was tapped: open its recipe.
+    func didTapDrink(id: String)
 }
 
 class ChatViewController: BaseViewController {
@@ -888,6 +890,7 @@ class MessageCell: UITableViewCell {
     private var mediaWidthConstraint: NSLayoutConstraint!
     private var mediaTopConstraint: NSLayoutConstraint!
     private var currentImageURL: String?
+    private var currentDrinkId: String?
     
     private let timeLabel: UILabel = {
         let label = UILabel()
@@ -1104,6 +1107,7 @@ class MessageCell: UITableViewCell {
             mediaImageView.isHidden = true
             mediaImageView.image = nil
             currentImageURL = nil
+            currentDrinkId = nil
             mediaHeightConstraint.constant = 0
             mediaWidthConstraint.isActive = false
             mediaTopConstraint.constant = 0
@@ -1113,8 +1117,19 @@ class MessageCell: UITableViewCell {
         mediaHeightConstraint.constant = message.isPostcard ? 160 : 200
         mediaWidthConstraint.isActive = true
         mediaTopConstraint.constant = 6
+        currentDrinkId = message.drinkId
         // Caption: the sender's note plus where the postcard is from.
-        if message.isPostcard {
+        if message.isDrink {
+            var lines = [message.content ?? ""]
+            lines.append("🍸 \(message.drinkName ?? "A drink") · Tap to open the recipe")
+            if let coins = message.drinkFavCoins {
+                let noun = coins == "1" ? "FavCoin" : "FavCoins"
+                lines.append(message.isCurrentUserMessage
+                    ? "Came with \(coins) \(noun) 🌵 from FavCircles"
+                    : "+\(coins) \(noun) 🌵 from FavCircles")
+            }
+            messageLabel.text = lines.filter { !$0.isEmpty }.joined(separator: "\n")
+        } else if message.isPostcard {
             var caption = message.content ?? ""
             if let place = message.postcardPlaceName, !place.isEmpty {
                 caption = caption.isEmpty ? "📮 Postcard from \(place)" : "\(caption)\n📮 From \(place)"
@@ -1134,6 +1149,10 @@ class MessageCell: UITableViewCell {
     }
 
     @objc private func mediaTapped() {
+        if let currentDrinkId {
+            delegate?.didTapDrink(id: currentDrinkId)
+            return
+        }
         guard let currentImageURL else { return }
         delegate?.didTapMessageImage(urlString: currentImageURL)
     }
@@ -1176,6 +1195,11 @@ class MessageCell: UITableViewCell {
 
 // MARK: - MessageCellDelegate
 extension ChatViewController: MessageCellDelegate {
+    func didTapDrink(id: String) {
+        // Home → Widgets → Make Me a Drink, opened on this recipe
+        NotificationCenter.default.post(name: .navigateToHomeWidget, object: "drink", userInfo: ["drinkId": id])
+    }
+
     func didTapMessageImage(urlString: String) {
         let viewer = FullScreenImageViewController(imageURL: urlString)
         viewer.modalPresentationStyle = .fullScreen

@@ -10,9 +10,10 @@ const {
   forgotPassword
 } = require('../controllers/firebaseAuthController');
 const { protect } = require('../middleware/firebaseAuth');
-const { 
-  validateUserRegistration, 
-  validateUserLogin 
+const {
+  validateUserRegistration,
+  validateUserLogin,
+  validateProfileUpdate
 } = require('../middleware/validation');
 
 const router = express.Router();
@@ -38,7 +39,7 @@ router.post('/forgot-password', forgotPassword);
 
 // Protected routes
 router.get('/me', protect, getMe);
-router.put('/me', protect, updateProfile);
+router.put('/me', protect, validateProfileUpdate, updateProfile);
 
 // Logout route (doesn't need protection as it just returns success)
 router.post('/logout', (req, res) => {

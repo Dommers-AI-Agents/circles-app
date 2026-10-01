@@ -147,6 +147,17 @@ struct Message: Codable, Identifiable {
         metadata?["placeName"] as? String
     }
 
+    // MARK: Drinks (Make Me a Drink widget)
+    // Same trick as the postcard: an image message (the recipe card), marked
+    // by `metadata.kind`. Private between two people; never a feed post.
+    var isDrink: Bool {
+        type == .image && (metadata?["kind"] as? String) == "drink"
+    }
+    var drinkId: String? { isDrink ? metadata?["drinkId"] as? String : nil }
+    var drinkName: String? { metadata?["drinkName"] as? String }
+    /// FavCircles' bonus to the recipient ("1"), when one was paid.
+    var drinkFavCoins: String? { metadata?["favCoins"] as? String }
+
     /// The photo/postcard to show in the bubble, when the message has one.
     var displayImageURL: String? {
         guard type == .image, let mediaUrl, !mediaUrl.isEmpty else { return nil }

@@ -295,6 +295,48 @@ exports.validatePasskeyLoginVerify = [
   handleValidationErrors
 ];
 
+// ── Display names after signup ───────────────────────────────────────────────
+// Security audit 2026-10-01: displayName was only checked at email signup, so
+// PUT /api/users/me and PUT /api/auth/me took anything — a URL or "<a href>"
+// as a name rides into connection-request emails, invite emails and pushes to
+// strangers. The profile rule is looser than signup's ASCII-only regex on
+// purpose (Apple/Google sign-in names like "José Núñez" must keep saving) and
+// only rejects what spam needs: links, markup, control/bidi characters.
+const DISPLAY_NAME_MAX = 50;
+// eslint-disable-next-line no-control-regex
+const CONTROL_OR_BIDI = /[\u0000-\u001F\u007F-\u009F‎‏‪-‮⁦-⁩]/;
+const LINK_LIKE = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|xyz|ru|top|info|biz|link|click|site|online|shop|app)\b)/i;
+
+/** Why a profile name is unacceptable, or null when it's fine. */
+function displayNameProblem(value, { field = 'Display name', required = true, max = DISPLAY_NAME_MAX } = {}) {
+  if (typeof value !== 'string') return `${field} must be text`;
+  const name = value.trim();
+  if (name.length === 0) return required ? `${field} can't be empty` : null;
+  if (name.length > max) return `${field} must be ${max} characters or fewer`;
+  if (CONTROL_OR_BIDI.test(name)) return `${field} contains characters that aren't allowed`;
+  if (/[<>]/.test(name)) return `${field} can't contain < or >`;
+  if (LINK_LIKE.test(name)) return `${field} can't contain a link`;
+  return null;
+}
+
+const nameRule = (fieldName, label, required) => body(fieldName)
+  .customSanitizer(value => (typeof value === 'string' ? value.trim() : value))
+  .custom((value) => {
+    if (value === undefined || value === null) return true; // not being changed
+    const problem = displayNameProblem(value, { field: label, required });
+    if (problem) throw new Error(problem);
+    return true;
+  });
+
+// PUT /api/users/me and PUT /api/auth/me — only fields present are checked.
+exports.validateProfileUpdate = [
+  nameRule('displayName', 'Display name', true),
+  nameRule('firstName', 'First name', false),
+  nameRule('lastName', 'Last name', false),
+  handleValidationErrors
+];
+exports.displayNameProblem = displayNameProblem;
+
 module.exports = {
   handleValidationErrors,
   ...exports
