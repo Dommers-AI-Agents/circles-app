@@ -75,6 +75,14 @@ function challengeFromClientData(credential) {
 
 // @desc  Does an account exist for this email (and does it have a passkey)?
 // @route POST /api/auth/email-check   (public, authLimiter)
+//
+// Yes, this says whether an email has an account. Security audit 2026-10-01
+// reviewed it and left it: iOS sign-in uses the answer to choose passkey vs
+// password vs sign-up, and POST /auth/register and /auth/passkey/register-
+// options answer the same question (409), so hiding it here would cost real users a smooth
+// sign-in without closing anything. Enumeration is bounded per IP by
+// authLimiter (server.js mounts it on all of /api/auth). A per-email counter
+// would not help — enumerating means checking many emails once each.
 exports.emailCheck = async (req, res) => {
   try {
     const email = String(req.body.email || '').toLowerCase().trim();

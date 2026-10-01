@@ -136,7 +136,8 @@ const reportContent = async (req, res) => {
     }
     moderationService.notifyAdmin({ id: dedupId, ...report }, {
       autoHidden: autoHide.hidden,
-      reporterCount: autoHide.count
+      reporterCount: autoHide.count,
+      trustedCount: autoHide.trustedCount
     });
 
     res.status(201).json({
