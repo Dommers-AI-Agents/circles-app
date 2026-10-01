@@ -369,6 +369,7 @@ final class PersonSuggestionCell: UICollectionViewCell {
 }
 
 final class PeopleStripView: UIView, UICollectionViewDataSource, UICollectionViewDelegate {
+    var onSeeAll: (() -> Void)?
     var onFollow: ((User) -> Void)?
     var onDismiss: ((User) -> Void)?
     var onSelect: ((User) -> Void)?
@@ -391,25 +392,38 @@ final class PeopleStripView: UIView, UICollectionViewDataSource, UICollectionVie
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        let header = NetworkCardHeader("👋 People you might know")
-        header.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(header)
-        addSubview(collection)
+        let header = NetworkCardHeader("👋 People you might know", action: "See all")
+        header.onAction = { [weak self] in self?.onSeeAll?() }
+        emptyLabel.text = "No new suggestions right now. See all to browse everyone on FavCircles you haven't connected with yet."
+        emptyLabel.font = .systemFont(ofSize: 14)
+        emptyLabel.textColor = .secondaryLabel
+        emptyLabel.numberOfLines = 0
+        let column = UIStackView(arrangedSubviews: [header, emptyLabel, collection])
+        column.axis = .vertical
+        column.spacing = 12
+        column.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(column)
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: topAnchor),
-            header.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            header.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            collection.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
-            collection.leadingAnchor.constraint(equalTo: leadingAnchor),
-            collection.trailingAnchor.constraint(equalTo: trailingAnchor),
-            collection.heightAnchor.constraint(equalToConstant: 178),
-            collection.bottomAnchor.constraint(equalTo: bottomAnchor)
+            column.topAnchor.constraint(equalTo: topAnchor),
+            column.leadingAnchor.constraint(equalTo: leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: trailingAnchor),
+            column.bottomAnchor.constraint(equalTo: bottomAnchor),
+            header.leadingAnchor.constraint(equalTo: column.leadingAnchor, constant: 16),
+            header.trailingAnchor.constraint(equalTo: column.trailingAnchor, constant: -16),
+            emptyLabel.leadingAnchor.constraint(equalTo: column.leadingAnchor, constant: 16),
+            emptyLabel.trailingAnchor.constraint(equalTo: column.trailingAnchor, constant: -16),
+            collection.heightAnchor.constraint(equalToConstant: 178)
         ])
+        column.alignment = .fill
     }
+
+    private let emptyLabel = UILabel()
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func configure(_ people: [User]) {
         self.people = people
+        collection.isHidden = people.isEmpty
+        emptyLabel.isHidden = !people.isEmpty
         collection.reloadData()
     }
 

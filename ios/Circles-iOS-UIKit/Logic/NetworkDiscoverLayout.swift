@@ -1,7 +1,7 @@
 import Foundation
 
-/// Which cards the My Network → Discover page shows, in order. Every card
-/// but the invite hides when it has nothing to show.
+/// Which cards the My Network → Discover page shows, in order. Places and
+/// the board hide when empty; people and the invite always show.
 enum NetworkDiscoverLayout {
 
     enum Card: Equatable {
@@ -16,7 +16,9 @@ enum NetworkDiscoverLayout {
         if lovedPlaces > 0 { out.append(.lovedPlaces) }
         // A board of just you isn't a leaderboard
         if boardRows > 1 { out.append(.leaderboard) }
-        if people > 0 { out.append(.people) }
+        // Always: with no fresh suggestions it still offers See all — the
+        // way to browse everyone you haven't connected with yet
+        out.append(.people)
         out.append(.invite)
         return out
     }

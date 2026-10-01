@@ -24,6 +24,9 @@ class DiscoveryListViewController: BaseViewController {
     enum Mode {
         case discover
         case popular
+        /// Everyone you haven't connected with, requested or followed —
+        /// the full list behind Discover's "People you might know"
+        case everyone
     }
 
     private let mode: Mode
@@ -56,6 +59,10 @@ class DiscoveryListViewController: BaseViewController {
         case .popular:
             return [
                 ("leaderboard", "🔥 Popular", "The biggest collections on FavCircles — everyone, ranked. Where do you land?")
+            ]
+        case .everyone:
+            return [
+                ("discover", "👥 People on FavCircles", "Everyone you haven't connected with or followed yet, biggest collections first.")
             ]
         }
     }
@@ -167,6 +174,8 @@ class DiscoveryListViewController: BaseViewController {
             return "No suggestions right now\n\nInvite a friend, or add your zipcode in your profile so we can find people near you."
         case .popular:
             return "No rankings yet\n\nAdd places to claim the top spot!"
+        case .everyone:
+            return "You're connected with everyone here\n\nInvite a friend to bring someone new."
         }
     }
 
@@ -174,6 +183,7 @@ class DiscoveryListViewController: BaseViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        if mode == .everyone { title = "People" }
         setupUI()
         setupTableView()
         // Location only powers the "Near you" section, which is a Discover
@@ -237,6 +247,8 @@ class DiscoveryListViewController: BaseViewController {
         for plan in sectionPlan {
             group.enter()
             var endpoint = "users/contacts/discover?type=\(plan.type)"
+            // The full list, not a first page of 20 (the network is small)
+            if mode == .everyone { endpoint += "&limit=300" }
             if plan.type == "nearby", let location = currentLocation {
                 endpoint += "&lat=\(location.coordinate.latitude)&lng=\(location.coordinate.longitude)"
             }

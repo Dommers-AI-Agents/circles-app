@@ -9,10 +9,11 @@ struct NetworkDiscoverLayoutTests {
         User(id: id, displayName: id, profilePicture: nil, bio: nil, location: nil, friends: nil, friendRequests: nil)
     }
 
-    @Test func emptyCardsHideButInviteAlwaysShows() {
+    @Test func emptyCardsHideButPeopleAndInviteAlwaysShow() {
         #expect(NetworkDiscoverLayout.cards(lovedPlaces: 5, boardRows: 4, people: 2) == [.lovedPlaces, .leaderboard, .people, .invite])
-        #expect(NetworkDiscoverLayout.cards(lovedPlaces: 0, boardRows: 1, people: 0) == [.invite])
-        #expect(NetworkDiscoverLayout.cards(lovedPlaces: 3, boardRows: 0, people: 0) == [.lovedPlaces, .invite])
+        // No fresh suggestions: the people card still offers See all
+        #expect(NetworkDiscoverLayout.cards(lovedPlaces: 0, boardRows: 1, people: 0) == [.people, .invite])
+        #expect(NetworkDiscoverLayout.cards(lovedPlaces: 3, boardRows: 0, people: 0) == [.lovedPlaces, .people, .invite])
     }
 
     @Test func eachPersonOnceUnderTheirFirstReason() {

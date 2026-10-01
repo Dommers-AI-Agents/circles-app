@@ -51,6 +51,9 @@ final class NetworkDiscoverViewController: BaseViewController {
             self.navigationController?.pushViewController(LovedPlacesListViewController(places: self.loved), animated: true)
         }
         boardCard.onTap = { [weak self] in self?.openMonth() }
+        peopleCard.onSeeAll = { [weak self] in
+            self?.navigationController?.pushViewController(DiscoveryListViewController(mode: .everyone), animated: true)
+        }
         peopleCard.onFollow = { [weak self] user in self?.follow(user) }
         peopleCard.onDismiss = { [weak self] user in self?.dismissSuggestion(user) }
         peopleCard.onSelect = { [weak self] user in
@@ -102,7 +105,7 @@ final class NetworkDiscoverViewController: BaseViewController {
         peopleCard.isHidden = !cards.contains(.people)
         if !lovedCard.isHidden { lovedCard.configure(loved) }
         if let month, !boardCard.isHidden { boardCard.configure(month) }
-        if !peopleCard.isHidden { peopleCard.configure(people) }
+        peopleCard.configure(people)
     }
 
     // MARK: - Actions
