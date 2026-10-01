@@ -73,6 +73,12 @@ describe('changedDetailFields', () => {
     expect(changedDetailFields(echo, venue)).toEqual([]);
   });
 
+  test('a phone with or without +1 is the same number', () => {
+    expect(changedDetailFields({ phone: '+1 704 555 0100' }, venue)).toEqual([]);
+    expect(changedDetailFields({ phone: '1-704-555-0100' }, venue)).toEqual([]);
+    expect(changedDetailFields({ phone: '704-555-0199' }, venue)).toEqual(['phone']);
+  });
+
   test('a real change is caught', () => {
     expect(changedDetailFields({ name: 'Leroy Fox', category: 'restaurant' }, venue)).toEqual(['name']);
     expect(changedDetailFields({ location: { coordinates: [-80.9, 35.2] } }, venue)).toEqual(['location']);

@@ -124,6 +124,12 @@ const pickDetailFields = (body) => {
 const looseText = (v) => String(v == null ? '' : v).toLowerCase()
   .replace(/\bunited states\b/g, 'usa').replace(/[^a-z0-9]/g, '');
 
+// "+1 (704) 555-0100" and "704-555-0100" are the same number
+const phoneDigits = (v) => {
+  const digits = String(v == null ? '' : v).replace(/\D/g, '');
+  return digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+};
+
 /**
  * Which of `fields` actually differ from the venue as people see it. Used
  * by PUT /places/:id, where builds up to 1.3.6 resend name/address/category
@@ -144,6 +150,7 @@ const changedDetailFields = (fields, venue) => {
       return Math.abs(a[0] - b[0]) > 1e-5 || Math.abs(a[1] - b[1]) > 1e-5;
     }
     if (f === 'openingHours') return JSON.stringify(fields.openingHours) !== JSON.stringify(g.openingHours || null);
+    if (f === 'phone') return phoneDigits(fields.phone) !== phoneDigits(current.phone);
     return looseText(fields[f]) !== looseText(current[f]);
   });
 };
