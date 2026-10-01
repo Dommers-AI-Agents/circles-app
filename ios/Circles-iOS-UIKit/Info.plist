@@ -156,11 +156,11 @@
 		</dict>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Circles needs your location to show nearby places and help you add them to your circles.</string>
+	<string>FavCircles needs your location to show nearby places and help you add them to your circles.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Circles can track places you visit to help you remember and save them to your circles later. You can review and manage your visits at any time. This feature is optional and can be disabled in settings.</string>
+	<string>FavCircles can track places you visit to help you remember and save them to your circles later. You can review and manage your visits at any time. This feature is optional and can be disabled in settings.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>Circles can track places you visit in the background to help you remember great spots. You control which places to save.</string>
+	<string>FavCircles can track places you visit in the background to help you remember great spots. You control which places to save.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -196,17 +196,17 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>FavCircles finds nearby friends' phones so you can connect by holding them together.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Circles connects to a Bluetooth heart-rate strap so the Heartbeat widget can show your live pulse.</string>
+	<string>FavCircles connects to a Bluetooth heart-rate strap so the Heartbeat widget can show your live pulse.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Circles uses your camera to take photos and record videos of your places, and to scan a store's QR code for rewards.</string>
+	<string>FavCircles uses your camera to take photos and record videos of your places, and to scan a store's QR code for rewards.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Circles needs access to your microphone to record audio in videos.</string>
+	<string>FavCircles needs access to your microphone to record audio in videos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Circles needs access to your photo library to select photos for your places.</string>
+	<string>FavCircles needs access to your photo library to select photos for your places.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Circles would like to save your profile QR code to your photo library.</string>
+	<string>FavCircles would like to save your profile QR code to your photo library.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Circles uses Face ID to securely sign you in and protect your account.</string>
+	<string>FavCircles uses Face ID to securely sign you in and protect your account.</string>
 	<key>FacebookAutoLogAppEventsEnabled</key>
 	<false/>
 	<key>FacebookAdvertiserIDCollectionEnabled</key>

@@ -39,7 +39,7 @@ class SplashScreenViewController: BaseViewController {
     
     private let appNameLabel: UILabel = {
         let label = UILabel()
-        label.text = "Circles"
+        label.text = "FavCircles"
         label.font = UIFont.systemFont(ofSize: 48, weight: .light)
         label.textColor = .white
         label.textAlignment = .center
