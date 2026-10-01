@@ -221,6 +221,15 @@ app.get('/apple-app-site-association', (req, res) => {
 // to the App Store.
 app.get('/connect/:userId', async (req, res) => {
   const userId = String(req.params.userId).replace(/[^a-zA-Z0-9_-]/g, '');
+  // Carry the referral code and the signed invite token into the app link —
+  // the token is what makes opening the link connect in one tap (security
+  // audit 2026-10-01); both used to be dropped here
+  const qs = new URLSearchParams();
+  for (const key of ['code', 't']) {
+    const v = typeof req.query[key] === 'string' ? req.query[key].replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 600) : '';
+    if (v) qs.set(key, v);
+  }
+  const appQuery = qs.toString() ? `?${qs.toString()}` : '';
   const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
 
   // Personalize the page and its link preview (OpenGraph) with the inviter's
@@ -254,9 +263,9 @@ app.get('/connect/:userId', async (req, res) => {
 </head>
 <body style="font-family:-apple-system,Helvetica,Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#3182CE;color:#fff;text-align:center">
 <div><h1>${heading}</h1><p>If nothing happens, get the app and join ${safeName ? 'them' : 'me'}:</p>
-<a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Download Circles</a></div>
+<a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Download FavCircles</a></div>
 <script>
-  window.location = 'circles://connect/${userId}';
+  window.location = 'circles://connect/${userId}${appQuery}';
   setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
 </script>
 </body></html>`);
