@@ -69,6 +69,10 @@ router.route('/global/:placeId/photos/order')
 router.route('/global/:placeId/photos/cover')
   .put(require('../controllers/globalPlaceController').setPlaceCoverPhoto);
 
+// Shared details: store team / super-user, one path (venueDetailsService)
+router.route('/global/:placeId/details')
+  .patch(require('../controllers/globalPlaceController').updatePlaceDetails);
+
 router.route('/global/:placeId/media/:photoId/like')
   .post(require('../controllers/globalPlaceController').likeGlobalPlaceUpload)
   .delete(require('../controllers/globalPlaceController').unlikeGlobalPlaceUpload);

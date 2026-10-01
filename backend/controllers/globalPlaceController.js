@@ -306,7 +306,10 @@ exports.getGlobalPlace = async (req, res, next) => {
         globalPlace: placeData,
         userRelation: userRelation,
         representativeSave: representativeSave,
-        photoRights
+        photoRights,
+        // Shared details (name, address, hours, …): the same people who
+        // manage the photos — the store's team and admins
+        detailRights: { canEdit: photoRights.canManage }
       }
     });
   } catch (error) {
@@ -1177,5 +1180,23 @@ exports.unlikeGlobalPlaceUpload = async (req, res, next) => {
     if (error.status) return sendServiceError(res, error, { log: '[place-photos] unlike failed' });
     console.error('❌ [GlobalPlace API] Error unliking Global Place upload:', error);
     next(error);
+  }
+};
+
+// @desc    Change a place's shared details (name, address/location, category,
+//          description, phone, website, hours) — the store's team or an admin
+//          only; one write to the place record, copied to every save
+// @route   PATCH /api/places/global/:placeId/details   (:placeId = venue or save id)
+// @access  Venue owner/manager or super-user
+exports.updatePlaceDetails = async (req, res) => {
+  const venueDetails = require('../services/venueDetailsService');
+  const { sendServiceError } = require('../utils/serviceError');
+  try {
+    const { globalPlaceDoc } = await resolveGlobalPlace(req.params.placeId);
+    if (!globalPlaceDoc) return res.status(404).json({ success: false, code: 'PLACE_NOT_FOUND', message: 'Place not found' });
+    const data = await venueDetails.updateVenueDetails({ globalPlaceId: globalPlaceDoc.id, user: req.user, fields: req.body || {} });
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Place details update failed', fallbackMessage: 'Could not update this place' });
   }
 };

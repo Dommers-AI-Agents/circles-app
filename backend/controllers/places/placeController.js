@@ -32,6 +32,8 @@ const homePromptService = require('../../services/homePromptService');
 const db = getFirestore();
 const googleMapsClient = new Client({});
 const { propagateVenueUpdates } = require('../../services/placeVenueSync.js');
+const venueDetails = require('../../services/venueDetailsService');
+const { sendServiceError } = require('../../utils/serviceError');
 
 // A verified store owner (approved ownership claim → stickerVenues.ownerUserId)
 // — or a manager the owner invited (managerUserIds) — edits their venue's
@@ -1376,7 +1378,9 @@ exports.updatePlace = async (req, res, next) => {
     // restricted to venue fields below; per-user fields stay untouchable.
     let isVenueOwnerEdit = false;
     if (!isCircleOwner && !isSharedWith && !isPlaceAdder) {
-      isVenueOwnerEdit = await isVerifiedVenueOwner(req.user.uid, req.params.id, place.googlePlaceId);
+      // Super-users too: shared details are theirs to correct on any save
+      isVenueOwnerEdit = req.user.isSuperUser === true
+        || await isVerifiedVenueOwner(req.user.uid, req.params.id, place.googlePlaceId);
       if (!isVenueOwnerEdit) {
         // Private notes belong on the CALLER's save of the venue, but the app
         // may be showing another user's copy (opened via their circle/feed).
@@ -1464,38 +1468,55 @@ exports.updatePlace = async (req, res, next) => {
       }
     }
 
-    // Google-backed places: Google Places is the source of truth for venue
-    // fields, so users can't edit them (they can flag bad data instead —
-    // POST /places/:id/flag). Super-users and the venue's verified owner
-    // (approved ownership claim) can still correct anything.
-    // Manually created places (no googlePlaceId — home/work, custom spots)
-    // keep editable venue fields since there is no Google record behind them.
-    const isGoogleBacked = !!place.googlePlaceId;
-    if (isGoogleBacked && req.user.isSuperUser !== true) {
-      const lockedFields = [
-        'name', 'address', 'location', 'geohash', 'category', 'subcategory',
-        'website', 'phone', 'rating', 'userRatingsTotal', 'priceLevel',
-        'openingHours', 'googlePlaceId'
-      ];
-      const touched = lockedFields.filter((field) => field in updateData);
-      if (touched.length > 0
-          && !(await isVerifiedVenueOwner(req.user.uid, req.params.id, place.googlePlaceId))) {
-        touched.forEach((field) => delete updateData[field]);
-        console.log(`🔒 Venue fields stripped from update of Google-backed place ${req.params.id}: ${touched.join(', ')}`);
+    // Shared details (name, address, category, description, phone, website,
+    // hours) belong to the VENUE, not this save: they change only through
+    // venueDetailsService, and only for a super-user or the store's team
+    // (Wes, 2026-10-01: the Google/Apple import is the truth; an owner or an
+    // admin may correct it, never an ordinary saver). Google-derived numbers
+    // are never client-writable.
+    const detailFields = venueDetails.pickDetailFields(updateData);
+    [...venueDetails.DETAIL_FIELDS, 'geohash', 'rating', 'userRatingsTotal', 'priceLevel', 'googlePlaceId']
+      .forEach((field) => delete updateData[field]);
+
+    // Venue team / super-user editing a save that isn't theirs: details only —
+    // tags, privacy, photos, notes belong to whoever saved it.
+    if (isVenueOwnerEdit) {
+      Object.keys(updateData).forEach((field) => { if (field !== 'updatedAt') delete updateData[field]; });
+    }
+
+    if (Object.keys(detailFields).length > 0) {
+      const globalPlaceId = place.globalPlaceId || await ensureGlobalPlaceLink(placeDoc);
+      const venueDoc = globalPlaceId
+        ? await db.collection('globalPlaces').doc(globalPlaceId).get()
+        : null;
+      const venue = venueDoc && venueDoc.exists ? venueDoc.data() : {};
+      // Builds up to 1.3.6 resend name/address/category with every save, even
+      // a notes-only one — an unchanged echo is not an edit
+      const changed = venueDetails.changedDetailFields(detailFields, venue);
+      if (changed.length > 0) {
+        const allowed = !!globalPlaceId && await venueDetails.canEditDetails(req.user, globalPlaceId, venue);
+        const personalChanges = Object.keys(updateData).filter((field) => field !== 'updatedAt');
+        if (allowed) {
+          const fields = {};
+          changed.forEach((field) => { fields[field] = detailFields[field]; });
+          try {
+            await venueDetails.updateVenueDetails({ globalPlaceId, user: req.user, fields });
+          } catch (detailError) {
+            return sendServiceError(res, detailError, { log: 'Venue details update failed', fallbackMessage: 'Could not update this place' });
+          }
+        } else if (personalChanges.length === 0) {
+          return res.status(403).json({ success: false, code: 'DETAILS_LOCKED', message: venueDetails.NOT_ALLOWED_MESSAGE });
+        } else {
+          // An older app saving notes/privacy alongside a details change it
+          // can no longer make: keep the personal part, skip the rest
+          console.log(`🔒 Details unchanged on ${req.params.id} (${changed.join(', ')}): not the owner or an admin`);
+        }
       }
     }
 
-    // Venue owners editing a save that isn't theirs may only touch venue
-    // fields — tags, privacy, photos, notes belong to whoever saved it.
     if (isVenueOwnerEdit) {
-      const VENUE_FIELDS = [
-        'name', 'address', 'location', 'geohash', 'category', 'subcategory',
-        'website', 'phone', 'rating', 'userRatingsTotal', 'priceLevel',
-        'openingHours', 'updatedAt'
-      ];
-      Object.keys(updateData).forEach((field) => {
-        if (!VENUE_FIELDS.includes(field)) delete updateData[field];
-      });
+      const refreshed = await placeRef.get();
+      return res.status(200).json({ success: true, place: serializeDoc(refreshed) });
     }
 
     // privateNotes belong to the person who added the place — reads already
@@ -1942,67 +1963,18 @@ exports.updatePlaceAddress = async (req, res, next) => {
     
     const place = serializeDoc(placeDoc);
     
-    // Check permissions
-    const isOwner = place.addedBy === req.user.uid;
-    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(place.circleId);
-    const circleDoc = await circleRef.get();
-    
-    if (!circleDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: 'Associated circle not found'
+    // A shared detail: the venue's owner/managers or a super-user, through
+    // the one details path (it updates every save of the venue, this one too)
+    const globalPlaceId = place.globalPlaceId || await ensureGlobalPlaceLink(placeDoc);
+    try {
+      await venueDetails.updateVenueDetails({
+        globalPlaceId,
+        user: req.user,
+        fields: location ? { address, location } : { address }
       });
+    } catch (detailError) {
+      return sendServiceError(res, detailError, { log: 'Address update failed', fallbackMessage: 'Could not update the address' });
     }
-    
-    const circle = serializeDoc(circleDoc);
-    const isCircleOwner = circle.owner === req.user.uid;
-    const isCircleMember = circle.sharedWith && circle.sharedWith.includes(req.user.uid);
-    
-    if (!isOwner && !isCircleOwner && !isCircleMember) {
-      return res.status(403).json({
-        success: false,
-        message: 'You do not have permission to update this place'
-      });
-    }
-
-    // Google-backed places: address comes from Google Places — users flag bad
-    // data instead of editing it (same policy as updatePlace)
-    if (place.googlePlaceId && req.user.isSuperUser !== true) {
-      return res.status(403).json({
-        success: false,
-        message: "This place's information comes from Google Places and can't be edited. If it's wrong, use \"Report incorrect info\" on the place page."
-      });
-    }
-
-    // Prepare update data
-    const updateData = {
-      address: address.trim(),
-      updatedAt: new Date().toISOString()
-    };
-    
-    // Add location if provided
-    if (location) {
-      updateData.location = location;
-      console.log(`📍 Updating location for place ${req.params.id} to:`, location.coordinates);
-
-      // Keep the geohash in sync with the location (geofire expects [lat, lng])
-      if (Array.isArray(location.coordinates)) {
-        const [longitude, latitude] = location.coordinates;
-        if (typeof longitude === 'number' && typeof latitude === 'number' &&
-            longitude >= -180 && longitude <= 180 &&
-            latitude >= -90 && latitude <= 90 &&
-            !(longitude === -180 && latitude === -180)) {
-          updateData.geohash = geofire.geohashForLocation([latitude, longitude]);
-        }
-      }
-    }
-    
-    // Update the place
-    await placeRef.update(updateData);
-
-    // An address correction is a venue-level fix: update the canonical record
-    // and every other saved copy of this venue
-    await propagateVenueUpdates(req.params.id, place.globalPlaceId, updateData);
 
     // Get the updated place
     const updatedDoc = await placeRef.get();

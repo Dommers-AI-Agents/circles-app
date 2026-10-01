@@ -4,6 +4,7 @@
 const { getFirestore } = require('../../config/firebase');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { validateEarnRate, STICKER_COLLECTIONS } = require('../../models/StickerModels');
+const venueDetails = require('../../services/venueDetailsService');
 const rewardService = require('../../services/rewardService');
 const emailService = require('../../services/emailService');
 const { GLOBAL_COLLECTIONS } = require('../../models/GlobalPlace');
@@ -473,113 +474,36 @@ exports.updateVenuePlace = async (req, res) => {
     if (!globalPlaceId) {
       return res.status(400).json({ success: false, error: 'This venue has no linked place record' });
     }
-
     const { name, description, category, phone, website, openingHours } = req.body;
-    const VALID_CATEGORIES = ['restaurant', 'cafe', 'bar', 'hotel', 'retail', 'service', 'attraction',
-      'entertainment', 'healthcare', 'fitness', 'education', 'outdoor', 'transport', 'finance', 'other'];
-
-    const updates = {};
-    if (typeof name === 'string' && name.trim()) updates.name = name.trim();
-    if (typeof description === 'string') {
-      // Description is prose — contact data lives in its own fields
-      updates.description = description
-        .split('\n')
-        .filter((line) => !/^\s*(Phone|Website):/i.test(line))
-        .join('\n')
-        .trim();
-    }
-    if (typeof category === 'string' && category) {
-      if (!VALID_CATEGORIES.includes(category)) {
-        return res.status(400).json({ success: false, error: `Invalid category. Valid: ${VALID_CATEGORIES.join(', ')}` });
-      }
-      updates.category = category;
-    }
-    if (typeof phone === 'string') updates['googleData.phone'] = phone.trim();
-    if (typeof website === 'string') updates['googleData.website'] = website.trim();
-
-    // Owner-set hours REPLACE the stored week, in the exact shape the iOS
-    // place page renders: [{day 0=Sunday..6, open "HH:MM", close, isClosed}]
-    if (openingHours !== undefined) {
-      if (!Array.isArray(openingHours) || openingHours.length === 0) {
-        return res.status(400).json({ success: false, error: 'openingHours must be a non-empty array of {day, open, close, isClosed}' });
-      }
-      const timeRe = /^([01]?\d|2[0-3]):[0-5]\d$/;
-      const hourErrors = [];
-      const cleaned = [];
-      const seenDays = new Set();
-      openingHours.forEach((h, i) => {
-        const day = Number(h && h.day);
-        if (!Number.isInteger(day) || day < 0 || day > 6) {
-          hourErrors.push(`entry ${i}: day must be 0 (Sunday) through 6 (Saturday)`);
-          return;
-        }
-        if (seenDays.has(day)) {
-          hourErrors.push(`entry ${i}: duplicate day ${day}`);
-          return;
-        }
-        seenDays.add(day);
-        const isClosed = h.isClosed === true;
-        if (!isClosed && (!timeRe.test(h.open || '') || !timeRe.test(h.close || ''))) {
-          hourErrors.push(`entry ${i}: open/close must be 24h "HH:MM" unless isClosed is true`);
-          return;
-        }
-        cleaned.push({ day, open: isClosed ? null : h.open, close: isClosed ? null : h.close, isClosed });
-      });
-      if (hourErrors.length > 0) {
-        return res.status(400).json({ success: false, error: hourErrors.join('; ') });
-      }
-      updates['googleData.openingHours'] = cleaned.sort((a, b) => a.day - b.day);
-      // Owner-set hours must survive any future Google-data refresh
-      updates['googleData.hoursSource'] = 'owner';
-    }
-
-    if (Object.keys(updates).length === 0) {
+    const fields = {};
+    if (typeof name === 'string' && name.trim()) fields.name = name;
+    if (typeof description === 'string') fields.description = description;
+    if (typeof category === 'string' && category) fields.category = category;
+    if (typeof phone === 'string') fields.phone = phone;
+    if (typeof website === 'string') fields.website = website;
+    if (openingHours !== undefined) fields.openingHours = openingHours;
+    if (Object.keys(fields).length === 0) {
       return res.status(400).json({ success: false, error: 'Nothing to update — provide name, description, category, phone, website, or openingHours' });
     }
-
-    if (updates.name) {
-      const { buildSearchTokens } = require('../../models/GlobalPlace');
-      updates.nameLower = updates.name.toLowerCase();
-      updates.searchTokens = buildSearchTokens(updates.name);
-    }
-    updates.updatedAt = new Date().toISOString();
-
-    const gpRef = db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId);
-    await gpRef.update(updates);
-
-    // Fan denormalized query-cache fields out to every save doc
-    const cacheUpdates = {};
-    if (updates.name) cacheUpdates.name = updates.name;
-    if (updates.category) cacheUpdates.category = updates.category;
-    if (Object.keys(cacheUpdates).length > 0) {
-      const savesSnapshot = await db.collection(COLLECTIONS.PLACES)
-        .where('globalPlaceId', '==', globalPlaceId).get();
-      const batch = db.batch();
-      savesSnapshot.docs.forEach((doc) => batch.update(doc.ref, cacheUpdates));
-      await batch.commit();
-      // Keep the venue's own place-name cache in step (venueName — the
-      // store's brand name in the rewards program — stays owner-controlled)
-      if (updates.name) {
-        await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
-          .doc(venue.venueId).update({ placeName: updates.name, updatedAt: new Date().toISOString() });
-      }
-    }
-
-    const gpDoc = await gpRef.get();
-    const g = gpDoc.data();
+    // The one details path: writes the place record, every save's cache and
+    // the store's placeName (services/venueDetailsService)
+    const details = await venueDetails.updateVenueDetails({ globalPlaceId, user: req.user, fields });
     res.json({
       success: true,
       data: {
         globalPlaceId,
-        name: g.name,
-        description: g.description || null,
-        category: g.category || null,
-        phone: (g.googleData || {}).phone || null,
-        website: (g.googleData || {}).website || null,
-        openingHours: (g.googleData || {}).openingHours || null
+        name: details.name,
+        description: details.description,
+        category: details.category,
+        phone: details.phone,
+        website: details.website,
+        openingHours: details.openingHours
       }
     });
   } catch (error) {
+    if (error && error.status && error.code) {
+      return res.status(error.status).json({ success: false, error: error.message });
+    }
     console.error('❌ Failed to update venue place:', error);
     res.status(500).json({ success: false, error: 'Failed to update store details' });
   }
