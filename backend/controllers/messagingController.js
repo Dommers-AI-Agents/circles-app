@@ -27,9 +27,8 @@ const db = getFirestore();
 // Participant/sender cards go through the public projection — these used to
 // be serializeDoc() of the whole user doc (phone, device tokens, follower
 // graph, blocked lists) sent to the other side of every chat (security audit
-// 2026-10-01). Direct-chat partners keep `email`, a documented iOS contract
-// (publicUserProjection.js); new group conversations don't get it.
-const partnerCard = (doc) => projectPublicUser(serializeDoc(doc), ['email']);
+// 2026-10-01). No email either: no chat screen uses a partner's address.
+const partnerCard = (doc) => projectPublicUser(serializeDoc(doc));
 const publicCard = (doc) => projectPublicUser(serializeDoc(doc));
 
 // @desc    Get all conversations for a user
