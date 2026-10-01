@@ -89,6 +89,7 @@ const corsOptions = {
       'https://www.circles-app.com',
       'https://favcircles.com',
       'https://www.favcircles.com',
+      'https://api.favcircles.com', // the admin dashboard, served by this server
       'capacitor://localhost', // iOS app
       'ionic://localhost', // iOS app alternative
       'http://localhost' // iOS app WebView

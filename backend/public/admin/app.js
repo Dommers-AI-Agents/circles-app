@@ -57,7 +57,18 @@
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body.token) throw new Error(body.message || 'That email and password didn’t match.');
-      token = body.token;
+      // Trade the app's full sign-in for a dashboard-only one; the full
+      // token is used once here and never stored in the browser.
+      const issued = await fetch(`${API}/admin/dashboard/handoff`, { method: 'POST', headers: { Authorization: `Bearer ${body.token}` } });
+      const issuedBody = await issued.json().catch(() => ({}));
+      if (issued.status === 403) throw new Error("This account isn't an admin.");
+      if (!issued.ok || !issuedBody.code) throw new Error(issuedBody.message || 'Could not open the dashboard.');
+      const traded = await fetch(`${API}/admin/dashboard/handoff/redeem`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: issuedBody.code })
+      });
+      const tradedBody = await traded.json().catch(() => ({}));
+      if (!traded.ok || !tradedBody.token) throw new Error(tradedBody.message || 'Could not open the dashboard.');
+      token = tradedBody.token;
       try { sessionStorage.setItem(TOKEN_KEY, token); } catch (e) {}
       await api('/admin/dashboard/me');
       $('#password').value = '';

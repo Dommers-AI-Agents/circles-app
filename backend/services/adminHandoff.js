@@ -7,15 +7,19 @@
 // seen in a log or a screenshot is useless a minute later. The page gets
 // its own 12-hour token, never the app's long-lived one.
 const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
 const { getFirestore } = require('../config/firebase');
 const { ServiceError } = require('../utils/serviceError');
 
 const COLLECTION = 'adminHandoffs';
 const CODE_TTL_MS = 60 * 1000;
-const PAGE_TOKEN_TTL = '12h';
 
-const hash = (code) => crypto.createHash('sha256').update(String(code)).digest('hex');
+// Keyed with the server secret, so stored hashes are useless without it
+const hash = (value) => crypto.createHmac('sha256', process.env.JWT_SECRET || '').update(String(value)).digest('hex');
+const { signDashboardToken } = require('../middleware/adminDashboardAuth');
+const sameHash = (a, b) => {
+  const x = Buffer.from(String(a)); const y = Buffer.from(String(b));
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+};
 const db = () => getFirestore();
 
 const issue = async (uid) => {
@@ -39,8 +43,7 @@ const redeem = async (code) => {
   });
   const user = await db().collection('users').doc(uid).get();
   if (!user.exists || user.data().isSuperUser !== true) throw new ServiceError(403, 'NOT_ADMIN', "This account isn't an admin.");
-  const token = jwt.sign({ uid }, process.env.JWT_SECRET, { expiresIn: PAGE_TOKEN_TTL });
-  return { token };
+  return { token: signDashboardToken(uid) };
 };
 
 module.exports = { issue, redeem, hash, CODE_TTL_MS };
@@ -54,6 +57,20 @@ const EMAIL_CODES = 'adminEmailCodes';
 const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
 const RESEND_GAP_MS = 60 * 1000;
 const MAX_TRIES = 5;
+const GUARD = 'adminEmailCodeGuards';
+const MAX_CODES_PER_DAY = 10;
+const MAX_FAILURES_PER_DAY = 10;
+const LOCK_MS = 24 * 60 * 60 * 1000;
+
+/** Per-email limits across codes: 10 codes a day; 10 wrong guesses locks it for 24 h. */
+const guardFor = async (email) => {
+  const ref = db().collection(GUARD).doc(hash(`guard:${email}`));
+  const snap = await ref.get();
+  const today = new Date().toISOString().slice(0, 10);
+  const data = snap.exists ? snap.data() : {};
+  const fresh = data.day === today ? data : { day: today, requests: 0, failures: 0, lockedUntil: data.lockedUntil || null };
+  return { ref, data: fresh, locked: Boolean(fresh.lockedUntil && Date.parse(fresh.lockedUntil) > Date.now()) };
+};
 
 const findAdminByEmail = async (email) => {
   const snap = await db().collection('users').where('email', '==', email).limit(5).get();
@@ -66,10 +83,16 @@ const requestEmailCode = async (rawEmail) => {
   if (!email.includes('@')) throw new ServiceError(400, 'BAD_EMAIL', 'Enter the email on your FavCircles account.');
   const admin = await findAdminByEmail(email);
   if (!admin) return { sent: true };
+  const guard = await guardFor(email);
+  if (guard.locked || guard.data.requests >= MAX_CODES_PER_DAY) {
+    console.warn(`🔑 Admin email code refused for ${admin.uid}: ${guard.locked ? 'locked' : 'daily limit'}`);
+    return { sent: true };
+  }
   const ref = db().collection(EMAIL_CODES).doc(hash(email));
   const prior = await ref.get();
   if (prior.exists && Date.now() - Date.parse(prior.data().createdAt) < RESEND_GAP_MS) return { sent: true };
   const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  await guard.ref.set({ ...guard.data, requests: guard.data.requests + 1 }, { merge: true });
   await ref.set({ uid: admin.uid, codeHash: hash(`${email}:${code}`), tries: 0,
     createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + EMAIL_CODE_TTL_MS).toISOString() });
   const emailService = require('./emailService');
@@ -91,22 +114,37 @@ const verifyEmailCode = async (rawEmail, rawCode) => {
   const email = String(rawEmail || '').trim().toLowerCase();
   const code = String(rawCode || '').replace(/\D/g, '');
   const ref = db().collection(EMAIL_CODES).doc(hash(email));
-  const uid = await db().runTransaction(async (tx) => {
+  const guard = await guardFor(email);
+  if (guard.locked) throw new ServiceError(429, 'LOCKED', 'Too many wrong codes. Email sign-in is paused for 24 hours; use your password or the app.');
+  let failed = false;
+  let uid;
+  try {
+    uid = await db().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const bad = new ServiceError(401, 'BAD_CODE', "That code didn't work. Check the email, or ask for a new code.");
-    if (!snap.exists) throw bad;
+    if (!snap.exists) { failed = true; throw bad; }
     const data = snap.data();
     if (Date.parse(data.expiresAt) < Date.now()) { tx.delete(ref); throw new ServiceError(401, 'CODE_EXPIRED', 'That code expired. Ask for a new one.'); }
-    if (data.codeHash !== hash(`${email}:${code}`)) {
+    if (!sameHash(data.codeHash, hash(`${email}:${code}`))) {
       if (data.tries + 1 >= MAX_TRIES) tx.delete(ref); else tx.update(ref, { tries: data.tries + 1 });
+      failed = true;
       throw bad;
     }
     tx.delete(ref); // single use
     return data.uid;
   });
+  } catch (error) {
+    if (failed) {
+      const failures = (guard.data.failures || 0) + 1;
+      const lock = failures >= MAX_FAILURES_PER_DAY ? { lockedUntil: new Date(Date.now() + LOCK_MS).toISOString() } : {};
+      await guard.ref.set({ ...guard.data, failures, ...lock }, { merge: true });
+      if (lock.lockedUntil) console.warn('🔑 Admin email sign-in locked for 24 h after repeated wrong codes');
+    }
+    throw error;
+  }
   const user = await db().collection('users').doc(uid).get();
   if (!user.exists || user.data().isSuperUser !== true) throw new ServiceError(403, 'NOT_ADMIN', "This account isn't an admin.");
-  return { token: jwt.sign({ uid }, process.env.JWT_SECRET, { expiresIn: PAGE_TOKEN_TTL }) };
+  return { token: signDashboardToken(uid) };
 };
 
 module.exports.requestEmailCode = requestEmailCode;
