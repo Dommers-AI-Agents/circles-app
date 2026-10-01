@@ -543,6 +543,8 @@ class AuthService {
     func logout(completion: ((Bool) -> Void)? = nil) {
         // The next account on this phone must report its own push permission
         UserDefaults.standard.removeObject(forKey: "lastReportedPushStatus")
+        // …and its own analytics / crash-report identity
+        AnalyticsService.shared.setUserId(nil)
         // Handle notifications cleanup
         NotificationService.shared.handleUserLogout()
         

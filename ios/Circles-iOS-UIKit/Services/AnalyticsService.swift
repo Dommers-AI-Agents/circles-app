@@ -1,5 +1,6 @@
 import Foundation
 import FirebaseAnalytics
+import FirebaseCrashlytics
 
 /**
  * Centralized Analytics Service for Circles App
@@ -153,6 +154,9 @@ final class AnalyticsService {
     func setUserId(_ userId: String?) {
         self.userId = userId
         
+        // Crash reports carry the same opaque account id, so a crash can be
+        // matched to the account that hit it (no name or email)
+        Crashlytics.crashlytics().setUserID(userId ?? "")
         if let userId = userId {
             Analytics.setUserID(userId)
             userDefaults.set(userId, forKey: kAnalyticsUserId)

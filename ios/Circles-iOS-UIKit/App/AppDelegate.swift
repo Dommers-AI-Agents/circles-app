@@ -41,6 +41,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         
         // Configure Firebase first
         FirebaseApp.configure()
+        // Returning sessions: tag crash reports with the signed-in account id
+        if let uid = AuthService.shared.getUserId() { Crashlytics.crashlytics().setUserID(uid) }
         
         // Initialize Analytics Service
         AnalyticsService.shared.initialize(withConsent: true)
