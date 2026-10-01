@@ -271,3 +271,19 @@ exports.mergeUserAccounts = async (req, res, next) => {
     sendServiceError(res, error, { log: 'Error merging accounts', fallbackCode: 'merge_failed', fallbackMessage: 'Could not merge accounts' });
   }
 };
+
+// @route   DELETE /api/users/me
+// Deletes the caller's account and their data (services/accountDeletionService).
+exports.deleteMyAccount = async (req, res) => {
+  const uid = req.user.firebaseDocId || req.user.uid;
+  try {
+    const { deleteAccount } = require('../../services/accountDeletionService');
+    const result = await deleteAccount(uid);
+    invalidateUserCache(uid);
+    console.log(`🗑️ Account deleted: ${uid}`, result.counts);
+    res.status(200).json({ success: true, message: 'Your account and data were deleted.' });
+  } catch (error) {
+    invalidateUserCache(uid);
+    sendServiceError(res, error, { log: 'Error deleting account', fallbackCode: 'delete_failed', fallbackMessage: 'Could not delete your account. Please try again.' });
+  }
+};

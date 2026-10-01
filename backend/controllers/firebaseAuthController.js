@@ -54,7 +54,7 @@ async function exchangeLinkedInCode(code) {
   return data.access_token;
 }
 
-// Provider token checks (Apple signature/audience, Google aud, Facebook app id)
+// Provider token checks (Apple signature/audience, Google aud)
 // and which email may match an existing account: services/socialIdentity.
 const socialIdentity = require('../services/socialIdentity');
 const verifyAppleToken = (idToken) => socialIdentity.verifyAppleToken(idToken);
@@ -106,29 +106,7 @@ exports.firebaseAuth = async (req, res, next) => {
       } catch (appleError) {
         console.log('⚠️ Apple token failed:', appleError.message);
         
-        // Try Facebook token verification
-        try {
-          const fbResponse = await fetch(`https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${idToken}`);
-          const fbData = await fbResponse.json();
-          
-          if (fbResponse.ok && fbData.id) {
-            // A token issued to any other Facebook app must not sign in here
-            if (!(await socialIdentity.facebookTokenIsOurs(idToken))) {
-              throw new Error('Facebook token was not issued to FavCircles');
-            }
-            uid = `fb_${fbData.id}`;
-            email = fbData.email || null;
-            name = providedName || fbData.name;
-            picture = fbData.picture?.data?.url;
-            provider = 'facebook';
-            console.log('✅ Facebook token verified successfully');
-            console.log('Facebook user data:', { uid, email, name });
-          } else {
-            throw new Error('Invalid Facebook token');
-          }
-        } catch (facebookError) {
-          console.log('⚠️ Facebook token failed:', facebookError.message);
-          
+        // Facebook sign-in was retired (Wes, 2026-10-01: no Facebook API use)
           // Try LinkedIn token verification
           try {
             // For LinkedIn, we might receive either an auth code or access token
@@ -198,7 +176,6 @@ exports.firebaseAuth = async (req, res, next) => {
               console.error('All token verification methods failed:');
               console.error('Firebase error:', firebaseError.message);
               console.error('Apple error:', appleError.message);
-              console.error('Facebook error:', facebookError.message);
               console.error('LinkedIn error:', linkedInError.message);
               console.error('Google error:', googleError.message);
               return res.status(401).json({
@@ -207,7 +184,6 @@ exports.firebaseAuth = async (req, res, next) => {
               });
             }
           }
-        }
       }
     }
 
@@ -1348,77 +1324,6 @@ exports.refreshToken = async (req, res, next) => {
   } catch (error) {
     console.error('Refresh token error:', error);
     next(error);
-  }
-};
-
-// @desc    Handle Facebook data deletion request
-// @route   POST /api/auth/facebook-deauthorize
-// @access  Public
-exports.facebookDataDeletion = async (req, res, next) => {
-  try {
-    const { signed_request } = req.body;
-    
-    if (!signed_request) {
-      return res.status(400).json({
-        success: false,
-        message: 'signed_request is required'
-      });
-    }
-    
-    // Facebook signs this with our app secret. It used to be decoded and
-    // trusted, so anyone could post a made-up user id and have that account
-    // deleted (security audit 2026-10-01). Verify, and fail closed when the
-    // secret isn't configured.
-    const appSecret = process.env.FACEBOOK_APP_SECRET;
-    if (!appSecret) {
-      console.error('❌ facebook-deauthorize: FACEBOOK_APP_SECRET not set — refusing');
-      return res.status(503).json({ success: false, message: 'Not configured' });
-    }
-    const [encodedSig, payload] = String(signed_request).split('.');
-    if (!encodedSig || !payload) {
-      return res.status(400).json({ success: false, message: 'Invalid signed request' });
-    }
-    const crypto = require('crypto');
-    const expected = crypto.createHmac('sha256', appSecret).update(payload).digest();
-    const given = Buffer.from(encodedSig.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
-    if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) {
-      return res.status(401).json({ success: false, message: 'Invalid signature' });
-    }
-    const decodedPayload = JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());
-
-    // Extract user ID
-    const userId = decodedPayload.user_id;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid signed request'
-      });
-    }
-
-    // Record the request; never delete here. A bare doc delete orphaned the
-    // person's places, messages and circles — removal goes through account
-    // deletion, done deliberately.
-    const fbUserId = `fb_${userId}`;
-    await db.collection('facebookDeletionRequests').doc(fbUserId).set({
-      facebookUserId: String(userId),
-      requestedAt: new Date().toISOString()
-    }, { merge: true });
-    console.log(`📝 Facebook data deletion requested for ${fbUserId}`);
-
-    // Return confirmation
-    const confirmationCode = `DEL_${userId}_${Date.now()}`;
-    
-    res.status(200).json({
-      url: `${process.env.API_URL || 'https://yourapi.com'}/data-deletion-status?code=${confirmationCode}`,
-      confirmation_code: confirmationCode
-    });
-  } catch (error) {
-    console.error('Facebook data deletion error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to process data deletion request'
-    });
   }
 };
 

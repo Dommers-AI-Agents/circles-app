@@ -492,6 +492,9 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/sse', sseRoutes);
 app.use('/api', activityRoutes);
 app.use('/api/app', require('./routes/appRoutes'));
+// Block / unblock (App Store guideline 1.2). The router existed but was never
+// mounted, so every block in the app failed with a 404 (security audit 2026-10-01).
+app.use('/api/blocks', require('./routes/blockRoutes'));
 app.use('/api/email', require('./routes/emailPreferenceRoutes')); // one-click unsubscribe, signed links
 // Test sends take any `toEmail` — an open relay from favcircles.com in
 // production (security audit 2026-10-01). Local/dev only.

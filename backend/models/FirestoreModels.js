@@ -45,6 +45,8 @@ const COLLECTIONS = {
   WEBAUTHN_CHALLENGES: 'webauthnChallenges',
   // Home Widgets tab: opaque per-user JSON docs keyed `${uid}_${widgetId}`
   WIDGET_DATA: 'widgetData',
+  // One doc per block (blocker → blocked); users.blockedUsers/blockedBy are the fast filters
+  BLOCKS: 'blocks',
   // NextBar widget social rounds: shared docs, participantIds array-contains
   NEXTBAR_ROUNDS: 'nextbarRounds',
   POSTCARD_SHARES: 'postcardShares', // public postcard pages, doc id = share token

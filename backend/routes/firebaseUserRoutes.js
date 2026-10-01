@@ -53,7 +53,8 @@ const {
 const {
   findDuplicateAccounts,
   checkDuplicateConnections,
-  mergeUserAccounts
+  mergeUserAccounts,
+  deleteMyAccount
 } = require('../controllers/users/accountAdminController');
 const { changePassword } = require('../controllers/firebaseAuthController');
 const { protect } = require('../middleware/firebaseAuth');
@@ -77,7 +78,10 @@ router.route('/search')
 
 router.route('/me')
   .get(getUser)
-  .put(updateUser);
+  .put(updateUser)
+  // Settings → Delete account (App Store 5.1.1(v)); the app always called
+  // this but the route was missing
+  .delete(deleteMyAccount);
 
 router.route('/me/friends')
   .get(getFriends);
