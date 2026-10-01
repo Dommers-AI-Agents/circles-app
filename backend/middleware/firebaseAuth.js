@@ -70,7 +70,12 @@ exports.protect = async (req, res, next) => {
 
     try {
       // Verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+      // A purpose-scoped token (e.g. the Swarm import `state`) is signed with
+      // the same secret but is not a session (security audit 2026-10-01)
+      if (decoded.purpose) {
+        return res.status(401).json({ success: false, message: 'Not authorized, token failed' });
+      }
 
       // Normalize the user ID using our centralized service
       const normalizedUid = normalizeUserId(decoded.uid);

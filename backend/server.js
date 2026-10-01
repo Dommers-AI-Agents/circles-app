@@ -102,7 +102,9 @@ const corsOptions = {
     
     // In production, check against whitelist
     if (process.env.NODE_ENV === 'production') {
-      if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+      // Exact match: the old startsWith let look-alikes such as
+      // https://favcircles.com.evil.example through (security audit 2026-10-01)
+      if (allowedOrigins.includes(origin) || /^http:\/\/localhost(:\d+)?$/.test(origin)) {
         callback(null, true);
       } else {
         console.warn(`🚫 CORS blocked origin: ${origin}`);
