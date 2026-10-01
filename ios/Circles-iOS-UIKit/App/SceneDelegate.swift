@@ -1161,6 +1161,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // while the messages sat there unread.
             Logger.debug("🔔 SceneDelegate: Syncing notification badge on app activation")
             NotificationService.shared.syncBadge()
+            NotificationService.shared.reportPushStatus()
 
             // Record the app open (throttled inside the service)
             UserService.shared.reportAppOpen()

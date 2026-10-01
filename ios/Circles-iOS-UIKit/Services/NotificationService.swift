@@ -35,6 +35,35 @@ class NotificationService {
         sendDeviceTokenToBackend(token)
     }
     
+    /// Tells the server whether notifications are actually allowed. iOS hands
+    /// out a push token even when they're off, so the token alone can't say;
+    /// the server emails the important things (messages, followers, comments)
+    /// to people a push can't reach. Sent on launch and on every return to
+    /// the app, and only when it changed, since Settings can flip it anytime.
+    func reportPushStatus() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let status: String
+            switch settings.authorizationStatus {
+            case .authorized: status = "authorized"
+            case .denied: status = "denied"
+            case .provisional: status = "provisional"
+            case .ephemeral: status = "ephemeral"
+            case .notDetermined: status = "notDetermined"
+            @unknown default: return
+            }
+            let key = "lastReportedPushStatus"
+            if UserDefaults.standard.string(forKey: key) == status { return }
+            APIService.shared.request(
+                endpoint: "users/push-status",
+                method: .put,
+                body: ["status": status],
+                requiresAuth: true
+            ) { (result: Result<EmptyResponse, APIError>) in
+                if case .success = result { UserDefaults.standard.set(status, forKey: key) }
+            }
+        }
+    }
+
     private func sendDeviceTokenToBackend(_ token: String) {
         Logger.debug("🔔 Sending device token to backend...")
         let body: [String: Any] = [
