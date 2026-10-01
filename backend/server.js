@@ -533,6 +533,15 @@ app.use('/app', appRedirectRoutes);
 // Partner link-outs: the Reserve chip lands on the restaurant's OpenTable page
 app.get('/go/opentable', require('./controllers/opentableLinkController').redirect);
 
+// Admin dashboard: the page is public HTML (it asks you to sign in); every
+// number comes from /api/admin/dashboard, which is super-user only.
+app.use('/api/admin/dashboard', require('./routes/adminDashboardRoutes'));
+app.get(['/admin', '/admin/'], (req, res) => {
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  res.set('Cache-Control', 'no-cache');
+  res.sendFile(path.join(__dirname, 'public', 'admin', 'index.html'));
+});
+
 // Physical sticker QR landing pages (public; AASA covers /s/* for Universal Links)
 app.use('/s', require('./routes/stickerPublicRoutes'));
 

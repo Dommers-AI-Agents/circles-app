@@ -234,6 +234,11 @@ const maybeEmail = (userId, user, notification) => {
       outcome = decide({ notification, user, state: snap.exists ? snap.data() : null });
       if (outcome.next) tx.set(ref, outcome.next);
     });
+    if (outcome.action !== 'skip') {
+      // Counts for the admin dashboard (no addresses, no content)
+      db().collection('emailFallbackLog').add({ type: notification.type, action: outcome.action, at: new Date().toISOString() })
+        .catch(() => {});
+    }
     if (outcome.action === 'send') {
       await send(user.email, buildSingle({ userId, item: outcome.item, buttonLabel: outcome.button }));
       console.log(`📨 Email fallback sent to ${userId} (${notification.type})`);
