@@ -273,6 +273,9 @@ class EngagementNotificationService {
       job,
       runKey,
       query: query || db.collection(COLLECTIONS.USERS),
+      // The deadline is checked between pages and each user costs several
+      // serial reads, so small pages keep the overshoot well inside 300 s.
+      pageSize: 100,
       onPage: async (docs) => {
         for (const doc of docs) {
           const user = { id: doc.id, ...doc.data() };

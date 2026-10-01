@@ -139,6 +139,21 @@ describe('runResumableJob', () => {
     expect(inner).toEqual({ skipped: 'running' });
   });
 
+  test('a new run never inherits the old run\'s done flag or cursor, even if killed mid-run', async () => {
+    const db = new FakeFirestore({ namespaced: true });
+    seed(db, 3);
+    db.rows('jobCursors').set('j', { job: 'j', runKey: 'day1', done: true, lastId: 'u001' });
+    let during = null;
+    const seen = [];
+    const onPage = async (docs) => {
+      docs.forEach((d) => seen.push(d.id));
+      during = db.rows('jobCursors').get('j');
+    };
+    await runResumableJob({ db, job: 'j', runKey: 'day2', query: db.collection('users'), onPage });
+    expect(seen).toEqual(['u000', 'u001', 'u002']);
+    expect(during).toMatchObject({ runKey: 'day2', done: false, lastId: null });
+  });
+
   test('a continuous sweep (no run key) wraps to the top when it ends', async () => {
     const db = new FakeFirestore({ namespaced: true });
     seed(db, 3);

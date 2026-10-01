@@ -134,13 +134,19 @@ async function runResumableJob({
     const sameRun = snap.exists && data.runKey === runKey;
     if (sameRun && runKey !== null && data.done === true) return { skipped: 'already_done' };
     if (data.leaseUntil && new Date(data.leaseUntil).getTime() > now()) return { skipped: 'running' };
+    // Written whole (no spread of the old doc): if this invocation is killed
+    // before its final write, the next tick must see this run's key with no
+    // done flag or cursor carried over from a previous run.
+    const lastId = sameRun ? (data.lastId || null) : null;
     tx.set(ref, {
-      ...data,
       job,
       runKey,
-      leaseUntil: new Date(now() + leaseMs).toISOString()
+      lastId,
+      done: false,
+      leaseUntil: new Date(now() + leaseMs).toISOString(),
+      updatedAt: new Date(now()).toISOString()
     });
-    return { lastId: sameRun ? (data.lastId || null) : null };
+    return { lastId };
   });
   if (claim.skipped) return claim;
 
