@@ -20,6 +20,18 @@ router.post('/handoff/redeem', express.json(), async (req, res) => {
   }
 });
 
+// Public: sign in with a code emailed to an admin address (no password)
+const codeRoute = (fn) => async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, ...(await fn(req.body || {})) });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Admin email code failed', fallbackMessage: 'Something went wrong. Try again in a moment.' });
+  }
+};
+router.post('/email-code/request', express.json(), codeRoute((b) => handoff.requestEmailCode(b.email)));
+router.post('/email-code/verify', express.json(), codeRoute((b) => handoff.verifyEmailCode(b.email, b.code)));
+
 router.use(protect, (req, res, next) => {
   if (req.user && req.user.isSuperUser === true) return next();
   return res.status(403).json({ success: false, code: 'NOT_ADMIN', message: "This account isn't an admin." });

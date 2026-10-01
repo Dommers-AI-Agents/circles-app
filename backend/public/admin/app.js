@@ -71,6 +71,55 @@
     }
   });
 
+  // Sign in with an emailed code instead of a password
+  const showForm = (code) => {
+    $('#loginForm').classList.toggle('hidden', code);
+    $('#codeForm').classList.toggle('hidden', !code);
+    if (code && !$('#codeEmail').value) $('#codeEmail').value = $('#email').value;
+  };
+  $('#useCode').addEventListener('click', () => showForm(true));
+  $('#usePassword').addEventListener('click', () => showForm(false));
+  const post = async (path, body) => {
+    const res = await fetch(`${API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const b = await res.json().catch(() => ({}));
+    if (!res.ok || b.success === false) throw new Error(b.message || 'Something went wrong. Try again.');
+    return b;
+  };
+  $('#sendCode').addEventListener('click', async () => {
+    const err = $('#codeErr');
+    err.classList.remove('ok');
+    err.textContent = '';
+    $('#sendCode').disabled = true;
+    try {
+      await post('/admin/dashboard/email-code/request', { email: $('#codeEmail').value.trim() });
+      err.classList.add('ok');
+      err.textContent = 'If that email belongs to an admin, a code is on its way. It works for 10 minutes.';
+      $('#codeStep').classList.remove('hidden');
+      $('#sendCode').textContent = 'Send another code';
+      $('#code').focus();
+    } catch (e) {
+      err.textContent = e.message;
+    } finally {
+      setTimeout(() => { $('#sendCode').disabled = false; }, 30000);
+    }
+  });
+  $('#codeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = $('#codeErr');
+    err.classList.remove('ok');
+    err.textContent = '';
+    try {
+      const b = await post('/admin/dashboard/email-code/verify', { email: $('#codeEmail').value.trim(), code: $('#code').value });
+      token = b.token;
+      try { sessionStorage.setItem(TOKEN_KEY, token); } catch (x) {}
+      $('#code').value = '';
+      show('app');
+      load();
+    } catch (x) {
+      err.textContent = x.message;
+    }
+  });
+
   $('#signOut').addEventListener('click', () => signOut());
   $('#range').addEventListener('change', () => load());
   $('#refresh').addEventListener('click', () => load(true));
