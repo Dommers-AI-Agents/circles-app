@@ -49,7 +49,7 @@
     e.preventDefault();
     $('#loginErr').textContent = '';
     $('#signInBtn').disabled = true;
-    $('#signInBtn').textContent = 'Signing in…';
+    $('#signInBtn').innerHTML = '<span class="spinner" aria-hidden="true"></span>Signing in…';
     try {
       const res = await fetch(`${API}/auth/login`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -82,6 +82,35 @@
     }
   });
 
+  /** Shows a spinner and a label on a button while `work` runs. */
+  async function busy(button, label, work) {
+    const original = button.dataset.label || button.textContent;
+    button.dataset.label = original;
+    button.disabled = true;
+    button.classList.add('busy');
+    button.innerHTML = `<span class="spinner" aria-hidden="true"></span>${esc(label)}`;
+    try {
+      return await work();
+    } finally {
+      button.classList.remove('busy');
+      button.textContent = button.dataset.label;
+      button.disabled = false;
+    }
+  }
+
+  /** After a code is sent: "Send another code in 30s", counting down. */
+  function cooldown(button, seconds) {
+    button.disabled = true;
+    let left = seconds;
+    const tick = () => {
+      if (left <= 0) { button.disabled = false; button.textContent = 'Send another code'; button.dataset.label = 'Send another code'; return; }
+      button.textContent = `Send another code in ${left}s`;
+      left -= 1;
+      setTimeout(tick, 1000);
+    };
+    tick();
+  }
+
   // Sign in with an emailed code instead of a password
   const showForm = (code) => {
     $('#loginForm').classList.toggle('hidden', code);
@@ -100,19 +129,18 @@
     const err = $('#codeErr');
     err.classList.remove('ok');
     err.textContent = '';
-    $('#sendCode').disabled = true;
+    let sent = false;
     try {
-      await post('/admin/dashboard/email-code/request', { email: $('#codeEmail').value.trim() });
+      await busy($('#sendCode'), 'Sending code…', () => post('/admin/dashboard/email-code/request', { email: $('#codeEmail').value.trim() }));
+      sent = true;
       err.classList.add('ok');
-      err.textContent = 'If that email belongs to an admin, a code is on its way. It works for 10 minutes.';
+      err.textContent = '✓ If that email belongs to an admin, a code is on its way. Check your inbox (and spam). It works for 10 minutes.';
       $('#codeStep').classList.remove('hidden');
-      $('#sendCode').textContent = 'Send another code';
       $('#code').focus();
     } catch (e) {
       err.textContent = e.message;
-    } finally {
-      setTimeout(() => { $('#sendCode').disabled = false; }, 30000);
     }
+    if (sent) cooldown($('#sendCode'), 30);
   });
   $('#codeForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -120,7 +148,7 @@
     err.classList.remove('ok');
     err.textContent = '';
     try {
-      const b = await post('/admin/dashboard/email-code/verify', { email: $('#codeEmail').value.trim(), code: $('#code').value });
+      const b = await busy($('#verifyCode'), 'Checking code…', () => post('/admin/dashboard/email-code/verify', { email: $('#codeEmail').value.trim(), code: $('#code').value }));
       token = b.token;
       try { sessionStorage.setItem(TOKEN_KEY, token); } catch (x) {}
       $('#code').value = '';
@@ -145,6 +173,10 @@
 
   async function load(fresh = false) {
     const f = fresh ? '&fresh=true' : '';
+    const refresh = $('#refresh');
+    refresh.disabled = true;
+    refresh.innerHTML = '<span class="spinner light" aria-hidden="true"></span>Loading…';
+    document.body.classList.add('loading');
     try {
       if (tab === 'overview') renderOverview(await api(`/admin/dashboard/overview?${q()}${f}`));
       if (tab === 'people') { const d = await api(`/admin/dashboard/people?${f.slice(1)}`); peopleRows = d.rows; renderPeople(); }
@@ -152,6 +184,10 @@
       if (tab === 'messaging') renderMessaging(await api(`/admin/dashboard/messaging?${q()}${f}`));
     } catch (err) {
       if (err.message !== 'not admin') console.warn(err);
+    } finally {
+      refresh.disabled = false;
+      refresh.textContent = '↻ Refresh';
+      document.body.classList.remove('loading');
     }
   }
 
@@ -313,7 +349,7 @@
     history.replaceState(null, '', location.pathname);
     show('login');
     $('#loginErr').textContent = '';
-    $('#signInBtn').textContent = 'Signing you in…';
+    $('#signInBtn').innerHTML = '<span class="spinner" aria-hidden="true"></span>Signing you in…';
     fetch(`${API}/admin/dashboard/handoff/redeem`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: handoffMatch[1] })
     }).then((r) => r.json().then((b) => ({ ok: r.ok, b }))).then(({ ok, b }) => {

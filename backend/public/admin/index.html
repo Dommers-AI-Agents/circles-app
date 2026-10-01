@@ -86,6 +86,12 @@
   .login button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:10px;background:var(--navy);color:#fff;font-weight:700;cursor:pointer}
   .err{color:var(--red);font-size:13px;margin-top:10px;min-height:18px}
   .ok{color:var(--green)}
+  .spinner{display:inline-block;width:14px;height:14px;margin-right:8px;vertical-align:-2px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+  .spinner.light{width:12px;height:12px}
+  button:disabled{opacity:.75;cursor:default}
+  body.loading main{opacity:.55;transition:opacity .2s}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion: reduce){.spinner{animation-duration:2s}}
   .login button.linkish{background:none;color:var(--blue);padding:4px 0;margin-top:6px;font-weight:600;width:auto}
   .stamp{font-size:12px;color:var(--muted);margin-top:4px}
   @media (max-width:600px){ .bar{padding:10px 14px} main{padding:16px 14px 40px} .two{grid-template-columns:1fr} .funnel .row{grid-template-columns:110px 1fr 44px} }
