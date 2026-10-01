@@ -18,6 +18,7 @@ const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const suggestionEngine = require('./suggestionEngine');
 const emailService = require('./emailService');
+const { forEachPage } = require('../utils/firestorePaging');
 
 const FOLLOW_THRESHOLD = 3;          // "following less than three people"
 const SUGGESTIONS_PER_EMAIL = 5;
@@ -28,6 +29,9 @@ const APP_REVIEW_EMAIL = 'appreview@favcircles.com';
 const SEND_GAP_MS = 3000;            // between messages — the SMTP host dislikes bursts
 const RETRY_DELAY_MS = 8000;         // one retry per address after a failure
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+// Stop starting sends after this long (the scheduler call must answer within
+// Cloud Run's request timeout). Viral-growth review 2026-10-01.
+const SEND_DEADLINE_MS = 240 * 1000;
 const BASE_URL = 'https://api.favcircles.com';
 const BRAND_BLUE = '#3478F6';
 
@@ -181,18 +185,43 @@ const presentable = (s) => {
  * and stamps the user so the weekly job never repeats within a week.
  * dryRun: no email, no stamp — returns what would have gone out.
  */
-const run = async ({ dryRun = false, limit = 500, onlyUserId = null, log = console.log } = {}) => {
-  // One users scan, shared with the engine's indexes.
-  const usersSnap = await db().collection(COLLECTIONS.USERS).get();
-  const idx = await suggestionEngine.buildIndexes({ usersSnap });
-  const users = usersSnap.docs
-    .map((doc) => ({ id: doc.id, ...doc.data() }))
-    .filter((u) => !onlyUserId || u.id === onlyUserId);
-  const { selected, skipped } = selectCandidates(users);
+const run = async ({
+  dryRun = false, limit = 500, onlyUserId = null, log = console.log,
+  deadlineMs = SEND_DEADLINE_MS, now = Date.now
+} = {}) => {
+  const startedAt = now();
+  // Viral-growth review 2026-10-01: this used to hold one snapshot of every
+  // user doc for the whole run. The engine now streams its own (projected)
+  // read, and candidates are picked a page at a time — only the few new
+  // accounts that qualify are kept in memory.
+  const idx = await suggestionEngine.buildIndexes();
+  let selected = [];
+  let skipped = selectCandidates([]).skipped;
+  if (onlyUserId) {
+    const doc = await db().collection(COLLECTIONS.USERS).doc(onlyUserId).get();
+    ({ selected, skipped } = selectCandidates(doc.exists ? [{ id: doc.id, ...doc.data() }] : []));
+  } else {
+    await forEachPage(db().collection(COLLECTIONS.USERS), (docs) => {
+      const page = selectCandidates(docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      selected.push(...page.selected);
+      for (const [reason, n] of Object.entries(page.skipped)) skipped[reason] += n;
+    });
+  }
   skipped.no_suggestions = 0;
 
   const results = { dryRun, candidates: selected.length, sent: 0, skipped, recipients: [] };
-  for (const user of selected.slice(0, limit)) {
+  const batch = selected.slice(0, limit);
+  for (let i = 0; i < batch.length; i++) {
+    const user = batch[i];
+    // One slow, orderly SMTP queue (3 s apart) can't outrun Cloud Run's
+    // request timeout at viral volume. Stop starting new sends at the
+    // deadline; the per-user lastSentAt stamp means a later run (or a second
+    // scheduler tick) picks up exactly who is left.
+    if (!dryRun && now() - startedAt >= deadlineMs) {
+      results.deferred = batch.length - i;
+      log(`👋 Follow suggestions: deadline reached, ${results.deferred} left for the next run`);
+      break;
+    }
     const suggestions = suggestionEngine.suggestFor(user.id, idx).filter(presentable).slice(0, SUGGESTIONS_PER_EMAIL);
     if (suggestions.length === 0) { skipped.no_suggestions++; continue; }
     const email = buildEmail({ user, suggestions });

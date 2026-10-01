@@ -1,8 +1,16 @@
 const { getFirestore, FieldValue } = require('../config/firebase');
 const notificationService = require('./notificationService');
 const { COLLECTIONS } = require('../models/FirestoreModels');
+const { runResumableJob } = require('../utils/firestorePaging');
 
 const db = getFirestore();
+
+// One resumable run per UTC day (or month, sliced) — see forEachUserResumably.
+const utcDateKey = (now = new Date()) => now.toISOString().slice(0, 10);
+
+// The in-memory twin of Firestore's `where(field, '!=', false)`: the field
+// exists with a value other than false or null.
+const notFalse = (obj, key) => !!obj && obj[key] !== undefined && obj[key] !== null && obj[key] !== false;
 
 class EngagementNotificationService {
   constructor() {
@@ -222,40 +230,61 @@ class EngagementNotificationService {
     console.log('📱 Starting engagement reminder process...');
     
     try {
-      // Get all users
-      const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
-      const users = [];
-      usersSnapshot.forEach(doc => users.push({ id: doc.id, ...doc.data() }));
-      
-      // Check each user's activity
-      for (const user of users) {
-        try {
-          // Skip if user has notifications disabled
-          if (user.notificationPreferences?.engagementReminders === false) continue;
-          
-          // Check if user was active today
-          const wasActiveToday = await this.checkUserActivityToday(user.id);
-          
-          // Check if user already received daily summary
-          const receivedDailySummary = await this.receivedDailySummaryToday(user.id);
-          
-          // Only send reminder if:
-          // 1. User wasn't active today
-          // 2. User didn't receive daily summary (no activity to report)
-          if (!wasActiveToday && !receivedDailySummary) {
-            const reminderType = await this.selectEngagementReminder(user.id);
-            await this.sendEngagementReminder(user.id, reminderType);
-          }
-          
-        } catch (error) {
-          console.error(`Error processing engagement reminder for user ${user.id}:`, error);
+      // Viral-growth review 2026-10-01: this read every user doc at once and
+      // then did ~5 reads per user serially — far past Cloud Run's request
+      // timeout at tens of thousands of users. Now users stream a page at a
+      // time and the run stops at a deadline with a cursor, so the next tick
+      // the same day carries on (a finished day is a no-op).
+      const progress = await this.forEachUserResumably('engagement-reminders', utcDateKey(), async (user) => {
+        // Skip if user has notifications disabled
+        if (user.notificationPreferences?.engagementReminders === false) return;
+
+        // Check if user was active today
+        const wasActiveToday = await this.checkUserActivityToday(user.id);
+
+        // Check if user already received daily summary
+        const receivedDailySummary = await this.receivedDailySummaryToday(user.id);
+
+        // Only send reminder if:
+        // 1. User wasn't active today
+        // 2. User didn't receive daily summary (no activity to report)
+        if (!wasActiveToday && !receivedDailySummary) {
+          const reminderType = await this.selectEngagementReminder(user.id);
+          await this.sendEngagementReminder(user.id, reminderType);
         }
-      }
-      
-      console.log('✅ Engagement reminders process completed');
+      }, 'engagement reminder');
+
+      console.log(`✅ Engagement reminders process ${progress.complete ? 'completed' : 'paused (resumes next run)'}`, progress);
+      return progress;
     } catch (error) {
       console.error('Error in sendEngagementReminders:', error);
     }
+  }
+
+  /**
+   * Walks every user doc for a scheduled job, a page at a time, resumably:
+   * `fn(user)` per user (errors logged per user, as the loops always did),
+   * stopping at the job deadline with a cursor in jobCursors/{job} so the next
+   * tick with the same `runKey` carries on. `filter(user)` skips in memory.
+   */
+  async forEachUserResumably(job, runKey, fn, label, { filter = null, query = null } = {}) {
+    return runResumableJob({
+      db,
+      job,
+      runKey,
+      query: query || db.collection(COLLECTIONS.USERS),
+      onPage: async (docs) => {
+        for (const doc of docs) {
+          const user = { id: doc.id, ...doc.data() };
+          if (filter && !filter(user)) continue;
+          try {
+            await fn(user);
+          } catch (error) {
+            console.error(`Error processing ${label} for user ${user.id}:`, error);
+          }
+        }
+      }
+    });
   }
   
   /**
@@ -365,32 +394,25 @@ class EngagementNotificationService {
     console.log('📊 Starting weekly summary generation...');
     
     try {
-      const usersSnapshot = await db.collection(COLLECTIONS.USERS)
-        .where('notificationPreferences.weeklySummary', '!=', false)
-        .get();
-      
-      const users = [];
-      usersSnapshot.forEach(doc => users.push({ id: doc.id, ...doc.data() }));
-      
-      for (const user of users) {
-        try {
-          // Users on the Weekly Summary (push + email, delivered at their own
-          // local time by dailySummaryService) already get a richer recap —
-          // a second Monday push would just be noise.
-          if (user.notificationPreferences && user.notificationPreferences.dailySummary === true) continue;
+      // Viral-growth review 2026-10-01: streamed and resumable (see
+      // forEachUserResumably). The old `weeklySummary != false` query can't be
+      // paged by document id (an inequality must be the first sort), so the
+      // same rule is applied in memory: the field exists and isn't false/null.
+      const progress = await this.forEachUserResumably('weekly-summary', utcDateKey(), async (user) => {
+        // Users on the Weekly Summary (push + email, delivered at their own
+        // local time by dailySummaryService) already get a richer recap —
+        // a second Monday push would just be noise.
+        if (user.notificationPreferences && user.notificationPreferences.dailySummary === true) return;
 
-          const stats = await this.gatherWeeklyStats(user.id);
-          
-          if (this.hasWeeklyActivity(stats)) {
-            const notification = this.buildWeeklySummaryNotification(stats, user);
-            await notificationService.sendToUser(user.id, notification);
-          }
-        } catch (error) {
-          console.error(`Error sending weekly summary to ${user.id}:`, error);
+        const stats = await this.gatherWeeklyStats(user.id);
+
+        if (this.hasWeeklyActivity(stats)) {
+          const notification = this.buildWeeklySummaryNotification(stats, user);
+          await notificationService.sendToUser(user.id, notification);
         }
-      }
-      
-      console.log('✅ Weekly summaries completed');
+      }, 'weekly summary', { filter: (user) => notFalse(user.notificationPreferences, 'weeklySummary') });
+
+      console.log(`✅ Weekly summaries ${progress.complete ? 'completed' : 'paused (resumes next run)'}`, progress);
     } catch (error) {
       console.error('Error in sendWeeklySummaries:', error);
     }
@@ -434,41 +456,32 @@ class EngagementNotificationService {
     console.log('📅 Starting monthly summary generation...');
     
     try {
-      const usersSnapshot = await db.collection(COLLECTIONS.USERS)
-        .where('notificationPreferences.monthlySummary', '!=', false)
-        .get();
-      
-      const users = [];
-      usersSnapshot.forEach(doc => users.push({ id: doc.id, ...doc.data() }));
-      
       const lastMonth = new Date();
       lastMonth.setMonth(lastMonth.getMonth() - 1);
       const monthName = lastMonth.toLocaleString('default', { month: 'long' });
-      
-      for (const user of users) {
-        try {
-          const stats = await this.gatherMonthlyStats(user.id);
-          
-          if (this.hasMonthlyActivity(stats)) {
-            const notification = {
+
+      // Viral-growth review 2026-10-01: streamed and resumable, with the old
+      // `monthlySummary != false` query applied in memory (see weekly above).
+      const progress = await this.forEachUserResumably('monthly-summary', utcDateKey().slice(0, 7), async (user) => {
+        const stats = await this.gatherMonthlyStats(user.id);
+
+        if (this.hasMonthlyActivity(stats)) {
+          const notification = {
+            type: 'monthly_summary',
+            title: `🎯 Your ${monthName} highlights`,
+            body: `${stats.totalPlaces} places discovered, ${stats.totalConnections} connections made!`,
+            data: {
               type: 'monthly_summary',
-              title: `🎯 Your ${monthName} highlights`,
-              body: `${stats.totalPlaces} places discovered, ${stats.totalConnections} connections made!`,
-              data: {
-                type: 'monthly_summary',
-                month: monthName,
-                stats: JSON.stringify(stats)
-              }
-            };
-            
-            await notificationService.sendToUser(user.id, notification);
-          }
-        } catch (error) {
-          console.error(`Error sending monthly summary to ${user.id}:`, error);
+              month: monthName,
+              stats: JSON.stringify(stats)
+            }
+          };
+
+          await notificationService.sendToUser(user.id, notification);
         }
-      }
-      
-      console.log('✅ Monthly summaries completed');
+      }, 'monthly summary', { filter: (user) => notFalse(user.notificationPreferences, 'monthlySummary') });
+
+      console.log(`✅ Monthly summaries ${progress.complete ? 'completed' : 'paused (resumes next run)'}`, progress);
     } catch (error) {
       console.error('Error in sendMonthlySummaries:', error);
     }
@@ -514,8 +527,6 @@ class EngagementNotificationService {
     if (!event) return;
     
     try {
-      const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
-      
       const notification = {
         type: 'special_event',
         title: event.title,
@@ -527,18 +538,30 @@ class EngagementNotificationService {
         }
       };
       
-      const users = [];
-      usersSnapshot.forEach(doc => users.push(doc.id));
-      
-      // Send in batches
-      for (let i = 0; i < users.length; i += 50) {
-        const batch = users.slice(i, i + 50);
-        await Promise.allSettled(
-          batch.map(userId => notificationService.sendToUser(userId, notification))
-        );
-      }
-      
-      console.log(`✅ Sent ${eventType} notifications to ${users.length} users`);
+      // Viral-growth review 2026-10-01: ids only (select()), a page at a time,
+      // resumable per event per day so a big base finishes over several ticks
+      // instead of timing out halfway (and a re-run never double-sends).
+      let sentTo = 0;
+      const progress = await runResumableJob({
+        db,
+        job: `special-event-${eventType}`,
+        runKey: utcDateKey(),
+        query: db.collection(COLLECTIONS.USERS),
+        select: [],
+        onPage: async (docs) => {
+          const users = docs.map(doc => doc.id);
+          // Send in batches
+          for (let i = 0; i < users.length; i += 50) {
+            const batch = users.slice(i, i + 50);
+            await Promise.allSettled(
+              batch.map(userId => notificationService.sendToUser(userId, notification))
+            );
+          }
+          sentTo += users.length;
+        }
+      });
+
+      console.log(`✅ Sent ${eventType} notifications to ${sentTo} users${progress.complete === false ? ' (more next run)' : ''}`, progress);
     } catch (error) {
       console.error(`Error sending special event notifications:`, error);
     }

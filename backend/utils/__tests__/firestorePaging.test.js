@@ -95,6 +95,61 @@ describe('forEachPage', () => {
   });
 });
 
+describe('runResumableJob', () => {
+  const { runResumableJob } = require('../firestorePaging');
+
+  test('a run that fits finishes in one go and a repeat tick is a no-op', async () => {
+    const db = new FakeFirestore({ namespaced: true });
+    seed(db, 5);
+    const seen = [];
+    const onPage = async (docs) => { docs.forEach((d) => seen.push(d.id)); };
+    const first = await runResumableJob({ db, job: 'j', runKey: 'day1', query: db.collection('users'), onPage, pageSize: 2 });
+    expect(first).toMatchObject({ complete: true, docs: 5, resumedFrom: null });
+    expect(await runResumableJob({ db, job: 'j', runKey: 'day1', query: db.collection('users'), onPage })).toEqual({ skipped: 'already_done' });
+    expect(seen).toHaveLength(5);
+    // A new day starts over.
+    const next = await runResumableJob({ db, job: 'j', runKey: 'day2', query: db.collection('users'), onPage });
+    expect(next.complete).toBe(true);
+    expect(seen).toHaveLength(10);
+  });
+
+  test('a run cut off by the deadline is resumed by the next tick, no gaps or repeats', async () => {
+    const db = new FakeFirestore({ namespaced: true });
+    seed(db, 9);
+    let clock = 0;
+    const seen = [];
+    const onPage = async (docs) => { docs.forEach((d) => seen.push(d.id)); clock += 100; };
+    const opts = { db, job: 'j', runKey: 'day1', query: db.collection('users'), onPage, pageSize: 2, deadlineMs: 150, now: () => clock };
+    const first = await runResumableJob(opts);
+    expect(first.complete).toBe(false);
+    clock += 10 * 60 * 1000; // next tick, after the lease
+    let r = first;
+    while (!r.complete) r = await runResumableJob(opts);
+    expect(seen).toEqual(Array.from({ length: 9 }, (_, i) => `u00${i}`));
+  });
+
+  test('an overlapping invocation is turned away while the lease is held', async () => {
+    const db = new FakeFirestore({ namespaced: true });
+    seed(db, 3);
+    let inner = null;
+    const onPage = async () => {
+      inner = await runResumableJob({ db, job: 'j', runKey: 'day1', query: db.collection('users'), onPage: async () => {} });
+    };
+    await runResumableJob({ db, job: 'j', runKey: 'day1', query: db.collection('users'), onPage });
+    expect(inner).toEqual({ skipped: 'running' });
+  });
+
+  test('a continuous sweep (no run key) wraps to the top when it ends', async () => {
+    const db = new FakeFirestore({ namespaced: true });
+    seed(db, 3);
+    const seen = [];
+    const onPage = async (docs) => { docs.forEach((d) => seen.push(d.id)); };
+    await runResumableJob({ db, job: 's', query: db.collection('users'), onPage });
+    await runResumableJob({ db, job: 's', query: db.collection('users'), onPage });
+    expect(seen).toEqual(['u000', 'u001', 'u002', 'u000', 'u001', 'u002']);
+  });
+});
+
 describe('job cursors', () => {
   test('resume within the same run key, ignored for another', async () => {
     const db = new FakeFirestore({ namespaced: true });

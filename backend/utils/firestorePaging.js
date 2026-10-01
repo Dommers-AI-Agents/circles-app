@@ -103,11 +103,75 @@ async function writeJobCursor(db, job, { lastId = null, done = false, runKey = n
   });
 }
 
+// Cloud Run answers a request for at most ~300 s; stop starting new pages
+// well before that so the cursor write and the response always make it.
+const DEFAULT_JOB_DEADLINE_MS = 240 * 1000;
+
+/**
+ * A job over a big query that may need more than one invocation. Resumes from
+ * `jobCursors/{job}` (when it was written for the same `runKey`), runs pages
+ * until the deadline, and records where it stopped — or that this run is
+ * done, so a repeat tick with the same key is a no-op.
+ *
+ * A lease on the cursor doc keeps two overlapping invocations (a scheduler
+ * retry while the first is still going) from walking the same users twice.
+ *
+ *   runKey  what one "run" is, e.g. the local date for a daily job; null for
+ *           a continuous sweep, which starts over from the top once it ends
+ *   onPage  async (docs) => void
+ *
+ * Returns { skipped } or { pages, docs, complete, resumedFrom }.
+ */
+async function runResumableJob({
+  db, job, runKey = null, query, onPage,
+  deadlineMs = DEFAULT_JOB_DEADLINE_MS, now = Date.now, ...pageOpts
+}) {
+  const ref = db.collection(JOB_CURSORS).doc(job);
+  const leaseMs = deadlineMs + 60 * 1000;
+  const claim = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.exists ? (snap.data() || {}) : {};
+    const sameRun = snap.exists && data.runKey === runKey;
+    if (sameRun && runKey !== null && data.done === true) return { skipped: 'already_done' };
+    if (data.leaseUntil && new Date(data.leaseUntil).getTime() > now()) return { skipped: 'running' };
+    tx.set(ref, {
+      ...data,
+      job,
+      runKey,
+      leaseUntil: new Date(now() + leaseMs).toISOString()
+    });
+    return { lastId: sameRun ? (data.lastId || null) : null };
+  });
+  if (claim.skipped) return claim;
+
+  let result;
+  try {
+    result = await forEachPage(query, onPage, { ...pageOpts, deadlineMs, now, startAfter: claim.lastId });
+  } catch (error) {
+    // Keep the progress we had and free the lease, so the next tick retries.
+    await ref.set({ job, runKey, lastId: claim.lastId, done: false, leaseUntil: null, updatedAt: new Date().toISOString() });
+    throw error;
+  }
+  const finished = result.complete;
+  await ref.set({
+    job,
+    runKey,
+    // A continuous sweep (no runKey) wraps to the top; a keyed run is done.
+    lastId: finished ? null : result.lastId,
+    done: finished && runKey !== null,
+    leaseUntil: null,
+    updatedAt: new Date().toISOString()
+  });
+  return { pages: result.pages, docs: result.docs, complete: finished, resumedFrom: claim.lastId };
+}
+
 module.exports = {
   DEFAULT_PAGE_SIZE,
+  DEFAULT_JOB_DEADLINE_MS,
   JOB_CURSORS,
   pagedQuery,
   forEachPage,
   readJobCursor,
-  writeJobCursor
+  writeJobCursor,
+  runResumableJob
 };
