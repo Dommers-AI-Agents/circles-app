@@ -606,6 +606,11 @@ exports.completeVideoUpload = async (req, res) => {
     if (videoData.uploadStatus === 'ready') {
       return res.json({ success: true, data: serializeDoc(videoDoc) });
     }
+    // The orphan sweeper gave up on this upload after 2 h and deleted its
+    // files; finishing it now would publish a moment with nothing behind it
+    if (videoData.uploadStatus === 'abandoned') {
+      return res.status(409).json({ success: false, message: 'This upload took too long and was cancelled. Please share it again.' });
+    }
 
     // Size enforcement (security audit 2026-10-01): the signed upload URLs
     // carry no size cap, so measure what actually landed in Storage, refuse
