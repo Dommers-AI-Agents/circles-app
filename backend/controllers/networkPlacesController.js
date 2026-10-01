@@ -8,6 +8,7 @@ const { getAllowedCircleIds } = require('../utils/networkAccess');
 const { isPlaceVisibleToViewer } = require('../services/visibility');
 const { buildViewerContext } = require('../services/viewerContext');
 const { normalizeUserId } = require('../services/idService');
+const { publicUserSummary } = require('../services/publicProjection');
 const geofire = require('geofire-common');
 
 const db = getFirestore();
@@ -166,12 +167,9 @@ const getNetworkPlacesInViewport = async (req, res) => {
     adderDocs.forEach((doc, index) => {
       if (doc.exists) {
         const userData = serializeDoc(doc);
-        const summary = {
-          id: userData.id,
-          displayName: userData.displayName || 'Unknown User',
-          email: userData.email,
-          profilePicture: userData.profilePicture
-        };
+        // Name and photo only — never another user's email (security audit
+        // 2026-10-01).
+        const summary = publicUserSummary(userData);
         userMap.set(userData.id, summary);
         // Also map the original (possibly complex-format) id from the place doc
         if (adderIds[index] !== userData.id) {

@@ -9,6 +9,7 @@ const { canViewMoment, MOMENT_PRIVACY_LEVELS } = require('../../services/visibil
 const { normalizeUserId } = require('../../services/idService');
 const { buildViewerContext, makeViewerContext } = require('../../services/viewerContext');
 const { getInnerCircleGrantorIds, getInnerCircleGrantorLists } = require('../../utils/networkAccess');
+const { isModerationHidden, isPubliclyViewableMoment } = require('../../services/publicProjection');
 const db = getFirestore();
 
 // Get videos for a place
@@ -28,23 +29,86 @@ exports.getPlaceVideos = async (req, res) => {
   }
 };
 
+/**
+ * Which moment tiers of `ownerId`'s may `viewerId` see? null = blocked either
+ * way (show nothing). An anonymous viewer (no id) gets public only.
+ * Shared by both per-user shelves: getUserVideos used to skip this entirely
+ * and served every tier to anyone (security audit 2026-10-01).
+ */
+async function momentTiersVisibleTo(viewerId, ownerId) {
+  if (!viewerId) return ['public'];
+  // User viewing their own content - show all. MOMENT_PRIVACY_LEVELS rather
+  // than a hand-written list, so a new tier can't go missing here and hide
+  // the owner's own moments from them.
+  if (normalizeUserId(viewerId) === normalizeUserId(ownerId)) return [...MOMENT_PRIVACY_LEVELS];
+
+  // Build the filter from BOTH relationships: connections can see 'network',
+  // people who follow the owner can see 'followers'. They're independent
+  // audiences, so a viewer may qualify for either, both, or neither.
+  const [connection1, connection2, currentUserDoc] = await Promise.all([
+    db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', viewerId)
+      .where('connectedUserId', '==', ownerId)
+      .where('status', '==', 'accepted')
+      .get(),
+    db.collection(COLLECTIONS.CONNECTIONS)
+      .where('userId', '==', ownerId)
+      .where('connectedUserId', '==', viewerId)
+      .where('status', '==', 'accepted')
+      .get(),
+    db.collection(COLLECTIONS.USERS).doc(viewerId).get()
+  ]);
+
+  // A block in either direction empties the shelf entirely
+  const { isBlockedEitherWay } = require('../../services/moderationService');
+  if (currentUserDoc.exists && isBlockedEitherWay(currentUserDoc.data(), ownerId)) return null;
+
+  const isConnected = !connection1.empty || !connection2.empty;
+  const isFollowing = (currentUserDoc.exists ? (currentUserDoc.data().following || []) : []).includes(ownerId);
+
+  const tiers = ['public'];
+  if (isConnected) tiers.push('network');
+  if (isFollowing) tiers.push('followers');
+  // Single-owner query, so one membership test decides the whole shelf.
+  if (isConnected) {
+    const grantors = await getInnerCircleGrantorIds(viewerId);
+    if (grantors.has(normalizeUserId(ownerId)) || grantors.has(String(ownerId))) {
+      tiers.push('innerCircle');
+    }
+  }
+  return tiers;
+}
+
 // Get user's videos
+// No login required (see routes/videoRoutes.js optionalProtect): the caller's
+// relationship to the owner decides the tiers, exactly as getUserReels does.
 exports.getUserVideos = async (req, res) => {
   try {
     const { userId } = req.params;
     const { limit = 20, offset = 0 } = req.query;
-    
+    const viewerId = req.user?.uid || null;
+
+    const visibilityFilter = await momentTiersVisibleTo(viewerId, userId);
+    if (!visibilityFilter) {
+      return res.json({ success: true, data: [], hasMore: false });
+    }
+
     const videosQuery = await db.collection(COLLECTIONS.PLACE_VIDEOS)
       .where('userId', '==', userId)
       .where('uploadStatus', '==', 'ready')
       .where('deletedAt', '==', null)
+      .where('visibility', 'in', visibilityFilter)
       .orderBy('createdAt', 'desc')
       .limit(parseInt(limit))
       .offset(parseInt(offset))
       .get();
-    
-    const videos = serializeQuerySnapshot(videosQuery);
-    
+
+    let videos = serializeQuerySnapshot(videosQuery);
+    // Reported-and-hidden moments stay visible ONLY to their owner
+    if (normalizeUserId(viewerId) !== normalizeUserId(userId)) {
+      videos = videos.filter(v => !isModerationHidden(v));
+    }
+
     // Populate user details
     const userIds = [...new Set(videos.map(v => v.userId))];
     const userDocs = await Promise.all(
@@ -576,50 +640,9 @@ exports.getUserReels = async (req, res) => {
     const { limit = 20, offset = 0 } = req.query;
     
     // Check relationship with target user
-    let visibilityFilter = ['public']; // Default: only public content
-    
-    if (currentUserId === userId) {
-      // User viewing their own content - show all. MOMENT_PRIVACY_LEVELS rather
-      // than a hand-written list, so a new tier can't go missing here and hide
-      // the owner's own moments from them.
-      visibilityFilter = [...MOMENT_PRIVACY_LEVELS];
-    } else {
-      // Build the filter from BOTH relationships: connections can see 'network',
-      // people who follow the owner can see 'followers'. They're independent
-      // audiences, so a viewer may qualify for either, both, or neither.
-      const [connection1, connection2, currentUserDoc] = await Promise.all([
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', currentUserId)
-          .where('connectedUserId', '==', userId)
-          .where('status', '==', 'accepted')
-          .get(),
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', userId)
-          .where('connectedUserId', '==', currentUserId)
-          .where('status', '==', 'accepted')
-          .get(),
-        db.collection(COLLECTIONS.USERS).doc(currentUserId).get()
-      ]);
-
-      const isConnected = !connection1.empty || !connection2.empty;
-      const isFollowing = (currentUserDoc.exists ? (currentUserDoc.data().following || []) : []).includes(userId);
-
-      // A block in either direction empties the shelf entirely
-      const { isBlockedEitherWay } = require('../../services/moderationService');
-      if (currentUserDoc.exists && isBlockedEitherWay(currentUserDoc.data(), userId)) {
-        return res.json({ success: true, data: [], hasMore: false });
-      }
-
-      visibilityFilter = ['public'];
-      if (isConnected) visibilityFilter.push('network');
-      if (isFollowing) visibilityFilter.push('followers');
-      // Single-owner query, so one membership test decides the whole shelf.
-      if (isConnected) {
-        const grantors = await getInnerCircleGrantorIds(currentUserId);
-        if (grantors.has(normalizeUserId(userId)) || grantors.has(String(userId))) {
-          visibilityFilter.push('innerCircle');
-        }
-      }
+    const visibilityFilter = await momentTiersVisibleTo(currentUserId, userId);
+    if (!visibilityFilter) {
+      return res.json({ success: true, data: [], hasMore: false });
     }
 
     const videosQuery = await db.collection(COLLECTIONS.PLACE_VIDEOS)
@@ -821,7 +844,18 @@ exports.getPublicVideoDetails = async (req, res) => {
     }
     
     const video = serializeDoc(videoDoc);
-    
+
+    // No login here, so only a public, live, un-moderated moment is
+    // described at all — this used to return the place name and address of
+    // private moments to anyone holding the id (security audit 2026-10-01).
+    // Same 404 as a missing moment, so the id confirms nothing.
+    if (!isPubliclyViewableMoment(video)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Video not found'
+      });
+    }
+
     // Only return public or non-sensitive information
     const publicVideo = {
       id: video.id,

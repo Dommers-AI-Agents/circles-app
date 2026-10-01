@@ -54,9 +54,17 @@ router.post('/:videoId/upload/complete', protect, uploadLimiter, completeVideoUp
 router.post('/embed', protect, uploadLimiter, addEmbeddedVideo);
 router.get('/metadata', protect, getVideoMetadata);
 
+// Signed in when the caller sent a token, anonymous otherwise. The profile
+// Moments grid reads /user/:userId without one; it now sees only what an
+// anonymous viewer may (public moments) unless a token comes along — it used
+// to hand private and network moments, video URLs included, to anyone
+// (security audit 2026-10-01).
+const optionalProtect = (req, res, next) =>
+  (req.headers.authorization ? protect(req, res, next) : next());
+
 // Get videos
 router.get('/place/:placeId', protect, getPlaceVideos);
-router.get('/user/:userId', getUserVideos);
+router.get('/user/:userId', optionalProtect, getUserVideos);
 router.get('/feed', protect, getVideoFeed);
 
 // Reels-specific endpoints

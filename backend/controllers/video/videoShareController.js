@@ -8,10 +8,23 @@ const { getFirestore } = require('../../config/firebase');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { momentMeta, renderMoment } = require('../../views/momentPage');
 const { composePreview, fetchImage } = require('../../services/momentPreview');
+const { isPubliclyViewableMoment } = require('../../services/publicProjection');
 const db = getFirestore();
 
 const PAGE_TEMPLATE = path.join(__dirname, '..', '..', 'public', 'video-share.html');
 const SHARE_BASE = () => process.env.SHARE_LINK_BASE_URL || 'https://api.favcircles.com';
+
+// The three public share surfaces below answer to anyone — browsers, link
+// preview crawlers, whoever was forwarded the link. They used to ignore the
+// moment's audience and moderation, so a private (or reported-and-hidden)
+// moment's place name and thumbnail went out to all of them (security audit
+// 2026-10-01). Anything not public, live and un-moderated reads as missing.
+const loadPublicMoment = async (videoId) => {
+  const doc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
+  if (!doc.exists) return null;
+  const video = doc.data();
+  return isPubliclyViewableMoment(video) ? video : null;
+};
 
 // @route GET /share/video/:videoId (public)
 // The share page with this moment's title, place and preview image in its
@@ -22,8 +35,7 @@ exports.renderSharePage = async (req, res) => {
   const { videoId } = req.params;
   let video = null;
   try {
-    const doc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
-    if (doc.exists) video = doc.data();
+    video = await loadPublicMoment(videoId);
   } catch (error) {
     console.error('share page: moment read failed:', error.message);
   }
@@ -42,8 +54,7 @@ exports.renderSharePage = async (req, res) => {
 exports.sharePreviewImage = async (req, res) => {
   const { videoId } = req.params;
   try {
-    const doc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
-    const video = doc.exists ? doc.data() : null;
+    const video = await loadPublicMoment(videoId);
     if (!video || !video.thumbnailUrl) return res.redirect(302, `${SHARE_BASE()}/images/circles-preview.png`);
     const source = await fetchImage(video.thumbnailUrl);
     const jpeg = await composePreview(source, { play: (video.contentType || 'video') !== 'photo' });
@@ -60,16 +71,15 @@ exports.sharePreviewImage = async (req, res) => {
 exports.getVideoShareInfo = async (req, res) => {
   try {
     const { videoId } = req.params;
-    const videoDoc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
+    const video = await loadPublicMoment(videoId);
 
-    if (!videoDoc.exists) {
+    if (!video) {
       return res.status(404).json({
         success: false,
         message: 'This moment is no longer available'
       });
     }
 
-    const video = videoDoc.data();
     let userDisplayName = null;
     if (video.userId) {
       try {

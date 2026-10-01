@@ -34,6 +34,7 @@ const googleMapsClient = new Client({});
 const { propagateVenueUpdates } = require('../../services/placeVenueSync.js');
 const venueDetails = require('../../services/venueDetailsService');
 const { sendServiceError } = require('../../utils/serviceError');
+const { publicUserSummary } = require('../../services/publicProjection');
 
 // A verified store owner (approved ownership claim → stickerVenues.ownerUserId)
 // — or a manager the owner invited (managerUserIds) — edits their venue's
@@ -236,22 +237,13 @@ exports.getPlacesByCircleId = async (req, res, next) => {
         const userData = serializeDoc(doc);
         const originalUserId = userIds[index]; // The original ID from the place
         
-        // Map both the simple and complex ID formats
-        userMap.set(userData.id, {
-          id: userData.id,
-          displayName: userData.displayName || 'Unknown User',
-          email: userData.email,
-          profilePicture: userData.profilePicture
-        });
+        // Map both the simple and complex ID formats. Name and photo only —
+        // contributors' email used to ride along (security audit 2026-10-01).
+        userMap.set(userData.id, publicUserSummary(userData));
         
         // Also map the original ID if it's different
         if (originalUserId !== userData.id) {
-          userMap.set(originalUserId, {
-            id: userData.id,
-            displayName: userData.displayName || 'Unknown User',
-            email: userData.email,
-            profilePicture: userData.profilePicture
-          });
+          userMap.set(originalUserId, userMap.get(userData.id));
         }
       }
     });
@@ -458,12 +450,9 @@ exports.getPlacesByCircleIdPublic = async (req, res, next) => {
         const userData = serializeDoc(doc);
         const originalUserId = userIds[index];
         
-        userMap.set(userData.id, {
-          id: userData.id,
-          displayName: userData.displayName || 'Unknown User',
-          email: userData.email,
-          profilePicture: userData.profilePicture
-        });
+        // This endpoint needs no login: never hand an adder's email to the
+        // open web (security audit 2026-10-01).
+        userMap.set(userData.id, publicUserSummary(userData));
         
         if (originalUserId !== userData.id) {
           userMap.set(originalUserId, userMap.get(userData.id));
@@ -539,6 +528,13 @@ exports.getPlacesByCircleIdPublic = async (req, res, next) => {
         addedByUser: userMap.get(place.addedBy) || null,
         isNew: isNew
       };
+      // Private notes belong to the adder, and a place's own guest list is
+      // nobody else's business — this anonymous endpoint spread both out
+      // with the rest of the save doc (security audit 2026-10-01).
+      if (!userId || !isSameUser(place.addedBy, userId)) {
+        delete placeData.privateNotes;
+      }
+      delete placeData.sharedWith;
       
       // Normalize photos array format for iOS compatibility
       normalizePhotosArray(placeData);

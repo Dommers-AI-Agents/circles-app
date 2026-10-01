@@ -24,46 +24,56 @@ service firebase.storage {
               request.resource.contentType == 'application/octet-stream');
     }
     
-    // Profile images - public read (profile pictures should be visible to all)
+    // Security audit 2026-10-01:
+    // - Public paths are `get` only (fetch a file whose URL you were given).
+    //   `read` also granted `list`, which let anyone enumerate every upload —
+    //   including the media of private moments and places.
+    // - The app never writes here directly (uploads go through the backend's
+    //   admin SDK or signed URLs, which bypass these rules), so client writes
+    //   are create-only, size/type-checked, and scoped to the uploader's own
+    //   folder wherever the path carries a uid. Nobody can overwrite or delete
+    //   someone else's file.
+
+    // Profile images - public by URL (profile pictures are visible to all)
     match /profiles/{userId}/{allPaths=**} {
-      allow read: if true; // Public read for profile images
+      allow get: if true;
       allow write: if isOwner(userId) && isValidImage();
     }
     
-    // Circle content - public read for images (includes misplaced profile images)
+    // Circle content - public by URL (includes misplaced profile images).
+    // No uid in the path, so: signed in, create only, image/video checked.
     match /circles/{circleId}/{allPaths=**} {
-      allow read: if true; // Public read for circle images and misplaced profile images
-      allow write: if isAuthenticated() && (isValidImage() || isValidVideo());
+      allow get: if true;
+      allow create: if isAuthenticated() && (isValidImage() || isValidVideo());
     }
     
-    // Place photos - public read (place images should be shareable)
+    // Place photos - public by URL (place images are shareable).
+    // No uid in the path, so: signed in, create only, image checked.
     match /places/{placeId}/{allPaths=**} {
-      allow read: if true; // Public read for place photos
-      allow write: if isAuthenticated() && isValidImage();
+      allow get: if true;
+      allow create: if isAuthenticated() && isValidImage();
     }
     
-    // Video content - public read for moments feature, owner-only write
-    // Note: Videos are meant to be shared, so public read is intentional
-    match /videos/{userId}/{type}/{allPaths=**} {
-      allow read: if true; // Public read for shared moments
-      allow write: if isOwner(userId) && isValidVideo();
+    // Moment media: videos/{uid}/{full|preview|thumbnails}/... The stored
+    // video/thumbnail URLs are tokenless `?alt=media`, so public `get` must
+    // stay. The old catch-all `match /videos/{videoId}/{allPaths=**}` block
+    // overlapped this one and let ANY signed-in user write into anyone's
+    // folder (overlapping matches grant if any allows) — removed; reads of
+    // two-segment paths are covered by the get below.
+    match /videos/{userId}/{allPaths=**} {
+      allow get: if true;
+      allow write: if isOwner(userId) && (isValidVideo() || isValidImage());
     }
     
-    // Alternative video path structure (if different)
-    match /videos/{videoId}/{allPaths=**} {
-      allow read: if true; // Public read for shared moments
-      allow write: if isAuthenticated() && isValidVideo();
-    }
-    
-    // User moments/reels - public read for sharing, owner can write
+    // User moments/reels - public by URL, owner can write
     match /moments/{userId}/{allPaths=**} {
-      allow read: if true; // Public read for shared moments
+      allow get: if true;
       allow write: if isOwner(userId) && (isValidImage() || isValidVideo());
     }
     
-    // Tutorial videos - public read for all users
+    // Tutorial videos - public by URL
     match /tutorial/{allPaths=**} {
-      allow read: if true; // Public read for tutorial content
+      allow get: if true;
       allow write: if false; // No writes allowed (admin upload only)
     }
     

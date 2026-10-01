@@ -7,6 +7,10 @@ const { normalizeUserId, isSameUser } = require('../../services/idService');
 const { buildConnectionMap } = require('../../services/connectionMap');
 const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
 const { normalizeActivityPrivacy } = require('../../services/activityPrivacy');
+const { excludedUserIds } = require('../../services/moderationService');
+const {
+  MIN_SEARCH_LENGTH, MAX_SEARCH_RESULTS, matchesUserSearch, searchRelevanceRank, visibleLocation
+} = require('../../services/publicProjection');
 
 const db = getFirestore();
 
@@ -386,174 +390,78 @@ exports.updateUser = async (req, res, next) => {
   }
 };
 
-// @desc    Search users by email, name, or phone
+// @desc    Search users by name
 // @route   GET /api/users/search
 // @access  Private
-
+//
+// Security audit 2026-10-01: this used to return EVERY user (with email) for
+// an empty query, matched email and phone digits (a contact-details lookup
+// oracle), ignored "Show my city" and blocks. Now: names only, ≥2 chars,
+// no contact details on the cards, blocks excluded, results capped.
 exports.searchUsers = async (req, res, next) => {
   try {
     const { query } = req.query;
     const currentUserId = req.user.uid; // Already normalized by middleware
 
-    // If no query provided, return all users sorted alphabetically
-    if (!query || query.trim().length === 0) {
-      const [usersSnapshot, connectionMap, currentUserDoc] = await Promise.all([
-        db.collection(COLLECTIONS.USERS).get(),
-        buildConnectionMap(currentUserId),
-        db.collection(COLLECTIONS.USERS).doc(currentUserId).get()
-      ]);
-
-      const allUsers = [];
-      const currentData = currentUserDoc.exists ? currentUserDoc.data() : {};
-      const following = currentData.following || [];
-      // Who follows the caller. Already in the doc above, so surfacing the
-      // mutual-follow state costs nothing.
-      const myFollowers = new Set(currentData.followers || []);
-
-      for (const doc of usersSnapshot.docs) {
-        const user = serializeDoc(doc);
-
-        // Skip current user - use isSameUser to handle all ID formats
-        if (isSameUser(user.id, currentUserId)) continue;
-
-        const targetUserId = normalizeUserId(user.id);
-        const conn = connectionMap.get(targetUserId) || {};
-        const connectionStatus = conn.status || 'none';
-        const connectionDirection = conn.direction || null;
-        const connectionId = conn.connectionId || null;
-        const isFollowing = following.includes(targetUserId);
-
-        allUsers.push({
-          _id: normalizeUserId(user.id), // Always return normalized ID
-          displayName: user.displayName,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          profilePicture: user.profilePicture,
-          bio: user.bio,
-          location: user.location,
-          connectionStatus: connectionStatus,
-          connectionDirection: connectionDirection,
-          connectionId: connectionId,
-          isFollowing: isFollowing,
-          followsYou: myFollowers.has(targetUserId)
-        });
-      }
-
-      // Sort alphabetically by display name
-      allUsers.sort((a, b) => {
-        const nameA = a.displayName || '';
-        const nameB = b.displayName || '';
-        return nameA.localeCompare(nameB);
-      });
-      
-      return res.status(200).json({
-        success: true,
-        count: allUsers.length,
-        users: allUsers
-      });
+    const searchTerm = typeof query === 'string' ? query.trim().toLowerCase() : '';
+    if (searchTerm.length < MIN_SEARCH_LENGTH) {
+      return res.status(200).json({ success: true, count: 0, users: [] });
     }
 
-    const searchTerm = query.trim().toLowerCase();
-
-    // Search users by email, name, or phone. Fetch the user collection, the
-    // caller's connection map, and their following list together (one batch).
+    // select() keeps email/phone out of memory entirely — nothing below can
+    // leak a field it never read.
     const [usersSnapshot, connectionMap, currentUserDoc] = await Promise.all([
-      db.collection(COLLECTIONS.USERS).get(),
+      db.collection(COLLECTIONS.USERS)
+        .select('displayName', 'firstName', 'lastName', 'profilePicture', 'bio', 'location', 'preferences')
+        .get(),
       buildConnectionMap(currentUserId),
       db.collection(COLLECTIONS.USERS).doc(currentUserId).get()
     ]);
 
-    const simpleUserId = normalizeUserId(currentUserId);
     const currentData = currentUserDoc.exists ? currentUserDoc.data() : {};
     const following = currentData.following || [];
     const myFollowers = new Set(currentData.followers || []);
+    // Blocked either way never appears — compare normalised ids, since a
+    // block list can hold either shape of an Apple account's id.
+    const blocked = new Set([...excludedUserIds(currentData)].map(normalizeUserId).filter(Boolean));
 
     const matchingUsers = [];
     for (const doc of usersSnapshot.docs) {
       const user = serializeDoc(doc);
-      
-      // Skip current user - check both complex and simple ID formats
-      if (user.id === currentUserId || user.id === simpleUserId) continue;
-      
-      // Also check if the complex ID contains the simple ID
-      if (user.id && user.id.includes('.') && simpleUserId) {
-        const parts = user.id.split('.');
-        if (parts.length >= 2 && parts[1] === simpleUserId) continue;
-      }
-      
-      // Also check the reverse - if current user has complex ID and we're comparing with simple ID
-      if (currentUserId && currentUserId.includes('.')) {
-        const currentUserParts = currentUserId.split('.');
-        if (currentUserParts.length >= 2 && user.id === currentUserParts[1]) continue;
-      }
-      
-      // Substring match on email/name — prefix-only made "mith" miss "Smith"
-      // and half-remembered names unfindable (relevance ranking below still
-      // puts prefix matches first)
-      const emailMatch = user.email && user.email.toLowerCase().includes(searchTerm);
-      const displayNameMatch = user.displayName && user.displayName.toLowerCase().includes(searchTerm);
-      const firstNameMatch = user.firstName && user.firstName.toLowerCase().includes(searchTerm);
-      const lastNameMatch = user.lastName && user.lastName.toLowerCase().includes(searchTerm);
-      // Phone match ONLY when the query actually contains digits. Previously
-      // a text query (e.g. "william") stripped to "" and every phone number
-      // ".startsWith('')" → true, so everyone with a phone matched.
-      const queryDigits = searchTerm.replace(/\D/g, '');
-      const phoneMatch = queryDigits.length >= 3 && user.phoneNumber &&
-        user.phoneNumber.replace(/\D/g, '').includes(queryDigits);
-      
-      // Also check if any word in display name starts with search term
-      const displayNameWords = user.displayName ? user.displayName.toLowerCase().split(' ') : [];
-      const wordMatch = displayNameWords.some(word => word.startsWith(searchTerm));
-      
-      if (emailMatch || displayNameMatch || firstNameMatch || lastNameMatch || phoneMatch || wordMatch) {
-        const targetUserId = normalizeUserId(user.id);
-        const conn = connectionMap.get(targetUserId) || {};
-        const connectionStatus = conn.status || 'none';
-        const connectionDirection = conn.direction || null;
-        const connectionId = conn.connectionId || null;
-        const isFollowing = following.includes(targetUserId);
+      if (isSameUser(user.id, currentUserId)) continue;
 
-        matchingUsers.push({
-          _id: normalizeUserId(user.id), // Always return normalized ID
-          displayName: user.displayName,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          profilePicture: user.profilePicture,
-          bio: user.bio,
-          location: user.location,
-          connectionStatus: connectionStatus,
-          connectionDirection: connectionDirection,
-          connectionId: connectionId,
-          isFollowing: isFollowing,
-          followsYou: myFollowers.has(targetUserId)
-        });
-      }
+      const targetUserId = normalizeUserId(user.id);
+      if (blocked.has(targetUserId)) continue;
+      if (!matchesUserSearch(user, searchTerm)) continue;
+
+      const conn = connectionMap.get(targetUserId) || {};
+      matchingUsers.push({
+        _id: targetUserId, // Always return normalized ID
+        displayName: user.displayName,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profilePicture: user.profilePicture,
+        bio: user.bio,
+        location: visibleLocation(user),
+        connectionStatus: conn.status || 'none',
+        connectionDirection: conn.direction || null,
+        connectionId: conn.connectionId || null,
+        isFollowing: following.includes(targetUserId),
+        followsYou: myFollowers.has(targetUserId)
+      });
     }
 
-    // Sort by relevance: exact name/email, then name-prefix, then a word in
-    // the name starting with the query, then email-prefix, then everything
-    // else (e.g. phone-only) — alphabetical within each tier.
-    const relevanceRank = (u) => {
-      const name = (u.displayName || '').toLowerCase();
-      const email = (u.email || '').toLowerCase();
-      if (name === searchTerm || email === searchTerm) return 0;
-      if (name.startsWith(searchTerm)) return 1;
-      if (name.split(' ').some(w => w.startsWith(searchTerm))) return 2;
-      if (email.startsWith(searchTerm)) return 3;
-      return 4;
-    };
+    // Sort by relevance (exact name, name prefix, a word in the name, the
+    // rest), alphabetical within each tier.
     matchingUsers.sort((a, b) => {
-      const ra = relevanceRank(a);
-      const rb = relevanceRank(b);
+      const ra = searchRelevanceRank(a, searchTerm);
+      const rb = searchRelevanceRank(b, searchTerm);
       if (ra !== rb) return ra - rb;
       return (a.displayName || '').localeCompare(b.displayName || '');
     });
-    
-    // Limit results to prevent overwhelming the UI
-    const limitedUsers = matchingUsers.slice(0, 20);
-    
+
+    const limitedUsers = matchingUsers.slice(0, MAX_SEARCH_RESULTS);
+
     res.status(200).json({
       success: true,
       count: limitedUsers.length,

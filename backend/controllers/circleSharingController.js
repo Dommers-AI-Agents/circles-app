@@ -10,6 +10,7 @@ const {
 } = require('../models/FirestoreModels');
 const crypto = require('crypto');
 const { canViewCircle } = require('../services/visibility');
+const { visibleLocation } = require('../services/publicProjection');
 const { getInnerCircleGrantorIds } = require('../utils/networkAccess');
 const { buildViewerContext } = require('../services/viewerContext');
 const { normalizeUserId } = require('../services/idService');
@@ -755,8 +756,8 @@ const getUsersWithCircles = async (req, res) => {
         userId: userData.id,
         displayName: userData.displayName,
         profilePicture: userData.profilePicture,
-        email: userData.email,
-        location: userData.location,
+        // No email, and "Show my city" honoured (security audit 2026-10-01)
+        location: visibleLocation(userData),
         circleCount: circlesQuery.size
       });
     }
