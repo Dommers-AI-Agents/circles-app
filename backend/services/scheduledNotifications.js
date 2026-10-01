@@ -4,6 +4,7 @@ const notificationService = require('./notificationService');
 const dailySummaryService = require('./dailySummaryService');
 const engagementNotificationService = require('./engagementNotificationService');
 const milestoneService = require('./milestoneService');
+const { pagedQuery } = require('../utils/firestorePaging');
 
 const db = getFirestore();
 
@@ -313,11 +314,14 @@ class ScheduledNotifications {
       const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
-      const usersSnapshot = await db.collection('users').get();
       let sent = 0;
       let skipped = 0;
 
-      for (const doc of usersSnapshot.docs) {
+      // Viral-growth review 2026-10-01: walk users a page at a time, reading
+      // only the two fields the window check needs, instead of one snapshot
+      // of every whole user doc. Only the lapsed few cost more than that.
+      for await (const docs of pagedQuery(db.collection('users'), { select: ['notificationPreferences', 'lastLogin'] })) {
+      for (const doc of docs) {
         const user = { id: doc.id, ...doc.data() };
         try {
           if (user.notificationPreferences?.reengagement === false) { skipped++; continue; }
@@ -354,6 +358,7 @@ class ScheduledNotifications {
         } catch (error) {
           console.error(`Reengagement failed for user ${user.id}:`, error.message);
         }
+      }
       }
 
       console.log(`✅ Reengagement notifications: ${sent} sent, ${skipped} skipped`);

@@ -100,33 +100,33 @@ class MilestoneService {
       weekAgo.setDate(weekAgo.getDate() - 7);
       const weekAgoStr = weekAgo.toISOString();
       
-      // Get all users
-      const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
-      
-      for (const userDoc of usersSnapshot.docs) {
-        const userId = userDoc.id;
-        
+      // Viral-growth review 2026-10-01: this read every user and ran two
+      // connection queries per user (and those three-field queries have no
+      // composite index in firestore.indexes.json). One index-free range read
+      // of this week's accepted connections counts both sides for everyone.
+      const recentSnap = await db.collection(COLLECTIONS.CONNECTIONS)
+        .where('acceptedAt', '>=', weekAgoStr)
+        .get();
+      const newCounts = new Map();
+      const bump = (id) => { if (id) newCounts.set(id, (newCounts.get(id) || 0) + 1); };
+      recentSnap.forEach((doc) => {
+        const c = doc.data();
+        if (c.status !== 'accepted') return;
+        bump(c.connectedUserId);
+        bump(c.userId);
+      });
+
+      // Send notification if 3+ new connections — to accounts that exist,
+      // as the users walk did, in the same (document id) order.
+      const growing = [...newCounts].filter(([, n]) => n >= 3).sort(([a], [b]) => (a > b ? 1 : -1));
+      const userDocs = growing.length
+        ? await db.getAll(...growing.map(([userId]) => db.collection(COLLECTIONS.USERS).doc(userId)))
+        : [];
+      for (let i = 0; i < growing.length; i++) {
+        const [userId, newConnectionsCount] = growing[i];
+        if (!userDocs[i] || !userDocs[i].exists) continue;
         try {
-          // Count new connections this week
-          const [asUser, asConnected] = await Promise.all([
-            db.collection(COLLECTIONS.CONNECTIONS)
-              .where('connectedUserId', '==', userId)
-              .where('status', '==', 'accepted')
-              .where('acceptedAt', '>=', weekAgoStr)
-              .get(),
-            db.collection(COLLECTIONS.CONNECTIONS)
-              .where('userId', '==', userId)
-              .where('status', '==', 'accepted')
-              .where('acceptedAt', '>=', weekAgoStr)
-              .get()
-          ]);
-          
-          const newConnectionsCount = asUser.size + asConnected.size;
-          
-          // Send notification if 3+ new connections
-          if (newConnectionsCount >= 3) {
-            await engagementNotificationService.sendNetworkGrowthAlert(userId, newConnectionsCount);
-          }
+          await engagementNotificationService.sendNetworkGrowthAlert(userId, newConnectionsCount);
         } catch (error) {
           console.error(`Error checking network growth for ${userId}:`, error);
         }
