@@ -139,6 +139,43 @@ describe('circles', () => {
   });
 });
 
+describe('GET /api/videos/user/:userId', () => {
+  const { getUserVideos } = require('../video/videoFeedController');
+  // The fake has no offset(); page 1 is the same rows.
+  Object.getPrototypeOf(mockDb.collection('placeVideos').limit(1)).offset = function offset() { return this; };
+
+  beforeEach(async () => {
+    await put('users', 'owner', { displayName: 'Owner' });
+    await put('users', 'pal', { displayName: 'Pal', following: ['owner'] });
+    await put('users', 'foe', { displayName: 'Foe', blockedBy: ['owner'] });
+    const moment = { userId: 'owner', uploadStatus: 'ready', deletedAt: null, createdAt: '2026-09-01', videoUrl: 'v.mp4' };
+    await put('placeVideos', 'pub', { ...moment, visibility: 'public' });
+    await put('placeVideos', 'priv', { ...moment, visibility: 'private' });
+    await put('placeVideos', 'net', { ...moment, visibility: 'network' });
+    await put('placeVideos', 'fol', { ...moment, visibility: 'followers' });
+    await put('placeVideos', 'flagged', { ...moment, visibility: 'public', moderationStatus: 'removed' });
+  });
+
+  const shelf = async (viewer) => {
+    const out = res();
+    await getUserVideos({ params: { userId: 'owner' }, query: {}, user: viewer ? { uid: viewer } : undefined }, out);
+    return out.json.mock.calls[0][0].data.map(v => v.id).sort();
+  };
+
+  test('anonymous callers get public, un-moderated moments only (used to get every tier)', async () => {
+    expect(await shelf(null)).toEqual(['pub']);
+  });
+
+  test('a follower also sees followers-tier; the owner sees everything', async () => {
+    expect(await shelf('pal')).toEqual(['fol', 'pub']);
+    expect(await shelf('owner')).toEqual(['flagged', 'fol', 'net', 'priv', 'pub']);
+  });
+
+  test('blocked either way → empty shelf', async () => {
+    expect(await shelf('foe')).toEqual([]);
+  });
+});
+
 describe('public moment surfaces', () => {
   const { getPublicVideoDetails } = require('../video/videoFeedController');
   const { getVideoShareInfo } = require('../video/videoShareController');
