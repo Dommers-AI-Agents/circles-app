@@ -434,6 +434,10 @@ class EditPlaceViewController: BaseViewController {
         [personalHeader, privacyLabel, privacyPicker, notesLabel, notesTextView, tagsLabel, tagsTextField,
          moveToCircleButton, deleteButton].forEach { $0.isHidden = !isOwnSave }
         if isHomeOrWork { [personalHeader, privacyLabel, privacyPicker].forEach { $0.isHidden = true } }
+        // Which circle holds a save is a personal organizing choice — it's on
+        // the place page's menu for that. Edit Place for an owner or admin is
+        // about the place itself.
+        moveToCircleButton.isHidden = !isOwnSave || canEditDetails
         updateCategoryUI()
         title = isOwnSave ? "Edit Place" : "Edit Place Details"
     }
