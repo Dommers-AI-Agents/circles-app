@@ -1315,7 +1315,7 @@ class APIService {
         request(
             endpoint: "videos/user/\(userId)\(queryParams)",
             method: .get,
-            requiresAuth: false
+            requiresAuth: true // the server shows private/network moments only to viewers it can identify (security audit 2026-10-01)
         ) { (result: Result<VideosResponse, APIError>) in
             completion(result)
         }
