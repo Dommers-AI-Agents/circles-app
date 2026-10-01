@@ -51,9 +51,9 @@ router.get('/quota', protect, checkVideoQuota);
 // Each initiate mints signed Storage write URLs and a placeVideos doc before
 // any quota is spent: bounded per account across instances, and the declared
 // size validated (security audit 2026-10-01)
-router.post('/upload/initiate', protect, uploadLimiter,
+router.post('/upload/initiate', protect, uploadLimiter, validateVideoUpload,
   perUserLimit({ bucket: 'video-initiate', windowMs: 60 * 60 * 1000, max: 30 }),
-  validateVideoUpload, initiateVideoUpload);
+  initiateVideoUpload);
 router.post('/:videoId/upload/complete', protect, uploadLimiter, completeVideoUpload);
 
 // Embedded video endpoints - Also limited as they create content

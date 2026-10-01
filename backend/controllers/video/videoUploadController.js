@@ -600,6 +600,13 @@ exports.completeVideoUpload = async (req, res) => {
       });
     }
 
+    // Already completed: answer with the moment as it stands. A retry (or a
+    // loop) must not re-count quota, re-post the feed row, or re-measure
+    // Storage (security audit 2026-10-01).
+    if (videoData.uploadStatus === 'ready') {
+      return res.json({ success: true, data: serializeDoc(videoDoc) });
+    }
+
     // Size enforcement (security audit 2026-10-01): the signed upload URLs
     // carry no size cap, so measure what actually landed in Storage, refuse
     // (and delete) anything over the cap, and count quota from real bytes.
