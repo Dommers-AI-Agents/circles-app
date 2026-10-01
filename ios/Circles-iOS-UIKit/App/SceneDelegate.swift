@@ -780,9 +780,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             navigateToPlace(placeId: id)
         case .userProfile(let id):
             navigateToUserProfile(userId: id)
-        case .connectionInvite(let userId, let referralCode):
+        case .connectionInvite(let userId, let referralCode, let inviteToken):
             stashInviteReferralCode(referralCode)
-            handleConnectionInvite(from: userId)
+            handleConnectionInvite(from: userId, inviteToken: inviteToken)
         case .importFlow:
             // Shared from Help → Importing Your Places; receivers without
             // the app get the website guide via the backend redirect
@@ -1199,7 +1199,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         checkForAppUpdates()
     }
     
-    private func handleConnectionInvite(from userId: String) {
+    private func handleConnectionInvite(from userId: String, inviteToken: String? = nil) {
         Logger.debug("📱 SceneDelegate: handleConnectionInvite called with userId: \(userId)")
         Logger.debug("📱 SceneDelegate: Current user logged in: \(AuthService.shared.isLoggedIn)")
         Logger.debug("📱 SceneDelegate: Current user ID: \(AuthService.shared.getUserId() ?? "nil")")
@@ -1209,7 +1209,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             Logger.debug("📱 SceneDelegate: User not logged in, storing pending connection invite")
             // Store both as pending deep link and specific connection invite
             UserDefaults.standard.set("connect:\(userId)", forKey: "pendingDeepLink")
-            NetworkManager.storePendingConnectionInvite(userId: userId)
+            NetworkManager.storePendingConnectionInvite(userId: userId, inviteToken: inviteToken)
             
             // Show alert prompting user to login
             let alert = UIAlertController(
@@ -1230,7 +1230,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         
         // Handle the connection invite
         Logger.debug("📱 SceneDelegate: About to call NetworkManager.handleConnectionInvite")
-        NetworkManager.shared.handleConnectionInvite(from: userId) { [weak self] result in
+        NetworkManager.shared.handleConnectionInvite(from: userId, inviteToken: inviteToken) { [weak self] result in
             Logger.debug("📱 SceneDelegate: NetworkManager.handleConnectionInvite callback received")
             DispatchQueue.main.async {
                 switch result {

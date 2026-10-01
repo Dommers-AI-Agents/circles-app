@@ -187,6 +187,8 @@ class NetworkManager {
     /// when pendingConnections is trustworthy.
     func loadConnections(completion: (() -> Void)? = nil) {
         isLoading = true
+        // Have the signed invite ready before anyone taps Share / shows a QR
+        if myInviteToken == nil { refreshInviteToken() }
 
         apiService.request(
             endpoint: "connections",
@@ -352,14 +354,36 @@ class NetworkManager {
 
         // Branded domain (Cloud Run domain mapping to the same backend) - reads
         // far better in messages than the raw run.app URL
-        var link = "https://api.favcircles.com/connect/\(simpleUserId)"
+        guard var components = URLComponents(string: "https://api.favcircles.com/connect/\(simpleUserId)") else { return nil }
+        var items: [URLQueryItem] = []
         // Carry the sharer's referral code so a recipient who installs the app
         // gets it prefilled on the Register screen (SceneDelegate stashes it as
         // the pending referral code when the link opens the app)
         if let code = ReferralService.shared.myReferralCode {
-            link += "?code=\(code)"
+            items.append(URLQueryItem(name: "code", value: code))
         }
-        return link
+        // The signed invite that lets the opener connect in one tap; fetched
+        // ahead of time (refreshInviteToken) so sharing stays instant
+        if let token = myInviteToken {
+            items.append(URLQueryItem(name: "t", value: token))
+        } else {
+            refreshInviteToken()
+        }
+        components.queryItems = items.isEmpty ? nil : items
+        return components.string
+    }
+
+    /// This account's server-signed invite token (GET connections/invite-token),
+    /// cached for the session. Share links and QR codes carry it as `?t=`.
+    private(set) var myInviteToken: String?
+
+    func refreshInviteToken() {
+        guard AuthService.shared.isLoggedIn else { return }
+        apiService.request(endpoint: "connections/invite-token", method: .get, requiresAuth: true) { [weak self] (result: Result<InviteTokenResponse, APIError>) in
+            if case .success(let response) = result, let token = response.token {
+                DispatchQueue.main.async { self?.myInviteToken = token }
+            }
+        }
     }
 
     func shareConnectionInvite() -> [Any] {
@@ -388,7 +412,7 @@ class NetworkManager {
         return [shareText, inviteURL]
     }
     
-    func sendConnectionRequest(to userId: String, message: String? = nil, autoAccept: Bool = false, completion: @escaping (Result<Connection, Error>) -> Void) {
+    func sendConnectionRequest(to userId: String, message: String? = nil, autoAccept: Bool = false, inviteToken: String? = nil, completion: @escaping (Result<Connection, Error>) -> Void) {
         Logger.debug("📤 NetworkManager: Sending connection request to userId: \(userId)")
         var body: [String: Any] = ["targetUserId": userId]
         if let message = message {
@@ -396,6 +420,11 @@ class NetworkManager {
         }
         if autoAccept {
             body["autoAccept"] = true
+        }
+        // The sharer's signed invite: the server connects in one tap only with
+        // it (a bare autoAccept became a request — security audit 2026-10-01)
+        if let inviteToken, !inviteToken.isEmpty {
+            body["inviteToken"] = inviteToken
         }
         Logger.debug("📤 NetworkManager: Request body: \(body)")
         
@@ -429,6 +458,7 @@ class NetworkManager {
     
     func handleConnectionInvite(from inviteUserId: String,
                                 message: String = "Connected via invite link",
+                                inviteToken: String? = nil,
                                 completion: @escaping (Result<Connection, Error>) -> Void) {
         Logger.debug("🔗 NetworkManager: handleConnectionInvite called with userId: \(inviteUserId)")
         
@@ -475,7 +505,7 @@ class NetworkManager {
         Logger.debug("🔗 NetworkManager: Sending connection request to user \(cleanUserId)")
         
         // Send connection request with autoAccept = true for invite links
-        sendConnectionRequest(to: cleanUserId, message: message, autoAccept: true) { result in
+        sendConnectionRequest(to: cleanUserId, message: message, autoAccept: true, inviteToken: inviteToken) { result in
             switch result {
             case .success(let connection):
                 Logger.debug("🔗 NetworkManager: Connection created successfully: \(connection.id), status: \(connection.status)")
@@ -1022,8 +1052,9 @@ class NetworkManager {
     
     // MARK: - Pending Connection Storage for New Users
     
-    static func storePendingConnectionInvite(userId: String) {
+    static func storePendingConnectionInvite(userId: String, inviteToken: String? = nil) {
         UserDefaults.standard.set(userId, forKey: "pendingConnectionInvite")
+        UserDefaults.standard.set(inviteToken, forKey: "pendingConnectionInviteToken")
     }
     
     static func getPendingConnectionInvite() -> String? {
@@ -1032,11 +1063,13 @@ class NetworkManager {
     
     static func clearPendingConnectionInvite() {
         UserDefaults.standard.removeObject(forKey: "pendingConnectionInvite")
+        UserDefaults.standard.removeObject(forKey: "pendingConnectionInviteToken")
     }
     
     func processPendingConnectionInvite() {
         guard let pendingUserId = NetworkManager.getPendingConnectionInvite() else { return }
-        
+        let pendingToken = UserDefaults.standard.string(forKey: "pendingConnectionInviteToken")
+
         // Clear the pending invite
         NetworkManager.clearPendingConnectionInvite()
         
@@ -1058,7 +1091,7 @@ class NetworkManager {
         Logger.debug("🔗 NetworkManager: Processing pending connection - cleaned userId: \(cleanUserId) from original: \(pendingUserId)")
         
         // Process the connection invite
-        handleConnectionInvite(from: cleanUserId) { result in
+        handleConnectionInvite(from: cleanUserId, inviteToken: pendingToken) { result in
             switch result {
             case .success:
                 Logger.debug("Successfully processed pending connection invite")
@@ -1212,6 +1245,11 @@ struct NetworkCirclesResponse: Codable {
 }
 
 // Empty response for DELETE operations
+struct InviteTokenResponse: Codable {
+    let success: Bool?
+    let token: String?
+}
+
 struct EmptyResponse: Codable {
     let success: Bool?
 }

@@ -57,6 +57,9 @@ struct DeepLinkRouterTests {
         #expect(dest("https://api.favcircles.com/place/p1?ref=u9") == .place(id: "p1", refUserId: "u9"))
         #expect(dest("https://api.favcircles.com/user/u1") == .userProfile(id: "u1"))
         #expect(dest("https://api.favcircles.com/connect/u1") == .connectionInvite(userId: "u1", referralCode: nil))
+        // The sharer's signed invite rides along as ?t= (one-tap connect)
+        #expect(dest("https://api.favcircles.com/connect/u1?code=R1&t=abc_DEF-123") == .connectionInvite(userId: "u1", referralCode: "R1", inviteToken: "abc_DEF-123"))
+        #expect(dest("circles://connect/u1?t=tok") == .connectionInvite(userId: "u1", referralCode: nil, inviteToken: "tok"))
         #expect(dest("https://api.favcircles.com/s/AB12CD") == .sticker(code: "AB12CD"))
         #expect(dest("https://api.favcircles.com/") == nil)
     }

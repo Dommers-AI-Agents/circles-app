@@ -137,7 +137,15 @@ class ShareProfileViewController: BaseViewController {
         // https universal link: works when scanned with the Camera app (opens
         // Circles if installed, App Store otherwise) - a circles:// scheme QR
         // is a dead end for anyone without the app
-        self.deepLink = "https://api.favcircles.com/connect/\(simpleUserId)"
+        // Your own QR carries your signed invite (?t=) so scanning it connects
+        // in one tap; without it the scan only sends a request
+        var link = "https://api.favcircles.com/connect/\(simpleUserId)"
+        if IDNormalizer.isSameUser(user.id, AuthService.shared.getUserId()),
+           let token = NetworkManager.shared.myInviteToken,
+           let encoded = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            link += "?t=\(encoded)"
+        }
+        self.deepLink = link
         super.init(nibName: nil, bundle: nil)
     }
     

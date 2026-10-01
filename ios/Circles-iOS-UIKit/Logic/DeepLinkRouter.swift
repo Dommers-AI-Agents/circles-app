@@ -18,7 +18,9 @@ enum DeepLinkDestination: Equatable {
     case userProfile(id: String)
     /// `referralCode` rides along on invite links (`?code=`); whether it is
     /// stashed depends on auth state, which the receiver checks.
-    case connectionInvite(userId: String, referralCode: String?)
+    /// `inviteToken` (?t=) is the sharer's server-signed invite: with it the
+    /// opener connects in one tap; without it, opening the link sends a request.
+    case connectionInvite(userId: String, referralCode: String?, inviteToken: String? = nil)
     case importFlow
     case allPlacesMap(focusCategory: String?)
     case notificationSettings
@@ -84,7 +86,7 @@ struct DeepLinkRouter {
             case "circle":
                 return parts.count >= 3 ? .circle(id: parts[2], shareToken: query(url, "share")) : nil
             case "connect":
-                return parts.count >= 3 ? .connectionInvite(userId: parts[2], referralCode: query(url, "code")) : nil
+                return parts.count >= 3 ? .connectionInvite(userId: parts[2], referralCode: query(url, "code"), inviteToken: query(url, "t")) : nil
             case "import":
                 return .importFlow
             case "map":
@@ -109,7 +111,7 @@ struct DeepLinkRouter {
         case "user":
             return parts.count >= 2 ? .userProfile(id: parts[1]) : nil
         case "connect":
-            return parts.count >= 2 ? .connectionInvite(userId: parts[1], referralCode: query(url, "code")) : nil
+            return parts.count >= 2 ? .connectionInvite(userId: parts[1], referralCode: query(url, "code"), inviteToken: query(url, "t")) : nil
         case "s":
             // Physical sticker QR code: https://<backend>/s/<code>
             return parts.count >= 2 ? .sticker(code: parts[1]) : nil
@@ -139,7 +141,7 @@ struct DeepLinkRouter {
         let hostPathId = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         switch url.host {
         case "connect" where !hostPathId.isEmpty:
-            return .connectionInvite(userId: hostPathId, referralCode: query(url, "code"))
+            return .connectionInvite(userId: hostPathId, referralCode: query(url, "code"), inviteToken: query(url, "t"))
         case "video" where !hostPathId.isEmpty:
             return .video(id: hostPathId, promptsLogin: true)
         case "referral":
@@ -183,7 +185,7 @@ struct DeepLinkRouter {
         case "quote" where parts.count >= 3:
             return .quote(id: parts[2])
         case "connect" where parts.count >= 3:
-            return .connectionInvite(userId: parts[2], referralCode: query(url, "code"))
+            return .connectionInvite(userId: parts[2], referralCode: query(url, "code"), inviteToken: query(url, "t"))
         default:
             return nil
         }
