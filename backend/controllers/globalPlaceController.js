@@ -21,6 +21,7 @@ const {
 } = require('../models/GlobalPlace');
 
 const { serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
+const { clampPagination } = require('../utils/pagination');
 
 const db = getFirestore();
 
@@ -327,10 +328,11 @@ exports.searchGlobalPlaces = async (req, res, next) => {
       category, 
       lat, 
       lng, 
-      radius = 50, // km
-      limit = 20,
-      offset = 0 
+      radius = 50 // km
     } = req.query;
+    // Capped: an unbounded ?limit / ?offset reads and bills the whole
+    // collection (security audit 2026-10-01)
+    const { limit, offset } = clampPagination(req.query, { defaultLimit: 20, maxLimit: 100 });
     
     let placesQuery = db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES);
     
@@ -355,8 +357,8 @@ exports.searchGlobalPlaces = async (req, res, next) => {
     // Order by quality score for best results first
     placesQuery = placesQuery
       .orderBy('qualityScore', 'desc')
-      .limit(parseInt(limit))
-      .offset(parseInt(offset));
+      .limit(limit)
+      .offset(offset);
     
     const placesSnapshot = await placesQuery.get();
     let places = serializeQuerySnapshot(placesSnapshot);
@@ -400,7 +402,7 @@ exports.searchGlobalPlaces = async (req, res, next) => {
       success: true,
       data: places,
       total: places.length,
-      hasMore: places.length === parseInt(limit)
+      hasMore: places.length === limit
     });
   } catch (error) {
     next(error);

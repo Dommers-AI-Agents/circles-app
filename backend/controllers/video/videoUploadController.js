@@ -7,6 +7,13 @@ const { getStorage } = require('firebase-admin/storage');
 const { COLLECTIONS, createPlaceVideo, createUserVideoQuota, validatePlaceVideo, serializeDoc } = require('../../models/FirestoreModels');
 const { createActivity } = require('../activityController');
 const videoQuotaService = require('../../services/videoQuotaService');
+const {
+  MAX_VIDEO_BYTES,
+  checkUploadSizes,
+  resolveStoragePaths,
+  readObjectSizes,
+  deleteObjects
+} = require('../../services/uploadSizeGuard');
 const axios = require('axios');
 const db = getFirestore();
 const bucket = getStorage().bucket();
@@ -491,9 +498,9 @@ exports.initiateVideoUpload = async (req, res) => {
       contentType: contentType || 'video' // Store content type
     }, userId);
     
-    const videoRef = await db.collection(COLLECTIONS.PLACE_VIDEOS).add(videoData);
+    const videoRef = db.collection(COLLECTIONS.PLACE_VIDEOS).doc();
     const videoId = videoRef.id;
-    
+
     // Generate signed URLs for upload
     const timestamp = Date.now();
     const isPhoto = contentType === 'photo';
@@ -501,7 +508,15 @@ exports.initiateVideoUpload = async (req, res) => {
     const videoPath = isPhoto ? null : `videos/${userId}/full/${videoId}_${timestamp}.${fileExtension}`;
     const previewPath = isPhoto ? null : `videos/${userId}/preview/${videoId}_${timestamp}.mp4`;
     const thumbnailPath = `videos/${userId}/thumbnails/${videoId}_${timestamp}.jpg`;
-    
+
+    // The paths are stored so completion uses these, never a client-supplied
+    // path: completion now deletes oversize objects, and a forged path would
+    // point that at someone else's file (security audit 2026-10-01).
+    await videoRef.set({
+      ...videoData,
+      storagePaths: { video: videoPath, preview: previewPath, thumbnail: thumbnailPath }
+    });
+
     // Generate upload URLs based on content type
     let videoUrl = null;
     let previewUrl = null;
@@ -560,10 +575,10 @@ exports.completeVideoUpload = async (req, res) => {
   try {
     const userId = req.user.uid;
     const { videoId } = req.params;
-    const { 
-      storagePaths,
+    const {
+      storagePaths: clientStoragePaths,
       originalSize,
-      compressionRatio 
+      compressionRatio
     } = req.body;
     
     // Verify video exists and belongs to user
@@ -584,7 +599,38 @@ exports.completeVideoUpload = async (req, res) => {
         message: 'Unauthorized'
       });
     }
-    
+
+    // Size enforcement (security audit 2026-10-01): the signed upload URLs
+    // carry no size cap, so measure what actually landed in Storage, refuse
+    // (and delete) anything over the cap, and count quota from real bytes.
+    const resolvedPaths = resolveStoragePaths(videoData.storagePaths, clientStoragePaths, userId, videoId);
+    if (!resolvedPaths) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid storage paths for this upload'
+      });
+    }
+    const storagePaths = resolvedPaths;
+    const measured = await readObjectSizes(bucket, resolvedPaths);
+    const sizeVerdict = checkUploadSizes(measured);
+    if (!sizeVerdict.ok) {
+      console.warn(`🚫 Oversize moment upload ${videoId} by ${userId}: ${JSON.stringify(measured)}`);
+      await deleteObjects(bucket, resolvedPaths);
+      await videoRef.update({
+        uploadStatus: 'error',
+        uploadError: 'file_too_large',
+        updatedAt: new Date().toISOString()
+      });
+      return res.status(413).json({
+        success: false,
+        message: 'This upload is too large. Please try a shorter or smaller one.'
+      });
+    }
+    // Real bytes when Storage could measure them; else the declared size,
+    // bounded by the cap so a bogus number can't skew the quota
+    const declaredSize = Math.min(Math.max(Number(videoData.fileSize) || 0, 0), MAX_VIDEO_BYTES);
+    const storedBytes = sizeVerdict.totalBytes > 0 ? sizeVerdict.totalBytes : declaredSize;
+
     // Generate public URLs for the uploaded files
     // Use firebasestorage.googleapis.com for Firebase Storage public URLs
     const bucketName = process.env.FIREBASE_STORAGE_BUCKET || bucket.name || 'circles-app-83b67.firebasestorage.app';
@@ -611,6 +657,7 @@ exports.completeVideoUpload = async (req, res) => {
       thumbnailUrl,
       originalSize,
       compressionRatio,
+      fileSize: storedBytes,
       uploadStatus: 'processing',
       uploadProgress: 90,
       updatedAt: new Date().toISOString()
@@ -664,7 +711,7 @@ exports.completeVideoUpload = async (req, res) => {
     const quotaRef = db.collection(COLLECTIONS.USER_VIDEO_QUOTAS).doc(userId);
     await quotaRef.update({
       videosUploaded: FieldValue.increment(1),
-      totalSize: FieldValue.increment(videoData.fileSize),
+      totalSize: FieldValue.increment(storedBytes),
       updatedAt: new Date().toISOString()
     });
     

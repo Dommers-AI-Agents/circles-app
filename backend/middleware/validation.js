@@ -167,23 +167,31 @@ exports.validateMessage = [
   handleValidationErrors
 ];
 
-// Video upload validation
+// Video upload validation (POST /api/videos/upload/initiate). Wired in
+// security audit 2026-10-01 so the declared fileSize is a real bounded number
+// before it feeds the quota math. Shaped to what current iOS builds send:
+// duration is a float of seconds (0 for photos), visibility uses the moment
+// vocabulary (incl. innerCircle), and the MediaStorageService path omits
+// title/contentType.
 exports.validateVideoUpload = [
   body('placeId')
     .notEmpty()
     .withMessage('Place ID is required'),
   body('placeName')
+    .isString()
     .trim()
-    .isLength({ min: 1, max: 100 })
-    .withMessage('Place name must be between 1 and 100 characters'),
+    .isLength({ min: 1, max: 300 })
+    .withMessage('Place name must be between 1 and 300 characters'),
   body('duration')
-    .isInt({ min: 0, max: 3600 })
+    .optional({ values: 'null' })
+    .isFloat({ min: 0, max: 3600 })
     .withMessage('Duration must be between 0 and 3600 seconds'),
   body('fileSize')
-    .isInt({ min: 0, max: 104857600 }) // 100MB max
+    .isFloat({ min: 0, max: 104857600 }) // 100MB max
     .withMessage('File size must be less than 100MB'),
   body('visibility')
-    .isIn(['public', 'network', 'private'])
+    .optional({ values: 'null' })
+    .isIn(require('../services/visibility').MOMENT_PRIVACY_LEVELS)
     .withMessage('Invalid visibility setting'),
   handleValidationErrors
 ];

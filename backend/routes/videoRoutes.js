@@ -2,7 +2,8 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/firebaseAuth');
-const { uploadLimiter } = require('../middleware/security');
+const { uploadLimiter, perUserLimit } = require('../middleware/security');
+const { validateVideoUpload } = require('../middleware/validation');
 const {
   checkVideoQuota,
   initiateVideoUpload,
@@ -47,7 +48,12 @@ const {
 router.get('/quota', protect, checkVideoQuota);
 
 // Upload flow - Apply uploadLimiter only to actual upload endpoints
-router.post('/upload/initiate', protect, uploadLimiter, initiateVideoUpload);
+// Each initiate mints signed Storage write URLs and a placeVideos doc before
+// any quota is spent: bounded per account across instances, and the declared
+// size validated (security audit 2026-10-01)
+router.post('/upload/initiate', protect, uploadLimiter,
+  perUserLimit({ bucket: 'video-initiate', windowMs: 60 * 60 * 1000, max: 30 }),
+  validateVideoUpload, initiateVideoUpload);
 router.post('/:videoId/upload/complete', protect, uploadLimiter, completeVideoUpload);
 
 // Embedded video endpoints - Also limited as they create content

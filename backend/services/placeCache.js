@@ -10,8 +10,15 @@ class PlaceCache {
       photos: 30 * 24 * 60 * 60 * 1000,      // 30 days for photo metadata
     };
     
+    // Bounded (security audit 2026-10-01): an unbounded Map grew with every
+    // distinct place id or query an instance ever saw. Least-recently-used
+    // entries go first; Map iteration order is insertion order, and a hit
+    // re-inserts its entry at the end.
+    this.maxEntries = 5000;
+
     // Periodically clean expired entries
-    setInterval(() => this.cleanExpired(), 60 * 60 * 1000); // Every hour
+    const timer = setInterval(() => this.cleanExpired(), 60 * 60 * 1000); // Every hour
+    if (timer.unref) timer.unref(); // never keep the process (or jest) alive
   }
   
   // Generate cache key
@@ -24,7 +31,11 @@ class PlaceCache {
     const key = this.generateKey(type, identifier);
     const ttl = customTTL || this.TTL[type] || this.TTL.placeDetails;
     const expiresAt = Date.now() + ttl;
-    
+
+    this.cache.delete(key);
+    while (this.cache.size >= this.maxEntries) {
+      this.cache.delete(this.cache.keys().next().value);
+    }
     this.cache.set(key, {
       data,
       expiresAt,
@@ -52,6 +63,10 @@ class PlaceCache {
       return null;
     }
     
+    // Mark as most recently used
+    this.cache.delete(key);
+    this.cache.set(key, cached);
+
     const ageMinutes = Math.floor((Date.now() - cached.createdAt) / 1000 / 60);
     console.log(`✅ Cache hit for ${type}:${identifier} (age: ${ageMinutes} minutes)`);
     return cached.data;
@@ -138,3 +153,4 @@ class PlaceCache {
 
 // Export singleton instance
 module.exports = new PlaceCache();
+module.exports.PlaceCache = PlaceCache;

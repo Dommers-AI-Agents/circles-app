@@ -6,6 +6,7 @@ const {
   serializeDoc,
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
+const { clampPagination } = require('../utils/pagination');
 // Activity logging removed - not needed for visit tracking
 
 const db = getFirestore();
@@ -58,10 +59,11 @@ exports.trackVisit = async (req, res) => {
 exports.getVisits = async (req, res) => {
   try {
     const userId = req.user.uid;
-    const { 
-      limit = 50, 
-      offset = 0, 
-      reviewed, 
+    // Capped (security audit 2026-10-01). Visits are the caller's own rows,
+    // and Settings → Export asks for limit=1000, so the cap is higher here.
+    const { limit, offset } = clampPagination(req.query, { defaultLimit: 50, maxLimit: 1000, maxOffset: 10000 });
+    const {
+      reviewed,
       dismissed,
       startDate,
       endDate
@@ -89,7 +91,7 @@ exports.getVisits = async (req, res) => {
     }
 
     // Apply pagination
-    query = query.limit(parseInt(limit)).offset(parseInt(offset));
+    query = query.limit(limit).offset(offset);
 
     const snapshot = await query.get();
     let visits = serializeQuerySnapshot(snapshot);
@@ -139,9 +141,9 @@ exports.getVisits = async (req, res) => {
       data: visits,
       pagination: {
         total: totalCount,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        hasMore: parseInt(offset) + visits.length < totalCount
+        limit,
+        offset,
+        hasMore: offset + visits.length < totalCount
       }
     });
   } catch (error) {
