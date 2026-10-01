@@ -266,20 +266,15 @@ app.get('/place/:placeId', async (req, res) => {
   let name = null;
   let address = null;
   let photoUrl = null;
+  // Only a place an anonymous viewer could see is described (security audit
+  // 2026-10-01 — see services/placeSharePreview.js). Everything else gets the
+  // generic page; the deep link still opens the app, where the viewer's own
+  // access decides.
   try {
     const { getFirestore } = require('./config/firebase');
-    const db = getFirestore();
-    let doc = await db.collection('places').doc(placeId).get();
-    if (!doc.exists) {
-      doc = await db.collection('globalPlaces').doc(placeId).get();
-    }
-    if (doc.exists) {
-      const data = doc.data();
-      name = (data.name || '').trim() || null;
-      address = (data.address || '').trim() || null;
-      const firstPhoto = (data.photos || [])[0];
-      photoUrl = typeof firstPhoto === 'string' ? firstPhoto : (firstPhoto && firstPhoto.url) || null;
-    }
+    const { publicPlacePreview } = require('./services/placeSharePreview');
+    const preview = await publicPlacePreview(getFirestore(), placeId);
+    if (preview) ({ name, address, photoUrl } = preview);
   } catch (e) {
     console.warn('Place share page: could not load place:', e.message);
   }

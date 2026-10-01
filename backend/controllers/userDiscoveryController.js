@@ -6,6 +6,7 @@ const { COLLECTIONS } = require('../models/FirestoreModels');
 const geofire = require('geofire-common');
 const { getPlaceCountMap } = require('../services/userStatsCache');
 const { getSuggestionsFor } = require('../services/suggestionEngine');
+const { coarseDistanceKm } = require('../services/publicProjection');
 const {
   getAssumedLocation,
   effectiveCoords,
@@ -188,7 +189,10 @@ const getDiscoverUsers = async (req, res) => {
           })
           .filter((x) => x.band < 4)
           .sort((a, b) => (a.band - b.band) || (activityScore(b.doc) - activityScore(a.doc)))
-          .map((x) => shape(x.doc, 'nearby', { distance: Math.round(x.distance * 10) / 10 }));
+          // Coarse buckets only — an exact distance from a caller-chosen
+          // origin let anyone triangulate another user's GPS fix (security
+          // audit 2026-10-01). Ranking above still uses the true distance.
+          .map((x) => shape(x.doc, 'nearby', { distance: coarseDistanceKm(x.distance) }));
       } else {
         // No coordinates at all for the caller — fall back to the zipcode
         // prefix, which at least groups a metro area together. Same
@@ -401,14 +405,18 @@ const searchUsersAdvanced = async (req, res) => {
       connections.set(conn.connectedUserId, conn.status);
     });
     
-    const currentUserData = currentUserDoc.data();
+    const currentUserData = currentUserDoc.data() || {};
     const userFollowing = new Set(currentUserData.following || []);
+    // Blocked either way never appears in search (security audit 2026-10-01)
+    const { excludedUserIds } = require('../services/moderationService');
+    const blockedForSearch = excludedUserIds(currentUserData);
     
     // Enrich search results with additional data. Counts come from the bulk
     // map (15-min cache) — the old per-result circles query ran SERIALLY, up
     // to ~52 sequential Firestore round trips per search keystroke.
     const enrichedResults = [];
     for (const user of searchResults) {
+      if (blockedForSearch.has(user.id)) continue;
       const { placesCount, circlesCount } = placeCounts.get(user.id) || { placesCount: 0, circlesCount: 0 };
 
       enrichedResults.push({

@@ -18,10 +18,33 @@ const subscriptionLimitService = require('../services/subscriptionLimitService')
 const { attachOwnerDetails } = require('../services/ownerResolver');
 const { CIRCLE_PRIVACY_LEVELS, resolveIncomingPrivacy } = require('../services/visibility');
 const { canViewCircleFor } = require('../services/circleAccess');
+const { projectPublicUser } = require('../services/publicUserProjection');
+const { publicCircleFields } = require('../services/publicProjection');
 const { validateGuestList } = require('../services/innerCircleService');
 const { listIdFor } = require('../services/innerCircleLists');
 
 const db = getFirestore();
+
+// The circle social endpoints (follow, like, likes list, comments, replies)
+// took a bare circle id and never asked whether the caller may see the circle,
+// so anyone signed in could read the comments on — or like — a private circle
+// (security audit 2026-10-01). Same gate getCircle and the place endpoints
+// use. A hidden circle answers 404, not 403, so the id doesn't confirm that it
+// exists.
+const loadVisibleCircle = async (circleId, viewerId) => {
+  const ref = db.collection(COLLECTIONS.CIRCLES).doc(circleId);
+  const doc = await ref.get();
+  if (!doc.exists) return null;
+  const circle = serializeDoc(doc);
+  if (!(await canViewCircleFor(circle, viewerId))) return null;
+  return { ref, circle };
+};
+
+const circleNotFound = (res) => res.status(404).json({ success: false, message: 'Circle not found' });
+
+// A user embedded in someone else's response (liker, commenter, editor) —
+// these used to ship the WHOLE user doc: email, phone, device tokens.
+const userCard = (userDoc) => projectPublicUser(serializeDoc(userDoc));
 
 // @desc    Get all circles for current user
 // @route   GET /api/circles
@@ -342,11 +365,16 @@ exports.getCirclePublic = async (req, res, next) => {
         message: 'This circle is not public'
       });
     }
+    if (circle.deletedAt) {
+      return res.status(404).json({ success: false, message: 'Circle not found' });
+    }
 
-    // For public circles, anyone can view them
+    // Public fields only. The raw doc carried sharedWith (invitees' ids or
+    // emails), editors, followers and likes to anyone with the link
+    // (security audit 2026-10-01).
     res.status(200).json({
       success: true,
-      circle: circle
+      circle: publicCircleFields(circle)
     });
   } catch (error) {
     console.error('Error fetching public circle:', error);
@@ -731,6 +759,12 @@ exports.followCircle = async (req, res, next) => {
     const isFollowing = followers.includes(req.user.uid);
     const action = req.path.endsWith('/follow') ? 'follow' : 'unfollow';
 
+    // Following needs sight of the circle; unfollowing never does — someone
+    // who lost access must still be able to leave.
+    if (action === 'follow' && !(await canViewCircleFor(circle, req.user.uid))) {
+      return circleNotFound(res);
+    }
+
     let newFollowers;
     if (action === 'follow' && !isFollowing) {
       newFollowers = [...followers, req.user.uid];
@@ -954,7 +988,7 @@ exports.getEditors = async (req, res, next) => {
       editors.map(async (editorId) => {
         const userDoc = await db.collection(COLLECTIONS.USERS).doc(editorId).get();
         if (userDoc.exists) {
-          return serializeDoc(userDoc);
+          return userCard(userDoc);
         }
         return null;
       })
@@ -1027,7 +1061,12 @@ exports.likeCircle = async (req, res, next) => {
     const circle = serializeDoc(circleDoc);
     const currentLikes = circle.likes || [];
     const isLiked = currentLikes.includes(userId);
-    
+
+    // Liking needs sight of the circle; taking a like back never does.
+    if (!isLiked && !(await canViewCircleFor(circle, userId))) {
+      return circleNotFound(res);
+    }
+
     let newLikes;
     let action;
     
@@ -1087,26 +1126,17 @@ exports.getCircleLikes = async (req, res, next) => {
       timestamp: new Date().toISOString()
     });
     
-    // Get the circle
-    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(circleId);
-    const circleDoc = await circleRef.get();
-    
-    if (!circleDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: 'Circle not found'
-      });
-    }
-    
-    const circle = serializeDoc(circleDoc);
+    const visible = await loadVisibleCircle(circleId, userId);
+    if (!visible) return circleNotFound(res);
+    const { circle } = visible;
     const likeUserIds = circle.likes || [];
-    
+
     // Get user details for all likes
     const users = [];
     for (const likeUserId of likeUserIds) {
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(likeUserId).get();
       if (userDoc.exists) {
-        users.push(serializeDoc(userDoc));
+        users.push(userCard(userDoc));
       }
     }
     
@@ -1138,16 +1168,8 @@ exports.getCircleComments = async (req, res, next) => {
     });
     
     // Get the circle to check permissions
-    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(circleId);
-    const circleDoc = await circleRef.get();
-    
-    if (!circleDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: 'Circle not found'
-      });
-    }
-    
+    if (!(await loadVisibleCircle(circleId, userId))) return circleNotFound(res);
+
     // Get comments for this circle (only top-level comments, not replies)
     const commentsSnapshot = await db.collection(COLLECTIONS.CIRCLE_COMMENTS)
       .where('circleId', '==', circleId)
@@ -1162,9 +1184,9 @@ exports.getCircleComments = async (req, res, next) => {
       // Get user details for each comment
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(comment.userId).get();
       if (userDoc.exists) {
-        comment.user = serializeDoc(userDoc);
+        comment.user = userCard(userDoc);
       }
-      
+
       comments.push(comment);
     }
     
@@ -1205,18 +1227,10 @@ exports.addCircleComment = async (req, res, next) => {
     }
     
     // Get the circle to check permissions and update comment count
-    const circleRef = db.collection(COLLECTIONS.CIRCLES).doc(circleId);
-    const circleDoc = await circleRef.get();
-    
-    if (!circleDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: 'Circle not found'
-      });
-    }
-    
-    const circle = serializeDoc(circleDoc);
-    
+    const visible = await loadVisibleCircle(circleId, userId);
+    if (!visible) return circleNotFound(res);
+    const { ref: circleRef, circle } = visible;
+
     // Create comment data
     const commentData = createCircleComment({
       circleId: circleId,
@@ -1233,7 +1247,7 @@ exports.addCircleComment = async (req, res, next) => {
     // Get user details
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
     if (userDoc.exists) {
-      comment.user = serializeDoc(userDoc);
+      comment.user = userCard(userDoc);
     }
     
     // Update circle comment count
@@ -1358,7 +1372,9 @@ exports.addCommentReply = async (req, res, next) => {
         message: 'Reply text is required'
       });
     }
-    
+
+    if (!(await loadVisibleCircle(circleId, userId))) return circleNotFound(res);
+
     // Get the parent comment to validate it exists
     const parentCommentRef = db.collection(COLLECTIONS.CIRCLE_COMMENTS).doc(commentId);
     const parentCommentDoc = await parentCommentRef.get();
@@ -1397,9 +1413,9 @@ exports.addCommentReply = async (req, res, next) => {
     // Get user details for the reply
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
     if (userDoc.exists) {
-      reply.user = serializeDoc(userDoc);
+      reply.user = userCard(userDoc);
     }
-    
+
     // Update parent comment reply count
     const currentReplyCount = parentComment.replyCount || 0;
     await parentCommentRef.update({
@@ -1445,7 +1461,9 @@ exports.getCommentReplies = async (req, res, next) => {
       userId,
       timestamp: new Date().toISOString()
     });
-    
+
+    if (!(await loadVisibleCircle(circleId, userId))) return circleNotFound(res);
+
     // Verify parent comment exists and belongs to the circle
     const parentCommentRef = db.collection(COLLECTIONS.CIRCLE_COMMENTS).doc(commentId);
     const parentCommentDoc = await parentCommentRef.get();
@@ -1479,9 +1497,9 @@ exports.getCommentReplies = async (req, res, next) => {
       // Get user details for each reply
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(reply.userId).get();
       if (userDoc.exists) {
-        reply.user = serializeDoc(userDoc);
+        reply.user = userCard(userDoc);
       }
-      
+
       replies.push(reply);
     }
     
