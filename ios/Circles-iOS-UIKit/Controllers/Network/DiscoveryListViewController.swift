@@ -24,8 +24,8 @@ class DiscoveryListViewController: BaseViewController {
     enum Mode {
         case discover
         case popular
-        /// Everyone you haven't connected with, requested or followed —
-        /// the full list behind Discover's "People you might know"
+        /// Everyone on FavCircles, new-to-you people first — the full list
+        /// behind Discover's "People you might know"
         case everyone
     }
 
@@ -62,7 +62,7 @@ class DiscoveryListViewController: BaseViewController {
             ]
         case .everyone:
             return [
-                ("discover", "👥 People on FavCircles", "Everyone you haven't connected with or followed yet, biggest collections first.")
+                ("everyone", "👥 People on FavCircles", "Everyone on FavCircles. People you haven't connected with come first, then the people you follow and your connections.")
             ]
         }
     }
@@ -175,7 +175,7 @@ class DiscoveryListViewController: BaseViewController {
         case .popular:
             return "No rankings yet\n\nAdd places to claim the top spot!"
         case .everyone:
-            return "You're connected with everyone here\n\nInvite a friend to bring someone new."
+            return "Nobody here yet\n\nInvite a friend to bring someone new."
         }
     }
 

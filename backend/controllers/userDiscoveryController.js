@@ -298,6 +298,37 @@ const getDiscoverUsers = async (req, res) => {
             }));
         }
       }
+    } else if (type === 'everyone') {
+      // The full "People on FavCircles" list behind Discover's See all:
+      // everyone on FavCircles, people with no places yet and people you
+      // dismissed included (an X tapped by mistake shouldn't hide someone
+      // for good; Wes, 2026-10-01). New-to-you people first, then people you
+      // follow but aren't connected with, then your connections; within
+      // each, biggest collections then newest sign-ups. Each row's button
+      // says where you stand. Blocked, merged and test accounts stay out.
+      const everyoneSnap = await db.collection(COLLECTIONS.USERS)
+        .select('createdAt', 'mergedInto', 'active', 'isFakeProfile').get();
+      const placesOf = (id) => ((placeCounts.get(id) || {}).placesCount || 0);
+      // createdAt is an ISO string on most accounts, a Firestore Timestamp on old ones
+      const joined = (d) => {
+        const v = d.data().createdAt;
+        if (v && typeof v.toMillis === 'function') return v.toMillis();
+        return Date.parse(v) || 0;
+      };
+      const group = (id) => (hasActiveConnection(id) ? 2 : following.has(id) ? 1 : 0);
+      const pageIds = everyoneSnap.docs
+        .filter((d) => {
+          const u = d.data();
+          return d.id !== userId && !blockedSet.has(d.id)
+            && !u.mergedInto && u.active !== false && u.isFakeProfile !== true;
+        })
+        .sort((a, b) => (group(a.id) - group(b.id)) || (placesOf(b.id) - placesOf(a.id)) || (joined(b) - joined(a)))
+        .map((d) => d.id)
+        .slice(0, pageWindow);
+      const order = new Map(pageIds.map((id, i) => [id, i]));
+      users = (await fetchDocsByIds(pageIds))
+        .map((d) => shape(d, 'everyone', placesOf(d.id) === 0 ? { suggestionReason: '🆕 New here — no places yet' } : {}))
+        .sort((a, b) => order.get(a.id) - order.get(b.id));
     } else {
       // 'discover' / 'all': people you have NO active connection with and do
       // not follow, ranked by places (new people worth discovering).

@@ -394,7 +394,7 @@ final class PeopleStripView: UIView, UICollectionViewDataSource, UICollectionVie
         super.init(frame: frame)
         let header = NetworkCardHeader("👋 People you might know", action: "See all")
         header.onAction = { [weak self] in self?.onSeeAll?() }
-        emptyLabel.text = "No new suggestions right now. See all to browse everyone on FavCircles you haven't connected with yet."
+        emptyLabel.text = "No new suggestions right now. Tap See all to browse everyone on FavCircles."
         emptyLabel.font = .systemFont(ofSize: 14)
         emptyLabel.textColor = .secondaryLabel
         emptyLabel.numberOfLines = 0
