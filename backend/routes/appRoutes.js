@@ -1,4 +1,6 @@
 const express = require('express');
+const requireSuperUser = require('../middleware/requireSuperUser');
+const { protect } = require('../middleware/firebaseAuth');
 const router = express.Router();
 
 // App version configuration
@@ -44,7 +46,7 @@ router.get('/partner-actions', async (req, res) => {
 });
 
 // Update version info (admin endpoint - add authentication)
-router.post('/version', async (req, res) => {
+router.post('/version', protect, requireSuperUser, async (req, res) => {
     try {
         // TODO: Add admin authentication here
         

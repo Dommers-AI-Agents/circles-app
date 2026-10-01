@@ -2,7 +2,6 @@
 const { getFirestore, getAuth } = require('../config/firebase');
 const { COLLECTIONS, createUser, serializeDoc } = require('../models/FirestoreModels');
 const jwt = require('jsonwebtoken');
-const jwksClient = require('jwks-rsa');
 const { normalizeUserId, logNormalization } = require('../services/idService');
 const OnboardingService = require('../services/onboardingService');
 const { firebaseApiKey } = require('../config/config');
@@ -19,13 +18,6 @@ exports.getTokenExpiresInSeconds = getTokenExpiresInSeconds;
 // Zipcode → city/state resolution lives in services/zipcodeService (shared
 // with profile updates so zipcode and location can never disagree)
 const { geocodeZipcode } = require('../services/zipcodeService');
-
-// Apple's JWKS client for verifying tokens
-const appleClient = jwksClient({
-  jwksUri: 'https://appleid.apple.com/auth/keys',
-  cache: true,
-  rateLimit: true
-});
 
 // Helper function to exchange LinkedIn authorization code for access token
 async function exchangeLinkedInCode(code) {
@@ -62,67 +54,17 @@ async function exchangeLinkedInCode(code) {
   return data.access_token;
 }
 
-// Helper function to get Apple's signing key
-function getAppleSigningKey(kid) {
-  return new Promise((resolve, reject) => {
-    appleClient.getSigningKey(kid, (err, key) => {
-      if (err) {
-        reject(err);
-      } else {
-        const signingKey = key.getPublicKey();
-        resolve(signingKey);
-      }
-    });
-  });
-}
-
-// Helper function to verify Apple Sign-In token
-async function verifyAppleToken(idToken) {
-  try {
-    // Decode the token without verification first to get the header
-    const decoded = jwt.decode(idToken, { complete: true });
-    if (!decoded) {
-      throw new Error('Failed to decode token');
-    }
-
-    // Check if this is an Apple token by looking at the issuer
-    const payload = decoded.payload;
-    if (payload.iss !== 'https://appleid.apple.com') {
-      throw new Error('Not an Apple ID token');
-    }
-
-    // For development, we'll trust the token if it's from Apple
-    // In production, you should uncomment the verification below
-    
-    /*
-    // Get the signing key from Apple
-    const signingKey = await getAppleSigningKey(decoded.header.kid);
-    
-    // Verify the token
-    const verified = jwt.verify(idToken, signingKey, {
-      issuer: 'https://appleid.apple.com',
-      audience: 'com.favcircles.circles' // Your app's bundle ID
-    });
-    */
-    
-    // Extract user info from the token
-    return {
-      uid: payload.sub, // Apple user ID
-      email: payload.email || null,
-      name: null, // Apple doesn't provide name in the token
-      picture: null // Apple doesn't provide picture
-    };
-  } catch (error) {
-    throw error;
-  }
-}
+// Provider token checks (Apple signature/audience, Google aud, Facebook app id)
+// and which email may match an existing account: services/socialIdentity.
+const socialIdentity = require('../services/socialIdentity');
+const verifyAppleToken = (idToken) => socialIdentity.verifyAppleToken(idToken);
 
 // @desc    Firebase authentication (Google Sign-In and Apple Sign-In from iOS)
 // @route   POST /api/auth/firebase
 // @access  Public
 exports.firebaseAuth = async (req, res, next) => {
   try {
-    const { idToken, name: providedName, email: providedEmail, picture: providedPicture } = req.body;
+    const { idToken, name: providedName, picture: providedPicture } = req.body;
 
     if (!idToken) {
       return res.status(400).json({
@@ -140,7 +82,9 @@ exports.firebaseAuth = async (req, res, next) => {
     try {
       const decodedToken = await auth.verifyIdToken(idToken);
       uid = decodedToken.uid;
-      email = decodedToken.email;
+      // Only an address Firebase verified may find an existing account —
+      // anyone can create an unverified Firebase user with someone's email
+      email = socialIdentity.firebaseVerifiedEmail(decodedToken);
       name = decodedToken.name;
       picture = decodedToken.picture;
       provider = 'firebase';
@@ -152,8 +96,8 @@ exports.firebaseAuth = async (req, res, next) => {
       try {
         const appleData = await verifyAppleToken(idToken);
         uid = appleData.uid;
-        // Use provided email/name from client if available (Apple only provides on first sign-in)
-        email = providedEmail || appleData.email;
+        // The token's (signed, verified) email — never the request body's
+        email = appleData.email;
         name = providedName || appleData.name || 'Apple User';
         picture = appleData.picture;
         provider = 'apple';
@@ -168,8 +112,12 @@ exports.firebaseAuth = async (req, res, next) => {
           const fbData = await fbResponse.json();
           
           if (fbResponse.ok && fbData.id) {
+            // A token issued to any other Facebook app must not sign in here
+            if (!(await socialIdentity.facebookTokenIsOurs(idToken))) {
+              throw new Error('Facebook token was not issued to FavCircles');
+            }
             uid = `fb_${fbData.id}`;
-            email = providedEmail || fbData.email;
+            email = fbData.email || null;
             name = providedName || fbData.name;
             picture = fbData.picture?.data?.url;
             provider = 'facebook';
@@ -206,19 +154,15 @@ exports.firebaseAuth = async (req, res, next) => {
               const lastName = profileData.localizedLastName || '';
               name = providedName || `${firstName} ${lastName}`.trim() || 'LinkedIn User';
               
-              // Try to get email if not provided
-              if (!providedEmail) {
-                try {
-                  const emailResponse = await fetch('https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))', { headers: linkedInHeaders });
-                  const emailData = await emailResponse.json();
-                  if (emailData.elements && emailData.elements[0]) {
-                    email = emailData.elements[0]['handle~'].emailAddress;
-                  }
-                } catch (emailError) {
-                  console.log('⚠️ Failed to fetch LinkedIn email:', emailError.message);
+              // LinkedIn's own record of the email — never the request body's
+              try {
+                const emailResponse = await fetch('https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))', { headers: linkedInHeaders });
+                const emailData = await emailResponse.json();
+                if (emailData.elements && emailData.elements[0]) {
+                  email = emailData.elements[0]['handle~'].emailAddress;
                 }
-              } else {
-                email = providedEmail;
+              } catch (emailError) {
+                console.log('⚠️ Failed to fetch LinkedIn email:', emailError.message);
               }
               
               provider = 'linkedin';
@@ -237,12 +181,13 @@ exports.firebaseAuth = async (req, res, next) => {
               const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
               const tokenInfo = await response.json();
               
-              if (response.ok && tokenInfo.aud) {
-                // Valid Google OAuth token
-                uid = tokenInfo.sub; // Google user ID - use as-is, don't modify
-                email = tokenInfo.email;
-                name = tokenInfo.name;
-                picture = tokenInfo.picture;
+              // Issued to OUR client id (a token for any other app used to pass)
+              const google = response.ok ? socialIdentity.acceptGoogleTokenInfo(tokenInfo) : null;
+              if (google) {
+                uid = google.uid; // Google user ID - use as-is, don't modify
+                email = google.email;
+                name = google.name;
+                picture = google.picture;
                 provider = 'google';
                 console.log('✅ Google OAuth token verified successfully');
                 console.log(`📝 Google user ID (sub): ${uid}`);
@@ -338,16 +283,8 @@ exports.firebaseAuth = async (req, res, next) => {
         if (provider === 'apple' && email) {
           const alternateEmails = existingUser.alternateEmails || [];
           
-          // If current email is a private relay and we have the real email from request
-          if (email.includes('@privaterelay.appleid.com') && providedEmail && providedEmail !== email) {
-            // Store the real email as alternate
-            if (!alternateEmails.includes(providedEmail) && existingUser.email !== providedEmail) {
-              alternateEmails.push(providedEmail);
-              updateData.alternateEmails = alternateEmails;
-            }
-          }
           // If current email is real and we're signing in with private relay, store private relay as alternate
-          else if (!email.includes('@privaterelay.appleid.com') && existingUser.email && existingUser.email.includes('@privaterelay.appleid.com')) {
+          if (!email.includes('@privaterelay.appleid.com') && existingUser.email && existingUser.email.includes('@privaterelay.appleid.com')) {
             if (!alternateEmails.includes(existingUser.email)) {
               alternateEmails.push(existingUser.email);
               updateData.alternateEmails = alternateEmails;
@@ -514,20 +451,11 @@ exports.firebaseAuth = async (req, res, next) => {
           console.log(`🆕 Creating new user with ID: ${simpleUid}, provider: ${provider}`);
           
           // Handle alternate emails for new users (especially Apple Sign In)
-          let alternateEmails = [];
-          let primaryEmail = email;
-          
-          if (provider === 'apple' && email && providedEmail) {
-            // If we have both private relay and real email, decide which should be primary
-            if (email.includes('@privaterelay.appleid.com') && !providedEmail.includes('@privaterelay.appleid.com')) {
-              // Use real email as primary, store private relay as alternate
-              primaryEmail = providedEmail;
-              alternateEmails.push(email);
-            } else if (!email.includes('@privaterelay.appleid.com') && providedEmail !== email) {
-              // Store provided email as alternate if different
-              alternateEmails.push(providedEmail);
-            }
-          }
+          // Only the provider-verified email: an address typed into the
+          // request would let someone pre-claim another person's email and
+          // inherit their later sign-in
+          const alternateEmails = [];
+          const primaryEmail = email;
           
           const userData = createUser({
             uid: simpleUid,
@@ -1437,35 +1365,47 @@ exports.facebookDataDeletion = async (req, res, next) => {
       });
     }
     
-    // Parse Facebook signed request
-    const [encodedSig, payload] = signed_request.split('.');
-    const decodedPayload = JSON.parse(Buffer.from(payload, 'base64').toString());
-    
+    // Facebook signs this with our app secret. It used to be decoded and
+    // trusted, so anyone could post a made-up user id and have that account
+    // deleted (security audit 2026-10-01). Verify, and fail closed when the
+    // secret isn't configured.
+    const appSecret = process.env.FACEBOOK_APP_SECRET;
+    if (!appSecret) {
+      console.error('❌ facebook-deauthorize: FACEBOOK_APP_SECRET not set — refusing');
+      return res.status(503).json({ success: false, message: 'Not configured' });
+    }
+    const [encodedSig, payload] = String(signed_request).split('.');
+    if (!encodedSig || !payload) {
+      return res.status(400).json({ success: false, message: 'Invalid signed request' });
+    }
+    const crypto = require('crypto');
+    const expected = crypto.createHmac('sha256', appSecret).update(payload).digest();
+    const given = Buffer.from(encodedSig.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+    if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) {
+      return res.status(401).json({ success: false, message: 'Invalid signature' });
+    }
+    const decodedPayload = JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());
+
     // Extract user ID
     const userId = decodedPayload.user_id;
-    
+
     if (!userId) {
       return res.status(400).json({
         success: false,
         message: 'Invalid signed request'
       });
     }
-    
-    // TODO: In production, verify the signature using your app secret
-    // For now, we'll proceed with deletion
-    
-    // Delete user data from Firestore
+
+    // Record the request; never delete here. A bare doc delete orphaned the
+    // person's places, messages and circles — removal goes through account
+    // deletion, done deliberately.
     const fbUserId = `fb_${userId}`;
-    const userRef = db.collection(COLLECTIONS.USERS).doc(fbUserId);
-    
-    // Check if user exists
-    const userDoc = await userRef.get();
-    if (userDoc.exists) {
-      // Delete user document
-      await userRef.delete();
-      console.log(`Deleted Facebook user data for user: ${fbUserId}`);
-    }
-    
+    await db.collection('facebookDeletionRequests').doc(fbUserId).set({
+      facebookUserId: String(userId),
+      requestedAt: new Date().toISOString()
+    }, { merge: true });
+    console.log(`📝 Facebook data deletion requested for ${fbUserId}`);
+
     // Return confirmation
     const confirmationCode = `DEL_${userId}_${Date.now()}`;
     

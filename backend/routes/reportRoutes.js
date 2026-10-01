@@ -1,4 +1,5 @@
 const express = require('express');
+const requireSuperUser = require('../middleware/requireSuperUser');
 const router = express.Router();
 const { protect } = require('../middleware/firebaseAuth');
 const {
@@ -13,7 +14,7 @@ const {
 router.post('/user', protect, reportUser);
 router.post('/content', protect, reportContent);
 router.get('/', protect, getReports);
-router.put('/:id', protect, updateReportStatus);
+router.put('/:id', protect, requireSuperUser, updateReportStatus);
 // Super-user adjudication: dismiss / remove_content / ban_user
 router.post('/:id/action', protect, actionReport);
 

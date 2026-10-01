@@ -1,5 +1,6 @@
 // backend/routes/connectionRoutes.js
 const express = require('express');
+const requireSuperUser = require('../middleware/requireSuperUser');
 const {
   getConnections,
   getConnectionById,
@@ -61,7 +62,7 @@ router.route('/:id')
   .delete(removeConnection);
 
 // Admin endpoint to clean up old activities
-router.post('/admin/cleanup-activities', async (req, res) => {
+router.post('/admin/cleanup-activities', requireSuperUser, async (req, res) => {
   try {
     const { daysToKeep = 1 } = req.body; // Default to 1 day (24 hours)
     const activityService = require('../services/activityService');

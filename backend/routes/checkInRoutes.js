@@ -1,5 +1,6 @@
 // backend/routes/checkInRoutes.js
 const express = require('express');
+const requireSuperUser = require('../middleware/requireSuperUser');
 const router = express.Router();
 const checkInController = require('../controllers/checkInController');
 const { protect } = require('../middleware/firebaseAuth');
@@ -26,6 +27,6 @@ router.delete('/:checkInId', checkInController.endCheckIn);
 router.get('/at-place/:placeId', checkInController.getCheckInsAtPlace);
 
 // Admin route to clean up expired check-ins
-router.post('/cleanup', checkInController.cleanupExpiredCheckIns);
+router.post('/cleanup', requireSuperUser, checkInController.cleanupExpiredCheckIns);
 
 module.exports = router;

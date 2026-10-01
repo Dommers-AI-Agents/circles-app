@@ -105,13 +105,7 @@ router.post('/places/:placeId/claim', claimPlace);
 router.post('/businesses/claim', claimBusinessByDetails);
 
 // Super-user endpoints (in-app venue management + granting access)
-const requireSuperUser = (req, res, next) => {
-  if (req.user && req.user.isSuperUser === true) {
-    next();
-  } else {
-    res.status(403).json({ success: false, error: 'Super-user access required' });
-  }
-};
+const requireSuperUser = require('../middleware/requireSuperUser');
 
 router.post('/venues', requireSuperUser, createVenueFromApp);
 router.get('/venues', requireSuperUser, listVenues);

@@ -1,5 +1,6 @@
 // backend/routes/dashboardRoutes.js
 const express = require('express');
+const requireSuperUser = require('../middleware/requireSuperUser');
 const router = express.Router();
 const { protect } = require('../middleware/firebaseAuth');
 const { 
@@ -24,6 +25,6 @@ router.post('/prompt/:key/ack', protect, ackPrompt);
 // Cache management routes
 router.get('/cache/stats', protect, getCacheStats);
 router.post('/cache/refresh', protect, refreshUserCache);
-router.post('/cache/invalidate-all', protect, invalidateAllCache);
+router.post('/cache/invalidate-all', protect, requireSuperUser, invalidateAllCache);
 
 module.exports = router;

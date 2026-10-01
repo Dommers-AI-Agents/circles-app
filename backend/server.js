@@ -493,7 +493,9 @@ app.use('/api/sse', sseRoutes);
 app.use('/api', activityRoutes);
 app.use('/api/app', require('./routes/appRoutes'));
 app.use('/api/email', require('./routes/emailPreferenceRoutes')); // one-click unsubscribe, signed links
-app.use('/api/email', emailTestRoutes);
+// Test sends take any `toEmail` — an open relay from favcircles.com in
+// production (security audit 2026-10-01). Local/dev only.
+if (process.env.NODE_ENV !== 'production') app.use('/api/email', emailTestRoutes);
 app.use('/api/contact', require('./routes/contactRoutes')); // Website contact form (public)
 app.use('/api/diagnostics', require('./routes/diagnosticRoutes'));
 app.use('/api/tasks', taskRoutes);

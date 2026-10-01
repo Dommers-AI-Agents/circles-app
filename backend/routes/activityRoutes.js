@@ -1,5 +1,6 @@
 // backend/routes/activityRoutes.js
 const express = require('express');
+const requireSuperUser = require('../middleware/requireSuperUser');
 const router = express.Router();
 const { protect } = require('../middleware/firebaseAuth');
 const activityController = require('../controllers/activityController');
@@ -28,7 +29,7 @@ router.delete('/activities/:activityId/comments/:commentId', protect, activityIn
 router.post('/activities/comments/:commentId/like', protect, activityInteractionController.toggleCommentLike);
 
 // Test endpoint to manually create activity (for debugging)
-router.post('/test/create-activity', protect, async (req, res) => {
+router.post('/test/create-activity', protect, requireSuperUser, async (req, res) => {
   try {
     const { createActivity } = require('../controllers/activityController');
     const activityId = await createActivity(

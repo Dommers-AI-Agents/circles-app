@@ -98,7 +98,7 @@ async function fetchLinkedInProfile(accessToken) {
 // @access  Public
 exports.linkedinAuth = async (req, res, next) => {
   try {
-    const { code, email: providedEmail, name: providedName } = req.body;
+    const { code, name: providedName } = req.body;
 
     if (!code) {
       return res.status(400).json({
@@ -141,7 +141,10 @@ exports.linkedinAuth = async (req, res, next) => {
 
     // Prepare user data
     const uid = `linkedin_${linkedInProfile.id}`;
-    const email = providedEmail || linkedInProfile.email;
+    // LinkedIn's own record of the email, never the request body's: the
+    // email finds an existing account, so a typed one let anyone sign in as
+    // its owner (security audit 2026-10-01)
+    const email = linkedInProfile.email;
     const displayName = providedName || 
                        `${linkedInProfile.firstName} ${linkedInProfile.lastName}`.trim() || 
                        'LinkedIn User';

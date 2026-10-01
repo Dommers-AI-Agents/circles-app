@@ -1,5 +1,6 @@
 // backend/routes/suggestionRoutes.js
 const express = require('express');
+const requireSuperUser = require('../middleware/requireSuperUser');
 const router = express.Router();
 const { protect } = require('../middleware/firebaseAuth');
 const {
@@ -21,7 +22,7 @@ router.get('/network', protect, getNetworkSuggestions);
 router.get('/received', protect, getReceivedSuggestions); // directed suggestions inbox
 router.get('/user/:userId', protect, getSuggestionsByUser);
 router.delete('/:id', protect, deleteSuggestion);
-router.post('/cleanup', protect, cleanupExpiredSuggestions); // Should be restricted to admin/system
+router.post('/cleanup', protect, requireSuperUser, cleanupExpiredSuggestions);
 
 // Comment routes
 router.post('/:id/comments', protect, addComment);

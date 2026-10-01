@@ -1,5 +1,6 @@
 // Diagnostic routes for testing
 const express = require('express');
+const requireSuperUser = require('../middleware/requireSuperUser');
 const router = express.Router();
 const { protect } = require('../middleware/firebaseAuth');
 const { getFirestore, getMessaging } = require('../config/firebase');
@@ -109,7 +110,7 @@ router.get('/check-config', protect, async (req, res) => {
 });
 
 // Check authentication configuration (no auth required for diagnostics)
-router.get('/check-auth-config', async (req, res) => {
+router.get('/check-auth-config', protect, requireSuperUser, async (req, res) => {
   try {
     const { firebaseApiKey } = require('../config/config');
     

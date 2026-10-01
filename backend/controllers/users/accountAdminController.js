@@ -15,7 +15,12 @@ const db = getFirestore();
 // @access  Private (Admin only)
 exports.findDuplicateAccounts = async (req, res, next) => {
   try {
-    const { email, displayName } = req.body;
+    const isSuperUser = req.user.isSuperUser === true;
+    // Only your OWN address unless you're a super-user: this used to look up
+    // any email and return those people's full records (security audit
+    // 2026-10-01). Displayname is a hint, not an identity.
+    const email = isSuperUser ? req.body.email : req.user.email;
+    const displayName = req.body.displayName;
     const currentUserId = req.user.uid;
     
     if (!email) {
@@ -83,7 +88,7 @@ exports.findDuplicateAccounts = async (req, res, next) => {
     }
     
     // Find accounts where current email is in their alternateEmails
-    if (!email.includes('@privaterelay.appleid.com')) {
+    if (isSuperUser && !email.includes('@privaterelay.appleid.com')) {
       const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
       
       usersSnapshot.docs.forEach(doc => {
@@ -102,11 +107,19 @@ exports.findDuplicateAccounts = async (req, res, next) => {
       });
     }
     
-    console.log(`Found ${duplicateAccounts.length} potential duplicate accounts for ${email}`);
-    
+    console.log(`Found ${duplicateAccounts.length} potential duplicate accounts for ${currentUserId}`);
+
+    // Public fields only. An email is shown back only where it IS the
+    // caller's (matched on their own address); name-only matches are
+    // other people as far as we know.
+    const publicView = (u) => ({
+      id: u.id, _id: u.id, displayName: u.displayName || 'User', profilePicture: u.profilePicture || null,
+      createdAt: u.createdAt || null, matchType: u.matchType, reason: u.reason,
+      ...((isSuperUser || u.matchType === 'email' || u.matchType === 'alternateEmail') ? { email: u.email || null } : {})
+    });
     res.status(200).json({
       success: true,
-      duplicateAccounts: duplicateAccounts
+      duplicateAccounts: duplicateAccounts.map(publicView)
     });
     
   } catch (error) {
@@ -206,16 +219,18 @@ exports.mergeUserAccounts = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Both primaryAccountId and secondaryAccountId are required' });
     }
 
-    // Admin, or the person owns one of the two accounts
-    // `role` is never set on a user doc; the people who run merges are
-    // super users. Gating on role alone locked every admin out of the
-    // versioned path, which is why merges were being done by hand-written
-    // scripts that reimplemented the service.
-    const isAdmin = req.user.role === 'admin' || req.user.isSuperUser === true;
+    // Super-users only. Owning ONE of the two accounts used to be enough —
+    // a brand-new account could merge itself into anyone's and be handed a
+    // session for the survivor (security audit 2026-10-01). A self-service
+    // merge would need proof of signing in to BOTH accounts.
+    const isAdmin = req.user.isSuperUser === true;
     const callerIds = [req.user.uid, req.user.originalUid].filter(Boolean);
-    const ownsAccount = callerIds.includes(primaryAccountId) || callerIds.includes(secondaryAccountId);
-    if (!isAdmin && !ownsAccount) {
-      return res.status(403).json({ success: false, message: 'Not authorized to merge these accounts' });
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        code: 'merge_needs_support',
+        message: 'To merge two accounts, email wesley@favcircles.com from the address on both and we will combine them for you.'
+      });
     }
 
     const result = await mergeAccounts({

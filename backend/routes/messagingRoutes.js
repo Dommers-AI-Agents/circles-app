@@ -1,5 +1,6 @@
 // backend/routes/messagingRoutes.js
 const express = require('express');
+const requireSuperUser = require('../middleware/requireSuperUser');
 const router = express.Router();
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -25,7 +26,7 @@ const {
 router.use(protect);
 
 // Debug route (must come before parameterized routes)
-router.get('/conversations/debug', debugGetConversations);
+router.get('/conversations/debug', requireSuperUser, debugGetConversations);
 
 // Conversation routes
 router.route('/conversations')
