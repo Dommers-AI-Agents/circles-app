@@ -46,6 +46,7 @@ const { googleMapsApiKey } = require('../config/config');
 const { indexSavedPlace } = require('../services/circleLocationSummary');
 const { ensureGlobalPlaceLink, findCanonicalByNameAndLocation, haversineMeters } = require('../services/globalPlaceResolver');
 const checkInStats = require('../services/checkInStatsService');
+const { sanitizeCheckInRecipients, capPlaceText, gatedPlacesLookup } = require('../services/checkInGuards');
 
 const db = getFirestore();
 const googleMapsClient = new Client({});
@@ -138,7 +139,9 @@ async function enrichPlaceWithGoogleData(placeName, location, options = {}) {
     
     if (!searchResponse.data.candidates || searchResponse.data.candidates.length === 0) {
       console.log(`No Google Places results found for: ${placeName}`);
-      return {};
+      // A definite "no such place" (not an error): check-ins remember it so
+      // the same name at the same spot doesn't bill again (checkInGuards).
+      return { noMatch: true };
     }
     
     const candidate = searchResponse.data.candidates[0];
@@ -295,10 +298,19 @@ exports.createCheckIn = async (req, res) => {
       });
     }
     const userData = userDoc.data();
-    
+
+    // Recipients trimmed to what this person may reach (own conversations,
+    // accepted connections, nobody blocked) and venue text capped BEFORE the
+    // model derives isPrivate from them and they're stored (security audit
+    // 2026-10-01 — see services/checkInGuards.js).
+    capPlaceText(checkInData);
+    if (checkInData.isPrivate !== true) {
+      Object.assign(checkInData, await sanitizeCheckInRecipients(userId, userData, checkInData));
+    }
+
     // Create check-in object
     const checkIn = createCheckIn(checkInData, userId, userData);
-    
+
     // Convert coordinates to GeoPoint if provided
     if (checkInData.latitude && checkInData.longitude) {
       checkIn.location = new GeoPoint(checkInData.latitude, checkInData.longitude);
@@ -507,10 +519,14 @@ exports.createCheckIn = async (req, res) => {
           const checkInCircle = await findOrCreateCheckInCircle(userId);
           circleIdForActivity = checkInCircle.id;
 
-          const googleData = canonicalData ? {} : await enrichPlaceWithGoogleData(
-            checkIn.placeName,
-            checkIn.location
-          );
+          // Paid lookup only with a location, under the per-user daily cap,
+          // and never twice for a remembered miss (security audit 2026-10-01)
+          const googleData = canonicalData ? {} : await gatedPlacesLookup({
+            userId,
+            placeName: checkIn.placeName,
+            location: checkIn.location,
+            lookup: enrichPlaceWithGoogleData
+          });
 
           // Create new place in check-in circle with enriched data. When a
           // canonical venue matched, only identity fields are stamped here —

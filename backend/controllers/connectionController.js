@@ -22,6 +22,14 @@ const { normalizeUserId, isSameUser } = require('../services/idService');
 const { decorateUserCards } = require('../services/userCardEnrichment');
 const { getPlaceCountMap } = require('../services/userStatsCache');
 const { revokeMutualGrants } = require('../services/innerCircleService');
+const { isBlockedEitherWay } = require('../services/moderationService');
+const dailyBudget = require('../services/dailyBudget');
+const {
+  signInviteToken,
+  targetInvitedRequester,
+  claimRequestNotification
+} = require('../services/connectionRequestPolicy');
+const { clean } = require('../utils/text');
 
 const db = getFirestore();
 
@@ -278,21 +286,27 @@ const getConnections = async (req, res) => {
 // @desc    Send connection request
 // @route   POST /api/connections/invite
 // @access  Private
+//
+// Body: { targetUserId, message?, autoAccept?, inviteToken? }. `autoAccept`
+// is only a HINT that the request came from an invite link / Tap to Connect;
+// the server accepts immediately only when the target demonstrably invited
+// the requester (security audit 2026-10-01 — see
+// services/connectionRequestPolicy.js). Otherwise it's a normal pending
+// request, which the iOS invite flow already reports as "request sent".
 const sendConnectionRequest = async (req, res) => {
   try {
     const userId = req.user.firebaseDocId || req.user.uid;
-    const { targetUserId, message, autoAccept } = req.body;
-    
+    const { targetUserId, autoAccept, inviteToken } = req.body;
+    const message = clean(req.body.message, 300) || undefined;
+
     console.log(`🔗 Connection request:`, {
       fromUserId: userId,
       toTargetUserId: targetUserId,
-      autoAccept: autoAccept,
-      message: message,
-      userObj: { uid: req.user.uid, firebaseDocId: req.user.firebaseDocId, originalUid: req.user.originalUid }
+      inviteHint: Boolean(autoAccept || inviteToken)
     });
 
     // Validate input
-    if (!targetUserId) {
+    if (!targetUserId || typeof targetUserId !== 'string') {
       return res.status(400).json({
         success: false,
         message: 'Target user ID is required'
@@ -301,144 +315,105 @@ const sendConnectionRequest = async (req, res) => {
 
     // Normalize target user ID using centralized function
     const actualTargetUserId = normalizeUserId(targetUserId);
-    if (actualTargetUserId !== targetUserId) {
-      console.log(`🔄 Normalized target user ID from ${targetUserId} to ${actualTargetUserId}`);
-    } else {
-      console.log(`✅ Using target user ID as-is: ${actualTargetUserId}`);
-    }
 
     // Check for self-connection with more robust comparison
-    const normalizedCurrentUserId = normalizeUserId(userId);
-    const normalizedTargetUserId = normalizeUserId(actualTargetUserId);
-    
-    if (normalizedCurrentUserId === normalizedTargetUserId || 
-        actualTargetUserId === userId ||
-        targetUserId === userId ||
-        isSameUser(userId, targetUserId)) {
-      console.log(`🚫 Prevented self-connection attempt:`, {
-        userId,
-        targetUserId,
-        actualTargetUserId,
-        normalizedCurrentUserId,
-        normalizedTargetUserId
-      });
+    if (isSameUser(userId, targetUserId) || actualTargetUserId === normalizeUserId(userId)) {
+      console.log(`🚫 Prevented self-connection attempt: ${userId} → ${targetUserId}`);
       return res.status(400).json({
         success: false,
         message: 'Cannot connect to yourself'
       });
     }
 
-    // Check if target user exists
-    console.log(`Checking if target user exists with ID: ${actualTargetUserId}`);
-    
-    // First try direct lookup
+    // Targeted lookup: the normalized id, then the id exactly as sent (legacy
+    // dotted-format docs). This used to fall back to reading EVERY user doc
+    // and substring-matching ids — one request, a full collection scan
+    // (security audit 2026-10-01).
     let targetUserDoc = await db.collection(COLLECTIONS.USERS).doc(actualTargetUserId).get();
-    
-    // If not found, try to find by complex ID pattern
-    if (!targetUserDoc.exists) {
-      console.log(`Direct lookup failed, searching for user with pattern containing: ${actualTargetUserId}`);
-      
-      // Query for users where the document ID contains the simple ID
-      const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
-      let foundUser = null;
-      
-      for (const doc of usersSnapshot.docs) {
-        const docId = doc.id;
-        // Check if this document ID contains our simple ID
-        if (docId.includes(actualTargetUserId)) {
-          // Verify it matches the expected pattern: prefix.simpleId.suffix
-          const parts = docId.split('.');
-          if (parts.length >= 2 && parts[1] === actualTargetUserId) {
-            foundUser = doc;
-            console.log(`Found user with complex ID: ${docId}`);
-            break;
-          }
-        }
-      }
-      
-      if (foundUser) {
-        targetUserDoc = foundUser;
-      } else {
-        console.error(`Target user not found with ID: ${actualTargetUserId}`);
-        return res.status(404).json({
-          success: false,
-          message: 'Target user not found',
-          targetUserId: actualTargetUserId,
-          originalTargetUserId: targetUserId
-        });
-      }
+    if (!targetUserDoc.exists && targetUserId !== actualTargetUserId) {
+      targetUserDoc = await db.collection(COLLECTIONS.USERS).doc(targetUserId).get();
     }
-    console.log(`✅ Target user found:`, {
-      id: targetUserDoc.id,
-      displayName: targetUserDoc.data().displayName,
-      email: targetUserDoc.data().email
-    });
+    if (!targetUserDoc.exists) {
+      console.error(`Target user not found with ID: ${actualTargetUserId}`);
+      return res.status(404).json({
+        success: false,
+        message: 'Target user not found',
+        targetUserId: actualTargetUserId,
+        originalTargetUserId: targetUserId
+      });
+    }
 
     // Use the actual document ID for connection checks
     const targetUserDocId = targetUserDoc.id;
-    
-    // Check if connection already exists
-    // We need to check all possible combinations of ID formats
-    console.log(`🔍 Checking for existing connections between:`, {
-      currentUser: userId,
-      targetUser: targetUserDocId,
-      normalizedCurrent: normalizeUserId(userId),
-      normalizedTarget: normalizeUserId(targetUserDocId)
-    });
-    
+    const targetUserData = targetUserDoc.data() || {};
+
+    // A block in either direction ends it here: no request, no email, no push
+    // (security audit 2026-10-01). Checked on both docs because req.user can
+    // be a few minutes stale (auth cache).
+    if (isBlockedEitherWay(req.user, targetUserDocId) || isBlockedEitherWay(targetUserData, userId)) {
+      return res.status(403).json({
+        success: false,
+        code: 'blocked',
+        message: 'You can’t send a connection request to this person'
+      });
+    }
+
     // Get all connections involving the current user
     const userConnectionsQuery = await db.collection(COLLECTIONS.CONNECTIONS)
       .where('userId', '==', userId)
       .get();
-    
+
     const connectedUserConnectionsQuery = await db.collection(COLLECTIONS.CONNECTIONS)
       .where('connectedUserId', '==', userId)
       .get();
-    
+
     // Check if any existing connection matches our target user
     let existingConnection = null;
-    
+
     // Check connections where current user is the initiator
     for (const doc of userConnectionsQuery.docs) {
       const conn = doc.data();
       if (isSameUser(conn.connectedUserId, targetUserDocId)) {
         existingConnection = doc;
-        console.log(`✅ Found existing connection (user as initiator):`, {
-          connectionId: doc.id,
-          status: conn.status
-        });
         break;
       }
     }
-    
+
     // Check connections where current user is the recipient
     if (!existingConnection) {
       for (const doc of connectedUserConnectionsQuery.docs) {
         const conn = doc.data();
         if (isSameUser(conn.userId, targetUserDocId)) {
           existingConnection = doc;
-          console.log(`✅ Found existing connection (user as recipient):`, {
-            connectionId: doc.id,
-            status: conn.status
-          });
           break;
         }
       }
     }
-    
+
     if (existingConnection) {
       const connectionData = existingConnection.data();
-      
+
       if (connectionData.status === 'accepted') {
         const connection = serializeDoc(existingConnection);
-        connection.connectedUser = projectPublicUser(serializeDoc(targetUserDoc), ['email']);
+        connection.connectedUser = projectPublicUser(serializeDoc(targetUserDoc));
         return res.status(200).json({
           success: true,
           data: connection,
           message: 'Already connected'
         });
       }
-      
+
+      // The target already asked to connect with the requester, and the
+      // requester is now opening the target's invite link / tapping their
+      // card: that IS consent from both sides — accept the target's request
+      // through the normal accept path (FavCoins, follows, notifications).
+      if (connectionData.status === 'pending'
+          && isSameUser(connectionData.connectedUserId, userId)
+          && (autoAccept || inviteToken)) {
+        req.params = { ...req.params, id: existingConnection.id };
+        return acceptConnection(req, res);
+      }
+
       console.log(`⚠️ Connection request already exists with status: ${connectionData.status}`);
       // Connecting implies following — self-heal requests sent before that
       // rule existed when the user taps Connect again
@@ -451,33 +426,40 @@ const sendConnectionRequest = async (req, res) => {
         status: connectionData.status
       });
     }
-    
-    console.log(`✅ No existing connection found, proceeding to create new connection`);
 
-    // Final safety check before creating connection
-    if (userId === targetUserDocId || isSameUser(userId, targetUserDocId)) {
-      console.log(`🚫 Final safety check prevented self-connection:`, {
-        userId,
-        targetUserDocId
-      });
-      return res.status(400).json({
+    // Accepted on creation only with proof the target invited this person.
+    const inviteVerified = Boolean(autoAccept || inviteToken) && await targetInvitedRequester({
+      targetId: targetUserDocId,
+      requesterEmail: req.user.email,
+      inviteToken
+    });
+    if ((autoAccept || inviteToken) && !inviteVerified) {
+      console.log(`🔗 Invite hint from ${userId} → ${targetUserDocId} not verifiable; creating a pending request`);
+    }
+
+    // New requests per requester per day are capped far above human use, so
+    // only a script walking the user list ever hits it (security audit
+    // 2026-10-01).
+    const allowance = await dailyBudget.consumeConnectionRequest(userId);
+    if (!allowance.allowed) {
+      return res.status(429).json({
         success: false,
-        message: 'Cannot connect to yourself'
+        code: 'daily_limit',
+        message: 'You’ve sent a lot of connection requests today. Try again tomorrow.'
       });
     }
 
     // Create connection with the actual document ID
     const connectionData = createConnection(userId, targetUserDocId, message);
-    
-    // If autoAccept is true (from invite link), set status to accepted
-    if (autoAccept) {
+
+    if (inviteVerified) {
       const now = new Date().toISOString();
       connectionData.status = 'accepted';
       connectionData.acceptedAt = now;
     }
-    
+
     const errors = validateConnection(connectionData);
-    
+
     if (errors.length > 0) {
       return res.status(400).json({
         success: false,
@@ -487,14 +469,14 @@ const sendConnectionRequest = async (req, res) => {
     }
 
     // Add to Firestore
-    console.log(`💾 Creating connection with data:`, connectionData);
     const docRef = await db.collection(COLLECTIONS.CONNECTIONS).add(connectionData);
     const newDoc = await docRef.get();
     const connection = serializeDoc(newDoc);
-    
-    // Populate connected user data
-    connection.connectedUser = projectPublicUser(serializeDoc(targetUserDoc), ['email']);
-    
+
+    // Populate connected user data — public card only; the requester never
+    // gets the target's email (security audit 2026-10-01).
+    connection.connectedUser = projectPublicUser(serializeDoc(targetUserDoc));
+
     console.log(`✅ Connection created successfully:`, {
       connectionId: connection.id,
       userId: connection.userId,
@@ -518,8 +500,8 @@ const sendConnectionRequest = async (req, res) => {
       console.error('⚠️ Auto-follow on connect failed:', followError.message);
     }
 
-    // If auto-accepted, update user arrays immediately
-    if (autoAccept) {
+    // Verified invite: update user arrays immediately
+    if (inviteVerified) {
       // Piggy bank: the auto-accept path IS an acceptance — both users earn.
       // Same pair-key as the manual accept path, so a pair can only ever pay
       // once no matter which route created the connection.
@@ -538,8 +520,6 @@ const sendConnectionRequest = async (req, res) => {
       }
 
       try {
-        console.log('🔄 Auto-accept flow: Updating user arrays for both users');
-
         // Mutual follows, idempotent so counts can't drift when one side
         // already follows the other
         await ensureFollows(userId, targetUserDocId);
@@ -555,42 +535,44 @@ const sendConnectionRequest = async (req, res) => {
           updatedAt: new Date().toISOString()
         });
         await batch.commit();
-        console.log('✅ Auto-accept: User arrays updated successfully');
-        
+
         // Send SSE notifications for the auto-accepted connection
         sseService.notifyUser(userId, 'connection_accepted', {
           connectionId: connection.id,
           acceptedBy: targetUserDocId
         });
-        
+
         sseService.notifyUser(targetUserDocId, 'connection_accepted', {
           connectionId: connection.id,
           acceptedBy: userId
         });
-        
       } catch (autoAcceptError) {
         console.error('❌ Error updating user arrays for auto-accept:', autoAcceptError);
         // Don't fail the request if array update fails
       }
+      return;
     }
 
-    // Send notification to target user if not auto-accepted
-    if (!autoAccept) {
-      try {
+    // Pending request: tell the target — but at most once per requester →
+    // target pair per cooldown window, so request → decline → request can't
+    // be looped into an email/push flood (security audit 2026-10-01). The
+    // request itself stands either way; the Network tab lists it.
+    try {
+      if (await claimRequestNotification(userId, targetUserDocId)) {
         await notificationService.notifyConnectionRequest(userId, targetUserDocId, connection.id);
-        
-        // Send real-time SSE notification
-        sseService.notifyUser(targetUserDocId, 'connection_request', {
-          connectionId: connection.id,
-          from: connection.connectedUser,
-          message: message || null
-        });
-        
-        
-      } catch (notifError) {
-        console.error('Error sending connection request notification:', notifError);
-        // Don't fail the request if notification fails
+      } else {
+        console.log(`🔕 Connection request ${userId} → ${targetUserDocId}: notified recently, skipping push/email`);
       }
+
+      // Real-time SSE (in-app only) keeps the target's pending list fresh
+      sseService.notifyUser(targetUserDocId, 'connection_request', {
+        connectionId: connection.id,
+        from: connection.connectedUser,
+        message: message || null
+      });
+    } catch (notifError) {
+      console.error('Error sending connection request notification:', notifError);
+      // Don't fail the request if notification fails
     }
 
   } catch (error) {
@@ -606,6 +588,25 @@ const sendConnectionRequest = async (req, res) => {
       error: error.message
     });
   }
+};
+
+// @desc    The caller's signed connect-invite token + share link
+// @route   GET /api/connections/invite-token
+// @access  Private
+// A share link / QR that carries this token lets the opener connect with the
+// caller in one tap (POST /invite with { targetUserId, inviteToken }). Without
+// it, opening a link only sends a request (security audit 2026-10-01).
+const getInviteToken = async (req, res) => {
+  const userId = normalizeUserId(req.user.firebaseDocId || req.user.uid);
+  const token = signInviteToken(userId);
+  if (!token) {
+    return res.status(503).json({ success: false, message: 'Invite links are unavailable right now' });
+  }
+  return res.status(200).json({
+    success: true,
+    token,
+    link: `https://api.favcircles.com/connect/${userId}?t=${token}`
+  });
 };
 
 // @desc    Accept connection request
@@ -1596,6 +1597,7 @@ module.exports = {
   getConnections,
   getConnectionById,
   sendConnectionRequest,
+  getInviteToken,
   acceptConnection,
   declineConnection,
   blockConnection,

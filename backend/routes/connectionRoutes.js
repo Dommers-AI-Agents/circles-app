@@ -4,6 +4,7 @@ const {
   getConnections,
   getConnectionById,
   sendConnectionRequest,
+  getInviteToken,
   acceptConnection,
   declineConnection,
   blockConnection,
@@ -34,6 +35,10 @@ router.route('/active-relationships')
 
 router.route('/invite')
   .post(sendConnectionRequest);
+
+// Signed invite token for share links / QR (security audit 2026-10-01)
+router.route('/invite-token')
+  .get(getInviteToken);
 
 router.route('/:id/accept')
   .post(acceptConnection);

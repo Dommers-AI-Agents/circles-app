@@ -10,6 +10,21 @@ try {
   console.error('❌ Failed to load nodemailer:', error);
   throw error;
 }
+const { escapeHtml } = require('../utils/text');
+
+// Security audit 2026-10-01: names, place names and notes in these templates
+// are typed by users (often a stranger to the recipient). Every interpolation
+// into HTML goes through escapeHtml so a display name can't inject markup or a
+// phishing link into mail sent from our domain; plain-text bodies stay raw.
+// Subjects are single-line: CR/LF is folded in sendEmail.
+const oneLine = (value) => String(value == null ? '' : value).replace(/[\r\n]+/g, ' ').trim();
+
+// Kill switch for mail people trigger toward other people (invites,
+// connection emails, postcards): EMAIL_SENDING_DISABLED=true turns those into
+// logged no-ops with just an env change — account mail (password reset,
+// welcome, receipts) keeps flowing. Logged once per process.
+let killSwitchLogged = false;
+const userMailDisabled = () => process.env.EMAIL_SENDING_DISABLED === 'true';
 
 class EmailService {
   constructor() {
@@ -133,9 +148,19 @@ class EmailService {
 
   async sendConnectionRequestEmail(toEmail, fromUserName, fromUserId) {
     try {
+      // Counts against the REQUESTER's daily email budget (security audit
+      // 2026-10-01); lazy require keeps this module Firestore-free to load.
+      if (fromUserId && !userMailDisabled()) {
+        const budget = await require('./dailyBudget').consumeEmail(fromUserId);
+        if (!budget.allowed) {
+          console.warn(`📧 Connection request email from ${fromUserId} skipped: daily email budget (${budget.limit}) used`);
+          return { success: false, skipped: 'budget' };
+        }
+      }
+      const safeName = escapeHtml(fromUserName);
       const mailOptions = {
-        from: `"${this.fromName}" <${this.fromAddress}>`,
         to: toEmail,
+        userTriggered: true,
         subject: `${fromUserName} wants to connect with you on Circles`,
         html: `
           <!DOCTYPE html>
@@ -157,7 +182,7 @@ class EmailService {
               </div>
               <div class="content">
                 <h2>Hi there!</h2>
-                <p><strong>${fromUserName}</strong> wants to connect with you on Circles.</p>
+                <p><strong>${safeName}</strong> wants to connect with you on Circles.</p>
                 <p>Once connected, you'll be able to:</p>
                 <ul>
                   <li>Share circles and places with each other</li>
@@ -179,7 +204,7 @@ class EmailService {
         text: `${fromUserName} wants to connect with you on Circles. Open the app to view and respond to this connection request.`
       };
 
-      const info = await this.transporter.sendMail(mailOptions);
+      const info = await this.sendEmail(mailOptions);
       console.log('📧 Connection request email sent:', info.messageId);
       return info;
     } catch (error) {
@@ -190,9 +215,10 @@ class EmailService {
 
   async sendConnectionAcceptedEmail(toEmail, acceptedByName) {
     try {
+      const safeName = escapeHtml(acceptedByName);
       const mailOptions = {
-        from: `"${this.fromName}" <${this.fromAddress}>`,
         to: toEmail,
+        userTriggered: true,
         subject: `${acceptedByName} accepted your connection request`,
         html: `
           <!DOCTYPE html>
@@ -214,7 +240,7 @@ class EmailService {
               </div>
               <div class="content">
                 <h2>Great news!</h2>
-                <p><strong>${acceptedByName}</strong> has accepted your connection request.</p>
+                <p><strong>${safeName}</strong> has accepted your connection request.</p>
                 <p>You can now:</p>
                 <ul>
                   <li>View their shared circles and places</li>
@@ -235,7 +261,7 @@ class EmailService {
         text: `${acceptedByName} has accepted your connection request on Circles. You can now share circles and places with each other.`
       };
 
-      const info = await this.transporter.sendMail(mailOptions);
+      const info = await this.sendEmail(mailOptions);
       console.log('📧 Connection accepted email sent:', info.messageId);
       return info;
     } catch (error) {
@@ -281,7 +307,7 @@ class EmailService {
                 <h1>Test Email Successful!</h1>
               </div>
               <div class="content">
-                <h2>Hello ${userName || 'there'}!</h2>
+                <h2>Hello ${escapeHtml(userName || 'there')}!</h2>
                 <p>This is a test email from the Circles app to verify that email sending is working correctly.</p>
                 <p><strong>Email Configuration:</strong></p>
                 <ul>
@@ -314,7 +340,7 @@ class EmailService {
   // the public postcard page, and the app pitch. Recipients need not be
   // FavCircles users.
   async sendPostcardEmail(toEmail, { senderName, imageUrl, message, pageUrl, placeName, placeCity }) {
-    const esc = (v) => String(v || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const esc = escapeHtml;
     const where = placeName ? `${placeName}${placeCity ? `, ${placeCity}` : ''}` : null;
     const subject = where ? `📮 A postcard from ${where} — from ${senderName}` : `📮 ${senderName} sent you a postcard`;
     const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
@@ -343,7 +369,7 @@ ${message ? `<tr><td align="center" style="font-size:19px;line-height:1.5;paddin
       'Create your own digital postcards with FavCircles. Get it here:',
       appStoreUrl
     ].filter((line, i, arr) => !(line === '' && arr[i - 1] === '')).join('\n');
-    await this.sendEmail({ to: toEmail, subject, html, text });
+    await this.sendEmail({ to: toEmail, subject, html, text, userTriggered: true });
   }
 
   // Website email-capture flow: visitor left their email on favcircles.com
@@ -364,7 +390,7 @@ ${message ? `<tr><td align="center" style="font-size:19px;line-height:1.5;paddin
           </p>
           <ol style="font-size: 15px; line-height: 1.8; padding-left: 20px;">
             <li><a href="https://apps.apple.com/us/app/favcircles/id6746807095" style="color: #667eea; font-weight: 600;">Download FavCircles</a> from the App Store.</li>
-            <li>Create your account with <strong>this email address</strong> (${toEmail}).</li>
+            <li>Create your account with <strong>this email address</strong> (${escapeHtml(toEmail)}).</li>
             <li>Add your first favorite place — <strong>25 FavCoins</strong> drop straight into your piggy bank. 🐷</li>
           </ol>
           <h2 style="font-size: 17px; margin-top: 24px;">Where your FavCoins live</h2>
@@ -413,12 +439,13 @@ See you on the map!
   async sendWelcomeEmail(toEmail, name = null) {
     try {
       const greeting = name ? `Hi ${name},` : 'Hi there,';
+      const htmlGreeting = escapeHtml(greeting);
       const subject = 'Welcome to Circles! 🎉 Here\'s how to get started';
 
       const htmlContent = `
         <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a202c;">
           <h1 style="font-size: 22px;">Welcome to Circles! 🎉</h1>
-          <p style="font-size: 15px; line-height: 1.6;">${greeting}</p>
+          <p style="font-size: 15px; line-height: 1.6;">${htmlGreeting}</p>
           <p style="font-size: 15px; line-height: 1.6;">
             Circles is where you and your friends share the places you actually love —
             no strangers' reviews, just recommendations from people you trust.
@@ -467,6 +494,7 @@ Add your first place: https://api.favcircles.com/app/open?path=add-place
   async sendPremiumWelcomeEmail(toEmail, name = null, { isTrial = false } = {}) {
     try {
       const greeting = name ? `Hi ${name},` : 'Hi there,';
+      const htmlGreeting = escapeHtml(greeting);
       const subject = isTrial
         ? 'Your FavCircles Premium trial has started 🎉'
         : 'Welcome to FavCircles Premium 🎉';
@@ -477,7 +505,7 @@ Add your first place: https://api.favcircles.com/app/open?path=add-place
       const htmlContent = `
         <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a202c;">
           <h1 style="font-size: 22px;">${isTrial ? 'Your Premium trial has started 🎉' : 'Welcome to Premium 🎉'}</h1>
-          <p style="font-size: 15px; line-height: 1.6;">${greeting}</p>
+          <p style="font-size: 15px; line-height: 1.6;">${htmlGreeting}</p>
           <p style="font-size: 15px; line-height: 1.6;">${opener}</p>
           <ul style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
             <li><strong>Unlimited circles and places</strong> — the free caps (6 circles, 15 places each) are gone. Build as big as your world is.</li>
@@ -526,7 +554,9 @@ Import now: https://api.favcircles.com/app/import
   async sendBusinessWelcomeEmail(toEmail, name = null, venueName = null, venue = null) {
     try {
       const greeting = name ? `Hi ${name},` : 'Hi there,';
+      const htmlGreeting = escapeHtml(greeting);
       const forVenue = venueName ? ` for ${venueName}` : '';
+      const htmlForVenue = escapeHtml(forVenue);
       const subject = `Welcome to FavCircles Business${forVenue} 🏪`;
 
       // Ready-to-print loyalty assets (register card + table tent) ride along
@@ -560,9 +590,9 @@ Import now: https://api.favcircles.com/app/import
       const htmlContent = `
         <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a202c;">
           <h1 style="font-size: 22px;">Welcome to FavCircles Business 🏪</h1>
-          <p style="font-size: 15px; line-height: 1.6;">${greeting}</p>
+          <p style="font-size: 15px; line-height: 1.6;">${htmlGreeting}</p>
           <p style="font-size: 15px; line-height: 1.6;">
-            Your Business subscription${forVenue} is active. Everything below is live now — all of it managed from your place page in the app (Profile → My Venues).
+            Your Business subscription${htmlForVenue} is active. Everything below is live now — all of it managed from your place page in the app (Profile → My Venues).
           </p>
           <ul style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
             <li><strong>Your loyalty program is on</strong> — customers earn points scanning your window sticker and your register card, and you set how many points a purchase pays. Points earned at your store can only be spent at your store — never at a competitor.</li>
@@ -614,6 +644,7 @@ Manage your venue: https://api.favcircles.com/app/open?path=me
   async sendAiSetupEmail(toEmail, name = null) {
     try {
       const greeting = name ? `Hi ${name},` : 'Hi there,';
+      const htmlGreeting = escapeHtml(greeting);
       const subject = 'Manage your store with ChatGPT or Claude — setup guide 🤖';
 
       const starterPrompts = [
@@ -627,7 +658,7 @@ Manage your venue: https://api.favcircles.com/app/open?path=me
       const htmlContent = `
         <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a202c;">
           <h1 style="font-size: 22px;">Manage your store with AI 🤖</h1>
-          <p style="font-size: 15px; line-height: 1.6;">${greeting}</p>
+          <p style="font-size: 15px; line-height: 1.6;">${htmlGreeting}</p>
           <p style="font-size: 15px; line-height: 1.6;">
             You can connect your FavCircles store to ChatGPT or Claude and manage it by just asking —
             stats, announcements, offers, store hours, loyalty codes, all of it. One-time setup, about two minutes.
@@ -709,15 +740,16 @@ Reply to this email if you get stuck.
   async sendClaimApprovedEmail(toEmail, name = null, businessName = null) {
     try {
       const greeting = name ? `Hi ${name},` : 'Hi there,';
+      const htmlGreeting = escapeHtml(greeting);
       const business = businessName || 'your business';
       const subject = `You now manage ${business} on FavCircles ✅`;
 
       const htmlContent = `
         <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a202c;">
           <h1 style="font-size: 22px;">Your claim was approved ✅</h1>
-          <p style="font-size: 15px; line-height: 1.6;">${greeting}</p>
+          <p style="font-size: 15px; line-height: 1.6;">${htmlGreeting}</p>
           <p style="font-size: 15px; line-height: 1.6;">
-            You're verified as the owner of <strong>${business}</strong> on FavCircles. Your store now appears under <strong>Profile → My Venues</strong> in the app, and its place page shows you the owner tools.
+            You're verified as the owner of <strong>${escapeHtml(business)}</strong> on FavCircles. Your store now appears under <strong>Profile → My Venues</strong> in the app, and its place page shows you the owner tools.
           </p>
           <div style="text-align:center;margin:22px 0 6px;">
             <a href="https://api.favcircles.com/app/open?path=me" style="display:inline-block;background:#3478F6;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 26px;border-radius:9px;">Open My Venues</a>
@@ -775,6 +807,8 @@ The upgrade lives on your place page in the app. Questions, or need a window sti
       const subject = `${inviterName} invited you to join Circles`;
 
       const greeting = recipientName ? `Hi ${recipientName},` : 'Hi there,';
+      const htmlGreeting = escapeHtml(greeting);
+      const htmlInviter = escapeHtml(inviterName);
       
       const htmlContent = `
         <!DOCTYPE html>
@@ -797,8 +831,8 @@ The upgrade lives on your place page in the app. Questions, or need a window sti
                 <h1>You're invited to Circles! 🎉</h1>
               </div>
               <div class="content">
-                <p>${greeting}</p>
-                <p><strong>${inviterName}</strong> is using Circles to share their favorite places and wants you to join!</p>
+                <p>${htmlGreeting}</p>
+                <p><strong>${htmlInviter}</strong> is using Circles to share their favorite places and wants you to join!</p>
                 
                 <div class="features">
                   <h3>With Circles, you can:</h3>
@@ -808,10 +842,10 @@ The upgrade lives on your place page in the app. Questions, or need a window sti
                   <div class="feature">💬 Share suggestions and get personalized recommendations</div>
                 </div>
                 
-                <p>Join ${inviterName} and start sharing the places you love!</p>
+                <p>Join ${htmlInviter} and start sharing the places you love!</p>
                 
                 <center>
-                  <a href="${joinUrl}" class="button">Join Circles</a>
+                  <a href="${escapeHtml(joinUrl)}" class="button">Join Circles</a>
                 </center>
                 
                 <p style="margin-top: 20px; font-size: 14px; color: #666;">
@@ -819,7 +853,7 @@ The upgrade lives on your place page in the app. Questions, or need a window sti
                 </p>
               </div>
               <div class="footer">
-                <p>This invitation was sent by ${inviterName} via Circles.</p>
+                <p>This invitation was sent by ${htmlInviter} via Circles.</p>
                 <p>&copy; ${new Date().getFullYear()} Circles. All rights reserved.</p>
               </div>
             </div>
@@ -853,7 +887,7 @@ This invitation was sent by ${inviterName} via Circles.
       // NOTE: sendEmail takes an options object — the old positional call
       // passed a string, destructured to `to: undefined`, and every email
       // invitation silently failed
-      await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent });
+      await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent, userTriggered: true });
       
       console.log(`✅ App invitation email sent to ${toEmail} from ${inviterName}`);
       return { success: true, message: 'Invitation email sent successfully' };
@@ -868,15 +902,16 @@ This invitation was sent by ${inviterName} via Circles.
   async sendPasswordResetEmail(toEmail, resetLink, displayName = null) {
     const subject = 'Reset your FavCircles password';
     const greeting = displayName ? `Hi ${displayName},` : 'Hi,';
+    const htmlGreeting = escapeHtml(greeting);
 
     const html = `
       <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:20px">
         <h2 style="color:#3182CE;margin-bottom:8px">Reset your password</h2>
-        <p>${greeting}</p>
+        <p>${htmlGreeting}</p>
         <p>We received a request to reset the password for your FavCircles account
-        (<strong>${toEmail}</strong>). Tap the button below to choose a new one:</p>
+        (<strong>${escapeHtml(toEmail)}</strong>). Tap the button below to choose a new one:</p>
         <p style="text-align:center;margin:28px 0">
-          <a href="${resetLink}"
+          <a href="${escapeHtml(resetLink)}"
              style="background:#3182CE;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
             Reset Password
           </a>
@@ -910,10 +945,10 @@ FavCircles · Save the places you love`;
       throw new Error('Email service not configured');
     }
 
-    const subject = `Sticker QR codes for ${venue.venueName} — ready to print`;
+    const subject = oneLine(`Sticker QR codes for ${venue.venueName} — ready to print`);
     const html = `
       <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto">
-        <h2 style="color:#3182CE">QR codes for ${venue.venueName}</h2>
+        <h2 style="color:#3182CE">QR codes for ${escapeHtml(venue.venueName)}</h2>
         <p><strong>Print either attachment on plain paper — that's it:</strong></p>
         <table style="border-collapse:collapse;width:100%;background:#fafafa;border-radius:8px">
           <tr>
@@ -926,7 +961,7 @@ FavCircles · Save the places you love`;
           </tr>
         </table>
         <p style="margin-top:16px">Customers scan it to earn points on every visit
-        (code: <code>${venue.registerCode}</code>).</p>
+        (code: <code>${escapeHtml(venue.registerCode)}</code>).</p>
         <p style="color:#888;font-size:13px">Verify before you're done: scan the printed QR from a
         logged-in FavCircles account and check the points land. Reply to this email if you'd like
         the raw QR image for custom artwork.</p>
@@ -990,9 +1025,9 @@ FavCircles · Save the places you love`;
 
     const html = `
       <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto">
-        <h2 style="color:#3182CE">FavCircles Sticker Report — ${monthKey}</h2>
-        <p>Hi${venue.contactName ? ' ' + venue.contactName : ''},</p>
-        <p>Here's how the FavCircles sticker at <strong>${venue.venueName}</strong> performed last month:</p>
+        <h2 style="color:#3182CE">FavCircles Sticker Report — ${escapeHtml(monthKey)}</h2>
+        <p>Hi${venue.contactName ? ' ' + escapeHtml(venue.contactName) : ''},</p>
+        <p>Here's how the FavCircles sticker at <strong>${escapeHtml(venue.venueName)}</strong> performed last month:</p>
         <table style="border-collapse:collapse;width:100%;background:#fafafa;border-radius:8px">
           ${row('QR scans', safeStats.scans)}
           ${row('New app signups from your sticker', safeStats.signups)}
@@ -1040,7 +1075,15 @@ Rewards redeemed: ${safeStats.redemptions}`;
     throw lastError;
   }
 
-  async sendEmail({ to, subject, html, text, attachments, headers }) {
+  async sendEmail({ to, subject: rawSubject, html, text, attachments, headers, userTriggered = false }) {
+    const subject = oneLine(rawSubject);
+    if (userTriggered && userMailDisabled()) {
+      if (!killSwitchLogged) {
+        console.warn('📧 EMAIL_SENDING_DISABLED=true — user-triggered email is switched off');
+        killSwitchLogged = true;
+      }
+      return { success: false, skipped: 'disabled' };
+    }
     try {
       // Check if transporter is configured
       if (!this.transporter || !this.transporter.sendMail) {
