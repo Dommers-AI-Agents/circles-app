@@ -559,7 +559,14 @@ const sendConnectionRequest = async (req, res) => {
     // request itself stands either way; the Network tab lists it.
     try {
       if (await claimRequestNotification(userId, targetUserDocId)) {
-        await notificationService.notifyConnectionRequest(userId, targetUserDocId, connection.id);
+        // The notification emails the target, so it spends the requester's
+        // daily email budget; past it the request stays in-app only.
+        const emailAllowance = await dailyBudget.consumeEmail(userId);
+        if (emailAllowance.allowed) {
+          await notificationService.notifyConnectionRequest(userId, targetUserDocId, connection.id);
+        } else {
+          console.warn(`📧 Connection request ${userId} → ${targetUserDocId}: daily email budget used, in-app only`);
+        }
       } else {
         console.log(`🔕 Connection request ${userId} → ${targetUserDocId}: notified recently, skipping push/email`);
       }

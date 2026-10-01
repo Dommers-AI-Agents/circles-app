@@ -121,6 +121,17 @@ test('request → decline → request again does not re-notify within 24h', asyn
   expect(mockNotifyConnectionRequest).toHaveBeenCalledTimes(1); // but no new email/push
 });
 
+test('past the daily email budget, a new request is created but not emailed/pushed', async () => {
+  process.env.EMAIL_DAILY_BUDGET = '0';
+  try {
+    const out = await send({ targetUserId: 'wes' });
+    expect(out.statusCode).toBe(201);
+    expect(mockNotifyConnectionRequest).not.toHaveBeenCalled();
+  } finally {
+    delete process.env.EMAIL_DAILY_BUDGET;
+  }
+});
+
 test('a block in either direction refuses', async () => {
   await mockDb.collection(COLLECTIONS.USERS).doc('wes').set({ displayName: 'Wes', blockedUsers: ['sal'] });
   const out = await send({ targetUserId: 'wes' });

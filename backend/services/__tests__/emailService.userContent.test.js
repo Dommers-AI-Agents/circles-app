@@ -30,18 +30,12 @@ test('app invitation escapes the inviter and recipient names and keeps the subje
   expect(mail.text).toMatch(/<img src=x/);
 });
 
-test('connection request email escapes the name and spends the requester\'s budget', async () => {
+test('connection request email escapes the name (budget is spent by the controller, not here)', async () => {
   await emailService.sendConnectionRequestEmail('wes@example.com', EVIL, 'sal');
-  expect(mockConsumeEmail).toHaveBeenCalledWith('sal');
+  // Onboarding's welcome requests reuse this template and must not be throttled
+  expect(mockConsumeEmail).not.toHaveBeenCalled();
   expect(sent[0].html).not.toMatch(/<a href="https:\/\/phish/);
   expect(sent[0].subject).not.toMatch(/[\r\n]/);
-});
-
-test('over budget, the connection request email is skipped', async () => {
-  mockConsumeEmail.mockResolvedValueOnce({ allowed: false, used: 25, limit: 25 });
-  const result = await emailService.sendConnectionRequestEmail('wes@example.com', 'Sal', 'sal');
-  expect(result).toEqual({ success: false, skipped: 'budget' });
-  expect(sent).toHaveLength(0);
 });
 
 test('postcard escapes the place name, sender and note', async () => {

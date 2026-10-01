@@ -148,15 +148,10 @@ class EmailService {
 
   async sendConnectionRequestEmail(toEmail, fromUserName, fromUserId) {
     try {
-      // Counts against the REQUESTER's daily email budget (security audit
-      // 2026-10-01); lazy require keeps this module Firestore-free to load.
-      if (fromUserId && !userMailDisabled()) {
-        const budget = await require('./dailyBudget').consumeEmail(fromUserId);
-        if (!budget.allowed) {
-          console.warn(`📧 Connection request email from ${fromUserId} skipped: daily email budget (${budget.limit}) used`);
-          return { success: false, skipped: 'budget' };
-        }
-      }
+      // The requester's daily email budget is spent by the user-triggered
+      // caller (POST /connections/invite) before it notifies, so onboarding's
+      // welcome requests from the default accounts aren't throttled here
+      // (security audit 2026-10-01).
       const safeName = escapeHtml(fromUserName);
       const mailOptions = {
         to: toEmail,
