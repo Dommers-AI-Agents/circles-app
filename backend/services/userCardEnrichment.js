@@ -7,6 +7,7 @@
 // derivation runs about once a week per user, not once per page load.
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
+const { LOCATION_HIDDEN } = require('./publicUserProjection');
 
 const db = getFirestore();
 const CACHE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -115,7 +116,9 @@ const decorateUserCards = async (users, { activityReason = true } = {}) => {
     }
     // "Show my city" preference: strip the location line entirely — no
     // profile location, no places-derived assumption
-    if (u.preferences && u.preferences.showLocation === false) {
+    // Projected cards (publicUserProjection) have no `preferences`; they mark
+    // a hidden location with LOCATION_HIDDEN instead (security audit 2026-10-01).
+    if ((u.preferences && u.preferences.showLocation === false) || u[LOCATION_HIDDEN]) {
       u.location = null;
       return;
     }

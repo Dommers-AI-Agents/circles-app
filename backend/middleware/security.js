@@ -151,21 +151,6 @@ exports.sanitizeInput = (req, res, next) => {
   next();
 };
 
-// Request size limiter (already handled by express.json, but adding for clarity)
-exports.requestSizeLimiter = (req, res, next) => {
-  const contentLength = req.headers['content-length'];
-  const maxSize = 50 * 1024 * 1024; // 50MB
-  
-  if (contentLength && parseInt(contentLength) > maxSize) {
-    return res.status(413).json({
-      success: false,
-      message: 'Request entity too large'
-    });
-  }
-  
-  next();
-};
-
 // Security logging middleware. Log-only (it blocks nothing) and it runs before
 // auth and rate limiting on every request, so it must stay cheap whatever an
 // anonymous caller sends. Only the first 10 KB of the URL and body are

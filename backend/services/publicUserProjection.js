@@ -15,10 +15,20 @@
 // decoder REQUIRES only `_id`/`id` and `displayName`; every other field is
 // decodeIfPresent. Keep those two present and anything may be dropped.
 //
-// `extraFields` exists for surfaces where a field is deliberately shared:
-// connections and conversation participants keep `email` because the iOS
-// Messages screens (SelectConnection, AddParticipants, GroupConversation
-// Settings) display a partner's email — a mutual, consented relationship.
+// `extraFields` exists for surfaces where a field is deliberately shared.
+// Connections no longer pass `email` (security audit 2026-10-01): the
+// connections list handed every connection's — and every followed user's —
+// address to the caller, and iOS only used it as a grey subtitle / search
+// key in the Messages pickers (no "email this person" feature). Don't re-add it.
+//
+// `location` honours the user's "Show my city" switch
+// (preferences.showLocation === false): hidden from everyone except the user
+// themself. A hidden card also carries the LOCATION_HIDDEN symbol so later
+// enrichment (userCardEnrichment.decorateUserCards) doesn't backfill an
+// assumed city — symbols never reach the JSON response.
+const { isSameUser } = require('./idService');
+
+const LOCATION_HIDDEN = Symbol('locationHidden');
 
 const PUBLIC_USER_FIELDS = [
   '_id', 'id',
@@ -36,13 +46,18 @@ const PUBLIC_USER_FIELDS = [
  * callers may attach per-viewer enrichment (connectionStatus, isFollowing,
  * followsYou, discoveryType, distance, matchType, ...) onto the result.
  */
-function projectPublicUser(user, extraFields = []) {
+function projectPublicUser(user, extraFields = [], { viewerId = null } = {}) {
   if (!user || typeof user !== 'object') return user;
   const projected = {};
   for (const field of [...PUBLIC_USER_FIELDS, ...extraFields]) {
     if (user[field] !== undefined) projected[field] = user[field];
   }
+  const isSelf = viewerId && isSameUser(user.id || user._id, viewerId);
+  if (!isSelf && user.preferences && user.preferences.showLocation === false) {
+    projected.location = null;
+    projected[LOCATION_HIDDEN] = true;
+  }
   return projected;
 }
 
-module.exports = { projectPublicUser, PUBLIC_USER_FIELDS };
+module.exports = { projectPublicUser, PUBLIC_USER_FIELDS, LOCATION_HIDDEN };

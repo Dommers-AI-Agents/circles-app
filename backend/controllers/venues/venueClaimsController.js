@@ -6,6 +6,7 @@ const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { createVenueClaimRequest, sanitizeKeyPart, STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const rewardService = require('../../services/rewardService');
 const emailService = require('../../services/emailService');
+const { escapeHtml: esc } = require('../../utils/text');
 const db = getFirestore();
 
 // ---------- Ownership claims (filed from a place page) ----------
@@ -39,15 +40,18 @@ const sendClaimAdminEmail = async (claim, claimId) => {
         ``,
         `Claim ID: ${claimId}`
       ].join('\n'),
+      // Everything below is user-supplied (business name, contact fields,
+      // message): escape it so a claim can't inject markup into the admin's
+      // inbox (security audit 2026-10-01).
       html: `
-        <h2>🏪 Ownership claim: ${businessName}</h2>
-        <p><strong>Address:</strong> ${claim.placeAddress || 'unknown'}<br>
-        <strong>Sticker venue:</strong> ${enrolled ? `${claim.venueId} (enrolled — approve from the app's claims tray)` : 'not enrolled — verify, then enroll the venue and assign this owner'}<br>
-        <strong>Place ID:</strong> ${claim.placeId || 'n/a'} · <strong>Global:</strong> ${claim.globalPlaceId || 'n/a'} · <strong>Google:</strong> ${claim.googlePlaceId || 'n/a'}</p>
-        <p><strong>Claimer account:</strong> ${claim.userDisplayName || 'unknown'} (${claim.userEmail || claim.userId})</p>
-        <p><strong>Contact:</strong> ${claim.contactName || '-'} · ${claim.contactEmail || '-'} · ${claim.contactPhone || '-'}</p>
-        <p><strong>Message:</strong> ${claim.message || '-'}</p>
-        <p><em>Claim ID: ${claimId}</em></p>
+        <h2>🏪 Ownership claim: ${esc(businessName)}</h2>
+        <p><strong>Address:</strong> ${esc(claim.placeAddress || 'unknown')}<br>
+        <strong>Sticker venue:</strong> ${enrolled ? `${esc(claim.venueId)} (enrolled — approve from the app's claims tray)` : 'not enrolled — verify, then enroll the venue and assign this owner'}<br>
+        <strong>Place ID:</strong> ${esc(claim.placeId || 'n/a')} · <strong>Global:</strong> ${esc(claim.globalPlaceId || 'n/a')} · <strong>Google:</strong> ${esc(claim.googlePlaceId || 'n/a')}</p>
+        <p><strong>Claimer account:</strong> ${esc(claim.userDisplayName || 'unknown')} (${esc(claim.userEmail || claim.userId)})</p>
+        <p><strong>Contact:</strong> ${esc(claim.contactName || '-')} · ${esc(claim.contactEmail || '-')} · ${esc(claim.contactPhone || '-')}</p>
+        <p><strong>Message:</strong> ${esc(claim.message || '-')}</p>
+        <p><em>Claim ID: ${esc(claimId)}</em></p>
       `
     });
   } catch (emailError) {

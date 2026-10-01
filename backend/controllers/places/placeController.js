@@ -428,10 +428,11 @@ exports.getPlacesByCircleIdPublic = async (req, res, next) => {
     console.log(`🔍 Found ${places.length} active places for public circle`);
     
     // Get unique user IDs who added places
-    const userIds = [...new Set(places.map(place => place.addedBy))];
+    const userIds = [...new Set(places.map(place => place.addedBy).filter(Boolean))];
     
-    // Fetch user information for all users who added places
-    const userPromises = userIds.map(userId => {
+    // Fetch only the adders' user docs, in one batched read (this anonymous
+    // endpoint used to fan out a get per adder — security audit 2026-10-01).
+    const userRefs = userIds.map(userId => {
       let actualUserId = userId;
       if (userId && userId.includes('.')) {
         const parts = userId.split('.');
@@ -439,9 +440,9 @@ exports.getPlacesByCircleIdPublic = async (req, res, next) => {
           actualUserId = parts[1];
         }
       }
-      return db.collection(COLLECTIONS.USERS).doc(actualUserId).get();
+      return db.collection(COLLECTIONS.USERS).doc(actualUserId);
     });
-    const userDocs = await Promise.all(userPromises);
+    const userDocs = userRefs.length > 0 ? await db.getAll(...userRefs) : [];
     
     // Create a map of user information
     const userMap = new Map();
