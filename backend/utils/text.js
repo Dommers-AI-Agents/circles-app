@@ -8,4 +8,12 @@ const escapeHtml = (value) => String(value == null ? '' : value)
 /** Trimmed string capped at `max`; anything that isn't a string → ''. */
 const clean = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
 
-module.exports = { escapeHtml, clean };
+// For logs: enough to recognise an address, not enough to collect it
+// ("we***@gmail.com"). Security audit 2026-10-01: auth logs held full emails.
+const maskEmail = (email) => {
+  const [name, domain] = String(email || '').split('@');
+  if (!domain) return email ? '***' : String(email);
+  return `${name.slice(0, 2)}***@${domain}`;
+};
+
+module.exports = { escapeHtml, clean, maskEmail };

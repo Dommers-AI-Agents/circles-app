@@ -2,6 +2,7 @@
 // profile read/update, user search, circle order, public circles, daily summary
 // Split out of firebaseUserController.js (handlers unchanged).
 const { getFirestore } = require('../../config/firebase');
+const { maskEmail } = require('../../utils/text');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../../models/FirestoreModels');
 const { normalizeUserId, isSameUser } = require('../../services/idService');
 const { buildConnectionMap } = require('../../services/connectionMap');
@@ -59,7 +60,7 @@ exports.getUser = async (req, res, next) => {
     
     // If still not found and we have an email, try that
     if (!userDoc.exists && isMe && req.user.email) {
-      console.log(`⚠️ USER CONTROLLER: User doc not found by ID, trying email ${req.user.email}`);
+      console.log(`⚠️ USER CONTROLLER: User doc not found by ID, trying email ${maskEmail(req.user.email)}`);
       const usersWithEmail = await db.collection(COLLECTIONS.USERS)
         .where('email', '==', req.user.email)
         .limit(1)
@@ -69,12 +70,12 @@ exports.getUser = async (req, res, next) => {
         userDoc = usersWithEmail.docs[0];
         console.log(`✅ USER CONTROLLER: Found user by email, doc ID: ${userDoc.id}`);
       } else {
-        console.log('❌ USER CONTROLLER: No user found with email:', req.user.email);
+        console.log('❌ USER CONTROLLER: No user found with email:', maskEmail(req.user.email));
       }
     }
     
     if (!userDoc.exists) {
-      console.error(`❌ USER CONTROLLER: User document not found. Tried IDs: ${userId}, ${req.user.originalUid}, email: ${req.user.email}`);
+      console.error(`❌ USER CONTROLLER: User document not found. Tried IDs: ${userId}, ${req.user.originalUid}, email: ${maskEmail(req.user.email)}`);
       return res.status(404).json({
         success: false,
         message: 'User not found'
@@ -209,7 +210,6 @@ exports.getUser = async (req, res, next) => {
     
     // Debug log for optional fields
     if (isOwnProfile) {
-      console.log('🔍 USER CONTROLLER: Optional fields - firstName:', profileData.firstName, 'lastName:', profileData.lastName, 'phoneNumber:', profileData.phoneNumber);
     }
     
     res.status(200).json({
@@ -309,7 +309,7 @@ exports.updateUser = async (req, res, next) => {
     
     // If still not found, try to find by email
     if (!userDoc.exists && req.user.email) {
-      console.log(`⚠️ User doc not found by ID, trying email ${req.user.email}`);
+      console.log(`⚠️ User doc not found by ID, trying email ${maskEmail(req.user.email)}`);
       const usersWithEmail = await db.collection(COLLECTIONS.USERS)
         .where('email', '==', req.user.email)
         .limit(1)
@@ -323,7 +323,7 @@ exports.updateUser = async (req, res, next) => {
     }
     
     if (!userDoc.exists) {
-      console.error(`❌ User document not found for update. Tried IDs: ${req.user.uid}, ${req.user.originalUid}, email: ${req.user.email}`);
+      console.error(`❌ User document not found for update. Tried IDs: ${req.user.uid}, ${req.user.originalUid}, email: ${maskEmail(req.user.email)}`);
       return res.status(404).json({
         success: false,
         message: 'User not found'

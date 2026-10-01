@@ -1,5 +1,6 @@
 // backend/controllers/firebaseAuthController.js
 const { getFirestore, getAuth } = require('../config/firebase');
+const { maskEmail } = require('../utils/text');
 const { COLLECTIONS, createUser, serializeDoc } = require('../models/FirestoreModels');
 const jwt = require('jsonwebtoken');
 const { normalizeUserId, logNormalization } = require('../services/idService');
@@ -102,7 +103,6 @@ exports.firebaseAuth = async (req, res, next) => {
         picture = appleData.picture;
         provider = 'apple';
         console.log('✅ Apple ID token verified successfully');
-        console.log('Apple user data:', { uid, email, name });
       } catch (appleError) {
         console.log('⚠️ Apple token failed:', appleError.message);
         
@@ -145,7 +145,6 @@ exports.firebaseAuth = async (req, res, next) => {
               
               provider = 'linkedin';
               console.log('✅ LinkedIn token verified successfully');
-              console.log('LinkedIn user data:', { uid, email, name });
             } else {
               throw new Error('Invalid LinkedIn token');
             }
@@ -198,7 +197,7 @@ exports.firebaseAuth = async (req, res, next) => {
     // Normalize email to prevent duplicates
     if (email) {
       email = email.toLowerCase().trim();
-      console.log(`📧 Social auth with normalized email: ${email}, provider: ${provider}`);
+      console.log(`📧 Social auth with normalized email: ${maskEmail(email)}, provider: ${provider}`);
       
       // Private relay emails are ALLOWED (policy reversed 2026-08-06):
       // favcircles.com is registered in the Apple Developer portal for
@@ -207,7 +206,7 @@ exports.firebaseAuth = async (req, res, next) => {
       // sign-ins was also an App Review risk. Duplicate-account risk is
       // handled by provider-uid matching + the account-merge tooling.
       if (email.includes('@privaterelay.appleid.com')) {
-        console.log(`📧 Private relay sign-in: ${email}`);
+        console.log(`📧 Private relay sign-in: ${maskEmail(email)}`);
       }
     }
 
@@ -242,7 +241,7 @@ exports.firebaseAuth = async (req, res, next) => {
         const existingUserDoc = !usersWithEmail.empty ? usersWithEmail.docs[0] : usersWithAlternateEmail.docs[0];
         existingUserId = existingUserDoc.id;
         userRef = existingUserDoc.ref;
-        console.log(`Found existing user with email ${email}, merging accounts. Existing ID: ${existingUserId}, Provider ID: ${uid}`);
+        console.log(`Found existing user with email ${maskEmail(email)}, merging accounts. Existing ID: ${existingUserId}, Provider ID: ${uid}`);
         
         // Update user with new provider info
         const updateData = {
@@ -378,7 +377,7 @@ exports.firebaseAuth = async (req, res, next) => {
             // Found by email - use that user instead
             userDoc = emailQuery.docs[0];
             userRef = userDoc.ref;
-            console.log(`Found existing user by email during transaction: ${email}`);
+            console.log(`Found existing user by email during transaction: ${maskEmail(email)}`);
           }
         }
         
@@ -596,11 +595,10 @@ exports.register = async (req, res, next) => {
 
     // Normalize email to lowercase to prevent duplicates
     const normalizedEmail = email.toLowerCase().trim();
-    console.log(`📧 Registering user with email: ${normalizedEmail} (original: ${email})`);
     
     // Block private relay emails - users must use real email
     if (normalizedEmail.includes('@privaterelay.appleid.com')) {
-      console.log(`❌ Blocking private relay email in registration: ${normalizedEmail}`);
+      console.log(`❌ Blocking private relay email in registration: ${maskEmail(normalizedEmail)}`);
       return res.status(400).json({
         success: false,
         message: 'Private relay emails are not allowed. Please use your real email address.',
@@ -835,11 +833,10 @@ exports.login = async (req, res, next) => {
 
     // Normalize email to lowercase to prevent duplicates
     const normalizedEmail = email.toLowerCase().trim();
-    console.log(`📧 Login attempt with email: ${normalizedEmail} (original: ${email})`);
     
     // Block private relay emails - users must use real email
     if (normalizedEmail.includes('@privaterelay.appleid.com')) {
-      console.log(`❌ Blocking private relay email in login: ${normalizedEmail}`);
+      console.log(`❌ Blocking private relay email in login: ${maskEmail(normalizedEmail)}`);
       return res.status(400).json({
         success: false,
         message: 'Private relay emails are not allowed. Please use your real email address.',
@@ -850,9 +847,9 @@ exports.login = async (req, res, next) => {
     // Get user by email from Firebase Auth
     let userRecord;
     try {
-      console.log(`🔍 Looking up user in Firebase Auth with email: ${normalizedEmail}`);
+      console.log(`🔍 Looking up user in Firebase Auth with email: ${maskEmail(normalizedEmail)}`);
       userRecord = await auth.getUserByEmail(normalizedEmail);
-      console.log(`✅ Found user in Firebase Auth: ${userRecord.uid}, email: ${userRecord.email}`);
+      console.log(`✅ Found user in Firebase Auth: ${userRecord.uid}, email: ${maskEmail(userRecord.email)}`);
     } catch (error) {
       console.log(`❌ Firebase Auth lookup error:`, error.code, error.message);
       if (error.code === 'auth/user-not-found') {
@@ -878,7 +875,7 @@ exports.login = async (req, res, next) => {
 
     const firebaseAuthUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseApiKey}`;
     
-    console.log(`🔐 Attempting to verify password for email: ${normalizedEmail}`);
+    console.log(`🔐 Attempting to verify password for email: ${maskEmail(normalizedEmail)}`);
     console.log(`🔗 Firebase Auth URL: ${firebaseAuthUrl.substring(0, 80)}...`);
     
     try {
@@ -1071,7 +1068,6 @@ exports.updateProfile = async (req, res, next) => {
     console.log('   - displayName:', displayName);
     console.log('   - firstName:', firstName);
     console.log('   - lastName:', lastName);
-    console.log('   - phoneNumber:', phoneNumber);
     console.log('   - bio:', bio);
     console.log('   - location:', location);
     console.log('   - zipcode:', zipcode);
@@ -1111,7 +1107,6 @@ exports.updateProfile = async (req, res, next) => {
     }
     
     // Debug logging of update data
-    console.log('📝 updateProfile - Update data to be saved:', updateData);
 
     const userRef = db.collection(COLLECTIONS.USERS).doc(req.user.uid);
     await userRef.update(updateData);
@@ -1136,7 +1131,6 @@ exports.updateProfile = async (req, res, next) => {
     console.log('✅ updateProfile - Retrieved user after update:');
     console.log('   - firstName:', user.firstName);
     console.log('   - lastName:', user.lastName);
-    console.log('   - phoneNumber:', user.phoneNumber);
     
     res.status(200).json({
       success: true,
@@ -1191,7 +1185,7 @@ exports.forgotPassword = async (req, res) => {
       await auth.getUserByEmail(normalizedEmail);
     } catch (error) {
       if (error.code === 'auth/user-not-found') {
-        console.log(`🔑 Password reset requested for unknown email: ${normalizedEmail}`);
+        console.log(`🔑 Password reset requested for unknown email: ${maskEmail(normalizedEmail)}`);
         return res.json(genericResponse);
       }
       throw error;
@@ -1216,7 +1210,7 @@ exports.forgotPassword = async (req, res) => {
 
     const emailService = require('../services/emailService');
     await emailService.sendPasswordResetEmail(normalizedEmail, resetLink, displayName);
-    console.log(`🔑 Branded password reset email sent to ${normalizedEmail}`);
+    console.log(`🔑 Branded password reset email sent to ${maskEmail(normalizedEmail)}`);
 
     res.json(genericResponse);
   } catch (error) {
@@ -1297,13 +1291,13 @@ exports.refreshToken = async (req, res, next) => {
         if (!usersWithEmail.empty) {
           userDoc = usersWithEmail.docs[0];
           actualUserId = userDoc.id;
-          console.log(`✅ Found user by email (${decoded.email}), ID: ${actualUserId}`);
+          console.log(`✅ Found user by email (${maskEmail(decoded.email)}), ID: ${actualUserId}`);
         }
       }
     }
 
     if (!userDoc || !userDoc.exists) {
-      console.error(`❌ User not found for refresh token. Tried UIDs: ${firebaseUid}, ${parsedUid}, email: ${decoded.email}`);
+      console.error(`❌ User not found for refresh token. Tried UIDs: ${firebaseUid}, ${parsedUid}, email: ${maskEmail(decoded.email)}`);
       return res.status(401).json({
         success: false,
         message: 'User no longer exists'
@@ -1388,7 +1382,7 @@ async function checkForDuplicateAccounts(user) {
     });
     
     if (duplicateAccounts.length > 0) {
-      console.log(`🔍 Found ${duplicateAccounts.length} potential duplicate accounts for ${user.email}`);
+      console.log(`🔍 Found ${duplicateAccounts.length} potential duplicate accounts for ${maskEmail(user.email)}`);
       return {
         message: 'We found potential duplicate accounts that can be merged.',
         duplicateAccounts: duplicateAccounts,
