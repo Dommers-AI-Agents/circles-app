@@ -431,6 +431,27 @@
         : '<tr><td colspan="3" class="muted">No bounced addresses.</td></tr>') + '</tbody>';
   }
 
+  // Opened from the app: /admin#handoff=<one-time code>. Trade it for a
+  // token, then drop it from the address bar and history.
+  const handoffMatch = location.hash.match(/handoff=([A-Za-z0-9_-]+)/);
+  if (handoffMatch) {
+    history.replaceState(null, '', location.pathname);
+    show('login');
+    $('#loginErr').textContent = '';
+    $('#signInBtn').textContent = 'Signing you in…';
+    fetch(`${API}/admin/dashboard/handoff/redeem`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: handoffMatch[1] })
+    }).then((r) => r.json().then((b) => ({ ok: r.ok, b }))).then(({ ok, b }) => {
+      $('#signInBtn').textContent = 'Sign in';
+      if (!ok || !b.token) { $('#loginErr').textContent = b.message || 'Could not sign you in. Open the dashboard from the app again.'; return; }
+      token = b.token;
+      try { sessionStorage.setItem(TOKEN_KEY, token); } catch (e) {}
+      show('app');
+      load();
+    }).catch(() => { $('#signInBtn').textContent = 'Sign in'; $('#loginErr').textContent = 'Could not reach the server.'; });
+    return;
+  }
+
   // /admin#people (or #money, #messaging) opens that tab
   const fromHash = location.hash.slice(1);
   if (['overview', 'people', 'money', 'messaging'].includes(fromHash)) {
