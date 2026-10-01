@@ -384,6 +384,14 @@ class PiggyBankService {
           const doc = await this.db.collection(COLLECTIONS.WIDGET_DATA).doc(ref.docId).get();
           return doc.exists ? { valid: true } : { valid: false, reason: 'widget_doc_deleted' };
         }
+        case 'drink_received': {
+          // The drink message must still exist (unsent inside the window →
+          // the bonus reverses).
+          if (!ref.messageId) return { valid: false, reason: 'missing_message_ref' };
+          const doc = await this.db.collection(COLLECTIONS.MESSAGES).doc(ref.messageId).get();
+          if (!doc.exists || doc.data().deletedAt) return { valid: false, reason: 'message_deleted' };
+          return { valid: true };
+        }
         case 'postcard_sent': {
           if (!ref.messageId) return { valid: false, reason: 'missing_message_ref' };
           const doc = await this.db.collection(COLLECTIONS.MESSAGES).doc(ref.messageId).get();

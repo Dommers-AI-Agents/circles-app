@@ -43,7 +43,12 @@ module.exports = {
   // postcard to a connection pays 2 (creating something for someone, priced
   // like a moment). Both flag-gated by WIDGET_PIGGY_ENABLED=1 in the
   // controllers; off by default.
-  RULE_VERSION: '2026.09-b',
+  //
+  // 2026.10-a: a friend sent you a drink recipe from Make Me a Drink — 1 coin
+  // to the RECIPIENT, paid by FavCircles (coins are never moved between
+  // users), once ever per sender→recipient pair and at most 3 a day. It
+  // rewards a message between connections; nothing about it is posted.
+  RULE_VERSION: '2026.10-a',
   CLEARING_WINDOW_HOURS: 24,
   COINS: {
     ADD_PLACE: 3,
@@ -70,7 +75,8 @@ module.exports = {
     CLIP_SIGNUP: 50,            // generic App Clip signup (no store), once per user
     WEEKLY_GOAL: 10,            // first qualifying place action of the ISO week
     WIDGET_DAILY_USE: 0.5,      // first widget save of the UTC day (Widgets tab)
-    POSTCARD_SENT: 2            // digital postcard delivered to a connection's chat
+    POSTCARD_SENT: 2,           // digital postcard delivered to a connection's chat
+    DRINK_RECEIVED: 1           // a connection sent you a drink recipe (paid to the recipient)
   },
   DAILY_CAPS: {              // earns past the cap: action still succeeds, pays 0
     ADD_PLACE: 20,
@@ -101,7 +107,8 @@ module.exports = {
     CLIP_SIGNUP: 1,             // structurally once-ever via clip_signup:{uid}
     WEEKLY_GOAL: 1,             // structurally once-a-week via weekly_goal:{uid}:{isoWeek}
     WIDGET_DAILY_USE: 1,        // structurally once-a-day via widget_daily_use:{uid}:{day}
-    POSTCARD_SENT: 2
+    POSTCARD_SENT: 2,
+    DRINK_RECEIVED: 3           // per recipient per day; also once ever per sender (dedup key)
   },
   CREATE_CIRCLE_MIN_PLACES: 3,   // enforced at CLEARING time, not earn time
   CLAIM: {
