@@ -31,6 +31,13 @@ class NotificationService {
       const userData = userDoc.data();
       
       const { deviceTokens = [], notificationPreferences = {} } = userData;
+
+      // Can't reach them by push (no token, or notifications off on the
+      // phone)? The important ones come by email instead. Their own switch
+      // for this type still applies.
+      if (this.isNotificationEnabled(notification.type, notificationPreferences)) {
+        require('./emailFallback').maybeEmail(userId, userData, notification);
+      }
       
       console.log(`🔔 User ${userId} has ${deviceTokens.length} device tokens`);
 

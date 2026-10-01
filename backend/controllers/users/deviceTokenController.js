@@ -163,3 +163,26 @@ exports.updateNotificationPreferences = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Whether notifications are actually allowed on this phone
+// @route   PUT /api/users/push-status
+// @access  Private
+// iOS gives out a push token even when notifications are off, so the app
+// reports the real permission on every launch. emailFallback.js uses it to
+// email the important things to people a push can't reach.
+const PUSH_STATUSES = new Set(['authorized', 'denied', 'notDetermined', 'provisional', 'ephemeral']);
+exports.updatePushStatus = async (req, res, next) => {
+  try {
+    const status = String((req.body && req.body.status) || '');
+    if (!PUSH_STATUSES.has(status)) {
+      return res.status(400).json({ success: false, message: 'Unknown push status' });
+    }
+    const client = clientFromRequest(req);
+    await db.collection(COLLECTIONS.USERS).doc(req.user.uid).set({
+      pushStatus: { status, updatedAt: new Date().toISOString(), appVersion: client.version || null, appBuild: client.build || null }
+    }, { merge: true });
+    res.status(200).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+};

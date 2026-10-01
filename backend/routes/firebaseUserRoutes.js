@@ -25,7 +25,8 @@ const {
 const {
   registerDeviceToken,
   removeDeviceToken,
-  updateNotificationPreferences
+  updateNotificationPreferences,
+  updatePushStatus
 } = require('../controllers/users/deviceTokenController');
 const {
   addPinnedPlace,
@@ -99,6 +100,9 @@ router.route('/find-duplicates')
 router.route('/device-token')
   .post(registerDeviceToken)
   .delete(removeDeviceToken);
+
+router.route('/push-status')
+  .put(updatePushStatus);
 
 router.route('/notification-preferences')
   .put(updateNotificationPreferences);
