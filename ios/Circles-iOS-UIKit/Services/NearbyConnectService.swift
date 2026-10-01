@@ -20,6 +20,9 @@ final class NearbyConnectService: NSObject {
     struct NearbyPeer: Equatable {
         let userId: String
         let displayName: String
+        /// Their signed invite (see NetworkManager.myInviteToken): tapping
+        /// their card with it connects in one tap; without it, it's a request
+        var inviteToken: String? = nil
     }
 
     static let serviceType = "fc-tap"   // must match NSBonjourServices (_fc-tap._tcp/_udp)
@@ -47,11 +50,14 @@ final class NearbyConnectService: NSObject {
         let peerID = MCPeerID(displayName: String(uid.prefix(60)))
         myPeerID = peerID
 
-        let info = [
+        if NetworkManager.shared.myInviteToken == nil { NetworkManager.shared.refreshInviteToken() }
+        var info = [
             "uid": uid,
             // Bonjour TXT records are tight — clamp the name
             "name": String(user.displayName.prefix(40))
         ]
+        // 32-char signed invite: lets whoever taps our card connect in one tap
+        if let token = NetworkManager.shared.myInviteToken { info["t"] = token }
 
         let advertiser = MCNearbyServiceAdvertiser(peer: peerID,
                                                    discoveryInfo: info,
@@ -92,7 +98,7 @@ extension NearbyConnectService: MCNearbyServiceBrowserDelegate {
         peerUserIds[peerID] = uid
         Logger.debug("📡 NearbyConnect: found \(name) (\(uid))")
         DispatchQueue.main.async {
-            self.delegate?.nearbyService(self, found: NearbyPeer(userId: uid, displayName: name))
+            self.delegate?.nearbyService(self, found: NearbyPeer(userId: uid, displayName: name, inviteToken: info?["t"]))
         }
     }
 

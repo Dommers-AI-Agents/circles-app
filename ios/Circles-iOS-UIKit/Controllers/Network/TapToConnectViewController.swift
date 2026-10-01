@@ -130,7 +130,8 @@ final class TapToConnectViewController: BaseViewController {
         card.showConnecting()
         NetworkManager.shared.handleConnectionInvite(
             from: peer.userId,
-            message: "Connected by holding phones together"
+            message: "Connected by holding phones together",
+            inviteToken: peer.inviteToken
         ) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
