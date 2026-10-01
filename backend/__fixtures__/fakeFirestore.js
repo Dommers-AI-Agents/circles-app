@@ -13,8 +13,14 @@ class FakeQuery {
   where(field, op, value) { return new FakeQuery(this.store, [...this.filters, { field, op, value }], this.order, this.max, this.after); }
   orderBy(field, direction = 'asc') { return new FakeQuery(this.store, this.filters, { field, direction }, this.max, this.after); }
   limit(n) { return new FakeQuery(this.store, this.filters, this.order, n, this.after); }
-  /** Cursor paging: results strictly after `snapshot` in the query's order. */
-  startAfter(snapshot) { return new FakeQuery(this.store, this.filters, this.order, this.max, snapshot ? snapshot.id : null); }
+  /**
+   * Cursor paging: results strictly after `cursor` in the query's order. A
+   * snapshot or (ordered by document id) a bare id string, as the SDK allows.
+   */
+  startAfter(cursor) {
+    const id = typeof cursor === 'string' ? cursor : (cursor ? cursor.id : null);
+    return new FakeQuery(this.store, this.filters, this.order, this.max, id);
+  }
   // Real queries use select() to fetch ids without the document bodies. The
   // fake always returns whole docs, so this is just a pass-through that keeps
   // the call chain working.
@@ -47,7 +53,9 @@ class FakeQuery {
     }
     if (this.order) {
       const { field, direction } = this.order;
-      rows.sort((a, b) => (a.data[field] > b.data[field] ? 1 : -1) * (direction === 'desc' ? -1 : 1));
+      // FieldPath.documentId() stringifies to '__name__': order by doc id.
+      const key = String(field) === '__name__' ? (r) => r.id : (r) => r.data[field];
+      rows.sort((a, b) => (key(a) > key(b) ? 1 : -1) * (direction === 'desc' ? -1 : 1));
     } else {
       // Firestore orders an unordered query by document id.
       rows.sort((a, b) => (a.id > b.id ? 1 : -1));
@@ -73,6 +81,7 @@ class FakeCollection {
   where(...args) { return new FakeQuery(this.store).where(...args); }
   orderBy(...args) { return new FakeQuery(this.store).orderBy(...args); }
   limit(n) { return new FakeQuery(this.store).limit(n); }
+  select(...fields) { return new FakeQuery(this.store).select(...fields); }
 }
 
 class FakeFirestore {
