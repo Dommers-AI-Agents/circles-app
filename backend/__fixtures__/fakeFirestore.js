@@ -34,6 +34,8 @@ class FakeQuery {
           case '==': return v === f.value;
           case '<=': return v !== null && v !== undefined && v <= f.value;
           case '>=': return v !== null && v !== undefined && v >= f.value;
+          case '<': return v !== null && v !== undefined && v < f.value;
+          case '>': return v !== null && v !== undefined && v > f.value;
           case 'in': return Array.isArray(f.value) && f.value.includes(v);
           case '!=': return v !== f.value;
           case 'array-contains': return Array.isArray(v) && v.includes(f.value);

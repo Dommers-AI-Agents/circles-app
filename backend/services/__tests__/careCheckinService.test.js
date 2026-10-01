@@ -110,6 +110,23 @@ describe('setting up', () => {
     expect(plans().get(PLAN).inviteCount).toBe(3);
   });
 
+  test('history pages back through older answers', async () => {
+    await seedUsers();
+    await care.createPlan({ ownerId: CHILD, parentId: PARENT, times: ['08:30'] });
+    for (let day = 1; day <= 5; day += 1) {
+      const askedAt = `2026-09-0${day}T12:30:00.000Z`;
+      await mockDb.collection('careAsks').doc(`a${day}`).set({ planId: PLAN, askedAt, status: 'answered', answer: 'great', questionText: `Day ${day}` });
+    }
+    const first = await care.listAsks({ userId: CHILD, planId: PLAN, limit: 2 });
+    expect(first.asks.map((a) => a.questionText)).toEqual(['Day 5', 'Day 4']);
+    expect(first.hasMore).toBe(true);
+    const second = await care.listAsks({ userId: CHILD, planId: PLAN, limit: 2, before: first.asks[1].askedAt });
+    expect(second.asks.map((a) => a.questionText)).toEqual(['Day 3', 'Day 2']);
+    const last = await care.listAsks({ userId: CHILD, planId: PLAN, limit: 2, before: second.asks[1].askedAt });
+    expect(last.asks.map((a) => a.questionText)).toEqual(['Day 1']);
+    expect(last.hasMore).toBe(false);
+  });
+
   test('Send again answers without waiting for the email', async () => {
     await seedUsers();
     await mockDb.collection(COLLECTIONS.USERS).doc(PARENT).set({ displayName: 'Mom Sgroi', email: 'mom@example.com' });
@@ -349,7 +366,7 @@ describe('answering by kind', () => {
     await expect(care.answerAsk({ userId: PARENT, askId, value: '   ' })).rejects.toMatchObject({ code: 'bad_answer', message: 'Type a few words.' });
     const answered = await care.answerAsk({ userId: PARENT, askId, value: 'Eye doctor Thursday  at 2' });
     expect(answered).toMatchObject({ kind: 'text', answer: null, answerValue: 'Eye doctor Thursday at 2', answerText: 'Eye doctor Thursday at 2', alert: false });
-    const history = await care.listAsks({ userId: CHILD, planId: PLAN });
+    const { asks: history } = await care.listAsks({ userId: CHILD, planId: PLAN });
     expect(history[0]).toMatchObject({ kind: 'text', answerText: 'Eye doctor Thursday at 2' });
   });
 
@@ -403,8 +420,9 @@ describe('reads', () => {
     expect(mine.asOwner).toEqual([]);
     expect(mine.asParent[0]).toMatchObject({ role: 'parent', ownerName: 'Wes', openAsk: expect.objectContaining({ questionText: 'How are you feeling today?' }) });
     expect(mine.asParent[0].answers).toEqual({ great: 'Doing great 👍', okay: 'Okay', not_great: 'Not so good' });
-    const history = await care.listAsks({ userId: CHILD, planId: PLAN });
-    expect(history).toHaveLength(1);
+    const page = await care.listAsks({ userId: CHILD, planId: PLAN });
+    expect(page.asks).toHaveLength(1);
+    expect(page.hasMore).toBe(false);
     await expect(care.listAsks({ userId: 'stranger', planId: PLAN })).rejects.toMatchObject({ code: 'not_yours' });
   });
 

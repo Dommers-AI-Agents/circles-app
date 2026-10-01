@@ -45,7 +45,8 @@ exports.resendInvite = async (req, res) => {
 exports.listAsks = async (req, res) => {
   const planId = String(req.query.planId || '');
   const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 60));
-  try { res.json({ success: true, asks: await care.listAsks({ userId: req.user.uid, planId, limit }) }); }
+  const before = req.query.before ? String(req.query.before) : null;
+  try { res.json({ success: true, ...(await care.listAsks({ userId: req.user.uid, planId, limit, before })) }); }
   catch (e) { fail(res, e); }
 };
 

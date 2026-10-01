@@ -168,15 +168,23 @@ class CareCheckinService {
   }
 
   /** Newest first, bounded by the index (planId, askedAt desc). */
-  async recentAsks(planId, limit = 30) {
-    const snap = await this.asks.where('planId', '==', planId).orderBy('askedAt', 'desc').limit(limit).get();
+  async recentAsks(planId, limit = 30, before = null) {
+    let query = this.asks.where('planId', '==', planId);
+    if (before) query = query.where('askedAt', '<', String(before));
+    const snap = await query.orderBy('askedAt', 'desc').limit(limit).get();
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   }
 
-  async listAsks({ userId, planId, limit = 60 }) {
+  /**
+   * One page of the answer history, newest first. `before` (an askedAt from
+   * the last page) pages back through older ones; `hasMore` says whether
+   * there are any.
+   */
+  async listAsks({ userId, planId, limit = 60, before = null }) {
     const plan = await this.requirePlan(planId);
     if (!CareCheckinService.canRead(plan, userId)) throw new CareError(403, 'not_yours', 'Not your check-in.');
-    return (await this.recentAsks(planId, limit)).map((a) => this.presentAsk(a));
+    const page = await this.recentAsks(planId, limit + 1, before);
+    return { asks: page.slice(0, limit).map((a) => this.presentAsk(a)), hasMore: page.length > limit };
   }
 
   async requirePlan(planId) {
