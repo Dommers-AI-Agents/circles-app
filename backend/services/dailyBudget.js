@@ -25,9 +25,10 @@ const COLLECTION = 'dailyBudgets';
 // person inviting a friend); paid lookups fail CLOSED (skipping enrichment
 // only costs a photo, never the check-in).
 const BUCKETS = {
-  email: { env: 'EMAIL_DAILY_BUDGET', limit: 25, failOpen: true },
+  // Sized so an enthusiastic real person never hits them (viral invites), only scripts
+  email: { env: 'EMAIL_DAILY_BUDGET', limit: 100, failOpen: true },
   placesLookup: { env: 'PLACES_LOOKUP_DAILY_BUDGET', limit: 30, failOpen: false },
-  connectionRequest: { env: 'CONNECTION_REQUEST_DAILY_BUDGET', limit: 50, failOpen: true }
+  connectionRequest: { env: 'CONNECTION_REQUEST_DAILY_BUDGET', limit: 200, failOpen: true }
 };
 
 const dayKey = (now = new Date()) => now.toISOString().slice(0, 10);

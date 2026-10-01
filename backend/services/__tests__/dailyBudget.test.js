@@ -12,12 +12,12 @@ beforeEach(() => {
   delete process.env.PLACES_LOOKUP_DAILY_BUDGET;
 });
 
-test('email budget allows 25 a day by default, then refuses', async () => {
-  for (let i = 1; i <= 25; i++) {
+test('email budget allows 100 a day by default, then refuses', async () => {
+  for (let i = 1; i <= 100; i++) {
     const r = await dailyBudget.consumeEmail('wes');
-    expect(r).toEqual({ allowed: true, used: i, limit: 25 });
+    expect(r).toEqual({ allowed: true, used: i, limit: 100 });
   }
-  expect(await dailyBudget.consumeEmail('wes')).toEqual({ allowed: false, used: 25, limit: 25 });
+  expect(await dailyBudget.consumeEmail('wes')).toEqual({ allowed: false, used: 100, limit: 100 });
   // Someone else's allowance is untouched
   expect((await dailyBudget.consumeEmail('britt')).allowed).toBe(true);
 });

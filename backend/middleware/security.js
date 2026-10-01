@@ -31,7 +31,7 @@ exports.generalLimiter = createRateLimiter(
 // Strict rate limiter for auth endpoints
 exports.authLimiter = createRateLimiter(
   15 * 60 * 1000, // 15 minutes
-  50, // limit each IP to 50 requests per windowMs (increased for better UX)
+  300, // per IP: venue Wi-Fi / App Clip QR signups share one address — 50 would lock a crowd out (2026-10-01)
   'Too many authentication attempts, please try again later.'
 );
 

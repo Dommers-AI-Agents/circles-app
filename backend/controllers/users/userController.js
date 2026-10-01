@@ -411,9 +411,9 @@ exports.searchUsers = async (req, res, next) => {
     // select() keeps email/phone out of memory entirely — nothing below can
     // leak a field it never read.
     const [usersSnapshot, connectionMap, currentUserDoc] = await Promise.all([
-      db.collection(COLLECTIONS.USERS)
-        .select('displayName', 'firstName', 'lastName', 'profilePicture', 'bio', 'location', 'preferences')
-        .get(),
+      // Cached per instance for a few minutes (services/userSearchIndex) —
+      // one full read per 5 min instead of one per search
+      require('../../services/userSearchIndex').searchableUsers(),
       buildConnectionMap(currentUserId),
       db.collection(COLLECTIONS.USERS).doc(currentUserId).get()
     ]);
@@ -426,7 +426,7 @@ exports.searchUsers = async (req, res, next) => {
     const blocked = new Set([...excludedUserIds(currentData)].map(normalizeUserId).filter(Boolean));
 
     const matchingUsers = [];
-    for (const doc of usersSnapshot.docs) {
+    for (const doc of usersSnapshot) {
       const user = serializeDoc(doc);
       if (isSameUser(user.id, currentUserId)) continue;
 

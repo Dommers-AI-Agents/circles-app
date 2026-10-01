@@ -34,8 +34,10 @@ beforeEach(() => {
 
 describe('GET /api/users/search', () => {
   const { searchUsers } = require('../users/userController');
+  const { resetSearchIndexForTests } = require('../../services/userSearchIndex');
 
   beforeEach(async () => {
+    resetSearchIndexForTests(); // each test seeds its own users
     await put('users', 'me', { displayName: 'Me', blockedUsers: ['blocked1'], blockedBy: ['blocker1'] });
     await put('users', 'sal', {
       displayName: 'Sal Smith', email: 'sal@example.com', phoneNumber: '7045550199',
