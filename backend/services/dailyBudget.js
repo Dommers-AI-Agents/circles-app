@@ -56,7 +56,9 @@ async function consume(bucket, userId, amount = 1, { now = new Date() } = {}) {
       const snap = await tx.get(ref);
       const used = (snap.exists && snap.data().count) || 0;
       if (used + amount > limit) return { allowed: false, used, limit };
-      tx.set(ref, { bucket, userId, day, count: used + amount, updatedAt: now.toISOString() });
+      // expiresAt (a real Date) lets the Firestore TTL policy on dailyBudgets
+      // delete yesterday's counters; they're only read for "today"
+      tx.set(ref, { bucket, userId, day, count: used + amount, updatedAt: now.toISOString(), expiresAt: new Date(now.getTime() + 2 * 86400000) });
       return { allowed: true, used: used + amount, limit };
     });
   } catch (error) {
