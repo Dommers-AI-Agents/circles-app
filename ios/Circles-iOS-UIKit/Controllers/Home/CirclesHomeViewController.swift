@@ -2660,6 +2660,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             name: .circleDeleted,
             object: nil
         )
+        // Every Unsave (place page, circle swipe, edit screen) posts this via
+        // PlaceService.deletePlace; without it the pin stayed on the map and
+        // reopened as a bare venue (Wes, 2026-10-02).
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handlePlaceDeleted(_:)),
+            name: Notification.Name("PlaceDeleted"),
+            object: nil
+        )
 
         // Refresh the $ badge the moment points are earned or spent
         NotificationCenter.default.addObserver(
@@ -2773,6 +2782,27 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
+    /// An unsaved place leaves the map now, not at the next refresh.
+    @objc func handlePlaceDeleted(_ notification: Notification) {
+        guard let placeId = notification.userInfo?["placeId"] as? String else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let before = self.state.allPlaces.count + self.state.userOwnPlaces.count
+            self.state.allPlaces.removeAll { $0.id == placeId }
+            self.state.userOwnPlaces.removeAll { $0.id == placeId }
+            self.state.cachedPlaces.removeAll { $0.id == placeId }
+            self.state.networkPlaces.removeAll { $0.id == placeId }
+            guard self.state.allPlaces.count + self.state.userOwnPlaces.count != before else { return }
+            if self.state.allPlaces.isEmpty {
+                // refreshMapDisplay skips an empty set; clear the last pin here
+                self.mapViewController?.updatePlaces([], adjustRegion: false)
+            } else {
+                self.refreshMapDisplay(adjustRegion: false)
+            }
+            self.updateEmptyState()
+        }
+    }
+
     @objc func handleCircleDeleted(_ notification: Notification) {
         guard let circleId = notification.userInfo?["circleId"] as? String else { return }
         
