@@ -29,23 +29,14 @@ enum MomentAudienceChoices {
                                              subtitle: level.pickerSubtitle,
                                              isSelected: current == level && (level != .innerCircle || currentListId == nil))]
             }
-            var rows = lists.map { list in
+            // Only the lists themselves, never "anyone on my lists" (Wes,
+            // 2026-10-02). A moment on no known list just has no row checked.
+            return lists.map { list in
                 MomentAudienceChoice(visibility: level, listId: list.id,
                                      title: list.name,
                                      subtitle: list.userIds.count == 1 ? "Inner Circle · 1 person" : "Inner Circle · \(list.userIds.count) people",
                                      isSelected: current == level && currentListId == list.id)
             }
-            // Same rule as PrivacyPickerButton: only offered when it is what the
-            // moment already says, so nobody picks the vaguer audience by accident.
-            // A list that has since emptied or been deleted lands here too.
-            let onKnownList = currentListId.map { id in lists.contains { $0.id == id } } ?? false
-            if current == .innerCircle && !onKnownList {
-                rows.append(MomentAudienceChoice(visibility: level, listId: currentListId,
-                                                 title: currentListId == nil ? "Anyone on my lists" : "A list you've since emptied",
-                                                 subtitle: level.pickerSubtitle,
-                                                 isSelected: true))
-            }
-            return rows
         }
     }
 }

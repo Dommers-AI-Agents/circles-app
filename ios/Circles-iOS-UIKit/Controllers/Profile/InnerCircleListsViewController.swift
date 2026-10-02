@@ -93,7 +93,7 @@ final class InnerCircleListsViewController: BaseViewController {
                 // Straight into choosing who is on it: an empty list is the
                 // same as Private, and nobody means to make one of those.
                 guard let self, let created = (list.lists ?? []).last else { return }
-                self.navigationController?.pushViewController(InnerCircleListViewController(list: created), animated: true)
+                self.navigationController?.pushViewController(InnerCircleListViewController(list: created, isNew: true), animated: true)
             }
         }
     }

@@ -132,16 +132,13 @@ final class PrivacyPickerButton: UIView {
         guard option == .tier(.innerCircle) else { return [action(option, listId: nil, title: option.title, subtitle: option.subtitle)] }
         let lists = InnerCircleManager.shared.usableLists
         guard !lists.isEmpty else { return [action(option, listId: nil, title: option.title, subtitle: option.subtitle)] }
-        var children = lists.map { list in
+        // Only the lists themselves: "anyone on my lists" defeats the point of
+        // having lists (Wes, 2026-10-02). An older item still on it shows
+        // "choose a list" until one is picked.
+        return lists.map { list in
             action(option, listId: list.id, title: list.name,
                    subtitle: list.userIds.count == 1 ? "Inner Circle · 1 person" : "Inner Circle · \(list.userIds.count) people")
         }
-        // Only offered when it is what the item already says, so nobody picks
-        // a vaguer audience by accident, and nothing silently narrows either.
-        if selected == .tier(.innerCircle) && selectedListId == nil {
-            children.append(action(option, listId: nil, title: "Anyone on my lists", subtitle: option.subtitle))
-        }
-        return children
     }
 
     private func action(_ option: PrivacyOption, listId: String?, title: String, subtitle: String) -> UIAction {
@@ -163,7 +160,10 @@ final class PrivacyPickerButton: UIView {
     }
 
     private var currentTitle: String {
-        if selected == .tier(.innerCircle), let name = currentList?.name { return name }
+        if selected == .tier(.innerCircle) {
+            if let name = currentList?.name { return name }
+            if !InnerCircleManager.shared.usableLists.isEmpty { return "Inner Circle · choose a list" }
+        }
         return selected.title
     }
 

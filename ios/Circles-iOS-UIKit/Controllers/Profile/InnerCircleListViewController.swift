@@ -19,9 +19,15 @@ class InnerCircleListViewController: BaseViewController {
     private var members: [User] = []
     private var maxSize: Int = InnerCircleList.empty.maxSize
 
-    init(list: InnerCircleNamedList? = nil) {
+    /// A list just created: the people picker opens straight away, and
+    /// Done (here or in the picker) goes back to the lists (Wes, 2026-10-02).
+    private let isNew: Bool
+    private var offeredPicker = false
+
+    init(list: InnerCircleNamedList? = nil, isNew: Bool = false) {
         self.listId = list?.id
         self.listName = list?.name ?? "Inner Circle"
+        self.isNew = isNew
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -46,9 +52,23 @@ class InnerCircleListViewController: BaseViewController {
         ])
         // Only a named list can be renamed; the legacy single list has no id.
         if listId != nil {
-            navigationItem.rightBarButtonItem = UIBarButtonItem(
-                title: "Rename", style: .plain, target: self, action: #selector(renameTapped))
+            let rename = UIBarButtonItem(title: "Rename", style: .plain, target: self, action: #selector(renameTapped))
+            navigationItem.rightBarButtonItems = isNew
+                ? [UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(doneTapped)), rename]
+                : [rename]
         }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if isNew && !offeredPicker {
+            offeredPicker = true
+            addPeopleTapped()
+        }
+    }
+
+    @objc private func doneTapped() {
+        navigationController?.popViewController(animated: true)
     }
 
     override func loadData(completion: (() -> Void)? = nil) {
@@ -139,6 +159,8 @@ class InnerCircleListViewController: BaseViewController {
                         self.members = self.members(in: list)
                         self.maxSize = list.maxSize
                         self.tableView.reloadData()
+                        // A new list is finished once its people are chosen
+                        if self.isNew { self.doneTapped() }
                     case .failure(let error):
                         // The server explains why (not a connection, over the
                         // cap); showError surfaces its wording verbatim.

@@ -32,18 +32,13 @@ struct MomentAudienceChoicesTests {
         #expect(!rows.contains { $0.title == "Anyone on my lists" })
     }
 
-    @Test func anyListIsOfferedOnlyWhenItIsTheStoredValue() {
-        let rows = MomentAudienceChoices.choices(lists: [family], current: .innerCircle, currentListId: nil)
-        let selected = rows.filter(\.isSelected)
-        #expect(selected.count == 1)
-        #expect(selected.first?.title == "Anyone on my lists")
-        #expect(selected.first?.listId == nil)
-    }
-
-    @Test func aListThatIsGoneStillShowsAsSelected() {
-        let rows = MomentAudienceChoices.choices(lists: [family], current: .innerCircle, currentListId: "deleted")
-        let selected = rows.filter(\.isSelected)
-        #expect(selected.count == 1)
-        #expect(selected.first?.listId == "deleted")
+    @Test func anyoneOnMyListsIsNeverOffered() {
+        // Wes, 2026-10-02: it defeats the point of lists — only named lists
+        for listId in [nil, "deleted"] as [String?] {
+            let rows = MomentAudienceChoices.choices(lists: [family], current: .innerCircle, currentListId: listId)
+            #expect(!rows.contains { $0.title == "Anyone on my lists" || $0.title == "A list you've since emptied" })
+            #expect(rows.filter { $0.visibility == .innerCircle }.map(\.listId) == [family.id])
+            #expect(rows.filter(\.isSelected).isEmpty)
+        }
     }
 }
