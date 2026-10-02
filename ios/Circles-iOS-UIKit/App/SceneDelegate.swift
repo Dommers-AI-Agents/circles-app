@@ -573,6 +573,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// as the window root (with an optional cross-dissolve), then runs post-launch
     /// side effects.
     private func installMainInterface(with data: PreloadedData?, transitionDuration: TimeInterval) {
+        // Before home's people row is built, so it paints these immediately
+        if let data { NetworkManager.shared.seedConnectionsFromLaunchCache(data.connections) }
         let mainTabController = CirclesTabBarController()
 
         if let data = data,
@@ -613,6 +615,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     private func updateRootViewController(isLoggedIn: Bool) {
+        // Already signed in and on the main tabs: a repeat "signed in" (the
+        // Google session restore runs a full sign-in in the background ~4 s
+        // after launch) must not rebuild home. It used to install a second
+        // home screen that reloaded everything — the spinners and the "loads
+        // twice" on cold start (Wes, 2026-10-02).
+        if isLoggedIn, window?.rootViewController is CirclesTabBarController {
+            Logger.debug("Auth: already signed in on the main tabs, keeping the current home")
+            return
+        }
         if isLoggedIn {
             // Brand-new signup: force the splash path even if a cache exists,
             // so the first-session chain arms before home is ever visible

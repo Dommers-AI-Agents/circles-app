@@ -28,6 +28,16 @@ class NetworkManager {
     private(set) var sharedCircles: [CircleShare] = []
     private(set) var editableCirclesFromOthers: [Circle] = []
     private(set) var isLoading = false
+
+    /// Cold start from the launch cache: hands the cached connections over
+    /// before home is built, so the people row paints them at once instead
+    /// of a spinner until the network answers (it read only this, and only
+    /// the second, rebuilt home used to find it filled). Never overwrites a
+    /// fresher list.
+    func seedConnectionsFromLaunchCache(_ cached: [Connection]) {
+        guard connections.isEmpty, !cached.isEmpty else { return }
+        connections = cached
+    }
     private(set) var error: String?
 
     /// Everyone the current user FOLLOWS (superset of connections in practice
