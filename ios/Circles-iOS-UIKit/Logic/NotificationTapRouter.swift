@@ -12,6 +12,9 @@ enum NotificationDestination: Equatable {
     case postcardOrder(id: String)
     /// The quote of the day: the Quotes page opened on that quote in the reel.
     case dailyQuote(id: String)
+    /// Coach Mane's "Send to someone": Motivation opened on that line with
+    /// the send sheet up.
+    case motivationSend(lineId: String)
     case suggestions(placeId: String?, suggestionId: String?)
     /// `showComments` nil = post without userInfo (as `new_place` always did).
     case circle(id: String, showComments: Bool?)
@@ -74,6 +77,9 @@ enum NotificationTapRouter {
             return .homeWidget(id: "postcard")
         case "water_reminder": return .homeWidget(id: "water")
         case "motivation_reminder": return .homeWidget(id: "motivation")
+        case "motivation_send":
+            if let lineId = string("lineId", in: userInfo) { return .motivationSend(lineId: lineId) }
+            return .homeWidget(id: "motivation")
         case "daily_quote":
             if let quoteId = string("quoteId", in: userInfo) { return .dailyQuote(id: quoteId) }
             return .homeWidget(id: "quotes")

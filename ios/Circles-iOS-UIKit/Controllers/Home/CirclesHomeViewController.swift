@@ -2127,12 +2127,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// - Parameter postcardOrderId: a printed-postcard order to open on the
     ///   postcard page (from its "printing" push) instead of a blank composer.
     func showWidgetsTab(openingWidget widgetId: String?, postcardOrderId: String? = nil, quoteId: String? = nil,
-                        workoutPostId: String? = nil, drinkId: String? = nil) {
+                        workoutPostId: String? = nil, drinkId: String? = nil,
+                        motivationLineId: String? = nil, motivationSend: Bool = false) {
         contentSegmentedControl.selectedSegmentIndex = HomeContentSegment.widgets.rawValue
         showContentTab(.widgets)
         if let widgetId {
             widgetsTab.open(widgetId: widgetId, postcardOrderId: postcardOrderId, quoteId: quoteId, workoutPostId: workoutPostId,
-                            drinkId: drinkId)
+                            drinkId: drinkId, motivationLineId: motivationLineId, motivationSend: motivationSend)
         }
     }
 

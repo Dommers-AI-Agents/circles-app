@@ -169,6 +169,14 @@ final class NotificationActionHandler {
             }
             return
 
+        case MotivationQuickLog.sendAction:
+            // Opens the app (the action is .foreground) on that line with the
+            // send sheet. Notifications scheduled before lineId existed fall
+            // back to their body, which is the line itself.
+            let content = response.notification.request.content
+            let lineId = (userInfo["lineId"] as? String) ?? MotivationLines.id(for: content.body)
+            onTap(["type": "motivation_send", "lineId": lineId])
+
         case MotivationQuickLog.didItAction:
             // Held until the write lands, like the water cup. Then today's
             // remaining coach notifications are dropped.

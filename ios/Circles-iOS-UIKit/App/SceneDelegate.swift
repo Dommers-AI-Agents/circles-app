@@ -1352,6 +1352,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case .quote(let id): self.navigateToWidget(id: "quotes", quoteId: id)
             case .workout(let token): self.navigateToWidget(id: "workouts", workoutPostId: token)
             case .postcardOrder(let id): self.navigateToWidget(id: "postcard", postcardOrderId: id)
+            case .motivationSend(let lineId): self.navigateToWidget(id: "motivation", motivationLineId: lineId, motivationSend: true)
             case .openPath(let path):
                 if let destination = DeepLinkRouter().openPathDestination(path) { self.route(destination) }
             case .shareToken(let circleId, let shareToken):
@@ -2144,12 +2145,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// Home → Widgets segment → one widget's page (e.g. the postcard
     /// composer from the app icon's "Send a Postcard" quick action).
     private func navigateToWidget(id: String, postcardOrderId: String? = nil, quoteId: String? = nil,
-                                  workoutPostId: String? = nil) {
+                                  workoutPostId: String? = nil, motivationLineId: String? = nil,
+                                  motivationSend: Bool = false) {
         guard AuthService.shared.isLoggedIn,
               let tabBar = window?.rootViewController as? CirclesTabBarController else {
-            let pending = postcardOrderId.map { "postcard-order:\($0)" }
+            let motivation: String? = motivationSend ? motivationLineId.map { "motivation-send:\($0)" } : nil
+            let pending: String = postcardOrderId.map { "postcard-order:\($0)" }
                 ?? quoteId.map { "quote:\($0)" }
                 ?? workoutPostId.map { "workout:\($0)" }
+                ?? motivation
                 ?? "widget:\(id)"
             UserDefaults.standard.set(pending, forKey: "pendingDeepLink")
             return
@@ -2159,7 +2163,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let nav = tabBar.viewControllers?.first as? UINavigationController,
               let home = nav.viewControllers.first as? CirclesHomeViewController else { return }
         nav.popToRootViewController(animated: false)
-        home.showWidgetsTab(openingWidget: id, postcardOrderId: postcardOrderId, quoteId: quoteId, workoutPostId: workoutPostId)
+        home.showWidgetsTab(openingWidget: id, postcardOrderId: postcardOrderId, quoteId: quoteId, workoutPostId: workoutPostId,
+                            motivationLineId: motivationLineId, motivationSend: motivationSend)
     }
 
     private func navigateToCreateWallet() {

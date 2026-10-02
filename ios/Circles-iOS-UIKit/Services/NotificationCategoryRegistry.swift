@@ -182,10 +182,16 @@ enum NotificationCategoryRegistry {
         )
 
         // Motivation coach (local notifications the Motivation widget
-        // schedules): "Did it" marks today done and quiets the rest of today.
+        // schedules): "Did it" marks today done and quiets the rest of today;
+        // "Send to someone" forwards that line to a friend.
         let motivationCategory = UNNotificationCategory(
             identifier: MotivationQuickLog.categoryIdentifier,
-            actions: [UNNotificationAction(identifier: MotivationQuickLog.didItAction, title: "Did it 💪", options: [])],
+            actions: [
+                UNNotificationAction(identifier: MotivationQuickLog.didItAction, title: "Did it 💪", options: []),
+                // Opens the app straight into the send sheet: a share sheet
+                // can't come up without the app on screen.
+                UNNotificationAction(identifier: MotivationQuickLog.sendAction, title: "Send to someone 📣", options: [.foreground])
+            ],
             intentIdentifiers: [],
             options: [.customDismissAction]
         )

@@ -158,6 +158,15 @@ struct Message: Codable, Identifiable {
     /// FavCircles' bonus to the recipient ("1"), when one was paid.
     var drinkFavCoins: String? { metadata?["favCoins"] as? String }
 
+    // MARK: Coach Mane (Motivation widget)
+    // A friend sent one of the coach's lines: an image message (the card),
+    // `content` = "📣 Coach Mane says: …". Tapping opens your own Motivation
+    // widget on that line.
+    var isMotivation: Bool {
+        type == .image && (metadata?["kind"] as? String) == "motivation"
+    }
+    var motivationLineId: String? { isMotivation ? metadata?["lineId"] as? String : nil }
+
     /// The photo/postcard to show in the bubble, when the message has one.
     var displayImageURL: String? {
         guard type == .image, let mediaUrl, !mediaUrl.isEmpty else { return nil }

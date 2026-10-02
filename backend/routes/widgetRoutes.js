@@ -10,6 +10,7 @@ const { messageLimiter } = require('../middleware/security');
 const widgetData = require('../controllers/widgets/widgetDataController');
 const postcard = require('../controllers/widgets/postcardController');
 const drink = require('../controllers/widgets/drinkController');
+const motivation = require('../controllers/widgets/motivationController');
 const nextBarRounds = require('../controllers/widgets/nextBarRoundController');
 const postcardMail = require('../controllers/widgets/postcardMailController');
 const fridgeMail = require('../controllers/widgets/fridgeMailController');
@@ -34,6 +35,10 @@ router.post('/postcard/email', messageLimiter, postcard.emailPostcard);
 // Make Me a Drink: a recipe card to a connection's chat (a message, so the
 // messaging rate limit). Never posted to any feed.
 router.post('/drink/send', messageLimiter, drink.sendDrink);
+
+// Motivation: one of Coach Mane's lines to a connection's chat (a message,
+// so the messaging rate limit). Never posted to any feed.
+router.post('/motivation/send', messageLimiter, motivation.sendMotivation);
 
 // Printed-and-mailed postcards. Print art bypasses /api/upload/image, which
 // caps at 1MB and would downsize below print resolution.

@@ -20,6 +20,9 @@ enum PendingLink: Equatable {
     /// "postcard-order:<orderId>": the postcard page open on one printed
     /// card's status (its "printing" push tapped on a cold start).
     case postcardOrder(id: String)
+    /// "motivation-send:<lineId>": Coach Mane's "Send to someone" tapped on
+    /// a cold start — Motivation on that line with the send sheet up.
+    case motivationSend(lineId: String)
 
     // "type:payload" links
     case shareToken(circleId: String, shareToken: String)
@@ -76,6 +79,7 @@ enum PendingLinkParser {
         case "quote": return .quote(id: payload)
         case "workout": return .workout(token: payload)
         case "postcard-order": return .postcardOrder(id: payload)
+        case "motivation-send": return .motivationSend(lineId: payload)
         case "video": return .video(id: payload)
         case "daily-summary": return .dailySummary
         case "check-in": return .checkIn(placeId: payload)

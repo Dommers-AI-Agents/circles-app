@@ -148,7 +148,7 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
     /// order id is handed to the page through its context, like a launch
     /// photo, so the page opens on that card's status.
     func open(widgetId: String, postcardOrderId: String? = nil, quoteId: String? = nil, workoutPostId: String? = nil,
-              drinkId: String? = nil) {
+              drinkId: String? = nil, motivationLineId: String? = nil, motivationSend: Bool = false) {
         guard ensureModel(), let model,
               let descriptor = model.descriptors.first(where: { $0.id == widgetId }),
               let widget = model.widget(for: descriptor) else { return }
@@ -168,6 +168,12 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         if widgetId == "workouts", let workoutPostId { context.launchWorkoutPostId = workoutPostId }
         // A drink a friend sent, tapped in chat, opens on that recipe
         if widgetId == "drink", let drinkId { context.launchDrinkId = drinkId }
+        // Coach Mane's line: from a push's "Send to someone" (send sheet up)
+        // or a friend's chat card (just that line)
+        if widgetId == "motivation", let motivationLineId {
+            context.launchMotivationLineId = motivationLineId
+            context.launchMotivationSend = motivationSend
+        }
         Task { await widget.refresh(context: context) }
         open(widget, context: context)
     }
