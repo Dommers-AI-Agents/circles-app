@@ -331,24 +331,10 @@ struct User: Codable, Identifiable {
         // Subscription fields
         subscriptionStatus = try container.decodeIfPresent(String.self, forKey: .subscriptionStatus)
         
-        // Decode subscription dates
-        if let expiryDateString = try container.decodeIfPresent(String.self, forKey: .subscriptionExpiryDate) {
-            subscriptionExpiryDate = ISO8601DateFormatter().date(from: expiryDateString)
-        } else {
-            subscriptionExpiryDate = nil
-        }
-        
-        if let trialStartString = try container.decodeIfPresent(String.self, forKey: .trialStartDate) {
-            trialStartDate = ISO8601DateFormatter().date(from: trialStartString)
-        } else {
-            trialStartDate = nil
-        }
-        
-        if let trialEndString = try container.decodeIfPresent(String.self, forKey: .trialEndDate) {
-            trialEndDate = ISO8601DateFormatter().date(from: trialEndString)
-        } else {
-            trialEndDate = nil
-        }
+        // Decode subscription dates (text from the server, numbers from our caches)
+        subscriptionExpiryDate = container.flexibleDate(forKey: .subscriptionExpiryDate)
+        trialStartDate = container.flexibleDate(forKey: .trialStartDate)
+        trialEndDate = container.flexibleDate(forKey: .trialEndDate)
         
         // Referral fields
         referralCode = try container.decodeIfPresent(String.self, forKey: .referralCode)
@@ -365,25 +351,8 @@ struct User: Codable, Identifiable {
         mutualConnectionNames = try container.decodeIfPresent([String].self, forKey: .mutualConnectionNames)
         matchType = try container.decodeIfPresent(String.self, forKey: .matchType)
         
-        // Custom date decoding with multiple format support
-        if let dateString = try container.decodeIfPresent(String.self, forKey: .createdAt) {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            
-            if let date = formatter.date(from: dateString) {
-                createdAt = date
-            } else {
-                // Fallback to basic ISO8601 format
-                formatter.formatOptions = [.withInternetDateTime]
-                if let date = formatter.date(from: dateString) {
-                    createdAt = date
-                } else {
-                    createdAt = nil
-                }
-            }
-        } else {
-            createdAt = nil
-        }
+        // ISO text from the server, a number from the launch cache
+        createdAt = container.flexibleDate(forKey: .createdAt)
     }
     
     // NOTE: the lossy `copy(isFollowing: Bool)` that used to live here has been
@@ -421,12 +390,8 @@ struct UserCoordinate: Codable, Equatable {
         latitude = try c.decode(Double.self, forKey: .latitude)
         longitude = try c.decode(Double.self, forKey: .longitude)
         city = try c.decodeIfPresent(String.self, forKey: .city)
-        // The server writes ISO strings; an unreadable date is just unknown.
-        if let text = try? c.decodeIfPresent(String.self, forKey: .updatedAt) {
-            updatedAt = ISO8601DateFormatter().date(from: text)
-        } else {
-            updatedAt = nil
-        }
+        // ISO text from the server, a number from our caches; unreadable = unknown
+        updatedAt = c.flexibleDate(forKey: .updatedAt)
     }
 
     var location: CLLocation {
