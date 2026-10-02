@@ -12,6 +12,7 @@ struct PendingLinkParserTests {
         #expect(PendingLinkParser.parse("widget:postcard") == .widget(id: "postcard"))
         #expect(PendingLinkParser.parse("postcard-order:o1") == .postcardOrder(id: "o1"))
         #expect(PendingLinkParser.parse("motivation-send:0a1b2c3d") == .motivationSend(lineId: "0a1b2c3d"))
+        #expect(PendingLinkParser.parse("postcard-share:abcdefghijklmnopqrst") == .postcardShare(token: "abcdefghijklmnopqrst"))
         #expect(PendingLinkParser.parse("me") == .openPath("me"))
         #expect(PendingLinkParser.parse("check-in") == .quickCheckIn)
     }

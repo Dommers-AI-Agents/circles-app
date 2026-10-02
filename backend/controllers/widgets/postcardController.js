@@ -139,6 +139,40 @@ exports.createShareLink = async (req, res) => {
   }
 };
 
+/**
+ * Pure: a share doc as the app's "received postcard" sheet sees it.
+ * `isMine` = the viewer sent it (Wes scanning his own card);
+ * `senderIsConnection` decides whether "Send one back" can prefill them.
+ */
+const presentReceivedShare = (share, viewerId, connectedIds) => ({
+  token: share.token,
+  senderId: share.senderId || null,
+  senderName: share.senderName || 'A FavCircles member',
+  imageUrl: share.imageUrl,
+  message: share.message || '',
+  placeName: share.placeName || null,
+  placeCity: share.placeCity || null,
+  createdAt: share.createdAt || null,
+  isMine: !!share.senderId && share.senderId === viewerId,
+  senderIsConnection: !!share.senderId && share.senderId !== viewerId && connectedIds.has(share.senderId)
+});
+exports.presentReceivedShare = presentReceivedShare;
+
+// @desc    A postcard someone received (the printed QR / page opened in the app)
+// @route   GET /api/widgets/postcard/share/:token
+// @access  Private
+exports.getShare = async (req, res) => {
+  const { ServiceError, sendServiceError } = require('../../utils/serviceError');
+  try {
+    const postcardShareService = require('../../services/postcardShareService');
+    const share = await postcardShareService.peek(req.params.token);
+    if (!share) throw new ServiceError(404, 'not_found', "This postcard isn't here");
+    const connected = await getConnectedUserIds(req.user.uid);
+    return res.json({ success: true, postcard: presentReceivedShare(share, req.user.uid, connected) });
+  } catch (error) {
+    return sendServiceError(res, error, { log: '📮 getShare failed', fallbackMessage: "Couldn't load the postcard" });
+  }
+};
 
 // One shared rule for "a single address" (utils/emailAddress), and every
 // recipient spends the sender's daily email budget — postcards go to people

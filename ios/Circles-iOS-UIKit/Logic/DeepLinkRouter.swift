@@ -45,6 +45,10 @@ enum DeepLinkDestination: Equatable {
     /// A texted workout — `/app/workout/<token>` or `circles://workout/<token>`.
     /// Opens it in the Workouts widget (view, copy as a routine, try the widget).
     case workout(token: String)
+    /// A received postcard — `/app/postcard/<token>` (the printed card's QR)
+    /// or `circles://postcard/<token>` (the web page's "Open it in the app").
+    /// Opens the Postcard widget showing that card, with "Send one back".
+    case postcardShare(token: String)
 }
 
 /// Interprets universal links (https://api.favcircles.com/…) and the custom
@@ -90,6 +94,8 @@ struct DeepLinkRouter {
                 return parts.count >= 3 ? .quote(id: parts[2]) : nil
             case "workout":
                 return parts.count >= 3 ? .workout(token: parts[2]) : nil
+            case "postcard":
+                return parts.count >= 3 ? .postcardShare(token: parts[2]) : nil
             case "circle":
                 return parts.count >= 3 ? .circle(id: parts[2], shareToken: query(url, "share")) : nil
             case "connect":
@@ -168,6 +174,8 @@ struct DeepLinkRouter {
             return .quote(id: hostPathId)
         case "workout" where !hostPathId.isEmpty:
             return .workout(token: hostPathId)
+        case "postcard" where !hostPathId.isEmpty:
+            return .postcardShare(token: hostPathId)
         case "network":
             return .network
         case "settings" where url.path == "/notifications":
@@ -196,6 +204,8 @@ struct DeepLinkRouter {
             return .quote(id: parts[2])
         case "workout" where parts.count >= 3:
             return .workout(token: parts[2])
+        case "postcard" where parts.count >= 3:
+            return .postcardShare(token: parts[2])
         case "connect" where parts.count >= 3:
             return .connectionInvite(userId: parts[2], referralCode: query(url, "code"), inviteToken: query(url, "t"))
         default:

@@ -12,7 +12,9 @@ function renderNotFound() {
 <p><a href="https://favcircles.com" style="color:#3182CE">Create your own digital postcards with FavCircles</a></p></body></html>`;
 }
 
-function renderPostcard(share) {
+// `appLinks`: offer the app to people who have it — Safari's Smart App
+// Banner (OPEN when installed) and a button for every other browser.
+function renderPostcard(share, { appLinks = false, appLinkUrl = null } = {}) {
   const appStoreUrl = APP_STORE_URL;
   // Raw text here; every insertion below escapes once. (The inline version
   // escaped the place name twice, so "Watson's" showed as Watson&#39;s.)
@@ -32,6 +34,7 @@ function renderPostcard(share) {
 <meta property="og:image" content="${esc(share.imageUrl)}">
 <meta property="og:url" content="https://favcircles.com/postcard/${esc(share.token)}">
 <meta name="twitter:card" content="summary_large_image">
+${appLinks && appLinkUrl ? `<meta name="apple-itunes-app" content="app-id=6746807095, app-argument=${esc(appLinkUrl)}">` : ''}
 <style>
   #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.94);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:10;padding:16px}
   #lightbox.open{display:flex}
@@ -47,6 +50,7 @@ function renderPostcard(share) {
   <p style="margin:0 0 12px;opacity:.7;font-size:14px;letter-spacing:.04em;text-transform:uppercase">${where ? `Greetings from ${where}` : 'A digital postcard'}</p>
   <img id="card" src="/postcard/${esc(share.token)}/image" alt="${esc(title)}" style="width:100%;max-width:600px;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.45);display:block;margin:0 auto;cursor:zoom-in">
   <p style="margin:10px 0 0;font-size:13px;opacity:.6">Tap the postcard to view it full size or save it</p>
+  ${appLinks ? `<p style="margin:20px 0 0"><a href="circles://postcard/${esc(share.token)}" style="background:rgba(255,255,255,.12);color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:600;display:inline-block">Have FavCircles? Open it in the app</a></p>` : ''}
   ${share.message ? `<p style="font-size:20px;line-height:1.5;margin:28px 0 8px;white-space:pre-wrap">${esc(share.message)}</p>` : ''}
   <p style="margin:8px 0 0;opacity:.75">— ${from}${sent ? ` · ${esc(sent)}` : ''}</p>
   <section style="margin-top:44px;padding:24px;border-radius:14px;background:rgba(255,255,255,.06)">

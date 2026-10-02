@@ -181,3 +181,25 @@ struct QuoteShareLinkTests {
         #expect(router.destination(for: URL(string: "circles://quote")!) == nil)
     }
 }
+
+/// Received postcards: the printed card's QR is the https form, the web
+/// page's "Open it in the app" button is the `circles://` form.
+@Suite("Postcard share links")
+struct PostcardShareLinkTests {
+    private let router = DeepLinkRouter()
+
+    @Test func qrUniversalLinkOpensTheCard() {
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/postcard/abcdefghijklmnopqrst")!)
+                == .postcardShare(token: "abcdefghijklmnopqrst"))
+    }
+
+    @Test func customSchemeFormsBothRoute() {
+        #expect(router.destination(for: URL(string: "circles://postcard/abcdefghijklmnopqrst")!) == .postcardShare(token: "abcdefghijklmnopqrst"))
+        #expect(router.destination(for: URL(string: "circles:///postcard/abcdefghijklmnopqrst")!) == .postcardShare(token: "abcdefghijklmnopqrst"))
+    }
+
+    @Test func withoutATokenRoutesNowhere() {
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/postcard")!) == nil)
+        #expect(router.destination(for: URL(string: "circles://postcard")!) == nil)
+    }
+}

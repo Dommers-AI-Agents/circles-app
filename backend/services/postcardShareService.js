@@ -15,6 +15,15 @@ const PUBLIC_BASE_URL = 'https://favcircles.com';
 // redirects, and Lob's renderer fetched the QR from it and got a 404 on the
 // first real order (2026-09-17) — assets must point at the API host directly.
 const ASSET_BASE_URL = process.env.API_PUBLIC_BASE_URL || 'https://api.favcircles.com';
+// Opens a received card in the app when it's installed (the API host's AASA
+// claims /app/*). Off until the app build that understands /app/postcard is
+// out: an older app would open on its home screen with no card, which is
+// worse than the page. POSTCARD_APP_LINKS=1 turns on the QR target and the
+// page's "Open in FavCircles" button together (Wes, 2026-10-02).
+const appLinksEnabled = () => process.env.POSTCARD_APP_LINKS === '1';
+const appLinkUrl = (token) => `${ASSET_BASE_URL}/app/postcard/${token}`;
+// What the QR on a printed card points at.
+const qrTarget = (token) => (appLinksEnabled() ? appLinkUrl(token) : `${PUBLIC_BASE_URL}/postcard/${token}`);
 const MAX_MESSAGE_CHARS = 500;
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,32}$/;
 
@@ -76,6 +85,13 @@ class PostcardShareService {
     return { token, url: `${PUBLIC_BASE_URL}/postcard/${token}`, ...data };
   }
 
+  // Like get(), without counting a view (the app reading the card it opened).
+  async peek(token) {
+    if (!TOKEN_RE.test(String(token))) return null;
+    const doc = await this.col.doc(token).get();
+    return doc.exists ? { token, ...doc.data() } : null;
+  }
+
   // null for unknown/malformed tokens; bumps the view counter (best effort).
   async get(token) {
     if (!TOKEN_RE.test(String(token))) return null;
@@ -87,5 +103,6 @@ class PostcardShareService {
 }
 
 module.exports = Object.assign(new PostcardShareService(), {
-  ShareError, isAllowedImageUrl, normalizeShare, newToken, PUBLIC_BASE_URL, ASSET_BASE_URL, TOKEN_RE
+  ShareError, isAllowedImageUrl, normalizeShare, newToken, PUBLIC_BASE_URL, ASSET_BASE_URL, TOKEN_RE,
+  appLinksEnabled, appLinkUrl, qrTarget
 });

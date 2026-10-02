@@ -30,6 +30,8 @@ router.delete('/data/:widgetId', widgetData.deleteData);
 // A postcard is a chat message, so it shares the messaging rate limit
 router.post('/postcard/send', messageLimiter, postcard.sendPostcard);
 router.post('/postcard/share', messageLimiter, postcard.createShareLink);
+// A received card opened in the app (the printed QR / the page's Open button)
+router.get('/postcard/share/:token', postcard.getShare);
 router.post('/postcard/email', messageLimiter, postcard.emailPostcard);
 
 // Make Me a Drink: a recipe card to a connection's chat (a message, so the

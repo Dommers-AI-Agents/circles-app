@@ -40,8 +40,10 @@ router.get('/postcard/:token/qr.png', async (req, res) => {
   try {
     const share = await postcardShareService.get(req.params.token);
     if (!share) return res.status(404).end();
+    // With app links on, a claimed /app/ URL: opens the card in the app when
+    // it's installed, the same page otherwise.
     const png = await QRCode.toBuffer(
-      `${postcardShareService.PUBLIC_BASE_URL}/postcard/${req.params.token}`,
+      postcardShareService.qrTarget(req.params.token),
       { type: 'png', width: 600, margin: 1, errorCorrectionLevel: 'M' }
     );
     res.setHeader('Content-Type', 'image/png');
@@ -54,9 +56,11 @@ router.get('/postcard/:token/qr.png', async (req, res) => {
 });
 
 // Public postcard page (Widgets tab → Postcard → "Share by text or email").
-// Deliberately NOT a universal link: a non-user opens it in the browser,
-// sees the card, and gets the pitch underneath.
-router.get('/postcard/:token', async (req, res) => {
+// /postcard/<token> is not a universal link: a non-user opens it in the
+// browser, sees the card, and gets the pitch underneath. /app/postcard/<token>
+// (the printed QR, once POSTCARD_APP_LINKS is on) IS claimed — it opens the
+// app when installed and renders this same page when not.
+router.get(['/postcard/:token', '/app/postcard/:token'], async (req, res) => {
   let share = null;
   try {
     share = await postcardShareService.get(req.params.token);
@@ -64,7 +68,10 @@ router.get('/postcard/:token', async (req, res) => {
     console.error('postcard page lookup failed:', e.message);
   }
   if (!share) return res.status(404).send(renderNotFound());
-  res.send(renderPostcard(share));
+  res.send(renderPostcard(share, {
+    appLinks: postcardShareService.appLinksEnabled(),
+    appLinkUrl: postcardShareService.appLinkUrl(share.token)
+  }));
 });
 
 module.exports = router;

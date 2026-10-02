@@ -818,6 +818,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             navigateToWidget(id: "quotes", quoteId: id)
         case .workout(let token):
             navigateToWidget(id: "workouts", workoutPostId: token)
+        case .postcardShare(let token):
+            navigateToWidget(id: "postcard", postcardShareToken: token)
         case .referral(let code):
             handleReferralCode(code)
         case .sticker(let code):
@@ -1353,6 +1355,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case .workout(let token): self.navigateToWidget(id: "workouts", workoutPostId: token)
             case .postcardOrder(let id): self.navigateToWidget(id: "postcard", postcardOrderId: id)
             case .motivationSend(let lineId): self.navigateToWidget(id: "motivation", motivationLineId: lineId, motivationSend: true)
+            case .postcardShare(let token): self.navigateToWidget(id: "postcard", postcardShareToken: token)
             case .openPath(let path):
                 if let destination = DeepLinkRouter().openPathDestination(path) { self.route(destination) }
             case .shareToken(let circleId, let shareToken):
@@ -2146,14 +2149,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// composer from the app icon's "Send a Postcard" quick action).
     private func navigateToWidget(id: String, postcardOrderId: String? = nil, quoteId: String? = nil,
                                   workoutPostId: String? = nil, motivationLineId: String? = nil,
-                                  motivationSend: Bool = false) {
+                                  motivationSend: Bool = false, postcardShareToken: String? = nil) {
         guard AuthService.shared.isLoggedIn,
               let tabBar = window?.rootViewController as? CirclesTabBarController else {
             let motivation: String? = motivationSend ? motivationLineId.map { "motivation-send:\($0)" } : nil
+            let share: String? = postcardShareToken.map { "postcard-share:\($0)" }
             let pending: String = postcardOrderId.map { "postcard-order:\($0)" }
                 ?? quoteId.map { "quote:\($0)" }
                 ?? workoutPostId.map { "workout:\($0)" }
                 ?? motivation
+                ?? share
                 ?? "widget:\(id)"
             UserDefaults.standard.set(pending, forKey: "pendingDeepLink")
             return
@@ -2164,7 +2169,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
               let home = nav.viewControllers.first as? CirclesHomeViewController else { return }
         nav.popToRootViewController(animated: false)
         home.showWidgetsTab(openingWidget: id, postcardOrderId: postcardOrderId, quoteId: quoteId, workoutPostId: workoutPostId,
-                            motivationLineId: motivationLineId, motivationSend: motivationSend)
+                            motivationLineId: motivationLineId, motivationSend: motivationSend,
+                            postcardShareToken: postcardShareToken)
     }
 
     private func navigateToCreateWallet() {
