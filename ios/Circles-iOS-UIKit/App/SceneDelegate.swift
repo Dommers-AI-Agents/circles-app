@@ -640,7 +640,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 // launch cache only when it has gone stale - a fresh cache makes a
                 // background re-run pure duplicate traffic (the requests fire well
                 // outside APIService's short GET-dedup window).
-                if !PreloadManager.shared.isCacheValid() {
+                if !PreloadManager.shared.isCacheValid() || cached.isMissingFeeds {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                         PreloadManager.shared.refreshInBackground()
                     }

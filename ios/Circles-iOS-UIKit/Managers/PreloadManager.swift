@@ -11,6 +11,11 @@ struct PreloadedData: Codable {
     let pendingConnectionCount: Int
     let activities: [Activity]  // Activity feed items
     let moments: [PlaceVideo]   // Moments/reels feed items
+
+    /// No people and no feed: either a brand-new account or a snapshot an
+    /// older build saved with its stragglers empty. Worth a refresh even
+    /// while "fresh", so the next cold start has something to paint.
+    var isMissingFeeds: Bool { connections.isEmpty && activities.isEmpty }
 }
 
 // MARK: - Preload Manager
