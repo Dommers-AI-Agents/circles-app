@@ -74,6 +74,7 @@ class EmailService {
         // Every message passes the bounce list first (emailSuppression.js)
         this.transporter.use('compile', require('./emailSuppression').transportPlugin);
         this.isConfigured = true;
+        this.setupFallbackTransport();
         
         console.log('📧 Custom SMTP configured:', {
           host: process.env.SMTP_HOST,
@@ -117,6 +118,38 @@ class EmailService {
   // shared relay was refused by iCloud (554 5.7.1 [HM08], 2026-09-28). The
   // public half lives in Cloudflare DNS at <selector>._domainkey.favcircles.com;
   // the private key rides in as one base64 line (DKIM_PRIVATE_KEY_B64).
+  /**
+   * A second SMTP route (Amazon SES), used only when the primary server
+   * refuses or can't be reached — its connection cap was the one thing a
+   * signup surge would break (viral-growth review, 2026-10-01). Off unless
+   * SMTP_FALLBACK_HOST/USER/PASS are set. SES signs with its own Easy DKIM
+   * for favcircles.com, so our DKIM key isn't added here.
+   */
+  setupFallbackTransport() {
+    const { SMTP_FALLBACK_HOST: host, SMTP_FALLBACK_USER: user, SMTP_FALLBACK_PASS: pass } = process.env;
+    if (!host || !user || !pass) { this.fallbackTransporter = null; return; }
+    const port = parseInt(process.env.SMTP_FALLBACK_PORT || '587', 10);
+    this.fallbackTransporter = nodemailer.createTransport({
+      host, port, secure: port === 465,
+      auth: { user, pass },
+      pool: true,
+      maxConnections: parseInt(process.env.SMTP_FALLBACK_MAX_CONNECTIONS || '5', 10),
+      rateDelta: 1000,
+      rateLimit: parseInt(process.env.SMTP_FALLBACK_RATE_LIMIT || '10', 10), // SES default: 14/s
+      tls: { rejectUnauthorized: true, servername: host }
+    });
+    this.fallbackTransporter.use('compile', require('./emailSuppression').transportPlugin);
+    console.log(`📧 SMTP fallback configured: ${host}:${port}`);
+  }
+
+  /** Worth trying the other route: the primary refused, timed out or couldn't log in.
+   *  Not for a rejected recipient (SES would reject it too) or a suppressed one. */
+  static shouldFailover(error) {
+    if (!error || error.code === 'SUPPRESSED') return false;
+    const text = `${error.responseCode || ''} ${error.code || ''} ${error.message || ''}`;
+    return EmailService.isTransientSmtpError(error) || /\b535\b|EAUTH|ECONNECTION|ESOCKET|EDNS|Invalid login/i.test(text);
+  }
+
   static dkimOptions() {
     const encoded = process.env.DKIM_PRIVATE_KEY_B64;
     if (!encoded) return {};
@@ -326,7 +359,7 @@ class EmailService {
         text: `Hello ${userName || 'there'}! This is a test email from Circles to verify email sending is working. If you received this, your configuration is correct!`
       };
 
-      const info = await this.transporter.sendMail(mailOptions);
+      const info = await this.sendWithRetry(mailOptions);
       console.log('📧 Test email sent successfully:', info.messageId);
       return { success: true, messageId: info.messageId };
     } catch (error) {
@@ -999,7 +1032,7 @@ FavCircles · Save the places you love`;
         : [{ filename: `register-${venue.registerCode}.png`, content: registerQRBuffer }]
     };
 
-    const result = await this.transporter.sendMail(mailOptions);
+    const result = await this.sendWithRetry(mailOptions);
     console.log(`✅ Sticker QR email sent to ${toEmail} for ${venue.venueName}`);
     return { success: true, messageId: result.messageId };
   }
@@ -1060,11 +1093,24 @@ Rewards redeemed: ${safeStats.redemptions}`;
   async sendWithRetry(mailOptions, attempts = 3) {
     const delays = [2000, 6000];
     let lastError;
+    let triedFallback = false;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
         return await this.transporter.sendMail(mailOptions);
       } catch (error) {
         lastError = error;
+        // The primary refused or is unreachable: send through the fallback
+        // route right away instead of waiting out the retries
+        if (!triedFallback && this.fallbackTransporter && EmailService.shouldFailover(error)) {
+          triedFallback = true;
+          try {
+            const info = await this.fallbackTransporter.sendMail({ ...mailOptions });
+            console.warn(`📧 Sent via fallback (primary: ${error.message})`);
+            return info;
+          } catch (fallbackError) {
+            console.error(`📧 Fallback send failed too: ${fallbackError.message}`);
+          }
+        }
         if (attempt === attempts || !EmailService.isTransientSmtpError(error)) throw error;
         const wait = delays[attempt - 1] || 6000;
         console.warn(`📧 Transient SMTP error sending to ${mailOptions.to} (attempt ${attempt}/${attempts}): ${error.message} — retrying in ${wait}ms`);

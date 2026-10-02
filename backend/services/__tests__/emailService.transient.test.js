@@ -41,3 +41,38 @@ describe('sendWithRetry', () => {
     global.setTimeout.mockRestore();
   });
 });
+
+describe('SMTP fallback route (Amazon SES)', () => {
+  afterEach(() => { emailService.fallbackTransporter = null; jest.restoreAllMocks(); });
+  const refuse = () => { throw Object.assign(new Error('Invalid greeting. response=421 Too many concurrent SMTP connections'), { responseCode: 421 }); };
+
+  it('sends through the fallback right away when the primary refuses', async () => {
+    emailService.transporter = { sendMail: jest.fn(async () => refuse()) };
+    emailService.fallbackTransporter = { sendMail: jest.fn(async () => ({ messageId: 'ses-1' })) };
+    const info = await emailService.sendWithRetry({ to: 'a@b.com', subject: 's' });
+    expect(info.messageId).toBe('ses-1');
+    expect(emailService.transporter.sendMail).toHaveBeenCalledTimes(1);
+  });
+
+  it('a login failure on the primary also fails over', async () => {
+    emailService.transporter = { sendMail: jest.fn(async () => { throw Object.assign(new Error('Invalid login: 535 Authentication failed'), { responseCode: 535 }); }) };
+    emailService.fallbackTransporter = { sendMail: jest.fn(async () => ({ messageId: 'ses-2' })) };
+    expect((await emailService.sendWithRetry({ to: 'a@b.com' })).messageId).toBe('ses-2');
+  });
+
+  it('a rejected recipient or a suppressed address does not fail over', async () => {
+    emailService.fallbackTransporter = { sendMail: jest.fn(async () => ({ messageId: 'x' })) };
+    emailService.transporter = { sendMail: jest.fn(async () => { throw Object.assign(new Error('550 No such user'), { responseCode: 550 }); }) };
+    await expect(emailService.sendWithRetry({ to: 'a@b.com' })).rejects.toThrow('550');
+    emailService.transporter = { sendMail: jest.fn(async () => { throw Object.assign(new Error('suppressed'), { code: 'SUPPRESSED' }); }) };
+    await expect(emailService.sendWithRetry({ to: 'a@b.com' })).rejects.toThrow('suppressed');
+    expect(emailService.fallbackTransporter.sendMail).not.toHaveBeenCalled();
+  });
+
+  it('without a fallback configured, the old retries still apply', async () => {
+    jest.spyOn(global, 'setTimeout').mockImplementation((fn) => { fn(); return 0; });
+    let n = 0;
+    emailService.transporter = { sendMail: jest.fn(async () => { if (++n < 3) refuse(); return { messageId: 'third-time' }; }) };
+    expect((await emailService.sendWithRetry({ to: 'a@b.com' })).messageId).toBe('third-time');
+  });
+});

@@ -178,6 +178,14 @@ if [ ! -z "$SMTP_HOST" ]; then
         ENV_VARS="$ENV_VARS,DKIM_PRIVATE_KEY_B64=$DKIM_PRIVATE_KEY_B64"
         ENV_VARS="$ENV_VARS,DKIM_SELECTOR=${DKIM_SELECTOR:-fc1}"
     fi
+    # Fallback route (Amazon SES), used only when the primary server refuses or
+    # is unreachable (services/emailService.setupFallbackTransport)
+    if [ ! -z "$SMTP_FALLBACK_HOST" ]; then
+        ENV_VARS="$ENV_VARS,SMTP_FALLBACK_HOST=$SMTP_FALLBACK_HOST"
+        ENV_VARS="$ENV_VARS,SMTP_FALLBACK_PORT=${SMTP_FALLBACK_PORT:-587}"
+        ENV_VARS="$ENV_VARS,SMTP_FALLBACK_USER=$SMTP_FALLBACK_USER"
+        ENV_VARS="$ENV_VARS,SMTP_FALLBACK_PASS=$SMTP_FALLBACK_PASS"
+    fi
 fi
 
 # OpenTable link-out partnership (Directory API). OPENTABLE_ENV=sandbox|production.
