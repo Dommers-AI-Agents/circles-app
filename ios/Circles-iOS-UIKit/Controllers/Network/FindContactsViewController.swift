@@ -24,7 +24,7 @@ class FindContactsViewController: BaseViewController {
     }()
     
     private let segmentedControl: UISegmentedControl = {
-        let items = ["On Circles", "Invite to Circles"]
+        let items = ["On FavCircles", "Invite to FavCircles"]
         let control = UISegmentedControl(items: items)
         control.selectedSegmentIndex = 0
         control.translatesAutoresizingMaskIntoConstraints = false
@@ -420,7 +420,7 @@ class FindContactsViewController: BaseViewController {
         let userName = AuthService.shared.currentUser?.displayName ?? "A friend"
         let inviteLink = NetworkManager.shared.connectionInviteLink()
             ?? "https://apps.apple.com/us/app/favcircles/id6746807095"
-        var body = "\(userName) invited you to join Circles - the app for sharing your favorite places! Join and connect with me: \(inviteLink)"
+        var body = "\(userName) invited you to join FavCircles - the app for sharing your favorite places! Join and connect with me: \(inviteLink)"
         if let code = ReferralService.shared.myReferralCode {
             body += " Sign up with my referral code \(code)."
         }
@@ -473,7 +473,7 @@ class FindContactsViewController: BaseViewController {
             tableView.isHidden = isEmpty
             
             if isEmpty {
-                emptyStateLabel.text = "No contacts found on Circles yet.\nTry the Invite tab to bring your friends!"
+                emptyStateLabel.text = "No contacts found on FavCircles yet.\nTry the Invite tab to bring your friends!"
                 emptyStateLabel.isHidden = false
                 grantAccessButton.isHidden = true
                 sendSingleInviteButton.isHidden = true
@@ -491,7 +491,7 @@ class FindContactsViewController: BaseViewController {
                 if contactsPermissionStatus != .authorized {
                     showContactPermissionUI()
                 } else {
-                    emptyStateLabel.text = "All your contacts are already on Circles!"
+                    emptyStateLabel.text = "All your contacts are already on FavCircles!"
                     emptyStateLabel.isHidden = false
                     grantAccessButton.isHidden = true
                     sendSingleInviteButton.isHidden = true
@@ -506,7 +506,7 @@ class FindContactsViewController: BaseViewController {
     
     private func showContactPermissionUI() {
         tableView.isHidden = true
-        emptyStateLabel.text = "Grant access to your contacts to find friends on Circles and send invites."
+        emptyStateLabel.text = "Grant access to your contacts to find friends on FavCircles and send invites."
         emptyStateLabel.isHidden = false
         
         if contactsPermissionStatus == .denied {
@@ -531,7 +531,7 @@ class FindContactsViewController: BaseViewController {
                 if granted {
                     self?.loadContacts()
                 } else {
-                    self?.showError("Contact access is required to find friends on Circles")
+                    self?.showError("Contact access is required to find friends on FavCircles")
                 }
             }
         }
@@ -559,7 +559,7 @@ class FindContactsViewController: BaseViewController {
         let userName = AuthService.shared.currentUser?.displayName ?? "A friend"
         let inviteLink = NetworkManager.shared.connectionInviteLink()
             ?? "https://apps.apple.com/us/app/favcircles/id6746807095"
-        var body = "\(userName) invited you to join Circles - the app for sharing your favorite places!\n\nJoin using this link and we'll connect: \(inviteLink)"
+        var body = "\(userName) invited you to join FavCircles - the app for sharing your favorite places!\n\nJoin using this link and we'll connect: \(inviteLink)"
         if let code = ReferralService.shared.myReferralCode {
             body += "\n\nSign up with my referral code \(code)."
         }

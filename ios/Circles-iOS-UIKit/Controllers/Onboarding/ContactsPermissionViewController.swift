@@ -39,7 +39,7 @@ class ContactsPermissionViewController: BaseViewController {
     
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Find Friends on Circles"
+        label.text = "Find Friends on FavCircles"
         label.font = UIFont.systemFont(ofSize: 28, weight: .bold)
         label.textColor = .white
         label.textAlignment = .center
@@ -177,7 +177,7 @@ class ContactsPermissionViewController: BaseViewController {
     
     private func setupFeatures() {
         let features = [
-            ("person.2.fill", "Find friends already on Circles"),
+            ("person.2.fill", "Find friends already on FavCircles"),
             ("envelope.fill", "Invite contacts to join"),
             ("shield.fill", "Your privacy is protected")
         ]
@@ -290,7 +290,7 @@ class ContactsPermissionViewController: BaseViewController {
     private func showSettingsAlert() {
         let alert = UIAlertController(
             title: "Contacts Access Required",
-            message: "Please enable contacts access in Settings to find your friends on Circles.",
+            message: "Please enable contacts access in Settings to find your friends on FavCircles.",
             preferredStyle: .alert
         )
         

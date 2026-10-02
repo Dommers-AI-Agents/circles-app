@@ -42,7 +42,7 @@ class PaywallViewController: BaseViewController {
     
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Unlock Circles Premium"
+        label.text = "Unlock FavCircles Premium"
         label.font = UIFont.systemFont(ofSize: 28, weight: .bold)
         label.textColor = Constants.Colors.label
         label.textAlignment = .center
@@ -284,7 +284,7 @@ class PaywallViewController: BaseViewController {
             titleLabel.text = "Import Your Places"
             subtitleLabel.text = "Bring your saved places over from Google Maps, Mapstr, and Swarm with Premium"
         case .generalUpgrade:
-            titleLabel.text = "Unlock Circles Premium"
+            titleLabel.text = "Unlock FavCircles Premium"
             subtitleLabel.text = "Get unlimited access to all features"
         }
     }
@@ -618,7 +618,7 @@ class PaywallViewController: BaseViewController {
                             guard let presenter = presenter else { return }
                             if backendSynced {
                                 AlertPresenter.showSuccess(
-                                    title: "Welcome to Circles Premium! 🎉",
+                                    title: "Welcome to FavCircles Premium! 🎉",
                                     message: "Enjoy unlimited access to all features.",
                                     from: presenter
                                 )

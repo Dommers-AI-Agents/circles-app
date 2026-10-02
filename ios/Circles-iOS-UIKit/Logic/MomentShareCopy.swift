@@ -6,6 +6,6 @@ import Foundation
 enum MomentShareCopy {
     static func title(placeName: String?) -> String {
         let place = (placeName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return place.isEmpty ? "Moment on Circles" : "Moment on Circles: \(place)"
+        return place.isEmpty ? "Moment on FavCircles" : "Moment on FavCircles: \(place)"
     }
 }

@@ -16,8 +16,8 @@ class ContactsListViewController: BaseViewController {
         
         var title: String {
             switch self {
-            case .onCircles: return "Friends on Circles"
-            case .inviteContacts: return "Invite to Circles"
+            case .onCircles: return "Friends on FavCircles"
+            case .inviteContacts: return "Invite to FavCircles"
             }
         }
     }

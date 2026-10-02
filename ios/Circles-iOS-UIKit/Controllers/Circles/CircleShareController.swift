@@ -72,7 +72,7 @@ final class CircleShareController {
         case .private, .none: shareText += " 🔒"
         }
 
-        shareText += "\n\nJoin me on Circles:"
+        shareText += "\n\nJoin me on FavCircles:"
 
         var activityItems: [Any] = [shareText]
 

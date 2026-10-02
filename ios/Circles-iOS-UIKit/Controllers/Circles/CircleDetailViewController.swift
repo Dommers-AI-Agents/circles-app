@@ -1568,7 +1568,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         // Add to your places message
         shareText += "\n\n➕ Add this place to your Circles!"
         
-        shareText += "\n\nSaved on Circles — see it (and who recommends it) here:"
+        shareText += "\n\nSaved on FavCircles — see it (and who recommends it) here:"
 
         // The Circles place link is THE link of the share: opens in-app when
         // installed (carrying share attribution so the sharer earns points),

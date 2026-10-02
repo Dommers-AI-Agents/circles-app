@@ -390,7 +390,7 @@ class NetworkManager {
         guard let currentUser = AuthService.shared.currentUser,
               let inviteLink = connectionInviteLink(),
               let inviteURL = URL(string: inviteLink) else {
-            return ["Join me on Circles!"]
+            return ["Join me on FavCircles!"]
         }
 
         // If the code isn't cached yet, fetch it now so the next share has it
@@ -400,13 +400,13 @@ class NetworkManager {
         // renders a tappable rich-link preview instead of plain text. One link
         // does everything: opens the app and auto-connects when installed,
         // otherwise redirects to the App Store.
-        var shareText = "\(currentUser.displayName) wants to connect with you on Circles! Tap the link to connect and share favorite places."
+        var shareText = "\(currentUser.displayName) wants to connect with you on FavCircles! Tap the link to connect and share favorite places."
         // Spell the referral code out in the text too: link attribution doesn't
         // survive the App Store install round-trip, but a code the recipient can
         // read and type into the Register screen does.
         if let code = ReferralService.shared.myReferralCode {
             // No hardcoded benefit promise — what codes grant is backend-controlled
-            shareText += " New to Circles? Sign up with my referral code \(code)."
+            shareText += " New to FavCircles? Sign up with my referral code \(code)."
         }
 
         return [shareText, inviteURL]

@@ -90,7 +90,7 @@ class HelpContentProvider {
         return [
             HelpTopic(
                 id: "app-overview",
-                title: "Welcome to Circles",
+                title: "Welcome to FavCircles",
                 subtitle: "Save your favorite places",
                 content: """
                 Circles is a social platform for sharing and discovering favorite places with your network.

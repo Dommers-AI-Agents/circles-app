@@ -488,7 +488,7 @@ class ShareProfileViewController: BaseViewController {
         
         // Share the URL as its own item so Messages renders a tappable rich
         // link; the link itself handles app-open vs App Store fallback
-        let shareText = "\(user.displayName) wants to connect with you on Circles! Scan the QR code or tap the link to connect."
+        let shareText = "\(user.displayName) wants to connect with you on FavCircles! Scan the QR code or tap the link to connect."
 
         var activityItems: [Any] = [shareText, qrImage]
         if let inviteURL = URL(string: deepLink) {

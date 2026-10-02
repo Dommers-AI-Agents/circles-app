@@ -1677,7 +1677,7 @@ class PlaceDetailViewController: BaseViewController {
             shareText += "\n\(stars) \(rating)/5.0"
         }
 
-        shareText += "\n\nSaved on Circles — see it (and who recommends it) here:"
+        shareText += "\n\nSaved on FavCircles — see it (and who recommends it) here:"
 
         // The Circles place link is THE link of the share: with the app
         // installed it opens the place directly (carrying share attribution

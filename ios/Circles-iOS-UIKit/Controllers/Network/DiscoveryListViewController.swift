@@ -129,7 +129,7 @@ class DiscoveryListViewController: BaseViewController {
         title.textAlignment = .center
 
         let message = UILabel()
-        message.text = "You already know everyone here. Invite your friends to join Circles and share their favorite places."
+        message.text = "You already know everyone here. Invite your friends to join FavCircles and share their favorite places."
         message.font = .systemFont(ofSize: 15)
         message.textColor = .secondaryLabel
         message.textAlignment = .center

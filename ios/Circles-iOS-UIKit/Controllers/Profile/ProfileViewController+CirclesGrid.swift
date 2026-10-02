@@ -86,7 +86,7 @@ extension ProfileViewController: UICollectionViewDelegate {
         case .private, .none: shareText += "\n🔒 Private Circle"
         }
         
-        shareText += "\n\nJoin me on Circles:"
+        shareText += "\n\nJoin me on FavCircles:"
 
         // Universal link: opens the circle in-app when installed, public
         // circle preview page + App Store fallback otherwise

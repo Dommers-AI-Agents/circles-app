@@ -14,6 +14,7 @@ enum PostSaveOfferPresenter {
     /// when there was one — the composer opens on that rather than whichever
     /// photo happens to sort first, which is often the venue's stock one.
     static func offer(place: Place, ownPhotoUrl: String?, postcardEligible: Bool, milestoneShown: Bool) {
+        AppReviewPrompter.shared.recordHappyMoment()
         // The location fix is the slow part and it is what decides between the
         // two offers, so start it first and ask once it is in.
         distanceToPlace(place) { distance in
@@ -31,7 +32,10 @@ enum PostSaveOfferPresenter {
                 switch decision {
                 case .checkIn: presentCheckInOffer(place: place, from: presenter)
                 case .postcard: presentPostcardOffer(place: place, photoUrl: ownPhotoUrl, from: presenter)
-                case .none: break
+                case .none:
+                    // A quiet beat after a save is the place to ask for a
+                    // rating; with a badge on screen, its close asks instead.
+                    if !milestoneShown, isClear(presenter) { AppReviewPrompter.shared.askIfDue() }
                 }
             }
         }

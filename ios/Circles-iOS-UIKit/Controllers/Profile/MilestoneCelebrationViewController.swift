@@ -205,7 +205,7 @@ class MilestoneCelebrationViewController: BaseViewController {
 
     @objc private func shareTapped() {
         // Achievement moments are peak share intent — one tap spreads the app
-        let shareText = "I just earned the \(milestone.name) badge on Circles — \(milestone.threshold) favorite places saved! 🎉"
+        let shareText = "I just earned the \(milestone.name) badge on FavCircles — \(milestone.threshold) favorite places saved! 🎉"
         let activityVC = UIActivityViewController(
             activityItems: [shareText, ShareLinks.appStoreURL],
             applicationActivities: nil
@@ -215,6 +215,8 @@ class MilestoneCelebrationViewController: BaseViewController {
     }
 
     @objc private func continueTapped() {
-        dismiss(animated: true)
+        // A badge just earned is the happiest moment there is to ask for a rating
+        AppReviewPrompter.shared.recordHappyMoment()
+        dismiss(animated: true) { AppReviewPrompter.shared.askIfDue() }
     }
 }

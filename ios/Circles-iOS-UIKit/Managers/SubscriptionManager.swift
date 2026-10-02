@@ -105,7 +105,7 @@ class SubscriptionManager {
         switch try await service.purchase(product) {
         case .success(_, let backendSynced):
             if backendSynced {
-                AlertPresenter.showSuccess("Welcome to Circles Premium! 🎉", from: viewController)
+                AlertPresenter.showSuccess("Welcome to FavCircles Premium! 🎉", from: viewController)
             } else {
                 // Apple charged them but the server hasn't recorded it yet —
                 // the unfinished transaction re-syncs on next launch
@@ -181,7 +181,7 @@ class SubscriptionManager {
             case .importFeature:
                 return "Bring your saved places over from Google Maps, Mapstr, and Swarm. Available to Premium members only."
             case .generalUpgrade:
-                return "Unlock all features with Circles Premium!"
+                return "Unlock all features with FavCircles Premium!"
             }
         }
     }
@@ -315,7 +315,7 @@ class SubscriptionManager {
             
             AlertPresenter.showConfirmation(
                 title: "Sign In Required",
-                message: "Please sign in to subscribe to Circles Premium",
+                message: "Please sign in to subscribe to FavCircles Premium",
                 confirmTitle: "Sign In",
                 from: topViewController
             ) {
@@ -332,7 +332,7 @@ class SubscriptionManager {
             guard let topViewController = self.getTopViewController() else { return }
             
             AlertPresenter.showSuccess(
-                "You're already a Circles Premium member! 🎉",
+                "You're already a FavCircles Premium member! 🎉",
                 from: topViewController
             )
             

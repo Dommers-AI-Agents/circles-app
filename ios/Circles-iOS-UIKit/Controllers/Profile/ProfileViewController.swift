@@ -1533,7 +1533,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     /// in-app when installed, preview page + App Store fallback otherwise
     @objc func shareViewedProfileTapped() {
         guard let user = user else { return }
-        let shareText = "Check out \(user.displayName)'s favorite places on Circles:"
+        let shareText = "Check out \(user.displayName)'s favorite places on FavCircles:"
         let activityVC = UIActivityViewController(
             activityItems: [shareText, ShareLinks.user(id: user.id)],
             applicationActivities: nil

@@ -152,13 +152,13 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
         var shareText: String
         switch item.kind {
         case .offer(let offer):
-            shareText = "🎁 \(offer.title) at \(item.venue.venueName) — redeem it with points on Circles!"
+            shareText = "🎁 \(offer.title) at \(item.venue.venueName) — redeem it with points on FavCircles!"
         case .announcement(let announcement):
             shareText = "📣 \(announcement.title) at \(item.venue.venueName)"
             if !announcement.message.isEmpty {
                 shareText += "\n\(announcement.message)"
             }
-            shareText += "\nSeen on Circles:"
+            shareText += "\nSeen on FavCircles:"
         }
 
         // The /place page resolves both save-doc and globalPlaces ids — a

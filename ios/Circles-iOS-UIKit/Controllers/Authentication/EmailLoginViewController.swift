@@ -5,7 +5,7 @@ class EmailLoginViewController: BaseViewController {
     // MARK: - UI Elements
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Log in to Circles"
+        label.text = "Log in to FavCircles"
         label.font = UIFont.systemFont(ofSize: 28, weight: .bold)
         label.textColor = Constants.Colors.label
         label.textAlignment = .center

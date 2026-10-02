@@ -254,7 +254,7 @@ extension HelpViewController: UITableViewDataSource {
             
             var config = UIListContentConfiguration.subtitleCell()
             config.text = "Quick Start Guide"
-            config.secondaryText = "New to Circles? Start here"
+            config.secondaryText = "New to FavCircles? Start here"
             config.image = UIImage(systemName: "sparkles")
             config.imageProperties.tintColor = .systemYellow
             cell.contentConfiguration = config
