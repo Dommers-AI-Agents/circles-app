@@ -571,23 +571,11 @@ class ActivityFeedCell: UITableViewCell {
 
         guard let activity = currentActivity else { return }
 
-        // Navigate for all place- and moment-related activities.
-        // NOTE: this list must stay in sync with the types
-        // didTapActivityContent actually routes — a type missing here is a
-        // completely dead tap (the content gesture covers nearly the whole
-        // row, so the row-level handler never fires either). commentLiked and
-        // globalPlaceLiked were both missing — the "tap does nothing" bug.
-        if activity.type == .placeAdded ||
-           activity.type == .placeLiked ||
-           activity.type == .placeCommented ||
-           activity.type == .commentLiked ||
-           activity.type == .globalPlaceLiked ||
-           activity.type == .checkIn ||
-           activity.type == .videoUploaded ||
-           activity.type == .videoLiked ||
-           activity.type == .photoUploaded {
-            delegate?.didTapActivityContent(activity: activity)
-        }
+        // Every type goes to the controller, which owns the one routing
+        // table (openActivity). An allowlist here kept going stale — each type
+        // missing from it was a dead tap (commentLiked, globalPlaceLiked, then
+        // workoutShared: Wes, 2026-10-02).
+        delegate?.didTapActivityContent(activity: activity)
     }
     
     @objc private func reactionButtonTapped() {
