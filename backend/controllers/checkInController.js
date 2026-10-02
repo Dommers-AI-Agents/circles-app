@@ -760,17 +760,26 @@ exports.getMySummary = async (req, res) => {
     const userId = req.user.uid;
     const { summarize, friendsOut } = require('../services/checkInSummary');
     const now = new Date();
-    const [mine, active] = await Promise.all([
+    // Who's out is a bonus: if it can't be read, your own numbers still show
+    const outNow = async () => {
+      try {
+        const active = await db.collection(COLLECTIONS.CHECK_INS)
+          .where('active', '==', true)
+          .where('endTime', '>', now.toISOString())
+          .orderBy('endTime')
+          .orderBy('createdAt', 'desc')
+          .get();
+        return await visibleCheckIns(active.docs, userId);
+      } catch (error) {
+        console.error('Check-in summary: friends out unavailable:', error.message);
+        return [];
+      }
+    };
+    const [mine, visible] = await Promise.all([
       db.collection(COLLECTIONS.CHECK_INS).where('userId', '==', userId)
         .select('startTime', 'createdAt', 'placeId', 'globalPlaceId', 'placeName').get(),
-      db.collection(COLLECTIONS.CHECK_INS)
-        .where('active', '==', true)
-        .where('endTime', '>', now.toISOString())
-        .orderBy('endTime')
-        .orderBy('createdAt', 'desc')
-        .get()
+      outNow()
     ]);
-    const visible = await visibleCheckIns(active.docs, userId);
     res.json({
       success: true,
       data: {

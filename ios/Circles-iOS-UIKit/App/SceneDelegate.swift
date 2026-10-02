@@ -797,6 +797,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             selectTabOrStash(index: 1, pendingKey: "network")
         case .addPlace:
             openAddPlaceFlow()
+        case .checkIn:
+            // Same path as the Home Screen "Check In" action, stashed on cold start
+            guard window?.rootViewController is CirclesTabBarController else {
+                UserDefaults.standard.set("check-in", forKey: "pendingDeepLink")
+                return
+            }
+            NotificationCenter.default.post(name: .navigateToCheckIn, object: nil)
         case .meTab:
             // Business/claim emails: venue management lives on the Me tab
             selectTabOrStash(index: 3, pendingKey: "me")

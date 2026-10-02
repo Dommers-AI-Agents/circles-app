@@ -26,6 +26,8 @@ enum DeepLinkDestination: Equatable {
     case notificationSettings
     case network
     case addPlace
+    /// The Check In picker (`/app/open?path=check-in`)
+    case checkIn
     case meTab
     /// Rewards hub on the Piggy Bank tab (weekly summary email "See my FavCoins").
     case piggyBank
@@ -126,6 +128,7 @@ struct DeepLinkRouter {
         case "settings/notifications": return .notificationSettings
         case "network", "network/find-friends": return .network
         case "add-place": return .addPlace
+        case "check-in": return .checkIn
         case "me": return .meTab
         // Weekly summary email "See my FavCoins" — the Piggy Bank tab
         case "create-wallet", "rewards/piggy-bank": return .piggyBank

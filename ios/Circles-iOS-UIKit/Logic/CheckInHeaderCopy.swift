@@ -33,9 +33,9 @@ enum CheckInHeaderCopy {
     /// The reason, every time: your people hear, you earn
     static func reason(_ s: CheckInSummary?) -> String {
         if let s, s.total == 0 {
-            return "Let your people know where you are, start your map of everywhere you've been, and earn ½ FavCoin 🌵."
+            return "Let your people know where you are, start your map of everywhere you've been, and earn ½\u{00A0}FavCoin\u{00A0}🌵."
         }
-        return "Let your people know where you are and earn ½ FavCoin 🌵 for each place, once a day."
+        return "Let your people know where you are and earn ½\u{00A0}FavCoin\u{00A0}🌵 for each place, once a day."
     }
 
     /// "Brittany is out at Muraya" / "Brittany and 2 others are out right now"

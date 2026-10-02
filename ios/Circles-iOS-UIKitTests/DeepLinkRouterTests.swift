@@ -35,6 +35,7 @@ struct DeepLinkRouterTests {
         #expect(router.openPathDestination("create-wallet") == .piggyBank)
         #expect(router.openPathDestination("rewards/piggy-bank") == .piggyBank)
         #expect(router.openPathDestination("settings/notifications") == .notificationSettings)
+        #expect(router.openPathDestination("check-in") == .checkIn)
         #expect(router.openPathDestination("nope") == nil)
     }
 
