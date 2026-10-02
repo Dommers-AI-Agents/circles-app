@@ -29,6 +29,10 @@ const MAX_POSTS = 60;
 const FEED_DAYS = 45;
 
 const { clean } = require('../utils/text');
+const crypto = require('crypto');
+const LINK_BASE = 'https://api.favcircles.com/app/workout/';
+// A link token is 22 url-safe characters; a post id is `${uid}_${ms}`
+const isLinkToken = (id) => /^[A-Za-z0-9_-]{22}$/.test(String(id || ''));
 const int = (v, max) => (Number.isFinite(Number(v)) ? Math.max(0, Math.min(max, Math.round(Number(v)))) : 0);
 const monthKeyOf = (date) => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 
@@ -79,6 +83,7 @@ class WorkoutFeedService {
   }
 
   get posts() { return this.db.collection(COLLECTIONS.WORKOUT_POSTS); }
+  get links() { return this.db.collection(COLLECTIONS.WORKOUT_LINKS); }
 
   /**
    * One post per finished workout; re-sharing the same workout replaces it
@@ -93,14 +98,18 @@ class WorkoutFeedService {
     const chosen = AUDIENCES.includes(audience) ? audience : 'innerCircle';
     const listId = chosen === 'innerCircle' ? listIdFor('innerCircle', audienceListId) : null;
     const ref = this.posts.doc(postId);
-    const existed = (await ref.get()).exists;
+    const previous = await ref.get();
+    const existed = previous.exists;
+    const linkToken = existed ? previous.data().linkToken : null;
     await ref.set({
       userId,
       summary: normalized,
       audience: chosen,
       audienceListId: listId,
       monthKey: monthKeyOf(now),
-      createdAt: now.toISOString()
+      createdAt: now.toISOString(),
+      // A text-message link made earlier keeps working
+      ...(linkToken ? { linkToken } : {})
     });
     if (!existed && onFirstShare) {
       // Best effort: the post is saved either way
@@ -118,6 +127,8 @@ class WorkoutFeedService {
    */
   async canView(post, viewerId) {
     if (String(post.userId) === String(viewerId)) return true;
+    // Shared only by link: opened through the link, never through the feed
+    if (post.audience === 'link') return false;
     const connections = await getConnectedUserIds(viewerId);
     if (!connections.has(post.userId)) return false;
     if ((post.audience || 'innerCircle') === 'connections') return true;
@@ -126,10 +137,56 @@ class WorkoutFeedService {
     return !post.audienceListId || lists.has(post.audienceListId);
   }
 
-  /** One post, for the feed row's detail view. 404 when missing or not theirs to see. */
+  /**
+   * A link for texting a finished workout: anyone holding it may view that
+   * one workout (and copy it), signed in or not. The workout is saved as a
+   * post if it wasn't shared to the feed — audience 'link', which no feed
+   * shows — and a re-share of the same workout reuses its link.
+   */
+  async createLink({ userId, summary, now = new Date() }) {
+    const normalized = normalizeSummary(summary);
+    const postId = `${userId}_${new Date(normalized.startedAt).getTime()}`;
+    const ref = this.posts.doc(postId);
+    const snap = await ref.get();
+    let token = snap.exists ? snap.data().linkToken : null;
+    if (!snap.exists) {
+      await ref.set({
+        userId, summary: normalized, audience: 'link', audienceListId: null,
+        monthKey: monthKeyOf(now), createdAt: now.toISOString()
+      });
+    } else if (snap.data().audience === 'link') {
+      // Edited after the first link: the link shows the latest
+      await ref.set({ summary: normalized }, { merge: true });
+    }
+    if (!token) {
+      token = crypto.randomBytes(16).toString('base64url');
+      await this.links.doc(token).set({ postId, userId, createdAt: now.toISOString() });
+      await ref.set({ linkToken: token }, { merge: true });
+    }
+    return { token, postId, url: LINK_BASE + token };
+  }
+
+  /** The workout behind a link token, or null. */
+  async postByLink(token) {
+    if (!isLinkToken(token)) return null;
+    const link = await this.links.doc(String(token)).get();
+    if (!link.exists) return null;
+    const doc = await this.posts.doc(String(link.data().postId)).get();
+    return doc.exists ? doc : null;
+  }
+
+  /**
+   * One post, for the feed row's detail view or a texted link (`postId` may
+   * be a link token). 404 when missing or not theirs to see.
+   */
   async getPost(postId, viewerId) {
-    const doc = await this.posts.doc(String(postId)).get();
-    if (!doc.exists || !(await this.canView(doc.data(), viewerId))) {
+    let doc = await this.posts.doc(String(postId)).get();
+    let viaLink = false;
+    if (!doc.exists) {
+      doc = await this.postByLink(postId);
+      viaLink = !!doc;
+    }
+    if (!doc || !doc.exists || (!viaLink && !(await this.canView(doc.data(), viewerId)))) {
       throw new WorkoutFeedError(404, 'not_found', 'This workout isn\'t available.');
     }
     const post = doc.data();
@@ -154,6 +211,7 @@ class WorkoutFeedService {
     const [lists, connections] = await Promise.all([getInnerCircleGrantorLists(viewerId), getConnectedUserIds(viewerId)]);
     const authors = [...connections];
     const allowed = (row) => {
+      if (row.audience === 'link') return false;
       if (row.audience === 'connections') return true;
       const granted = lists.get(row.userId);
       // A post that named a list is for that list only.

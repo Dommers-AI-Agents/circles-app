@@ -19,6 +19,12 @@ exports.share = async (req, res) => {
   } catch (e) { fail(res, e); }
 };
 
+exports.link = async (req, res) => {
+  try {
+    res.status(201).json({ success: true, ...(await feed.createLink({ userId: req.user.uid, summary: (req.body || {}).summary })) });
+  } catch (e) { fail(res, e); }
+};
+
 exports.post = async (req, res) => {
   try { res.json({ success: true, post: await feed.getPost(req.params.postId, req.user.uid) }); } catch (e) { fail(res, e); }
 };

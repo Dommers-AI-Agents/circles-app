@@ -482,6 +482,66 @@ ${author ? `<p style="color:#7C6BD6;font-size:18px;font-weight:500;margin:0 0 36
 </body></html>`);
 });
 
+// Texted workout link (AASA /app/*). With the app installed the Universal
+// Link opens the workout in the Workouts widget (view it, copy it, try the
+// widget). Everyone else sees the workout here and the way to get the app.
+// No og:image: the sender's share sheet hands Messages the card image itself.
+app.get('/app/workout/:token', async (req, res) => {
+  const token = String(req.params.token).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+  const iconUrl = 'https://favcircles.com/app-icon.png';
+  let post = null;
+  let author = null;
+  try {
+    const doc = await require('./services/workoutFeedService').postByLink(token);
+    if (doc) {
+      post = doc.data();
+      const user = await require('./config/firebase').getFirestore().collection('users').doc(String(post.userId)).get();
+      author = user.exists ? (user.data().displayName || null) : null;
+    }
+  } catch (e) {
+    console.warn('Workout share page: could not load workout:', e.message);
+  }
+  const esc = (v) => String(v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const s = post ? post.summary || {} : null;
+  const first = author ? String(author).split(' ')[0] : null;
+  const minutes = s ? Math.max(1, Math.round((s.durationSeconds || 0) / 60)) : 0;
+  const exercises = s && Array.isArray(s.exercises) ? s.exercises : [];
+  const cardio = s && Array.isArray(s.cardio) ? s.cardio : [];
+  const stats = s ? [`${minutes} min`, exercises.length ? `${exercises.length} exercise${exercises.length === 1 ? '' : 's'}` : null,
+    s.completedSets ? `${s.completedSets} sets` : null].filter(Boolean).join(' · ') : '';
+  const day = s && s.startedAt ? new Date(s.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '';
+  const ogTitle = s ? `${first ? `${esc(first)}'s workout: ` : ''}${esc(s.name || 'Workout')}` : 'Workouts on FavCircles';
+  const ogDescription = s ? `${esc(stats)} · Log yours with FavCircles` : 'Log workouts, copy routines from friends.';
+  const rows = [...exercises.map((e) => [e.name, `${e.bestSet || ''}${e.isPR ? ' 🏆' : ''}`]), ...cardio.map((c) => [c.name, c.detail || ''])]
+    .map(([n, d]) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid rgba(255,255,255,.12)"><span>${esc(n)}</span><span style="color:#cfd8ff">${esc(d)}</span></div>`).join('');
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${ogTitle}</title>
+<meta property="og:title" content="${ogTitle}">
+<meta property="og:description" content="${ogDescription}">
+<meta property="og:site_name" content="FavCircles">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://api.favcircles.com/app/workout/${token}">
+<link rel="apple-touch-icon" href="${iconUrl}">
+<link rel="icon" href="${iconUrl}">
+</head>
+<body style="font-family:-apple-system,Helvetica,Arial,sans-serif;margin:0;background:#0b1020;color:#fff;padding:28px 20px;box-sizing:border-box">
+<div style="max-width:520px;margin:0 auto">
+${s ? `<div style="background:linear-gradient(135deg,#2f6fd6,#4b4fc9);border-radius:20px;padding:22px 20px">
+<div style="font-size:26px;font-weight:700">${esc(s.name || 'Workout')}</div>
+<div style="color:#dbe4ff;font-size:14px;margin:4px 0 14px">${first ? `${esc(first)} · ` : ''}${esc(day)}</div>
+<div style="font-size:15px;font-weight:600;margin-bottom:10px">${esc(stats)}</div>
+${rows}
+</div>` : '<p style="font-size:22px">This workout isn\'t available anymore.</p>'}
+<p style="color:#9aa3b8;font-size:15px;margin:22px 0 14px">Track your own workouts, copy this one as a routine, and see what your friends are lifting — in FavCircles.</p>
+<a href="circles://workout/${token}" style="background:#fff;color:#0b1020;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:600;display:inline-block;margin:0 8px 10px 0">Open in FavCircles</a>
+<a href="${appStoreUrl}" style="background:#2f6fd6;color:#fff;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:600;display:inline-block">Get FavCircles</a>
+</div>
+</body></html>`);
+});
+
 // Route debug middleware (reduced logging)
 app.use('/api/users', (req, res, next) => {
   next();

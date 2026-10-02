@@ -95,6 +95,7 @@ router.post('/care/asks/:id/answer', care.answer);
 
 // Workouts shared with the Inner Circle (feed = grantors ∩ connections)
 router.post('/workouts/share', messageLimiter, workoutFeed.share);
+router.post('/workouts/link', messageLimiter, workoutFeed.link);
 router.get('/workouts/feed', workoutFeed.feed);
 router.get('/workouts/posts/:postId', workoutFeed.post);
 // The widget may only call widgets/ paths; this is the Inner Circle lists

@@ -12,6 +12,8 @@ enum PendingLink: Equatable {
     case openPath(String)
     /// "quote:<id>": the Quotes page opened on that quote in the reel
     case quote(id: String)
+    /// "workout:<token>": a texted workout, opened in the Workouts widget
+    case workout(token: String)
     /// "widget:<id>": the Widgets segment with one widget's page open
     /// (the "Send a Postcard" quick action).
     case widget(id: String)
@@ -72,6 +74,7 @@ enum PendingLinkParser {
         case "connect": return .connect(fromUserId: payload)
         case "widget": return .widget(id: payload)
         case "quote": return .quote(id: payload)
+        case "workout": return .workout(token: payload)
         case "postcard-order": return .postcardOrder(id: payload)
         case "video": return .video(id: payload)
         case "daily-summary": return .dailySummary

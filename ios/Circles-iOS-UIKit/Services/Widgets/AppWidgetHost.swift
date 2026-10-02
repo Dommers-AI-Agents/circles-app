@@ -1,4 +1,5 @@
 import UIKit
+import LinkPresentation
 import SwiftUI
 import FavWidgets
 import FavWidgetsCore
@@ -82,6 +83,8 @@ final class AppWidgetHost: FavWidgetHost {
             case .text(let text): return text
             case .url(let url): return url
             case .imageJPEG(let data): return UIImage(data: data)
+            case .link(let url, let title, let jpeg):
+                return LinkPreviewItem(url: url, title: title, image: jpeg.flatMap(UIImage.init(data:)))
             }
         }
         guard let presenter = presentingViewController, !activityItems.isEmpty else { return }
@@ -97,4 +100,32 @@ final class AppWidgetHost: FavWidgetHost {
 
     /// Accepted connections (the `connections` collection — not the legacy
     /// `users/me/friends` array, which is empty for most accounts).
+}
+
+/// A link the share sheet hands Messages with its preview already filled in
+/// (title + image), so the recipient gets one tappable bubble showing the
+/// image without Messages fetching the page.
+final class LinkPreviewItem: NSObject, UIActivityItemSource {
+    private let url: URL
+    private let metadata: LPLinkMetadata
+
+    init(url: URL, title: String, image: UIImage?) {
+        self.url = url
+        let metadata = LPLinkMetadata()
+        metadata.originalURL = url
+        metadata.url = url
+        metadata.title = title
+        if let image {
+            metadata.imageProvider = NSItemProvider(object: image)
+        }
+        self.metadata = metadata
+        super.init()
+    }
+
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any { url }
+
+    func activityViewController(_ activityViewController: UIActivityViewController,
+                                itemForActivityType activityType: UIActivity.ActivityType?) -> Any? { url }
+
+    func activityViewControllerLinkMetadata(_ activityViewController: UIActivityViewController) -> LPLinkMetadata? { metadata }
 }

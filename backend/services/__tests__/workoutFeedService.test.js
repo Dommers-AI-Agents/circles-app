@@ -150,3 +150,34 @@ test('share keeps a copyable routine and writes one feed row per workout', async
   const odd = await feed.share({ userId: 'c', summary: summary(), audience: 'everyone' });
   expect(odd.audience).toBe('innerCircle');
 });
+
+describe('texted link', () => {
+  beforeEach(() => mockDb.rows(COLLECTIONS.WORKOUT_LINKS).clear());
+
+  test('anyone with the link can open the workout; nobody\'s feed shows it', async () => {
+    const { token, url, postId } = await feed.createLink({ userId: 'wes', summary: summary(), now: SEPT });
+    expect(url).toBe(`https://api.favcircles.com/app/workout/${token}`);
+    expect(token).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    // A stranger (not connected) opens it by the token
+    const post = await feed.getPost(token, 'stranger');
+    expect(post).toMatchObject({ postId, userId: 'wes', summary: { name: 'Push' } });
+    // …but not by the post id, and not in the feed
+    await expect(feed.getPost(postId, 'stranger')).rejects.toMatchObject({ status: 404 });
+    mockConnections.add('wes');
+    mockGrantors.add('wes');
+    expect(await feed.feed('friend', SEPT)).toEqual([]);
+  });
+
+  test('sharing the same workout again reuses its link, and a feed share keeps it', async () => {
+    const first = await feed.createLink({ userId: 'wes', summary: summary(), now: SEPT });
+    const again = await feed.createLink({ userId: 'wes', summary: summary(), now: SEPT });
+    expect(again.token).toBe(first.token);
+    await feed.share({ userId: 'wes', summary: summary(), audience: 'connections', now: SEPT });
+    expect((await feed.getPost(first.token, 'stranger')).summary.name).toBe('Push');
+  });
+
+  test('a made-up token finds nothing', async () => {
+    await expect(feed.getPost('AAAAAAAAAAAAAAAAAAAAAA', 'stranger')).rejects.toMatchObject({ status: 404 });
+    expect(await feed.postByLink('../etc')).toBeNull();
+  });
+});

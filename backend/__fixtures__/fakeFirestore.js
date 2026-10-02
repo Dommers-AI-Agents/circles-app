@@ -122,7 +122,7 @@ class FakeFirestore {
       id,
       store,
       async get() { return store.snapshot(id, store.docs.get(id)); },
-      async set(data) { store.docs.set(id, { ...data }); },
+      async set(data, options = {}) { store.docs.set(id, options.merge ? { ...(store.docs.get(id) || {}), ...data } : { ...data }); },
       async create(data) {
         if (store.docs.has(id)) throw new Error('ALREADY_EXISTS');
         store.docs.set(id, { ...data });

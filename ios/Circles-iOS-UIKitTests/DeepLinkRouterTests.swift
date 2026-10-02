@@ -36,6 +36,9 @@ struct DeepLinkRouterTests {
         #expect(router.openPathDestination("rewards/piggy-bank") == .piggyBank)
         #expect(router.openPathDestination("settings/notifications") == .notificationSettings)
         #expect(router.openPathDestination("check-in") == .checkIn)
+        // A texted workout opens in the Workouts widget, by universal link or scheme
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/workout/abcdefghijklmnopqrstuv")!) == .workout(token: "abcdefghijklmnopqrstuv"))
+        #expect(router.destination(for: URL(string: "circles://workout/abcdefghijklmnopqrstuv")!) == .workout(token: "abcdefghijklmnopqrstuv"))
         #expect(router.openPathDestination("nope") == nil)
     }
 

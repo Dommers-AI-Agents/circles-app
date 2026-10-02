@@ -42,6 +42,9 @@ enum DeepLinkDestination: Equatable {
     /// A shared quote — `/app/quote/<id>` or `circles://quote/<id>`. Opens the
     /// Quotes reel on that quote, with more like it a swipe away.
     case quote(id: String)
+    /// A texted workout — `/app/workout/<token>` or `circles://workout/<token>`.
+    /// Opens it in the Workouts widget (view, copy as a routine, try the widget).
+    case workout(token: String)
 }
 
 /// Interprets universal links (https://api.favcircles.com/…) and the custom
@@ -85,6 +88,8 @@ struct DeepLinkRouter {
                 return parts.count >= 3 ? .widget(id: parts[2]) : nil
             case "quote":
                 return parts.count >= 3 ? .quote(id: parts[2]) : nil
+            case "workout":
+                return parts.count >= 3 ? .workout(token: parts[2]) : nil
             case "circle":
                 return parts.count >= 3 ? .circle(id: parts[2], shareToken: query(url, "share")) : nil
             case "connect":
@@ -161,6 +166,8 @@ struct DeepLinkRouter {
             return .widget(id: hostPathId)
         case "quote" where !hostPathId.isEmpty:
             return .quote(id: hostPathId)
+        case "workout" where !hostPathId.isEmpty:
+            return .workout(token: hostPathId)
         case "network":
             return .network
         case "settings" where url.path == "/notifications":
@@ -187,6 +194,8 @@ struct DeepLinkRouter {
             return .widget(id: parts[2])
         case "quote" where parts.count >= 3:
             return .quote(id: parts[2])
+        case "workout" where parts.count >= 3:
+            return .workout(token: parts[2])
         case "connect" where parts.count >= 3:
             return .connectionInvite(userId: parts[2], referralCode: query(url, "code"), inviteToken: query(url, "t"))
         default:
