@@ -181,6 +181,15 @@ enum NotificationCategoryRegistry {
             options: [.customDismissAction]
         )
 
+        // Motivation coach (local notifications the Motivation widget
+        // schedules): "Did it" marks today done and quiets the rest of today.
+        let motivationCategory = UNNotificationCategory(
+            identifier: MotivationQuickLog.categoryIdentifier,
+            actions: [UNNotificationAction(identifier: MotivationQuickLog.didItAction, title: "Did it 💪", options: [])],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+
         return [
             connectionCategory,
             messageCategory,
@@ -193,7 +202,8 @@ enum NotificationCategoryRegistry {
             careYesNoCategory,
             careScaleCategory,
             careTextCategory,
-            waterCategory
+            waterCategory,
+            motivationCategory
         ]
     }
 }

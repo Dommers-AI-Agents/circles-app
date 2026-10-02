@@ -73,6 +73,7 @@ enum NotificationTapRouter {
             if let orderId = string("orderId", in: userInfo) { return .postcardOrder(id: orderId) }
             return .homeWidget(id: "postcard")
         case "water_reminder": return .homeWidget(id: "water")
+        case "motivation_reminder": return .homeWidget(id: "motivation")
         case "daily_quote":
             if let quoteId = string("quoteId", in: userInfo) { return .dailyQuote(id: quoteId) }
             return .homeWidget(id: "quotes")

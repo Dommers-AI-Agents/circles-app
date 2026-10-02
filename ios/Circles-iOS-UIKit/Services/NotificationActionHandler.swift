@@ -1,6 +1,7 @@
 import UIKit
 import UserNotifications
 import FavWidgetsCore
+import FavWidgets
 
 /// What the buttons on a notification do (accept, reply, save, answer,
 /// log a cup). The AppDelegate hands every `didReceive` here; a plain tap
@@ -163,6 +164,22 @@ final class NotificationActionHandler {
                 } catch {
                     Logger.debug("❌ Water quick log failed: \(error)")
                     NotificationCenter.default.post(name: .navigateToHomeWidget, object: "water")
+                }
+                await MainActor.run { completion() }
+            }
+            return
+
+        case MotivationQuickLog.didItAction:
+            // Held until the write lands, like the water cup. Then today's
+            // remaining coach texts are dropped.
+            Task {
+                let store: WidgetDataStore = KeychainService.shared.getUserId().map(AppWidgetHost.makeDataStore(userId:)) ?? HomeWidgetsAPIDataStore()
+                do {
+                    let log = try await MotivationQuickLog.markDone(store: store)
+                    await MotivationReminderScheduler.sync(log, quietHours: AppWidgetHost.accountQuietHours)
+                } catch {
+                    Logger.debug("❌ Motivation quick log failed: \(error)")
+                    NotificationCenter.default.post(name: .navigateToHomeWidget, object: "motivation")
                 }
                 await MainActor.run { completion() }
             }

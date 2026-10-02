@@ -1511,6 +1511,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneWillEnterForeground(_ scene: UIScene) {
         // Called as the scene transitions from the background to the foreground.
         returnToSleepSoundsIfPlaying()
+        topUpMotivationReminders()
 
         // Check authentication status and refresh token if needed
         if AuthService.shared.isLoggedIn {
@@ -1526,6 +1527,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     }
                 }
             }
+        }
+    }
+
+    /// The Motivation coach's texts are scheduled a few days ahead (each with
+    /// its own line), so every return to the app rolls the window forward.
+    private func topUpMotivationReminders() {
+        guard AuthService.shared.isLoggedIn, let userId = KeychainService.shared.getUserId() else { return }
+        Task {
+            await MotivationReminderScheduler.refresh(store: AppWidgetHost.makeDataStore(userId: userId),
+                                                      quietHours: AppWidgetHost.accountQuietHours)
         }
     }
 
