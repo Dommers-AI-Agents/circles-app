@@ -94,6 +94,13 @@ module.exports = {
         patch.outForDeliveryAt = patch.updatedAt;
       }
     } else if (IN_TRANSIT.includes(type)) {
+      // Never backwards: a late or out-of-order transit scan used to drop a
+      // delivered card back to in transit, and the next processed_for_delivery
+      // pushed again (Sgroi Family got two, 2026-10-02)
+      if (row.status === STATUS.DELIVERED) {
+        await doc.ref.update({ updatedAt: patch.updatedAt, lobLastEvent: type });
+        return { handled: 'kept_delivered' };
+      }
       patch.status = STATUS.IN_TRANSIT;
     } else {
       // The card came back. Not a refund decision we make automatically, but
@@ -108,7 +115,15 @@ module.exports = {
     // doesn't scan postcards at the door, so this is "delivered"). Transit
     // scans stay silent — they land the same day as "printing". A redelivered
     // webhook must not push twice.
-    if (patch.status === STATUS.DELIVERED && row.status !== STATUS.DELIVERED) {
+    // One push per card, ever: claim it in a transaction so no ordering of
+    // webhook redeliveries and tracking pulls can send it twice
+    const claimPush = async () => this.db.runTransaction(async (tx) => {
+      const fresh = await tx.get(doc.ref);
+      if (fresh.data().deliveryPushedAt) return false;
+      tx.update(doc.ref, { deliveryPushedAt: patch.updatedAt });
+      return true;
+    }).catch(() => false);
+    if (patch.status === STATUS.DELIVERED && row.status !== STATUS.DELIVERED && !row.deliveryPushedAt && await claimPush()) {
       const who = row.recipient?.name || 'your recipient';
       this.notify(row.userId, patch.deliveryConfirmed
         ? { title: 'Your postcard was delivered', body: `Your card to ${who} has arrived.`, data: { orderId: doc.id, status: STATUS.DELIVERED } }

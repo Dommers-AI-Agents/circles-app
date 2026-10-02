@@ -543,6 +543,20 @@ describe('Lob tracking events', () => {
     expect(notificationService.sendToUser).toHaveBeenCalledTimes(1);
   });
 
+  it('a late transit scan never moves a delivered card back, so it never pushes twice', async () => {
+    // Sgroi Family, 2026-10-02: processed_for_delivery → in_local_area → processed_for_delivery pushed twice
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+    notificationService.sendToUser.mockClear();
+    await service.handleLobEvent({ event_type: { id: 'postcard.processed_for_delivery' }, body: { id: 'psc_1' } });
+    await service.handleLobEvent({ event_type: { id: 'postcard.in_local_area' }, body: { id: 'psc_1' } });
+    expect(rowOf(ID('o1')).status).toBe(STATUS.DELIVERED);
+    await service.handleLobEvent({ event_type: { id: 'postcard.processed_for_delivery' }, body: { id: 'psc_1' } });
+    expect(notificationService.sendToUser).toHaveBeenCalledTimes(1);
+    expect(rowOf(ID('o1')).deliveryPushedAt).toEqual(expect.any(String));
+  });
+
   it('a card whose first terminal event is a real delivery scan says delivered', async () => {
     await placeOrder('o1');
     closeWindow(ID('o1'));
