@@ -8,7 +8,8 @@ import UIKit
 final class PlacePhotosMomentsView: UIView {
 
     var onSeeAllPhotos: (() -> Void)?
-    var onAddPhoto: (() -> Void)?
+    /// Passes the tapped button, so the add sheet opens next to it
+    var onAddPhoto: ((UIView) -> Void)?
     var onPhotoTapped: ((Int) -> Void)?
     var onMomentTapped: ((Int) -> Void)?
 
@@ -93,7 +94,7 @@ final class PlacePhotosMomentsView: UIView {
     }
 
     @objc private func seeAllTapped() { onSeeAllPhotos?() }
-    @objc private func addTapped() { onAddPhoto?() }
+    @objc private func addTapped() { onAddPhoto?(addButton) }
 
     private static func header(_ text: String) -> UILabel {
         let label = UILabel()

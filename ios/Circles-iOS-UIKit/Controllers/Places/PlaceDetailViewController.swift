@@ -73,9 +73,8 @@ class PlaceDetailViewController: BaseViewController {
 
     private lazy var photosMomentsView: PlacePhotosMomentsView = {
         let view = PlacePhotosMomentsView()
-        view.onAddPhoto = { [weak self] in
-            guard let self else { return }
-            self.editImageButtonTapped(self.editImageButton)
+        view.onAddPhoto = { [weak self] button in
+            self?.presentAddMediaSheet(from: button)
         }
         view.onSeeAllPhotos = { [weak self] in self?.openPhotoGallery() }
         view.onPhotoTapped = { [weak self] index in
@@ -111,9 +110,15 @@ class PlaceDetailViewController: BaseViewController {
     func openPhotoGallery(arranging: Bool = false) {
         let gallery = PlaceGalleryViewController(placeId: place.globalPlaceId ?? place.id, placeName: place.name, arranging: arranging)
         gallery.onAddPhoto = { [weak self] in
-            guard let self else { return }
-            self.navigationController?.popViewController(animated: true)
-            self.editImageButtonTapped(self.editImageButton)
+            guard let self, let nav = self.navigationController else { return }
+            nav.popViewController(animated: true)
+            // Present once the place page is back on screen; a sheet started
+            // mid-pop never appears
+            if let coordinator = nav.transitionCoordinator {
+                coordinator.animate(alongsideTransition: nil) { [weak self] _ in self?.presentAddMediaSheet(from: nil) }
+            } else {
+                self.presentAddMediaSheet(from: nil)
+            }
         }
         gallery.onChanged = { [weak self] _ in self?.loadGlobalPlaceData() }
         navigationController?.pushViewController(gallery, animated: true)
@@ -2325,6 +2330,24 @@ class PlaceDetailViewController: BaseViewController {
     // MARK: - Image Handling for Home/Work
     
     @objc private func editImageButtonTapped(_ sender: UIButton) {
+        presentAddMediaSheet(from: sender)
+    }
+
+    /// Is `source` something the user can see right now? An action sheet
+    /// anchored to a hidden or scrolled-away view opens off screen: invisible,
+    /// yet it still dims the page (Wes, 2026-10-02: "Add photo" at the bottom
+    /// did nothing but grey out Add Note — it was anchored to the hidden top
+    /// photo button).
+    private func isVisibleAnchor(_ source: UIView?) -> Bool {
+        guard let source, source.window != nil, source.alpha > 0.01 else { return false }
+        var v: UIView? = source
+        while let current = v { if current.isHidden { return false }; v = current.superview }
+        let frame = source.convert(source.bounds, to: view)
+        return view.bounds.inset(by: view.safeAreaInsets).intersects(frame)
+    }
+
+    private func presentAddMediaSheet(from source: UIView?) {
+        let sender = source
         let actionSheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
         
         // Use MediaCaptureService for photo and video
@@ -2369,9 +2392,16 @@ class PlaceDetailViewController: BaseViewController {
         // action sheets to their source view, so anchoring to the top carousel
         // button made the sheet appear at the top of the screen when opened
         // from the photos-section buttons at the bottom
+        // A source we can't see falls back to the bottom of the screen.
         if let popover = actionSheet.popoverPresentationController {
-            popover.sourceView = sender
-            popover.sourceRect = sender.bounds
+            if let sender, isVisibleAnchor(sender) {
+                popover.sourceView = sender
+                popover.sourceRect = sender.bounds
+            } else {
+                popover.sourceView = view
+                popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY - view.safeAreaInsets.bottom, width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
         }
 
         present(actionSheet, animated: true)
