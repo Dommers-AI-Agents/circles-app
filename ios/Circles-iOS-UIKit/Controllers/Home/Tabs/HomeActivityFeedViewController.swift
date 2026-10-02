@@ -55,6 +55,9 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
     /// which otherwise stacks two "Loading video..." alerts and fires two
     /// detail requests. Reset once the open resolves (present or error).
     private var isOpeningMoment = false
+    /// The last activity opened, so one tap reaching both the row and the
+    /// cell's gesture opens it once
+    private var lastOpened: (id: String, at: Date)?
 
     let tableView: UITableView = {
         let tableView = UITableView()
@@ -716,7 +719,18 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
             return
         }
 
-        // Navigate based on activity type
+        openActivity(activity)
+    }
+
+    /// Where an activity row goes — one table for the row, the content area
+    /// and the thumbnail. The content gesture covers nearly the whole row and
+    /// used to know only a few types, so photos, workouts, circles and store
+    /// posts did nothing when tapped (Wes, 2026-10-02).
+    func openActivity(_ activity: Activity) {
+        // One tap can reach both the row and the cell's gesture: open once
+        if let last = lastOpened, last.id == activity.id, Date().timeIntervalSince(last.at) < 0.8 { return }
+        lastOpened = (activity.id, Date())
+
         switch activity.type {
         case .photoUploaded:
             // targetId is the venue (globalPlaces) id, not a save record —
@@ -816,6 +830,7 @@ extension HomeActivityFeedViewController: ActivityFeedCellDelegate {
     }
 
     func didTapActivityContent(activity: Activity) {
+        guard lastOpened.map({ $0.id != activity.id || Date().timeIntervalSince($0.at) >= 0.8 }) ?? true else { return }
         switch activity.type {
         case .videoUploaded, .videoLiked:
             // targetId is the video id in both cases
@@ -841,8 +856,11 @@ extension HomeActivityFeedViewController: ActivityFeedCellDelegate {
                 host?.navigateToGlobalPlace(withId: globalPlaceId, showComments: false)
             }
         default:
-            break
+            // Everything else goes where the row goes
+            openActivity(activity)
+            return
         }
+        lastOpened = (activity.id, Date())
     }
 
     func didTapActivityGroup(activities: [Activity]) {
@@ -854,6 +872,10 @@ extension HomeActivityFeedViewController: ActivityFeedCellDelegate {
 
     func didTapPlaceImage(activity: Activity) {
         switch activity.type {
+        case .photoUploaded, .workoutShared, .circleCreated, .circleLiked, .circleCommented,
+             .venueAnnouncement, .venueOffer:
+            // The thumbnail of these is not a saved place: route like the row
+            openActivity(activity)
         case .videoUploaded, .videoLiked:
             // The thumbnail on a moment activity is the moment itself — open the
             // player, not a place lookup (which 404s: these have no place detail).
