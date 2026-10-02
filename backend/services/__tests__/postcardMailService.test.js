@@ -531,10 +531,25 @@ describe('Lob tracking events', () => {
     await service.handleLobEvent({ event_type: { id: 'postcard.processed_for_delivery' }, body: { id: 'psc_1' } });
     await service.handleLobEvent({ event_type: { id: 'postcard.processed_for_delivery' }, body: { id: 'psc_1' } });
     expect(notificationService.sendToUser).toHaveBeenCalledTimes(1);
+    // Processed for delivery isn't a delivery: the words say so (2026-10-02)
     expect(notificationService.sendToUser).toHaveBeenCalledWith(USER, expect.objectContaining({
-      title: 'Your postcard was delivered',
+      title: 'Your postcard is out for delivery',
       body: expect.stringContaining('Ana Ruiz')
     }));
+    expect(rowOf(ID('o1'))).toMatchObject({ status: STATUS.DELIVERED, outForDeliveryAt: expect.any(String) });
+    // A real delivery scan afterwards confirms it, without a second push
+    await service.handleLobEvent({ event_type: { id: 'postcard.delivered' }, body: { id: 'psc_1' } });
+    expect(rowOf(ID('o1')).deliveryConfirmed).toBe(true);
+    expect(notificationService.sendToUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('a card whose first terminal event is a real delivery scan says delivered', async () => {
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+    notificationService.sendToUser.mockClear();
+    await service.handleLobEvent({ event_type: { id: 'postcard.delivered' }, body: { id: 'psc_1' } });
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(USER, expect.objectContaining({ title: 'Your postcard was delivered' }));
   });
 
   it('treats processed_for_delivery as the end of the line', async () => {
@@ -735,7 +750,7 @@ describe('pulling the truth from Lob', () => {
     const row = rowOf(ID('o1'));
     expect(row.status).toBe(STATUS.DELIVERED);
     expect(row.lobLastTrackingEvent).toBe('processed_for_delivery');
-    expect(notificationService.sendToUser).toHaveBeenCalledWith(row.userId, expect.objectContaining({ title: 'Your postcard was delivered' }));
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(row.userId, expect.objectContaining({ title: 'Your postcard is out for delivery' }));
   });
 
   it('a list read answers at once and asks Lob about stale rows afterwards', async () => {

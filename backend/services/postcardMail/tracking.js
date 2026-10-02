@@ -105,7 +105,11 @@ module.exports = {
     return {
       printerStatus: row.lobStatus || null,
       printerHold: row.lobFundingStatus === 'funding_hold',
-      lastTrackingEvent: row.lobLastTrackingEvent || null
+      lastTrackingEvent: row.lobLastTrackingEvent || null,
+      // "Processed for delivery" ≠ delivered: the widget says "out for
+      // delivery" until a real delivery scan or three days pass
+      outForDeliveryAt: row.outForDeliveryAt || null,
+      deliveryConfirmed: row.deliveryConfirmed === true
     };
   }
 };

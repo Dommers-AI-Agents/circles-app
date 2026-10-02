@@ -82,6 +82,17 @@ module.exports = {
     const patch = { updatedAt: new Date().toISOString(), lobLastEvent: type };
     if (TERMINAL.includes(type)) {
       patch.status = STATUS.DELIVERED;
+      // processed_for_delivery = sorted at the local post office, on the
+      // carrier's route: usually in the mailbox that day or the next, but NOT
+      // confirmed delivered (Wes, 2026-10-02: "arrived" pushes came while Lob
+      // still said Processed for Delivery). The status stays terminal for
+      // billing/tracking; the words say "out for delivery" until either a real
+      // delivery scan or three days pass (the widget reads these two fields).
+      if (type === 'postcard.delivered') {
+        patch.deliveryConfirmed = true;
+      } else if (!row.outForDeliveryAt) {
+        patch.outForDeliveryAt = patch.updatedAt;
+      }
     } else if (IN_TRANSIT.includes(type)) {
       patch.status = STATUS.IN_TRANSIT;
     } else {
@@ -98,11 +109,10 @@ module.exports = {
     // scans stay silent — they land the same day as "printing". A redelivered
     // webhook must not push twice.
     if (patch.status === STATUS.DELIVERED && row.status !== STATUS.DELIVERED) {
-      this.notify(row.userId, {
-        title: 'Your postcard was delivered',
-        body: `Your card to ${row.recipient?.name || 'your recipient'} has arrived.`,
-        data: { orderId: doc.id, status: STATUS.DELIVERED }
-      });
+      const who = row.recipient?.name || 'your recipient';
+      this.notify(row.userId, patch.deliveryConfirmed
+        ? { title: 'Your postcard was delivered', body: `Your card to ${who} has arrived.`, data: { orderId: doc.id, status: STATUS.DELIVERED } }
+        : { title: 'Your postcard is out for delivery', body: `Your card to ${who} is with the mail carrier and should arrive today or tomorrow.`, data: { orderId: doc.id, status: STATUS.DELIVERED } });
     }
     return { handled: patch.status };
   },
