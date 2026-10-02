@@ -2001,14 +2001,9 @@ class PlaceDetailViewController: BaseViewController {
     }
     
     @objc private func likeButtonTapped() {
-        // Check if place has likes - if so, show likes list instead of toggling
-        let likeCount = place.likesCount ?? place.likes?.count ?? 0
-        if likeCount > 0 {
-            showLikesList()
-            return
-        }
-        
-        // If no likes, toggle like as usual
+        // The heart always likes/unlikes; the count next to it opens who
+        // liked it. (It used to open the list once anyone had liked the
+        // place, so you could never like it yourself — Wes, 2026-10-02.)
         // Haptic feedback
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.prepare()
