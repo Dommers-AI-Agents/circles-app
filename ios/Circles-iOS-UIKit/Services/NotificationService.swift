@@ -154,6 +154,33 @@ class NotificationService {
         }
     }
     
+    /// Something notifications are about was just opened (a chat, say): the
+    /// server settles its bell rows, its banners leave Notification Center,
+    /// and the icon count is re-read. `kind` is a key of the server's
+    /// SETTLES table (services/notificationSeen.js); `userInfoKey` is the
+    /// push payload field that names the same thing.
+    func originSeen(kind: String, id: String, userInfoKey: String) {
+        let center = UNUserNotificationCenter.current()
+        center.getDeliveredNotifications { delivered in
+            let ids = delivered
+                .filter { ($0.request.content.userInfo[userInfoKey] as? String) == id }
+                .map(\.request.identifier)
+            if !ids.isEmpty { center.removeDeliveredNotifications(withIdentifiers: ids) }
+        }
+        let path = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        APIService.shared.request(
+            endpoint: "notifications/seen/\(kind)/\(path)",
+            method: .post,
+            body: [:],
+            requiresAuth: true
+        ) { [weak self] (_: Result<EmptyResponse, APIError>) in
+            DispatchQueue.main.async {
+                self?.syncBadge()
+                NotificationCenter.default.post(name: .notificationOriginSeen, object: nil)
+            }
+        }
+    }
+
     // MARK: - Notification Permissions
     
     func checkNotificationPermissions(completion: @escaping (Bool) -> Void) {

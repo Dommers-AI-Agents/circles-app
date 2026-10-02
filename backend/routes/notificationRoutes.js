@@ -8,7 +8,8 @@ const {
   markAllAsRead,
   archiveAllNotifications,
   deleteNotification,
-  clearArchivedNotifications
+  clearArchivedNotifications,
+  markOriginSeen
 } = require('../controllers/notificationController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -37,6 +38,10 @@ router.route('/archive-all')
 
 router.route('/archived')
   .delete(clearArchivedNotifications);
+
+// Opening a chat / place / post settles the rows about it (services/notificationSeen)
+router.route('/seen/:kind/:id')
+  .post(markOriginSeen);
 
 router.route('/:id/read')
   .put(markNotificationAsRead);

@@ -24,6 +24,8 @@ extension Notification.Name {
     /// — the home bell's unseen dot should refresh/clear immediately rather than
     /// wait for the next viewWillAppear and possibly race the read-all write.
     static let notificationsMarkedRead = Notification.Name("NotificationsMarkedRead")
+    /// Some bell rows were settled by opening what they're about — re-read the red dot
+    static let notificationOriginSeen = Notification.Name("NotificationOriginSeen")
 
     // Store-owner notifications
     /// Pending ownership claims were reviewed (approved/denied) — refresh the

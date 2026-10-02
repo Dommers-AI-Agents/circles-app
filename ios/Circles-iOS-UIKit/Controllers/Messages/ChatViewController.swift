@@ -123,6 +123,11 @@ class ChatViewController: BaseViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         markMessagesAsRead()
+        // Seeing the chat settles its notifications even when every message
+        // was already read (another device, or a reopen)
+        if let conversationId = conversation?.id {
+            NotificationService.shared.originSeen(kind: "conversation", id: conversationId, userInfoKey: "conversationId")
+        }
         
         // Refresh navigation bar in case group settings were updated
         if conversation?.type == .group {

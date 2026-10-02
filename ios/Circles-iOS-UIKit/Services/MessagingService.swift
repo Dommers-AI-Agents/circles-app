@@ -233,6 +233,8 @@ class MessagingService {
         ) { (result: Result<EmptyResponse, APIError>) in
             switch result {
             case .success:
+                // Read here = seen: the chat's banners and its red dot go too
+                NotificationService.shared.originSeen(kind: "conversation", id: conversationId, userInfoKey: "conversationId")
                 completion(.success(()))
             case .failure(let error):
                 completion(.failure(error))

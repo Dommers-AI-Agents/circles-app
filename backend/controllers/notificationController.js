@@ -309,3 +309,17 @@ exports.clearArchivedNotifications = async (req, res, next) => {
     next(error);
   }
 };
+// @desc    The viewer opened something (a chat, say): settle its bell rows
+// @route   POST /api/notifications/seen/:kind/:id
+// @access  Private
+exports.markOriginSeen = async (req, res, next) => {
+  try {
+    const { SETTLES, markSeen } = require('../services/notificationSeen');
+    const { kind, id } = req.params;
+    if (!SETTLES[kind]) return res.status(400).json({ success: false, message: 'Unknown kind' });
+    const settled = await markSeen(req.user.uid, { kind, id: String(id) });
+    res.status(200).json({ success: true, settled });
+  } catch (error) {
+    next(error);
+  }
+};

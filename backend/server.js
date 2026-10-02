@@ -487,6 +487,9 @@ app.use('/api/users', (req, res, next) => {
   next();
 });
 
+// Opening something settles the bell rows about it (red dot clears)
+app.use('/api', require('./middleware/notificationSeen'));
+
 // API Routes with specific rate limiting
 app.use('/api/auth', authLimiter, firebaseAuthRoutes);
 app.use('/api/auth', authLimiter, linkedinAuthRoutes); // LinkedIn auth routes

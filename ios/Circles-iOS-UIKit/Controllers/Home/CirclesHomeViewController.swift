@@ -2676,6 +2676,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             name: .notificationsMarkedRead,
             object: nil
         )
+        // …and re-read it when opening a chat or place settled some rows
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleNotificationOriginSeen),
+            name: .notificationOriginSeen,
+            object: nil
+        )
 
         // Premium resolves after launch (StoreKit, then backend sync). Without
         // this the nav bar keeps whatever it was built with, so a premium user
@@ -4105,6 +4112,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     @objc func handleRewardBalanceChanged() {
         updateRewardsBadge()
+    }
+
+    @objc func handleNotificationOriginSeen() {
+        updateNotificationBadge()
     }
 
     @objc func handleNotificationsMarkedRead() {
