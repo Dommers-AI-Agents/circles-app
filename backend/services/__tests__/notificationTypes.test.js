@@ -1,6 +1,6 @@
 // The one table reproduces the three it replaced, plus the rows added since
 // (daily_quote: mutable via notificationPreferences.dailyQuote).
-const { TYPES, categoryFor, prefKeyFor, shouldBadge, recordsRow, isKnownType } = require('../notificationTypes');
+const { TYPES, categoryFor, prefKeyFor, shouldBadge, recordsRow, isUrgent, isKnownType } = require('../notificationTypes');
 
 const OLD_CATEGORIES = {
   new_message: 'NEW_MESSAGE', connection_request: 'CONNECTION_REQUEST', new_suggestion: 'PLACE_SUGGESTION',
@@ -52,7 +52,7 @@ test('badge-worthy set matches the old set', () => {
 
 test('every row is complete', () => {
   for (const [type, row] of Object.entries(TYPES)) {
-    expect(Object.keys(row).filter((k) => k !== 'record').sort()).toEqual(['badge', 'category', 'pref'], type);
+    expect(Object.keys(row).filter((k) => k !== 'record' && k !== 'urgent').sort()).toEqual(['badge', 'category', 'pref'], type);
   }
 });
 
@@ -73,3 +73,11 @@ test('the rows a person can catch up on in Notifications (Wes, 2026-10-01)', () 
   expect(isKnownType('nope')).toBe(false);
 });
 
+
+test('only the How Are You? questions and the unanswered alert go out Time Sensitive (Wes, 2026-10-02)', () => {
+  expect(Object.keys(TYPES).filter(isUrgent).sort()).toEqual([
+    'care_ask', 'care_ask_done', 'care_ask_scale', 'care_ask_text', 'care_ask_yesno', 'care_silence'
+  ]);
+  expect(isUrgent('new_message')).toBe(false);
+  expect(isUrgent('unknown')).toBe(false);
+});

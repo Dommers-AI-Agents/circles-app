@@ -16,6 +16,13 @@
 // news about YOUR things — never for reminders, digests or friends' activity
 // (that's the feed). Types whose senders write their own row (new_message,
 // connection_request, place_like …) leave this off, or they'd get two.
+//
+// `urgent: true` = sent Time Sensitive: it comes through Focus / Do Not
+// Disturb and stays at the top of the Lock Screen for an hour. Only for
+// something a person is waiting on right now — the How Are You? questions
+// and the family alert that one went unanswered (Wes, 2026-10-02). Whether
+// a banner stays on screen until tapped is the person's own Banner Style
+// setting; the widget offers a shortcut to it.
 const TYPES = {
   new_message:             { category: 'NEW_MESSAGE',             pref: 'newMessages',            badge: true },
   connection_request:      { category: 'CONNECTION_REQUEST',      pref: 'connectionRequests',     badge: true },
@@ -53,14 +60,14 @@ const TYPES = {
   postcard_order:          { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   fridgemail:              { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   care_invite:             { category: null,                      pref: 'careCheckins',           badge: false, record: true },
-  care_ask:                { category: 'CARE_ASK',                pref: 'careCheckins',           badge: false },
+  care_ask:                { category: 'CARE_ASK',                pref: 'careCheckins',           badge: false, urgent: true },
   // One push type per question kind: the Lock Screen buttons differ (see
   // careCheckin/questionBank.js). Only builds that registered the category
   // are sent these; older parents keep getting plain care_ask.
-  care_ask_done:           { category: 'CARE_DONE',               pref: 'careCheckins',           badge: false },
-  care_ask_yesno:          { category: 'CARE_YESNO',              pref: 'careCheckins',           badge: false },
-  care_ask_scale:          { category: 'CARE_SCALE',              pref: 'careCheckins',           badge: false },
-  care_ask_text:           { category: 'CARE_TEXT',               pref: 'careCheckins',           badge: false },
+  care_ask_done:           { category: 'CARE_DONE',               pref: 'careCheckins',           badge: false, urgent: true },
+  care_ask_yesno:          { category: 'CARE_YESNO',              pref: 'careCheckins',           badge: false, urgent: true },
+  care_ask_scale:          { category: 'CARE_SCALE',              pref: 'careCheckins',           badge: false, urgent: true },
+  care_ask_text:           { category: 'CARE_TEXT',               pref: 'careCheckins',           badge: false, urgent: true },
   care_answer:             { category: null,                      pref: 'careCheckins',           badge: false },
   care_accepted:           { category: null,                      pref: 'careCheckins',           badge: false, record: true },
   // Family members on a check-in: asked for (parent decides) or invited by the
@@ -76,7 +83,7 @@ const TYPES = {
   favcoin_claim_settled:   { category: null,                      pref: null,                     badge: false, record: true },
   reengagement:            { category: 'ENGAGEMENT_REMINDER',     pref: 'reengagement',           badge: false },
   activity_notification:   { category: 'ACTIVITY_UPDATE',         pref: 'socialActivity',         badge: false },
-  care_silence:            { category: null,                      pref: 'careCheckins',           badge: false, record: true }
+  care_silence:            { category: null,                      pref: 'careCheckins',           badge: false, record: true, urgent: true }
 };
 
 const row = (type) => TYPES[type] || {};
@@ -88,7 +95,9 @@ const prefKeyFor = (type) => row(type).pref || null;
 const shouldBadge = (type) => !!row(type).badge;
 /** Whether sending this push also writes its Notifications-list row. */
 const recordsRow = (type) => row(type).record === true;
+/** Whether this push goes out Time Sensitive (see `urgent` above). */
+const isUrgent = (type) => row(type).urgent === true;
 /** A type the server knows (and so may store in the Notifications list). */
 const isKnownType = (type) => Object.prototype.hasOwnProperty.call(TYPES, type);
 
-module.exports = { TYPES, categoryFor, prefKeyFor, shouldBadge, recordsRow, isKnownType };
+module.exports = { TYPES, categoryFor, prefKeyFor, shouldBadge, recordsRow, isUrgent, isKnownType };

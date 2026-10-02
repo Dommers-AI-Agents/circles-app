@@ -5,7 +5,7 @@ const { COLLECTIONS, createNotification, validateNotification } = require('../mo
 const emailService = require('./emailService');
 const sseService = require('./sseService');
 const { computeBadgeCount } = require('./badgeService');
-const { categoryFor, prefKeyFor, shouldBadge, recordsRow } = require('./notificationTypes');
+const { categoryFor, prefKeyFor, shouldBadge, recordsRow, isUrgent } = require('./notificationTypes');
 
 const db = getFirestore();
 const messaging = getMessaging();
@@ -105,7 +105,8 @@ class NotificationService {
               sound: 'default',
               'content-available': 1,
               'mutable-content': 1, // Allows notification service extension to modify content
-              'interruption-level': 'active', // iOS 15+ for prominent notifications
+              // Time Sensitive for what someone is waiting on (notificationTypes `urgent`)
+              'interruption-level': isUrgent(notification.type) ? 'time-sensitive' : 'active',
               'relevance-score': 1.0, // Ensures notifications persist in Notification Center
               'thread-id': notification.type || 'default', // Groups related notifications
               ...(category && { category }) // Add category if defined
