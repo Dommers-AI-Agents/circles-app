@@ -874,49 +874,96 @@ class EditPlaceViewController: BaseViewController {
     }
     
     @objc private func refreshAddressButtonTapped() {
-        // Check if place has location coordinates
-        guard let location = place.location?.clLocation else {
-            presentAlert(title: "No Location Available", message: "This place doesn't have location coordinates to refresh the address from.")
+        let name = (nameTextField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let pin = selectedLocation ?? place.location?.clLocation?.coordinate
+        guard !name.isEmpty || pin != nil else {
+            presentAlert(title: "No Location Available", message: "This place has no name or location to look up.")
             return
         }
-        
-        // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Refreshing Address", message: "Fetching address from Apple Maps...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
-        // Use CLGeocoder to reverse geocode the location
-        let geocoder = CLGeocoder()
-        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
-            guard let self = self else { return }
-            
+        let loading = AlertPresenter.showLoading(message: "Looking up \(name.isEmpty ? "the address" : name) on Apple Maps…", from: self)
+
+        // Find the BUSINESS by name near the pin (AppleVenueRefresh); the old
+        // reverse-geocode of the pin only confirmed a wrong pin's address.
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = name
+        request.resultTypes = .pointOfInterest
+        if let pin {
+            let span = AppleVenueRefresh.searchRadiusMeters * 2
+            request.region = MKCoordinateRegion(center: pin, latitudinalMeters: span, longitudinalMeters: span)
+        }
+        MKLocalSearch(request: request).start { [weak self] response, _ in
             DispatchQueue.main.async {
-                loadingAlert.dismiss(animated: true) {
-                    if let error = error {
-                        self.presentAlert(title: "Error", message: "Failed to fetch address: \(error.localizedDescription)")
-                        return
+                loading.dismiss(animated: true) {
+                    guard let self else { return }
+                    let items = response?.mapItems ?? []
+                    let candidates = items.map { AppleVenueRefresh.Candidate(name: $0.name ?? "", coordinate: $0.placemark.coordinate) }
+                    if !name.isEmpty, let index = AppleVenueRefresh.bestMatch(for: name, near: pin, in: candidates) {
+                        self.offerAppleListing(items[index], pin: pin)
+                    } else if let pin {
+                        self.refreshStreetAddressOnly(at: pin, name: name)
+                    } else {
+                        self.presentAlert(title: "Not on Apple Maps", message: "Apple Maps doesn't list \(name) nearby.")
                     }
-                    
-                    guard let placemark = placemarks?.first else {
-                        self.presentAlert(title: "Error", message: "Could not find an address for this location.")
-                        return
-                    }
-                    
-                    // Update the address fields with the fetched data
-                    self.updateAddressFields(with: placemark)
-                    
-                    // Show success message
-                    let successAlert = UIAlertController(
-                        title: "Address Refreshed",
-                        message: "Address fields have been updated with data from Apple Maps. Please review and save your changes.",
-                        preferredStyle: .alert
-                    )
-                    successAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self.present(successAlert, animated: true)
                 }
             }
         }
     }
-    
+
+    /// Apple's listing for this business. At the pin: fill it in. Elsewhere:
+    /// say where and how far, and move the pin only if they agree — a
+    /// correction that moves the place is accepted, never silently applied.
+    private func offerAppleListing(_ item: MKMapItem, pin: CLLocationCoordinate2D?) {
+        let placemark = item.placemark
+        let street = [placemark.subThoroughfare, placemark.thoroughfare].compactMap { $0 }.joined(separator: " ")
+        let line = [street, placemark.locality].filter { !($0 ?? "").isEmpty }.compactMap { $0 }.joined(separator: ", ")
+        let apply = { [weak self] in
+            guard let self else { return }
+            self.updateAddressFields(with: placemark)
+            self.movePin(to: placemark.coordinate)
+            if let phone = item.phoneNumber, !phone.isEmpty { self.phoneTextField.text = phone }
+            if let url = item.url?.absoluteString, !url.isEmpty { self.websiteTextField.text = url }
+            AlertPresenter.showSuccess("Updated from Apple Maps. Review it, then tap Save.", from: self)
+        }
+        let moved = pin.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude)
+            .distance(from: CLLocation(latitude: placemark.coordinate.latitude, longitude: placemark.coordinate.longitude)) } ?? 0
+        guard moved > AppleVenueRefresh.sameSpotMeters else { apply(); return }
+        let far = MKDistanceFormatter(); far.unitStyle = .abbreviated
+        AlertPresenter.showConfirmation(
+            title: "Apple Maps has it somewhere else",
+            message: "\(item.name ?? "It") is at \(line.isEmpty ? "a different address" : line), \(far.string(fromDistance: moved)) from where the pin is now. Use Apple's address and move the pin there?",
+            confirmTitle: "Use Apple's",
+            from: self,
+            onConfirm: apply
+        )
+    }
+
+    /// No listing by that name: the street address under the pin, as before,
+    /// saying so.
+    private func refreshStreetAddressOnly(at pin: CLLocationCoordinate2D, name: String) {
+        CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: pin.latitude, longitude: pin.longitude)) { [weak self] placemarks, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard let placemark = placemarks?.first, error == nil else {
+                    self.presentAlert(title: "Error", message: "Could not find an address for this location.")
+                    return
+                }
+                self.updateAddressFields(with: placemark)
+                self.presentAlert(title: "Address from the pin",
+                                  message: "Apple Maps doesn't list \(name.isEmpty ? "this place" : name) nearby, so this is the street address where the pin is. If the pin is in the wrong spot, tap the map where the place really is.")
+            }
+        }
+    }
+
+    private func movePin(to coordinate: CLLocationCoordinate2D) {
+        selectedLocation = coordinate
+        mapView.removeAnnotations(mapView.annotations)
+        let annotation = MKPointAnnotation()
+        annotation.coordinate = coordinate
+        annotation.title = nameTextField.text
+        mapView.addAnnotation(annotation)
+        mapView.setRegion(MKCoordinateRegion(center: coordinate, latitudinalMeters: 600, longitudinalMeters: 600), animated: true)
+    }
+
     @objc private func handleMapTap(_ gestureRecognizer: UITapGestureRecognizer) {
         let touchPoint = gestureRecognizer.location(in: mapView)
         let coordinate = mapView.convert(touchPoint, toCoordinateFrom: mapView)
