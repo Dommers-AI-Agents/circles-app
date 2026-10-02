@@ -23,3 +23,5 @@ exports.people = handle((req) => analytics.people(req.query));
 exports.person = handle((req) => analytics.person(String(req.params.id), req.user.uid));
 exports.money = handle((req) => analytics.money(req.query));
 exports.messaging = handle((req) => analytics.messaging(req.query));
+// Email delivery: live login check of both routes + per-day outcomes
+exports.emailHealth = handle(() => require('../services/emailHealth').dashboard({ days: 14 }));

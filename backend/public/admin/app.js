@@ -181,7 +181,11 @@
       if (tab === 'overview') renderOverview(await api(`/admin/dashboard/overview?${q()}${f}`));
       if (tab === 'people') { const d = await api(`/admin/dashboard/people?${f.slice(1)}`); peopleRows = d.rows; renderPeople(); }
       if (tab === 'money') renderMoney(await api(`/admin/dashboard/money?${q()}${f}`));
-      if (tab === 'messaging') renderMessaging(await api(`/admin/dashboard/messaging?${q()}${f}`));
+      if (tab === 'messaging') {
+        const [msg, eh] = await Promise.all([api(`/admin/dashboard/messaging?${q()}${f}`), api('/admin/dashboard/email-health')]);
+        renderMessaging(msg);
+        renderEmailHealth(eh);
+      }
     } catch (err) {
       if (err.message !== 'not admin') console.warn(err);
     } finally {
@@ -321,6 +325,41 @@
       <tr><td>Being claimed</td><td class="num">${fmt(c.claimed)}</td></tr>
       <tr><td>Paid out on-chain</td><td class="num">${fmt(c.settled)}</td></tr>
       <tr><td>Reversed</td><td class="num">${fmt(c.reversed)}</td></tr></table>`;
+  }
+
+  // Email delivery: are both mail routes up right now, and what happened today
+  function renderEmailHealth(d) {
+    const route = (name, r, role) => {
+      const state = !r.configured ? ['unknown', 'Not set up'] : r.ok ? ['on', 'Working'] : ['off', 'Failing'];
+      return `<div class="kpi"><div class="label">${esc(name)}</div>
+        <div style="margin:6px 0"><span class="pill ${state[0]}">${state[1]}</span>
+        ${r.configured && r.ok ? `<span class="muted"> · answered in ${fmt(r.ms)} ms</span>` : ''}</div>
+        <div class="sub">${esc(r.host || '')}${r.host ? ' · ' : ''}${esc(role)}</div>
+        ${r.error ? `<div class="sub" style="color:#B83232;white-space:normal">${esc(r.error)}</div>` : ''}</div>`;
+    };
+    $('#ehChecked').textContent = `checked ${new Date(d.status.checkedAt).toLocaleTimeString()}`;
+    $('#ehRoutes').innerHTML = route('Main mail server', d.status.primary, 'sends every email') +
+      route('Amazon SES backup', d.status.fallback, 'takes over when the main server refuses or is down');
+    const t = d.today || {};
+    const week = d.byDay.slice(-7).reduce((a, r) => ({ sent: a.sent + r.primarySent + r.fallbackSent, failed: a.failed + r.failed }), { sent: 0, failed: 0 });
+    $('#ehKpis').innerHTML = [
+      kpi('Sent today', fmt((t.primarySent || 0) + (t.fallbackSent || 0)), `${fmt(week.sent)} in the last 7 days`),
+      kpi('Via SES backup', fmt(t.fallbackSent || 0), (t.fallbackSent ? 'main server refused these' : 'main server handled everything')),
+      kpi('Failed today', fmt(t.failed || 0), `${fmt(week.failed)} in the last 7 days`),
+      kpi('Skipped', fmt(t.suppressed || 0), 'bounced addresses, on purpose')
+    ].join('');
+    lineChart('chartEmail', d.byDay.map((r) => short(r.day)), [
+      { label: 'Main server', data: d.byDay.map((r) => r.primarySent), backgroundColor: '#3478F6', stack: 's' },
+      { label: 'SES backup', data: d.byDay.map((r) => r.fallbackSent), backgroundColor: '#F2A93B', stack: 's' },
+      { label: 'Failed', data: d.byDay.map((r) => r.failed), backgroundColor: '#D64545', stack: 's' }
+    ], 'bar');
+    const problems = [...d.recentFailures.map((p) => ({ ...p, kind: 'Failed' })), ...d.recentFallbacks.map((p) => ({ ...p, kind: 'Sent by backup' }))]
+      .sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 20);
+    $('#ehProblems').innerHTML = '<thead><tr><th>When</th><th>What</th><th>To</th><th>Error</th></tr></thead><tbody>' +
+      (problems.length ? problems.map((p) => `<tr><td>${esc(new Date(p.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</td>
+        <td><span class="pill ${p.kind === 'Failed' ? 'off' : 'no_token'}">${p.kind}</span></td><td>${esc(p.to)}</td>
+        <td style="white-space:normal">${esc(p.subject ? p.subject + ' — ' : '')}${esc(p.error)}</td></tr>`).join('')
+        : '<tr><td colspan="4" class="muted">No delivery problems in the last 14 days.</td></tr>') + '</tbody>';
   }
 
   function renderMessaging(d) {

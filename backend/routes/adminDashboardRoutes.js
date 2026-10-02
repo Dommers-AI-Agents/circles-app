@@ -58,5 +58,6 @@ router.get('/people', c.people);
 router.get('/people/:id', c.person);
 router.get('/money', c.money);
 router.get('/messaging', c.messaging);
+router.get('/email-health', c.emailHealth);
 
 module.exports = router;

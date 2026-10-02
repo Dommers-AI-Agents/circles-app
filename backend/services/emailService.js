@@ -1090,7 +1090,21 @@ Rewards redeemed: ${safeStats.redemptions}`;
     return /^4\d\d|421|Too many concurrent|Invalid greeting|ECONNRESET|ETIMEDOUT|ECONNREFUSED|EPIPE|Timeout/i.test(text);
   }
 
+  // Every send goes through here; the outcome is counted for the admin
+  // dashboard's Email delivery section and alerts (services/emailHealth).
   async sendWithRetry(mailOptions, attempts = 3) {
+    const health = require('./emailHealth');
+    try {
+      const info = await this.sendWithRetryInner(mailOptions, attempts);
+      health.record(info && info.viaFallback ? 'fallback' : 'primary', { to: mailOptions.to, subject: mailOptions.subject, primaryError: info && info.primaryError });
+      return info;
+    } catch (error) {
+      health.record(error && error.code === 'SUPPRESSED' ? 'suppressed' : 'failed', { to: mailOptions.to, subject: mailOptions.subject, error });
+      throw error;
+    }
+  }
+
+  async sendWithRetryInner(mailOptions, attempts = 3) {
     const delays = [2000, 6000];
     let lastError;
     let triedFallback = false;
@@ -1106,7 +1120,7 @@ Rewards redeemed: ${safeStats.redemptions}`;
           try {
             const info = await this.fallbackTransporter.sendMail({ ...mailOptions });
             console.warn(`📧 Sent via fallback (primary: ${error.message})`);
-            return info;
+            return Object.assign(info || {}, { viaFallback: true, primaryError: error.message });
           } catch (fallbackError) {
             console.error(`📧 Fallback send failed too: ${fallbackError.message}`);
           }
