@@ -119,14 +119,6 @@ extension PlaceDetailViewFactory {
         return label
     }
 
-    static func sendButton() -> UIButton {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "paperplane.fill", withConfiguration: PlaceDetailViewController.actionIconConfig), for: .normal)
-        button.tintColor = .label
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }
-
     static func followButton() -> UIButton {
         let button = UIButton.smallActionButton(title: "Follow", style: .primary)
         button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)

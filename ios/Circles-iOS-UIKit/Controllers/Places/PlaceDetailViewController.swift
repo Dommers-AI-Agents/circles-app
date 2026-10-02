@@ -257,7 +257,6 @@ class PlaceDetailViewController: BaseViewController {
 
     // Send-arrow: fires the same standard share as the nav-bar share button
     // (shareButtonTapped), sitting inline with like/comment like Instagram.
-    private let sendButton: UIButton = PlaceDetailViewFactory.sendButton()
 
     private lazy var followButton: UIButton = PlaceDetailViewFactory.followButton()
 
@@ -747,7 +746,6 @@ class PlaceDetailViewController: BaseViewController {
         actionButtonsContainer.addSubview(likeCountLabel)
         actionButtonsContainer.addSubview(commentButton)
         actionButtonsContainer.addSubview(commentCountLabel)
-        actionButtonsContainer.addSubview(sendButton)
         actionButtonsContainer.addSubview(addToCircleButton)
         actionButtonsContainer.addSubview(followButton)
 
@@ -761,7 +759,6 @@ class PlaceDetailViewController: BaseViewController {
         likeButton.addTarget(self, action: #selector(likeButtonTapped), for: .touchUpInside)
         followButton.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
         commentButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
-        sendButton.addTarget(self, action: #selector(shareButtonTapped), for: .touchUpInside)
         viewAllCommentsButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
         
         // Add tap gesture to like count label to show likes list
@@ -936,10 +933,6 @@ class PlaceDetailViewController: BaseViewController {
             commentCountLabel.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
 
             // Send-arrow (share) sits inline after the comment count
-            sendButton.leadingAnchor.constraint(equalTo: commentCountLabel.trailingAnchor, constant: Constants.Spacing.medium),
-            sendButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
-            sendButton.widthAnchor.constraint(equalToConstant: 30),
-            sendButton.heightAnchor.constraint(equalToConstant: 30),
 
             followButton.trailingAnchor.constraint(equalTo: actionButtonsContainer.trailingAnchor, constant: -Constants.Spacing.medium),
             followButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
@@ -947,7 +940,7 @@ class PlaceDetailViewController: BaseViewController {
             // Add to Circle sits left of Follow, same size (sibling actions)
             addToCircleButton.trailingAnchor.constraint(equalTo: followButton.leadingAnchor, constant: -Constants.Spacing.small),
             addToCircleButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
-            addToCircleButton.leadingAnchor.constraint(greaterThanOrEqualTo: sendButton.trailingAnchor, constant: Constants.Spacing.small),
+            addToCircleButton.leadingAnchor.constraint(greaterThanOrEqualTo: commentCountLabel.trailingAnchor, constant: Constants.Spacing.small),
 
             // Practical actions row — after the social-proof row
             practicalButtonsStackView.topAnchor.constraint(equalTo: savedByView.bottomAnchor, constant: Constants.Spacing.medium),
