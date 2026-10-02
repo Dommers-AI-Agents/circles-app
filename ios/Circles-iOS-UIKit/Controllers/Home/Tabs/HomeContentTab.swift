@@ -50,6 +50,8 @@ protocol HomeContentTabHost: AnyObject {
     // circles/places, so the home resolves them.
     func navigateToPlace(withId placeId: String, showComments: Bool)
     func navigateToGlobalPlace(withId globalPlaceId: String, showComments: Bool)
+    /// The venue's page, opened straight into its photos on `photoUrl`
+    func navigateToPlacePhoto(globalPlaceId: String, photoUrl: String?)
     func navigateToCircle(withId circleId: String)
     func navigateToCheckInPlace(activity: Activity)
     /// Switch to the Moments tab and land on `video`.

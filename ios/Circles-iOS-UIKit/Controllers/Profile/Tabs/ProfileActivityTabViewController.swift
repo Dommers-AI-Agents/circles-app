@@ -288,6 +288,11 @@ final class ProfileActivityTabViewController: BaseViewController {
     // MARK: - Taps
 
     private func open(_ item: OwnActivityItem) {
+        // A photo you added: the venue's page, opened on that photo
+        if item.type == "photo_uploaded", let venueId = item.globalPlaceId ?? item.placeId ?? item.targetId {
+            openPlacePhoto(globalPlaceId: venueId, photoUrl: item.thumbnailUrl)
+            return
+        }
         switch ProfileActivityTimeline.Kind(category: item.category) {
         case .checkIn, .place:
             if let placeId = item.placeId ?? (item.targetType == "place" ? item.targetId : nil) { openPlace(id: placeId) }
@@ -300,6 +305,25 @@ final class ProfileActivityTabViewController: BaseViewController {
             else if item.targetType == "video", let videoId = item.targetId { openMoment(id: videoId) }
         case .other:
             break
+        }
+    }
+
+    private func openPlacePhoto(globalPlaceId: String, photoUrl: String?) {
+        let loading = AlertPresenter.showLoading(message: "Loading place...", from: self)
+        GlobalPlaceService.shared.getGlobalPlace(id: globalPlaceId) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self else { return }
+                    switch result {
+                    case .success(let response):
+                        let detail = PlaceDetailViewController(place: response.bestDetailPlace())
+                        detail.photoToOpenOnAppear = photoUrl ?? ""
+                        self.navigationController?.pushViewController(detail, animated: true)
+                    case .failure:
+                        self.showError("That place isn't available any more.")
+                    }
+                }
+            }
         }
     }
 

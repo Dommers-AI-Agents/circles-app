@@ -56,6 +56,14 @@ extension CirclesHomeViewController {
     /// (globalPlaceId), not a personal save doc — resolve it the same way the
     /// Specials tab does and open the place page
     func navigateToGlobalPlace(withId globalPlaceId: String, showComments: Bool = false) {
+        pushGlobalPlace(globalPlaceId) { $0.showCommentsOnAppear = showComments }
+    }
+
+    func navigateToPlacePhoto(globalPlaceId: String, photoUrl: String?) {
+        pushGlobalPlace(globalPlaceId) { $0.photoToOpenOnAppear = photoUrl ?? "" }
+    }
+
+    private func pushGlobalPlace(_ globalPlaceId: String, configure: @escaping (PlaceDetailViewController) -> Void) {
         let loading = AlertPresenter.showLoading(message: "Loading place...", from: self)
         GlobalPlaceService.shared.getGlobalPlace(id: globalPlaceId) { [weak self] result in
             DispatchQueue.main.async {
@@ -65,7 +73,7 @@ extension CirclesHomeViewController {
                     case .success(let response):
                         let place = response.bestDetailPlace()
                         let detailVC = PlaceDetailViewController(place: place)
-                        detailVC.showCommentsOnAppear = showComments
+                        configure(detailVC)
                         self.navigationController?.pushViewController(detailVC, animated: true)
                     case .failure(let error):
                         self.showError(error)

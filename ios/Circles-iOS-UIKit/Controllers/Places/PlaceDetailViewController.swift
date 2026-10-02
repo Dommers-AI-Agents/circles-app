@@ -143,6 +143,7 @@ class PlaceDetailViewController: BaseViewController {
         } else {
             photosMomentsView.setPhotos(urls: attributed.map(\.url), privateFlags: attributed.map { $0.isPrivate == true })
         }
+        openPendingPhotoIfReady()
 
         Logger.debug("📸 [PlaceDetailViewController] Configuring MediaCarouselView with \(mediaItems.count) items")
         mediaCarouselView.configure(with: mediaItems)
@@ -383,8 +384,29 @@ class PlaceDetailViewController: BaseViewController {
     /// comments instead of at the top of the place page.
     var showCommentsOnAppear = false
 
+    /// Set before pushing from a "added a photo" activity: opens the photo
+    /// viewer on that photo (empty = the first) once the page is up and the
+    /// venue's photos have loaded. Closing it leaves you on the place.
+    var photoToOpenOnAppear: String?
+    private var hasAppeared = false
+
+    private func openPendingPhotoIfReady() {
+        guard let target = photoToOpenOnAppear, hasAppeared, presentedViewController == nil else { return }
+        let venuePhotos = globalPlace?.photos?.map(\.url) ?? []
+        let urls = venuePhotos.isEmpty ? (place.photos ?? []) : venuePhotos
+        // Wait for the venue's library unless the photo is already here
+        let strip: (String) -> String = { $0.components(separatedBy: "?").first ?? $0 }
+        let index = urls.firstIndex { $0 == target || strip($0) == strip(target) }
+        guard index != nil || globalPlace != nil else { return }
+        photoToOpenOnAppear = nil
+        guard !urls.isEmpty else { return }   // removed since: the place page is the answer
+        present(StorefrontPhotoViewerViewController(urls: urls, startingAt: index ?? 0), animated: true)
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        hasAppeared = true
+        openPendingPhotoIfReady()
         if showCommentsOnAppear {
             showCommentsOnAppear = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in

@@ -718,7 +718,13 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
 
         // Navigate based on activity type
         switch activity.type {
-        case .placeAdded, .placeLiked, .photoUploaded, .placeDiscovered:
+        case .photoUploaded:
+            // targetId is the venue (globalPlaces) id, not a save record —
+            // opening it as a save did nothing (Wes, 2026-10-02). Land on
+            // that photo; swipe for the rest, close for the place.
+            host?.navigateToPlacePhoto(globalPlaceId: activity.metadata?.globalPlaceId ?? activity.targetId,
+                                       photoUrl: activity.metadata?.placePhoto)
+        case .placeAdded, .placeLiked, .placeDiscovered:
             host?.navigateToPlace(withId: activity.targetId, showComments: false)
         case .placeCommented:
             // A comment activity lands IN the comments, not at the page top
