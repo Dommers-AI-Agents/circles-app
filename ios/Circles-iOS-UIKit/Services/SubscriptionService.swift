@@ -13,9 +13,10 @@ class SubscriptionService: ObservableObject {
     /// `.subscriptionStatusChanged` rather than reading it once — a premium user
     /// briefly looks unsubscribed at launch, which is what made the upgrade
     /// crown flash on the home screen until a tab switch rebuilt the nav bar.
-    @Published private(set) var subscriptionStatus: SubscriptionStatus = .none {
+    @Published private(set) var subscriptionStatus: SubscriptionStatus = SubscriptionService.lastKnownStatus() {
         didSet {
             guard oldValue != subscriptionStatus else { return }
+            Self.rememberStatus(subscriptionStatus)
             let post = {
                 NotificationCenter.default.post(name: .subscriptionStatusChanged, object: nil)
             }
@@ -45,6 +46,27 @@ class SubscriptionService: ObservableObject {
     }
     private var updates: Task<Void, Never>? = nil
     
+    /// The status this account last resolved to, so launch starts from the
+    /// truth instead of `.none` — a premium user saw the upgrade crown for
+    /// half a second on every launch until StoreKit and the server answered
+    /// (Wes, 2026-10-02). Keyed by account; the live checks still correct it.
+    nonisolated private static func statusKey(_ userId: String) -> String { "subscription.lastKnownStatus.\(userId)" }
+
+    nonisolated static func lastKnownStatus() -> SubscriptionStatus {
+        guard let userId = AuthService.shared.getUserId(),
+              let raw = UserDefaults.standard.string(forKey: statusKey(userId)) else { return .none }
+        let status = SubscriptionStatus(rawValue: raw) ?? .none
+        Logger.debug("💎 Launch subscription status (last known): \(status.rawValue)")
+        return status
+    }
+
+    private static func rememberStatus(_ status: SubscriptionStatus) {
+        // Only for a signed-in account; signing out resolves to .none and
+        // must not overwrite what that account really has
+        guard AuthService.shared.isLoggedIn, let userId = AuthService.shared.getUserId() else { return }
+        UserDefaults.standard.set(status.rawValue, forKey: statusKey(userId))
+    }
+
     private init() {
         // Start listening for transaction updates
         updates = observeTransactionUpdates()
