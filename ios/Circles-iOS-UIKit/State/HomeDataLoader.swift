@@ -386,7 +386,9 @@ final class HomeDataLoader {
             }
             self.isMapDataReady = true
             let filtered = self.delegate?.applyFiltersToPlaces(cached) ?? []
-            self.delegate?.presentFilteredPlaces(filtered, adjustRegionAfterDelay: false)
+            // Frame the map from the saved set now, so the refresh landing a
+            // few seconds later doesn't move the camera
+            self.delegate?.presentFilteredPlaces(filtered, adjustRegionAfterDelay: true)
             self.delegate?.updateAvailableCategories()
             self.delegate?.hideMapLoadingState()
         }
@@ -498,7 +500,16 @@ final class HomeDataLoader {
                 Logger.info("📍 Place fetch failed with nothing back — keeping \(self.state.allPlaces.count) cached places on screen")
             }
             let deduplicatedPlaces = keepCached ? self.state.allPlaces : fetchedUnique
-            self.state.allPlaces = deduplicatedPlaces
+            // Nearby network places already on the map (viewport pages) stay
+            // until the viewport re-fetch below replaces them — wiping them
+            // here made ~100 friends' pins blink out for a second or two
+            // after every cold start (Wes, 2026-10-02).
+            let fetchedIds = Set(deduplicatedPlaces.map(\.id))
+            let ownCircleIds = self.state.ownCircleIds
+            let keptNearby = keepCached ? [] : self.state.allPlaces.filter { place in
+                !fetchedIds.contains(place.id) && !(place.circleId.map(ownCircleIds.contains) ?? false)
+            }
+            self.state.allPlaces = deduplicatedPlaces + keptNearby
 
             // Own places = in my circles, or in a circle I own that arrived via
             // the network list (in case circle ids don't line up)

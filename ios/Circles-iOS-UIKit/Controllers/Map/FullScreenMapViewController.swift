@@ -58,6 +58,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     }()
     private var isAdjustingRegion = false // Prevent concurrent region adjustments
     private var hasInitiallyZoomed = false // Track if we've done the initial zoom
+    /// The camera has been framed around actual places (not just the user's
+    /// spot before anything loaded). From then on, data arriving never moves it.
+    private var hasFramedPlaces = false
     private var hasExplicitInitialRegion = false // Caller provided a region to open at
     private var viewportFetchTimer: Timer? // Debounce for viewport (region-change) notifications
 
@@ -1166,7 +1169,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
     // MARK: - Helper Extensions
     
-    func adjustMapRegion() {
+    /// `fromDataArrival`: places just landed (the saved set, the refresh, a
+    /// viewport page) rather than the person changing a filter. Arrivals frame
+    /// the default view once — after that the camera is the person's, and
+    /// re-centring on every arrival made the map jump seconds after launch
+    /// (Wes, 2026-10-02). Filtered views still fit their places as they land.
+    func adjustMapRegion(fromDataArrival: Bool = false) {
         // Honor an explicitly provided opening region (e.g. expanding the
         // embedded map) — cleared when the user changes a filter in here
         guard !hasExplicitInitialRegion else {
@@ -1218,7 +1226,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 mapView.setRegion(region, animated: true)
                 issuedRegionChange = true
                 hasInitiallyZoomed = true
+                hasFramedPlaces = true
             }
+        } else if fromDataArrival && hasFramedPlaces {
+            Logger.debug("  - Default view already framed; new data doesn't move the camera")
         } else {
             // Default behavior: center on the user in a usable radius that shows
             // their own favorite places (falling back to all visible places)
@@ -1244,6 +1255,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 mapView.setRegion(region, animated: !hasInitiallyZoomed)
                 issuedRegionChange = true
                 hasInitiallyZoomed = true
+                // Framed before any places loaded is a placeholder: the first
+                // arrival with places still gets to frame the map
+                if !focusPlaces.isEmpty { hasFramedPlaces = true }
             } else if filteredPlaces.count > 0 {
                 // No user location - fit the focus places instead
                 var coordinates: [CLLocationCoordinate2D] = []
@@ -1257,6 +1271,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                     mapView.setRegion(region, animated: !hasInitiallyZoomed)
                     issuedRegionChange = true
                     hasInitiallyZoomed = true
+                    hasFramedPlaces = true
                 }
             }
         }

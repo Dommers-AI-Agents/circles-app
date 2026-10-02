@@ -2347,11 +2347,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         mapRefreshDidFilter(placesToDisplay)
 
         // Update map with current places
-        self.mapViewController?.updatePlaces(placesToDisplay)
+        self.mapViewController?.updatePlaces(placesToDisplay, adjustRegion: false)
 
         // Trigger map region adjustment for progressive updates
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.mapViewController?.adjustMapRegion()
+            self?.mapViewController?.adjustMapRegion(fromDataArrival: true)
         }
 
         updatePlaceCountLabel(count: placesToDisplay.count)
@@ -2544,11 +2544,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         Logger.debug("🗺️ Updating map with \(placesToDisplay.count) places (data ready)")
         
         // Update the map
-        self.mapViewController?.updatePlaces(placesToDisplay)
+        self.mapViewController?.updatePlaces(placesToDisplay, adjustRegion: false)
         
         // Trigger map region adjustment to fit all results
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.mapViewController?.adjustMapRegion()
+            self?.mapViewController?.adjustMapRegion(fromDataArrival: true)
         }
         
         // Update place count label
@@ -4288,10 +4288,10 @@ extension CirclesHomeViewController: HomeDataLoaderDelegate {
 
     func presentFilteredPlaces(_ places: [Place], adjustRegionAfterDelay: Bool) {
         mapRefreshDidFilter(places)
-        mapViewController?.updatePlaces(places)
+        mapViewController?.updatePlaces(places, adjustRegion: false)
         if adjustRegionAfterDelay {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                self?.mapViewController?.adjustMapRegion()
+                self?.mapViewController?.adjustMapRegion(fromDataArrival: true)
             }
         }
         updatePlaceCountLabel(count: places.count)
