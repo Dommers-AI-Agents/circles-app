@@ -754,6 +754,36 @@ exports.getActiveCheckIns = async (req, res) => {
   }
 };
 
+// The Check In screen's header: your numbers + who's out now
+exports.getMySummary = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { summarize, friendsOut } = require('../services/checkInSummary');
+    const now = new Date();
+    const [mine, active] = await Promise.all([
+      db.collection(COLLECTIONS.CHECK_INS).where('userId', '==', userId)
+        .select('startTime', 'createdAt', 'placeId', 'globalPlaceId', 'placeName').get(),
+      db.collection(COLLECTIONS.CHECK_INS)
+        .where('active', '==', true)
+        .where('endTime', '>', now.toISOString())
+        .orderBy('endTime')
+        .orderBy('createdAt', 'desc')
+        .get()
+    ]);
+    const visible = await visibleCheckIns(active.docs, userId);
+    res.json({
+      success: true,
+      data: {
+        ...summarize(mine.docs.map((d) => d.data()), now.getTime()),
+        friendsOut: friendsOut(visible, userId)
+      }
+    });
+  } catch (error) {
+    console.error('Error getting check-in summary:', error);
+    res.status(500).json({ success: false, message: 'Failed to get check-in summary' });
+  }
+};
+
 // Get user's own active check-ins
 exports.getMyActiveCheckIns = async (req, res) => {
   try {

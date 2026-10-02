@@ -63,31 +63,9 @@ class CheckInViewController: BaseViewController {
     override var loadsDataOnViewDidLoad: Bool { false } // We'll load manually after view appears
     
     // MARK: - UI Elements
-    private let stepIndicatorView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.background
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let stepLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Step 1 of 2: Choose Place"
-        label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
-        label.textColor = Constants.Colors.label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let progressView: UIProgressView = {
-        let progress = UIProgressView(progressViewStyle: .bar)
-        progress.progressTintColor = Constants.Colors.primary
-        progress.trackTintColor = Constants.Colors.lightGray
-        progress.setProgress(0.33, animated: false)
-        progress.translatesAutoresizingMaskIntoConstraints = false
-        return progress
-    }()
-    
+    /// Why check in: streak, numbers, who's out — and the step bar
+    private let heroView = CheckInHeroView()
+
     // Place selection UI
     private let placeSelectionSegmentedControl: UISegmentedControl = {
         let control = UISegmentedControl(items: ["My Places", "Nearby"])
@@ -138,7 +116,7 @@ class CheckInViewController: BaseViewController {
             // One known set of places (a circle): no My/Nearby toggle.
             placeSelectionSegmentedControl.isHidden = true
         }
-        stepLabel.text = "Step 1 of 2: Choose Place"
+        loadSummary()
         // Don't load data here - wait for viewDidAppear
     }
 
@@ -273,9 +251,7 @@ class CheckInViewController: BaseViewController {
         )
         
         // Add subviews
-        view.addSubview(stepIndicatorView)
-        stepIndicatorView.addSubview(stepLabel)
-        stepIndicatorView.addSubview(progressView)
+        view.addSubview(heroView)
         
         view.addSubview(placeSelectionSegmentedControl)
         view.addSubview(searchBar)
@@ -287,22 +263,13 @@ class CheckInViewController: BaseViewController {
         
         // Setup constraints
         NSLayoutConstraint.activate([
-            // Step indicator
-            stepIndicatorView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            stepIndicatorView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            stepIndicatorView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            stepIndicatorView.heightAnchor.constraint(equalToConstant: 80),
-            
-            stepLabel.topAnchor.constraint(equalTo: stepIndicatorView.topAnchor, constant: 16),
-            stepLabel.leadingAnchor.constraint(equalTo: stepIndicatorView.leadingAnchor, constant: 16),
-            
-            progressView.topAnchor.constraint(equalTo: stepLabel.bottomAnchor, constant: 12),
-            progressView.leadingAnchor.constraint(equalTo: stepIndicatorView.leadingAnchor, constant: 16),
-            progressView.trailingAnchor.constraint(equalTo: stepIndicatorView.trailingAnchor, constant: -16),
-            progressView.heightAnchor.constraint(equalToConstant: 4),
-            
+            // Why check in
+            heroView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            heroView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            heroView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+
             // Place selection
-            placeSelectionSegmentedControl.topAnchor.constraint(equalTo: stepIndicatorView.bottomAnchor, constant: 16),
+            placeSelectionSegmentedControl.topAnchor.constraint(equalTo: heroView.bottomAnchor, constant: 16),
             placeSelectionSegmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             placeSelectionSegmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             
@@ -342,6 +309,23 @@ class CheckInViewController: BaseViewController {
         nextButton.alpha = 0.6
     }
     
+    // MARK: - Header
+
+    private struct SummaryEnvelope: Decodable { let data: CheckInSummary }
+
+    /// The hero's numbers; it shows a plain reason until (or unless) they land
+    private func loadSummary() {
+        APIService.shared.request(endpoint: "check-ins/me/summary", method: .get, requiresAuth: true) { [weak self] (result: Result<SummaryEnvelope, APIError>) in
+            guard case .success(let envelope) = result else { return }
+            DispatchQueue.main.async {
+                UIView.animate(withDuration: 0.25) {
+                    self?.heroView.configure(envelope.data)
+                    self?.view.layoutIfNeeded()
+                }
+            }
+        }
+    }
+
     // MARK: - Location Services
     private func setupLocationServices() {
         locationManager.delegate = self
