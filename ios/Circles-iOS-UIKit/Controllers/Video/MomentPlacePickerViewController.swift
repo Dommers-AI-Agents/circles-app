@@ -240,6 +240,7 @@ class MomentPlacePickerViewController: BaseViewController {
     @objc private func sourceChanged() {
         searchBar.text = ""
         searchResults = []
+        savedMatches = []
         if !isMyPlaces && nearbyPlaces.isEmpty {
             loadNearby()
         } else {
@@ -311,6 +312,17 @@ class MomentPlacePickerViewController: BaseViewController {
     }
 
     @objc private func cancelTapped() { dismiss(animated: true) }
+
+    /// Your saves and your network's that match the typed text, shown above
+    /// the Apple Maps suggestions (which only know places near you).
+    private var savedMatches: [Place] = []
+    private var isSearching: Bool { !savedMatches.isEmpty || !searchResults.isEmpty }
+
+    private func updateSavedMatches(_ query: String) {
+        savedMatches = SavedPlaceMatcher.matches(query, in: myPlaces + nearbyPlaces,
+                                                 name: \.name, address: \.address,
+                                                 key: { $0.globalPlaceId ?? $0.id })
+    }
 }
 
 // MARK: - Table
@@ -319,7 +331,7 @@ extension MomentPlacePickerViewController: UITableViewDataSource, UITableViewDel
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         // While the user is typing, show POI suggestions (shared with check-in);
         // otherwise the active tab's place list.
-        searchResults.isEmpty ? rows.count : searchResults.count
+        isSearching ? savedMatches.count + searchResults.count : rows.count
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -329,22 +341,23 @@ extension MomentPlacePickerViewController: UITableViewDataSource, UITableViewDel
         cell.accessoryType = .disclosureIndicator
         cell.detailTextLabel?.textColor = Constants.Colors.secondaryLabel
 
-        if !searchResults.isEmpty {
+        if isSearching && indexPath.row >= savedMatches.count {
             // POI suggestion (no coordinates until resolved on selection)
-            let result = searchResults[indexPath.row]
+            let result = searchResults[indexPath.row - savedMatches.count]
             cell.textLabel?.text = result.title
             cell.detailTextLabel?.text = result.subtitle
             return cell
         }
 
-        let place = rows[indexPath.row]
+        let place = isSearching ? savedMatches[indexPath.row] : rows[indexPath.row]
         cell.textLabel?.text = place.name
+        if isSearching { cell.imageView?.image = UIImage(systemName: "bookmark.circle.fill") }
         var detail: [String] = []
         if let loc = currentLocation, let d = distance(to: place, from: loc) {
             let f = MKDistanceFormatter(); f.unitStyle = .abbreviated
             detail.append(f.string(fromDistance: d))
         }
-        if isMyPlaces, let circleName = place.circleName { detail.append(circleName) }
+        if isMyPlaces || isSearching, let circleName = place.circleName { detail.append(circleName) }
         if !place.address.isEmpty { detail.append(place.address) }
         cell.detailTextLabel?.text = detail.joined(separator: " • ")
         return cell
@@ -352,12 +365,12 @@ extension MomentPlacePickerViewController: UITableViewDataSource, UITableViewDel
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        if !searchResults.isEmpty {
+        if isSearching && indexPath.row >= savedMatches.count {
             // Resolve the POI suggestion into a Place, then hand it back.
-            nearbySearch.resolve(searchResults[indexPath.row], near: currentLocation, existingPlaces: myPlaces)
+            nearbySearch.resolve(searchResults[indexPath.row - savedMatches.count], near: currentLocation, existingPlaces: myPlaces)
             return
         }
-        let place = rows[indexPath.row]
+        let place = isSearching ? savedMatches[indexPath.row] : rows[indexPath.row]
         delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility, audienceListId: audienceListId, taggedUsers: taggedUsers)
     }
 }
@@ -370,9 +383,12 @@ extension MomentPlacePickerViewController: UISearchBarDelegate {
         if q.isEmpty {
             // Back to the active tab's list
             searchResults = []
+            savedMatches = []
             tableView.reloadData()
         } else {
-            // POI search via the shared completer (same as check-in)
+            // Saved places first (instant), then POIs via the shared completer
+            updateSavedMatches(q)
+            tableView.reloadData()
             nearbySearch.updateQuery(q)
         }
     }

@@ -41,6 +41,10 @@ class CheckInViewController: BaseViewController {
     private var nearbyPlaces: [Place] = []   // network places nearby (not mine), distance-sorted
     private let nearbySearch = NearbyPlaceSearch()  // shared POI search (also used by moments)
     private var searchResults: [MKLocalSearchCompletion] = []
+    /// Your saves and your network's matching the typed text, listed above
+    /// the Apple Maps suggestions (which only know places near you)
+    private var savedMatches: [Place] = []
+    private var isSearching: Bool { !savedMatches.isEmpty || !searchResults.isEmpty }
     private var filteredPlaces: [Place] = []
     private var selectedPlace: Place?
     private let locationManager = CLLocationManager()
@@ -503,6 +507,7 @@ class CheckInViewController: BaseViewController {
         // Clear search and selection
         searchBar.text = ""
         searchResults = []
+        savedMatches = []
         selectedIndexPath = nil
         selectedPlace = nil
         nextButton.isEnabled = false
@@ -604,8 +609,8 @@ extension CheckInViewController: NearbyPlaceSearchDelegate {
 extension CheckInViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         // If we have search results, show those regardless of tab
-        if !searchResults.isEmpty {
-            return searchResults.count
+        if isSearching {
+            return savedMatches.count + searchResults.count
         }
         
         // Otherwise show the loaded list for the active tab
@@ -622,8 +627,8 @@ extension CheckInViewController: UITableViewDataSource {
         let cell = tableView.dequeueReusableCell(withIdentifier: cellIdentifier) ?? UITableViewCell(style: .subtitle, reuseIdentifier: cellIdentifier)
         
         // If we have search results, show those
-        if !searchResults.isEmpty {
-            let result = searchResults[indexPath.row]
+        if isSearching && indexPath.row >= savedMatches.count {
+            let result = searchResults[indexPath.row - savedMatches.count]
             cell.textLabel?.text = result.title
             
             // Show distance if we have location
@@ -639,8 +644,9 @@ extension CheckInViewController: UITableViewDataSource {
         }
         // Otherwise show the loaded place for the active tab
         else {
-            let isMyPlaces = placeSelectionSegmentedControl.selectedSegmentIndex == 0
-            let place = isMyPlaces ? filteredPlaces[indexPath.row] : nearbyPlaces[indexPath.row]
+            let isMyPlaces = placeSelectionSegmentedControl.selectedSegmentIndex == 0 || isSearching
+            let place = isSearching ? savedMatches[indexPath.row]
+                : placeSelectionSegmentedControl.selectedSegmentIndex == 0 ? filteredPlaces[indexPath.row] : nearbyPlaces[indexPath.row]
             cell.textLabel?.text = place.name
 
             // Build detail text with distance, circle name, and address
@@ -691,14 +697,15 @@ extension CheckInViewController: UITableViewDelegate {
         selectedIndexPath = indexPath
         
         // Handle search result selection
-        if !searchResults.isEmpty {
-            let result = searchResults[indexPath.row]
+        if isSearching && indexPath.row >= savedMatches.count {
+            let result = searchResults[indexPath.row - savedMatches.count]
             selectSearchResult(result)
         }
-        // Handle a place from the active tab (My Places or Nearby)
+        // A saved match, or a place from the active tab (My Places or Nearby)
         else {
             let isMyPlaces = placeSelectionSegmentedControl.selectedSegmentIndex == 0
-            selectedPlace = isMyPlaces ? filteredPlaces[indexPath.row] : nearbyPlaces[indexPath.row]
+            selectedPlace = isSearching ? savedMatches[indexPath.row]
+                : isMyPlaces ? filteredPlaces[indexPath.row] : nearbyPlaces[indexPath.row]
 
             // Enable next button
             nextButton.isEnabled = true
@@ -724,6 +731,7 @@ extension CheckInViewController: UISearchBarDelegate {
         if searchText.isEmpty {
             // Clear search results and show original data
             searchResults = []
+            savedMatches = []
             if placeSelectionSegmentedControl.selectedSegmentIndex == 0 {
                 filteredPlaces = myPlaces
             }
@@ -738,7 +746,13 @@ extension CheckInViewController: UISearchBarDelegate {
             }
             placesTableView.reloadData()
         } else {
-            // POI search via the shared completer (same code as the moment picker)
+            // Saved places first (instant), then POIs via the shared
+            // completer (same code as the moment picker)
+            savedMatches = SavedPlaceMatcher.matches(searchText, in: myPlaces + nearbyPlaces,
+                                                     name: \.name, address: \.address,
+                                                     key: { $0.globalPlaceId ?? $0.id })
+            selectedIndexPath = nil
+            placesTableView.reloadData()
             nearbySearch.updateQuery(searchText)
         }
     }
