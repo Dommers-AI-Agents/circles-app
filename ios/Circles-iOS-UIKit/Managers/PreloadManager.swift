@@ -340,6 +340,9 @@ class PreloadManager {
         var loadedMoments: [PlaceVideo] = []
         var unreadCount = 0
         var pendingCount = 0
+        // Which optional parts actually came back; the rest keep the previous
+        // snapshot's value (LaunchSnapshotMerge) instead of being saved empty.
+        var arrived = Set<LaunchSnapshotMerge.Part>()
         
         var loadError: Error?
         var didFinish = false
@@ -371,6 +374,7 @@ class PreloadManager {
                 pendingCount: pendingCount,
                 activities: loadedActivities,
                 moments: loadedMoments,
+                arrived: arrived,
                 completion: completion
             )
         }
@@ -476,6 +480,7 @@ class PreloadManager {
             switch result {
             case .success(let circles):
                 loadedNetworkCircles = circles
+                arrived.insert(.networkCircles)
                 self?.incrementProgress(status: "Checking connection requests...")
                 Logger.debug("✅ PreloadManager: Loaded \(circles.count) network circles")
             case .failure(let error):
@@ -509,6 +514,7 @@ class PreloadManager {
             switch result {
             case .success(let connections):
                 loadedConnections = connections.filter { $0.status == ConnectionStatus.accepted }
+                arrived.insert(.connections)
                 self?.incrementProgress(status: "Checking messages...")
                 Logger.debug("✅ PreloadManager: Loaded \(loadedConnections.count) connections")
             case .failure(let error):
@@ -559,6 +565,7 @@ class PreloadManager {
             switch result {
             case .success(let response):
                 loadedActivities = response.activities
+                arrived.insert(.activities)
                 self?.incrementProgress(status: "Loading moments...")
                 Logger.debug("✅ PreloadManager: Loaded \(response.activities.count) activities")
             case .failure(let error):
@@ -590,6 +597,7 @@ class PreloadManager {
             switch result {
             case .success(let response):
                 loadedMoments = response.data
+                arrived.insert(.moments)
                 self?.incrementProgress(status: "Almost ready...")
                 Logger.debug("✅ PreloadManager: Loaded \(response.data.count) moments")
             case .failure(let error):
@@ -602,6 +610,18 @@ class PreloadManager {
         // Ideal path: everything (including non-critical tasks) finished.
         loadGroup.notify(queue: .main) {
             Logger.debug("🏁 PreloadManager: All tasks completed")
+            if didFinish, loadError == nil {
+                // The grace period already saved a partial snapshot; the
+                // stragglers have landed since, so write them in too.
+                // Otherwise they were thrown away and the next cold start had
+                // no people, feed or moments to paint.
+                self.saveLateArrivals(
+                    user: loadedUser, circles: loadedCircles, networkCircles: loadedNetworkCircles,
+                    connections: loadedConnections, unreadCount: unreadCount, pendingCount: pendingCount,
+                    activities: loadedActivities, moments: loadedMoments, arrived: arrived
+                )
+                return
+            }
             finishPreload()
         }
 
@@ -632,6 +652,21 @@ class PreloadManager {
         progressHandler?(progress, status)
     }
     
+    /// After a grace-period finish: merge what arrived late into the saved
+    /// snapshot. No progress, no completion — the caller has moved on.
+    private func saveLateArrivals(user: User?, circles: [Circle], networkCircles: [Circle], connections: [Connection],
+                                  unreadCount: Int, pendingCount: Int, activities: [Activity], moments: [PlaceVideo],
+                                  arrived: Set<LaunchSnapshotMerge.Part>) {
+        let fresh = PreloadedData(
+            user: user, circles: circles, networkCircles: networkCircles, allPlaces: [], connections: connections,
+            unreadMessageCount: unreadCount, pendingConnectionCount: pendingCount, activities: activities, moments: moments
+        )
+        let merged = LaunchSnapshotMerge.merge(fresh: fresh, arrived: arrived, previous: preloadedData ?? loadFromCache())
+        preloadedData = merged
+        saveToCache(merged)
+        Logger.debug("💾 PreloadManager: Late arrivals saved (connections \(merged.connections.count), activities \(merged.activities.count), moments \(merged.moments.count))")
+    }
+
     private func completePreload(user: User?, 
                                 circles: [Circle], 
                                 networkCircles: [Circle],
@@ -641,9 +676,10 @@ class PreloadManager {
                                 pendingCount: Int,
                                 activities: [Activity],
                                 moments: [PlaceVideo],
+                                arrived: Set<LaunchSnapshotMerge.Part> = Set(LaunchSnapshotMerge.Part.allCases),
                                 completion: @escaping (Result<PreloadedData, Error>) -> Void) {
         
-        let preloadedData = PreloadedData(
+        let fresh = PreloadedData(
             user: user,
             circles: circles,
             networkCircles: networkCircles,
@@ -653,6 +689,10 @@ class PreloadManager {
             pendingConnectionCount: pendingCount,
             activities: activities,
             moments: moments
+        )
+        // Parts that missed the grace period keep the last snapshot's value
+        let preloadedData = LaunchSnapshotMerge.merge(
+            fresh: fresh, arrived: arrived, previous: self.preloadedData ?? loadFromCache()
         )
         
         self.preloadedData = preloadedData
@@ -665,13 +705,13 @@ class PreloadManager {
         Logger.debug("🎉 PreloadManager: All data preloaded successfully")
         Logger.debug("   - User: \(user?.displayName ?? "nil")")
         Logger.debug("   - Circles: \(circles.count)")
-        Logger.debug("   - Network circles: \(networkCircles.count)")
+        Logger.debug("   - Network circles: \(preloadedData.networkCircles.count)")
         Logger.debug("   - Places: \(places.count)")
-        Logger.debug("   - Connections: \(connections.count)")
+        Logger.debug("   - Connections: \(preloadedData.connections.count)")
         Logger.debug("   - Unread messages: \(unreadCount)")
         Logger.debug("   - Pending connections: \(pendingCount)")
-        Logger.debug("   - Activities: \(activities.count)")
-        Logger.debug("   - Moments: \(moments.count)")
+        Logger.debug("   - Activities: \(preloadedData.activities.count)")
+        Logger.debug("   - Moments: \(preloadedData.moments.count)")
         
         completion(.success(preloadedData))
     }
