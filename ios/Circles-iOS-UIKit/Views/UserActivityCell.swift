@@ -199,7 +199,7 @@ class UserActivityCell: UICollectionViewCell {
                 let currentUserId = user.id
 
                 // Use a namespaced cache key to prevent collisions with place images
-                let profileCacheKey = "profile_\(currentUserId)_\(profilePicture)"
+                let profileCacheKey = ImageService.profileCacheKey(userId: currentUserId, url: profilePicture)
 
                 if let cached = ImageService.shared.cachedImage(forKey: profileCacheKey) {
                     // Cache hit: set the real avatar immediately. Setting the

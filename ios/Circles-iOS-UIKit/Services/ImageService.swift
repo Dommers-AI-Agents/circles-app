@@ -114,6 +114,24 @@ class ImageService {
     }
     
     // MARK: - Specialized Loading Methods
+
+    /// The key every avatar surface caches a profile picture under (the
+    /// people row, the activity feed, the map filter).
+    static func profileCacheKey(userId: String, url: String) -> String {
+        "profile_\(userId)_\(url)"
+    }
+
+    /// Cold start: pull these avatars from the disk cache (or the network)
+    /// into memory before the people row draws, so its first frame has faces
+    /// instead of initials that swap a moment later (Wes, 2026-10-02).
+    func warmProfileImages(_ users: [User]) {
+        for user in users {
+            guard let url = user.profilePicture, !url.isEmpty else { continue }
+            let key = Self.profileCacheKey(userId: user.id, url: url)
+            guard cachedImage(forKey: key) == nil else { continue }
+            loadImageWithKey(from: url, cacheKey: key) { _ in }
+        }
+    }
     
     // Load profile image with user-specific cache key to prevent collisions
     func loadProfileImage(for userId: String, from urlString: String?, completion: @escaping (UIImage?) -> Void) {

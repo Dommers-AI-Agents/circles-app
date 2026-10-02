@@ -91,10 +91,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             Logger.debug("🧹 Starting media cache cleanup...")
             MediaCacheService.shared.cleanupExpiredCache()
             
-            // Clear potentially corrupted activity feed image caches
-            Logger.debug("🧹 Clearing activity feed image caches to fix corruption...")
-            ImageService.shared.clearActivityFeedCaches()
-            
+            // (No longer wipes the downloaded-image cache on every launch: an
+            // Aug 2025 "fix corruption" step that made every avatar and feed
+            // photo re-download on each cold start — the initials-then-face
+            // flash in the people row. Expired entries are still cleaned above.)
+
             let stats = MediaCacheService.shared.getCacheStatistics()
             Logger.debug("📊 Media Cache Statistics:")
             Logger.debug("   - Total items: \(stats.itemCount)")

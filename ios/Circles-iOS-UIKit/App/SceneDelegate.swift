@@ -574,7 +574,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// side effects.
     private func installMainInterface(with data: PreloadedData?, transitionDuration: TimeInterval) {
         // Before home's people row is built, so it paints these immediately
-        if let data { NetworkManager.shared.seedConnectionsFromLaunchCache(data.connections) }
+        if let data {
+            NetworkManager.shared.seedConnectionsFromLaunchCache(data.connections)
+            // …and their faces, from disk, before the row's first frame
+            ImageService.shared.warmProfileImages(data.connections.compactMap(\.connectedUser))
+        }
         let mainTabController = CirclesTabBarController()
 
         if let data = data,
