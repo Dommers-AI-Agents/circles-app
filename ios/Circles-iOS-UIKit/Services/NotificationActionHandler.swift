@@ -171,7 +171,7 @@ final class NotificationActionHandler {
 
         case MotivationQuickLog.didItAction:
             // Held until the write lands, like the water cup. Then today's
-            // remaining coach texts are dropped.
+            // remaining coach notifications are dropped.
             Task {
                 let store: WidgetDataStore = KeychainService.shared.getUserId().map(AppWidgetHost.makeDataStore(userId:)) ?? HomeWidgetsAPIDataStore()
                 do {
