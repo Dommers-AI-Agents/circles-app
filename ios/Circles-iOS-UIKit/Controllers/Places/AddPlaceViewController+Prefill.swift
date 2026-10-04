@@ -244,6 +244,11 @@ extension AddPlaceViewController {
         // quick-add button can skip the circle picker next time
         UserDefaults.standard.set(selectedCircleId, forKey: Self.lastUsedCircleKey)
 
+        if returnsToCallerAfterSave, let nav = navigationController, nav.viewControllers.count > 1 {
+            nav.popViewController(animated: true)
+            return
+        }
+
         // Check if this view controller is being presented modally
         let isModal = self.presentingViewController != nil
         

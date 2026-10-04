@@ -522,6 +522,15 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     var downloadedGoogleImage: UIImage?
     var downloadedLookAroundImage: UIImage?
     var uploadedPhotoUrls: [String] = []
+
+    /// "From photos": open already filled with this business (applied once
+    /// the screen is up), and after a save go back to the caller instead of
+    /// on to the circle — the photo list continues from there.
+    var prefillMapItem: MKMapItem?
+    /// Where to start the map when there's no business to fill in
+    var prefillCenter: CLLocationCoordinate2D?
+    var returnsToCallerAfterSave = false
+    var photoFillPicker: PhotoFillPicker?
     
     let addPlaceButton: UIButton = {
         let button = UIButton(type: .system)
@@ -635,6 +644,15 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        if let item = prefillMapItem {
+            prefillMapItem = nil
+            enableManualEntry()
+            fillFormWithMapItem(item)
+            mapView.setRegion(MKCoordinateRegion(center: item.placemark.coordinate, latitudinalMeters: 500, longitudinalMeters: 500), animated: false)
+        } else if let center = prefillCenter {
+            prefillCenter = nil
+            mapView.setRegion(MKCoordinateRegion(center: center, latitudinalMeters: 500, longitudinalMeters: 500), animated: false)
+        }
         
         // Force map to render properly
         mapView.setNeedsDisplay()
@@ -790,6 +808,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             target: self,
             action: #selector(cancelButtonTapped)
         )
+        // Photos taken there (e.g. with no signal) → the place they were taken at
+        installFromPhotoButton()
         
         // Add subviews
         view.addSubview(scrollView)
@@ -1120,29 +1140,15 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Tapping the map should select the place at that spot, not drop a bare
         // pin - find the nearest POI around the tap and treat it as a selection.
         // Only when nothing is nearby does it fall back to a manual location pin.
-        let request = MKLocalPointsOfInterestRequest(center: coordinate, radius: 100)
-        let search = MKLocalSearch(request: request)
-        search.start { [weak self] response, _ in
+        NearbyPOILookup.pointsOfInterest(near: coordinate, radius: 100) { [weak self] items in
             guard let self = self else { return }
-
-            let tapLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-            let nearest = response?.mapItems.min { a, b in
-                let distanceA = tapLocation.distance(from: CLLocation(latitude: a.placemark.coordinate.latitude,
-                                                                      longitude: a.placemark.coordinate.longitude))
-                let distanceB = tapLocation.distance(from: CLLocation(latitude: b.placemark.coordinate.latitude,
-                                                                      longitude: b.placemark.coordinate.longitude))
-                return distanceA < distanceB
-            }
-
-            DispatchQueue.main.async {
-                if let mapItem = nearest {
-                    Logger.debug("📍 Map tap selected nearest place: \(mapItem.name ?? "Unknown")")
-                    self.enableManualEntry()
-                    self.fillFormWithMapItem(mapItem)
-                } else {
-                    Logger.debug("📍 No place found near tap - using manual location")
-                    self.handleManualLocationTap(at: coordinate)
-                }
+            if let mapItem = items.first {
+                Logger.debug("📍 Map tap selected nearest place: \(mapItem.name ?? "Unknown")")
+                self.enableManualEntry()
+                self.fillFormWithMapItem(mapItem)
+            } else {
+                Logger.debug("📍 No place found near tap - using manual location")
+                self.handleManualLocationTap(at: coordinate)
             }
         }
     }

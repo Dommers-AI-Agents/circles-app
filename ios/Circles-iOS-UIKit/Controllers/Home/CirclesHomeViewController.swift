@@ -1841,7 +1841,17 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         searchScopeDropdownHeightConstraint = searchScopeDropdownView.heightAnchor.constraint(equalToConstant: 0)
         searchScopeDropdownHeightConstraint?.isActive = true
         
-        quickAddPlaceButton.addTarget(self, action: #selector(quickAddPlaceButtonTapped), for: .touchUpInside)
+        // Add Place: search (as always) or save the places your photos were
+        // taken at — for days out with no signal (Wes, 2026-10-04)
+        quickAddPlaceButton.menu = UIMenu(children: [
+            UIAction(title: "Search for a place", image: UIImage(systemName: "magnifyingglass")) { [weak self] _ in
+                self?.quickAddPlaceButtonTapped()
+            },
+            UIAction(title: "From photos", image: UIImage(systemName: "photo.on.rectangle")) { [weak self] _ in
+                self?.addPlacesFromPhotos()
+            }
+        ])
+        quickAddPlaceButton.showsMenuAsPrimaryAction = true
         mapExpandButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
         searchScopeButton.addTarget(self, action: #selector(searchScopeButtonTapped), for: .touchUpInside)
         
@@ -3049,6 +3059,26 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         let navController = UINavigationController(rootViewController: quickStartVC)
         navController.modalPresentationStyle = .pageSheet
         present(navController, animated: true)
+    }
+
+    /// Pick photos, then "Places from your photos" groups them by where they
+    /// were taken and offers each spot.
+    func addPlacesFromPhotos() {
+        guard !circles.isEmpty else { quickAddPlaceButtonTapped(); return }   // seeds circles first
+        PhotoPickerRelay.present(from: self, configuration: PhotoMetadataReader.pickerConfiguration()) { [weak self] results in
+            guard let self else { return }
+            let loading = AlertPresenter.showLoading(message: "Reading your photos…", from: self)
+            PhotoMetadataReader.load(results) { [weak self] picked in
+                loading.dismiss(animated: true) {
+                    guard let self, !picked.isEmpty else { return }
+                    let lastUsed = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey)
+                    let circleId = self.circles.first { $0.id == lastUsed }?.id ?? self.circles[0].id
+                    let screen = PhotoPlacesViewController(picked: picked, savedPlaces: self.userOwnPlaces,
+                                                           circles: self.circles, defaultCircleId: circleId)
+                    self.navigationController?.pushViewController(screen, animated: true)
+                }
+            }
+        }
     }
 
     @objc func quickAddPlaceButtonTapped() {
