@@ -892,6 +892,10 @@ class PlaceService {
     private func createPlaceWithBody(_ body: [String: Any], offersPostSaveNudges: Bool = false, keepIfOffline: Bool? = nil,
                                      completion: @escaping (Result<Place, Error>) -> Void) {
         let keep = keepIfOffline ?? offersPostSaveNudges
+        var body = body
+        // One id per save, kept with it: a resend of a save that had in fact
+        // got through returns the existing place instead of a second copy
+        if keep, body["clientSaveId"] == nil { body["clientSaveId"] = UUID().uuidString }
         let keepForLater: () -> Bool = {
             guard keep, let id = PlaceSaveOutbox.shared.enqueue(body: body, placeName: body["name"] as? String ?? "Your place") else { return false }
             completion(.failure(PlaceSaveQueued(entryId: id, placeName: body["name"] as? String ?? "Your place")))
@@ -905,7 +909,6 @@ class PlaceService {
         }
 
         // Sticker rewards: if this place was opened from a shared link, credit the sharer
-        var body = body
         if let googlePlaceId = body["googlePlaceId"] as? String,
            let refUserId = RewardsService.shared.consumeShareAttribution(forGooglePlaceId: googlePlaceId) {
             body["refUserId"] = refUserId

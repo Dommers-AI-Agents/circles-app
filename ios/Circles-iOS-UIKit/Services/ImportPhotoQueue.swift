@@ -30,7 +30,7 @@ final class ImportPhotoQueue {
     }
 
     private struct DefaultPhotoResponse: Decodable {
-        struct Payload: Decodable { let applied: Bool }
+        struct Payload: Decodable { let applied: Bool; let reason: String? }
         let success: Bool
         let data: Payload
     }
@@ -145,9 +145,11 @@ final class ImportPhotoQueue {
             if place.tryGoogle == true {
                 self.googleDefaultPhoto(placeId: place.id) { outcome in
                     DispatchQueue.main.async {
-                        if outcome == true { applied += 1; next() }
-                        else if outcome == nil { next() }      // network trouble: retry on a later pass
-                        else { onDevicePhoto(place, coordinate) }
+                        switch outcome {
+                        case .added: applied += 1; next()
+                        case .noGooglePhoto: onDevicePhoto(place, coordinate)
+                        case .done, .later: next()   // already pictured / try again on a later pass
+                        }
                     }
                 }
                 return
@@ -191,17 +193,25 @@ final class ImportPhotoQueue {
         next()
     }
 
-    /// true = Google photo added; false = Google has none (go on-device);
-    /// nil = couldn't ask (no signal) — try again on a later pass.
-    private func googleDefaultPhoto(placeId: String, completion: @escaping (Bool?) -> Void) {
+    enum GoogleOutcome { case added, noGooglePhoto, done, later }
+
+    /// Only "Google has none" sends a place on to Look Around / a map; an
+    /// already-pictured place is done, and anything else (no signal, a
+    /// place unsaved meanwhile) waits for a later pass.
+    private func googleDefaultPhoto(placeId: String, completion: @escaping (GoogleOutcome) -> Void) {
         APIService.shared.request(
             endpoint: "places/\(placeId)/default-photo",
             method: .post,
             requiresAuth: true
         ) { (result: Result<DefaultPhotoResponse, APIError>) in
             switch result {
-            case .success(let response): completion(response.data.applied)
-            case .failure(let error): completion(NetworkErrorClassifier.isConnectivityFailure(error) ? nil : false)
+            case .success(let response) where response.data.applied: completion(.added)
+            case .success(let response):
+                switch response.data.reason {
+                case "no_google_photo", "not_eligible": completion(.noGooglePhoto)
+                default: completion(.done)    // has_photo / venue_has_photo
+                }
+            case .failure: completion(.later)
             }
         }
     }

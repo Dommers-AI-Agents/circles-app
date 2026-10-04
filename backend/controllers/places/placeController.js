@@ -804,6 +804,29 @@ exports.createPlace = async (req, res, next) => {
     // Check for duplicates before creating (excluding soft-deleted places)
     // Skip duplicate check if force flag is set (user selected "Add Anyway")
     const { googlePlaceId, name, address, force } = req.body;
+
+    // The same save sent twice (the phone kept it on a weak signal and
+    // resent it, but the first attempt had got through): one place, never
+    // two. Checked before `force`, which a resend carries too.
+    const clientSaveId = typeof req.body.clientSaveId === 'string' ? req.body.clientSaveId.slice(0, 64) : null;
+    if (clientSaveId) {
+      const again = await db.collection(COLLECTIONS.PLACES)
+        .where('addedBy', '==', req.user.uid)
+        .where('clientSaveId', '==', clientSaveId)
+        .limit(1)
+        .get();
+      if (!again.empty) {
+        return res.status(400).json({
+          success: false,
+          code: 'DUPLICATE_PLACE',
+          existingPlaceId: again.docs[0].id,
+          existingPlaceName: again.docs[0].data().name || name || null,
+          existingCircleId: again.docs[0].data().circleId || null,
+          existingCircleName: null,
+          message: 'Already saved'
+        });
+      }
+    }
     
     if (!force) {
       if (googlePlaceId) {
@@ -869,6 +892,7 @@ exports.createPlace = async (req, res, next) => {
 
     // Create place data
     const placeData = createPlace(req.body, circleId, req.user.uid);
+    if (clientSaveId) placeData.clientSaveId = clientSaveId;
 
     // Which of the photos are the saver's OWN. `photos` is a mixed bag by the
     // time it arrives — the phone folds Google's stock photo and an Apple Look

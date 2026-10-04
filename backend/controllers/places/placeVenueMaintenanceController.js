@@ -472,7 +472,7 @@ exports.getPlacesNeedingPhoto = async (req, res) => {
     snapshot.forEach(doc => {
       const p = doc.data();
       // Imports, and saves the app stored before their photo (needsPhoto)
-      if (p.deletedAt || (!p.importSource && !p.needsPhoto)) return;
+      if (p.deletedAt || (!p.importSource && p.needsPhoto !== true)) return;
       if (Array.isArray(p.photos) && p.photos.length > 0) return;
       if ((p.photoFallbackAttempts || 0) >= 2) return;
       const coords = p.location && p.location.coordinates;
@@ -509,10 +509,17 @@ exports.setDefaultGooglePhoto = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not your place' });
     }
     const done = (applied, reason) => res.json({ success: true, data: { placeId: ref.id, applied, reason } });
-    if (Array.isArray(place.photos) && place.photos.length > 0) return done(false, 'has_photo');
+    // Already pictured (its own photo, or one in the place's library — e.g.
+    // the saver's photo arrived later through the outbox): nothing to add,
+    // and it leaves the background queue for good
+    const settle = async (reason) => {
+      await ref.update({ needsPhoto: false, updatedAt: new Date().toISOString() });
+      return done(false, reason);
+    };
+    if (Array.isArray(place.photos) && place.photos.length > 0) return settle('has_photo');
     if (place.globalPlaceId) {
       const venue = await db.collection('globalPlaces').doc(place.globalPlaceId).get();
-      if (venue.exists && (venue.data().photos || []).length > 0) return done(false, 'venue_has_photo');
+      if (venue.exists && (venue.data().photos || []).length > 0) return settle('venue_has_photo');
     }
     if (place.importSource || place.googlePhotoChecked) return done(false, 'not_eligible');
 

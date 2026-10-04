@@ -117,6 +117,7 @@ final class PlaceSaveOutbox {
                         self.close(entry, message: "\(entry.placeName) was already saved")
                     } else {
                         let reason = (error as? APIError)?.serverMessage ?? error.localizedDescription
+                        Logger.error("📮 PlaceSaveOutbox: kept save of \(entry.placeName) refused after \(entry.attempts) attempt(s): \(reason)")
                         self.close(entry, message: "Couldn't save \(entry.placeName): \(reason)")
                     }
                 }
