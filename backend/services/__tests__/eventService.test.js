@@ -45,6 +45,9 @@ describe('what a member sees', () => {
     expect(e.members.map(m => m.id)).toEqual(['wes', 'sal']);
     expect(JSON.stringify(e)).not.toContain('ic_x');
     expect(svc.toClientEvent('e1', data, 'sal')).toMatchObject({ isHost: false, myCircleId: null });
+    const withInvites = { ...data, pendingInviteIds: ['amy', 'sal'], invited: { amy: { name: 'Amy' } } };
+    expect(svc.toClientEvent('e1', withInvites, 'wes').invited).toEqual([{ id: 'amy', name: 'Amy' }]);
+    expect(svc.toClientEvent('e1', data, 'wes').invited).toEqual([]);
   });
   test('event Inner Circle list = other members I am connected to', () => {
     expect(svc.listMembersFor(['wes', 'sal', 'joe', 'amy'], 'wes', new Set(['sal', 'amy', 'zed']))).toEqual(['sal', 'amy']);

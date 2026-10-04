@@ -106,6 +106,11 @@ const toClientEvent = (id, data, viewerId) => ({
     avatarUrl: (data.members && data.members[uid] && data.members[uid].avatarUrl) || null,
     isHost: uid === data.hostId
   })),
+  // Invited (in-app) and not joined yet — so the inviter sees it went out
+  invited: (data.pendingInviteIds || []).filter(uid => !(data.memberIds || []).includes(uid)).map(uid => ({
+    id: uid,
+    name: (data.invited && data.invited[uid] && data.invited[uid].name) || 'Invited'
+  })),
   inviteUrl: `${LINK_BASE}${data.inviteToken}`,
   myCircleId: (data.members && data.members[viewerId] && data.members[viewerId].circleId) || null
 });
@@ -321,7 +326,14 @@ async function inviteConnections(eventId, uid, userIds) {
   const connected = await getConnectedUserIds(uid);
   const invitees = wanted.filter(id => connected.has(id));
   if (!invitees.length) throw new ServiceError(400, 'not_connected', 'You can invite people you are connected with');
-  await ref.update({ pendingInviteIds: FieldValue.arrayUnion(...invitees), updatedAt: nowIso() });
+  // Names for the "Invited" rows (one batched read)
+  const userDocs = await db().getAll(...invitees.map(id => db().collection(COLLECTIONS.USERS).doc(id)));
+  const fields = ['pendingInviteIds', FieldValue.arrayUnion(...invitees), 'updatedAt', nowIso()];
+  userDocs.forEach((doc, i) => {
+    const name = doc.exists ? ((doc.data().displayName || '').trim() || 'Friend') : 'Friend';
+    fields.push(new FieldPath('invited', invitees[i]), { name, invitedAt: nowIso() });
+  });
+  await ref.update(...fields);
   const inviter = (data.members && data.members[uid] && data.members[uid].name) || 'A friend';
   for (const id of invitees) {
     notifyQuiet.sendInBackground(id, {
@@ -331,7 +343,8 @@ async function inviteConnections(eventId, uid, userIds) {
       data: { eventId: ref.id, eventToken: data.inviteToken }
     }, 'event_invite');
   }
-  return { invited: invitees.length };
+  const fresh = (await ref.get()).data();
+  return { invited: invitees.length, event: toClientEvent(ref.id, fresh, uid) };
 }
 
 async function leaveEvent(eventId, uid) {
