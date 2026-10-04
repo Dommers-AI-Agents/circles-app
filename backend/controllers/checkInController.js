@@ -44,7 +44,7 @@ const sseService = require('../services/sseService');
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
 const { indexSavedPlace } = require('../services/circleLocationSummary');
-const { ensureGlobalPlaceLink, findCanonicalByNameAndLocation, haversineMeters } = require('../services/globalPlaceResolver');
+const { ensureGlobalPlaceLink, findCanonicalByNameAndLocation } = require('../services/globalPlaceResolver');
 const checkInStats = require('../services/checkInStatsService');
 const { sanitizeCheckInRecipients, capPlaceText, gatedPlacesLookup } = require('../services/checkInGuards');
 
@@ -224,60 +224,9 @@ async function enrichPlaceWithGoogleData(placeName, location, options = {}) {
     return {};
   }
 }
-// Has this user already saved this VENUE? By canonical venue id when the
-// check-in resolved to one; otherwise by exact name — but only within
-// SAME_VENUE_RADIUS_METERS of the check-in when both sides have coordinates,
-// so a second Crunch Fitness across town is a new place, not the old save
-// (name-only matching attached every chain location to the first one saved).
-const SAME_VENUE_RADIUS_METERS = 200;
-const coordsOf = (location) => {
-  if (!location) return null;
-  if (Array.isArray(location.coordinates) && location.coordinates.length === 2) {
-    return { lng: location.coordinates[0], lat: location.coordinates[1] };
-  }
-  if (typeof location.latitude === 'number' && typeof location.longitude === 'number') {
-    return { lng: location.longitude, lat: location.latitude };
-  }
-  return null;
-};
-
-async function findExistingSaveOfVenue({ userId, globalPlaceId, placeName, location }) {
-  if (globalPlaceId) {
-    const byVenue = await db.collection(COLLECTIONS.PLACES)
-      .where('addedBy', '==', userId)
-      .where('globalPlaceId', '==', globalPlaceId)
-      .where('deletedAt', '==', null)
-      .limit(1)
-      .get();
-    if (!byVenue.empty) return byVenue.docs[0];
-  }
-  if (!placeName) return null;
-  const byName = await db.collection(COLLECTIONS.PLACES)
-    .where('name', '==', placeName)
-    .where('addedBy', '==', userId)
-    .where('deletedAt', '==', null)
-    .limit(10)
-    .get();
-  if (byName.empty) return null;
-  const here = coordsOf(location);
-  let best = null;
-  let bestDistance = Infinity;
-  let unlocated = null; // legacy exact-name fallback when distance can't be judged
-  byName.docs.forEach((doc) => {
-    const there = coordsOf(doc.data().location);
-    if (!here || !there) {
-      if (!unlocated) unlocated = doc;
-      return;
-    }
-    const distance = haversineMeters(here.lat, here.lng, there.lat, there.lng);
-    if (distance <= SAME_VENUE_RADIUS_METERS && distance < bestDistance) {
-      best = doc;
-      bestDistance = distance;
-    }
-  });
-  return best || unlocated;
-}
-exports.findExistingSaveOfVenue = findExistingSaveOfVenue;
+// Has this user already saved this VENUE? (services/ownSaveOfVenue — shared
+// with Add Place's duplicate answer)
+const { findExistingSaveOfVenue } = require('../services/ownSaveOfVenue');
 
 // Shared with createPlace (share-extension saves use the same
 // canonical-first-then-Google enrichment)

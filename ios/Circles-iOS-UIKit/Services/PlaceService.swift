@@ -852,166 +852,26 @@ class PlaceService {
             collectedImageUrls.append(contentsOf: preUploadedUrls)
         }
         
-        // Always try to collect Apple Look Around in addition to any pre-uploaded photos
-        let imageCollectionGroup = DispatchGroup()
-        
-        // Try to get Apple Look Around image if location is available
-        // Skip if we already have 2 or more pre-uploaded photos (likely means we have both Google and Apple)
-        let shouldFetchLookAround = (preUploadedPhotoUrls?.count ?? 0) < 2
-        if shouldFetchLookAround, let location = location, location.coordinates.count >= 2 {
-            Logger.debug("📸 DEBUG: Attempting to fetch Apple Look Around (pre-uploaded count: \(preUploadedPhotoUrls?.count ?? 0))")
-            let latitude = location.coordinates[1]
-            let longitude = location.coordinates[0]
-            let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-            
-            // Collect Apple Look Around image
-            if #available(iOS 16.0, *) {
-                Logger.debug("Checking Apple Look Around availability at \(coordinate)")
-                imageCollectionGroup.enter()
-                Task {
-                    let hasLookAround = await AppleLookAroundService.shared.checkLookAroundAvailability(at: coordinate)
-                    
-                    if hasLookAround {
-                        Logger.debug("Look Around is available")
-                        do {
-                            // Get the Look Around snapshot
-                            let lookAroundImage = try await AppleLookAroundService.shared.getLookAroundSnapshot(at: coordinate)
-                            Logger.debug("Got Look Around snapshot")
-                            
-                            // Convert to JPEG data
-                            if let imageData = lookAroundImage.jpegData(compressionQuality: 0.8) {
-                                // Upload the image using async continuation
-                                let uploadResult = await withCheckedContinuation { continuation in
-                                    self.uploadImage(imageData) { result in
-                                        continuation.resume(returning: result)
-                                    }
-                                }
-                                
-                                switch uploadResult {
-                                case .success(let imageUrl):
-                                    collectedImageUrls.append(imageUrl)
-                                    Logger.debug("Apple Look Around image uploaded successfully: \(imageUrl)")
-                                case .failure(let error):
-                                    Logger.error("Failed to upload Look Around image: \(error)")
-                                    Logger.warning("Will continue place creation without this image")
-                                }
-                            } else {
-                                Logger.error("Failed to convert Look Around image to JPEG")
-                            }
-                        } catch {
-                            Logger.error("Failed to get Look Around snapshot: \(error)")
-                        }
-                    } else {
-                        Logger.debug("Look Around is NOT available at this location")
-                    }
-                    
-                    // Always leave the dispatch group after all async operations complete
-                    imageCollectionGroup.leave()
-                }
-            } else {
-                Logger.debug("⚠️ PlaceService: iOS version < 16.0, skipping Look Around")
+        // Save now, with the photos already uploaded. This used to wait on an
+        // Apple Look Around snapshot AND a Google photo (download + upload
+        // each) before the place was even sent — on a weak signal saving
+        // hung on "Creating Place" (Wes, 2026-10-04). A place saved with no
+        // photo is flagged needsPhoto by the server, and ImportPhotoQueue
+        // fills in a free Look Around snapshot in the background.
+        if !collectedImageUrls.isEmpty {
+            // Only the add-place screen opts into the post-save moment, and
+            // only it hands us photos the user picked — so that is exactly
+            // when the pre-uploaded URLs can be declared as theirs.
+            if offersPostSaveNudges, let ownUrls = preUploadedPhotoUrls, !ownUrls.isEmpty {
+                body["ownPhotoUrls"] = ownUrls
             }
-        } else if !shouldFetchLookAround {
-            Logger.debug("📸 DEBUG: Skipping Apple Look Around fetch - already have \(preUploadedPhotoUrls?.count ?? 0) pre-uploaded photos")
+            var seen = Set<String>()
+            body["photos"] = collectedImageUrls.filter { seen.insert($0).inserted }
         }
-        
-        // Try to get Google Places photo if googlePlaceId is available and we don't already have Google photos
-        // Skip if we already have pre-uploaded photos (which are likely Google Places photos)
-        if let googlePlaceId = googlePlaceId, !googlePlaceId.isEmpty, (preUploadedPhotoUrls?.isEmpty ?? true) {
-            Logger.debug("🔍 PlaceService: Fetching Google Places photo for placeId: \(googlePlaceId)")
-            imageCollectionGroup.enter()
-            
-            // Fetch place details including photos
-            GooglePlacesService.shared.fetchPlaceDetails(placeID: googlePlaceId) { result in
-                switch result {
-                case .success(let place):
-                    // Get the first photo if available
-                    if let photoMetadata = place.photos?.first {
-                        Logger.debug("📸 PlaceService: Found Google Places photo metadata, loading photo...")
-                        GooglePlacesService.shared.loadPhoto(from: photoMetadata) { photoResult in
-                            switch photoResult {
-                            case .success(let image):
-                                Logger.debug("✅ PlaceService: Google Places photo loaded successfully")
-                                // Convert to JPEG and upload
-                                if let imageData = image.jpegData(compressionQuality: 0.8) {
-                                    Logger.debug("📸 PlaceService: Converting Google photo to JPEG (size: \(imageData.count / 1024) KB)")
-                                    self.uploadImage(imageData) { uploadResult in
-                                        switch uploadResult {
-                                        case .success(let imageUrl):
-                                            collectedImageUrls.append(imageUrl)
-                                            // Photo uploaded successfully
-                                        case .failure(let error):
-                                            Logger.debug("⚠️ Failed to upload place photo, continuing without it")
-                                            
-                                            // Check if it's specifically a server error
-                                            if let apiError = error as? APIError, case .serverError = apiError {
-                                                Logger.debug("🔧 PlaceService: Server error - Firebase Storage may not be configured properly")
-                                                Logger.debug("🔧 PlaceService: Run: gcloud run services update circles-backend --update-env-vars FIREBASE_STORAGE_BUCKET=circles-app-83b67.appspot.com --region us-central1")
-                                            }
-                                        }
-                                        imageCollectionGroup.leave()
-                                    }
-                                } else {
-                                    // Failed to convert photo
-                                    imageCollectionGroup.leave()
-                                }
-                            case .failure(let error):
-                                // Failed to load photo
-                                imageCollectionGroup.leave()
-                            }
-                        }
-                    } else {
-                        Logger.debug("⚠️ PlaceService: No photos available from Google Places")
-                        imageCollectionGroup.leave()
-                    }
-                case .failure(let error):
-                    // Failed to fetch place details
-                    imageCollectionGroup.leave()
-                }
-            }
-        } else {
-            if !collectedImageUrls.isEmpty {
-                Logger.debug("⚠️ PlaceService: Skipping Google Places photo - already have pre-uploaded photos")
-            } else {
-                Logger.debug("⚠️ PlaceService: No googlePlaceId provided or empty, skipping Google Places photo")
-            }
-        }
-        
-        // Wait for all image collection tasks to complete
-        imageCollectionGroup.notify(queue: .main) {
-            Logger.debug("🔔 PlaceService: All image collection tasks completed")
-            
-            // Add collected images to the body
-            if !collectedImageUrls.isEmpty {
-                // Remove duplicates before sending
-                // Only the add-place screen opts into the post-save moment, and
-                // only it hands us photos the user picked — so that is exactly
-                // when the pre-uploaded URLs can be declared as theirs. Google's
-                // stock photo and the Look Around still are in the same array
-                // below and must not be mistaken for them.
-                if offersPostSaveNudges, let ownUrls = preUploadedPhotoUrls, !ownUrls.isEmpty {
-                    body["ownPhotoUrls"] = ownUrls
-                }
-                let uniqueUrls = Array(Set(collectedImageUrls))
-                if uniqueUrls.count != collectedImageUrls.count {
-                    Logger.debug("⚠️ PlaceService: Found \(collectedImageUrls.count - uniqueUrls.count) duplicate photo URLs, removing duplicates")
-                }
-                
-                body["photos"] = uniqueUrls
-                Logger.debug("📸 PlaceService: Collected \(uniqueUrls.count) unique images for the place")
-                for (index, url) in uniqueUrls.enumerated() {
-                    Logger.debug("  Image \(index + 1): \(url)")
-                }
-            } else {
-                Logger.debug("⚠️ PlaceService: No images were collected for the place")
-                Logger.debug("⚠️ PlaceService: Creating place without images - image upload may have failed")
-                Logger.debug("🔧 PlaceService: If images aren't uploading, check Firebase Storage configuration")
-            }
-            
-            // Create the place with collected data
-            
-            // Create the place with collected images (or without if upload failed)
-            self.createPlaceWithBody(body, offersPostSaveNudges: offersPostSaveNudges, completion: completion)
+        let savedWithoutPhoto = collectedImageUrls.isEmpty
+        createPlaceWithBody(body, offersPostSaveNudges: offersPostSaveNudges) { result in
+            if case .success = result, savedWithoutPhoto { ImportPhotoQueue.shared.kick() }
+            completion(result)
         }
     }
     

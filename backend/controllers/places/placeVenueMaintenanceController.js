@@ -458,7 +458,7 @@ exports.getUnresolvedPlaces = async (req, res) => {
   }
 };
 
-// @desc    Own IMPORTED places that still have no photo — the app fills in a
+// @desc    Own IMPORTED (or needsPhoto) places that still have no photo — the app fills in a
 //          free on-device Apple Look Around snapshot for each (imports never
 //          spend on Google photos). Two failed passes retire a row.
 // @route   GET /api/places/needs-photo
@@ -471,7 +471,8 @@ exports.getPlacesNeedingPhoto = async (req, res) => {
     const places = [];
     snapshot.forEach(doc => {
       const p = doc.data();
-      if (p.deletedAt || !p.importSource) return;
+      // Imports, and saves the app stored before their photo (needsPhoto)
+      if (p.deletedAt || (!p.importSource && !p.needsPhoto)) return;
       if (Array.isArray(p.photos) && p.photos.length > 0) return;
       if ((p.photoFallbackAttempts || 0) >= 2) return;
       const coords = p.location && p.location.coordinates;

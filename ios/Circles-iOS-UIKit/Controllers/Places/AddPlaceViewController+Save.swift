@@ -2,7 +2,7 @@ import UIKit
 import CoreLocation
 
 // The save flow for AddPlaceViewController: Save tap → validation →
-// duplicate check → staged alerts → place creation (three payload builders,
+// place creation (the server answers duplicates) → staged alerts (three payload builders,
 // each posting PlaceAddedToCircle). Moved verbatim from the core controller
 // (Phase 5 step 6); `isSaving`, the saving overlay and begin/endSaving stay
 // in the core because extensions can't hold stored state.
@@ -72,218 +72,74 @@ extension AddPlaceViewController {
         // Get privacy setting from segmented control
         let privacy: PlacePrivacy = privacySegmentedControl.selectedSegmentIndex == 0 ? .followCirclePrivacy : .private
         
-        // Guard the whole create flow (duplicate check -> create -> navigate)
-        // against a second tap; released on every failure/cancel path
+        // Guard the whole create flow (create -> navigate) against a second
+        // tap; released on every failure/cancel path
         beginSaving()
 
-        // First check for duplicates
-        let checkingAlert = UIAlertController(title: "Checking...", message: "Verifying place doesn't already exist", preferredStyle: .alert)
-        present(checkingAlert, animated: true)
-        
-        // Check for duplicate places
-        checkForDuplicatePlace(name: name, address: address, googlePlaceId: selectedGooglePlaceDetails?.placeID) { [weak self] duplicatePlace, duplicateCircle in
-            DispatchQueue.main.async {
-                checkingAlert.dismiss(animated: true) {
-                    if let duplicate = duplicatePlace, let circle = duplicateCircle {
-                        // Show alert about duplicate
-                        let alert = UIAlertController(
-                            title: "Similar Place Found",
-                            message: "You already have \"\(duplicate.name)\" in your \"\(circle.name)\" circle. What would you like to do?",
-                            preferredStyle: .alert
-                        )
-                        
-                        alert.addAction(UIAlertAction(title: "View Place", style: .default) { _ in
-                            // Navigate to the circle detail view with the duplicate place
-                            self?.navigateToCircleDetail()
-                        })
-                        
-                        alert.addAction(UIAlertAction(title: "Add Anyway", style: .default) { _ in
-                            // User wants to add the place despite it being a duplicate
-                            self?.proceedWithPlaceCreation(
-                                name: name,
-                                address: address,
-                                description: description,
-                                category: category,
-                                customCategory: customCategory,
-                                subcategory: subcategory,
-                                privacy: privacy,
-                                privateNotes: privateNotes.isEmpty ? nil : privateNotes,
-                                force: true  // User explicitly chose to add despite duplicate
-                            )
-                        })
-                        
-                        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
-                            self?.endSaving()
-                        })
+        // Straight to the save. The server answers "you already have this
+        // in <circle>" itself (DUPLICATE_PLACE, handled in
+        // handleCreationFailure) — this used to download every place in
+        // every circle first, which hung on a weak signal (Wes, 2026-10-04).
+        let attempt: (Bool) -> Void = { [weak self] force in
+            self?.proceedWithPlaceCreation(
+                name: name,
+                address: address,
+                description: description,
+                category: category,
+                customCategory: customCategory,
+                subcategory: subcategory,
+                privacy: privacy,
+                privateNotes: privateNotes.isEmpty ? nil : privateNotes,
+                force: force
+            )
+        }
+        addAnywayRetry = { [weak self] in
+            self?.beginSaving()
+            attempt(true)
+        }
+        attempt(false)
+    }
 
-                        self?.present(alert, animated: true)
-                    } else {
-                        // No duplicate found, proceed with creation
-                        self?.proceedWithPlaceCreation(
-                            name: name,
-                            address: address,
-                            description: description,
-                            category: category,
-                            customCategory: customCategory,
-                            subcategory: subcategory,
-                            privacy: privacy,
-                            privateNotes: privateNotes.isEmpty ? nil : privateNotes,
-                        )
-                    }
-                }
-            }
+    // MARK: - "You already have this place"
+
+    /// Re-runs the last save with the duplicate check off ("Add Anyway").
+    /// Held on the controller (an extension can't add stored properties).
+    var addAnywayRetry: (() -> Void)? {
+        get { objc_getAssociatedObject(self, &AddPlaceSaveKeys.retry) as? () -> Void }
+        set { objc_setAssociatedObject(self, &AddPlaceSaveKeys.retry, newValue, .OBJC_ASSOCIATION_COPY_NONATOMIC) }
+    }
+
+    /// Every failed save lands here: a duplicate gets its choices, anything
+    /// else the usual error (incl. the place-limit paywall).
+    func handleCreationFailure(_ error: Error) {
+        guard let duplicate = PlaceDuplicate.from(error) else {
+            presentPlaceCreationError(error)
+            return
+        }
+        let alert = UIAlertController(title: "Similar Place Found", message: duplicate.message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "View Place", style: .default) { [weak self] _ in
+            self?.showExistingPlace(duplicate.placeId)
+        })
+        alert.addAction(UIAlertAction(title: "Add Anyway", style: .default) { [weak self] _ in
+            self?.addAnywayRetry?()
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    /// Leave Add Place and open the place they already saved.
+    private func showExistingPlace(_ placeId: String) {
+        let open = {
+            NotificationCenter.default.post(name: Notification.Name("NavigateToPlace"), object: placeId)
+        }
+        if presentingViewController != nil {
+            dismiss(animated: true, completion: open)
+        } else {
+            navigationController?.popViewController(animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: open)
         }
     }
-    
-    func checkForDuplicatePlace(name: String, address: String, googlePlaceId: String?, completion: @escaping (Place?, Circle?) -> Void) {
-        // Get all circles for the user
-        CircleService.shared.fetchUserCircles { result in
-            switch result {
-            case .success(let circles):
-                let group = DispatchGroup()
-                var duplicatePlace: Place?
-                var duplicateCircle: Circle?
-                
-                // Check each circle for places
-                for circle in circles {
-                    group.enter()
-                    PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { placeResult in
-                        defer { group.leave() }
-                        
-                        if case .success(let places) = placeResult {
-                            // Check for duplicate by googlePlaceId first (most accurate)
-                            if let googleId = googlePlaceId, !googleId.isEmpty {
-                                if let match = places.first(where: { $0.googlePlaceId == googleId }) {
-                                    duplicatePlace = match
-                                    duplicateCircle = circle
-                                    return
-                                }
-                            }
-                            
-                            // Check by name and address similarity
-                            for place in places {
-                                // Exact name match
-                                if place.name.lowercased() == name.lowercased() {
-                                    // Check if addresses are similar
-                                    let placeAddressLower = place.address.lowercased()
-                                    let newAddressLower = address.lowercased()
-                                    
-                                    // Parse address components more intelligently
-                                    let placeComponents = placeAddressLower.components(separatedBy: ", ").map { $0.trimmingCharacters(in: .whitespaces) }
-                                    let newComponents = newAddressLower.components(separatedBy: ", ").map { $0.trimmingCharacters(in: .whitespaces) }
-                                    
-                                    // Extract key location identifiers (city, state, zip)
-                                    // For US addresses, typically: "123 Main St, City, State Zip, Country"
-                                    // We want to focus on city and state for differentiation
-                                    
-                                    // Try to find state abbreviations (2 letters) or zip codes (5 digits)
-                                    let statePattern = #"^[a-z]{2}$"#
-                                    let zipPattern = #"^\d{5}(-\d{4})?$"#
-                                    
-                                    var placeState: String? = nil
-                                    var placeCity: String? = nil
-                                    var placeZip: String? = nil
-                                    
-                                    var newState: String? = nil
-                                    var newCity: String? = nil
-                                    var newZip: String? = nil
-                                    
-                                    // Parse existing place address
-                                    for (index, component) in placeComponents.enumerated() {
-                                        // Check if it's a state abbreviation
-                                        if component.range(of: statePattern, options: .regularExpression) != nil {
-                                            placeState = component
-                                            // City is usually before state
-                                            if index > 0 {
-                                                placeCity = placeComponents[index - 1]
-                                            }
-                                        }
-                                        // Check if it's a zip code
-                                        if component.range(of: zipPattern, options: .regularExpression) != nil {
-                                            placeZip = component
-                                        }
-                                    }
-                                    
-                                    // Parse new address
-                                    for (index, component) in newComponents.enumerated() {
-                                        // Check if it's a state abbreviation
-                                        if component.range(of: statePattern, options: .regularExpression) != nil {
-                                            newState = component
-                                            // City is usually before state
-                                            if index > 0 {
-                                                newCity = newComponents[index - 1]
-                                            }
-                                        }
-                                        // Check if it's a zip code
-                                        if component.range(of: zipPattern, options: .regularExpression) != nil {
-                                            newZip = component
-                                        }
-                                    }
-                                    
-                                    // If we found states and they're different, it's not a duplicate
-                                    if let pState = placeState, let nState = newState, pState != nState {
-                                        continue // Not a duplicate, different states
-                                    }
-                                    
-                                    // If we found cities and they're different, it's not a duplicate
-                                    if let pCity = placeCity, let nCity = newCity {
-                                        // Remove common words like "township", "city", etc. for comparison
-                                        let pCityClean = pCity.replacingOccurrences(of: "township", with: "", options: .caseInsensitive)
-                                            .replacingOccurrences(of: "city", with: "", options: .caseInsensitive)
-                                            .trimmingCharacters(in: .whitespaces)
-                                        let nCityClean = nCity.replacingOccurrences(of: "township", with: "", options: .caseInsensitive)
-                                            .replacingOccurrences(of: "city", with: "", options: .caseInsensitive)
-                                            .trimmingCharacters(in: .whitespaces)
-                                        
-                                        if pCityClean != nCityClean {
-                                            continue // Not a duplicate, different cities
-                                        }
-                                    }
-                                    
-                                    // If we found zip codes and they're different, it's not a duplicate
-                                    if let pZip = placeZip, let nZip = newZip, pZip != nZip {
-                                        continue // Not a duplicate, different zip codes
-                                    }
-                                    
-                                    // If we couldn't determine city/state/zip differences, do a more strict check
-                                    // Consider it a duplicate only if addresses are very similar (not just having common words)
-                                    if placeAddressLower == newAddressLower {
-                                        // Exact address match - definitely a duplicate
-                                        duplicatePlace = place
-                                        duplicateCircle = circle
-                                        return
-                                    }
-                                    
-                                    // Check if street addresses are the same (first component is usually street)
-                                    if placeComponents.count > 0 && newComponents.count > 0 {
-                                        let placeStreet = placeComponents[0]
-                                        let newStreet = newComponents[0]
-                                        
-                                        // If street addresses are the same AND we couldn't differentiate by city/state/zip
-                                        // then it might be a duplicate
-                                        if placeStreet == newStreet && placeState == newState && placeCity == newCity {
-                                            duplicatePlace = place
-                                            duplicateCircle = circle
-                                            return
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                group.notify(queue: .main) {
-                    completion(duplicatePlace, duplicateCircle)
-                }
-                
-            case .failure:
-                // If we can't check for duplicates, allow creation
-                completion(nil, nil)
-            }
-        }
-    }
-    
+
     func proceedWithPlaceCreation(name: String, address: String, description: String, 
                                         category: PlaceCategory, customCategory: String?, 
                                         subcategory: String?, privacy: PlacePrivacy,
@@ -451,7 +307,7 @@ extension AddPlaceViewController {
                         case .failure(let error):
                             Logger.debug("❌ Failed to create place from POI: \(error)")
                             self?.endSaving()
-                            self?.presentPlaceCreationError(error)
+                            self?.handleCreationFailure(error)
                         }
                     }
                 }
@@ -597,7 +453,7 @@ extension AddPlaceViewController {
                     case .failure(let error):
                         Logger.debug("❌ Failed to create place: \(error)")
                         self?.endSaving()
-                        self?.presentPlaceCreationError(error)
+                        self?.handleCreationFailure(error)
                     }
                 }
             }
@@ -676,10 +532,14 @@ extension AddPlaceViewController {
                     case .failure(let error):
                         Logger.debug("❌ Failed to create place: \(error)")
                         self?.endSaving()
-                        self?.presentPlaceCreationError(error)
+                        self?.handleCreationFailure(error)
                     }
                 }
             }
         }
     }
+}
+
+private enum AddPlaceSaveKeys {
+    static var retry: UInt8 = 0
 }

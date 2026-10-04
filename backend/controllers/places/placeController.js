@@ -839,6 +839,30 @@ exports.createPlace = async (req, res, next) => {
           });
         }
       }
+      // The same venue in ANY of the user's circles: one lookup here instead
+      // of the app downloading every circle's places before saving (the
+      // weak-signal hang, Wes 2026-10-04). The app offers View / Add Anyway.
+      const { findOwnSaveForNewPlace } = require('../../services/ownSaveOfVenue');
+      const existing = await findOwnSaveForNewPlace({
+        userId: req.user.uid, googlePlaceId, name, location: req.body.location
+      });
+      if (existing) {
+        const existingData = existing.data();
+        const existingCircle = existingData.circleId
+          ? await db.collection(COLLECTIONS.CIRCLES).doc(existingData.circleId).get()
+          : null;
+        return res.status(400).json({
+          success: false,
+          code: 'DUPLICATE_PLACE',
+          existingPlaceId: existing.id,
+          existingPlaceName: existingData.name || name || null,
+          existingCircleId: existingData.circleId || null,
+          existingCircleName: existingCircle && existingCircle.exists ? (existingCircle.data().name || null) : null,
+          message: existingCircle && existingCircle.exists
+            ? `You already have ${existingData.name || 'this place'} in ${existingCircle.data().name}`
+            : 'You already saved this place'
+        });
+      }
     } else {
       console.log('⚠️ Duplicate check bypassed with force flag for place:', { name, address, googlePlaceId });
     }
@@ -1120,6 +1144,17 @@ exports.createPlace = async (req, res, next) => {
         ownUrls: ownPhotoUrls,
         isPrivate: require('../../services/placePhotoService').effectivelyPrivate(placeData.privacy, circle && circle.privacy)
       });
+      // Saved without a photo (the app no longer waits on Look Around or
+      // Google before saving): if the place still has none anywhere, the
+      // app's background pass adds a free Look Around snapshot later.
+      if (!(placeData.photos || []).length) {
+        try {
+          const venue = await db.collection('globalPlaces').doc(globalPlaceId).get();
+          if (!venue.exists || !(venue.data().photos || []).length) {
+            await placeRef.update({ needsPhoto: true });
+          }
+        } catch (e) { /* best-effort: the place is saved either way */ }
+      }
     }
 
     // Keep the browse location tree fresh: bump this circle's summary and drop
