@@ -49,6 +49,10 @@ enum DeepLinkDestination: Equatable {
     /// or `circles://postcard/<token>` (the web page's "Open it in the app").
     /// Opens the Postcard widget showing that card, with "Send one back".
     case postcardShare(token: String)
+    /// An event invite — `/app/event/<token>` (the link in a group text) or
+    /// `circles://event/<token>` (the page's button). Opens the Events
+    /// widget on the join screen.
+    case eventInvite(token: String)
 }
 
 /// Interprets universal links (https://api.favcircles.com/…) and the custom
@@ -96,6 +100,8 @@ struct DeepLinkRouter {
                 return parts.count >= 3 ? .workout(token: parts[2]) : nil
             case "postcard":
                 return parts.count >= 3 ? .postcardShare(token: parts[2]) : nil
+            case "event":
+                return parts.count >= 3 ? .eventInvite(token: parts[2]) : nil
             case "circle":
                 return parts.count >= 3 ? .circle(id: parts[2], shareToken: query(url, "share")) : nil
             case "connect":
@@ -176,6 +182,8 @@ struct DeepLinkRouter {
             return .workout(token: hostPathId)
         case "postcard" where !hostPathId.isEmpty:
             return .postcardShare(token: hostPathId)
+        case "event" where !hostPathId.isEmpty:
+            return .eventInvite(token: hostPathId)
         case "network":
             return .network
         case "settings" where url.path == "/notifications":
@@ -206,6 +214,8 @@ struct DeepLinkRouter {
             return .workout(token: parts[2])
         case "postcard" where parts.count >= 3:
             return .postcardShare(token: parts[2])
+        case "event" where parts.count >= 3:
+            return .eventInvite(token: parts[2])
         case "connect" where parts.count >= 3:
             return .connectionInvite(userId: parts[2], referralCode: query(url, "code"), inviteToken: query(url, "t"))
         default:

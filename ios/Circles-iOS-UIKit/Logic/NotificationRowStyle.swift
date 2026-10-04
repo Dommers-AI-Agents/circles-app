@@ -24,6 +24,7 @@ enum NotificationRowStyle {
         case "milestone": return Style(symbol: "trophy.fill", color: .systemYellow)
         case "nextbar_round", "nextbar_result": return Style(symbol: "wineglass.fill", color: .systemPurple)
         case "postcard_order": return Style(symbol: "envelope.fill", color: .systemTeal)
+        case "event_invite", "event_joined", "event_photos": return Style(symbol: "party.popper.fill", color: .systemPurple)
         case "fridgemail": return Style(symbol: "photo.on.rectangle.angled", color: .systemOrange)
         case "favcoin_claim_settled": return Style(symbol: "dollarsign.circle.fill", color: .systemGreen)
         case "did_you_know": return Style(symbol: "sparkles", color: .systemIndigo)

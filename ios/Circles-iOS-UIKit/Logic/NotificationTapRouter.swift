@@ -15,6 +15,10 @@ enum NotificationDestination: Equatable {
     /// Coach Mane's "Send to someone": Motivation opened on that line with
     /// the send sheet up.
     case motivationSend(lineId: String)
+    /// An event invite push: the Events widget's join screen.
+    case eventInvite(token: String)
+    /// Someone joined / added photos: that event.
+    case eventOpen(id: String)
     case suggestions(placeId: String?, suggestionId: String?)
     /// `showComments` nil = post without userInfo (as `new_place` always did).
     case circle(id: String, showComments: Bool?)
@@ -77,6 +81,12 @@ enum NotificationTapRouter {
             return .homeWidget(id: "postcard")
         case "water_reminder": return .homeWidget(id: "water")
         case "motivation_reminder": return .homeWidget(id: "motivation")
+        case "event_invite":
+            if let token = string("eventToken", in: userInfo) { return .eventInvite(token: token) }
+            return .homeWidget(id: "events")
+        case "event_joined", "event_photos":
+            if let id = string("eventId", in: userInfo) { return .eventOpen(id: id) }
+            return .homeWidget(id: "events")
         case "motivation_send":
             if let lineId = string("lineId", in: userInfo) { return .motivationSend(lineId: lineId) }
             return .homeWidget(id: "motivation")

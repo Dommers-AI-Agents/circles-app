@@ -203,3 +203,17 @@ struct PostcardShareLinkTests {
         #expect(router.destination(for: URL(string: "circles://postcard")!) == nil)
     }
 }
+
+/// Event invites: the group-text link is the https form, the web page's
+/// button is the `circles://` form.
+@Suite("Event invite links")
+struct EventInviteLinkTests {
+    private let router = DeepLinkRouter()
+
+    @Test func universalAndCustomSchemeLinksOpenTheJoinScreen() {
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/event/abcdefghijklmnopqrst")!) == .eventInvite(token: "abcdefghijklmnopqrst"))
+        #expect(router.destination(for: URL(string: "circles://event/abcdefghijklmnopqrst")!) == .eventInvite(token: "abcdefghijklmnopqrst"))
+        #expect(router.destination(for: URL(string: "circles:///event/abcdefghijklmnopqrst")!) == .eventInvite(token: "abcdefghijklmnopqrst"))
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/event")!) == nil)
+    }
+}

@@ -28,6 +28,9 @@ struct NotificationTapRouterTests {
         #expect(route(["type": "postcard_order", "orderId": ""]) == .homeWidget(id: "postcard"))
         #expect(route(["type": "water_reminder"]) == .homeWidget(id: "water"))
         #expect(route(["type": "motivation_reminder"]) == .homeWidget(id: "motivation"))
+        #expect(route(["type": "event_invite", "eventToken": "tok"]) == .eventInvite(token: "tok"))
+        #expect(route(["type": "event_photos", "eventId": "e1"]) == .eventOpen(id: "e1"))
+        #expect(route(["type": "event_joined"]) == .homeWidget(id: "events"))
         // The notification's "Send to someone" action, re-routed by NotificationActionHandler
         #expect(route(["type": "motivation_send", "lineId": "0a1b2c3d"]) == .motivationSend(lineId: "0a1b2c3d"))
         #expect(route(["type": "motivation_send"]) == .homeWidget(id: "motivation"))

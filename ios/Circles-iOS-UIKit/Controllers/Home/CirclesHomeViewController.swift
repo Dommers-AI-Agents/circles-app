@@ -2139,13 +2139,13 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     func showWidgetsTab(openingWidget widgetId: String?, postcardOrderId: String? = nil, quoteId: String? = nil,
                         workoutPostId: String? = nil, drinkId: String? = nil,
                         motivationLineId: String? = nil, motivationSend: Bool = false,
-                        postcardShareToken: String? = nil) {
+                        postcardShareToken: String? = nil, eventToken: String? = nil, eventId: String? = nil) {
         contentSegmentedControl.selectedSegmentIndex = HomeContentSegment.widgets.rawValue
         showContentTab(.widgets)
         if let widgetId {
             widgetsTab.open(widgetId: widgetId, postcardOrderId: postcardOrderId, quoteId: quoteId, workoutPostId: workoutPostId,
                             drinkId: drinkId, motivationLineId: motivationLineId, motivationSend: motivationSend,
-                            postcardShareToken: postcardShareToken)
+                            postcardShareToken: postcardShareToken, eventToken: eventToken, eventId: eventId)
         }
     }
 

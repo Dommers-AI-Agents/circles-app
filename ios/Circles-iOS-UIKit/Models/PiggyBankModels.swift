@@ -71,6 +71,7 @@ struct PiggyLedgerEvent: Decodable {
         case "clip_signup": return "Joined FavCircles"
         case "weekly_goal": return "Weekly bonus"
         case "drink_received": return "A friend sent you a recipe"
+        case "event_joined": return "You joined an event"
         case "claim": return "Sent to your 🌵 wallet"
         case "share_points_converted": return "Store points converted to FavCoins"
         default: return eventType.replacingOccurrences(of: "_", with: " ").capitalized

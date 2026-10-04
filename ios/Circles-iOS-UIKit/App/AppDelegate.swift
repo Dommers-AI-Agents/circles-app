@@ -645,6 +645,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case .dailyQuote(let id):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "quote:\(id)",
                                 object: "quotes", userInfo: ["quoteId": id])
+        case .eventInvite(let token):
+            postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "event:\(token)",
+                                object: "events", userInfo: ["eventToken": token])
+        case .eventOpen(let id):
+            postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "event-id:\(id)",
+                                object: "events", userInfo: ["eventId": id])
         case .motivationSend(let lineId):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "motivation-send:\(lineId)",
                                 object: "motivation", userInfo: ["motivationLineId": lineId, "motivationSend": true])

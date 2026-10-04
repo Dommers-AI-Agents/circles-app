@@ -51,7 +51,7 @@ router.post('/events', perUserLimit({ bucket: 'event-create', windowMs: 86400000
 router.get('/events/invite/:token', events.previewInvite);
 router.post('/events/join', perUserLimit({ bucket: 'event-join', windowMs: 3600000, max: 30 }), events.join);
 router.get('/events/:id', events.getEvent);
-router.patch('/events/:id', events.update);
+router.put('/events/:id', events.update); // the widget API channel has no PATCH
 router.delete('/events/:id', events.end);
 router.post('/events/:id/invite', messageLimiter, events.invite);
 router.post('/events/:id/link/reset', events.resetLink);
