@@ -482,6 +482,21 @@ ${author ? `<p style="color:#7C6BD6;font-size:18px;font-weight:500;margin:0 0 36
 </body></html>`);
 });
 
+// Event invite link (Events widget / Party Bus). The app installed: the
+// Universal Link opens its join screen. Otherwise this page explains the event
+// and the two steps to join. No member names or photos here.
+app.get('/app/event/:token', async (req, res) => {
+  const token = String(req.params.token).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  const { renderEventInvite } = require('./views/eventPage');
+  let preview = null;
+  try {
+    preview = await require('./services/eventService').publicPreview(token);
+  } catch (e) {
+    if (e.status !== 404) console.warn('Event invite page:', e.message);
+  }
+  res.status(preview ? 200 : 404).send(renderEventInvite(token, preview));
+});
+
 // Texted workout link (AASA /app/*). With the app installed the Universal
 // Link opens the workout in the Workouts widget (view it, copy it, try the
 // widget). Everyone else sees the workout here and the way to get the app.

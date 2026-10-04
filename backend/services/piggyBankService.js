@@ -392,6 +392,15 @@ class PiggyBankService {
           if (!doc.exists || doc.data().deletedAt) return { valid: false, reason: 'message_deleted' };
           return { valid: true };
         }
+        case 'event_joined': {
+          // Still in the event, and it still exists (leave/removed/ended
+          // inside the window reverses the coin).
+          if (!ref.eventId) return { valid: false, reason: 'missing_event_ref' };
+          const doc = await this.db.collection(COLLECTIONS.EVENTS).doc(ref.eventId).get();
+          if (!doc.exists || doc.data().deletedAt) return { valid: false, reason: 'event_ended' };
+          const members = doc.data().memberIds || [];
+          return members.includes(entry.userId) ? { valid: true } : { valid: false, reason: 'left_event' };
+        }
         case 'postcard_sent': {
           if (!ref.messageId) return { valid: false, reason: 'missing_message_ref' };
           const doc = await this.db.collection(COLLECTIONS.MESSAGES).doc(ref.messageId).get();

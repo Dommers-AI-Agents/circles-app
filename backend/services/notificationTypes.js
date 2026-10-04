@@ -57,6 +57,11 @@ const TYPES = {
   daily_quote:             { category: null,                      pref: 'dailyQuote',             badge: false },
   nextbar_round:           { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   nextbar_result:          { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  // Events widget (Party Bus): invited, someone joined (to the coordinator),
+  // new photos (≤1 per uploader per 15 min per event)
+  event_invite:            { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  event_joined:            { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  event_photos:            { category: null,                      pref: 'socialActivity',         badge: false },
   postcard_order:          { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   fridgemail:              { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   care_invite:             { category: null,                      pref: 'careCheckins',           badge: false, record: true },

@@ -1,0 +1,611 @@
+// backend/services/eventService.js
+//
+// Events widget (first use: a "Party Bus", Wes 2026-10-04). A coordinator
+// creates an event; people join from an in-app invite or a share link pasted
+// into a group text (anyone with the link joins instantly; the coordinator can
+// remove people and close joining). Members share photos only with each
+// other, tag the places they go, and save a tagged place into a public circle
+// named after the event on their own profile. Each member also gets an Inner
+// Circle list named after the event holding the members they're CONNECTED to
+// (Inner Circle stays connections-only); it's re-synced whenever a member
+// joins/leaves and whenever a member opens the event (a connection made later
+// lands then).
+//
+// Photo files are ordinary uploads (unguessable public URLs); "members only"
+// is enforced by only ever returning them to members.
+
+const { FieldValue } = require('firebase-admin/firestore');
+const { getFirestore } = require('../config/firebase');
+const { COLLECTIONS, createCircle, createPlace } = require('../models/FirestoreModels');
+const { normalizeUserId } = require('./idService');
+const { isBlockedEitherWay } = require('./moderationService');
+const { getConnectedUserIds } = require('../utils/networkAccess');
+const { isAllowedImageUrl } = require('./postcardShareService');
+const { ServiceError } = require('../utils/serviceError');
+const { newId, nowIso } = require('../utils/ids');
+const { clean } = require('../utils/text');
+const notifyQuiet = require('./notifyQuiet');
+
+const NAME_MAX = 40;
+const DEFAULT_NAME = 'Party Bus';
+const DEFAULT_EMOJI = '🚌';
+const MAX_MEMBERS = 100;
+const MAX_EVENTS_LISTED = 30;
+const MAX_INVITES_PER_CALL = 50;
+const PHOTO_PAGE = 200;
+const CAPTION_MAX = 200;
+const LINK_BASE = `${process.env.API_PUBLIC_BASE_URL || 'https://api.favcircles.com'}/app/event/`;
+const TOKEN_RE = /^[A-Za-z0-9_-]{16,32}$/;
+// One "new photos" push per uploader per event at most this often
+const PHOTO_PUSH_COOLDOWN_MS = 15 * 60 * 1000;
+
+const db = () => getFirestore();
+const eventsCol = () => db().collection(COLLECTIONS.EVENTS);
+const photosCol = () => db().collection(COLLECTIONS.EVENT_PHOTOS);
+const placesCol = () => db().collection(COLLECTIONS.EVENT_PLACES);
+
+// ---------------------------------------------------------------------------
+// Pure helpers (tested)
+// ---------------------------------------------------------------------------
+
+const cleanEventName = (raw) => {
+  const name = clean(raw, NAME_MAX);
+  return name || DEFAULT_NAME;
+};
+
+const cleanEmoji = (raw) => {
+  if (typeof raw !== 'string') return DEFAULT_EMOJI;
+  const trimmed = raw.trim();
+  // One grapheme-ish: emoji are short; anything long is not an emoji
+  return trimmed && [...trimmed].length <= 4 ? trimmed : DEFAULT_EMOJI;
+};
+
+const newToken = () => require('crypto').randomBytes(15).toString('base64url'); // 20 chars
+
+const isMember = (event, uid) => Array.isArray(event.memberIds) && event.memberIds.includes(uid);
+
+/** Validates a tagged place from the app (a search result or a saved place). */
+const parsePlace = (body) => {
+  const b = body || {};
+  const name = clean(b.name, 120);
+  const lat = Number(b.lat);
+  const lng = Number(b.lng);
+  if (!name) throw new ServiceError(400, 'invalid_place', 'A place needs a name');
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    throw new ServiceError(400, 'invalid_place', 'A place needs a location');
+  }
+  return {
+    name,
+    address: clean(b.address, 200) || '',
+    lat,
+    lng,
+    category: clean(b.category, 40) || 'other',
+    placeRefId: clean(b.placeId, 80) || null,
+    isGlobal: b.isGlobal === true
+  };
+};
+
+/** What a member sees. Never includes tokens of other people's lists. */
+const toClientEvent = (id, data, viewerId) => ({
+  id,
+  name: data.name,
+  emoji: data.emoji || DEFAULT_EMOJI,
+  hostId: data.hostId,
+  hostName: data.hostName,
+  isHost: data.hostId === viewerId,
+  joinOpen: data.joinOpen !== false,
+  createdAt: data.createdAt,
+  photoCount: data.photoCount || 0,
+  placeCount: data.placeCount || 0,
+  members: (data.memberIds || []).map(uid => ({
+    id: uid,
+    name: (data.members && data.members[uid] && data.members[uid].name) || 'Member',
+    avatarUrl: (data.members && data.members[uid] && data.members[uid].avatarUrl) || null,
+    isHost: uid === data.hostId
+  })),
+  inviteUrl: `${LINK_BASE}${data.inviteToken}`,
+  myCircleId: (data.members && data.members[viewerId] && data.members[viewerId].circleId) || null
+});
+
+const toClientPhoto = (doc, viewerId, hostId) => {
+  const d = doc.data();
+  const likes = Array.isArray(d.likes) ? d.likes : [];
+  return {
+    id: doc.id,
+    imageUrl: d.imageUrl,
+    uploaderId: d.uploaderId,
+    uploaderName: d.uploaderName,
+    caption: d.caption || '',
+    createdAt: d.createdAt,
+    likeCount: likes.length,
+    likedByMe: likes.includes(viewerId),
+    canDelete: d.uploaderId === viewerId || hostId === viewerId
+  };
+};
+
+const toClientPlace = (doc, viewerId) => {
+  const d = doc.data();
+  const savedBy = Array.isArray(d.savedBy) ? d.savedBy : [];
+  return {
+    id: doc.id,
+    name: d.name,
+    address: d.address || '',
+    lat: d.lat,
+    lng: d.lng,
+    category: d.category || 'other',
+    taggedById: d.taggedById,
+    taggedByName: d.taggedByName,
+    createdAt: d.createdAt,
+    savedCount: savedBy.length,
+    savedByMe: savedBy.includes(viewerId)
+  };
+};
+
+/** Each member's event list: the other members they're connected to. */
+const listMembersFor = (memberIds, uid, connectedIds) =>
+  memberIds.filter(id => id !== uid && connectedIds.has(id));
+
+// ---------------------------------------------------------------------------
+// Reads
+// ---------------------------------------------------------------------------
+
+async function userSummary(uid) {
+  const doc = await db().collection(COLLECTIONS.USERS).doc(uid).get();
+  if (!doc.exists) throw new ServiceError(404, 'user_not_found', 'Account not found');
+  const d = doc.data();
+  return {
+    data: d,
+    name: (d.displayName && d.displayName.trim()) || 'Someone',
+    avatarUrl: d.profilePicture || null
+  };
+}
+
+async function loadEvent(eventId) {
+  const doc = await eventsCol().doc(String(eventId)).get();
+  if (!doc.exists || doc.data().deletedAt) throw new ServiceError(404, 'not_found', "This event isn't here anymore");
+  return { ref: doc.ref, data: doc.data() };
+}
+
+async function loadAsMember(eventId, uid) {
+  const event = await loadEvent(eventId);
+  if (!isMember(event.data, uid)) throw new ServiceError(403, 'not_member', 'Join the event to see it');
+  return event;
+}
+
+async function loadByToken(token) {
+  if (!TOKEN_RE.test(String(token || ''))) throw new ServiceError(404, 'not_found', "That invite link isn't valid");
+  const snap = await eventsCol().where('inviteToken', '==', String(token)).limit(1).get();
+  const doc = snap.docs.find(d => !d.data().deletedAt);
+  if (!doc) throw new ServiceError(404, 'not_found', "That invite link isn't valid");
+  return { ref: doc.ref, data: doc.data(), id: doc.id };
+}
+
+async function listEvents(uid) {
+  const snap = await eventsCol()
+    .where('memberIds', 'array-contains', uid)
+    .orderBy('createdAt', 'desc')
+    .limit(MAX_EVENTS_LISTED)
+    .get();
+  return snap.docs.filter(d => !d.data().deletedAt).map(d => toClientEvent(d.id, d.data(), uid));
+}
+
+async function getEvent(eventId, uid) {
+  const { ref, data } = await loadAsMember(eventId, uid);
+  const [photos, places] = await Promise.all([
+    photosCol().where('eventId', '==', ref.id).orderBy('createdAt', 'desc').limit(PHOTO_PAGE).get(),
+    placesCol().where('eventId', '==', ref.id).orderBy('createdAt', 'desc').limit(100).get()
+  ]);
+  // A connection made since the last visit joins the viewer's event list
+  syncInnerListFor(ref, data, uid).catch(err => console.error('🚌 inner list sync failed:', err.message));
+  return {
+    event: toClientEvent(ref.id, data, uid),
+    photos: photos.docs.map(d => toClientPhoto(d, uid, data.hostId)),
+    places: places.docs.map(d => toClientPlace(d, uid))
+  };
+}
+
+/** The join screen's preview (any signed-in person holding the link). */
+async function previewByToken(token, uid) {
+  const { id, data } = await loadByToken(token);
+  return {
+    id,
+    name: data.name,
+    emoji: data.emoji || DEFAULT_EMOJI,
+    hostName: data.hostName,
+    memberCount: (data.memberIds || []).length,
+    joinOpen: data.joinOpen !== false,
+    alreadyMember: isMember(data, uid)
+  };
+}
+
+/** Public page data for /app/event/<token> (no auth, no member names). */
+async function publicPreview(token) {
+  const { data } = await loadByToken(token);
+  return {
+    name: data.name,
+    emoji: data.emoji || DEFAULT_EMOJI,
+    hostName: data.hostName,
+    memberCount: (data.memberIds || []).length,
+    joinOpen: data.joinOpen !== false
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Membership
+// ---------------------------------------------------------------------------
+
+async function createEvent(uid, { name, emoji } = {}) {
+  const me = await userSummary(uid);
+  const now = nowIso();
+  const data = {
+    name: cleanEventName(name),
+    emoji: cleanEmoji(emoji),
+    hostId: uid,
+    hostName: me.name,
+    memberIds: [uid],
+    members: { [uid]: { name: me.name, avatarUrl: me.avatarUrl, joinedAt: now } },
+    pendingInviteIds: [],
+    joinOpen: true,
+    inviteToken: newToken(),
+    photoCount: 0,
+    placeCount: 0,
+    createdAt: now,
+    updatedAt: now
+  };
+  const ref = await eventsCol().add(data);
+  return toClientEvent(ref.id, data, uid);
+}
+
+/**
+ * Join from a link token (or an in-app invite, which carries the same
+ * token). Instant; idempotent. Returns { event, joined, coinCredited }.
+ */
+async function joinByToken(token, uid) {
+  const { ref } = await loadByToken(token);
+  const me = await userSummary(uid);
+  const result = await db().runTransaction(async (tx) => {
+    const doc = await tx.get(ref);
+    const data = doc.data();
+    if (data.deletedAt) throw new ServiceError(404, 'not_found', "This event isn't here anymore");
+    if (isMember(data, uid)) return { data, joined: false };
+    if (data.joinOpen === false) throw new ServiceError(403, 'join_closed', `${data.hostName} closed joining for ${data.name}`);
+    if ((data.removedIds || []).includes(uid)) throw new ServiceError(403, 'removed', `You were removed from ${data.name}`);
+    if (isBlockedEitherWay(me.data, data.hostId)) throw new ServiceError(403, 'blocked', "You can't join this event");
+    if ((data.memberIds || []).length >= MAX_MEMBERS) throw new ServiceError(403, 'full', `${data.name} is full`);
+    const now = nowIso();
+    tx.update(ref, {
+      memberIds: FieldValue.arrayUnion(uid),
+      pendingInviteIds: FieldValue.arrayRemove(uid),
+      [`members.${uid}`]: { name: me.name, avatarUrl: me.avatarUrl, joinedAt: now },
+      updatedAt: now
+    });
+    return {
+      data: {
+        ...data,
+        memberIds: [...(data.memberIds || []), uid],
+        members: { ...(data.members || {}), [uid]: { name: me.name, avatarUrl: me.avatarUrl, joinedAt: now } }
+      },
+      joined: true
+    };
+  });
+
+  let coinCredited = false;
+  if (result.joined) {
+    notifyQuiet.sendInBackground(result.data.hostId, {
+      type: 'event_joined',
+      title: `${result.data.emoji || DEFAULT_EMOJI} ${me.name} joined ${result.data.name}`,
+      body: `${result.data.memberIds.length} people are in`,
+      data: { eventId: ref.id }
+    }, 'event_joined');
+    if (process.env.WIDGET_PIGGY_ENABLED === '1') {
+      const bonus = await require('./piggyBankService').credit({
+        userId: uid, eventType: 'event_joined', sourceRef: { eventId: ref.id }
+      });
+      coinCredited = !!(bonus && bonus.credited);
+    }
+    syncAllInnerLists(ref.id).catch(err => console.error('🚌 inner list sync failed:', err.message));
+  }
+  return { event: toClientEvent(ref.id, result.data, uid), joined: result.joined, coinCredited };
+}
+
+/** In-app invites to the coordinator's or a member's connections. */
+async function inviteConnections(eventId, uid, userIds) {
+  const { ref, data } = await loadAsMember(eventId, uid);
+  if (data.joinOpen === false) throw new ServiceError(403, 'join_closed', 'Joining is closed');
+  const wanted = [...new Set((Array.isArray(userIds) ? userIds : []).map(normalizeUserId).filter(Boolean))]
+    .filter(id => id !== uid && !isMember(data, id))
+    .slice(0, MAX_INVITES_PER_CALL);
+  if (!wanted.length) return { invited: 0 };
+  const connected = await getConnectedUserIds(uid);
+  const invitees = wanted.filter(id => connected.has(id));
+  if (!invitees.length) throw new ServiceError(400, 'not_connected', 'You can invite people you are connected with');
+  await ref.update({ pendingInviteIds: FieldValue.arrayUnion(...invitees), updatedAt: nowIso() });
+  const inviter = (data.members && data.members[uid] && data.members[uid].name) || 'A friend';
+  for (const id of invitees) {
+    notifyQuiet.sendInBackground(id, {
+      type: 'event_invite',
+      title: `${data.emoji || DEFAULT_EMOJI} ${inviter} invited you to ${data.name}`,
+      body: 'Join to share photos and places with everyone there',
+      data: { eventId: ref.id, eventToken: data.inviteToken }
+    }, 'event_invite');
+  }
+  return { invited: invitees.length };
+}
+
+async function leaveEvent(eventId, uid) {
+  const { ref, data } = await loadAsMember(eventId, uid);
+  if (data.hostId === uid) throw new ServiceError(400, 'host_cannot_leave', 'Coordinators end the event instead of leaving');
+  await removeMemberInternal(ref, data, uid, { removed: false });
+  return { left: true };
+}
+
+async function removeMember(eventId, hostUid, memberId) {
+  const { ref, data } = await loadAsMember(eventId, hostUid);
+  if (data.hostId !== hostUid) throw new ServiceError(403, 'not_host', 'Only the coordinator can remove people');
+  const target = normalizeUserId(memberId);
+  if (!target || target === hostUid) throw new ServiceError(400, 'invalid_member', "You can't remove yourself");
+  if (!isMember(data, target)) return { removed: false };
+  await removeMemberInternal(ref, data, target, { removed: true });
+  return { removed: true };
+}
+
+async function removeMemberInternal(ref, data, uid, { removed }) {
+  const listId = data.members && data.members[uid] && data.members[uid].innerListId;
+  const update = {
+    memberIds: FieldValue.arrayRemove(uid),
+    [`members.${uid}`]: FieldValue.delete(),
+    updatedAt: nowIso()
+  };
+  if (removed) update.removedIds = FieldValue.arrayUnion(uid);
+  await ref.update(update);
+  if (listId) {
+    require('./innerCircleService').deleteInnerCircleList(uid, listId).catch(() => {});
+  }
+  syncAllInnerLists(ref.id).catch(err => console.error('🚌 inner list sync failed:', err.message));
+}
+
+async function updateEvent(eventId, hostUid, { name, emoji, joinOpen } = {}) {
+  const { ref, data } = await loadAsMember(eventId, hostUid);
+  if (data.hostId !== hostUid) throw new ServiceError(403, 'not_host', 'Only the coordinator can change the event');
+  const update = { updatedAt: nowIso() };
+  if (name !== undefined) update.name = cleanEventName(name);
+  if (emoji !== undefined) update.emoji = cleanEmoji(emoji);
+  if (joinOpen !== undefined) update.joinOpen = joinOpen === true;
+  await ref.update(update);
+  const next = { ...data, ...update };
+  if (update.name && update.name !== data.name) {
+    syncAllInnerLists(ref.id).catch(err => console.error('🚌 inner list rename failed:', err.message));
+  }
+  return toClientEvent(ref.id, next, hostUid);
+}
+
+/** A fresh link (the old one stops working) — the coordinator's undo for a leaked link. */
+async function resetInviteLink(eventId, hostUid) {
+  const { ref, data } = await loadAsMember(eventId, hostUid);
+  if (data.hostId !== hostUid) throw new ServiceError(403, 'not_host', 'Only the coordinator can reset the link');
+  const inviteToken = newToken();
+  await ref.update({ inviteToken, updatedAt: nowIso() });
+  return toClientEvent(ref.id, { ...data, inviteToken }, hostUid);
+}
+
+async function endEvent(eventId, hostUid) {
+  const { ref, data } = await loadAsMember(eventId, hostUid);
+  if (data.hostId !== hostUid) throw new ServiceError(403, 'not_host', 'Only the coordinator can end the event');
+  await ref.update({ deletedAt: nowIso(), joinOpen: false, updatedAt: nowIso() });
+  // Event lists are removed; circles of saved places stay with their owners
+  const innerCircleService = require('./innerCircleService');
+  for (const uid of data.memberIds || []) {
+    const listId = data.members && data.members[uid] && data.members[uid].innerListId;
+    if (listId) await innerCircleService.deleteInnerCircleList(uid, listId).catch(() => {});
+  }
+  return { ended: true };
+}
+
+// ---------------------------------------------------------------------------
+// Inner Circle lists ("Party Bus" = the members you're connected to)
+// ---------------------------------------------------------------------------
+
+async function syncInnerListFor(ref, data, uid) {
+  const innerCircleService = require('./innerCircleService');
+  const connected = await getConnectedUserIds(uid);
+  const userIds = listMembersFor(data.memberIds || [], uid, connected);
+  const listId = data.members && data.members[uid] && data.members[uid].innerListId;
+  if (listId) {
+    const lists = await innerCircleService.getInnerCircleLists(uid);
+    const current = lists.find(l => l.id === listId);
+    if (current) {
+      const same = current.name === data.name
+        && current.userIds.length === userIds.length
+        && userIds.every(id => current.userIds.includes(id));
+      if (!same) await innerCircleService.updateInnerCircleList(uid, listId, { name: data.name, userIds });
+      return;
+    }
+    // They deleted it themselves: respect that, don't recreate
+    return;
+  }
+  if (!userIds.length) return; // created once there's someone to put in it
+  try {
+    const lists = await innerCircleService.createInnerCircleList(uid, { name: data.name, userIds });
+    const created = lists[lists.length - 1];
+    await ref.update({ [`members.${uid}.innerListId`]: created.id });
+  } catch (error) {
+    if (error.code !== 'INNER_CIRCLE_TOO_MANY_LISTS') throw error; // at the 20-list cap: skip quietly
+  }
+}
+
+async function syncAllInnerLists(eventId) {
+  const { ref, data } = await loadEvent(eventId);
+  for (const uid of data.memberIds || []) {
+    // Re-read per member: each create stamps its listId on the event
+    const fresh = (await ref.get()).data();
+    await syncInnerListFor(ref, fresh, uid).catch(err => console.error(`🚌 list sync ${uid}:`, err.message));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Photos
+// ---------------------------------------------------------------------------
+
+async function addPhotos(eventId, uid, photos) {
+  const { ref, data } = await loadAsMember(eventId, uid);
+  const list = (Array.isArray(photos) ? photos : []).slice(0, 20);
+  if (!list.length) throw new ServiceError(400, 'no_photos', 'Add at least one photo');
+  for (const p of list) {
+    if (!isAllowedImageUrl(p && p.imageUrl)) throw new ServiceError(400, 'invalid_image', 'Upload the photo first');
+  }
+  const me = (data.members && data.members[uid]) || {};
+  const now = Date.now();
+  const batch = db().batch();
+  const created = [];
+  list.forEach((p, i) => {
+    const docRef = photosCol().doc();
+    const row = {
+      eventId: ref.id,
+      uploaderId: uid,
+      uploaderName: me.name || 'Member',
+      imageUrl: p.imageUrl,
+      caption: clean(p.caption, CAPTION_MAX) || '',
+      likes: [],
+      // Spread by a millisecond so a batch keeps the order it was picked in
+      createdAt: new Date(now + i).toISOString()
+    };
+    batch.set(docRef, row);
+    created.push({ id: docRef.id, row });
+  });
+  batch.update(ref, { photoCount: FieldValue.increment(list.length), lastPhotoAt: nowIso(), updatedAt: nowIso() });
+  await batch.commit();
+
+  // "Sal added 6 photos" — once per uploader per 15 minutes per event
+  const lastPush = (data.photoPushAt && data.photoPushAt[uid]) || 0;
+  if (now - lastPush > PHOTO_PUSH_COOLDOWN_MS) {
+    await ref.update({ [`photoPushAt.${uid}`]: now }).catch(() => {});
+    const others = (data.memberIds || []).filter(id => id !== uid);
+    for (const id of others) {
+      notifyQuiet.sendInBackground(id, {
+        type: 'event_photos',
+        title: `${data.emoji || DEFAULT_EMOJI} ${me.name || 'Someone'} added ${list.length === 1 ? 'a photo' : `${list.length} photos`}`,
+        body: `See them in ${data.name}`,
+        data: { eventId: ref.id }
+      }, 'event_photos');
+    }
+  }
+  return created.map(c => toClientPhoto({ id: c.id, data: () => c.row }, uid, data.hostId));
+}
+
+async function deletePhoto(eventId, uid, photoId) {
+  const { ref, data } = await loadAsMember(eventId, uid);
+  const photoRef = photosCol().doc(String(photoId));
+  const doc = await photoRef.get();
+  if (!doc.exists || doc.data().eventId !== ref.id) throw new ServiceError(404, 'not_found', 'That photo is gone');
+  if (doc.data().uploaderId !== uid && data.hostId !== uid) {
+    throw new ServiceError(403, 'not_allowed', 'Only the person who added it or the coordinator can delete it');
+  }
+  await photoRef.delete();
+  await ref.update({ photoCount: FieldValue.increment(-1), updatedAt: nowIso() });
+  require('./storage').deleteImage(doc.data().imageUrl).catch(() => {});
+  return { deleted: true };
+}
+
+async function togglePhotoLike(eventId, uid, photoId) {
+  const { ref, data } = await loadAsMember(eventId, uid);
+  const photoRef = photosCol().doc(String(photoId));
+  return db().runTransaction(async (tx) => {
+    const doc = await tx.get(photoRef);
+    if (!doc.exists || doc.data().eventId !== ref.id) throw new ServiceError(404, 'not_found', 'That photo is gone');
+    const likes = Array.isArray(doc.data().likes) ? doc.data().likes : [];
+    const liked = likes.includes(uid);
+    const next = liked ? likes.filter(id => id !== uid) : [...likes, uid];
+    tx.update(photoRef, { likes: next });
+    return toClientPhoto({ id: doc.id, data: () => ({ ...doc.data(), likes: next }) }, uid, data.hostId);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Places
+// ---------------------------------------------------------------------------
+
+async function tagPlace(eventId, uid, body) {
+  const { ref, data } = await loadAsMember(eventId, uid);
+  const place = parsePlace(body);
+  // Same spot tagged twice (two people at the same bar): keep one row
+  const existing = await placesCol().where('eventId', '==', ref.id).where('name', '==', place.name).limit(5).get();
+  const dupe = existing.docs.find(d => Math.abs(d.data().lat - place.lat) < 0.0005 && Math.abs(d.data().lng - place.lng) < 0.0005);
+  if (dupe) return toClientPlace(dupe, uid);
+  const me = (data.members && data.members[uid]) || {};
+  const row = { eventId: ref.id, ...place, taggedById: uid, taggedByName: me.name || 'Member', savedBy: [], createdAt: nowIso() };
+  const docRef = await placesCol().add(row);
+  await ref.update({ placeCount: FieldValue.increment(1), updatedAt: nowIso() });
+  return toClientPlace({ id: docRef.id, data: () => row }, uid);
+}
+
+/** The member's public circle named after the event — created on first save. */
+async function findOrCreateEventCircle(ref, data, uid) {
+  const known = data.members && data.members[uid] && data.members[uid].circleId;
+  if (known) {
+    const doc = await db().collection(COLLECTIONS.CIRCLES).doc(known).get();
+    if (doc.exists && !doc.data().deletedAt) return doc.id;
+  }
+  // Adopt one already linked to this event (a re-join), else create
+  const linked = await db().collection(COLLECTIONS.CIRCLES)
+    .where('owner', '==', uid).where('eventId', '==', ref.id).limit(3).get();
+  const alive = linked.docs.find(d => !d.data().deletedAt);
+  let circleId = alive ? alive.id : null;
+  if (!circleId) {
+    // Outside the subscription circle cap on purpose, like the check-in circle
+    const circle = createCircle({
+      name: data.name,
+      description: `Places from ${data.name}`,
+      privacy: 'public',
+      icon: data.emoji || DEFAULT_EMOJI
+    }, uid);
+    const created = await db().collection(COLLECTIONS.CIRCLES).add({ ...circle, eventId: ref.id });
+    circleId = created.id;
+  }
+  await ref.update({ [`members.${uid}.circleId`]: circleId });
+  return circleId;
+}
+
+async function savePlaceToMyCircle(eventId, uid, eventPlaceId) {
+  const { ref, data } = await loadAsMember(eventId, uid);
+  const placeRef = placesCol().doc(String(eventPlaceId));
+  const doc = await placeRef.get();
+  if (!doc.exists || doc.data().eventId !== ref.id) throw new ServiceError(404, 'not_found', 'That place is gone');
+  const p = doc.data();
+  const circleId = await findOrCreateEventCircle(ref, data, uid);
+
+  // Already in the circle (same name at the same spot): nothing to add
+  const inCircle = await db().collection(COLLECTIONS.PLACES).where('circleId', '==', circleId).where('name', '==', p.name).limit(5).get();
+  const already = inCircle.docs.find(d => !d.data().deletedAt);
+  if (!already) {
+    const placeData = createPlace({
+      name: p.name,
+      address: p.address || '',
+      location: { type: 'Point', coordinates: [p.lng, p.lat] },
+      category: p.category || 'other'
+    }, circleId, uid);
+    const savedRef = await db().collection(COLLECTIONS.PLACES).add(placeData);
+    // Every save path links the canonical venue record (CLAUDE.md)
+    await require('./globalPlaceResolver').ensureGlobalPlaceLink(await savedRef.get()).catch(err =>
+      console.error('🚌 global link failed:', err.message));
+    await db().collection(COLLECTIONS.CIRCLES).doc(circleId).update({
+      placesCount: FieldValue.increment(1),
+      updatedAt: nowIso()
+    }).catch(() => {});
+  }
+  await placeRef.update({ savedBy: FieldValue.arrayUnion(uid) });
+  return {
+    place: toClientPlace({ id: doc.id, data: () => ({ ...p, savedBy: [...new Set([...(p.savedBy || []), uid])] }) }, uid),
+    circleId,
+    alreadySaved: !!already
+  };
+}
+
+module.exports = {
+  // operations
+  listEvents, getEvent, previewByToken, publicPreview, createEvent, joinByToken, inviteConnections,
+  leaveEvent, removeMember, updateEvent, resetInviteLink, endEvent,
+  addPhotos, deletePhoto, togglePhotoLike, tagPlace, savePlaceToMyCircle,
+  // pure (tested)
+  cleanEventName, cleanEmoji, parsePlace, toClientEvent, listMembersFor, isMember,
+  DEFAULT_NAME, LINK_BASE, TOKEN_RE
+};

@@ -121,6 +121,25 @@ async function deleteAccount(uid, { db = getFirestore(), auth = getAuth(), stora
     }));
   }
 
+  // 3b. Events (Party Bus): events they coordinate end; they leave the rest;
+  // their event photos and tags go (photo files are deleted in step 4's way)
+  const events = db.collection(COLLECTIONS.EVENTS);
+  await updateAll('eventsEnded', events.where('hostId', '==', uid), () => ({ deletedAt: now, joinOpen: false }));
+  await updateAll('eventSeats', events.where('memberIds', 'array-contains', uid), () => ({
+    memberIds: FieldValue.arrayRemove(uid),
+    pendingInviteIds: FieldValue.arrayRemove(uid),
+    [`members.${uid}`]: FieldValue.delete()
+  }));
+  await updateAll('eventInvites', events.where('pendingInviteIds', 'array-contains', uid), () => ({
+    pendingInviteIds: FieldValue.arrayRemove(uid)
+  }));
+  const eventPhotos = await db.collection(COLLECTIONS.EVENT_PHOTOS).where('uploaderId', '==', uid).get();
+  for (const doc of eventPhotos.docs) {
+    await require('./storage').deleteImage(doc.data().imageUrl).catch(() => {});
+  }
+  await deleteAll('eventPhotos', db.collection(COLLECTIONS.EVENT_PHOTOS).where('uploaderId', '==', uid));
+  await deleteAll('eventPlaces', db.collection(COLLECTIONS.EVENT_PLACES).where('taggedById', '==', uid));
+
   // 4. Files: their photos on shared venue records, video files, profile picture
   const contributed = await db.collection('globalPlaces').where('userContributions.contributors', 'array-contains', uid).get();
   for (const venue of contributed.docs) {

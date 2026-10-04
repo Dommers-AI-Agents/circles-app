@@ -11,6 +11,8 @@ const widgetData = require('../controllers/widgets/widgetDataController');
 const postcard = require('../controllers/widgets/postcardController');
 const drink = require('../controllers/widgets/drinkController');
 const motivation = require('../controllers/widgets/motivationController');
+const events = require('../controllers/widgets/eventController');
+const { sendConnectionRequest } = require('../controllers/connectionController');
 const nextBarRounds = require('../controllers/widgets/nextBarRoundController');
 const postcardMail = require('../controllers/widgets/postcardMailController');
 const fridgeMail = require('../controllers/widgets/fridgeMailController');
@@ -41,6 +43,28 @@ router.post('/drink/send', messageLimiter, drink.sendDrink);
 // Motivation: one of Coach Mane's lines to a connection's chat (a message,
 // so the messaging rate limit). Never posted to any feed.
 router.post('/motivation/send', messageLimiter, motivation.sendMotivation);
+
+// Events (Party Bus): members-only photos and places; join by link token.
+// Static paths before /:id.
+router.get('/events', events.listEvents);
+router.post('/events', perUserLimit({ bucket: 'event-create', windowMs: 86400000, max: 20 }), events.createEvent);
+router.get('/events/invite/:token', events.previewInvite);
+router.post('/events/join', perUserLimit({ bucket: 'event-join', windowMs: 3600000, max: 30 }), events.join);
+router.get('/events/:id', events.getEvent);
+router.patch('/events/:id', events.update);
+router.delete('/events/:id', events.end);
+router.post('/events/:id/invite', messageLimiter, events.invite);
+router.post('/events/:id/link/reset', events.resetLink);
+router.post('/events/:id/leave', events.leave);
+router.delete('/events/:id/members/:memberId', events.removeMember);
+router.post('/events/:id/photos', perUserLimit({ bucket: 'event-photos', windowMs: 3600000, max: 300 }), events.addPhotos);
+router.delete('/events/:id/photos/:photoId', events.deletePhoto);
+router.post('/events/:id/photos/:photoId/like', events.likePhoto);
+router.post('/events/:id/places', events.tagPlace);
+router.post('/events/:id/places/:placeId/save', events.savePlace);
+// "Connect with everyone" on the event's member list: the regular connection
+// request, reachable through the widget API channel (widgets/ paths only)
+router.post('/connect', messageLimiter, sendConnectionRequest);
 
 // Printed-and-mailed postcards. Print art bypasses /api/upload/image, which
 // caps at 1MB and would downsize below print resolution.

@@ -61,7 +61,12 @@ const COLLECTIONS = {
   CARE_ASKS: 'careAsks',     // doc id = planId_YYYY-MM-DD_HHMM
   // Workouts posted to the Inner Circle feed, doc id = userId_startedAtMs
   WORKOUT_POSTS: 'workoutPosts',
-  WORKOUT_LINKS: 'workoutLinks'     // doc id = the link's random token → { postId, userId }
+  WORKOUT_LINKS: 'workoutLinks',    // doc id = the link's random token → { postId, userId }
+  // Events widget (Party Bus): shared event docs (memberIds array-contains),
+  // member photos and tagged places keyed by eventId
+  EVENTS: 'events',
+  EVENT_PHOTOS: 'eventPhotos',
+  EVENT_PLACES: 'eventPlaces'
 };
 
 // User model structure
