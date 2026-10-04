@@ -14,15 +14,15 @@ struct PlacePhotoBatchSummaryTests {
         #expect(PlacePhotoBatchSummary.result(added: 3, failed: 0)?.message == "3 photos added")
     }
 
-    @Test func someFailedSaysWhichPart() {
+    @Test func photosWithoutSignalAreSavedForLater() {
         let summary = PlacePhotoBatchSummary.result(added: 2, failed: 1)
-        #expect(summary?.title == "Partly added")
-        #expect(summary?.message == "2 added, 1 didn't upload. Try those again.")
+        #expect(summary?.title == "Almost there")
+        #expect(summary?.message == "2 added. 1 more will be added when you're back online.")
     }
 
-    @Test func allFailed() {
-        #expect(PlacePhotoBatchSummary.result(added: 0, failed: 1)?.message == "The photo didn't upload. Try again.")
-        #expect(PlacePhotoBatchSummary.result(added: 0, failed: 4)?.message == "None of the 4 photos uploaded. Try again.")
+    @Test func allWaitingForSignal() {
+        #expect(PlacePhotoBatchSummary.result(added: 0, failed: 1)?.message == "No signal right now. Your photo will be added when you're back online.")
+        #expect(PlacePhotoBatchSummary.result(added: 0, failed: 4)?.message == "No signal right now. Your 4 photos will be added when you're back online.")
     }
 
     @Test func nothingAttemptedSaysNothing() {

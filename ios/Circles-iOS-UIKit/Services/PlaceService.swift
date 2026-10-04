@@ -879,7 +879,26 @@ class PlaceService {
     /// screen asks for the post-save moment (check in / send a postcard).
     /// Bulk and background saves — onboarding quick-start, sticker rewards,
     /// imports — pass nothing and stay silent.
-    private func createPlaceWithBody(_ body: [String: Any], offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    /// Send a save that PlaceSaveOutbox kept for when there was a signal.
+    /// Never re-kept: a connectivity failure is handed back to the outbox.
+    func sendKeptPlace(body: [String: Any], completion: @escaping (Result<Place, Error>) -> Void) {
+        createPlaceWithBody(body, offersPostSaveNudges: false, keepIfOffline: false, completion: completion)
+    }
+
+    /// - keepIfOffline: an Add Place save (offersPostSaveNudges) that can't
+    ///   reach the server is kept in PlaceSaveOutbox and reported as
+    ///   PlaceSaveQueued — "Weak signal – your place will be saved when
+    ///   you're back online" — instead of failing.
+    private func createPlaceWithBody(_ body: [String: Any], offersPostSaveNudges: Bool = false, keepIfOffline: Bool? = nil,
+                                     completion: @escaping (Result<Place, Error>) -> Void) {
+        let keep = keepIfOffline ?? offersPostSaveNudges
+        let keepForLater: () -> Bool = {
+            guard keep, let id = PlaceSaveOutbox.shared.enqueue(body: body, placeName: body["name"] as? String ?? "Your place") else { return false }
+            completion(.failure(PlaceSaveQueued(entryId: id, placeName: body["name"] as? String ?? "Your place")))
+            return true
+        }
+        // No signal at all: keep it straight away rather than waiting to time out
+        if keep, !NetworkMonitor.shared.isConnected, keepForLater() { return }
         Logger.debug("🚀 PlaceService: Creating place with body containing \(body.keys.count) fields")
         if let photos = body["photos"] as? [String] {
             Logger.debug("  Photos in request: \(photos.count)")
@@ -930,6 +949,8 @@ class PlaceService {
                     SpotlightIndexService.shared.indexPlace(response.place)
                     completion(.success(response.place))
                 case .failure(let error):
+                    // The signal dropped mid-save: keep it rather than lose it
+                    if NetworkErrorClassifier.isConnectivityFailure(error), keepForLater() { return }
                     completion(.failure(error))
                 }
             }

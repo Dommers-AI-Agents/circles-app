@@ -112,6 +112,19 @@ extension AddPlaceViewController {
     /// Every failed save lands here: a duplicate gets its choices, anything
     /// else the usual error (incl. the place-limit paywall).
     func handleCreationFailure(_ error: Error) {
+        // No usable signal: the save is kept on the phone and sent later
+        if let kept = error as? PlaceSaveQueued {
+            if let image = selectedImage, uploadedPhotoUrls.isEmpty {
+                PlaceSaveOutbox.shared.attachImage(image, toEntry: kept.entryId)
+            }
+            let alert = UIAlertController(
+                title: "Weak signal",
+                message: "\(kept.placeName) will be saved when you're back online. You can keep using the app.",
+                preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in self?.leaveAfterKeptSave() })
+            present(alert, animated: true)
+            return
+        }
         guard let duplicate = PlaceDuplicate.from(error) else {
             presentPlaceCreationError(error)
             return
@@ -125,6 +138,23 @@ extension AddPlaceViewController {
         })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)
+    }
+
+    /// The user's own photo didn't make it into the save (still uploading,
+    /// or no signal): keep it on the phone and add it when there's a
+    /// connection, so the place never stays without the photo they chose.
+    func queueOwnPhotoIfStillUploading(for place: Place) {
+        guard let image = selectedImage else { return }
+        let saved = Set(place.photos ?? [])
+        // Already in the saved place: nothing to do
+        guard !uploadedPhotoUrls.contains(where: saved.contains) else { return }
+        PlacePhotoOutbox.shared.add([image], to: place)
+    }
+
+    /// Done here: the kept save goes out on its own.
+    private func leaveAfterKeptSave() {
+        if presentingViewController != nil { dismiss(animated: true) }
+        else { navigationController?.popViewController(animated: true) }
     }
 
     /// Leave Add Place and open the place they already saved.
@@ -152,19 +182,12 @@ extension AddPlaceViewController {
         // Check if we have pre-uploaded photos
         Logger.debug("📸 Checking pre-uploaded photos: \(uploadedPhotoUrls.count) available")
         
-        // Only prepare photo data if no pre-uploaded photos exist
-        var photoData: [Data]? = nil
-        if uploadedPhotoUrls.isEmpty && selectedImage != nil {
-            Logger.debug("⚠️ No pre-uploaded photos but image exists - this shouldn't happen!")
-            // This is a fallback - photos should have been pre-uploaded
-            if let image = selectedImage {
-                if let imageData = image.jpegData(compressionQuality: 0.6) {
-                    photoData = [imageData]
-                    Logger.debug("📸 Using fallback photo data")
-                }
-            }
-        }
-        
+        // A photo the user picked that hasn't finished uploading no longer
+        // holds up the save (it used to be re-uploaded inline here, and on a
+        // weak signal that stalled or failed the save). It goes to
+        // PlacePhotoOutbox once the place exists — see queueOwnPhotoIfStillUploading.
+        let photoData: [Data]? = nil
+
         // Check if we have Google Place details to use
         if let googleDetails = selectedGooglePlaceDetails {
             Logger.debug("🚀 AddPlaceViewController: Creating place with Google details")
@@ -296,6 +319,7 @@ extension AddPlaceViewController {
                             )
 
                             self?.postPendingReviewIfNeeded(for: place)
+                            self?.queueOwnPhotoIfStillUploading(for: place)
                             // The post-save offer (check in here / send a
                             // postcard) is arranged by PlaceService, which
                             // knows what the coin drop and milestone are doing
@@ -442,6 +466,7 @@ extension AddPlaceViewController {
                         )
 
                         self?.postPendingReviewIfNeeded(for: place)
+                            self?.queueOwnPhotoIfStillUploading(for: place)
                         // The post-save offer (check in here / send a postcard)
                         // is arranged by PlaceService, which knows what the
                         // coin drop and milestone are doing
@@ -521,6 +546,7 @@ extension AddPlaceViewController {
                         )
 
                         self?.postPendingReviewIfNeeded(for: place)
+                            self?.queueOwnPhotoIfStillUploading(for: place)
                         // The post-save offer (check in here / send a postcard)
                         // is arranged by PlaceService, which knows what the
                         // coin drop and milestone are doing

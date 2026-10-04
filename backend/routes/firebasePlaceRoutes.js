@@ -101,6 +101,10 @@ router.route('/:id/resolve')
 router.route('/:id/photo-fallback')
   .put(setPlacePhotoFallback);
 
+// The place's Google photo as the default for a save made without one
+router.route('/:id/default-photo')
+  .post(require('../controllers/places/placeVenueMaintenanceController').setDefaultGooglePhoto);
+
 router.route('/:id/flag')
   .post(flagPlaceInfo);
 

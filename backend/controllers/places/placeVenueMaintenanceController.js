@@ -477,13 +477,66 @@ exports.getPlacesNeedingPhoto = async (req, res) => {
       if ((p.photoFallbackAttempts || 0) >= 2) return;
       const coords = p.location && p.location.coordinates;
       if (!Array.isArray(coords) || coords.length !== 2) return;
-      places.push({ id: doc.id, name: p.name, lat: coords[1], lng: coords[0] });
+      // A save the app stored without a photo tries the place's Google photo
+      // first (once — imports never spend on Google)
+      const tryGoogle = !!p.needsPhoto && !p.importSource && !p.googlePhotoChecked;
+      places.push({ id: doc.id, name: p.name, lat: coords[1], lng: coords[0], tryGoogle });
     });
     // Newest imports first; the client caps each pass
     res.json({ success: true, data: { places: places.slice(0, 60), count: places.length } });
   } catch (error) {
     console.error('❌ getPlacesNeedingPhoto failed:', error);
     res.status(500).json({ success: false, message: 'Failed to load places needing a photo' });
+  }
+};
+
+// @desc    The place's own Google photo as the default picture for a save
+//          made without one (Wes, 2026-10-04: "a nice google maps image as
+//          the default"). Asked by the app's background pass, so it runs in
+//          a request (Cloud Run throttles work after a response) and retries
+//          on reconnect. Once per save: googlePhotoChecked stops a re-spend.
+// @route   POST /api/places/:id/default-photo
+// @access  Private (owner)
+exports.setDefaultGooglePhoto = async (req, res) => {
+  try {
+    const ref = db.collection(COLLECTIONS.PLACES).doc(req.params.id);
+    const snap = await ref.get();
+    if (!snap.exists || snap.data().deletedAt) {
+      return res.status(404).json({ success: false, message: 'Place not found' });
+    }
+    const place = snap.data();
+    if (!isSameUser(place.addedBy, req.user.uid)) {
+      return res.status(403).json({ success: false, message: 'Not your place' });
+    }
+    const done = (applied, reason) => res.json({ success: true, data: { placeId: ref.id, applied, reason } });
+    if (Array.isArray(place.photos) && place.photos.length > 0) return done(false, 'has_photo');
+    if (place.globalPlaceId) {
+      const venue = await db.collection('globalPlaces').doc(place.globalPlaceId).get();
+      if (venue.exists && (venue.data().photos || []).length > 0) return done(false, 'venue_has_photo');
+    }
+    if (place.importSource || place.googlePhotoChecked) return done(false, 'not_eligible');
+
+    const { fetchGooglePhotoUrl } = require('../../services/googlePlacePhoto');
+    const photoUrl = await fetchGooglePhotoUrl({
+      googlePlaceId: place.googlePlaceId || null, name: place.name, location: place.location
+    });
+    if (!photoUrl) {
+      await ref.update({ googlePhotoChecked: true, updatedAt: new Date().toISOString() });
+      return done(false, 'no_google_photo');
+    }
+    await ref.update({ photos: [photoUrl], googlePhotoChecked: true, updatedAt: new Date().toISOString() });
+    ensureCircleCoverImage(place.circleId, photoUrl);
+    if (place.globalPlaceId) {
+      // A stock photo: fills the place's empty library, unattributed
+      await require('../../services/placePhotoService').adoptSavePhotos({
+        globalPlaceId: place.globalPlaceId, user: req.user, photos: [photoUrl], ownUrls: [],
+        isPrivate: await require('../../services/placePhotoService').saveIsPrivate(place)
+      });
+    }
+    return done(true, 'google_photo');
+  } catch (error) {
+    console.error('❌ setDefaultGooglePhoto failed:', error);
+    res.status(500).json({ success: false, message: 'Failed to add a photo' });
   }
 };
 
