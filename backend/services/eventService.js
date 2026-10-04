@@ -14,7 +14,7 @@
 // Photo files are ordinary uploads (unguessable public URLs); "members only"
 // is enforced by only ever returning them to members.
 
-const { FieldValue } = require('firebase-admin/firestore');
+const { FieldValue, FieldPath } = require('firebase-admin/firestore');
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS, createCircle, createPlace } = require('../models/FirestoreModels');
 const { normalizeUserId } = require('./idService');
@@ -40,6 +40,9 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{16,32}$/;
 const PHOTO_PUSH_COOLDOWN_MS = 15 * 60 * 1000;
 
 const db = () => getFirestore();
+// Member maps are keyed by user id, and some legacy ids contain dots — a
+// dotted string field path would nest them wrongly. Always build the path.
+const memberPath = (uid, ...rest) => new FieldPath('members', String(uid), ...rest);
 const eventsCol = () => db().collection(COLLECTIONS.EVENTS);
 const photosCol = () => db().collection(COLLECTIONS.EVENT_PHOTOS);
 const placesCol = () => db().collection(COLLECTIONS.EVENT_PLACES);
@@ -273,12 +276,11 @@ async function joinByToken(token, uid) {
     if (isBlockedEitherWay(me.data, data.hostId)) throw new ServiceError(403, 'blocked', "You can't join this event");
     if ((data.memberIds || []).length >= MAX_MEMBERS) throw new ServiceError(403, 'full', `${data.name} is full`);
     const now = nowIso();
-    tx.update(ref, {
-      memberIds: FieldValue.arrayUnion(uid),
-      pendingInviteIds: FieldValue.arrayRemove(uid),
-      [`members.${uid}`]: { name: me.name, avatarUrl: me.avatarUrl, joinedAt: now },
-      updatedAt: now
-    });
+    tx.update(ref,
+      'memberIds', FieldValue.arrayUnion(uid),
+      'pendingInviteIds', FieldValue.arrayRemove(uid),
+      memberPath(uid), { name: me.name, avatarUrl: me.avatarUrl, joinedAt: now },
+      'updatedAt', now);
     return {
       data: {
         ...data,
@@ -351,13 +353,13 @@ async function removeMember(eventId, hostUid, memberId) {
 
 async function removeMemberInternal(ref, data, uid, { removed }) {
   const listId = data.members && data.members[uid] && data.members[uid].innerListId;
-  const update = {
-    memberIds: FieldValue.arrayRemove(uid),
-    [`members.${uid}`]: FieldValue.delete(),
-    updatedAt: nowIso()
-  };
-  if (removed) update.removedIds = FieldValue.arrayUnion(uid);
-  await ref.update(update);
+  const fields = [
+    'memberIds', FieldValue.arrayRemove(uid),
+    memberPath(uid), FieldValue.delete(),
+    'updatedAt', nowIso()
+  ];
+  if (removed) fields.push('removedIds', FieldValue.arrayUnion(uid));
+  await ref.update(...fields);
   if (listId) {
     require('./innerCircleService').deleteInnerCircleList(uid, listId).catch(() => {});
   }
@@ -424,16 +426,36 @@ async function syncInnerListFor(ref, data, uid) {
     return;
   }
   if (!userIds.length) return; // created once there's someone to put in it
+  // A list with the event's name already there (a sync that raced this one,
+  // or a re-join): adopt it rather than create a twin
+  const existing = (await innerCircleService.getInnerCircleLists(uid)).find(l => l.name === data.name);
+  if (existing) {
+    await innerCircleService.updateInnerCircleList(uid, existing.id, { userIds });
+    await ref.update(memberPath(uid, 'innerListId'), existing.id);
+    return;
+  }
   try {
     const lists = await innerCircleService.createInnerCircleList(uid, { name: data.name, userIds });
     const created = lists[lists.length - 1];
-    await ref.update({ [`members.${uid}.innerListId`]: created.id });
+    await ref.update(memberPath(uid, 'innerListId'), created.id);
   } catch (error) {
     if (error.code !== 'INNER_CIRCLE_TOO_MANY_LISTS') throw error; // at the 20-list cap: skip quietly
   }
 }
 
-async function syncAllInnerLists(eventId) {
+// One sync per event at a time: two joins seconds apart would otherwise both
+// see a member without a list and both create one, and the lists' own
+// read-modify-write would clobber each other.
+const syncChains = new Map();
+function syncAllInnerLists(eventId) {
+  const previous = syncChains.get(eventId) || Promise.resolve();
+  const next = previous.catch(() => {}).then(() => runInnerListSync(eventId));
+  syncChains.set(eventId, next);
+  next.finally(() => { if (syncChains.get(eventId) === next) syncChains.delete(eventId); }).catch(() => {});
+  return next;
+}
+
+async function runInnerListSync(eventId) {
   const { ref, data } = await loadEvent(eventId);
   for (const uid of data.memberIds || []) {
     // Re-read per member: each create stamps its listId on the event
@@ -478,7 +500,7 @@ async function addPhotos(eventId, uid, photos) {
   // "Sal added 6 photos" — once per uploader per 15 minutes per event
   const lastPush = (data.photoPushAt && data.photoPushAt[uid]) || 0;
   if (now - lastPush > PHOTO_PUSH_COOLDOWN_MS) {
-    await ref.update({ [`photoPushAt.${uid}`]: now }).catch(() => {});
+    await ref.update(new FieldPath('photoPushAt', String(uid)), now).catch(() => {});
     const others = (data.memberIds || []).filter(id => id !== uid);
     for (const id of others) {
       notifyQuiet.sendInBackground(id, {
@@ -502,7 +524,9 @@ async function deletePhoto(eventId, uid, photoId) {
   }
   await photoRef.delete();
   await ref.update({ photoCount: FieldValue.increment(-1), updatedAt: nowIso() });
-  require('./storage').deleteImage(doc.data().imageUrl).catch(() => {});
+  // The stored file is left alone on purpose: any bucket URL passes the
+  // allow-list, so deleting by URL could delete someone else's file. Same
+  // as drinks, postcards and workout cards (orphans are harmless).
   return { deleted: true };
 }
 
@@ -561,7 +585,7 @@ async function findOrCreateEventCircle(ref, data, uid) {
     const created = await db().collection(COLLECTIONS.CIRCLES).add({ ...circle, eventId: ref.id });
     circleId = created.id;
   }
-  await ref.update({ [`members.${uid}.circleId`]: circleId });
+  await ref.update(memberPath(uid, 'circleId'), circleId);
   return circleId;
 }
 
