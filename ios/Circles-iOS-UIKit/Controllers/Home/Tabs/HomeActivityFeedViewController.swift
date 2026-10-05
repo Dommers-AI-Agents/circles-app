@@ -780,10 +780,20 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
                 name: .navigateToHomeWidget, object: "workouts",
                 userInfo: ["workoutPostId": activity.metadata?.workoutPostId ?? activity.targetId]
             )
+        case .postcardSent:
+            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "postcard")
+        case .postcardMailed:
+            // The order itself: its status and tracking
+            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "postcard",
+                                            userInfo: ["orderId": activity.targetId])
+        case .fridgemailSent:
+            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "fridgemail")
         case .suggestionSent, .suggestionAccepted,
              .profileUpdated, .userActivity, .reactionAdded, .unknown:
-            // No reliable local destination for these
-            break
+            // Nothing more specific to open: the person whose row it is, so
+            // no row is ever a dead tap (a type this build doesn't know yet
+            // included)
+            if let actor = activity.actor { didTapUserProfile(user: actor) }
         }
     }
 
@@ -873,7 +883,7 @@ extension HomeActivityFeedViewController: ActivityFeedCellDelegate {
     func didTapPlaceImage(activity: Activity) {
         switch activity.type {
         case .photoUploaded, .workoutShared, .circleCreated, .circleLiked, .circleCommented,
-             .venueAnnouncement, .venueOffer:
+             .venueAnnouncement, .venueOffer, .postcardSent, .postcardMailed, .fridgemailSent:
             // The thumbnail of these is not a saved place: route like the row
             openActivity(activity)
         case .videoUploaded, .videoLiked:

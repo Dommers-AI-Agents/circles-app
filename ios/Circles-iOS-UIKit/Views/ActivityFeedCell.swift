@@ -362,7 +362,7 @@ class ActivityFeedCell: UITableViewCell {
         
         // Configure optional elements - show place image for check-ins, places, video uploads, and photo uploads.
         // Video/photo moments carry their image as videoThumbnail rather than placePhoto.
-        let thumbnailUrl = activity.metadata?.placePhoto ?? activity.metadata?.videoThumbnail
+        let thumbnailUrl = activity.metadata?.placePhoto ?? activity.metadata?.videoThumbnail ?? activity.metadata?.imageUrl
         let shouldShowPlaceImage = (activity.type == .checkIn ||
                                    activity.type == .placeAdded ||
                                    activity.type == .placeLiked ||
@@ -373,7 +373,11 @@ class ActivityFeedCell: UITableViewCell {
                                    // cover image in the same placePhoto key
                                    activity.type == .circleCreated ||
                                    activity.type == .circleLiked ||
-                                   activity.type == .circleCommented) &&
+                                   activity.type == .circleCommented ||
+                                   // The picture that was mailed
+                                   activity.type == .postcardSent ||
+                                   activity.type == .postcardMailed ||
+                                   activity.type == .fridgemailSent) &&
                                    thumbnailUrl != nil
 
         placeImageView.isHidden = !shouldShowPlaceImage

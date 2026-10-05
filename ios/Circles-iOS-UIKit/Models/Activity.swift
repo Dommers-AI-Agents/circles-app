@@ -26,6 +26,15 @@ enum ActivityType: String, Codable {
     case venueOffer = "venue_offer"
     /// A finished workout shared from the Workouts widget; opens the workout
     case workoutShared = "workout_shared"
+    // The owner's own "sent" history (metadata.ownerOnly — only they see
+    // these). Unknown to the feed until 2026-10-05, so they read "shared an
+    // update" and did nothing when tapped.
+    /// A postcard sent in Messages; opens the Postcard widget
+    case postcardSent = "postcard_sent"
+    /// A printed postcard ordered to be mailed; opens that order
+    case postcardMailed = "postcard_mailed"
+    /// A child's drawing mailed with Fridge Mail; opens Fridge Mail
+    case fridgemailSent = "fridgemail_sent"
     /// Fallback for activity types this build doesn't know. The backend adds
     /// types over time; an unknown one must not fail the decode of an entire
     /// home screen response and blank the feed.
@@ -147,6 +156,8 @@ struct ActivityMetadata: Codable {
     let contentType: String?  // Moment content: "photo" | "video" (photo moments ride the video pipeline)
     let workoutPostId: String?  // Shared workout the row opens
     let workoutDetail: String?  // "6 exercises · 42 min · 2 PRs"
+    let imageUrl: String?  // Postcard / Fridge Mail picture
+    let recipientName: String?  // Who a postcard / Fridge Mail went to
 }
 
 // MARK: - Activity Helper Methods
@@ -215,6 +226,12 @@ extension Activity {
             return "added a new offer"
         case .workoutShared:
             return "finished a workout: \(targetName)"
+        case .postcardSent:
+            return "sent a postcard to \(targetName)"
+        case .postcardMailed:
+            return "mailed a printed postcard to \(targetName)"
+        case .fridgemailSent:
+            return "mailed Fridge Mail to \(targetName)"
         case .unknown:
             return "shared an update"
         }
