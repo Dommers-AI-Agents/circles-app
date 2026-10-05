@@ -212,7 +212,7 @@ class AlertPresenter {
         message: String = "Loading...",
         from viewController: UIViewController
     ) -> UIAlertController {
-        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        let alert = LoadingAlertController(title: nil, message: message, preferredStyle: .alert)
         
         let loadingIndicator = UIActivityIndicatorView(style: .medium)
         loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
@@ -260,3 +260,35 @@ class AlertPresenter {
 // self.showError(error)
 // or
 // AlertPresenter.showError(error, from: self)
+/// The loading box from `AlertPresenter.showLoading`, safe to dismiss at any
+/// moment. Work that finishes before the box has finished appearing used to
+/// dismiss it mid-presentation; UIKit ignores that, the completion never ran
+/// and the box sat on screen for good — "Reading your photos…" over Home with
+/// nothing behind it (Wes, 2026-10-05). Now a dismiss during the appearance
+/// waits for it, and a box that never got on screen (presented while
+/// something else was still going away) runs the completion straight away.
+final class LoadingAlertController: UIAlertController {
+    private var hasAppeared = false
+    private var pendingDismiss: (animated: Bool, completion: (() -> Void)?)?
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        hasAppeared = true
+        if let pending = pendingDismiss {
+            pendingDismiss = nil
+            super.dismiss(animated: pending.animated, completion: pending.completion)
+        }
+    }
+
+    override func dismiss(animated flag: Bool, completion: (() -> Void)? = nil) {
+        if hasAppeared {
+            super.dismiss(animated: flag, completion: completion)
+        } else if presentingViewController != nil || isBeingPresented {
+            // Still sliding in: finish appearing, then go
+            pendingDismiss = (flag, completion)
+        } else {
+            // Never made it on screen: nothing to take down
+            completion?()
+        }
+    }
+}

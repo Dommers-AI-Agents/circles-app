@@ -23,9 +23,22 @@ enum PhotoMetadataReader {
         return config
     }
 
-    /// Reads every result, keeping the picked order. Completion on main.
-    static func load(_ results: [PHPickerResult], completion: @escaping ([Picked]) -> Void) {
+    /// Reads every result, keeping the picked order. Completion on main,
+    /// exactly once: after every photo, or after `timeout` with the ones read
+    /// by then (an iCloud original that never downloads mustn't hang it).
+    static func load(_ results: [PHPickerResult], timeout: TimeInterval = 30,
+                     completion: @escaping ([Picked]) -> Void) {
         var picked = [Picked?](repeating: nil, count: results.count)
+        let lock = NSLock()   // providers call back on their own queues
+        var finished = false
+        let finish = {
+            lock.lock()
+            let first = !finished
+            finished = true
+            let done = picked.compactMap { $0 }
+            lock.unlock()
+            if first { DispatchQueue.main.async { completion(done) } }
+        }
         let group = DispatchGroup()
         for (index, result) in results.enumerated() {
             group.enter()
@@ -33,10 +46,13 @@ enum PhotoMetadataReader {
                 defer { group.leave() }
                 guard let data, let image = displayImage(from: data) else { return }
                 let meta = metadata(from: data)
+                lock.lock()
                 picked[index] = Picked(image: image, coordinate: meta.coordinate, takenAt: meta.takenAt)
+                lock.unlock()
             }
         }
-        group.notify(queue: .main) { completion(picked.compactMap { $0 }) }
+        group.notify(queue: .global(qos: .userInitiated)) { finish() }
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { finish() }
     }
 
     /// GPS position and capture time from an image file's properties.
@@ -109,8 +125,12 @@ final class PhotoPickerRelay: NSObject, PHPickerViewControllerDelegate {
     }
 
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        picker.dismiss(animated: true)
         Self.current = nil
-        if !results.isEmpty { onPick(results) }
+        let onPick = self.onPick
+        // Hand over once the picker is gone: presenting a loading box over a
+        // picker that's still leaving is what left one stuck on screen
+        picker.dismiss(animated: true) {
+            if !results.isEmpty { onPick(results) }
+        }
     }
 }
