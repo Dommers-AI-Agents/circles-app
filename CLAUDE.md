@@ -620,7 +620,11 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
     `WidgetContext.api<T>()`; JSON through `WidgetJSON`; date copy through
     `WidgetDateCopy`; sheets/fields/thumbnails through `WidgetSheet` and `WidgetUI`;
     pure logic and copy enums live in `FavWidgetsCore` (Mac-testable), not in a
-    widget folder. Release = tag from main → bump `minimumVersion` in pbxproj →
+    widget folder. **Shares are one bubble** (Wes, 2026-10-05): a Share sends the card as
+    one tappable link via `WidgetShareCard.items` / `.link(...)` (app: `LinkPreviewItem`) —
+    never extra text repeating the card, "get it on FavCircles" lines, or an App Store URL;
+    the `/app/widget/:id` landing page (`backend/config/widgetCatalog.js`) does the pitching.
+    Release = tag from main → bump `minimumVersion` in pbxproj →
     `xcodebuild -resolvePackageDependencies` (never hand-edit Package.resolved).
     Moving a symbol between the two modules is a patch bump; a host-contract
     change is a minor bump and needs the app in lockstep.

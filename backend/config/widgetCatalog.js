@@ -9,11 +9,13 @@
  */
 const WIDGETS = {
   billsplit: { title: 'Bill Split', blurb: 'Split the check and the tip with friends in seconds.', emoji: '🧾' },
+  drink: { title: 'Make Me a Drink', blurb: 'Cocktail recipes from what you have, with a surprise-me shake.', emoji: '🍹' },
   calories: { title: 'Calories', blurb: 'Log meals and macros in a couple of taps.', emoji: '🥗' },
   fridgemail: { title: 'Fridge Mail', blurb: "Your kids' drawings, printed and mailed to Grandma every week.", emoji: '🎨' },
   habits: { title: 'Habits', blurb: 'Keep daily habits with one-tap check-ins and streaks.', emoji: '✅' },
   heartbeat: { title: 'Heartbeat', blurb: 'Measure your heart rate directly from your phone camera.', emoji: '❤️' },
   howareyou: { title: 'How Are You?', blurb: 'Check on Mom or Dad a few times a day — they answer with one tap from their Lock Screen.', emoji: '💬' },
+  motivation: { title: 'Coach Mane', blurb: 'A coach in your pocket who will not let you skip leg day.', emoji: '📣' },
   nextbar: { title: 'NextBar', blurb: 'Your next bar, picked from the places your friends actually go.', emoji: '🍸' },
   events: { title: 'Events', blurb: 'Start a Party Bus: everyone joins with one link and shares photos only the group can see.', emoji: '🚌' },
   postcard: { title: 'Postcard', blurb: 'Send a real postcard from a trip photo, printed and mailed for you.', emoji: '📮' },
