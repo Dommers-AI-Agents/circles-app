@@ -57,6 +57,8 @@ router.delete('/events/:id', events.end);
 router.post('/events/:id/invite', messageLimiter, events.invite);
 router.post('/events/:id/link/reset', events.resetLink);
 router.post('/events/:id/leave', events.leave);
+router.post('/events/:id/archive', events.archive);
+router.post('/events/:id/unarchive', events.unarchive);
 router.delete('/events/:id/members/:memberId', events.removeMember);
 router.post('/events/:id/photos', perUserLimit({ bucket: 'event-photos', windowMs: 3600000, max: 300 }), events.addPhotos);
 router.delete('/events/:id/photos/:photoId', events.deletePhoto);

@@ -112,6 +112,10 @@ const toClientEvent = (id, data, viewerId) => ({
     name: (data.invited && data.invited[uid] && data.invited[uid].name) || 'Invited'
   })),
   inviteUrl: `${LINK_BASE}${data.inviteToken}`,
+  // Archived: hidden from the viewer's list, album intact. By the
+  // coordinator for everyone (also closes joining), or by a member for themselves.
+  archivedForEveryone: !!data.archivedAt,
+  archived: !!data.archivedAt || !!(data.members && data.members[viewerId] && data.members[viewerId].archivedAt),
   myCircleId: (data.members && data.members[viewerId] && data.members[viewerId].circleId) || null,
   // Ended events stay for their members with a recap (2026-10-06)
   endedAt: data.endedAt || null,
@@ -427,6 +431,33 @@ async function resetInviteLink(eventId, hostUid) {
   return toClientEvent(ref.id, { ...data, inviteToken }, hostUid);
 }
 
+/** Archive: out of the list, nothing deleted. forEveryone is coordinator-only. */
+async function archiveEvent(eventId, uid, { forEveryone = false } = {}) {
+  const { ref, data } = await loadAsMember(eventId, uid);
+  const now = nowIso();
+  if (forEveryone) {
+    if (data.hostId !== uid) throw new ServiceError(403, 'not_host', 'Only the coordinator can archive it for everyone');
+    await ref.update({ archivedAt: now, joinOpen: false, updatedAt: now });
+    return toClientEvent(ref.id, { ...data, archivedAt: now, joinOpen: false }, uid);
+  }
+  await ref.update(memberPath(uid, 'archivedAt'), now);
+  const members = { ...(data.members || {}), [uid]: { ...((data.members || {})[uid] || {}), archivedAt: now } };
+  return toClientEvent(ref.id, { ...data, members }, uid);
+}
+
+/** Back in the list. The coordinator's unarchive restores it for everyone (joining stays closed until reopened). */
+async function unarchiveEvent(eventId, uid) {
+  const { ref, data } = await loadAsMember(eventId, uid);
+  const fields = [memberPath(uid, 'archivedAt'), FieldValue.delete()];
+  if (data.archivedAt && data.hostId === uid) fields.push('archivedAt', FieldValue.delete(), 'updatedAt', nowIso());
+  await ref.update(...fields);
+  const members = { ...(data.members || {}) };
+  if (members[uid]) { members[uid] = { ...members[uid] }; delete members[uid].archivedAt; }
+  const next = { ...data, members };
+  if (data.hostId === uid) delete next.archivedAt;
+  return toClientEvent(ref.id, next, uid);
+}
+
 async function endEvent(eventId, hostUid) {
   const { ref, data } = await loadAsMember(eventId, hostUid);
   if (data.hostId !== hostUid) throw new ServiceError(403, 'not_host', 'Only the coordinator can end the event');
@@ -686,7 +717,7 @@ async function savePlaceToMyCircle(eventId, uid, eventPlaceId) {
 module.exports = {
   // operations
   listEvents, getEvent, previewByToken, publicPreview, createEvent, joinByToken, inviteConnections,
-  leaveEvent, removeMember, updateEvent, resetInviteLink, endEvent,
+  leaveEvent, removeMember, updateEvent, resetInviteLink, endEvent, archiveEvent, unarchiveEvent,
   // shared with eventExtrasService / eventLiveActivityService
   loadEvent, loadAsMember, eventsCol, photosCol, placesCol, DEFAULT_EMOJI,
   addPhotos, deletePhoto, togglePhotoLike, tagPlace, savePlaceToMyCircle,

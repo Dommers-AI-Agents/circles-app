@@ -25,6 +25,8 @@ exports.removeMember = handle('removeMember', async (req) => eventService.remove
 exports.update = handle('update', async (req) => ({ event: await eventService.updateEvent(req.params.id, uid(req), req.body || {}) }));
 exports.resetLink = handle('resetLink', async (req) => ({ event: await eventService.resetInviteLink(req.params.id, uid(req)) }));
 exports.end = handle('end', async (req) => eventService.endEvent(req.params.id, uid(req)));
+exports.archive = handle('archive', async (req) => ({ event: await eventService.archiveEvent(req.params.id, uid(req), { forEveryone: (req.body || {}).forEveryone === true }) }));
+exports.unarchive = handle('unarchive', async (req) => ({ event: await eventService.unarchiveEvent(req.params.id, uid(req)) }));
 exports.addPhotos = handle('addPhotos', async (req) => ({ photos: await eventService.addPhotos(req.params.id, uid(req), (req.body || {}).photos) }));
 exports.deletePhoto = handle('deletePhoto', async (req) => eventService.deletePhoto(req.params.id, uid(req), req.params.photoId));
 exports.likePhoto = handle('likePhoto', async (req) => ({ photo: await eventService.togglePhotoLike(req.params.id, uid(req), req.params.photoId) }));

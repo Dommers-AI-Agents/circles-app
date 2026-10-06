@@ -48,6 +48,11 @@ describe('what a member sees', () => {
     const withInvites = { ...data, pendingInviteIds: ['amy', 'sal'], invited: { amy: { name: 'Amy' } } };
     expect(svc.toClientEvent('e1', withInvites, 'wes').invited).toEqual([{ id: 'amy', name: 'Amy' }]);
     expect(svc.toClientEvent('e1', data, 'wes').invited).toEqual([]);
+    expect(svc.toClientEvent('e1', data, 'wes')).toMatchObject({ archived: false, archivedForEveryone: false });
+    const mine = { ...data, members: { ...data.members, sal: { name: 'Sal', archivedAt: '2026-10-06' } } };
+    expect(svc.toClientEvent('e1', mine, 'sal').archived).toBe(true);
+    expect(svc.toClientEvent('e1', mine, 'wes').archived).toBe(false);
+    expect(svc.toClientEvent('e1', { ...data, archivedAt: '2026-10-06' }, 'sal')).toMatchObject({ archived: true, archivedForEveryone: true });
   });
   test('event Inner Circle list = other members I am connected to', () => {
     expect(svc.listMembersFor(['wes', 'sal', 'joe', 'amy'], 'wes', new Set(['sal', 'amy', 'zed']))).toEqual(['sal', 'amy']);
