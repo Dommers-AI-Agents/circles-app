@@ -24,6 +24,20 @@ struct HomePromptGateTests {
         #expect(HomePromptGate.shouldFetch(clear()))
     }
 
+    /// Not over a screen pushed on top of home, and never mid-run (a tip
+    /// popped over Map My Run — Wes, 2026-10-06).
+    @Test func onlyWhenHomeIsOnScreenAndNothingIsInProgress() {
+        var away = back(after: 3 * 3600)
+        away.isHomeOnScreen = false
+        #expect(!HomePromptGate.shouldFetch(away))
+        #expect(!HomePromptGate.canPresent(away))
+        var running = back(after: 3 * 3600)
+        running.isBusyElsewhere = true
+        #expect(!HomePromptGate.shouldFetch(running))
+        #expect(!HomePromptGate.canPresent(running))
+        #expect(HomePromptGate.shouldFetch(back(after: 3 * 3600)))
+    }
+
     /// Switching back to the Home tab mid-session is not an arrival. Once
     /// anything has been fetched this session, appearing again never asks —
     /// otherwise the card would pop every time someone came back from a place.

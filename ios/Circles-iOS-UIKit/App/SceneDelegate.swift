@@ -63,6 +63,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 handleDeepLink(url)
             }
         }
+
+        // Universal links (https://api.favcircles.com/…) and Spotlight taps
+        // that LAUNCH the app arrive here, not in scene(_:continue:) — they
+        // were dropped, so a widget link from a closed app opened Home (Wes,
+        // 2026-10-06). The same handler stashes them as pendingDeepLink while
+        // the tab bar isn't up yet; they're replayed once it is.
+        if let activity = connectionOptions.userActivities.first {
+            self.scene(scene, continue: activity)
+        }
         
         // App Clip handoff: if the clip left credentials in the shared keychain
         // mailbox, adopt them BEFORE any auth-state read so first launch lands

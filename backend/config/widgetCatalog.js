@@ -17,11 +17,13 @@ const WIDGETS = {
   howareyou: { title: 'How Are You?', blurb: 'Check on Mom or Dad a few times a day — they answer with one tap from their Lock Screen.', emoji: '💬' },
   motivation: { title: 'Coach Mane', blurb: 'A coach in your pocket who will not let you skip leg day.', emoji: '📣' },
   nextbar: { title: 'NextBar', blurb: 'Your next bar, picked from the places your friends actually go.', emoji: '🍸' },
-  events: { title: 'Events', blurb: 'Start a Party Bus: everyone joins with one link and shares photos only the group can see.', emoji: '🚌' },
+  events: { title: 'Events', blurb: 'Start an event (a party bus, a trip, a night out): everyone joins with one link and shares photos only the group can see.', emoji: '🎉' },
   postcard: { title: 'Postcard', blurb: 'Send a real postcard from a trip photo, printed and mailed for you.', emoji: '📮' },
+  run: { title: 'Map My Run', blurb: 'Track your runs with GPS: route map, pace, splits and personal bests, right on your Lock Screen.', emoji: '🏃' },
   quotes: { title: 'Quotes', blurb: 'A good line a few times a day, on the topics you pick.', emoji: '💭' },
   sleepsounds: { title: 'Sleep Sounds', blurb: 'Mix rain, ocean and fire into a sleep sound that fades out on its own.', emoji: '🌙' },
   stocks: { title: 'Stocks', blurb: 'Follow your stocks, indexes, rates and crypto at a glance.', emoji: '📈' },
+  whattoeat: { title: 'What to Eat', blurb: "Can't decide? Spin for a craving and find where to get it nearby.", emoji: '🍜' },
   water: { title: 'Water', blurb: 'Track your water through the day and get a nudge when you fall behind.', emoji: '💧' },
   workouts: { title: 'Workouts', blurb: 'Log sets, reps and PRs, and see your progress over time.', emoji: '🏋️' }
 };

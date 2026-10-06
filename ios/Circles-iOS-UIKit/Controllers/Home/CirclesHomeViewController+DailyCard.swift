@@ -1,5 +1,6 @@
 import UIKit
 import FavWidgetsCore
+import FavWidgets
 
 // MARK: - Home "daily card"
 //
@@ -42,7 +43,10 @@ extension CirclesHomeViewController {
             isTourRunning: isShowingWelcomeTour,
             isFirstSessionFlowActive: OnboardingManager.shared.isFirstSessionFlowActive,
             onboardingCheckDone: hasCheckedTutorialAndOverlay,
-            trigger: trigger
+            trigger: trigger,
+            isHomeOnScreen: navigationController?.topViewController === self
+                && (tabBarController?.selectedViewController === navigationController || tabBarController == nil),
+            isBusyElsewhere: RunSession.shared.isActive
         )
     }
 

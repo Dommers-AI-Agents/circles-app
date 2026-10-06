@@ -168,11 +168,17 @@ struct HomePromptGate {
         /// can't race the suggested-people overlay or the home tour.
         var onboardingCheckDone: Bool
         var trigger: Trigger = .appear
+        /// Home is what's on screen (its tab selected, nothing pushed over it)
+        /// and nothing is mid-flow, like a run: a tip over Map My Run
+        /// interrupted a run (Wes, 2026-10-06).
+        var isHomeOnScreen: Bool = true
+        var isBusyElsewhere: Bool = false
     }
 
     static func shouldFetch(_ c: Context) -> Bool {
         guard c.isSignedIn, c.onboardingCheckDone else { return false }
         guard !c.isCardVisible, !c.isPresentingModal, !c.isTourRunning, !c.isFirstSessionFlowActive else { return false }
+        guard c.isHomeOnScreen, !c.isBusyElsewhere else { return false }
         switch c.trigger {
         case .appear:
             // Only the first appearance of a session is an arrival. (If that
@@ -189,6 +195,6 @@ struct HomePromptGate {
     /// A fetched card is only shown if the screen is still clear when the
     /// response lands (a modal may have opened in the meantime).
     static func canPresent(_ c: Context) -> Bool {
-        !c.isPresentingModal && !c.isTourRunning && !c.isFirstSessionFlowActive
+        !c.isPresentingModal && !c.isTourRunning && !c.isFirstSessionFlowActive && c.isHomeOnScreen && !c.isBusyElsewhere
     }
 }
