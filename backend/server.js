@@ -497,8 +497,8 @@ app.get('/app/event/:token', async (req, res) => {
   res.status(preview ? 200 : 404).send(renderEventInvite(token, preview));
 });
 
-// Watch-a-run link (Map My Run). The app installed: the Universal Link opens
-// the run in Map My Run. Otherwise: who's running and how to get the app — no
+// Watch-a-run link (FavRun). The app installed: the Universal Link opens
+// the run in FavRun. Otherwise: who's running and how to get the app — no
 // route, no position.
 app.get('/app/run/:token', async (req, res) => {
   const token = String(req.params.token).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);

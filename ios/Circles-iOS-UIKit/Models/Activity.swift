@@ -26,7 +26,7 @@ enum ActivityType: String, Codable {
     case venueOffer = "venue_offer"
     /// A finished workout shared from the Workouts widget; opens the workout
     case workoutShared = "workout_shared"
-    /// A run posted from Map My Run; opens the run (map, splits)
+    /// A run posted from FavRun; opens the run (map, splits)
     case runShared = "run_shared"
     // The owner's own "sent" history (metadata.ownerOnly — only they see
     // these). Unknown to the feed until 2026-10-05, so they read "shared an

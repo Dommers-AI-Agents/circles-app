@@ -171,7 +171,7 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         if widgetId == "events", let eventToken { context.launchEventToken = eventToken }
         if widgetId == "events", let eventId { context.launchEventId = eventId }
         if widgetId == "quotes", let quoteId { context.launchQuoteId = quoteId }
-        // Map My Run: a run to watch (push / feed row) or a watch link to join
+        // FavRun: a run to watch (push / feed row) or a watch link to join
         if widgetId == "run", let runId { context.launchRunId = runId }
         if widgetId == "run", let runToken { context.launchRunToken = runToken }
         // A shared workout tapped in the activity feed opens over the page

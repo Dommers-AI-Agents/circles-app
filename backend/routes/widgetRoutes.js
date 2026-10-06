@@ -81,7 +81,7 @@ router.post('/events/:id/rollcall/ping', perUserLimit({ bucket: 'event-ping', wi
 router.delete('/events/:id/rollcall', events.closeRollCall);
 router.get('/events/:id/recap', events.recap);
 
-// Map My Run, shared (2026-10-06): watch a run live, cheers, post to activity.
+// FavRun, shared (2026-10-06): watch a run live, cheers, post to activity.
 // Static paths before /:id.
 router.get('/run/watching', runShare.watching);
 router.post('/run/live', perUserLimit({ bucket: 'run-live', windowMs: 86400000, max: 30 }), runShare.startLive);

@@ -25,7 +25,7 @@ struct HomePromptGateTests {
     }
 
     /// Not over a screen pushed on top of home, and never mid-run (a tip
-    /// popped over Map My Run — Wes, 2026-10-06).
+    /// popped over FavRun — Wes, 2026-10-06).
     @Test func onlyWhenHomeIsOnScreenAndNothingIsInProgress() {
         var away = back(after: 3 * 3600)
         away.isHomeOnScreen = false

@@ -3,7 +3,7 @@ import ActivityKit
 import AppIntents
 
 // Shared by the app and the Circles-Widget extension (membership exception
-// in the project): what Map My Run's lock-screen / Dynamic Island display
+// in the project): what FavRun's lock-screen / Dynamic Island display
 // shows, and its Pause/Resume button.
 
 @available(iOS 16.1, *)

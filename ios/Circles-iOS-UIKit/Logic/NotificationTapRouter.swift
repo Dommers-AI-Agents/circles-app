@@ -19,7 +19,7 @@ enum NotificationDestination: Equatable {
     case eventInvite(token: String)
     /// Someone joined / added photos: that event.
     case eventOpen(id: String)
-    /// Map My Run: a run to watch / that you watched / your own (a cheer)
+    /// FavRun: a run to watch / that you watched / your own (a cheer)
     case runOpen(id: String)
     case suggestions(placeId: String?, suggestionId: String?)
     /// `showComments` nil = post without userInfo (as `new_place` always did).

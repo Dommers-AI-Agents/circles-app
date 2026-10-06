@@ -3,7 +3,7 @@ import ActivityKit
 import FavWidgets
 import FavWidgetsCore
 
-/// Map My Run on the lock screen and in the Dynamic Island: started with the
+/// FavRun on the lock screen and in the Dynamic Island: started with the
 /// run, updated as it goes, ended when it's saved or discarded. The lock
 /// screen's Pause/Resume reaches RunSession through ToggleRunPauseIntent.
 @available(iOS 16.2, *)

@@ -34,7 +34,7 @@ struct NotificationTapRouterTests {
         for type in ["event_challenge", "event_rollcall", "event_rollcall_ping"] {
             #expect(route(["type": type, "eventId": "e1"]) == .eventOpen(id: "e1"))
         }
-        // Map My Run: invites, miles, finish, cheers all open the run
+        // FavRun: invites, miles, finish, cheers all open the run
         for type in ["run_live_invite", "run_live_split", "run_live_finished", "run_cheer", "run_watcher_joined"] {
             #expect(route(["type": type, "runId": "r1"]) == .runOpen(id: "r1"))
         }

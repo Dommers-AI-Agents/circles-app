@@ -3,7 +3,7 @@ import WidgetKit
 import ActivityKit
 import AppIntents
 
-/// Map My Run on the lock screen and in the Dynamic Island: distance, a
+/// FavRun on the lock screen and in the Dynamic Island: distance, a
 /// clock that ticks by itself, pace, and Pause/Resume. Tapping it opens the
 /// run (where Finish is).
 struct RunLiveActivityWidget: Widget {
@@ -54,7 +54,7 @@ struct RunLiveActivityWidget: Widget {
         var body: some View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Label(state.isPaused ? "Paused" : "Map My Run", systemImage: state.isPaused ? "pause.circle.fill" : "figure.run")
+                    Label(state.isPaused ? "Paused" : "FavRun", systemImage: state.isPaused ? "pause.circle.fill" : "figure.run")
                         .font(.caption.weight(.semibold)).foregroundStyle(RunLiveActivityWidget.orange)
                     Spacer()
                     Text("FavCircles").font(.caption2).foregroundStyle(.white.opacity(0.6))

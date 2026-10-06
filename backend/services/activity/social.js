@@ -758,7 +758,7 @@ const trackWorkoutShared = async (userId, { postId, summary, audience, audienceL
 };
 
 /**
- * A run posted from Map My Run: one feed row, gated to its audience like a
+ * A run posted from FavRun: one feed row, gated to its audience like a
  * workout (activityPrivacy). The route map snapshot is the row's picture;
  * tapping opens the run (map, splits).
  */

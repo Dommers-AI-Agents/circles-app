@@ -67,7 +67,7 @@ const TYPES = {
   event_challenge:         { category: null,                      pref: 'socialActivity',         badge: false },
   event_rollcall:          { category: null,                      pref: 'socialActivity',         badge: false },
   event_rollcall_ping:     { category: null,                      pref: 'socialActivity',         badge: false },
-  // Map My Run, shared (2026-10-06): invited to watch, each mile, finished,
+  // FavRun, shared (2026-10-06): invited to watch, each mile, finished,
   // a cheer (to the runner), someone started watching (to the runner)
   run_live_invite:         { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   run_live_split:          { category: null,                      pref: 'socialActivity',         badge: false },

@@ -19,7 +19,7 @@ const WIDGETS = {
   nextbar: { title: 'NextBar', blurb: 'Your next bar, picked from the places your friends actually go.', emoji: '🍸' },
   events: { title: 'Events', blurb: 'Start an event (a party bus, a trip, a night out): everyone joins with one link and shares photos only the group can see.', emoji: '🎉' },
   postcard: { title: 'Postcard', blurb: 'Send a real postcard from a trip photo, printed and mailed for you.', emoji: '📮' },
-  run: { title: 'Map My Run', blurb: 'Track your runs with GPS: route map, pace, splits and personal bests, right on your Lock Screen.', emoji: '🏃' },
+  run: { title: 'FavRun', blurb: 'Track your runs with GPS: route map, pace, splits and personal bests, right on your Lock Screen.', emoji: '🏃' },
   quotes: { title: 'Quotes', blurb: 'A good line a few times a day, on the topics you pick.', emoji: '💭' },
   sleepsounds: { title: 'Sleep Sounds', blurb: 'Mix rain, ocean and fire into a sleep sound that fades out on its own.', emoji: '🌙' },
   stocks: { title: 'Stocks', blurb: 'Follow your stocks, indexes, rates and crypto at a glance.', emoji: '📈' },

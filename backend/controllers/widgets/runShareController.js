@@ -1,5 +1,5 @@
 // backend/controllers/widgets/runShareController.js
-// Map My Run, shared: watch live, cheers, post to activity — thin HTTP layer
+// FavRun, shared: watch live, cheers, post to activity — thin HTTP layer
 // over services/runShareService.
 const runs = require('../../services/runShareService');
 const { sendServiceError } = require('../../utils/serviceError');

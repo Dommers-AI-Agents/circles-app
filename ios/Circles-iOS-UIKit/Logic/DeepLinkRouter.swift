@@ -56,7 +56,7 @@ enum DeepLinkDestination: Equatable {
     /// One event, opened in the Events widget — `/app/widget/events?event=<id>`
     /// (the event's lock-screen display).
     case eventOpen(id: String)
-    /// A "watch my run" link — `/app/run/<token>`. Opens Map My Run on it.
+    /// A "watch my run" link — `/app/run/<token>`. Opens FavRun on it.
     case runJoin(token: String)
 }
 

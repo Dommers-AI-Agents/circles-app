@@ -1,5 +1,5 @@
 // backend/services/runShareService.js
-// Map My Run, shared (Wes, 2026-10-06): invite people to watch a run live —
+// FavRun, shared (Wes, 2026-10-06): invite people to watch a run live —
 // they follow the route on a map, get a fun push at every mile (or km), can
 // send cheers that pop up on the runner's phone, and keep the full run when
 // it's done. A finished run can also be posted to the activity feed.

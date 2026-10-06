@@ -775,7 +775,7 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
                 host?.navigateToGlobalPlace(withId: globalPlaceId, showComments: false)
             }
         case .runShared:
-            // The run (route map, splits) in Map My Run
+            // The run (route map, splits) in FavRun
             NotificationCenter.default.post(name: .navigateToHomeWidget, object: "run",
                                             userInfo: ["runId": activity.metadata?.runId ?? activity.targetId])
         case .workoutShared:

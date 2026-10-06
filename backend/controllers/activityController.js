@@ -542,7 +542,7 @@ exports.createActivity = async (type, actorId, targetType, targetId, targetName,
         workoutPostId: metadata.workoutPostId || null,
         workoutAudience: metadata.workoutAudience || null,
         workoutDetail: metadata.workoutDetail || null,
-        // Posted runs (Map My Run): the run the row opens, its audience and
+        // Posted runs (FavRun): the run the row opens, its audience and
         // the "3.10 mi · 26:40 · 8:36/mi" line
         runId: metadata.runId || null,
         runAudience: metadata.runAudience || null,

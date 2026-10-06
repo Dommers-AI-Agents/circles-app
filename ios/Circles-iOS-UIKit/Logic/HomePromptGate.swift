@@ -169,7 +169,7 @@ struct HomePromptGate {
         var onboardingCheckDone: Bool
         var trigger: Trigger = .appear
         /// Home is what's on screen (its tab selected, nothing pushed over it)
-        /// and nothing is mid-flow, like a run: a tip over Map My Run
+        /// and nothing is mid-flow, like a run: a tip over FavRun
         /// interrupted a run (Wes, 2026-10-06).
         var isHomeOnScreen: Bool = true
         var isBusyElsewhere: Bool = false

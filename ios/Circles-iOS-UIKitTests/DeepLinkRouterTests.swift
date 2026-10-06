@@ -32,7 +32,7 @@ struct DeepLinkRouterTests {
         #expect(dest("https://api.favcircles.com/app/widget/events?event=e1") == .eventOpen(id: "e1"))
         #expect(dest("https://api.favcircles.com/app/widget/events") == .widget(id: "events"))
         #expect(dest("https://api.favcircles.com/app/widget/run") == .widget(id: "run"))
-        // "Watch my run" links open Map My Run on that run
+        // "Watch my run" links open FavRun on that run
         #expect(dest("https://api.favcircles.com/app/run/tok123") == .runJoin(token: "tok123"))
     }
 
