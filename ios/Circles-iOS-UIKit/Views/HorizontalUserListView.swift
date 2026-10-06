@@ -45,7 +45,10 @@ class HorizontalUserListView: UIView {
 
     private var rowItems: [RowItem] {
         var items: [RowItem] = connections.map { RowItem.connection($0) }
-        if showsDiscoverySuffix {
+        // Suggestions and the "+" come after the WHOLE network — while pages
+        // are still to load, the end of the row is the next page, not
+        // "Find people" (Wes, 2026-10-06)
+        if showsDiscoverySuffix && !hasMoreConnections {
             // A suggestion the user has since followed shows up in connections —
             // drop it from the suffix immediately (refetch catches up later)
             let visibleSuggestions = suggestions.filter { user in
@@ -528,7 +531,8 @@ class HorizontalUserListView: UIView {
                 // + followed users)
                 if let active = activeRelationships, !active.isEmpty {
                     self.hasLoadedConnections = true
-                    self.displayConnections(active, alreadySorted: true, allowEmptyState: true)
+                    self.displayConnections(active, alreadySorted: true, allowEmptyState: true,
+                                            requestedOffset: 0, rawCount: active.count)
                     return
                 }
 
@@ -536,7 +540,9 @@ class HorizontalUserListView: UIView {
                 if !acceptedConnections.isEmpty {
                     self.hasLoadedConnections = true
                     Logger.debug("🔄 HorizontalUserListView: Active relationships empty/failed — falling back to accepted connections")
-                    self.displayConnections(acceptedConnections, alreadySorted: false, allowEmptyState: true)
+                    // The whole list at once: nothing more to page
+                    self.displayConnections(acceptedConnections, alreadySorted: false, allowEmptyState: true,
+                                            requestedOffset: 0, rawCount: 0)
                     return
                 }
 
@@ -589,12 +595,16 @@ class HorizontalUserListView: UIView {
                 }
                 
                 if let activeRelationships = activeRelationships, !activeRelationships.isEmpty {
-                    self.displayConnections(activeRelationships, alreadySorted: true, allowEmptyState: true)
+                    self.displayConnections(activeRelationships, alreadySorted: true, allowEmptyState: true,
+                                            requestedOffset: offset, rawCount: activeRelationships.count)
                 } else {
                     // No more relationships available
                     Logger.debug("🔍 HorizontalUserListView: No relationships returned for page \(self.currentPage), stopping pagination")
                     self.hasMoreConnections = false
                     self.isLoadingMore = false
+                    // The end of the network: now the "+" and suggestions belong
+                    self.collectionView.reloadData()
+                    self.fetchSuggestionsIfNeeded()
                 }
             }
         }
@@ -736,7 +746,15 @@ class HorizontalUserListView: UIView {
     }
     
     // MARK: - Shared Display Logic
-    private func displayConnections(_ connectionList: [Connection], alreadySorted: Bool = false, allowEmptyState: Bool = true) {
+    /// - Parameters:
+    ///   - requestedOffset: the offset this page was fetched at. Decides
+    ///     replace (0) vs append, so a late first-page response can't be
+    ///     mistaken for page 2 ("all duplicates → stop", Wes 2026-10-06).
+    ///   - rawCount: how many the server returned BEFORE client filtering —
+    ///     "is there more" is the server's full page, not what survived the
+    ///     filters (a filtered 9 used to end the row at 9).
+    private func displayConnections(_ connectionList: [Connection], alreadySorted: Bool = false, allowEmptyState: Bool = true,
+                                    requestedOffset: Int? = nil, rawCount: Int? = nil) {
         // Only show the loading state when nothing is displayed yet; otherwise
         // keep the current avatars visible while the new data is processed
         if connections.isEmpty {
@@ -813,7 +831,15 @@ class HorizontalUserListView: UIView {
                     guard let self = self else { return }
                     
                     // Handle pagination: append new connections or replace for first page
-                    if self.currentPage == 0 {
+                    let offset = requestedOffset ?? self.currentPage * self.pageSize
+                    let serverPageWasFull = (rawCount ?? finalConnections.count) >= self.pageSize
+                    // A page for an offset we've moved past (or not reached) is stale
+                    if offset != 0 && offset != self.currentPage * self.pageSize {
+                        Logger.debug("🔍 HorizontalUserListView: Ignoring stale page at offset \(offset) (expected \(self.currentPage * self.pageSize))")
+                        self.isLoadingMore = false
+                        return
+                    }
+                    if offset == 0 {
                         // First page: filter out any duplicate users even on first load
                         var seenUserIds = Set<String>()
                         var uniqueConnections: [Connection] = []
@@ -836,9 +862,10 @@ class HorizontalUserListView: UIView {
                         self.connections = uniqueConnections
                         self.applySelectionPinning()
                         
-                        // Update pagination state for first page
-                        self.hasMoreConnections = finalConnections.count == self.pageSize
-                        self.currentPage += 1
+                        // Update pagination state for first page (set, not +=: a
+                        // repeated first page must not skip page 2)
+                        self.hasMoreConnections = serverPageWasFull
+                        self.currentPage = 1
                     } else {
                         // Subsequent pages: append new connections and remove duplicates
                         // Check both connection ID and user ID to prevent showing same user twice
@@ -863,9 +890,11 @@ class HorizontalUserListView: UIView {
                         
                         // Check if we got any new connections
                         if newConnections.isEmpty && !finalConnections.isEmpty {
-                            // All connections were duplicates - we've reached the end
-                            Logger.debug("🔍 HorizontalUserListView: Page \(self.currentPage) returned \(finalConnections.count) connections, but all were duplicates. Stopping pagination.")
-                            self.hasMoreConnections = false
+                            // Every one already shown (merged accounts, filters):
+                            // move past this page; only a short page means the end
+                            Logger.debug("🔍 HorizontalUserListView: Page \(self.currentPage) added nothing new; server page full: \(serverPageWasFull)")
+                            self.currentPage += 1
+                            self.hasMoreConnections = serverPageWasFull
                         } else if !newConnections.isEmpty {
                             // We got new connections, add them
                             self.allLoadedConnections.append(contentsOf: newConnections)
@@ -876,8 +905,8 @@ class HorizontalUserListView: UIView {
                             // Only increment page if we actually added new connections
                             self.currentPage += 1
                             
-                            // Continue pagination if we got a full page worth of data
-                            self.hasMoreConnections = finalConnections.count == self.pageSize
+                            // Continue while the server sent a full page
+                            self.hasMoreConnections = serverPageWasFull
                         } else {
                             // Empty result - no more connections
                             self.hasMoreConnections = false
@@ -1108,6 +1137,7 @@ extension HorizontalUserListView: UICollectionViewDelegate {
         guard currentPage < maxPages else {
             Logger.debug("⚠️ HorizontalUserListView: Reached maximum page limit (\(maxPages)), stopping pagination")
             hasMoreConnections = false
+            collectionView.reloadData()
             return
         }
         
