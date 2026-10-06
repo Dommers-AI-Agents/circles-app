@@ -34,6 +34,14 @@ describe('event extras', () => {
     expect(r.memberNames).toEqual(['Wes', 'Sal', 'Brit']);
   });
 
+  test('recap photos carry their thumbnail for the grid (full image when none)', () => {
+    const r = buildRecap({ id: 'e1', data: event, places: [], posts: [], songs: [], photos: [
+      { imageUrl: 'full-a', thumbUrl: 'thumb-a', uploaderId: 'sal', uploaderName: 'Sal', likes: ['wes'] },
+      { imageUrl: 'full-b', uploaderId: 'sal', uploaderName: 'Sal', likes: [] }
+    ] });
+    expect(r.topPhotos.map(p => [p.imageUrl, p.thumbUrl])).toEqual([['full-a', 'thumb-a'], ['full-b', null]]);
+  });
+
   test('recap with nothing liked or posted stays honest', () => {
     const r = buildRecap({ id: 'e1', data: event, photos: [], places: [], posts: [], songs: [] });
     expect(r.photoOfTheNight).toBeNull();

@@ -319,7 +319,7 @@ function buildRecap({ id, data, photos, places, posts, songs }) {
     memberNames: (data.memberIds || []).map(uid => (data.members && data.members[uid] && data.members[uid].name) || 'Member'),
     photoCount: photos.length,
     placeCount: places.length,
-    topPhotos: byLikes.slice(0, 6).map(p => ({ imageUrl: p.imageUrl, uploaderName: p.uploaderName, likes: (p.likes || []).length })),
+    topPhotos: byLikes.slice(0, 6).map(p => ({ imageUrl: p.imageUrl, thumbUrl: p.thumbUrl || null, uploaderName: p.uploaderName, likes: (p.likes || []).length })),
     photoOfTheNight: byLikes[0] && (byLikes[0].likes || []).length > 0
       ? { imageUrl: byLikes[0].imageUrl, uploaderName: byLikes[0].uploaderName, likes: byLikes[0].likes.length } : null,
     topPhotographer: topUploader ? { name: (photos.find(p => p.uploaderId === topUploader[0]) || {}).uploaderName || 'Member', photos: topUploader[1] } : null,

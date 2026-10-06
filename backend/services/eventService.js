@@ -143,6 +143,7 @@ const toClientPhoto = (doc, viewerId, hostId) => {
   return {
     id: doc.id,
     imageUrl: d.imageUrl,
+    thumbUrl: d.thumbUrl || null,
     uploaderId: d.uploaderId,
     uploaderName: d.uploaderName,
     caption: d.caption || '',
@@ -526,6 +527,9 @@ async function addPhotos(eventId, uid, photos) {
       uploaderId: uid,
       uploaderName: me.name || 'Member',
       imageUrl: p.imageUrl,
+      // ~25 KB preview the album grid loads instead of the full photo
+      // (2026-10-06: a grid of full images was ~300 MB per album open)
+      thumbUrl: isAllowedImageUrl(p.thumbUrl) ? p.thumbUrl : null,
       caption: clean(p.caption, CAPTION_MAX) || '',
       challengeId: (data.challenges || []).some(c => c.id === p.challengeId) ? p.challengeId : null,
       likes: [],
