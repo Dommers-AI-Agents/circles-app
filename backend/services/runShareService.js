@@ -226,7 +226,9 @@ async function progress(id, uid, body = {}) {
       }
     }
   }
-  return { ok: true, cheers: (data.cheers || []).slice(-10) };
+  // Who's watching, so the runner sees "Sal, Brit watching"
+  const watchers = (data.watcherIds || []).map(w => (data.watcherNames || {})[w] || 'Watcher');
+  return { ok: true, cheers: (data.cheers || []).slice(-10), watchers };
 }
 
 async function finish(id, uid, body = {}) {
