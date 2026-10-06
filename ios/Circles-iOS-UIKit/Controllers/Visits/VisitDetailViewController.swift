@@ -106,6 +106,16 @@ class VisitDetailViewController: UIViewController {
         return button
     }()
     
+    /// "Which place were you at?" — the businesses around the visit
+    private let placeChoices: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }()
+    private var choiceCandidates: [VisitPlaceSuggestion.Candidate] = []
+
     private lazy var addToCircleButton = UIButton.primaryButton(title: "Add to Circle")
     private lazy var dismissButton = UIButton.dangerButton(title: "Dismiss Visit")
     
@@ -182,6 +192,7 @@ class VisitDetailViewController: UIViewController {
         contentView.addSubview(zoomToMeButton)
         contentView.addSubview(placeNameLabel)
         contentView.addSubview(addressLabel)
+        contentView.addSubview(placeChoices)
         contentView.addSubview(visitDetailsLabel)
         contentView.addSubview(notesTextView)
         contentView.addSubview(addToCircleButton)
@@ -224,7 +235,11 @@ class VisitDetailViewController: UIViewController {
             addressLabel.leadingAnchor.constraint(equalTo: placeNameLabel.leadingAnchor),
             addressLabel.trailingAnchor.constraint(equalTo: placeNameLabel.trailingAnchor),
             
-            visitDetailsLabel.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: 16),
+            placeChoices.topAnchor.constraint(equalTo: addressLabel.bottomAnchor, constant: 12),
+            placeChoices.leadingAnchor.constraint(equalTo: placeNameLabel.leadingAnchor),
+            placeChoices.trailingAnchor.constraint(equalTo: placeNameLabel.trailingAnchor),
+
+            visitDetailsLabel.topAnchor.constraint(equalTo: placeChoices.bottomAnchor, constant: 16),
             visitDetailsLabel.leadingAnchor.constraint(equalTo: placeNameLabel.leadingAnchor),
             visitDetailsLabel.trailingAnchor.constraint(equalTo: placeNameLabel.trailingAnchor),
             
@@ -323,6 +338,68 @@ class VisitDetailViewController: UIViewController {
         annotation.coordinate = coordinate
         annotation.title = visit.placeName
         mapView.addAnnotation(annotation)
+
+        loadPlaceChoices()
+    }
+
+    // MARK: - Which place were you at?
+
+    private func loadPlaceChoices() {
+        guard !visit.dismissed else { return }
+        VisitPlaceSuggester.candidates(latitude: visit.latitude, longitude: visit.longitude) { [weak self] found in
+            guard let self else { return }
+            self.choiceCandidates = VisitPlaceSuggestion.choices(from: found)
+            self.renderPlaceChoices()
+        }
+    }
+
+    private func renderPlaceChoices() {
+        placeChoices.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        guard !choiceCandidates.isEmpty else { return }
+        let header = UILabel()
+        header.text = VisitPlaceSuggestion.looksLikeAddress(visit.placeName)
+            ? "Which place were you at?"
+            : "Not \(visit.placeName)? Pick the place you were at"
+        header.font = .systemFont(ofSize: 15, weight: .semibold)
+        header.numberOfLines = 0
+        placeChoices.addArrangedSubview(header)
+        for (index, candidate) in choiceCandidates.enumerated() {
+            let isCurrent = candidate.name == visit.placeName
+            var config = UIButton.Configuration.gray()
+            config.title = candidate.name
+            config.subtitle = VisitPlaceSuggestion.distanceText(candidate.distance)
+                + (candidate.address.isEmpty ? "" : " · \(candidate.address)")
+            config.image = UIImage(systemName: isCurrent ? "checkmark.circle.fill" : "mappin.circle")
+            config.imagePadding = 10
+            config.titleAlignment = .leading
+            config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
+            config.baseForegroundColor = isCurrent ? Constants.Colors.primary : .label
+            let button = UIButton(configuration: config)
+            button.contentHorizontalAlignment = .leading
+            button.tag = index
+            button.addTarget(self, action: #selector(placeChoiceTapped(_:)), for: .touchUpInside)
+            placeChoices.addArrangedSubview(button)
+        }
+    }
+
+    /// The visit takes the picked business's name, address and category
+    @objc private func placeChoiceTapped(_ sender: UIButton) {
+        guard choiceCandidates.indices.contains(sender.tag) else { return }
+        let picked = choiceCandidates[sender.tag]
+        guard picked.name != visit.placeName else { return }
+        var updates: [String: Any] = ["placeName": picked.name]
+        if !picked.address.isEmpty { updates["placeAddress"] = picked.address }
+        if let category = picked.category { updates["category"] = category }
+        updateVisit(updates: updates) { [weak self] in
+            guard let self else { return }
+            self.visit.placeName = picked.name
+            if !picked.address.isEmpty { self.visit.placeAddress = picked.address }
+            if let category = picked.category { self.visit.category = category }
+            self.placeNameLabel.text = self.visit.placeName
+            self.addressLabel.text = self.visit.placeAddress
+            (self.mapView.annotations.first { $0 is MKPointAnnotation } as? MKPointAnnotation)?.title = self.visit.placeName
+            self.renderPlaceChoices()
+        }
     }
     
     // MARK: - Actions

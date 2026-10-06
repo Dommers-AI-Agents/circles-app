@@ -281,8 +281,26 @@ class VisitDetectionService: NSObject {
             let bestPlacemark = self.selectBestPlacemark(from: placemarks)
             
             // Extract the most specific name and address
-            let (placeName, placeAddress) = self.extractPlaceInfo(from: bestPlacemark)
-            
+            let (geocodedName, placeAddress) = self.extractPlaceInfo(from: bestPlacemark)
+
+            // Geocoding names the street, not the business inside it: name
+            // the visit for the nearest business Apple Maps lists there
+            guard VisitPlaceSuggestion.looksLikeAddress(geocodedName) else {
+                return self.recordVisit(at: location, startTime: startTime, name: geocodedName,
+                                        address: placeAddress, category: bestPlacemark.areasOfInterest?.first)
+            }
+            VisitPlaceSuggester.candidates(latitude: location.coordinate.latitude,
+                                           longitude: location.coordinate.longitude) { [weak self] candidates in
+                let best = VisitPlaceSuggestion.autoName(from: candidates)
+                self?.recordVisit(at: location, startTime: startTime, name: best?.name ?? geocodedName,
+                                  address: placeAddress, category: best?.category ?? bestPlacemark.areasOfInterest?.first)
+            }
+        }
+    }
+
+    private func recordVisit(at location: CLLocation, startTime: Date, name placeName: String,
+                             address placeAddress: String, category: String?) {
+        do {
             let visit = PlaceVisit(
                 id: UUID().uuidString,
                 userId: AuthService.shared.getUserId() ?? "",
@@ -290,7 +308,7 @@ class VisitDetectionService: NSObject {
                 placeAddress: placeAddress,
                 latitude: location.coordinate.latitude,
                 longitude: location.coordinate.longitude,
-                category: bestPlacemark.areasOfInterest?.first,
+                category: category,
                 visitedAt: startTime,
                 duration: Int(Date().timeIntervalSince(startTime) / 60), // minutes
                 autoDetected: true,

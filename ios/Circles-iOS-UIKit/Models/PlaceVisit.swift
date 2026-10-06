@@ -5,11 +5,11 @@ import Foundation
 struct PlaceVisit: Codable {
     var id: String  // Made mutable to update with server ID
     let userId: String
-    let placeName: String
-    let placeAddress: String
+    var placeName: String      // the business, once suggested or picked
+    var placeAddress: String
     let latitude: Double
     let longitude: Double
-    let category: String?
+    var category: String?
     let visitedAt: Date
     var duration: Int // minutes
     let autoDetected: Bool

@@ -286,6 +286,14 @@ exports.updateVisit = async (req, res) => {
         filteredUpdates[key] = updates[key];
       }
     }
+    // "Which place were you at?": the visit takes the business the person
+    // picked (or the app suggested) instead of a bare street address
+    const { clean } = require('../utils/text');
+    const placeName = clean(updates.placeName, 120);
+    if (placeName) filteredUpdates.placeName = placeName;
+    const placeAddress = clean(updates.placeAddress, 200);
+    if (placeAddress) filteredUpdates.placeAddress = placeAddress;
+    if (updates.category !== undefined) filteredUpdates.category = clean(updates.category, 60) || null;
 
     filteredUpdates.updatedAt = new Date().toISOString();
 
