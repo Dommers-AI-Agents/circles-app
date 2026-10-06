@@ -667,7 +667,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSCameraUsageDescription = "FavCircles uses your camera to take photos of places, update your profile picture, and scan a store's QR code for rewards.";
 				INFOPLIST_KEY_NSContactsUsageDescription = "FavCircles needs access to your contacts to help you find friends.";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "FavCircles needs your location to show places near you and add new places to your circles.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "FavCircles uses your location in the background only for features you turn on: an alert when you walk into a place you have saved, and Visit Tracking to remember places you visit. You can turn either off in Settings at any time.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "FavCircles needs your location to show places near you and add new places to your circles.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "FavCircles needs permission to save photos to your library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "FavCircles needs access to your photos to upload images for places and profiles.";
@@ -715,7 +715,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSCameraUsageDescription = "FavCircles uses your camera to take photos of places, update your profile picture, and scan a store's QR code for rewards.";
 				INFOPLIST_KEY_NSContactsUsageDescription = "FavCircles needs access to your contacts to help you find friends.";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "FavCircles needs your location to show places near you and add new places to your circles.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "FavCircles uses your location in the background only for features you turn on: an alert when you walk into a place you have saved, and Visit Tracking to remember places you visit. You can turn either off in Settings at any time.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "FavCircles needs your location to show places near you and add new places to your circles.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "FavCircles needs permission to save photos to your library.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "FavCircles needs access to your photos to upload images for places and profiles.";

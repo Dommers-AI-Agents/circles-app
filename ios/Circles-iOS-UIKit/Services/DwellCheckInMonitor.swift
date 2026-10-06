@@ -60,8 +60,12 @@ final class DwellCheckInMonitor: NSObject {
 
     var isAlwaysAuthorized: Bool { manager.authorizationStatus == .authorizedAlways }
 
-    /// Whether the Settings row should offer this at all.
-    var isOffered: Bool { isAlwaysAuthorized && CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) }
+    /// Whether reminders can run right now (Always granted, region monitoring on this device).
+    var isOffered: Bool { isAlwaysAuthorized && isSupported }
+
+    /// Whether the Settings row shows at all: everyone whose phone can do it.
+    /// Turning it on asks for Always when needed (Wes, 2026-10-05).
+    var isSupported: Bool { CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) }
 
     private func isAvailable(_ completion: @escaping (Bool) -> Void) {
         guard isOffered, AuthService.shared.isLoggedIn else { return completion(false) }

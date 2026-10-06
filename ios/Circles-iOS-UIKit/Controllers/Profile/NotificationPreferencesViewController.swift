@@ -30,11 +30,8 @@ class NotificationPreferencesViewController: BaseTableViewController {
             switch self {
             case .dailySummary: return "Every Monday: what happened in your network this week, plus your FavCoins 🌵"
             case .activityNotifications:
-                // The reminder row exists only for people who allow location
-                // Always; don't promise it to everyone else.
-                return DwellCheckInMonitor.shared.isOffered
-                    ? "Notifications about places and circles. Check-in reminders fire when you arrive at a saved place."
-                    : "Notifications about places and circles."
+                guard DwellCheckInMonitor.shared.isSupported else { return "Notifications about places and circles." }
+                return "Notifications about places and circles. \"Alert me at saved places\" lets you know when you walk into a place you've saved, even with the app closed — it needs location set to Always."
             case .socialNotifications: return "Notifications about connections and messages"
             case .quietHours: return "Pause notifications during specific hours"
             }
@@ -53,12 +50,10 @@ class NotificationPreferencesViewController: BaseTableViewController {
         case discoveryPrompts
         case weekendRecommendations
 
-        /// The nearby banner exists only for people who allow location
-        /// Always (it waits until they've stopped at the place); everyone
-        /// else gets the in-app chip and no row, rather than a toggle that
-        /// does nothing.
+        /// The arrival alert shows for everyone whose phone can do it;
+        /// switching it on asks for Always location when needed.
         static var visible: [ActivityRow] {
-            allCases.filter { $0 != .nearbyCheckIns || DwellCheckInMonitor.shared.isOffered }
+            allCases.filter { $0 != .nearbyCheckIns || DwellCheckInMonitor.shared.isSupported }
         }
     }
     
@@ -80,6 +75,9 @@ class NotificationPreferencesViewController: BaseTableViewController {
         super.viewDidLoad()
         setupUI()
         loadPreferences()
+        // Back from Settings (Location → Always, or taken away): redraw the switch
+        NotificationCenter.default.addObserver(self, selector: #selector(appBecameActive),
+                                               name: UIApplication.didBecomeActiveNotification, object: nil)
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -201,6 +199,40 @@ class NotificationPreferencesViewController: BaseTableViewController {
         }
     }
     
+    @objc private func appBecameActive() { tableView.reloadData() }
+
+    /// Turning arrival alerts on needs location set to Always: ask for it
+    /// (iOS offers its "Change to Always Allow?" once), or send them to
+    /// Settings when iOS won't ask again. Off is always immediate.
+    private func setArrivalAlerts(_ isOn: Bool) {
+        guard isOn else {
+            preferences.locationPrompts = false
+            ProximityNotificationScheduler.shared.setEnabled(false)
+            markAsChanged()
+            return
+        }
+        AlwaysLocationRequester.shared.request { [weak self] granted in
+            guard let self else { return }
+            if granted {
+                self.preferences.locationPrompts = true
+                ProximityNotificationScheduler.shared.setEnabled(true)
+                self.markAsChanged()
+                self.tableView.reloadData()
+                return
+            }
+            self.tableView.reloadData()   // the switch goes back off
+            AlertPresenter.showConfirmation(
+                title: "Allow Location Always",
+                message: "To alert you when you walk into a place you've saved — even with FavCircles closed — set Location to \"Always\" in Settings.",
+                confirmTitle: "Open Settings",
+                from: self,
+                onConfirm: {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }
+            )
+        }
+    }
+
     private func markAsChanged() {
         hasChanges = true
         navigationItem.rightBarButtonItem?.isEnabled = !isLoading
@@ -320,13 +352,12 @@ extension NotificationPreferencesViewController {
                 // Local banner when you arrive at a saved place (app closed).
                 // Takes effect on the device immediately; the account record
                 // saves with the rest.
+                // On only works with Always location: shown off until it's granted
                 cell.configure(
-                    title: "Check-in Reminders When You Arrive",
-                    isOn: preferences.locationPrompts,
+                    title: "Alert Me at Saved Places",
+                    isOn: preferences.locationPrompts && DwellCheckInMonitor.shared.isAlwaysAuthorized,
                     onToggle: { [weak self] isOn in
-                        self?.preferences.locationPrompts = isOn
-                        ProximityNotificationScheduler.shared.setEnabled(isOn)
-                        self?.markAsChanged()
+                        self?.setArrivalAlerts(isOn)
                     }
                 )
             case .discoveryPrompts:
