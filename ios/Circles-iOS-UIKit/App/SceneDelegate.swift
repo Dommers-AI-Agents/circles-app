@@ -1179,6 +1179,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneDidBecomeActive(_ scene: UIScene) {
         // Called when the scene has moved from an inactive state to an active state.
         captureStickerCodeFromPasteboardIfFirstLaunch()
+        // A run's lock-screen display left over from a run the app lost (killed mid-run)
+        if #available(iOS 16.2, *) { RunLiveActivityController.shared.endStaleActivities() }
 
         // Check for any pending notifications or updates
         if AuthService.shared.isLoggedIn {
