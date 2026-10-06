@@ -28,6 +28,10 @@ struct DeepLinkRouterTests {
         #expect(dest("https://api.favcircles.com/app/map?focus=coffee") == .allPlacesMap(focusCategory: "coffee"))
         #expect(dest("https://api.favcircles.com/app/unknown") == nil)
         #expect(dest("https://api.favcircles.com/app/video") == nil)   // missing id
+        // An event's lock-screen display opens that event; the bare widget link still opens the widget
+        #expect(dest("https://api.favcircles.com/app/widget/events?event=e1") == .eventOpen(id: "e1"))
+        #expect(dest("https://api.favcircles.com/app/widget/events") == .widget(id: "events"))
+        #expect(dest("https://api.favcircles.com/app/widget/run") == .widget(id: "run"))
     }
 
     @Test func emailOpenPaths() {

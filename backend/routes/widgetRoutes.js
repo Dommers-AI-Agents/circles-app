@@ -62,6 +62,25 @@ router.delete('/events/:id/photos/:photoId', events.deletePhoto);
 router.post('/events/:id/photos/:photoId/like', events.likePhoto);
 router.post('/events/:id/places', events.tagPlace);
 router.post('/events/:id/places/:placeId/save', events.savePlace);
+// Doing things together (2026-10-06): wall, songs, challenges, roll call, recap
+router.get('/events/:id/wall', events.listWall);
+router.post('/events/:id/wall', perUserLimit({ bucket: 'event-wall', windowMs: 3600000, max: 120 }), events.postToWall);
+router.delete('/events/:id/wall/:postId', events.deleteWallPost);
+router.post('/events/:id/wall/:postId/react', events.reactToWallPost);
+router.get('/events/:id/songs', events.listSongs);
+router.post('/events/:id/songs', perUserLimit({ bucket: 'event-songs', windowMs: 3600000, max: 60 }), events.requestSong);
+router.post('/events/:id/songs/:songId/vote', events.voteSong);
+router.post('/events/:id/songs/:songId/played', events.markSongPlayed);
+router.delete('/events/:id/songs/:songId', events.deleteSong);
+router.post('/events/:id/challenges', events.addChallenges);
+router.delete('/events/:id/challenges/:challengeId', events.removeChallenge);
+router.post('/events/:id/rollcall', events.startRollCall);
+router.post('/events/:id/rollcall/here', events.answerRollCall);
+router.post('/events/:id/rollcall/ping', perUserLimit({ bucket: 'event-ping', windowMs: 3600000, max: 30 }), events.pingRollCall);
+router.delete('/events/:id/rollcall', events.closeRollCall);
+router.get('/events/:id/recap', events.recap);
+router.post('/events/:id/live-activity', events.registerLiveActivity);
+router.delete('/events/:id/live-activity', events.unregisterLiveActivity);
 // "Connect with everyone" on the event's member list: the regular connection
 // request, reachable through the widget API channel (widgets/ paths only)
 router.post('/connect', messageLimiter, sendConnectionRequest);

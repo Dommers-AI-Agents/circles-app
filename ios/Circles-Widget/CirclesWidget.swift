@@ -180,5 +180,6 @@ struct CirclesWidgetBundle: WidgetBundle {
     var body: some Widget {
         CirclesWidget()
         RunLiveActivityWidget()
+        EventLiveActivityWidget()
     }
 }

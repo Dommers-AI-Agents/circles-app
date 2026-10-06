@@ -22,6 +22,7 @@ const OLD_TYPE_MAP = {
   engagement_reminder: 'reengagement', milestone: 'milestones', did_you_know: 'tips',
   nextbar_round: 'socialActivity', nextbar_result: 'socialActivity', postcard_order: 'socialActivity', fridgemail: 'socialActivity',
   event_invite: 'socialActivity', event_joined: 'socialActivity', event_photos: 'socialActivity',
+  event_challenge: 'socialActivity', event_rollcall: 'socialActivity', event_rollcall_ping: 'socialActivity',
   care_invite: 'careCheckins', care_ask: 'careCheckins', care_answer: 'careCheckins', care_accepted: 'careCheckins', care_silence: 'careCheckins',
   care_ask_done: 'careCheckins', care_ask_yesno: 'careCheckins', care_ask_scale: 'careCheckins', care_ask_text: 'careCheckins',
   care_watcher_request: 'careCheckins', care_watcher_invite: 'careCheckins', care_watcher_accepted: 'careCheckins',

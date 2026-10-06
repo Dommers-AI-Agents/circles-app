@@ -62,6 +62,11 @@ const TYPES = {
   event_invite:            { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   event_joined:            { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   event_photos:            { category: null,                      pref: 'socialActivity',         badge: false },
+  // 2026-10-06: new photo challenges; roll call and the coordinator's
+  // "where are you?" (not Time Sensitive: only How Are You? is, Wes 2026-10-02)
+  event_challenge:         { category: null,                      pref: 'socialActivity',         badge: false },
+  event_rollcall:          { category: null,                      pref: 'socialActivity',         badge: false },
+  event_rollcall_ping:     { category: null,                      pref: 'socialActivity',         badge: false },
   postcard_order:          { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   fridgemail:              { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   care_invite:             { category: null,                      pref: 'careCheckins',           badge: false, record: true },

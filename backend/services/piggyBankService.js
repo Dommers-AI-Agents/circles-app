@@ -392,6 +392,13 @@ class PiggyBankService {
           if (!doc.exists || doc.data().deletedAt) return { valid: false, reason: 'message_deleted' };
           return { valid: true };
         }
+        case 'event_challenge': {
+          // The challenge photo is still there (deleting it inside the
+          // window reverses the coin).
+          if (!ref.photoId) return { valid: false, reason: 'missing_photo_ref' };
+          const photo = await this.db.collection(COLLECTIONS.EVENT_PHOTOS).doc(ref.photoId).get();
+          return photo.exists ? { valid: true } : { valid: false, reason: 'photo_deleted' };
+        }
         case 'event_joined': {
           // Still in the event, and it still exists (leave/removed/ended
           // inside the window reverses the coin).

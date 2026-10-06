@@ -120,6 +120,7 @@
 		FAB5000000000000000000AF /* Exceptions for "Circles-iOS-UIKit" folder in "Circles-Widget" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				LiveActivities/EventLiveActivity.swift,
 				LiveActivities/RunLiveActivity.swift,
 				Models/WidgetSnapshotModels.swift,
 			);
@@ -1211,7 +1212,7 @@
 			repositoryURL = "https://github.com/Dommers-AI-Agents/favcircles-widgets";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.27.1;
+				minimumVersion = 0.28.0;
 			};
 		};
 		FAB6000000000000000000D0 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */ = {

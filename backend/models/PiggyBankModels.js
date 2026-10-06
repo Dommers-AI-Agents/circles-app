@@ -46,7 +46,9 @@ const PIGGY_EVENT_TYPES = [
   // 2026.10-a: a friend sent you a drink recipe (paid by FavCircles to the recipient)
   'drink_received',
   // 2026.10-b: joined an event (Events widget)
-  'event_joined'
+  'event_joined',
+  // 2026.10-c: a photo for one of an event's challenges
+  'event_challenge'
 ];
 
 // Earn statuses and claim statuses are disjoint vocabularies on the same
@@ -224,6 +226,10 @@ function derivePiggyDedupKey(eventType, parts = {}) {
       // Once per event per person: leaving and re-joining pays nothing more.
       if (!parts.userId || !parts.eventId) return null;
       return `event_joined:${s(parts.userId)}:${s(parts.eventId)}`;
+    case 'event_challenge':
+      // Once per challenge per person: more photos for it pay nothing more.
+      if (!parts.userId || !parts.eventId || !parts.challengeId) return null;
+      return `event_challenge:${s(parts.userId)}:${s(parts.eventId)}:${s(parts.challengeId)}`;
     case 'claim':
       // seq comes from bank.claimCount + 1, read inside the claim transaction:
       // two concurrent claims compute the same seq and the loser's create()

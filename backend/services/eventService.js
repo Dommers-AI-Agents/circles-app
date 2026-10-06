@@ -112,8 +112,30 @@ const toClientEvent = (id, data, viewerId) => ({
     name: (data.invited && data.invited[uid] && data.invited[uid].name) || 'Invited'
   })),
   inviteUrl: `${LINK_BASE}${data.inviteToken}`,
-  myCircleId: (data.members && data.members[viewerId] && data.members[viewerId].circleId) || null
+  myCircleId: (data.members && data.members[viewerId] && data.members[viewerId].circleId) || null,
+  // Ended events stay for their members with a recap (2026-10-06)
+  endedAt: data.endedAt || null,
+  challenges: (data.challenges || []).map(c => ({ id: c.id, text: c.text, emoji: c.emoji || '📸' })),
+  rollCall: toClientRollCall(data, viewerId)
 });
+
+/** The roll call in progress, if any: who's said "here", and where (only
+ *  for those who chose to share it, and only inside the event). */
+const toClientRollCall = (data, viewerId) => {
+  const rc = data.rollCall;
+  if (!rc || !rc.id || rc.closedAt) return null;
+  const here = rc.here || {};
+  return {
+    id: rc.id,
+    startedAt: rc.startedAt,
+    startedByName: rc.startedByName || data.hostName,
+    hereIds: Object.keys(here).filter(uid => (data.memberIds || []).includes(uid)),
+    imHere: !!here[viewerId],
+    locations: Object.entries(rc.locations || {})
+      .filter(([uid]) => (data.memberIds || []).includes(uid))
+      .map(([uid, l]) => ({ userId: uid, lat: l.lat, lng: l.lng, at: l.at }))
+  };
+};
 
 const toClientPhoto = (doc, viewerId, hostId) => {
   const d = doc.data();
@@ -124,6 +146,7 @@ const toClientPhoto = (doc, viewerId, hostId) => {
     uploaderId: d.uploaderId,
     uploaderName: d.uploaderName,
     caption: d.caption || '',
+    challengeId: d.challengeId || null,
     createdAt: d.createdAt,
     likeCount: likes.length,
     likedByMe: likes.includes(viewerId),
@@ -406,7 +429,11 @@ async function resetInviteLink(eventId, hostUid) {
 async function endEvent(eventId, hostUid) {
   const { ref, data } = await loadAsMember(eventId, hostUid);
   if (data.hostId !== hostUid) throw new ServiceError(403, 'not_host', 'Only the coordinator can end the event');
-  await ref.update({ deletedAt: nowIso(), joinOpen: false, updatedAt: nowIso() });
+  if (data.endedAt) return { ended: true };
+  // Ended, not deleted: members keep the photos and get the recap. Roll
+  // call and shared locations close with it.
+  await ref.update({ endedAt: nowIso(), joinOpen: false, 'rollCall.closedAt': nowIso(), 'rollCall.locations': FieldValue.delete(), updatedAt: nowIso() });
+  require('./eventLiveActivityService').endForEvent(ref.id).catch(() => {});
   // Event lists are removed; circles of saved places stay with their owners
   const innerCircleService = require('./innerCircleService');
   for (const uid of data.memberIds || []) {
@@ -500,6 +527,7 @@ async function addPhotos(eventId, uid, photos) {
       uploaderName: me.name || 'Member',
       imageUrl: p.imageUrl,
       caption: clean(p.caption, CAPTION_MAX) || '',
+      challengeId: (data.challenges || []).some(c => c.id === p.challengeId) ? p.challengeId : null,
       likes: [],
       // Spread by a millisecond so a batch keeps the order it was picked in
       createdAt: new Date(now + i).toISOString()
@@ -507,8 +535,22 @@ async function addPhotos(eventId, uid, photos) {
     batch.set(docRef, row);
     created.push({ id: docRef.id, row });
   });
-  batch.update(ref, { photoCount: FieldValue.increment(list.length), lastPhotoAt: nowIso(), updatedAt: nowIso() });
+  batch.update(ref, { photoCount: FieldValue.increment(list.length), lastPhotoAt: nowIso(), updatedAt: nowIso(),
+    // The lock screen's "📸 Sal added 3 photos"
+    lastPhoto: { by: me.name || 'Member', count: list.length, at: nowIso() } });
   await batch.commit();
+
+  // A challenge photo: one FavCoin per challenge per person (dedup key + daily cap)
+  if (process.env.WIDGET_PIGGY_ENABLED === '1') {
+    const done = [...new Set(created.map(c => c.row.challengeId).filter(Boolean))];
+    for (const challengeId of done) {
+      const photo = created.find(c => c.row.challengeId === challengeId);
+      await require('./piggyBankService').credit({
+        userId: uid, eventType: 'event_challenge', sourceRef: { eventId: ref.id, challengeId, photoId: photo.id }
+      });
+    }
+  }
+  require('./eventLiveActivityService').refreshSoon(ref.id);
 
   // "Sal added 6 photos" — once per uploader per 15 minutes per event
   const lastPush = (data.photoPushAt && data.photoPushAt[uid]) || 0;
@@ -641,6 +683,8 @@ module.exports = {
   // operations
   listEvents, getEvent, previewByToken, publicPreview, createEvent, joinByToken, inviteConnections,
   leaveEvent, removeMember, updateEvent, resetInviteLink, endEvent,
+  // shared with eventExtrasService / eventLiveActivityService
+  loadEvent, loadAsMember, eventsCol, photosCol, placesCol, DEFAULT_EMOJI,
   addPhotos, deletePhoto, togglePhotoLike, tagPlace, savePlaceToMyCircle,
   // pure (tested)
   cleanEventName, cleanEmoji, parsePlace, toClientEvent, listMembersFor, isMember,

@@ -53,6 +53,9 @@ enum DeepLinkDestination: Equatable {
     /// `circles://event/<token>` (the page's button). Opens the Events
     /// widget on the join screen.
     case eventInvite(token: String)
+    /// One event, opened in the Events widget — `/app/widget/events?event=<id>`
+    /// (the event's lock-screen display).
+    case eventOpen(id: String)
 }
 
 /// Interprets universal links (https://api.favcircles.com/…) and the custom
@@ -93,6 +96,9 @@ struct DeepLinkRouter {
             case "video":
                 return parts.count >= 3 ? .video(id: parts[2], promptsLogin: false) : nil
             case "widget":
+                if parts.count >= 3, parts[2] == "events", let eventId = query(url, "event"), !eventId.isEmpty {
+                    return .eventOpen(id: eventId)
+                }
                 return parts.count >= 3 ? .widget(id: parts[2]) : nil
             case "quote":
                 return parts.count >= 3 ? .quote(id: parts[2]) : nil

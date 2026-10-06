@@ -1,6 +1,7 @@
 // backend/controllers/widgets/eventController.js
 // Events widget (Party Bus) — thin HTTP layer over services/eventService.
 const eventService = require('../../services/eventService');
+const extras = require('../../services/eventExtrasService');
 const { sendServiceError } = require('../../utils/serviceError');
 
 const handle = (label, fn) => async (req, res) => {
@@ -29,3 +30,26 @@ exports.deletePhoto = handle('deletePhoto', async (req) => eventService.deletePh
 exports.likePhoto = handle('likePhoto', async (req) => ({ photo: await eventService.togglePhotoLike(req.params.id, uid(req), req.params.photoId) }));
 exports.tagPlace = handle('tagPlace', async (req) => ({ place: await eventService.tagPlace(req.params.id, uid(req), req.body || {}) }));
 exports.savePlace = handle('savePlace', async (req) => eventService.savePlaceToMyCircle(req.params.id, uid(req), req.params.placeId));
+
+// Shout-out wall, song requests, photo challenges, roll call, recap
+exports.listWall = handle('listWall', async (req) => extras.listWall(req.params.id, uid(req)));
+exports.postToWall = handle('postToWall', async (req) => extras.postToWall(req.params.id, uid(req), req.body || {}));
+exports.deleteWallPost = handle('deleteWallPost', async (req) => extras.deleteWallPost(req.params.id, uid(req), req.params.postId));
+exports.reactToWallPost = handle('reactToWallPost', async (req) => extras.reactToWallPost(req.params.id, uid(req), req.params.postId, req.body || {}));
+exports.listSongs = handle('listSongs', async (req) => extras.listSongs(req.params.id, uid(req)));
+exports.requestSong = handle('requestSong', async (req) => extras.requestSong(req.params.id, uid(req), req.body || {}));
+exports.voteSong = handle('voteSong', async (req) => extras.voteSong(req.params.id, uid(req), req.params.songId));
+exports.markSongPlayed = handle('markSongPlayed', async (req) => extras.markSongPlayed(req.params.id, uid(req), req.params.songId, req.body || {}));
+exports.deleteSong = handle('deleteSong', async (req) => extras.deleteSong(req.params.id, uid(req), req.params.songId));
+exports.addChallenges = handle('addChallenges', async (req) => extras.addChallenges(req.params.id, uid(req), req.body || {}));
+exports.removeChallenge = handle('removeChallenge', async (req) => extras.removeChallenge(req.params.id, uid(req), req.params.challengeId));
+exports.startRollCall = handle('startRollCall', async (req) => extras.startRollCall(req.params.id, uid(req)));
+exports.answerRollCall = handle('answerRollCall', async (req) => extras.answerRollCall(req.params.id, uid(req), req.body || {}));
+exports.pingRollCall = handle('pingRollCall', async (req) => extras.pingMissing(req.params.id, uid(req), req.body || {}));
+exports.closeRollCall = handle('closeRollCall', async (req) => extras.closeRollCall(req.params.id, uid(req)));
+exports.recap = handle('recap', async (req) => extras.getRecap(req.params.id, uid(req)));
+
+// Lock screen / Dynamic Island (Live Activity) push tokens
+const live = require('../../services/eventLiveActivityService');
+exports.registerLiveActivity = handle('registerLiveActivity', async (req) => live.register(req.params.id, uid(req), req.body || {}));
+exports.unregisterLiveActivity = handle('unregisterLiveActivity', async (req) => live.unregister(req.params.id, uid(req)));

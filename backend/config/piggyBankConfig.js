@@ -81,7 +81,8 @@ module.exports = {
     WIDGET_DAILY_USE: 0.5,      // first widget save of the UTC day (Widgets tab)
     POSTCARD_SENT: 2,           // digital postcard delivered to a connection's chat
     DRINK_RECEIVED: 1,          // a connection sent you a drink recipe (paid to the recipient)
-    EVENT_JOINED: 1             // joined an event (Events widget), once per event
+    EVENT_JOINED: 1,            // joined an event (Events widget), once per event
+    EVENT_CHALLENGE: 1          // a photo for an event's challenge, once per challenge per person
   },
   DAILY_CAPS: {              // earns past the cap: action still succeeds, pays 0
     ADD_PLACE: 20,
@@ -114,7 +115,8 @@ module.exports = {
     WIDGET_DAILY_USE: 1,        // structurally once-a-day via widget_daily_use:{uid}:{day}
     POSTCARD_SENT: 2,
     DRINK_RECEIVED: 3,          // per recipient per day; also once ever per sender (dedup key)
-    EVENT_JOINED: 3             // per person per day; once per event (dedup key)
+    EVENT_JOINED: 3,            // per person per day; once per event (dedup key)
+    EVENT_CHALLENGE: 5          // per person per day; once per challenge (dedup key)
   },
   CREATE_CIRCLE_MIN_PLACES: 3,   // enforced at CLEARING time, not earn time
   CLAIM: {

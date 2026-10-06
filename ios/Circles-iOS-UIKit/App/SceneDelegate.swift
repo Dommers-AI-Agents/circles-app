@@ -837,6 +837,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             navigateToWidget(id: "postcard", postcardShareToken: token)
         case .eventInvite(let token):
             navigateToWidget(id: "events", eventToken: token)
+        case .eventOpen(let id):
+            navigateToWidget(id: "events", eventId: id)
         case .referral(let code):
             handleReferralCode(code)
         case .sticker(let code):
@@ -1180,7 +1182,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Called when the scene has moved from an inactive state to an active state.
         captureStickerCodeFromPasteboardIfFirstLaunch()
         // A run's lock-screen display left over from a run the app lost (killed mid-run)
-        if #available(iOS 16.2, *) { RunLiveActivityController.shared.endStaleActivities() }
+        if #available(iOS 16.2, *) {
+            RunLiveActivityController.shared.endStaleActivities()
+            // Event lock-screen displays outlive the app: keep their push tokens reaching the server
+            EventLiveActivityController.shared.resumeWatchingTokens()
+        }
 
         // Check for any pending notifications or updates
         if AuthService.shared.isLoggedIn {
