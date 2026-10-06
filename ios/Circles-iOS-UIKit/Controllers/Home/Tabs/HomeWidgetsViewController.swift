@@ -149,7 +149,8 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
     /// photo, so the page opens on that card's status.
     func open(widgetId: String, postcardOrderId: String? = nil, quoteId: String? = nil, workoutPostId: String? = nil,
               drinkId: String? = nil, motivationLineId: String? = nil, motivationSend: Bool = false,
-              postcardShareToken: String? = nil, eventToken: String? = nil, eventId: String? = nil) {
+              postcardShareToken: String? = nil, eventToken: String? = nil, eventId: String? = nil,
+              runId: String? = nil, runToken: String? = nil) {
         guard ensureModel(), let model,
               let descriptor = model.descriptors.first(where: { $0.id == widgetId }),
               let widget = model.widget(for: descriptor) else { return }
@@ -170,6 +171,9 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         if widgetId == "events", let eventToken { context.launchEventToken = eventToken }
         if widgetId == "events", let eventId { context.launchEventId = eventId }
         if widgetId == "quotes", let quoteId { context.launchQuoteId = quoteId }
+        // Map My Run: a run to watch (push / feed row) or a watch link to join
+        if widgetId == "run", let runId { context.launchRunId = runId }
+        if widgetId == "run", let runToken { context.launchRunToken = runToken }
         // A shared workout tapped in the activity feed opens over the page
         if widgetId == "workouts", let workoutPostId { context.launchWorkoutPostId = workoutPostId }
         // A drink a friend sent, tapped in chat, opens on that recipe

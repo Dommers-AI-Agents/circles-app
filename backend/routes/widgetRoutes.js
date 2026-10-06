@@ -12,6 +12,7 @@ const postcard = require('../controllers/widgets/postcardController');
 const drink = require('../controllers/widgets/drinkController');
 const motivation = require('../controllers/widgets/motivationController');
 const events = require('../controllers/widgets/eventController');
+const runShare = require('../controllers/widgets/runShareController');
 const { sendConnectionRequest } = require('../controllers/connectionController');
 const nextBarRounds = require('../controllers/widgets/nextBarRoundController');
 const postcardMail = require('../controllers/widgets/postcardMailController');
@@ -79,6 +80,20 @@ router.post('/events/:id/rollcall/here', events.answerRollCall);
 router.post('/events/:id/rollcall/ping', perUserLimit({ bucket: 'event-ping', windowMs: 3600000, max: 30 }), events.pingRollCall);
 router.delete('/events/:id/rollcall', events.closeRollCall);
 router.get('/events/:id/recap', events.recap);
+
+// Map My Run, shared (2026-10-06): watch a run live, cheers, post to activity.
+// Static paths before /:id.
+router.get('/run/watching', runShare.watching);
+router.post('/run/live', perUserLimit({ bucket: 'run-live', windowMs: 86400000, max: 30 }), runShare.startLive);
+router.post('/run/join', perUserLimit({ bucket: 'run-join', windowMs: 3600000, max: 60 }), runShare.join);
+router.post('/run/post', perUserLimit({ bucket: 'run-post', windowMs: 86400000, max: 30 }), runShare.post);
+router.get('/run/:id', runShare.getRun);
+router.post('/run/:id/invite', messageLimiter, runShare.invite);
+router.post('/run/:id/watch', runShare.watch);
+router.post('/run/:id/progress', perUserLimit({ bucket: 'run-progress', windowMs: 3600000, max: 1200 }), runShare.progress);
+router.post('/run/:id/finish', runShare.finish);
+router.delete('/run/:id', runShare.cancel);
+router.post('/run/:id/cheer', perUserLimit({ bucket: 'run-cheer', windowMs: 3600000, max: 120 }), runShare.cheer);
 router.post('/events/:id/live-activity', events.registerLiveActivity);
 router.delete('/events/:id/live-activity', events.unregisterLiveActivity);
 // "Connect with everyone" on the event's member list: the regular connection

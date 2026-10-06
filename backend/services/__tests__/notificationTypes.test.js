@@ -23,6 +23,7 @@ const OLD_TYPE_MAP = {
   nextbar_round: 'socialActivity', nextbar_result: 'socialActivity', postcard_order: 'socialActivity', fridgemail: 'socialActivity',
   event_invite: 'socialActivity', event_joined: 'socialActivity', event_photos: 'socialActivity',
   event_challenge: 'socialActivity', event_rollcall: 'socialActivity', event_rollcall_ping: 'socialActivity',
+  run_live_invite: 'socialActivity', run_live_split: 'socialActivity', run_live_finished: 'socialActivity', run_cheer: 'socialActivity', run_watcher_joined: 'socialActivity',
   care_invite: 'careCheckins', care_ask: 'careCheckins', care_answer: 'careCheckins', care_accepted: 'careCheckins', care_silence: 'careCheckins',
   care_ask_done: 'careCheckins', care_ask_yesno: 'careCheckins', care_ask_scale: 'careCheckins', care_ask_text: 'careCheckins',
   care_watcher_request: 'careCheckins', care_watcher_invite: 'careCheckins', care_watcher_accepted: 'careCheckins',
@@ -64,7 +65,7 @@ test('the rows a person can catch up on in Notifications (Wes, 2026-10-01)', () 
     'care_accepted', 'care_invite', 'care_silence', 'care_watcher_accepted', 'care_watcher_declined',
     'care_watcher_invite', 'care_watcher_joined', 'care_watcher_removed', 'care_watcher_request',
     'check_in_response', 'event_invite', 'event_joined', 'favcoin_claim_settled', 'fridgemail', 'milestone', 'nextbar_result',
-    'nextbar_round', 'postcard_order'
+    'nextbar_round', 'postcard_order', 'run_live_finished', 'run_live_invite'
   ]);
   // Reminders, digests and the questions themselves stay push-only
   ['engagement_reminder', 'reengagement', 'daily_summary', 'weekly_summary', 'daily_quote', 'care_ask', 'care_answer',

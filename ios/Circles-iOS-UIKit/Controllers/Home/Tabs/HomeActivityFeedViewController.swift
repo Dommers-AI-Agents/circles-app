@@ -774,6 +774,10 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
             if let globalPlaceId = activity.metadata?.globalPlaceId {
                 host?.navigateToGlobalPlace(withId: globalPlaceId, showComments: false)
             }
+        case .runShared:
+            // The run (route map, splits) in Map My Run
+            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "run",
+                                            userInfo: ["runId": activity.metadata?.runId ?? activity.targetId])
         case .workoutShared:
             // Opens in the Workouts widget, where the viewer can copy it
             NotificationCenter.default.post(
@@ -882,7 +886,7 @@ extension HomeActivityFeedViewController: ActivityFeedCellDelegate {
 
     func didTapPlaceImage(activity: Activity) {
         switch activity.type {
-        case .photoUploaded, .workoutShared, .circleCreated, .circleLiked, .circleCommented,
+        case .photoUploaded, .workoutShared, .runShared, .circleCreated, .circleLiked, .circleCommented,
              .venueAnnouncement, .venueOffer, .postcardSent, .postcardMailed, .fridgemailSent:
             // The thumbnail of these is not a saved place: route like the row
             openActivity(activity)

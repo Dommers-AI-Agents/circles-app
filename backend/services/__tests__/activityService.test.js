@@ -31,6 +31,7 @@ const EXPECTED = [
   'trackPlaceDiscovered',
   'trackUserFollowed',
   'trackWorkoutShared',
+  'trackRunShared',
   'trackProfileUpdated',
   'trackUserActivity',
   'clearActivityNotification',

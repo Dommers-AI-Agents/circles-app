@@ -191,11 +191,11 @@ const passesItemGates = (activity, viewerId, viewerCtx, circlesById) => {
     return !!(viewerCtx.innerCircleGrantors && viewerCtx.innerCircleGrantors.has(actor));
   }
 
-  // A shared workout: its own audience, never wider than connections
-  if (activity.type === 'workout_shared') {
+  // A shared workout or posted run: its own audience, never wider than connections
+  if (activity.type === 'workout_shared' || activity.type === 'run_shared') {
     const actor = normalizeUserId(activity.actorId);
     if (!(viewerCtx.connections && viewerCtx.connections.has(actor))) return false;
-    if (meta.workoutAudience === 'connections') return true;
+    if ((activity.type === 'workout_shared' ? meta.workoutAudience : meta.runAudience) === 'connections') return true;
     if (meta.audienceListId) {
       const lists = viewerCtx.innerCircleLists && viewerCtx.innerCircleLists.get(actor);
       return !!(lists && lists.has(meta.audienceListId));

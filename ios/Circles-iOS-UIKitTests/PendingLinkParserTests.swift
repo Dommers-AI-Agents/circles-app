@@ -15,6 +15,8 @@ struct PendingLinkParserTests {
         #expect(PendingLinkParser.parse("postcard-share:abcdefghijklmnopqrst") == .postcardShare(token: "abcdefghijklmnopqrst"))
         #expect(PendingLinkParser.parse("event:abcdefghijklmnopqrst") == .eventInvite(token: "abcdefghijklmnopqrst"))
         #expect(PendingLinkParser.parse("event-id:e1") == .eventOpen(id: "e1"))
+        #expect(PendingLinkParser.parse("run-id:r1") == .runOpen(id: "r1"))
+        #expect(PendingLinkParser.parse("run-token:t1") == .runJoin(token: "t1"))
         #expect(PendingLinkParser.parse("me") == .openPath("me"))
         #expect(PendingLinkParser.parse("check-in") == .quickCheckIn)
     }

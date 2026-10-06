@@ -497,6 +497,28 @@ app.get('/app/event/:token', async (req, res) => {
   res.status(preview ? 200 : 404).send(renderEventInvite(token, preview));
 });
 
+// Watch-a-run link (Map My Run). The app installed: the Universal Link opens
+// the run in Map My Run. Otherwise: who's running and how to get the app — no
+// route, no position.
+app.get('/app/run/:token', async (req, res) => {
+  const token = String(req.params.token).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  const { escapeHtml } = require('./utils/text');
+  let preview = null;
+  try { preview = await require('./services/runShareService').publicPreview(token); } catch (e) { /* unknown link */ }
+  const who = preview ? escapeHtml(preview.ownerName) : 'Someone';
+  const line = preview && preview.live ? `${who} is out for a run right now` : `${who} shared a run with you`;
+  const appStoreUrl = 'https://apps.apple.com/app/id6746807095';
+  res.status(preview ? 200 : 404).send(`<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Watch the run · FavCircles</title>
+<meta property="og:title" content="${line} 🏃"><meta property="og:description" content="Follow along live in FavCircles: the route, the pace, a ping every mile.">
+<style>body{margin:0;font-family:-apple-system,Helvetica,Arial,sans-serif;background:#DD6B20;color:#fff;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center}
+.c{padding:32px;max-width:420px}h1{font-size:28px;margin:12px 0}p{opacity:.9;line-height:1.4}a{display:inline-block;margin-top:18px;background:#fff;color:#DD6B20;font-weight:700;padding:14px 26px;border-radius:999px;text-decoration:none}</style></head>
+<body><div class="c"><div style="font-size:56px">🏃</div><h1>${line}</h1>
+<p>Get FavCircles to follow along live: the route on a map, the pace, and a ping every mile. Then open this link again.</p>
+<a href="${appStoreUrl}">Get FavCircles</a></div></body></html>`);
+});
+
 // Texted workout link (AASA /app/*). With the app installed the Universal
 // Link opens the workout in the Workouts widget (view it, copy it, try the
 // widget). Everyone else sees the workout here and the way to get the app.

@@ -519,10 +519,12 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         let motivationSend = (note.userInfo?["motivationSend"] as? Bool) ?? false
         let eventToken = note.userInfo?["eventToken"] as? String
         let eventId = note.userInfo?["eventId"] as? String
+        let runId = note.userInfo?["runId"] as? String
+        let runToken = note.userInfo?["runToken"] as? String
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             circlesVC.showWidgetsTab(openingWidget: widgetId, postcardOrderId: orderId, quoteId: quoteId, workoutPostId: workoutPostId,
                                      drinkId: drinkId, motivationLineId: motivationLineId, motivationSend: motivationSend,
-                                     eventToken: eventToken, eventId: eventId)
+                                     eventToken: eventToken, eventId: eventId, runId: runId, runToken: runToken)
         }
     }
 

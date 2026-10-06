@@ -30,6 +30,10 @@ enum PendingLink: Equatable {
     case eventInvite(token: String)
     /// "event-id:<id>": an event push (joined / new photos) on a cold start.
     case eventOpen(id: String)
+    /// "run-id:<id>": a run to watch (push or feed row) on a cold start.
+    case runOpen(id: String)
+    /// "run-token:<token>": a "watch my run" link opened before the app was ready.
+    case runJoin(token: String)
 
     // "type:payload" links
     case shareToken(circleId: String, shareToken: String)
@@ -90,6 +94,8 @@ enum PendingLinkParser {
         case "postcard-share": return .postcardShare(token: payload)
         case "event": return .eventInvite(token: payload)
         case "event-id": return .eventOpen(id: payload)
+        case "run-id": return .runOpen(id: payload)
+        case "run-token": return .runJoin(token: payload)
         case "video": return .video(id: payload)
         case "daily-summary": return .dailySummary
         case "check-in": return .checkIn(placeId: payload)

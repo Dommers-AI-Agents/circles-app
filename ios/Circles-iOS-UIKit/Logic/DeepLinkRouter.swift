@@ -56,6 +56,8 @@ enum DeepLinkDestination: Equatable {
     /// One event, opened in the Events widget — `/app/widget/events?event=<id>`
     /// (the event's lock-screen display).
     case eventOpen(id: String)
+    /// A "watch my run" link — `/app/run/<token>`. Opens Map My Run on it.
+    case runJoin(token: String)
 }
 
 /// Interprets universal links (https://api.favcircles.com/…) and the custom
@@ -108,6 +110,8 @@ struct DeepLinkRouter {
                 return parts.count >= 3 ? .postcardShare(token: parts[2]) : nil
             case "event":
                 return parts.count >= 3 ? .eventInvite(token: parts[2]) : nil
+            case "run":
+                return parts.count >= 3 ? .runJoin(token: parts[2]) : nil
             case "circle":
                 return parts.count >= 3 ? .circle(id: parts[2], shareToken: query(url, "share")) : nil
             case "connect":

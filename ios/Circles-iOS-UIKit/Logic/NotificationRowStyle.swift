@@ -26,6 +26,8 @@ enum NotificationRowStyle {
         case "postcard_order": return Style(symbol: "envelope.fill", color: .systemTeal)
         case "event_invite", "event_joined", "event_photos", "event_challenge": return Style(symbol: "party.popper.fill", color: .systemPurple)
         case "event_rollcall", "event_rollcall_ping": return Style(symbol: "hand.raised.fill", color: .systemOrange)
+        case "run_live_invite", "run_live_split", "run_live_finished", "run_cheer", "run_watcher_joined":
+            return Style(symbol: "figure.run", color: .systemOrange)
         case "fridgemail": return Style(symbol: "photo.on.rectangle.angled", color: .systemOrange)
         case "favcoin_claim_settled": return Style(symbol: "dollarsign.circle.fill", color: .systemGreen)
         case "did_you_know": return Style(symbol: "sparkles", color: .systemIndigo)

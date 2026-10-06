@@ -651,6 +651,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case .eventOpen(let id):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "event-id:\(id)",
                                 object: "events", userInfo: ["eventId": id])
+        case .runOpen(let id):
+            postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "run-id:\(id)",
+                                object: "run", userInfo: ["runId": id])
         case .motivationSend(let lineId):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "motivation-send:\(lineId)",
                                 object: "motivation", userInfo: ["motivationLineId": lineId, "motivationSend": true])

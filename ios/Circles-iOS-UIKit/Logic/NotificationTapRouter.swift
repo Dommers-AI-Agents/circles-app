@@ -19,6 +19,8 @@ enum NotificationDestination: Equatable {
     case eventInvite(token: String)
     /// Someone joined / added photos: that event.
     case eventOpen(id: String)
+    /// Map My Run: a run to watch / that you watched / your own (a cheer)
+    case runOpen(id: String)
     case suggestions(placeId: String?, suggestionId: String?)
     /// `showComments` nil = post without userInfo (as `new_place` always did).
     case circle(id: String, showComments: Bool?)
@@ -87,6 +89,9 @@ enum NotificationTapRouter {
         case "event_joined", "event_photos", "event_challenge", "event_rollcall", "event_rollcall_ping":
             if let id = string("eventId", in: userInfo) { return .eventOpen(id: id) }
             return .homeWidget(id: "events")
+        case "run_live_invite", "run_live_split", "run_live_finished", "run_cheer", "run_watcher_joined":
+            if let id = string("runId", in: userInfo) { return .runOpen(id: id) }
+            return .homeWidget(id: "run")
         case "motivation_send":
             if let lineId = string("lineId", in: userInfo) { return .motivationSend(lineId: lineId) }
             return .homeWidget(id: "motivation")

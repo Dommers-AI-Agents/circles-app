@@ -26,6 +26,8 @@ enum ActivityType: String, Codable {
     case venueOffer = "venue_offer"
     /// A finished workout shared from the Workouts widget; opens the workout
     case workoutShared = "workout_shared"
+    /// A run posted from Map My Run; opens the run (map, splits)
+    case runShared = "run_shared"
     // The owner's own "sent" history (metadata.ownerOnly — only they see
     // these). Unknown to the feed until 2026-10-05, so they read "shared an
     // update" and did nothing when tapped.
@@ -156,6 +158,8 @@ struct ActivityMetadata: Codable {
     let contentType: String?  // Moment content: "photo" | "video" (photo moments ride the video pipeline)
     let workoutPostId: String?  // Shared workout the row opens
     let workoutDetail: String?  // "6 exercises · 42 min · 2 PRs"
+    let runId: String?  // Posted run the row opens
+    let runDetail: String?  // "3.10 mi · 26:40 · 8:36/mi"
     let imageUrl: String?  // Postcard / Fridge Mail picture
     let recipientName: String?  // Who a postcard / Fridge Mail went to
 }
@@ -226,6 +230,8 @@ extension Activity {
             return "added a new offer"
         case .workoutShared:
             return "finished a workout: \(targetName)"
+        case .runShared:
+            return "went for a run 🏃 \(metadata?.runDetail ?? "")"
         case .postcardSent:
             return "sent a postcard to \(targetName)"
         case .postcardMailed:

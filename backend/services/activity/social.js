@@ -757,7 +757,22 @@ const trackWorkoutShared = async (userId, { postId, summary, audience, audienceL
   });
 };
 
+/**
+ * A run posted from Map My Run: one feed row, gated to its audience like a
+ * workout (activityPrivacy). The route map snapshot is the row's picture;
+ * tapping opens the run (map, splits).
+ */
+const trackRunShared = async (userId, { runId, detail, audience, audienceListId, mapImageUrl }) =>
+  createActivity('run_shared', userId, 'run', runId, 'Run', {
+    runId,
+    runAudience: audience,
+    audienceListId: audienceListId || null,
+    runDetail: detail || null,
+    placePhoto: mapImageUrl || null
+  });
+
 module.exports = {
+  trackRunShared,
   trackWorkoutShared,
   trackReaction,
   trackComment,

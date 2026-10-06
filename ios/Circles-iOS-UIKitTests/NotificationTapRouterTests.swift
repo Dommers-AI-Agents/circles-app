@@ -34,6 +34,11 @@ struct NotificationTapRouterTests {
         for type in ["event_challenge", "event_rollcall", "event_rollcall_ping"] {
             #expect(route(["type": type, "eventId": "e1"]) == .eventOpen(id: "e1"))
         }
+        // Map My Run: invites, miles, finish, cheers all open the run
+        for type in ["run_live_invite", "run_live_split", "run_live_finished", "run_cheer", "run_watcher_joined"] {
+            #expect(route(["type": type, "runId": "r1"]) == .runOpen(id: "r1"))
+        }
+        #expect(route(["type": "run_cheer"]) == .homeWidget(id: "run"))
         #expect(route(["type": "event_joined"]) == .homeWidget(id: "events"))
         // The notification's "Send to someone" action, re-routed by NotificationActionHandler
         #expect(route(["type": "motivation_send", "lineId": "0a1b2c3d"]) == .motivationSend(lineId: "0a1b2c3d"))

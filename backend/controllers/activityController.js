@@ -541,7 +541,12 @@ exports.createActivity = async (type, actorId, targetType, targetId, targetName,
         // gate keys on it) and the "6 exercises · 42 min" line
         workoutPostId: metadata.workoutPostId || null,
         workoutAudience: metadata.workoutAudience || null,
-        workoutDetail: metadata.workoutDetail || null
+        workoutDetail: metadata.workoutDetail || null,
+        // Posted runs (Map My Run): the run the row opens, its audience and
+        // the "3.10 mi · 26:40 · 8:36/mi" line
+        runId: metadata.runId || null,
+        runAudience: metadata.runAudience || null,
+        runDetail: metadata.runDetail || null
       },
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       viewers: [], // Track who has seen this activity
