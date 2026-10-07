@@ -274,10 +274,18 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             // Menus can't be mutated once shown, so fetch any uncached avatars
             // BEFORE building — the deferred element's own loading state covers
             // the (capped) wait, and the first open gets faces, not placeholders.
+            self.menuBuilder.resetImportsExpansion()
             self.menuBuilder.withConnectionAvatarsWarmed {
                 done(self.menuBuilder.connectionMenuElements())
             }
         }])
+        // My Places' "+" opens/closes its import rows while the menu stays up
+        menuBuilder.onImportsToggled = { [weak self] in
+            guard let self else { return }
+            self.connectionFilterButton.contextMenuInteraction?.updateVisibleMenu { menu in
+                return menu.replacingChildren(self.menuBuilder.connectionMenuElements())
+            }
+        }
         categoryFilterButton.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in
             done(self?.menuBuilder.categoryMenuElements() ?? [])
         }])

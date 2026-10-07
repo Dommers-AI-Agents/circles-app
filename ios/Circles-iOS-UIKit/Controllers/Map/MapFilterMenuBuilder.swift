@@ -44,6 +44,18 @@ final class MapFilterMenuBuilder {
 
     weak var delegate: MapFilterMenuBuilderDelegate?
 
+    /// Whether My Places' import sources are showing (Wes, 2026-10-07: folded
+    /// behind a "+", tap to open, tap again to close). The open menu is
+    /// rebuilt in place through `onImportsToggled` without closing.
+    private(set) var importsExpanded = false
+    var onImportsToggled: (() -> Void)?
+
+    /// Each fresh open starts folded, unless an import source is the active
+    /// filter (its checkmark should be visible).
+    func resetImportsExpansion() {
+        importsExpanded = state.selectedImportOrigin != nil
+    }
+
     private var state: State {
         delegate?.menuBuilderState(self) ?? State()
     }
@@ -104,30 +116,47 @@ final class MapFilterMenuBuilder {
             }
         )
 
-        actions.append(
-            UIAction(title: "My Places",
-                     image: myAvatar,
-                     state: state.selectedConnectionId == HomePlaceFilter.myPlacesOnlyId && state.selectedImportOrigin == nil ? .on : .off) { [weak self] _ in
-                self?.perform(.selectMyPlaces)
-            }
-        )
-
         // Origin sub-rows under My Places — only for users whose own places
         // include imports. Splits your pins into in-app adds vs each import
-        // source ("was this from Google or added on FavCircles?").
+        // source ("was this from Google or added on FavCircles?"). Folded
+        // behind a "+" on the My Places row (Wes, 2026-10-07): tapping the
+        // row selects My Places and unfolds them ("−"); tapping again folds.
         let currentUserIdForOrigins = AuthService.shared.getUserId() ?? ""
         let mySources = Set(state.places
             .filter { IDNormalizer.isSameUser($0.addedBy, currentUserIdForOrigins) }
             .compactMap { $0.importSource })
+        var origins: [String] = []
         if !mySources.isEmpty {
-            var origins = ["in_app"] + mySources.sorted()
+            origins = ["in_app"] + mySources.sorted()
             // Keep the active selection pickable even if its places vanished
             if let active = state.selectedImportOrigin, !origins.contains(active) { origins.append(active) }
+        }
+        let hasOrigins = !origins.isEmpty
+        let expanded = hasOrigins && importsExpanded
+        let myPlaces = UIAction(
+            title: hasOrigins ? (expanded ? "My Places  −" : "My Places  +") : "My Places",
+            image: myAvatar,
+            // With sources it stays open so the unfolded rows can be picked
+            attributes: hasOrigins ? .keepsMenuPresented : [],
+            state: state.selectedConnectionId == HomePlaceFilter.myPlacesOnlyId && state.selectedImportOrigin == nil ? .on : .off
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.perform(.selectMyPlaces)
+            if hasOrigins {
+                self.importsExpanded.toggle()
+                self.onImportsToggled?()
+            }
+        }
+        if hasOrigins {
+            myPlaces.accessibilityHint = expanded ? "Hides your imported places" : "Shows your imported places"
+        }
+        actions.append(myPlaces)
+        if expanded {
             for origin in origins {
                 let icon = UIImage(systemName: origin == "in_app" ? "plus.app.fill" : "square.and.arrow.down.fill")?
                     .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
                 actions.append(UIAction(
-                    title: "›  \(MapChipFilter.originTitle(origin))",
+                    title: "      \(MapChipFilter.originTitle(origin))",
                     image: icon,
                     state: state.selectedConnectionId == HomePlaceFilter.myPlacesOnlyId && state.selectedImportOrigin == origin ? .on : .off
                 ) { [weak self] _ in

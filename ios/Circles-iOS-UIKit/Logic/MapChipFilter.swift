@@ -55,7 +55,8 @@ enum MapChipFilter {
         case "google_maps": return "Google Places"
         case "mapstr": return "Mapstr"
         case "swarm": return "Swarm"
-        default: return origin.capitalized
+        case "google_list": return "Google Maps list"
+        default: return origin.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
 }

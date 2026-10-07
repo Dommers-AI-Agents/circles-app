@@ -78,6 +78,8 @@ struct MapChipFilterTests {
     @Test func originTitles() {
         #expect(MapChipFilter.originTitle("in_app") == "FavCircles")
         #expect(MapChipFilter.originTitle("google_maps") == "Google Places")
+        #expect(MapChipFilter.originTitle("google_list") == "Google Maps list")
+        #expect(MapChipFilter.originTitle("some_new_source") == "Some New Source")
         #expect(MapChipFilter.originTitle("mapstr") == "Mapstr")
         #expect(MapChipFilter.originTitle("swarm") == "Swarm")
         #expect(MapChipFilter.originTitle("foursquare") == "Foursquare")
