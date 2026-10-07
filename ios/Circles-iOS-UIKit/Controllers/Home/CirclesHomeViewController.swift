@@ -1,4 +1,5 @@
 import UIKit
+import Combine
 import FavWidgetsCore
 import CoreLocation
 import UniformTypeIdentifiers
@@ -91,6 +92,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     var preloadedConnections: [Connection]? // Store preloaded connections for userListView
     var notificationBadgeLabel: UIView? // Unseen-notifications red dot on the bell
     var notificationBarButton: UIBarButtonItem? // Store reference to notification button
+    /// The temperature between the left and right buttons (+Weather)
+    lazy var weatherHeaderButton = UIButton.navStatusButton()
+    var weatherHeaderObserver: AnyCancellable?
     var rewardsBadgeLabel: UILabel? // Badge label showing reward points balance
     var rewardsBarButton: UIBarButtonItem? // Store reference to rewards ($) button
     
@@ -926,6 +930,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // The avatar chip may have been built before your profile finished
         // loading (nil photo → generic glyph); this picks up the real one.
         updateSelectedConnectionAvatar()
+        refreshWeatherHeader()   // cached; a place changed in the widget shows here
 
         // Instant pins — paint the last session's complete place set
         // from disk while the network refresh (below) is in flight
@@ -2611,6 +2616,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // endpoints remain available (browseByLocationTapped still works) if a
         // surface wants them again.
         navigationItem.leftBarButtonItems = [helpButton, inviteButton]
+        setupWeatherHeader()
         
         Task { @MainActor in
             navigationItem.rightBarButtonItems = makeRightBarButtons()

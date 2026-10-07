@@ -192,6 +192,20 @@ extension UIButton {
         return button
     }
     
+    /// A small symbol + text status in the navigation bar (the home header's
+    /// "☀️ 72°"); the owner sets the image and title as they change.
+    static func navStatusButton() -> UIButton {
+        var config = UIButton.Configuration.plain()
+        config.imagePadding = 4
+        config.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6)
+        config.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+            .applying(UIImage.SymbolConfiguration.preferringMulticolor())
+        config.baseForegroundColor = Constants.Colors.label
+        let button = UIButton(configuration: config)
+        button.enableTapFeedback()
+        return button
+    }
+
     // MARK: - Pills, rows and fields (Sept 2026)
 
     /// A compact selectable pill (rating 0–10, chips). Unselected look; the
