@@ -13,12 +13,14 @@ const { ServiceError } = require('../utils/serviceError');
 const MAX_CHARS = 400;
 const VOICE = process.env.COACH_VOICE || 'Algenib';
 const MODEL = process.env.COACH_VOICE_MODEL || 'gemini-2.5-pro-tts';
+const RATE = Number(process.env.COACH_VOICE_RATE) || 1.2; // Wes: "sounds like a 70 year old"
 const STYLE = {
-  savage: "You are Coach Mane: a huge, jacked, rough and tough coach with a lion's mane of hair. " +
-    "Bark this in a deep, gravelly, loud, aggressive drill-sergeant voice, like you're yelling at a runner " +
-    "from the back of a truck. Intense, dominant, zero sympathy, a little amused.",
-  clean: "You are Coach Mane: a huge, jacked, rough and tough coach with a lion's mane of hair. " +
-    "Say this in a deep, gravelly, loud, commanding voice — a hard-nosed coach pushing his runner. Intense and strong."
+  savage: "You are Coach Mane: a jacked, 35-year-old powerlifter coach in his prime with a lion's mane. " +
+    "Deliver this FAST, punchy and clipped — rapid-fire, no pauses between sentences, like a confident, " +
+    "demanding drill sergeant barking orders. Deep, gravelly, loud, dominant. Never slow, never tired, never old.",
+  clean: "You are Coach Mane: a jacked, 35-year-old powerlifter coach in his prime with a lion's mane. " +
+    "Deliver this FAST and punchy, no pauses — a confident, demanding coach driving his runner. " +
+    "Deep, gravelly, loud, commanding. Never slow, never tired, never old."
 };
 const CACHE_MAX = 200;
 const cache = new Map(); // style|text → base64 mp3 (LRU by insertion order)
@@ -38,7 +40,15 @@ function remember(text, audio) {
 }
 
 /** { audio: base64 MP3, voice } for one line. */
-async function speak(text, { intensity, fetchImpl = fetch, accessToken } = {}) {
+/** Firestore copy of each spoken line, shared by every server instance (the
+ *  hello and roasts repeat; generating one takes ~6 s). Keyed by everything
+ *  that changes the sound. */
+function storeKey(style, line) {
+  return require('crypto').createHash('sha1').update([MODEL, VOICE, RATE, style, line].join('|')).digest('hex');
+}
+const storeDoc = (id) => require('../config/firebase').getFirestore().collection('coachVoiceCache').doc(id);
+
+async function speak(text, { intensity, fetchImpl = fetch, accessToken, store = true } = {}) {
   const line = cleanText(text);
   const style = intensity === 'clean' ? 'clean' : 'savage';
   const key = `${style}|${line}`;
@@ -47,6 +57,14 @@ async function speak(text, { intensity, fetchImpl = fetch, accessToken } = {}) {
     remember(key, audio);
     return { audio, voice: VOICE, cached: true };
   }
+  const id = storeKey(style, line);
+  if (store) {
+    const saved = await storeDoc(id).get().catch(() => null);
+    if (saved && saved.exists && saved.data().audio) {
+      remember(key, saved.data().audio);
+      return { audio: saved.data().audio, voice: VOICE, cached: true };
+    }
+  }
   const token = accessToken || await defaultToken();
   const res = await fetchImpl('https://texttospeech.googleapis.com/v1/text:synthesize', {
     method: 'POST',
@@ -54,7 +72,7 @@ async function speak(text, { intensity, fetchImpl = fetch, accessToken } = {}) {
     body: JSON.stringify({
       input: { prompt: STYLE[style], text: line },
       voice: { languageCode: 'en-US', name: VOICE, modelName: MODEL },
-      audioConfig: { audioEncoding: 'MP3' }
+      audioConfig: { audioEncoding: 'MP3', speakingRate: RATE }
     })
   });
   if (!res.ok) {
@@ -65,6 +83,7 @@ async function speak(text, { intensity, fetchImpl = fetch, accessToken } = {}) {
   const { audioContent } = await res.json();
   if (!audioContent) throw new ServiceError(502, 'voice_failed', 'Coach Mane lost his voice');
   remember(key, audioContent);
+  if (store) storeDoc(id).set({ audio: audioContent, text: line, style, voice: VOICE, createdAt: new Date().toISOString() }).catch(() => {});
   return { audio: audioContent, voice: VOICE, cached: false };
 }
 

@@ -17,20 +17,21 @@ describe('coachVoiceService', () => {
 
   test('synthesizes with the directed Gemini voice, then serves repeats from cache', async () => {
     const calls = [];
-    const a = await voice.speak('Go run.', { fetchImpl: okFetch(calls), accessToken: 't' });
-    const b = await voice.speak('Go  run. ', { fetchImpl: okFetch(calls), accessToken: 't' });
+    const a = await voice.speak('Go run.', { fetchImpl: okFetch(calls), accessToken: 't', store: false });
+    const b = await voice.speak('Go  run. ', { fetchImpl: okFetch(calls), accessToken: 't', store: false });
     expect(a).toEqual({ audio: 'QUJD', voice: 'Algenib', cached: false });
     expect(b.cached).toBe(true);
     expect(calls).toHaveLength(1);
     expect(calls[0].voice).toEqual({ languageCode: 'en-US', name: 'Algenib', modelName: 'gemini-2.5-pro-tts' });
-    expect(calls[0].input.prompt).toMatch(/drill-sergeant/);
-    expect(calls[0].audioConfig.audioEncoding).toBe('MP3');
+    expect(calls[0].input.prompt).toMatch(/drill sergeant/);
+    expect(calls[0].audioConfig).toEqual({ audioEncoding: 'MP3', speakingRate: 1.2 });
+    expect(calls[0].input.prompt).toMatch(/FAST/);
   });
 
   test('each intensity is directed (and cached) separately', async () => {
     const calls = [];
-    await voice.speak('Run.', { intensity: 'clean', fetchImpl: okFetch(calls), accessToken: 't' });
-    await voice.speak('Run.', { intensity: 'savage', fetchImpl: okFetch(calls), accessToken: 't' });
+    await voice.speak('Run.', { intensity: 'clean', fetchImpl: okFetch(calls), accessToken: 't', store: false });
+    await voice.speak('Run.', { intensity: 'savage', fetchImpl: okFetch(calls), accessToken: 't', store: false });
     expect(calls).toHaveLength(2);
     expect(calls[0].input.prompt).toMatch(/commanding/);
   });
@@ -38,7 +39,7 @@ describe('coachVoiceService', () => {
   test('a provider failure is a 502 and is not cached', async () => {
     const bad = async () => ({ ok: false, status: 403, text: async () => 'denied' });
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    await expect(voice.speak('Hi', { fetchImpl: bad, accessToken: 't' })).rejects.toMatchObject({ status: 502 });
+    await expect(voice.speak('Hi', { fetchImpl: bad, accessToken: 't', store: false })).rejects.toMatchObject({ status: 502 });
     expect(voice._cache.size).toBe(0);
   });
 });
