@@ -233,11 +233,24 @@ async function getEvent(eventId, uid) {
   ]);
   // A connection made since the last visit joins the viewer's event list
   syncInnerListFor(ref, data, uid).catch(err => console.error('🚌 inner list sync failed:', err.message));
+  const event = toClientEvent(ref.id, data, uid);
+  // The coordinator sees who pushes can't reach (notifications off, or no
+  // device), so they know to text those people about roll call etc.
+  if (data.hostId === uid) event.pushOffMemberIds = await pushOffMembers(data, uid);
   return {
-    event: toClientEvent(ref.id, data, uid),
+    event,
     photos: photos.docs.map(d => toClientPhoto(d, uid, data.hostId)),
     places: places.docs.map(d => toClientPlace(d, uid))
   };
+}
+
+/** Members (not the viewer) a push can't reach — same rule as the email fallback. */
+async function pushOffMembers(data, viewerId) {
+  const ids = (data.memberIds || []).filter(id => id !== viewerId).slice(0, MAX_MEMBERS);
+  if (!ids.length) return [];
+  const { pushReachable } = require('./emailFallback');
+  const docs = await db().getAll(...ids.map(id => db().collection(COLLECTIONS.USERS).doc(id)));
+  return docs.filter(d => d.exists && !pushReachable(d.data())).map(d => d.id);
 }
 
 /** The join screen's preview (any signed-in person holding the link). */
