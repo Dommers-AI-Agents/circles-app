@@ -14,14 +14,11 @@ const MAX_CHARS = 400;
 const VOICE = process.env.COACH_VOICE || 'Algenib';
 const MODEL = process.env.COACH_VOICE_MODEL || 'gemini-2.5-pro-tts';
 const RATE = Number(process.env.COACH_VOICE_RATE) || 1.2; // Wes: "sounds like a 70 year old"
-const STYLE = {
-  savage: "You are Coach Mane: a jacked, 35-year-old powerlifter coach in his prime with a lion's mane. " +
-    "Deliver this FAST, punchy and clipped — rapid-fire, no pauses between sentences, like a confident, " +
-    "demanding drill sergeant barking orders. Deep, gravelly, loud, dominant. Never slow, never tired, never old.",
-  clean: "You are Coach Mane: a jacked, 35-year-old powerlifter coach in his prime with a lion's mane. " +
-    "Deliver this FAST and punchy, no pauses — a confident, demanding coach driving his runner. " +
-    "Deep, gravelly, loud, commanding. Never slow, never tired, never old."
-};
+// One voice for both Tough love and Savage (Wes, 2026-10-07: "the savage voice
+// is good, use it for both"); only the words differ, chosen by the app.
+const STYLE = "You are Coach Mane: a jacked, 35-year-old powerlifter coach in his prime with a lion's mane. " +
+  "Deliver this FAST, punchy and clipped — rapid-fire, no pauses between sentences, like a confident, " +
+  "demanding drill sergeant barking orders. Deep, gravelly, loud, dominant. Never slow, never tired, never old.";
 const CACHE_MAX = 200;
 const cache = new Map(); // style|text → base64 mp3 (LRU by insertion order)
 
@@ -48,9 +45,9 @@ function storeKey(style, line) {
 }
 const storeDoc = (id) => require('../config/firebase').getFirestore().collection('coachVoiceCache').doc(id);
 
-async function speak(text, { intensity, fetchImpl = fetch, accessToken, store = true } = {}) {
+async function speak(text, { fetchImpl = fetch, accessToken, store = true } = {}) {
   const line = cleanText(text);
-  const style = intensity === 'clean' ? 'clean' : 'savage';
+  const style = 'savage'; // the one voice (intensity only changes the words)
   const key = `${style}|${line}`;
   if (cache.has(key)) {
     const audio = cache.get(key);
@@ -70,7 +67,7 @@ async function speak(text, { intensity, fetchImpl = fetch, accessToken, store = 
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      input: { prompt: STYLE[style], text: line },
+      input: { prompt: STYLE, text: line },
       voice: { languageCode: 'en-US', name: VOICE, modelName: MODEL },
       audioConfig: { audioEncoding: 'MP3', speakingRate: RATE }
     })

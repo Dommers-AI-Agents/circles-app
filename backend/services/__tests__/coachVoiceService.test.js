@@ -28,12 +28,11 @@ describe('coachVoiceService', () => {
     expect(calls[0].input.prompt).toMatch(/FAST/);
   });
 
-  test('each intensity is directed (and cached) separately', async () => {
+  test('one voice for both intensities: the same line is generated once', async () => {
     const calls = [];
+    await voice.speak('Run.', { fetchImpl: okFetch(calls), accessToken: 't', store: false });
     await voice.speak('Run.', { intensity: 'clean', fetchImpl: okFetch(calls), accessToken: 't', store: false });
-    await voice.speak('Run.', { intensity: 'savage', fetchImpl: okFetch(calls), accessToken: 't', store: false });
-    expect(calls).toHaveLength(2);
-    expect(calls[0].input.prompt).toMatch(/commanding/);
+    expect(calls).toHaveLength(1);
   });
 
   test('a provider failure is a 502 and is not cached', async () => {
