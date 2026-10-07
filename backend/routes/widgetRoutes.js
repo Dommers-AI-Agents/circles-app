@@ -160,6 +160,10 @@ router.post('/care/plans/:id/watchers/:watcherId/invite', messageLimiter, care.r
 router.delete('/care/plans/:id/watchers/:watcherId', care.removeWatcher);
 router.get('/care/asks', care.listAsks);
 router.post('/care/asks/:id/answer', care.answer);
+// Family support on an answer: reactions, and responses to a heads-up
+router.post('/care/asks/:id/react', care.react);
+router.post('/care/asks/:id/respond', care.respondToAlert);
+router.put('/care/plans/:id/reaction-pushes', care.setReactionPushes);
 
 // Workouts shared with the Inner Circle (feed = grantors ∩ connections)
 router.post('/workouts/share', messageLimiter, workoutFeed.share);

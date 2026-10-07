@@ -99,3 +99,22 @@ exports.joinForParent = async (req, res) => {
   try { res.status(201).json({ success: true, plan: await care.requestWatcherForParent({ userId: req.user.uid, parentId }) }); }
   catch (e) { fail(res, e); }
 };
+
+// Family support (2026-10-07): react to an answer; respond to a heads-up;
+// the parent's switch for reaction pushes.
+exports.react = async (req, res) => {
+  try {
+    const kind = (req.body || {}).kind === null ? null : String((req.body || {}).kind || '');
+    res.json({ success: true, ask: await care.reactToAsk({ userId: req.user.uid, askId: req.params.id, kind }) });
+  } catch (error) { fail(res, error); }
+};
+exports.respondToAlert = async (req, res) => {
+  try {
+    res.json({ success: true, ask: await care.respondToAlert({ userId: req.user.uid, askId: req.params.id, action: String((req.body || {}).action || '') }) });
+  } catch (error) { fail(res, error); }
+};
+exports.setReactionPushes = async (req, res) => {
+  try {
+    res.json({ success: true, ...(await care.setReactionPushes({ userId: req.user.uid, planId: req.params.id, on: (req.body || {}).on === true })) });
+  } catch (error) { fail(res, error); }
+};

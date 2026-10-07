@@ -65,6 +65,8 @@ class CareCheckinService {
       role: CareCheckinService.roleOf(plan, viewerId),
       ownerId: plan.ownerId,
       ownerName: plan.ownerName || '',
+      // The parent hushed pushes about family reactions (they still see them)
+      reactionPushesOff: plan.reactionPushesOff === true,
       parentId: plan.parentId,
       parentName: plan.parentName || '',
       status: plan.status,
@@ -133,7 +135,9 @@ class CareCheckinService {
       alert: ask.alert === true,
       note: ask.note || '',
       answeredAt: ask.answeredAt || null,
-      pushDelivered: ask.pushDelivered !== false
+      pushDelivered: ask.pushDelivered !== false,
+      // Family support on this answer (reactions; responses to a heads-up)
+      ...require('./careCheckin/support').presentSupport(ask)
     };
   }
 
@@ -517,7 +521,8 @@ class CareCheckinService {
   }
 }
 
-Object.assign(CareCheckinService.prototype, require('./careCheckin/membership'), require('./careCheckin/scheduler'));
+Object.assign(CareCheckinService.prototype, require('./careCheckin/membership'), require('./careCheckin/scheduler'),
+  require('./careCheckin/support').mixin);
 module.exports = Object.assign(new CareCheckinService(), {
   CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, ANSWERS, TYPES, DUE_AFTER_MS, RICH_ASKS_MIN_CLIENT, localDateKey, friendlyTime
 });

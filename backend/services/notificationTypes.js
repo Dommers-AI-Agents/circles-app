@@ -86,6 +86,11 @@ const TYPES = {
   care_ask_scale:          { category: 'CARE_SCALE',              pref: 'careCheckins',           badge: false, urgent: true },
   care_ask_text:           { category: 'CARE_TEXT',               pref: 'careCheckins',           badge: false, urgent: true },
   care_answer:             { category: null,                      pref: 'careCheckins',           badge: false },
+  // Family support (2026-10-07): to the parent when family reacts / says
+  // they're calling or coming; to the rest of the family when someone has it
+  care_reaction:           { category: null,                      pref: 'careCheckins',           badge: false },
+  care_alert_response:     { category: null,                      pref: 'careCheckins',           badge: false, record: true },
+  care_alert_handled:      { category: null,                      pref: 'careCheckins',           badge: false },
   care_accepted:           { category: null,                      pref: 'careCheckins',           badge: false, record: true },
   // Family members on a check-in: asked for (parent decides) or invited by the
   // owner (they decide); the parent hears who joined and can remove anyone.
