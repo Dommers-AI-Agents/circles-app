@@ -500,5 +500,6 @@ module.exports = {
   initialize: () => scheduledNotifications.initialize(),
   stop: () => scheduledNotifications.stop(),
   sendDiscoveryPrompts: (timeOfDay) => scheduledNotifications.sendDiscoveryPrompts(timeOfDay),
-  sendWeekendRecommendations: () => scheduledNotifications.sendWeekendRecommendations()
+  sendWeekendRecommendations: () => scheduledNotifications.sendWeekendRecommendations(),
+  sendReengagementNotifications: () => scheduledNotifications.sendReengagementNotifications()
 };
