@@ -133,11 +133,19 @@ describe('scheduled cards (the backend-authored tier)', () => {
     expect((await service.pick(ME, { now: NOW + 8 * DAY })).key).toBe('card:weekly');
   });
 
-  test('audience gates on the build, and an old client is not excluded on a guess', async () => {
+  test('a card for a newer build says "update to get it" on an older one, and an old client is not excluded on a guess', async () => {
     const fresh = () => put('users', ME, { ...rows('users').get(ME), homePrompt: {} });
     card('needs-133', { override: true, audience: { minAppVersion: '1.3.3' } });
-    expect(await service.pick(ME, { now: NOW }, { appVersion: '1.3.2' })).toBeNull();
+    expect(await service.pick(ME, { now: NOW }, { appVersion: '1.3.2' })).toMatchObject({
+      key: 'app_update', type: 'custom', title: 'Try the new widget', target: 'none', actionLabel: 'Got it', override: true,
+      body: 'Water, habits, workouts. Update FavCircles in the App Store to get it.'
+    });
     fresh();
+    // The target alone can need a newer build (app_store arrived in 1.3.8)
+    card('store', { override: true, target: 'app_store', priority: 9 });
+    expect(await service.pick(ME, { now: NOW }, { appVersion: '1.3.7', canOpenAppStore: true })).toMatchObject({ key: 'app_update', target: 'app_store' });
+    fresh();
+    rows('homeCards').delete('store');
     expect((await service.pick(ME, { now: NOW }, { appVersion: '1.3.3' })).key).toBe('card:needs-133');
     fresh();
     // An old build sends no version at all; excluding it would be a guess.
@@ -335,13 +343,42 @@ describe('catalog feature tips', () => {
   test('an older build gets "update to get it", then the real tip once updated', async () => {
     homeTip('events', { order: 1, minAppVersion: '1.3.8', target: 'widget', data: { widgetId: 'events' }, body: 'Make an Event.' });
     const old = await service.pick(ME, { now: NOW }, { appVersion: '1.3.7' });
-    expect(old).toMatchObject({ key: 'events:update', target: 'none', actionLabel: 'Got it',
+    expect(old).toMatchObject({ key: 'app_update', target: 'none', actionLabel: 'Got it',
       body: 'Make an Event. Update FavCircles in the App Store to get it.' });
     put('users', ME, { ...rows('users').get(ME), homePrompt: { lastShownAt: null, lastCardId: null, acks: {} } });
     const canOpen = await service.pick(ME, { now: NOW }, { appVersion: '1.3.7', canOpenAppStore: true });
-    expect(canOpen).toMatchObject({ key: 'events:update', target: 'app_store', actionLabel: 'Update' });
+    expect(canOpen).toMatchObject({ key: 'app_update', target: 'app_store', actionLabel: 'Update' });
     put('users', ME, { ...rows('users').get(ME), homePrompt: { lastShownAt: null, lastCardId: null, acks: {} } });
     expect(await service.pick(ME, { now: NOW }, { appVersion: '1.3.10' })).toMatchObject({ key: 'events', target: 'widget' });
+  });
+
+  test('several too-old tips are one update nag per cadence, not one each', async () => {
+    homeTip('events', { order: 1, minAppVersion: '1.3.8', target: 'widget', data: { widgetId: 'events' } });
+    homeTip('habits', { order: 2, minAppVersion: '1.3.8', target: 'widget', data: { widgetId: 'habits' } });
+    homeTip('plain', { order: 3, target: 'moments_tab' });
+    const first = await service.pick(ME, { now: NOW }, { appVersion: '1.3.7' });
+    expect(first).toMatchObject({ key: 'app_update', title: rows('notificationTips').get('events').title });
+    // Next time round: the tip they can act on, not the habits version of the same nag
+    const second = await service.pick(ME, { now: NOW + 2 * DAY }, { appVersion: '1.3.7' });
+    expect(second.key).toBe('plain');
+    // A tip with no body never reads "undefined …"
+    rows('notificationTips').clear();
+    homeTip('bare', { order: 1, minAppVersion: '1.3.8', target: 'widget', data: { widgetId: 'bare' }, body: '' });
+    put('users', ME, { ...rows('users').get(ME), homePrompt: {} });
+    expect((await service.pick(ME, { now: NOW }, { appVersion: '1.3.7' })).body).toBe('Update FavCircles in the App Store to get it.');
+  });
+
+  test('the update nag and scheduled-card memory are never pruned; per-item acks are', () => {
+    const old = { action: 'shown', at: iso(NOW - 120 * DAY) };
+    const kept = service.pruneAcks({ 'card:launch': old, app_update: old, favcoins_intro: old, 'activity:a1': old, 'moment:m1': old }, NOW);
+    expect(Object.keys(kept).sort()).toEqual(['app_update', 'card:launch', 'favcoins_intro']);
+  });
+
+  test('a push tip with minAppVersion waits for a phone that has the build', () => {
+    const catalog = [{ id: 'events', minAppVersion: '1.3.8', surfaces: ['push'] }, { id: 'plain', surfaces: ['push'] }];
+    expect(tipsService.pickTip({ tipsSeen: [], deviceTokens: [{ token: 't', appVersion: '1.3.7' }] }, catalog).id).toBe('plain');
+    expect(tipsService.pickTip({ tipsSeen: [], deviceTokens: [{ token: 't', appVersion: '1.3.8' }] }, catalog).id).toBe('events');
+    expect(tipsService.pickTip({ tipsSeen: [] }, catalog).id).toBe('plain');
   });
 
   test('no version header: the plain tip', async () => {

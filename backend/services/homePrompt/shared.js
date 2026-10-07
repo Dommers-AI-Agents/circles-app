@@ -58,6 +58,10 @@ const ACTIVITY_WINDOW_MS = DAY;
 // prune them after this so the map stays bounded. Static keys are kept
 // forever: that's the "never ask twice" memory.
 const DYNAMIC_ACK_TTL_MS = 90 * DAY;
+// Only per-item acks are dynamic. "Has a colon" used to be the rule, which
+// also pruned `card:<id>` (a once-ever scheduled card came back after 90
+// days) and would have pruned the shared app-update key.
+const DYNAMIC_ACK_PREFIXES = ['activity:', 'moment:'];
 // Personal nudges may repeat, but not more often than this.
 const NUDGE_REPEAT_MS = 7 * DAY;
 // The postcard nudge is rarer than the rest: it asks for effort (and, if the
@@ -107,7 +111,7 @@ function toMillis(value) {
   return NaN;
 }
 
-const isDynamicKey = (key) => key.includes(':');
+const isDynamicKey = (key) => DYNAMIC_ACK_PREFIXES.some((prefix) => String(key).startsWith(prefix));
 
 class HomePromptError extends ServiceError {}
 

@@ -2,7 +2,8 @@
 // is live, how often it comes back, and who sees it. Pure, so a Tuesday-only
 // card can be tested on a Friday.
 const {
-  windowOpen, cadenceDue, audienceMatches, byPriority, toCard, compareVersions, bucket
+  windowOpen, cadenceDue, audienceMatches, byPriority, toCard, compareVersions, bucket,
+  KNOWN_TARGETS, TARGET_MIN_VERSION, UPDATE_KEY, requiredVersion, needsNewerBuild, updateCard
 } = require('../homeCards');
 
 const NOON_UTC = Date.parse('2026-09-20T12:00:00Z');   // 08:00 New York
@@ -71,13 +72,35 @@ describe('audience', () => {
     expect(audienceMatches(free, user({ isPremium: true }), ctx)).toBe(false);
   });
 
-  test('a card about a new feature can require the build that has it', () => {
+  test('the build is the gate\'s question, not the audience\'s', () => {
     const card = { id: 'c', audience: { minAppVersion: '1.3.3' } };
-    expect(audienceMatches(card, user(), { ...ctx, appVersion: '1.3.2' })).toBe(false);
-    expect(audienceMatches(card, user(), { ...ctx, appVersion: '1.3.3' })).toBe(true);
-    expect(audienceMatches(card, user(), { ...ctx, appVersion: '1.4.0' })).toBe(true);
+    expect(audienceMatches(card, user(), { ...ctx, appVersion: '1.3.2' })).toBe(true);
+    expect(needsNewerBuild('1.3.3', '1.3.2')).toBe(true);
+    expect(needsNewerBuild('1.3.3', '1.3.3')).toBe(false);
+    expect(needsNewerBuild('1.3.3', '1.4.0')).toBe(false);
     // An old build that sends no version is not excluded on a guess.
-    expect(audienceMatches(card, user(), { ...ctx, appVersion: null })).toBe(true);
+    expect(needsNewerBuild('1.3.3', null)).toBe(false);
+    expect(needsNewerBuild(null, '1.0.0')).toBe(false);
+  });
+
+  test('a target the installed app may not route needs the build that added it', () => {
+    for (const target of Object.keys(TARGET_MIN_VERSION)) expect(KNOWN_TARGETS.has(target)).toBe(true);
+    expect(requiredVersion({ target: 'app_store' })).toBe(TARGET_MIN_VERSION.app_store);
+    expect(requiredVersion({ target: 'widgets_tab' })).toBeNull();
+    // The stricter of the card's own floor and the target's
+    expect(requiredVersion({ minAppVersion: '1.3.2', target: 'widget' })).toBe(TARGET_MIN_VERSION.widget);
+    expect(requiredVersion({ minAppVersion: '2.0.0', target: 'widget' })).toBe('2.0.0');
+  });
+
+  test('the update version keeps the card, swaps the button, and never says "undefined"', () => {
+    const base = { key: 'card:x', type: 'custom', title: 'Events are here', body: 'Plan one.', target: 'widget', data: { widgetId: 'events' }, imageUrl: null, override: true };
+    expect(updateCard(base, { canOpenAppStore: true })).toMatchObject({
+      key: UPDATE_KEY, type: 'custom', title: 'Events are here', target: 'app_store', actionLabel: 'Update', skipLabel: 'Later', data: {}, override: true,
+      body: 'Plan one. Update FavCircles in the App Store to get it.'
+    });
+    expect(updateCard(base, {})).toMatchObject({ target: 'none', actionLabel: 'Got it' });
+    expect(updateCard({ ...base, body: undefined }, {}).body).toBe('Update FavCircles in the App Store to get it.');
+    expect(updateCard({ ...base, body: '' }, {}).body).toBe('Update FavCircles in the App Store to get it.');
   });
 
   test('account age, both directions', () => {

@@ -29,6 +29,7 @@ const { COLLECTIONS, createNotification, validateNotification } = require('../mo
 const notificationService = require('./notificationService');
 const sseService = require('./sseService');
 const { forEachPage } = require('../utils/firestorePaging');
+const { anyDeviceAtLeast } = require('../utils/appVersion');
 
 const db = getFirestore();
 
@@ -179,10 +180,14 @@ class TipsService {
   }
 
   // First enabled, unseen tip (by ascending order) whose targeting predicate the
-  // user satisfies. No repeats — once seen, a tip never fires again.
+  // user satisfies, and that one of their phones can act on: a tip with
+  // minAppVersion waits until a device runs that build (the home card can say
+  // "update to get it"; a push whose tap opens nothing can't). No repeats —
+  // once seen, a tip never fires again.
   pickTip(user, catalog) {
     const seen = new Set(user.tipsSeen || []);
-    return catalog.find(tip => !seen.has(tip.id) && this.userMatchesRequirement(user, tip)) || null;
+    const canAct = (tip) => !tip.minAppVersion || anyDeviceAtLeast(user.deviceTokens, { version: tip.minAppVersion });
+    return catalog.find(tip => !seen.has(tip.id) && canAct(tip) && this.userMatchesRequirement(user, tip)) || null;
   }
 
   // `evidence` is optional behavioural context the home-card picker gathers

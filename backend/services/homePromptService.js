@@ -77,13 +77,18 @@ class HomePromptService {
       console.error('🃏 homeCards read failed:', error.message);
     }
     const zone = (ctx.user.notificationPreferences || {}).timezone;
+    // A card this build can't act on shows as "update to get it", under the
+    // shared app-update key (one nag per cadence however many cards need it)
+    const tooOld = (c) => homeCards.needsNewerBuild(
+      homeCards.requiredVersion({ minAppVersion: (c.audience || {}).minAppVersion, target: c.target }), ctx.appVersion);
+    const keyFor = (c) => (tooOld(c) ? homeCards.UPDATE_KEY : homeCards.ackKey(c));
     ctx._liveCards = docs
       .filter(c => c.title)
       .filter(c => homeCards.windowOpen(c, ctx.now, zone))
-      .filter(c => homeCards.cadenceDue(c, ctx.acks[homeCards.ackKey(c)], ctx.now))
-      .filter(c => homeCards.audienceMatches(c, ctx.user, { now: ctx.now, appVersion: ctx.appVersion }))
+      .filter(c => homeCards.cadenceDue(c, ctx.acks[keyFor(c)], ctx.now))
+      .filter(c => homeCards.audienceMatches(c, ctx.user, { now: ctx.now }))
       .sort(homeCards.byPriority)
-      .map(homeCards.toCard);
+      .map(c => (tooOld(c) ? homeCards.updateCard(homeCards.toCard(c), ctx) : homeCards.toCard(c)));
     return ctx._liveCards;
   }
 

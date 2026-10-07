@@ -5,6 +5,7 @@
 const homePromptService = require('../services/homePromptService');
 const { sendServiceError } = require('../utils/serviceError');
 const { HomePromptError } = require('../services/homePromptService');
+const { clientFromRequest } = require('../utils/appVersion');
 
 function sendError(res, error, fallback) {
   return sendServiceError(res, error, { log: `🃏 ${fallback}`, fallbackMessage: fallback });
@@ -18,7 +19,7 @@ exports.getPrompt = async (req, res) => {
     // The app's build, when it sends one, so a card about a new feature can be
     // held back from builds that do not have it. Absent on older clients, and
     // absence never excludes anyone.
-    const appVersion = req.get('X-App-Version') || null;
+    const { version: appVersion } = clientFromRequest(req);
     const canOpenAppStore = req.get('X-FC-App-Store') === '1';
     const card = await homePromptService.pick(req.user.uid, {}, { appVersion, canOpenAppStore });
     res.status(200).json({ success: true, card });

@@ -1,6 +1,5 @@
 // services/homePrompt/cards.js — methods of HomePromptService (mixed into its prototype by the facade).
-const { COLLECTIONS, METERS_PER_MILE, PIGGY_COLLECTIONS, POSTCARD_PLACE_SCAN_LIMIT, POSTCARD_PLACE_WINDOW_MS, getAssumedLocation, haversineMeters, minTripMiles, tipsService, toMillis, TIP_REPEAT_MS, TIP_REPEAT_SKIPPED_MS, TIP_REPEAT_ACTED_MS } = require('./shared');
-const { compareVersions } = require('../../utils/appVersion');
+const { COLLECTIONS, METERS_PER_MILE, PIGGY_COLLECTIONS, POSTCARD_PLACE_SCAN_LIMIT, POSTCARD_PLACE_WINDOW_MS, getAssumedLocation, haversineMeters, homeCards, minTripMiles, tipsService, toMillis, TIP_REPEAT_MS, TIP_REPEAT_SKIPPED_MS, TIP_REPEAT_ACTED_MS } = require('./shared');
 
 module.exports = {
    // 1. "Send a postcard from Lisbon?" — a place this user photographed in the
@@ -120,46 +119,35 @@ module.exports = {
     const lastShownMs = (ack) => (ack ? toMillis(ack.at) : null);
 
     // A tip about a newer widget still shows on an older build, as "update
-    // to get it" (Wes, 2026-10-07: don't ignore them). That version has its
-    // own key, so the real tip still comes up fresh once they've updated.
-    // No version header = unknown build: the plain tip, as before.
-    const tooOld = (t) => !!(t.minAppVersion && ctx.appVersion && compareVersions(ctx.appVersion, t.minAppVersion) < 0);
-    const keyOf = (t) => (tooOld(t) ? `${t.id}:update` : t.id);
-
-    const due = catalog
+    // to get it" (Wes, 2026-10-07: don't ignore them) — the same build gate
+    // scheduled cards use, under the shared app-update key, so the real tip
+    // comes up fresh once they've updated. No version header = unknown
+    // build: the plain tip, as before.
+    const candidates = catalog
       .filter(t => tipsService.userMatchesRequirement(ctx.user, t, evidence))
-      .filter(t => keyOf(t) !== lastKey)
-      .filter(t => {
-        const ack = ctx.acks[keyOf(t)];
+      .map(t => {
+        const tooOld = homeCards.needsNewerBuild(homeCards.requiredVersion(t), ctx.appVersion);
+        return { tip: t, tooOld, key: tooOld ? homeCards.UPDATE_KEY : t.id };
+      });
+    const due = candidates
+      .filter(c => c.key !== lastKey)
+      .filter(c => {
+        const ack = ctx.acks[c.key];
         const at = lastShownMs(ack);
         return !Number.isFinite(at) || ctx.now - at >= floorFor(ack);
       })
       .sort((a, b) => {
-        const aAt = lastShownMs(ctx.acks[keyOf(a)]);
-        const bAt = lastShownMs(ctx.acks[keyOf(b)]);
+        const aAt = lastShownMs(ctx.acks[a.key]);
+        const bAt = lastShownMs(ctx.acks[b.key]);
         const aNever = !Number.isFinite(aAt), bNever = !Number.isFinite(bAt);
-        if (aNever !== bNever) return aNever ? -1 : 1;        // never-shown first
-        if (aNever) return (a.order ?? 9999) - (b.order ?? 9999); // then catalog order
-        return aAt - bAt;                                        // then least recent
+        if (aNever !== bNever) return aNever ? -1 : 1;                    // never-shown first
+        if (aNever) return (a.tip.order ?? 9999) - (b.tip.order ?? 9999); // then catalog order
+        return aAt - bAt;                                                 // then least recent
       });
-    const tip = due[0];
-    if (!tip) return null;
-    if (tooOld(tip)) {
-      // Builds that send X-FC-App-Store can open the App Store from a card;
-      // older ones just close it ("Got it" — an unknown target only dismisses)
-      return {
-        key: keyOf(tip),
-        type: 'feature_tip',
-        title: tip.title,
-        body: `${tip.body} Update FavCircles in the App Store to get it.`,
-        actionLabel: ctx.canOpenAppStore ? 'Update' : 'Got it',
-        skipLabel: 'Later',
-        target: ctx.canOpenAppStore ? 'app_store' : 'none',
-        data: {},
-        imageUrl: tip.imageUrl || null
-      };
-    }
-    return {
+    const pick = due[0];
+    if (!pick) return null;
+    const { tip } = pick;
+    const card = {
       key: tip.id,
       type: 'feature_tip',
       title: tip.title,
@@ -170,5 +158,6 @@ module.exports = {
       data: tip.data || {},
       imageUrl: tip.imageUrl || null
     };
+    return pick.tooOld ? homeCards.updateCard(card, ctx) : card;
   },
 };
