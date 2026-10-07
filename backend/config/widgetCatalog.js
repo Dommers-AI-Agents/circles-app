@@ -24,6 +24,7 @@ const WIDGETS = {
   sleepsounds: { title: 'Sleep Sounds', blurb: 'Mix rain, ocean and fire into a sleep sound that fades out on its own.', emoji: '🌙' },
   stocks: { title: 'Stocks', blurb: 'Follow your stocks, indexes, rates and crypto at a glance.', emoji: '📈' },
   whattoeat: { title: 'What to Eat', blurb: "Can't decide? Spin for a craving and find where to get it nearby.", emoji: '🍜' },
+  weather: { title: 'Weather', blurb: 'The weather where you are, hour by hour and 10 days out.', emoji: '🌤️' },
   water: { title: 'Water', blurb: 'Track your water through the day and get a nudge when you fall behind.', emoji: '💧' },
   workouts: { title: 'Workouts', blurb: 'Log sets, reps and PRs, and see your progress over time.', emoji: '🏋️' }
 };

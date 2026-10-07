@@ -624,6 +624,12 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
     one tappable link via `WidgetShareCard.items` / `.link(...)` (app: `LinkPreviewItem`) —
     never extra text repeating the card, "get it on FavCircles" lines, or an App Store URL;
     the `/app/widget/:id` landing page (`backend/config/widgetCatalog.js`) does the pitching.
+    **Website (Wes, 2026-10-07):** favcircles.com/widgets.html lists every widget and its
+    features. Shipping a widget or a user-visible widget feature = update
+    `website/widgets/widgets.json`, run `node website/tools/build-widgets-page.js` (it fails if
+    a widget in the package registry is missing from the page), and upload `widgets.html`
+    over SFTP (see the website SFTP memory). Add the widget's row to
+    `backend/config/widgetCatalog.js` too (the `/app/widget/:id` landing page).
     Release = tag from main → bump `minimumVersion` in pbxproj →
     `xcodebuild -resolvePackageDependencies` (never hand-edit Package.resolved).
     Moving a symbol between the two modules is a patch bump; a host-contract

@@ -1,0 +1,64 @@
+{
+  "_readme": "Source for favcircles.com/widgets.html. Edit here, then run: node website/tools/build-widgets-page.js — and upload widgets.html (see the website SFTP notes). Keep in step with the favcircles-widgets registry: every widget in FavWidgetRegistry.all appears here, new features get a line.",
+  "updated": "2026-10-07",
+  "groups": [
+    {
+      "title": "Family & friends",
+      "widgets": [
+        { "id": "events", "emoji": "🎉", "name": "Events", "tagline": "Party bus, trip or night out: photos only your group sees.",
+          "features": ["Start an event and drop one link in the group text, or invite friends in the app", "A shared photo album only the people who joined can see, from the camera or your photo library", "Download every photo of the night to your Photos in one tap", "Tag the places you went and save them to a circle named after the event", "Roll call (\"everyone here?\") and photo challenges to keep the night fun", "A FavCoin 🌵 for joining"] },
+        { "id": "howareyou", "emoji": "💬", "name": "How Are You?", "tagline": "Check on Mom or Dad a few times a day.",
+          "features": ["Questions at the times you pick; they answer with one tap from the Lock Screen", "Questions fit their life: pain from 0 to 10, meds, sleep, PT days, rides", "A heads-up when an answer needs attention, or when they go quiet", "Brothers and sisters can join the same check-in", "Send love on any answer, and say \"I'll call\" so the family knows it's handled", "Your parent sees their own week, trends and streaks too"] },
+        { "id": "postcard", "emoji": "📮", "name": "Postcard", "tagline": "A real postcard from your trip photo.",
+          "features": ["Pick a photo and a design, add a note", "Send it to a friend's chat, by email, or as a link anyone can open", "Or have it printed and mailed anywhere in the US, with delivery updates"] },
+        { "id": "fridgemail", "emoji": "🎨", "name": "Fridge Mail", "tagline": "Kids' drawings, mailed to Grandma every week.",
+          "features": ["Snap the drawing; we print it and mail it", "Send to up to three grandparents on a weekly schedule"] },
+        { "id": "billsplit", "emoji": "🧾", "name": "Bill Split", "tagline": "Split the check and the tip in seconds.",
+          "features": ["Enter the bill, pick the tip, see what everyone owes"] }
+      ]
+    },
+    {
+      "title": "Going out",
+      "widgets": [
+        { "id": "nextbar", "emoji": "🍸", "name": "NextBar", "tagline": "Your next bar, picked from where your friends actually go.",
+          "features": ["Picks a bar near you from your saved places and your friends'", "Start a group vote and let everyone pick where to go next"] },
+        { "id": "whattoeat", "emoji": "🍜", "name": "What to Eat", "tagline": "Can't decide? One tap picks for you.",
+          "features": ["Spin for a craving and see where to get it nearby, starting with places you and your friends saved"] },
+        { "id": "drink", "emoji": "🍹", "name": "Make Me a Drink", "tagline": "A cocktail to order tonight, and how to make any classic.",
+          "features": ["Recipes for every spirit, with a surprise-me shake", "Calories on every drink", "Send a recipe to a friend's chat"] }
+      ]
+    },
+    {
+      "title": "Health & fitness",
+      "widgets": [
+        { "id": "workouts", "emoji": "🏋️", "name": "Workouts", "tagline": "Log sets, reps and personal records.",
+          "features": ["Routines that remember last time's numbers", "Cardio with calories, a rest timer and exercise photos", "Share a workout with friends; they can copy it as their own routine"] },
+        { "id": "run", "emoji": "🏃", "name": "FavRun", "tagline": "Track your runs on a map.",
+          "features": ["GPS route map, pace, splits and personal bests", "Your run on the Lock Screen while you go", "Share your runs with the friends you choose"] },
+        { "id": "motivation", "emoji": "📣", "name": "Coach Mane", "tagline": "A coach who won't let you skip.",
+          "features": ["An animated coach with a fresh line every time: tough love, or savage if you dare", "He'll remind you through the day; tap Did it to keep your streak", "Send his line to a friend who needs to hear it"] },
+        { "id": "water", "emoji": "💧", "name": "Water", "tagline": "One tap per glass.",
+          "features": ["A daily goal, streaks and a month at a glance", "Reminders every 1 to 4 hours, and log a cup right from the notification"] },
+        { "id": "habits", "emoji": "✅", "name": "Habits", "tagline": "Daily check-ins and streaks.",
+          "features": ["One-tap check-ins for the habits you want to keep"] },
+        { "id": "calories", "emoji": "🥗", "name": "Calories", "tagline": "Quick-add meals and macros.",
+          "features": ["Log what you eat in a couple of taps"] },
+        { "id": "heartbeat", "emoji": "❤️", "name": "Heartbeat", "tagline": "Your pulse, from the camera or a strap.",
+          "features": ["Measure your heart rate with your phone's camera, or connect a Bluetooth heart-rate strap"] }
+      ]
+    },
+    {
+      "title": "Every day",
+      "widgets": [
+        { "id": "weather", "emoji": "🌤️", "name": "Weather", "tagline": "Right now, the next hours and 10 days.",
+          "features": ["The weather where you are, hour by hour and 10 days out"] },
+        { "id": "stocks", "emoji": "📈", "name": "Stocks", "tagline": "Indexes, rates, crypto and the stocks you follow.",
+          "features": ["The Nasdaq, Dow and S&P at a glance, plus your own watchlist"] },
+        { "id": "quotes", "emoji": "💭", "name": "Quotes", "tagline": "Good lines at the times you pick.",
+          "features": ["Pick your topics and how many times a day", "Share a quote with a friend"] },
+        { "id": "sleepsounds", "emoji": "🌙", "name": "Sleep Sounds", "tagline": "Rain, ocean, fire: mix and drift off.",
+          "features": ["Mix sounds into your own blend", "A timer that fades out gently, with controls on the Lock Screen"] }
+      ]
+    }
+  ]
+}
