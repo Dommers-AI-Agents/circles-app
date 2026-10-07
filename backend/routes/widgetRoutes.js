@@ -89,6 +89,7 @@ router.get('/run/watching', runShare.watching);
 router.post('/run/live', perUserLimit({ bucket: 'run-live', windowMs: 86400000, max: 30 }), runShare.startLive);
 router.post('/run/join', perUserLimit({ bucket: 'run-join', windowMs: 3600000, max: 60 }), runShare.join);
 router.post('/run/post', perUserLimit({ bucket: 'run-post', windowMs: 86400000, max: 30 }), runShare.post);
+router.post('/run/coach-voice', perUserLimit({ bucket: 'run-coach-voice', windowMs: 86400000, max: 200 }), runShare.coachVoice);
 router.get('/run/:id', runShare.getRun);
 router.post('/run/:id/invite', messageLimiter, runShare.invite);
 router.post('/run/:id/watch', runShare.watch);
