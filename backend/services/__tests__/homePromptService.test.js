@@ -332,6 +332,14 @@ describe('catalog feature tips', () => {
     expect(card).toMatchObject({ key: 'home-a', type: 'feature_tip', target: 'widgets_tab', actionLabel: 'Show me' });
   });
 
+  test('a tip with minAppVersion waits for that build; no header is never excluded', async () => {
+    homeTip('events', { order: 1, minAppVersion: '1.3.8', target: 'widget', data: { widgetId: 'events' } });
+    homeTip('water', { order: 2 });
+    expect((await service.pick(ME, { now: NOW }, { appVersion: '1.3.7' })).key).toBe('water');
+    put('users', ME, { ...rows('users').get(ME), homePrompt: { ...state(), lastShownAt: null, lastCardId: null } });
+    expect((await service.pick(ME, { now: NOW }, { appVersion: '1.3.10' })).key).toBe('events');
+  });
+
   test('push job never sees a home-only card', async () => {
     tip('home-only', { surfaces: ['home'] });
     tip('legacy', {});

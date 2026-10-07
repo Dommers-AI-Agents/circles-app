@@ -1,5 +1,6 @@
 // services/homePrompt/cards.js — methods of HomePromptService (mixed into its prototype by the facade).
 const { COLLECTIONS, METERS_PER_MILE, PIGGY_COLLECTIONS, POSTCARD_PLACE_SCAN_LIMIT, POSTCARD_PLACE_WINDOW_MS, getAssumedLocation, haversineMeters, minTripMiles, tipsService, toMillis, TIP_REPEAT_MS, TIP_REPEAT_SKIPPED_MS, TIP_REPEAT_ACTED_MS } = require('./shared');
+const { compareVersions } = require('../../utils/appVersion');
 
 module.exports = {
    // 1. "Send a postcard from Lisbon?" — a place this user photographed in the
@@ -119,6 +120,9 @@ module.exports = {
     const lastShownMs = (ack) => (ack ? toMillis(ack.at) : null);
 
     const due = catalog
+      // A tip about a newer widget waits for a build that has it (absent
+      // header = unknown build, never excluded — same rule as scheduled cards)
+      .filter(t => !t.minAppVersion || !ctx.appVersion || compareVersions(ctx.appVersion, t.minAppVersion) >= 0)
       .filter(t => tipsService.userMatchesRequirement(ctx.user, t, evidence))
       .filter(t => t.id !== lastKey)
       .filter(t => {
