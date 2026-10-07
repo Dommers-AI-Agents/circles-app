@@ -33,4 +33,4 @@ exports.cancel = handle('cancel', async (req) => runs.cancel(req.params.id, uid(
 exports.cheer = handle('cheer', async (req) => runs.cheer(req.params.id, uid(req), req.body || {}));
 exports.watching = handle('watching', async (req) => runs.listWatching(uid(req)));
 exports.post = handle('post', async (req) => runs.postToActivity(uid(req), req.body || {}));
-exports.coachVoice = handle('coachVoice', async (req) => require('../../services/coachVoiceService').speak((req.body || {}).text));
+exports.coachVoice = handle('coachVoice', async (req) => require('../../services/coachVoiceService').speak((req.body || {}).text, { intensity: (req.body || {}).intensity }));

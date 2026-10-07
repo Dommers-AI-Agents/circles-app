@@ -15,15 +15,24 @@ describe('coachVoiceService', () => {
     expect(() => voice.cleanText('x'.repeat(voice.MAX_CHARS + 1))).toThrow('too long');
   });
 
-  test('synthesizes with the Chirp voice, then serves repeats from cache', async () => {
+  test('synthesizes with the directed Gemini voice, then serves repeats from cache', async () => {
     const calls = [];
     const a = await voice.speak('Go run.', { fetchImpl: okFetch(calls), accessToken: 't' });
     const b = await voice.speak('Go  run. ', { fetchImpl: okFetch(calls), accessToken: 't' });
-    expect(a).toEqual({ audio: 'QUJD', voice: 'en-US-Chirp3-HD-Fenrir', cached: false });
+    expect(a).toEqual({ audio: 'QUJD', voice: 'Algenib', cached: false });
     expect(b.cached).toBe(true);
     expect(calls).toHaveLength(1);
-    expect(calls[0].voice).toEqual({ languageCode: 'en-US', name: 'en-US-Chirp3-HD-Fenrir' });
+    expect(calls[0].voice).toEqual({ languageCode: 'en-US', name: 'Algenib', modelName: 'gemini-2.5-pro-tts' });
+    expect(calls[0].input.prompt).toMatch(/drill-sergeant/);
     expect(calls[0].audioConfig.audioEncoding).toBe('MP3');
+  });
+
+  test('each intensity is directed (and cached) separately', async () => {
+    const calls = [];
+    await voice.speak('Run.', { intensity: 'clean', fetchImpl: okFetch(calls), accessToken: 't' });
+    await voice.speak('Run.', { intensity: 'savage', fetchImpl: okFetch(calls), accessToken: 't' });
+    expect(calls).toHaveLength(2);
+    expect(calls[0].input.prompt).toMatch(/commanding/);
   });
 
   test('a provider failure is a 502 and is not cached', async () => {
