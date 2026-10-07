@@ -208,6 +208,23 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         open(widget, context: context)
     }
 
+    /// A shared workout from the activity feed, straight over the feed: no
+    /// tab switch, no pushed Workouts page, no wait before the fetch starts
+    /// (Wes, 2026-10-07: it was slow). Start → the Workouts page with the
+    /// live workout.
+    func presentWorkoutPost(postId: String, title: String?, detail: String?) {
+        guard ensureModel(), let model,
+              let descriptor = model.descriptors.first(where: { $0.id == "workouts" }),
+              let workouts = model.widget(for: descriptor) as? WorkoutWidget else { return }
+        let context = model.context(for: descriptor)
+        let sheet = UIHostingController(rootView: workouts.makePostView(
+            context: context, postId: postId, previewTitle: title, previewDetail: detail,
+            onStarted: { [weak self] in self?.open(widgetId: "workouts") }
+        ))
+        sheet.modalPresentationStyle = .pageSheet
+        present(sheet, animated: true)
+    }
+
     private func open(_ widget: any FavWidget, context: WidgetContext) {
         guard let model else { return }
         let detail = HomeWidgetDetailViewController(widget: widget, context: context, model: model)

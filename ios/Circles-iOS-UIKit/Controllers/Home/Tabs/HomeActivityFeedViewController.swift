@@ -779,11 +779,9 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
             NotificationCenter.default.post(name: .navigateToHomeWidget, object: "run",
                                             userInfo: ["runId": activity.metadata?.runId ?? activity.targetId])
         case .workoutShared:
-            // Opens in the Workouts widget, where the viewer can copy it
-            NotificationCenter.default.post(
-                name: .navigateToHomeWidget, object: "workouts",
-                userInfo: ["workoutPostId": activity.metadata?.workoutPostId ?? activity.targetId]
-            )
+            // Over the feed, at once; copy/start from there
+            host?.presentWorkoutPost(postId: activity.metadata?.workoutPostId ?? activity.targetId,
+                                     title: activity.targetName, detail: activity.metadata?.workoutDetail)
         case .postcardSent:
             NotificationCenter.default.post(name: .navigateToHomeWidget, object: "postcard")
         case .postcardMailed:

@@ -381,7 +381,18 @@ class ActivityFeedCell: UITableViewCell {
                                    thumbnailUrl != nil
 
         placeImageView.isHidden = !shouldShowPlaceImage
-        if let placePhoto = thumbnailUrl, shouldShowPlaceImage {
+        placeImageView.contentMode = .scaleAspectFill
+        placeImageView.backgroundColor = Constants.Colors.lightGray
+        if activity.type == .workoutShared {
+            // A workout has no photo: the dumbbell, on the Workouts blue
+            currentPlaceImageLoadId = nil
+            placeImageView.isHidden = false
+            placeImageView.image = UIImage(systemName: "dumbbell.fill",
+                                           withConfiguration: UIImage.SymbolConfiguration(pointSize: 26, weight: .semibold))
+            placeImageView.tintColor = .white
+            placeImageView.contentMode = .center
+            placeImageView.backgroundColor = UIColor(red: 0.19, green: 0.51, blue: 0.81, alpha: 1)
+        } else if let placePhoto = thumbnailUrl, shouldShowPlaceImage {
             // Generate unique load ID for this place image request
             let loadId = UUID().uuidString
             currentPlaceImageLoadId = loadId

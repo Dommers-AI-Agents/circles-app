@@ -129,10 +129,15 @@ class WorkoutFeedService {
     if (String(post.userId) === String(viewerId)) return true;
     // Shared only by link: opened through the link, never through the feed
     if (post.audience === 'link') return false;
-    const connections = await getConnectedUserIds(viewerId);
+    // Both reads at once: in sequence they made a friend's tap ~1.2 s
+    const needsLists = (post.audience || 'innerCircle') !== 'connections';
+    const [connections, grantors] = await Promise.all([
+      getConnectedUserIds(viewerId),
+      needsLists ? getInnerCircleGrantorLists(viewerId) : Promise.resolve(null)
+    ]);
     if (!connections.has(post.userId)) return false;
-    if ((post.audience || 'innerCircle') === 'connections') return true;
-    const lists = (await getInnerCircleGrantorLists(viewerId)).get(post.userId);
+    if (!needsLists) return true;
+    const lists = grantors.get(post.userId);
     if (!lists) return false;
     return !post.audienceListId || lists.has(post.audienceListId);
   }

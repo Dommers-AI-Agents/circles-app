@@ -2220,6 +2220,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// that moment. Setting selectedSegmentIndex in code does not fire
     /// .valueChanged, so this mirrors contentSegmentChanged's Moments case —
     /// minus its refresh, since present(moment:) loads the feed itself.
+    func presentWorkoutPost(postId: String, title: String?, detail: String?) {
+        widgetsTab.presentWorkoutPost(postId: postId, title: title, detail: detail)
+    }
+
     func openMomentInMomentsTab(_ video: PlaceVideo) {
         contentSegmentedControl.selectedSegmentIndex = HomeContentSegment.moments.rawValue
         for other in HomeContentSegment.allCases where other != .moments {

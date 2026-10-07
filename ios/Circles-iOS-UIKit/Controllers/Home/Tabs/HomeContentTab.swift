@@ -54,6 +54,8 @@ protocol HomeContentTabHost: AnyObject {
     func navigateToPlacePhoto(globalPlaceId: String, photoUrl: String?)
     func navigateToCircle(withId circleId: String)
     func navigateToCheckInPlace(activity: Activity)
+    /// Someone's shared workout over the home screen (the Workouts widget's sheet)
+    func presentWorkoutPost(postId: String, title: String?, detail: String?)
     /// Switch to the Moments tab and land on `video`.
     func openMomentInMomentsTab(_ video: PlaceVideo)
 }
