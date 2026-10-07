@@ -29,7 +29,8 @@ class HomePromptService {
       acks,
       now,
       lastShownAt: Number.isFinite(lastShownAt) ? lastShownAt : null,
-      appVersion: options.appVersion || null
+      appVersion: options.appVersion || null,
+      canOpenAppStore: !!options.canOpenAppStore
     };
     const withinWindow = Number.isFinite(lastShownAt) && now - lastShownAt < SHOW_INTERVAL_MS;
 

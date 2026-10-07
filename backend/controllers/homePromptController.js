@@ -19,7 +19,8 @@ exports.getPrompt = async (req, res) => {
     // held back from builds that do not have it. Absent on older clients, and
     // absence never excludes anyone.
     const appVersion = req.get('X-App-Version') || null;
-    const card = await homePromptService.pick(req.user.uid, {}, { appVersion });
+    const canOpenAppStore = req.get('X-FC-App-Store') === '1';
+    const card = await homePromptService.pick(req.user.uid, {}, { appVersion, canOpenAppStore });
     res.status(200).json({ success: true, card });
   } catch (error) {
     // Never fail the home screen over a card: report "nothing today".

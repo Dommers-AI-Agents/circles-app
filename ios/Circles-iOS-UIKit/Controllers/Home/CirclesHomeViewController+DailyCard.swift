@@ -191,6 +191,8 @@ extension CirclesHomeViewController {
             showWidgetsTab(openingWidget: id)
         case .innerCircle:
             navigationController?.pushViewController(InnerCircleListsViewController(), animated: true)
+        case .appStore:
+            if let url = URL(string: ShareLinks.appStore) { UIApplication.shared.open(url) }
         case .unknown(let target):
             Logger.debug("🃏 home card target not routable in this build: \(target)")
         }

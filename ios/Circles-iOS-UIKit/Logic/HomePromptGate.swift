@@ -97,6 +97,9 @@ enum HomePromptTarget: Equatable {
     case widget(id: String)
     /// Settings › Privacy › Inner Circle.
     case innerCircle
+    /// FavCircles in the App Store: a tip about a widget this build doesn't
+    /// have yet ("update to get it"). Builds that route it send X-FC-App-Store.
+    case appStore
     case unknown(String)
 
     init(target: String, data: [String: HomePromptValue]) {
@@ -127,6 +130,7 @@ enum HomePromptTarget: Equatable {
         case "widget":
             if let id = data["widgetId"]?.stringValue { self = .widget(id: id) } else { self = .unknown(target) }
         case "inner_circle": self = .innerCircle
+        case "app_store": self = .appStore
         default: self = .unknown(target)
         }
     }

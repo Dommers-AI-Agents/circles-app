@@ -332,12 +332,21 @@ describe('catalog feature tips', () => {
     expect(card).toMatchObject({ key: 'home-a', type: 'feature_tip', target: 'widgets_tab', actionLabel: 'Show me' });
   });
 
-  test('a tip with minAppVersion waits for that build; no header is never excluded', async () => {
+  test('an older build gets "update to get it", then the real tip once updated', async () => {
+    homeTip('events', { order: 1, minAppVersion: '1.3.8', target: 'widget', data: { widgetId: 'events' }, body: 'Make an Event.' });
+    const old = await service.pick(ME, { now: NOW }, { appVersion: '1.3.7' });
+    expect(old).toMatchObject({ key: 'events:update', target: 'none', actionLabel: 'Got it',
+      body: 'Make an Event. Update FavCircles in the App Store to get it.' });
+    put('users', ME, { ...rows('users').get(ME), homePrompt: { lastShownAt: null, lastCardId: null, acks: {} } });
+    const canOpen = await service.pick(ME, { now: NOW }, { appVersion: '1.3.7', canOpenAppStore: true });
+    expect(canOpen).toMatchObject({ key: 'events:update', target: 'app_store', actionLabel: 'Update' });
+    put('users', ME, { ...rows('users').get(ME), homePrompt: { lastShownAt: null, lastCardId: null, acks: {} } });
+    expect(await service.pick(ME, { now: NOW }, { appVersion: '1.3.10' })).toMatchObject({ key: 'events', target: 'widget' });
+  });
+
+  test('no version header: the plain tip', async () => {
     homeTip('events', { order: 1, minAppVersion: '1.3.8', target: 'widget', data: { widgetId: 'events' } });
-    homeTip('water', { order: 2 });
-    expect((await service.pick(ME, { now: NOW }, { appVersion: '1.3.7' })).key).toBe('water');
-    put('users', ME, { ...rows('users').get(ME), homePrompt: { ...state(), lastShownAt: null, lastCardId: null } });
-    expect((await service.pick(ME, { now: NOW }, { appVersion: '1.3.10' })).key).toBe('events');
+    expect((await pick()).key).toBe('events');
   });
 
   test('push job never sees a home-only card', async () => {

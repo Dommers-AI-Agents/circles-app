@@ -119,20 +119,24 @@ module.exports = {
     };
     const lastShownMs = (ack) => (ack ? toMillis(ack.at) : null);
 
+    // A tip about a newer widget still shows on an older build, as "update
+    // to get it" (Wes, 2026-10-07: don't ignore them). That version has its
+    // own key, so the real tip still comes up fresh once they've updated.
+    // No version header = unknown build: the plain tip, as before.
+    const tooOld = (t) => !!(t.minAppVersion && ctx.appVersion && compareVersions(ctx.appVersion, t.minAppVersion) < 0);
+    const keyOf = (t) => (tooOld(t) ? `${t.id}:update` : t.id);
+
     const due = catalog
-      // A tip about a newer widget waits for a build that has it (absent
-      // header = unknown build, never excluded — same rule as scheduled cards)
-      .filter(t => !t.minAppVersion || !ctx.appVersion || compareVersions(ctx.appVersion, t.minAppVersion) >= 0)
       .filter(t => tipsService.userMatchesRequirement(ctx.user, t, evidence))
-      .filter(t => t.id !== lastKey)
+      .filter(t => keyOf(t) !== lastKey)
       .filter(t => {
-        const ack = ctx.acks[t.id];
+        const ack = ctx.acks[keyOf(t)];
         const at = lastShownMs(ack);
         return !Number.isFinite(at) || ctx.now - at >= floorFor(ack);
       })
       .sort((a, b) => {
-        const aAt = lastShownMs(ctx.acks[a.id]);
-        const bAt = lastShownMs(ctx.acks[b.id]);
+        const aAt = lastShownMs(ctx.acks[keyOf(a)]);
+        const bAt = lastShownMs(ctx.acks[keyOf(b)]);
         const aNever = !Number.isFinite(aAt), bNever = !Number.isFinite(bAt);
         if (aNever !== bNever) return aNever ? -1 : 1;        // never-shown first
         if (aNever) return (a.order ?? 9999) - (b.order ?? 9999); // then catalog order
@@ -140,6 +144,21 @@ module.exports = {
       });
     const tip = due[0];
     if (!tip) return null;
+    if (tooOld(tip)) {
+      // Builds that send X-FC-App-Store can open the App Store from a card;
+      // older ones just close it ("Got it" — an unknown target only dismisses)
+      return {
+        key: keyOf(tip),
+        type: 'feature_tip',
+        title: tip.title,
+        body: `${tip.body} Update FavCircles in the App Store to get it.`,
+        actionLabel: ctx.canOpenAppStore ? 'Update' : 'Got it',
+        skipLabel: 'Later',
+        target: ctx.canOpenAppStore ? 'app_store' : 'none',
+        data: {},
+        imageUrl: tip.imageUrl || null
+      };
+    }
     return {
       key: tip.id,
       type: 'feature_tip',

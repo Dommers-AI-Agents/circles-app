@@ -119,6 +119,8 @@ struct HomePromptGateTests {
         #expect(HomePromptTarget(target: "add_place", data: [:]) == .addPlace)
         #expect(HomePromptTarget(target: "favcoins_intro", data: [:]) == .favCoinsIntro)
         #expect(HomePromptTarget(target: "widgets_tab", data: [:]) == .widgetsTab)
+        #expect(HomePromptTarget(target: "app_store", data: [:]) == .appStore)
+        #expect(HomePromptTarget(target: "none", data: [:]) == .unknown("none"))
         #expect(HomePromptTarget(target: "moments_tab", data: [:]) == .momentsTab)
         #expect(HomePromptTarget(target: "all_places_map", data: [:]) == .allPlacesMap)
         #expect(HomePromptTarget(target: "create_wallet", data: [:]) == .createWallet)
