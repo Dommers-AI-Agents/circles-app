@@ -1,4 +1,5 @@
 import UIKit
+import UserNotifications
 import Photos
 import MapKit
 import FavWidgets
@@ -43,5 +44,33 @@ extension AppWidgetHost {
                 isGlobal: false
             )
         }
+    }
+}
+
+// MARK: - Notification permission (widgets 0.33.0)
+
+extension AppWidgetHost {
+    func notificationPermission() async -> WidgetNotificationPermission {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        switch settings.authorizationStatus {
+        case .notDetermined: return .notDetermined
+        case .denied: return .denied
+        default: return .allowed // authorized, provisional, ephemeral
+        }
+    }
+
+    /// The app's own request: also registers for remote pushes and tells the
+    /// server, so the coordinator's "can't get notifications" count updates.
+    func requestNotificationPermission() async -> Bool {
+        let granted = await withCheckedContinuation { continuation in
+            NotificationService.shared.requestNotificationPermissions { continuation.resume(returning: $0) }
+        }
+        NotificationService.shared.reportPushStatus()
+        return granted
+    }
+
+    func openNotificationSettings() {
+        let url = URL(string: UIApplication.openNotificationSettingsURLString) ?? URL(string: UIApplication.openSettingsURLString)
+        if let url { UIApplication.shared.open(url) }
     }
 }
