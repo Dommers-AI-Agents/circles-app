@@ -393,17 +393,19 @@ class VideoReelCell: UICollectionViewCell {
             followButton.leadingAnchor.constraint(equalTo: usernameLabel.trailingAnchor, constant: 12),
             followButton.centerYAnchor.constraint(equalTo: usernameLabel.centerYAnchor),
             
-            // Sound button (positioned at top right)
-            soundButton.topAnchor.constraint(equalTo: videoContainerView.safeAreaLayoutGuide.topAnchor, constant: 72),
-            soundButton.trailingAnchor.constraint(equalTo: videoContainerView.trailingAnchor, constant: -16),
-            soundButton.widthAnchor.constraint(equalToConstant: 40),
-            soundButton.heightAnchor.constraint(equalToConstant: 40),
-
-            // More/options button (owner only) — stacked directly below the sound button
-            moreButton.trailingAnchor.constraint(equalTo: soundButton.trailingAnchor),
-            moreButton.topAnchor.constraint(equalTo: soundButton.bottomAnchor, constant: 12),
+            // Sound and "..." ride the right-hand rail ABOVE the avatar, so
+            // they stack with it at any cell height. Pinned to the top they
+            // overlapped the avatar in the shorter home Moments cell (Wes,
+            // 2026-10-08).
+            moreButton.centerXAnchor.constraint(equalTo: profileImageView.centerXAnchor),
+            moreButton.bottomAnchor.constraint(equalTo: profileImageView.topAnchor, constant: -12),
             moreButton.widthAnchor.constraint(equalToConstant: 40),
             moreButton.heightAnchor.constraint(equalToConstant: 40),
+
+            soundButton.centerXAnchor.constraint(equalTo: profileImageView.centerXAnchor),
+            soundButton.bottomAnchor.constraint(equalTo: moreButton.topAnchor, constant: -8),
+            soundButton.widthAnchor.constraint(equalToConstant: 40),
+            soundButton.heightAnchor.constraint(equalToConstant: 40),
 
             // Watch on Platform button (centered at top)
             watchOnPlatformButton.topAnchor.constraint(equalTo: videoContainerView.safeAreaLayoutGuide.topAnchor, constant: 120),
@@ -692,7 +694,11 @@ class VideoReelCell: UICollectionViewCell {
         // Follow button: hidden on your own moment and when you already
         // follow the owner; reset to a tappable "Follow" on cell reuse
         let isOwnMoment = reel.userId == AuthService.shared.currentUser?.id
-        let alreadyFollowing = reel.user?.isFollowing ?? false
+        // The feed says so, or the phone's own follow list does (a moment
+        // opened from Activity arrives without the feed's isFollowing)
+        let currentUser = AuthService.shared.currentUser
+        let alreadyFollowing = reel.user?.isFollowing == true
+            || (currentUser?.following ?? []).contains { IDNormalizer.isSameUser($0, reel.userId) }
         followButton.isHidden = isOwnMoment || alreadyFollowing
         followButton.isEnabled = true
         followButton.alpha = 1.0
