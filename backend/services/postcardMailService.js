@@ -3,16 +3,33 @@
 // Order CRUD + presentation here; fulfilment (release/reject/public page), reconcile (stale sweeps) and webhooks (Stripe/Lob) are mixed in from ./postcardMail.
 // Constants and pure helpers live in ./postcardMail/shared.js.
 const { recordPostcardMailed } = require('./ownActivity/record');
+const { PostcardPricing, issueQuote, verifyQuote } = require('./postcardMail/pricing');
 const { CANCEL_WINDOW_MINUTES, COLLECTIONS, MAX_LOB_ATTEMPTS, MESSAGE_MAX_CHARS, MailError, OPEN_STATUSES, ORDER_ID_RE, STATUS, buildBackHtml, getFirestore, isEnabled, lobClient, normalizeMessage, normalizeRecipient, postcardShareService, priceCents, requireEnabled, stripeClient } = require('./postcardMail/shared');
 
 class PostcardMailService {
   get db() { return getFirestore(); }
   get col() { return this.db.collection(COLLECTIONS.POSTCARD_ORDERS); }
+  get pricing() { return this._pricing || (this._pricing = new PostcardPricing(() => this.db)); }
 
-  config() {
+  /**
+   * What the app shows: the price right now (a running special, else the
+   * regular price), the regular price for the strike-through, the special's
+   * label and end, and a signed quote that holds this price for 30 minutes.
+   */
+  async priceFor(userId = null, now = new Date()) {
+    const price = await this.pricing.current(priceCents(), now);
+    return {
+      priceCents: price.priceCents,
+      regularPriceCents: price.regularPriceCents,
+      special: price.special ? { label: price.special.label, endsAt: price.special.endsAt } : null,
+      priceQuote: userId ? issueQuote(userId, price.priceCents, now) : null
+    };
+  }
+
+  async config(userId = null, now = new Date()) {
     return {
       enabled: isEnabled() && stripeClient.isEnabled() && lobClient.isEnabled(),
-      priceCents: priceCents(),
+      ...(await this.priceFor(userId, now)),
       currency: 'usd',
       cancelWindowMinutes: CANCEL_WINDOW_MINUTES,
       messageMaxChars: MESSAGE_MAX_CHARS,
@@ -23,14 +40,15 @@ class PostcardMailService {
     };
   }
 
-  async quote(recipientInput) {
+  async quote(recipientInput, userId = null) {
     requireEnabled();
     const recipient = normalizeRecipient(recipientInput);
     const verification = await lobClient.verifyUSAddress(recipient);
     return {
       deliverable: verification.deliverable,
       standardized: { name: recipient.name, ...verification.standardized },
-      priceCents: priceCents(),
+      // The address check is the last step before Send: a fresh price + quote
+      ...(await this.priceFor(userId)),
       currency: 'usd'
     };
   }
@@ -40,7 +58,7 @@ class PostcardMailService {
    * happens on the device. Idempotent on orderId: a retried call returns the
    * same PaymentIntent rather than a second hold.
    */
-  async createOrder({ userId, orderId, imageUrl, message, templateId, recipient: recipientInput, placeRef }) {
+  async createOrder({ userId, orderId, imageUrl, message, templateId, recipient: recipientInput, placeRef, priceQuote }) {
     requireEnabled();
     if (!ORDER_ID_RE.test(String(orderId || ''))) {
       throw new MailError(400, 'invalid_order_id', 'A valid orderId is required.');
@@ -61,7 +79,12 @@ class PostcardMailService {
       return { orderId, paymentIntentClientSecret: row.stripeClientSecret, amountCents: row.amountCents };
     }
 
-    const amountCents = priceCents();
+    // The price they were shown holds for its quote's 30 minutes (a special
+    // that ended mid-card still applies); never more than today's price
+    const pricedAt = new Date();
+    const current = (await this.pricing.current(priceCents(), pricedAt)).priceCents;
+    const quoted = verifyQuote(priceQuote, userId, pricedAt);
+    const amountCents = quoted ? Math.min(quoted, current) : current;
     const intent = await stripeClient.createAuthorization({
       orderId,
       userId,

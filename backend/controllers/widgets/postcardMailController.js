@@ -122,7 +122,7 @@ function sendError(res, error, context) {
 // @route   GET /api/widgets/postcard/mail/config
 exports.getConfig = async (req, res) => {
   try {
-    return res.json({ success: true, ...mailService.config() });
+    return res.json({ success: true, ...(await mailService.config(req.user.uid)) });
   } catch (error) {
     return sendError(res, error, 'postcard mail config');
   }
@@ -132,7 +132,7 @@ exports.getConfig = async (req, res) => {
 // @route   POST /api/widgets/postcard/mail/quote
 exports.quote = async (req, res) => {
   try {
-    return res.json({ success: true, ...(await mailService.quote(req.body?.recipient)) });
+    return res.json({ success: true, ...(await mailService.quote(req.body?.recipient, req.user.uid)) });
   } catch (error) {
     return sendError(res, error, 'postcard mail quote');
   }
@@ -270,5 +270,37 @@ exports.reconcile = async (req, res) => {
   } catch (error) {
     console.error('postcard reconcile job failed:', error);
     return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// @desc    Postcard specials (super-users): list, add, end
+// @route   GET/POST /api/widgets/postcard/mail/specials, DELETE …/specials/:id
+const { priceCents: regularPriceCents } = require('../../services/postcardMail/shared');
+const { minPriceCents } = require('../../services/postcardMail/pricing');
+
+exports.listSpecials = async (req, res) => {
+  try {
+    return res.json({ success: true, specials: await mailService.pricing.list(), regularPriceCents: regularPriceCents(),
+      minPriceCents: minPriceCents() });
+  } catch (error) {
+    return sendError(res, error, 'postcard specials');
+  }
+};
+
+exports.addSpecial = async (req, res) => {
+  try {
+    const special = await mailService.pricing.add(req.body || {}, regularPriceCents(), { createdBy: req.user.uid });
+    return res.status(201).json({ success: true, special });
+  } catch (error) {
+    return sendError(res, error, 'postcard special');
+  }
+};
+
+exports.endSpecial = async (req, res) => {
+  try {
+    await mailService.pricing.end(req.params.id);
+    return res.json({ success: true });
+  } catch (error) {
+    return sendError(res, error, 'postcard special end');
   }
 };

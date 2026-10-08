@@ -5,6 +5,7 @@
 
 const express = require('express');
 const { protect } = require('../middleware/firebaseAuth');
+const requireSuperUser = require('../middleware/requireSuperUser');
 const { perUserLimit } = require('../middleware/security');
 const { messageLimiter } = require('../middleware/security');
 const widgetData = require('../controllers/widgets/widgetDataController');
@@ -107,6 +108,10 @@ router.post('/connect', messageLimiter, sendConnectionRequest);
 // caps at 1MB and would downsize below print resolution.
 router.post('/postcard/mail/upload', messageLimiter, postcardMail.uploadPrintImage);
 router.get('/postcard/mail/config', postcardMail.getConfig);
+// Specials ("$1.99 today only"): super-users set them from the app
+router.get('/postcard/mail/specials', requireSuperUser, postcardMail.listSpecials);
+router.post('/postcard/mail/specials', requireSuperUser, postcardMail.addSpecial);
+router.delete('/postcard/mail/specials/:id', requireSuperUser, postcardMail.endSpecial);
 router.post('/postcard/mail/quote', messageLimiter, perUserLimit({ bucket: 'postcard-quote', windowMs: 3600000, max: 60 }), postcardMail.quote);
 router.post('/postcard/mail/orders', messageLimiter, perUserLimit({ bucket: 'postcard-order', windowMs: 86400000, max: 30 }), postcardMail.createOrder);
 router.get('/postcard/mail/orders', postcardMail.listOrders);

@@ -44,7 +44,12 @@ class VenueAdminViewController: BaseViewController {
             image: UIImage(systemName: "book"),
             style: .plain, target: self, action: #selector(ownerGuideTapped))
         guideButton.accessibilityLabel = "Store owner guide"
-        navigationItem.rightBarButtonItems = [addButton, grantButton, claimsButton, guideButton]
+        // Printed-postcard specials ("$1.99 today only")
+        let specialsButton = UIBarButtonItem(
+            image: UIImage(systemName: "tag"),
+            style: .plain, target: self, action: #selector(postcardSpecialsTapped))
+        specialsButton.accessibilityLabel = "Postcard specials"
+        navigationItem.rightBarButtonItems = [addButton, grantButton, claimsButton, guideButton, specialsButton]
 
         tableView.dataSource = self
         tableView.delegate = self
@@ -249,6 +254,10 @@ extension VenueAdminViewController: UITableViewDataSource, UITableViewDelegate {
         cell.contentConfiguration = config
         cell.accessoryType = .disclosureIndicator
         return cell
+    }
+
+    @objc private func postcardSpecialsTapped() {
+        navigationController?.pushViewController(PostcardSpecialsViewController(), animated: true)
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {

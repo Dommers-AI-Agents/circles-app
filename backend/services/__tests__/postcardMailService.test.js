@@ -438,14 +438,14 @@ describe('stripe webhook', () => {
 });
 
 describe('config and quote', () => {
-  it('hides the feature when the flag is off', () => {
+  it('hides the feature when the flag is off', async () => {
     process.env.POSTCARD_MAIL_ENABLED = '0';
-    expect(service.config().enabled).toBe(false);
+    expect((await service.config()).enabled).toBe(false);
   });
 
-  it('serves the price from config so the app never hardcodes it', () => {
+  it('serves the price from config so the app never hardcodes it', async () => {
     process.env.POSTCARD_PRICE_CENTS_US = '499';
-    expect(service.config().priceCents).toBe(499);
+    expect((await service.config()).priceCents).toBe(499);
   });
 
   it('returns the standardized address so the user sees what gets printed', async () => {
@@ -780,5 +780,58 @@ describe('pulling the truth from Lob', () => {
     await service.listOrders(rowOf(ID('o1')).userId);
     await new Promise((r) => setImmediate(r));
     expect(lobClient.getPostcard).not.toHaveBeenCalled();
+  });
+});
+
+describe('specials ("$1.99 today only")', () => {
+  const pricing = require('../postcardMail/pricing');
+  const NOW = new Date('2026-10-08T15:00:00Z');
+  beforeEach(() => {
+    process.env.POSTCARD_PRICE_CENTS_US = '399';
+    mockDb.collection('appConfig').doc('postcardPricing').set({ specials: [] });
+    pricing._resetCache();
+  });
+
+  it('the lowest running special wins; outside its window the regular price', () => {
+    const specials = [
+      { id: 'a', priceCents: 249, label: 'Fall', startsAt: '2026-10-01T00:00:00Z', endsAt: '2026-10-31T00:00:00Z' },
+      { id: 'b', priceCents: 199, label: 'Today only', startsAt: '2026-10-08T04:00:00Z', endsAt: '2026-10-09T04:00:00Z' }
+    ];
+    expect(pricing.currentPrice(399, specials, NOW)).toMatchObject({ priceCents: 199, regularPriceCents: 399, special: { label: 'Today only' } });
+    expect(pricing.currentPrice(399, specials, new Date('2026-10-20T00:00:00Z')).priceCents).toBe(249);
+    expect(pricing.currentPrice(399, specials, new Date('2026-11-02T00:00:00Z'))).toMatchObject({ priceCents: 399, special: null });
+  });
+
+  it('refuses a special below the floor, at or above regular, or already over', () => {
+    expect(() => pricing.normalizeSpecial({ priceCents: 99, endsAt: '2026-10-09T00:00:00Z' }, 399, NOW)).toThrow(/below/);
+    expect(() => pricing.normalizeSpecial({ priceCents: 399, endsAt: '2026-10-09T00:00:00Z' }, 399, NOW)).toThrow(/under/);
+    expect(() => pricing.normalizeSpecial({ priceCents: 199, startsAt: '2026-10-06T00:00:00Z', endsAt: '2026-10-07T00:00:00Z' }, 399, NOW)).toThrow(/over/);
+  });
+
+  it('a quote is this user\'s, untampered and good for 2 hours', () => {
+    const q = pricing.issueQuote(USER, 199, NOW);
+    expect(pricing.verifyQuote(q, USER, NOW)).toBe(199);
+    expect(pricing.verifyQuote(q, 'someone-else', NOW)).toBeNull();
+    expect(pricing.verifyQuote(q.replace(/^199/, '1'), USER, NOW)).toBeNull();
+    expect(pricing.verifyQuote(q, USER, new Date(NOW.getTime() + 119 * 60000))).toBe(199);
+    expect(pricing.verifyQuote(q, USER, new Date(NOW.getTime() + 121 * 60000))).toBeNull();
+  });
+
+  it('config shows the special and a quote; the order is held at the quoted price after the special ends', async () => {
+    const now = new Date();
+    await service.pricing.add({ priceCents: 199, label: 'Today only', startsAt: now.toISOString(),
+      endsAt: new Date(now.getTime() + 3600000).toISOString() }, 399, { now });
+    const config = await service.config(USER);
+    expect(config).toMatchObject({ priceCents: 199, regularPriceCents: 399, special: { label: 'Today only' } });
+    // The special ends before they pay
+    const [only] = await service.pricing.list();
+    await service.pricing.end(only.id);
+    pricing._resetCache();
+    const order = await service.createOrder({ userId: USER, orderId: ID('sp1'), imageUrl: IMAGE, message: 'hi',
+      recipient: RECIPIENT, priceQuote: config.priceQuote });
+    expect(order.amountCents).toBe(199);
+    // No quote: today's price
+    const plain = await service.createOrder({ userId: USER, orderId: ID('sp2'), imageUrl: IMAGE, message: 'hi', recipient: RECIPIENT });
+    expect(plain.amountCents).toBe(399);
   });
 });
