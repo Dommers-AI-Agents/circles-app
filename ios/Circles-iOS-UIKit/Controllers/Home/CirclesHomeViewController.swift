@@ -172,7 +172,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     let searchBar: UISearchBar = {
         let searchBar = UISearchBar()
-        searchBar.placeholder = "Search places and people"
+        searchBar.placeholder = HomeSearchMode.places.placeholder   // "Search anything"
         searchBar.searchBarStyle = .minimal
         searchBar.backgroundColor = Constants.Colors.background
         searchBar.translatesAutoresizingMaskIntoConstraints = false

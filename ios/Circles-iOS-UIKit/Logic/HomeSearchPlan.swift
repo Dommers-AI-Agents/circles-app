@@ -24,7 +24,7 @@ enum HomeSearchMode: Int, CaseIterable {
 
     var placeholder: String {
         switch self {
-        case .places: return "Search places"
+        case .places: return "Search anything"   // places, people and widgets (Wes, 2026-10-08)
         case .people: return "Search people"
         }
     }
