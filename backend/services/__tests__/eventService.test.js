@@ -80,3 +80,19 @@ describe('public invite page', () => {
     expect(renderEventInvite('nope', null)).toContain("isn't valid");
   });
 });
+
+describe('event invites ask older apps to update (Wes, 2026-10-08)', () => {
+  const { canOpenEvents } = require('../eventService');
+  test('1.3.8 and newer can; 1.3.7 — any build — and unknown are asked to update', () => {
+    expect(canOpenEvents({ appVersion: '1.3.8', appBuild: '1' })).toBe(true);
+    expect(canOpenEvents({ appVersion: '1.4.0' })).toBe(true);
+    expect(canOpenEvents({ appVersion: '1.3.7', appBuild: '8' })).toBe(false);
+    expect(canOpenEvents({ appVersion: '1.3.6', appBuild: '7' })).toBe(false);
+    expect(canOpenEvents({})).toBe(false);
+    expect(canOpenEvents(null)).toBe(false);
+  });
+  test('any phone on 1.3.8 is enough', () => {
+    expect(canOpenEvents({ appVersion: '1.3.7', appBuild: '8',
+      deviceTokens: [{ appVersion: '1.3.6' }, { appVersion: '1.3.8', appBuild: '1' }] })).toBe(true);
+  });
+});

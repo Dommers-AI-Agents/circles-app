@@ -25,6 +25,27 @@ const { ServiceError } = require('../utils/serviceError');
 const { newId, nowIso } = require('../utils/ids');
 const { clean } = require('../utils/text');
 const notifyQuiet = require('./notifyQuiet');
+const { atLeast } = require('../utils/appVersion');
+
+/**
+ * Events invites go to 1.3.8 and newer (Wes, 2026-10-08: 1.3.7 users update
+ * to 1.3.8 to use Events, even the 1.3.7 (8) builds that have the widget).
+ */
+const EVENTS_MIN_CLIENT = { version: '1.3.8' };
+
+/**
+ * Whether this person's app is new enough for an event invite: any of their
+ * phones, or the app they last opened, is 1.3.8 or newer. Nothing recorded
+ * means they haven't opened the app since July (it has reported its version
+ * since). Pure.
+ */
+function canOpenEvents(user) {
+  const asClient = (version, build) => ({ version, build: parseInt(build, 10) });
+  if (!user) return false;
+  if (atLeast(asClient(user.appVersion, user.appBuild), EVENTS_MIN_CLIENT)) return true;
+  return (Array.isArray(user.deviceTokens) ? user.deviceTokens : [])
+    .some((t) => t && atLeast(asClient(t.appVersion, t.appBuild), EVENTS_MIN_CLIENT));
+}
 
 const NAME_MAX = 40;
 const DEFAULT_NAME = 'Party Bus';
@@ -376,14 +397,19 @@ async function inviteConnections(eventId, uid, userIds) {
   });
   await ref.update(...fields);
   const inviter = (data.members && data.members[uid] && data.members[uid].name) || 'A friend';
-  for (const id of invitees) {
+  invitees.forEach((id, i) => {
+    // Below 1.3.8: ask them to update rather than send an invite their app
+    // isn't meant to open (Wes, 2026-10-08). The invite stays pending either way.
+    const hasEvents = canOpenEvents(userDocs[i].exists ? userDocs[i].data() : null);
     notifyQuiet.sendInBackground(id, {
       type: 'event_invite',
       title: `${data.emoji || DEFAULT_EMOJI} ${inviter} invited you to ${data.name}`,
-      body: 'Join to share photos and places with everyone there',
-      data: { eventId: ref.id, eventToken: data.inviteToken }
+      body: hasEvents
+        ? 'Join to share photos and places with everyone there'
+        : 'Update FavCircles in the App Store to join — then tap this invite again',
+      data: { eventId: ref.id, eventToken: data.inviteToken, ...(hasEvents ? {} : { needsUpdate: 'true' }) }
     }, 'event_invite');
-  }
+  });
   const fresh = (await ref.get()).data();
   return { invited: invitees.length, event: toClientEvent(ref.id, fresh, uid) };
 }
@@ -728,6 +754,7 @@ async function savePlaceToMyCircle(eventId, uid, eventPlaceId) {
 }
 
 module.exports = {
+  canOpenEvents,
   // operations
   listEvents, getEvent, previewByToken, publicPreview, createEvent, joinByToken, inviteConnections,
   leaveEvent, removeMember, updateEvent, resetInviteLink, endEvent, archiveEvent, unarchiveEvent,
