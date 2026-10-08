@@ -48,18 +48,23 @@ struct HomeSearchPlan: Equatable {
     /// People mode leaves the map alone: filtering pins by a person's name
     /// matches place names by accident and empties the map for no reason.
     var filtersMap: Bool
+    /// Widgets whose name matches ("postcard" → Postcard), at the top in
+    /// Places mode (Wes, 2026-10-08)
+    var widgetRows: Int = 0
 
+    static let maxWidgetRows = 3
     static let maxSuggestedRows = 6
     /// When your own places already match, nearby venues are extras.
     static let maxExtraSuggestedRows = 3
     static let maxPeopleRows = 6
 
-    var hasRows: Bool { placeRows + suggestedRows + peopleRows > 0 }
+    var hasRows: Bool { widgetRows + placeRows + suggestedRows + peopleRows > 0 }
 
     static func make(mode: HomeSearchMode,
                      matchedPlaces: Int,
                      suggestedPlaces: Int,
-                     people: Int) -> HomeSearchPlan {
+                     people: Int,
+                     widgets: Int = 0) -> HomeSearchPlan {
         switch mode {
         case .people:
             return HomeSearchPlan(
@@ -78,7 +83,8 @@ struct HomeSearchPlan: Equatable {
                 // list stays short so your own places lead.
                 suggestedRows: min(max(suggestedPlaces, 0), matched == 0 ? maxSuggestedRows : maxExtraSuggestedRows),
                 peopleRows: 0,
-                filtersMap: true
+                filtersMap: true,
+                widgetRows: min(max(widgets, 0), maxWidgetRows)
             )
         }
     }
@@ -91,6 +97,7 @@ struct HomeSearchPlan: Equatable {
     /// The sheet's handle line: "26 places · 3 nearby", "6 nearby", "2 people".
     var handleTitle: String {
         var parts: [String] = []
+        if widgetRows > 0 { parts.append(widgetRows == 1 ? "1 widget" : "\(widgetRows) widgets") }
         if placeRows > 0 { parts.append(placeRows == 1 ? "1 place" : "\(placeRows) places") }
         if suggestedRows > 0 { parts.append("\(suggestedRows) nearby") }
         if peopleRows > 0 { parts.append(peopleRows == 1 ? "1 person" : "\(peopleRows) people") }

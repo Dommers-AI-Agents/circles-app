@@ -1,4 +1,5 @@
 import UIKit
+import FavWidgetsCore
 import MapKit
 import CoreLocation
 
@@ -10,6 +11,7 @@ import CoreLocation
 // (catalog + Apple venues) and PEOPLE. HomeSearchPlan says how many rows each
 // gets for the current mode.
 enum SearchSection: Int, CaseIterable {
+    case widgets
     case places
     case suggested
     case people
@@ -32,6 +34,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             guard isSearching else { return 0 }
             let plan = searchPlan
             switch SearchSection(rawValue: section) {
+            case .widgets: return plan.widgetRows
             case .places: return plan.placeRows
             case .suggested: return plan.suggestedRows
             case .people: return plan.peopleRows
@@ -74,6 +77,26 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             
             return cell
         } else if tableView == searchResultsTableView {
+            // WIDGETS section: tap to open that widget
+            if SearchSection(rawValue: indexPath.section) == .widgets {
+                let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
+                cell.accessoryView = nil
+                cell.accessoryType = .disclosureIndicator
+                let widgets = matchedWidgets
+                guard indexPath.row < widgets.count else { return cell }
+                let widget = widgets[indexPath.row]
+                var content = cell.defaultContentConfiguration()
+                content.text = widget.title
+                content.secondaryText = "Widget · \(widget.subtitle)"
+                content.secondaryTextProperties.color = Constants.Colors.secondaryLabel
+                content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
+                content.secondaryTextProperties.numberOfLines = 1
+                content.image = UIImage(systemName: widget.symbolName)
+                content.imageProperties.tintColor = UIColor(hex: widget.accentHex)
+                cell.contentConfiguration = content
+                return cell
+            }
+
             // PEOPLE section: a person result
             if SearchSection(rawValue: indexPath.section) == .people {
                 let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
@@ -186,6 +209,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         guard tableView == searchResultsTableView, isSearching else { return nil }
         switch SearchSection(rawValue: section) {
+        case .widgets: return searchPlan.widgetRows == 0 ? nil : "WIDGETS"
         case .places: return searchPlan.placeRows == 0 ? nil : searchPlan.placesHeader
         case .suggested: return searchPlan.suggestedRows == 0 ? nil : searchPlan.suggestedHeader
         case .people: return searchPlan.peopleRows == 0 ? nil : "PEOPLE"
@@ -196,6 +220,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
         guard tableView == searchResultsTableView, isSearching else { return 0 }
         switch SearchSection(rawValue: section) {
+        case .widgets: return searchPlan.widgetRows == 0 ? 0 : SearchSheetLayout.headerHeight
         case .places: return searchPlan.placeRows == 0 ? 0 : SearchSheetLayout.headerHeight
         case .suggested: return searchPlan.suggestedRows == 0 ? 0 : SearchSheetLayout.headerHeight
         case .people: return searchPlan.peopleRows == 0 ? 0 : SearchSheetLayout.headerHeight
@@ -256,6 +281,13 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             isSearchScopeDropdownOpen = false
         } else if tableView == searchResultsTableView {
             switch SearchSection(rawValue: indexPath.section) {
+            case .widgets:
+                let widgets = matchedWidgets
+                guard indexPath.row < widgets.count else { return }
+                let id = widgets[indexPath.row].id
+                AnalyticsService.shared.logEvent("home_search_widget_opened", parameters: ["widget": id])
+                resetSearch()
+                showWidgetsTab(openingWidget: id)
             case .places:
                 let places = visibleFilteredPlaces
                 guard indexPath.row < places.count else { return }

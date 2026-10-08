@@ -70,4 +70,14 @@ struct HomeSearchPlanTests {
         #expect(plan.placeRows == 0)
         #expect(!plan.hasRows)
     }
+
+    @Test func widgetsLeadInPlacesModeOnly() {
+        let places = HomeSearchPlan.make(mode: .places, matchedPlaces: 0, suggestedPlaces: 0, people: 0, widgets: 5)
+        #expect(places.widgetRows == HomeSearchPlan.maxWidgetRows)
+        #expect(places.hasRows)
+        #expect(places.handleTitle == "3 widgets")
+        let people = HomeSearchPlan.make(mode: .people, matchedPlaces: 0, suggestedPlaces: 0, people: 2, widgets: 1)
+        #expect(people.widgetRows == 0)
+        #expect(HomeSearchPlan.make(mode: .places, matchedPlaces: 2, suggestedPlaces: 0, people: 0, widgets: 1).handleTitle == "1 widget · 2 places")
+    }
 }

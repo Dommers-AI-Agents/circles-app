@@ -1,4 +1,6 @@
 import UIKit
+import FavWidgets
+import FavWidgetsCore
 import MapKit
 import CoreLocation
 
@@ -75,8 +77,17 @@ extension CirclesHomeViewController: UISearchBarDelegate {
             mode: searchMode,
             matchedPlaces: filteredPlaces.count,
             suggestedPlaces: suggestedRows.count,
-            people: searchedUsers.count
+            people: searchedUsers.count,
+            widgets: matchedWidgets.count
         )
+    }
+
+    /// Widgets the query names ("postcard" → Postcard), every widget the
+    /// app has whether or not it's turned on in the tab
+    var matchedWidgets: [FavWidgetDescriptor] {
+        guard isSearching else { return [] }
+        return WidgetSearchMatcher.matches(searchBar.text ?? "", in: FavWidgetRegistry.descriptors,
+                                           limit: HomeSearchPlan.maxWidgetRows)
     }
 
     /// Switching between Places and People re-runs the current query under the
@@ -116,6 +127,12 @@ extension CirclesHomeViewController: UISearchBarDelegate {
 
     func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
         searchBar.setShowsCancelButton(false, animated: true)
+        // Left the bar with nothing typed: the search is over, so the
+        // Places/People control goes too (Wes, 2026-10-08: it stayed up over
+        // the Widgets tab). A real query keeps it — the results are still up.
+        if (searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            resetSearch()
+        }
     }
 
     func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {

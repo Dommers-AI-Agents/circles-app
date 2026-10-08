@@ -118,7 +118,8 @@ extension CirclesHomeViewController {
         let places = visibleFilteredPlaces.map(\.id)
         let nearby = visibleSuggestedRows.map(\.id)
         let people = searchedUsers.prefix(searchPlan.peopleRows).map(\.id)
-        return (places + ["|"] + nearby + ["|"] + people + ["|", searchMode.title]).joined(separator: ",")
+        let widgets = matchedWidgets.map(\.id)
+        return (widgets + ["|"] + places + ["|"] + nearby + ["|"] + people + ["|", searchMode.title]).joined(separator: ",")
     }
 
     /// Sheet gone. When the search itself is over (every teardown path sets
