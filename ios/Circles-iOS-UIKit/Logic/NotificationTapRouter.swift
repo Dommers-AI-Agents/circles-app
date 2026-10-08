@@ -21,6 +21,9 @@ enum NotificationDestination: Equatable {
     case eventOpen(id: String)
     /// FavRun: a run to watch / that you watched / your own (a cheer)
     case runOpen(id: String)
+    /// How Are You?: one answer (its push, a reaction or a comment on it) —
+    /// the answer, reactions, comments and that question's history.
+    case careAnswer(askId: String)
     case suggestions(placeId: String?, suggestionId: String?)
     /// `showComments` nil = post without userInfo (as `new_place` always did).
     case circle(id: String, showComments: Bool?)
@@ -98,11 +101,15 @@ enum NotificationTapRouter {
         case "daily_quote":
             if let quoteId = string("quoteId", in: userInfo) { return .dailyQuote(id: quoteId) }
             return .homeWidget(id: "quotes")
+        // An answer, or something said about one: open that answer (Wes,
+        // 2026-10-08: "Sal: Sleep 6/10" opened the front page)
+        case "care_answer", "care_reaction", "care_comment", "care_alert_response", "care_alert_handled":
+            if let askId = string("askId", in: userInfo) { return .careAnswer(askId: askId) }
+            return .homeWidget(id: "howareyou")
         case "care_invite", "care_ask", "care_ask_done", "care_ask_yesno", "care_ask_scale", "care_ask_text",
-             "care_answer", "care_accepted", "care_silence",
+             "care_accepted", "care_silence",
              "care_watcher_request", "care_watcher_invite", "care_watcher_accepted", "care_watcher_declined",
-             "care_watcher_joined", "care_watcher_removed",
-             "care_reaction", "care_alert_response", "care_alert_handled": return .homeWidget(id: "howareyou")
+             "care_watcher_joined", "care_watcher_removed": return .homeWidget(id: "howareyou")
 
         case "new_suggestion":
             return .suggestions(placeId: placeId, suggestionId: userInfo["suggestionId"] as? String)

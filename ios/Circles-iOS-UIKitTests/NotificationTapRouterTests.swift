@@ -49,6 +49,10 @@ struct NotificationTapRouterTests {
                   "care_reaction", "care_alert_response", "care_alert_handled"] {
             #expect(route(["type": t]) == .homeWidget(id: "howareyou"))
         }
+        // An answer or something said about it opens that answer (Wes, 2026-10-08)
+        for t in ["care_answer", "care_reaction", "care_comment", "care_alert_response", "care_alert_handled"] {
+            #expect(route(["type": t, "askId": "a1"]) == .careAnswer(askId: "a1"))
+        }
     }
 
     @Test func placesCirclesAndActivity() {

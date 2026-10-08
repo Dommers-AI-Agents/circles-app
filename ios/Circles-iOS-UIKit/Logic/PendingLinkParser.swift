@@ -34,6 +34,8 @@ enum PendingLink: Equatable {
     case runOpen(id: String)
     /// "run-token:<token>": a "watch my run" link opened before the app was ready.
     case runJoin(token: String)
+    /// "care-ask:<askId>": a How Are You? answer push on a cold start.
+    case careAnswer(askId: String)
 
     // "type:payload" links
     case shareToken(circleId: String, shareToken: String)
@@ -96,6 +98,7 @@ enum PendingLinkParser {
         case "event-id": return .eventOpen(id: payload)
         case "run-id": return .runOpen(id: payload)
         case "run-token": return .runJoin(token: payload)
+        case "care-ask": return .careAnswer(askId: payload)
         case "video": return .video(id: payload)
         case "daily-summary": return .dailySummary
         case "check-in": return .checkIn(placeId: payload)

@@ -150,7 +150,7 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
     func open(widgetId: String, postcardOrderId: String? = nil, quoteId: String? = nil, workoutPostId: String? = nil,
               drinkId: String? = nil, motivationLineId: String? = nil, motivationSend: Bool = false,
               postcardShareToken: String? = nil, eventToken: String? = nil, eventId: String? = nil,
-              runId: String? = nil, runToken: String? = nil) {
+              runId: String? = nil, runToken: String? = nil, careAskId: String? = nil) {
         guard ensureModel(), let model,
               let descriptor = model.descriptors.first(where: { $0.id == widgetId }),
               let widget = model.widget(for: descriptor) else { return }
@@ -174,6 +174,8 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         // FavRun: a run to watch (push / feed row) or a watch link to join
         if widgetId == "run", let runId { context.launchRunId = runId }
         if widgetId == "run", let runToken { context.launchRunToken = runToken }
+        // How Are You?: an answer push opens that answer
+        if widgetId == "howareyou", let careAskId { context.launchCareAskId = careAskId }
         // A shared workout tapped in the activity feed opens over the page
         if widgetId == "workouts", let workoutPostId { context.launchWorkoutPostId = workoutPostId }
         // A drink a friend sent, tapped in chat, opens on that recipe

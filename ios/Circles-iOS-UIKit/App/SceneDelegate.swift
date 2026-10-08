@@ -1396,6 +1396,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case .eventOpen(let id): self.navigateToWidget(id: "events", eventId: id)
             case .runOpen(let id): self.navigateToWidget(id: "run", runId: id)
             case .runJoin(let token): self.navigateToWidget(id: "run", runToken: token)
+            case .careAnswer(let askId): self.navigateToWidget(id: "howareyou", careAskId: askId)
             case .openPath(let path):
                 if let destination = DeepLinkRouter().openPathDestination(path) { self.route(destination) }
             case .shareToken(let circleId, let shareToken):
@@ -2191,13 +2192,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                                   workoutPostId: String? = nil, motivationLineId: String? = nil,
                                   motivationSend: Bool = false, postcardShareToken: String? = nil,
                                   eventToken: String? = nil, eventId: String? = nil,
-                                  runId: String? = nil, runToken: String? = nil) {
+                                  runId: String? = nil, runToken: String? = nil, careAskId: String? = nil) {
         guard AuthService.shared.isLoggedIn,
               let tabBar = window?.rootViewController as? CirclesTabBarController else {
             let motivation: String? = motivationSend ? motivationLineId.map { "motivation-send:\($0)" } : nil
             let share: String? = postcardShareToken.map { "postcard-share:\($0)" }
             let event: String? = eventToken.map { "event:\($0)" } ?? eventId.map { "event-id:\($0)" }
                 ?? runId.map { "run-id:\($0)" } ?? runToken.map { "run-token:\($0)" }
+                ?? careAskId.map { "care-ask:\($0)" }
             let pending: String = postcardOrderId.map { "postcard-order:\($0)" }
                 ?? quoteId.map { "quote:\($0)" }
                 ?? workoutPostId.map { "workout:\($0)" }
@@ -2216,7 +2218,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         home.showWidgetsTab(openingWidget: id, postcardOrderId: postcardOrderId, quoteId: quoteId, workoutPostId: workoutPostId,
                             motivationLineId: motivationLineId, motivationSend: motivationSend,
                             postcardShareToken: postcardShareToken, eventToken: eventToken, eventId: eventId,
-                            runId: runId, runToken: runToken)
+                            runId: runId, runToken: runToken, careAskId: careAskId)
     }
 
     private func navigateToCreateWallet() {
