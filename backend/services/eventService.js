@@ -237,13 +237,23 @@ async function loadByToken(token) {
   return { ref: doc.ref, data: doc.data(), id: doc.id };
 }
 
-async function listEvents(uid) {
+/**
+ * The viewer's events, newest first. `hideArchived`: leave out events
+ * archived for everyone or by this viewer — for apps that predate archiving
+ * and would otherwise list them as live (Brittany on 1.3.7 still saw the
+ * archived Party Bus, 2026-10-08). Newer apps get them all and show
+ * archived ones in their own section.
+ */
+async function listEvents(uid, { hideArchived = false } = {}) {
   const snap = await eventsCol()
     .where('memberIds', 'array-contains', uid)
     .orderBy('createdAt', 'desc')
     .limit(MAX_EVENTS_LISTED)
     .get();
-  return snap.docs.filter(d => !d.data().deletedAt).map(d => toClientEvent(d.id, d.data(), uid));
+  return snap.docs
+    .filter(d => !d.data().deletedAt)
+    .map(d => toClientEvent(d.id, d.data(), uid))
+    .filter(e => !(hideArchived && e.archived));
 }
 
 async function getEvent(eventId, uid) {

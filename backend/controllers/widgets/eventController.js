@@ -14,7 +14,11 @@ const handle = (label, fn) => async (req, res) => {
 
 const uid = (req) => req.user.uid;
 
-exports.listEvents = handle('listEvents', async (req) => ({ events: await eventService.listEvents(uid(req)) }));
+// Archived events only for apps that ask (`?archived=1`, widgets 0.37.1+)
+// and show them in their own section; older apps listed them as live.
+exports.listEvents = handle('listEvents', async (req) => ({
+  events: await eventService.listEvents(uid(req), { hideArchived: req.query.archived !== '1' })
+}));
 exports.createEvent = handle('createEvent', async (req) => ({ event: await eventService.createEvent(uid(req), req.body || {}) }));
 exports.getEvent = handle('getEvent', async (req) => eventService.getEvent(req.params.id, uid(req)));
 exports.previewInvite = handle('previewInvite', async (req) => ({ preview: await eventService.previewByToken(req.params.token, uid(req)) }));
