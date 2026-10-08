@@ -277,6 +277,12 @@ exports.updateUser = async (req, res, next) => {
       if (typeof preferences.showLocation === 'boolean') {
         updateData['preferences.showLocation'] = preferences.showLocation;
       }
+      // The check-in screen's default "Who's it for?" (Wes, 2026-10-08):
+      // everyone | connections | justMe | list:<Inner Circle list id>
+      if (typeof preferences.checkInAudience === 'string'
+          && /^(everyone|connections|justMe|list:[A-Za-z0-9_-]{1,64})$/.test(preferences.checkInAudience)) {
+        updateData['preferences.checkInAudience'] = preferences.checkInAudience;
+      }
     }
     if (profilePicture !== undefined) {
       updateData.profilePicture = profilePicture;

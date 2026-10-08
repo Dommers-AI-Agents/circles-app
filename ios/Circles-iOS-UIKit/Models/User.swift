@@ -4,10 +4,12 @@ import CoreLocation
 struct UserPreferences: Codable {
     let defaultHomeView: String? // "list" or "map"
     let showLocation: Bool?      // others see my city on profile/cards (default true)
+    let checkInAudience: String? // check-in "Who's it for?" default (CheckInAudienceChoice)
 
-    init(defaultHomeView: String? = nil, showLocation: Bool? = nil) {
+    init(defaultHomeView: String? = nil, showLocation: Bool? = nil, checkInAudience: String? = nil) {
         self.defaultHomeView = defaultHomeView
         self.showLocation = showLocation
+        self.checkInAudience = checkInAudience
     }
 }
 

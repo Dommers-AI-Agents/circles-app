@@ -115,8 +115,12 @@ final class CheckInComposeViewController: BaseViewController {
     /// "some like being public"). Just me is a private record: no feed, no
     /// notifications, no comment. This replaced the separate feed switch and
     /// "Just me" button (Wes, 2026-09-28) — one question, one answer.
-    private enum Audience: Equatable { case justMe, connections, everyone, list(String) }
-    private var selectedAudience: Audience = .connections
+    /// Opens on the user's saved default (CheckInAudienceChoice), which they
+    /// set from the bottom of the same menu (Wes, 2026-10-08).
+    private typealias Audience = CheckInAudienceChoice
+    private lazy var selectedAudience: Audience = .initial(
+        saved: Self.savedDefault,
+        listIds: InnerCircleManager.shared.hasLoaded ? InnerCircleManager.shared.usableLists.map(\.id) : nil)
     private var selectedListId: String? {
         if case .list(let id) = selectedAudience { return id }
         return nil
@@ -243,8 +247,12 @@ final class CheckInComposeViewController: BaseViewController {
         let lists = InnerCircleManager.shared.usableLists
         audienceSection?.isHidden = false
         // A list that went away (deleted, or everyone removed) must not stay
-        // selected: it would send an audience nobody is on.
-        if let id = selectedListId, !lists.contains(where: { $0.id == id }) { selectedAudience = .connections }
+        // selected: it would send an audience nobody is on. Only once the
+        // lists have loaded — before that a saved Inner Circle default would
+        // look "gone".
+        if InnerCircleManager.shared.hasLoaded, let id = selectedListId, !lists.contains(where: { $0.id == id }) {
+            selectedAudience = .connections
+        }
         let everyone = UIAction(title: "Everyone",
                                 subtitle: "Connections, followers and anyone who finds the place",
                                 state: selectedAudience == .everyone ? .on : .off) { [weak self] _ in
@@ -272,7 +280,6 @@ final class CheckInComposeViewController: BaseViewController {
                 self?.refreshAudienceMenu()
             }
         }
-        audienceButton.menu = UIMenu(children: [everyone, connections] + listActions + [justMe])
         let title: String
         switch selectedAudience {
         case .justMe: title = "Just me"
@@ -280,6 +287,17 @@ final class CheckInComposeViewController: BaseViewController {
         case .connections: title = "My connections"
         case .list(let id): title = lists.first { $0.id == id }?.name ?? "My connections"
         }
+        // Last row: keep this choice for every check-in
+        let isDefault = selectedAudience == CheckInAudienceChoice(storedValue: Self.savedDefault) ?? .connections
+        let makeDefault = UIAction(title: isDefault ? "\(title) is your default" : "Make \(title) my default",
+                                   image: UIImage(systemName: isDefault ? "checkmark.circle.fill" : "pin"),
+                                   attributes: isDefault ? .disabled : []) { [weak self] _ in
+            self?.saveDefaultAudience()
+        }
+        audienceButton.menu = UIMenu(children: [
+            UIMenu(options: .displayInline, children: [everyone, connections] + listActions + [justMe]),
+            UIMenu(options: .displayInline, children: [makeDefault])
+        ])
         audienceButton.setTitle("\(title)  ›", for: .normal)
         audienceButton.setTitleColor(Constants.Colors.label, for: .normal)
         // A private check-in notifies nobody and posts no comment, so those
@@ -287,6 +305,27 @@ final class CheckInComposeViewController: BaseViewController {
         let isPrivate = selectedAudience == .justMe
         notifyButton.isHidden = isPrivate
         postOnPlaceRow?.isHidden = isPrivate
+    }
+
+    // MARK: - Default audience
+
+    private static var defaultKey: String { "checkInAudienceDefault.\(AuthService.shared.currentUser?.id ?? "")" }
+
+    /// This device's copy first (set the moment the user picks it), then the
+    /// account's, so a default made on another phone still applies.
+    private static var savedDefault: String? {
+        UserDefaults.standard.string(forKey: defaultKey) ?? AuthService.shared.currentUser?.preferences?.checkInAudience
+    }
+
+    private func saveDefaultAudience() {
+        let value = selectedAudience.storedValue
+        UserDefaults.standard.set(value, forKey: Self.defaultKey)
+        refreshAudienceMenu()
+        // The menu's last row now reads "… is your default"; a tap of feedback is enough
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        UserService.shared.updateUserPreferences(checkInAudience: value) { result in
+            if case .success(let user) = result { DispatchQueue.main.async { AuthService.shared.updateCurrentUser(user) } }
+        }
     }
 
     private func updateNotifyTitle() {

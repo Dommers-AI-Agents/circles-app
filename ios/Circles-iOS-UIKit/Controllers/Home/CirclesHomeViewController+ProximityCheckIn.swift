@@ -2,7 +2,7 @@ import UIKit
 import CoreLocation
 
 // The proximity check-in chip: when the app opens within ~50m of one of the
-// user's saved places, a dismissible pill offers a one-tap check-in with the
+// user's saved places, a pill that stays until dismissed offers a one-tap check-in with the
 // place pre-filled. Shown at most once per place per day; never during the
 // first-session onboarding chain.
 //
@@ -78,10 +78,9 @@ extension CirclesHomeViewController {
         label.minimumScaleFactor = 0.8
         label.translatesAutoresizingMaskIntoConstraints = false
 
-        let close = UIButton(type: .system)
-        close.setImage(UIImage(systemName: "xmark"), for: .normal)
+        let close = UIButton.iconButton(systemName: "xmark", pointSize: 14)
         close.tintColor = UIColor.white.withAlphaComponent(0.8)
-        close.translatesAutoresizingMaskIntoConstraints = false
+        close.accessibilityLabel = "Dismiss"
         close.addAction(UIAction { [weak chip] _ in
             UIView.animate(withDuration: 0.2, animations: { chip?.alpha = 0 }) { _ in
                 chip?.removeFromSuperview()
@@ -108,9 +107,10 @@ extension CirclesHomeViewController {
             label.centerYAnchor.constraint(equalTo: chip.centerYAnchor),
 
             close.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 10),
-            close.trailingAnchor.constraint(equalTo: chip.trailingAnchor, constant: -12),
+            close.trailingAnchor.constraint(equalTo: chip.trailingAnchor, constant: -6),
             close.centerYAnchor.constraint(equalTo: chip.centerYAnchor),
-            close.widthAnchor.constraint(equalToConstant: 22),
+            close.widthAnchor.constraint(equalToConstant: 32),
+            close.heightAnchor.constraint(equalToConstant: 44),
         ])
 
         chip.addAction(UIAction { [weak self, weak chip] _ in
@@ -125,13 +125,7 @@ extension CirclesHomeViewController {
             chip.alpha = 1
             chip.transform = .identity
         }
-
-        // Quietly leave if ignored
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak chip] in
-            guard let chip = chip, chip.superview != nil else { return }
-            UIView.animate(withDuration: 0.3, animations: { chip.alpha = 0 }) { _ in
-                chip.removeFromSuperview()
-            }
-        }
+        // Stays until tapped or dismissed with ✕ — it used to leave after
+        // 15 s, before most people looked up (Wes, 2026-10-08)
     }
 }

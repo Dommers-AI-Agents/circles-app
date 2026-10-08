@@ -197,8 +197,11 @@ class UserService {
         }
     }
     
-    func updateUserPreferences(defaultHomeView: String? = nil, showLocation: Bool? = nil, completion: @escaping (Result<User, Error>) -> Void) {
+    func updateUserPreferences(defaultHomeView: String? = nil, showLocation: Bool? = nil, checkInAudience: String? = nil, completion: @escaping (Result<User, Error>) -> Void) {
         var prefs: [String: Any] = [:]
+        if let checkInAudience = checkInAudience {
+            prefs["checkInAudience"] = checkInAudience
+        }
         if let defaultHomeView = defaultHomeView {
             prefs["defaultHomeView"] = defaultHomeView
         }
