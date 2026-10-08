@@ -219,7 +219,8 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         let context = model.context(for: descriptor)
         let sheet = UIHostingController(rootView: workouts.makePostView(
             context: context, postId: postId, previewTitle: title, previewDetail: detail,
-            onStarted: { [weak self] in self?.open(widgetId: "workouts") }
+            onStarted: { [weak self] in self?.open(widgetId: "workouts") },
+            onOpenWorkouts: { [weak self] in self?.open(widgetId: "workouts") }
         ))
         sheet.modalPresentationStyle = .pageSheet
         present(sheet, animated: true)
