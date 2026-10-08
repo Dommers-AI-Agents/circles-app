@@ -222,13 +222,11 @@ const getNetworkSuggestions = async (req, res) => {
     for (const doc of suggestionDocs.slice(0, 100)) {
       const suggestion = serializeDoc(doc);
 
-      // Directed suggestions are private to their recipient (and author) —
-      // they must not surface in everyone else's broadcast network feed
-      if (suggestion.recipientId &&
-          suggestion.recipientId !== userId &&
-          suggestion.userId !== userId) {
-        continue;
-      }
+      // Network is the broadcast feed. A directed suggestion is one person's
+      // (their For You tab, /received) — not even its author's feed: every
+      // new account's automatic welcome suggestion is "from Wes", so his
+      // Network filled with dozens of copies of it (Wes, 2026-10-08).
+      if (suggestion.recipientId) continue;
 
       // Get user details
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(suggestion.userId).get();
