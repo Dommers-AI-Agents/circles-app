@@ -95,6 +95,10 @@ enum NotificationTapRouter {
         case "run_live_invite", "run_live_split", "run_live_finished", "run_cheer", "run_watcher_joined":
             if let id = string("runId", in: userInfo) { return .runOpen(id: id) }
             return .homeWidget(id: "run")
+        // Local reminders from the Medications, Parking and Packages widgets
+        case "med_reminder": return .homeWidget(id: "meds")
+        case "parking_meter": return .homeWidget(id: "parking")
+        case "package_expected": return .homeWidget(id: "packages")
         case "motivation_send":
             if let lineId = string("lineId", in: userInfo) { return .motivationSend(lineId: lineId) }
             return .homeWidget(id: "motivation")

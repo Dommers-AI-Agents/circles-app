@@ -181,6 +181,16 @@ enum NotificationCategoryRegistry {
             options: [.customDismissAction]
         )
 
+        // Medication reminder (local, from the Medications widget): "Took it"
+        // logs the dose without opening the app; snooze re-reminds in 10 min.
+        let medCategory = UNNotificationCategory(
+            identifier: MedQuickLog.categoryIdentifier,
+            actions: [UNNotificationAction(identifier: MedQuickLog.takenAction, title: "Took it ✅", options: []),
+                      UNNotificationAction(identifier: MedQuickLog.snoozeAction, title: "Remind me in 10 min", options: [])],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+
         // Motivation coach (local notifications the Motivation widget
         // schedules): "Did it" marks today done and quiets the rest of today;
         // "Send to someone" forwards that line to a friend.
@@ -209,6 +219,7 @@ enum NotificationCategoryRegistry {
             careScaleCategory,
             careTextCategory,
             waterCategory,
+            medCategory,
             motivationCategory
         ]
     }

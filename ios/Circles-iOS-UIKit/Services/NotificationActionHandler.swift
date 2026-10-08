@@ -169,6 +169,37 @@ final class NotificationActionHandler {
             }
             return
 
+        case MedQuickLog.takenAction:
+            // Held until the write lands, like Water's "Log a cup".
+            let medId = userInfo["medId"] as? String
+            let slot = (userInfo["slot"] as? Int) ?? (userInfo["slot"] as? NSNumber)?.intValue
+            Task {
+                if let medId, let slot {
+                    do {
+                        let store: WidgetDataStore = KeychainService.shared.getUserId().map(AppWidgetHost.makeDataStore(userId:)) ?? HomeWidgetsAPIDataStore()
+                        try await MedQuickLog.markTaken(store: store, medId: medId, slot: slot)
+                        Logger.debug("💊 Dose marked taken from the reminder")
+                    } catch {
+                        Logger.debug("❌ Med quick log failed: \(error)")
+                        NotificationCenter.default.post(name: .navigateToHomeWidget, object: MedQuickLog.widgetId)
+                    }
+                }
+                await MainActor.run { completion() }
+            }
+            return
+
+        case MedQuickLog.snoozeAction:
+            // The same reminder again in 10 minutes (a one-shot; the daily
+            // repeat is untouched)
+            let content = response.notification.request.content
+            if let copy = content.mutableCopy() as? UNMutableNotificationContent {
+                let id = "med-snooze-\(response.notification.request.identifier)"
+                let request = UNNotificationRequest(identifier: id, content: copy,
+                                                    trigger: UNTimeIntervalNotificationTrigger(timeInterval: 600, repeats: false))
+                UNUserNotificationCenter.current().add(request) { _ in completion() }
+                return
+            }
+
         case MotivationQuickLog.sendAction:
             // Opens the app (the action is .foreground) on that line with the
             // send sheet. Notifications scheduled before lineId existed fall
