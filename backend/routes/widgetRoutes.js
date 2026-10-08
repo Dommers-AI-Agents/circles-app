@@ -168,6 +168,8 @@ router.post('/care/asks/:id/answer', care.answer);
 // Family support on an answer: reactions, and responses to a heads-up
 router.post('/care/asks/:id/react', care.react);
 router.post('/care/asks/:id/respond', care.respondToAlert);
+router.get('/care/asks/:id', care.askDetail);
+router.post('/care/asks/:id/comment', messageLimiter, care.comment);
 router.put('/care/plans/:id/reaction-pushes', care.setReactionPushes);
 
 // Workouts shared with the Inner Circle (feed = grantors ∩ connections)

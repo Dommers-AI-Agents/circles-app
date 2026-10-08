@@ -108,6 +108,17 @@ exports.react = async (req, res) => {
     res.json({ success: true, ask: await care.reactToAsk({ userId: req.user.uid, askId: req.params.id, kind }) });
   } catch (error) { fail(res, error); }
 };
+exports.askDetail = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit, 10) || 30;
+    res.json({ success: true, ...(await care.askDetail({ userId: req.user.uid, askId: req.params.id, limit })) });
+  } catch (error) { fail(res, error); }
+};
+exports.comment = async (req, res) => {
+  try {
+    res.json({ success: true, ask: await care.commentOnAsk({ userId: req.user.uid, askId: req.params.id, text: (req.body || {}).text }) });
+  } catch (error) { fail(res, error); }
+};
 exports.respondToAlert = async (req, res) => {
   try {
     res.json({ success: true, ask: await care.respondToAlert({ userId: req.user.uid, askId: req.params.id, action: String((req.body || {}).action || '') }) });

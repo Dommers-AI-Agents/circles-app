@@ -22,6 +22,11 @@ const RESPONSES = {
 const PUSH_REACTION = 'care_reaction';
 const PUSH_RESPONSE = 'care_alert_response';
 const PUSH_HANDLED = 'care_alert_handled';
+const PUSH_COMMENT = 'care_comment';
+const COMMENT_MAX = 300;
+const COMMENTS_PER_ANSWER = 50;
+/** How far back a question's history looks (asks across all questions). */
+const HISTORY_SCAN = 300;
 
 /** Pure: the support on one answer, as every viewer sees it (oldest first). */
 function presentSupport(ask) {
@@ -34,8 +39,24 @@ function presentSupport(ask) {
     .filter(([, r]) => r && RESPONSES[r.action])
     .map(([userId, r]) => ({ userId, name: r.name || 'Family', action: r.action, at: r.at || null }))
     .sort(byTime);
-  return { reactions, responses };
+  const comments = (Array.isArray(ask.comments) ? ask.comments : [])
+    .filter((c) => c && c.text)
+    .map((c) => ({ id: c.id, userId: c.userId, name: c.name || 'Family', text: c.text, at: c.at || null }))
+    .sort(byTime);
+  return { reactions, responses, comments };
 }
+
+/** Pure: the same question, asked before — by question id, else its words. */
+function sameQuestion(a, b) {
+  if (a.questionId && b.questionId) return a.questionId === b.questionId;
+  return String(a.questionText || '') === String(b.questionText || '');
+}
+
+/** Pure: the comment push. Family → the parent; the parent → the family. */
+const commentPush = (name, text, ask, toParent) => ({
+  title: toParent ? `💬 ${name}: ${text}` : `💬 ${name} replied: ${text}`,
+  body: `About ${toParent ? 'your' : 'the'} answer “${ask.answerText || ''}”${ask.short ? ` (${ask.short})` : ''}`.replace(' “”', '')
+});
 
 /** Pure: the push wording. */
 const reactionPush = (name, kind, ask) => ({
@@ -50,7 +71,8 @@ function memberName(plan, userId) {
 }
 
 module.exports = {
-  REACTIONS, RESPONSES, PUSH_REACTION, PUSH_RESPONSE, PUSH_HANDLED, presentSupport, reactionPush,
+  REACTIONS, RESPONSES, PUSH_REACTION, PUSH_RESPONSE, PUSH_HANDLED, PUSH_COMMENT, COMMENT_MAX,
+  presentSupport, reactionPush, commentPush, sameQuestion,
 
   mixin: {
     /** One reaction per person per answer; `kind: null` takes it back. */
@@ -113,6 +135,52 @@ module.exports = {
         }
       }
       return this.presentAsk({ ...ask, responses });
+    },
+
+    /**
+     * One answer and the same question's earlier answers (Wes 2026-10-08: a
+     * tap on "Sal: 6/10" opens that answer and how he's answered it before).
+     */
+    async askDetail({ userId, askId, limit = 30 }) {
+      const doc = await this.asks.doc(String(askId)).get();
+      if (!doc.exists) throw new CareError(404, 'no_ask', 'That answer is gone.');
+      const ask = { id: doc.id, ...doc.data() };
+      const plan = await this.requirePlan(ask.planId);
+      if (!this.constructor.canRead(plan, userId)) throw new CareError(403, 'not_yours', 'Not your check-in.');
+      const recent = await this.recentAsks(plan.id, HISTORY_SCAN);
+      const history = recent
+        .filter((a) => a.id !== ask.id && sameQuestion(a, ask) && a.status !== 'open')
+        .slice(0, Math.min(Math.max(limit, 1), 60))
+        .map((a) => this.presentAsk(a));
+      return { ask: this.presentAsk(ask), history, parentName: plan.parentName || null,
+               role: this.constructor.roleOf(plan, userId) };
+    },
+
+    /** A comment on an answer. Family's go to the parent; the parent's to the family. */
+    async commentOnAsk({ userId, askId, text }) {
+      const words = String(text || '').replace(/\s+/g, ' ').trim().slice(0, COMMENT_MAX);
+      if (!words) throw new CareError(400, 'no_text', 'Write something first.');
+      const doc = await this.asks.doc(String(askId)).get();
+      if (!doc.exists) throw new CareError(404, 'no_ask', 'That answer is gone.');
+      const ask = { id: doc.id, ...doc.data() };
+      const plan = await this.requirePlan(ask.planId);
+      const role = this.constructor.roleOf(plan, userId);
+      if (!['owner', 'watcher', 'parent'].includes(role)) throw new CareError(403, 'not_family', 'Only family on this check-in can comment.');
+      if (ask.status !== 'answered') throw new CareError(400, 'not_answered', 'Comment once there is an answer.');
+      if ((ask.comments || []).length >= COMMENTS_PER_ANSWER) throw new CareError(400, 'too_many', 'This answer has plenty of comments.');
+
+      const name = role === 'parent' ? (plan.parentName || 'They') : memberName(plan, userId);
+      const comment = { id: require('crypto').randomBytes(6).toString('hex'), userId, name, text: words, at: nowIso() };
+      await this.asks.doc(ask.id).update({ comments: require('firebase-admin/firestore').FieldValue.arrayUnion(comment) });
+      const comments = [...(ask.comments || []), comment];
+
+      const toParent = role !== 'parent';
+      const { title, body } = commentPush(name.split(' ')[0], words, ask, toParent);
+      const recipients = toParent ? [plan.parentId] : this.constructor.careTeam(plan).filter((m) => m !== userId);
+      for (const id of recipients) {
+        this.notify(id, { type: PUSH_COMMENT, title: title.slice(0, 120), body, data: { planId: plan.id, askId: ask.id } });
+      }
+      return this.presentAsk({ ...ask, comments });
     },
 
     /** The parent's own switch: no pushes when family reacts (they still see them). */

@@ -89,6 +89,8 @@ const TYPES = {
   // Family support (2026-10-07): to the parent when family reacts / says
   // they're calling or coming; to the rest of the family when someone has it
   care_reaction:           { category: null,                      pref: 'careCheckins',           badge: false },
+  // A comment on an answer (family → the parent; the parent's reply → family)
+  care_comment:            { category: null,                      pref: 'careCheckins',           badge: false, record: true },
   care_alert_response:     { category: null,                      pref: 'careCheckins',           badge: false, record: true },
   care_alert_handled:      { category: null,                      pref: 'careCheckins',           badge: false },
   care_accepted:           { category: null,                      pref: 'careCheckins',           badge: false, record: true },
