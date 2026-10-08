@@ -1,4 +1,5 @@
 import UIKit
+import FavWidgets
 
 class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     
@@ -44,6 +45,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         setupBadgeObservers()
         setupNotificationObservers()
         setupOfflineBanner()
+        setupHomeButtonLongPress()
         
         // Set self as delegate
         self.delegate = self
@@ -503,6 +505,58 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
               let circlesVC = navController.viewControllers.first as? CirclesHomeViewController,
               circlesVC.isViewLoaded else { return }
         circlesVC.widgetsTab.refreshWidget(id: widgetId)
+    }
+
+    // MARK: - Home button long press → widgets
+
+    /// Press and hold Home: jump to the Widgets tab or a pinned widget from
+    /// anywhere (Wes, 2026-10-08). Pins come from each widget page's pin button.
+    private func setupHomeButtonLongPress() {
+        let press = UILongPressGestureRecognizer(target: self, action: #selector(homeButtonLongPressed(_:)))
+        press.minimumPressDuration = 0.45
+        tabBar.addGestureRecognizer(press)
+    }
+
+    /// Whether `point` (in the tab bar) is on the Home tab's button.
+    private func isOnHomeButton(_ point: CGPoint) -> Bool {
+        // The tab buttons are controls laid out left to right; Home is first.
+        // (Their view classes are private, so find them by kind and position.)
+        func controls(in view: UIView) -> [UIView] {
+            view.subviews.flatMap { sub -> [UIView] in
+                (sub is UIControl && sub.bounds.width > 20) ? [sub] : controls(in: sub)
+            }
+        }
+        let buttons = controls(in: tabBar).sorted { $0.convert($0.bounds, to: tabBar).minX < $1.convert($1.bounds, to: tabBar).minX }
+        if let home = buttons.first, buttons.count >= (tabBar.items?.count ?? 4) {
+            return home.convert(home.bounds, to: tabBar).insetBy(dx: -8, dy: -8).contains(point)
+        }
+        let count = CGFloat(max(tabBar.items?.count ?? 4, 1))
+        return point.x < tabBar.bounds.width / count
+    }
+
+    @objc private func homeButtonLongPressed(_ press: UILongPressGestureRecognizer) {
+        guard press.state == .began, isOnHomeButton(press.location(in: tabBar)) else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let known = Set(FavWidgetRegistry.all.map { $0.descriptor.id })
+        let pins = HomeButtonPins.valid(HomeButtonPinStore.load(), knownIds: known)
+        var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = [
+            ("All widgets", .default, { [weak self] in self?.openHomeWidget(nil) })
+        ]
+        for pin in pins {
+            actions.append((pin.title, .default, { [weak self] in self?.openHomeWidget(pin.id) }))
+        }
+        let presenter = presentedViewController ?? self
+        AlertPresenter.showActionSheet(
+            title: "Widgets",
+            message: pins.isEmpty ? "Tip: tap the pin on any widget's page to add it here." : nil,
+            actions: actions, from: presenter, sourceView: tabBar,
+            sourceRect: CGRect(x: 0, y: 0, width: tabBar.bounds.width / CGFloat(max(tabBar.items?.count ?? 4, 1)), height: tabBar.bounds.height)
+        )
+    }
+
+    private func openHomeWidget(_ id: String?) {
+        presentedViewController?.dismiss(animated: false)
+        NotificationCenter.default.post(name: .navigateToHomeWidget, object: id)
     }
 
     @objc private func navigateToHomeWidget(_ note: Notification) {

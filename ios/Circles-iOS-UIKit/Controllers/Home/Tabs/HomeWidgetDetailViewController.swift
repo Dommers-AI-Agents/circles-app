@@ -44,11 +44,11 @@ final class HomeWidgetDetailViewController: BaseViewController {
         // Every widget gets this, including ones that don't exist yet: the
         // button lives on the shell all full views are pushed into, not in
         // any widget's own code.
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .action,
-            target: self,
-            action: #selector(shareTapped)
-        )
+        navigationItem.rightBarButtonItems = [
+            UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareTapped)),
+            pinButton
+        ]
+        refreshPinButton()
 
         let hosting = UIHostingController(rootView: widget.makeFullView(context: context))
         hosting.view.backgroundColor = Constants.Colors.background
@@ -62,6 +62,34 @@ final class HomeWidgetDetailViewController: BaseViewController {
             hosting.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         hosting.didMove(toParent: self)
+    }
+
+    // MARK: - Pin to the Home button
+
+    /// Adds this widget to the Home button's long-press menu
+    private lazy var pinButton = UIBarButtonItem(image: nil, style: .plain, target: self, action: #selector(pinTapped))
+
+    private var thisPin: HomeButtonPin { HomeButtonPin(id: widget.descriptor.id, title: widget.descriptor.title) }
+
+    private func refreshPinButton() {
+        let pinned = HomeButtonPins.isPinned(thisPin.id, in: HomeButtonPinStore.load())
+        pinButton.image = UIImage(systemName: pinned ? "pin.fill" : "pin")
+        pinButton.accessibilityLabel = pinned ? "Unpin from Home button" : "Pin to Home button"
+    }
+
+    @objc private func pinTapped() {
+        let before = HomeButtonPinStore.load()
+        let after = HomeButtonPins.toggle(thisPin, in: before)
+        HomeButtonPinStore.save(after)
+        refreshPinButton()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let pinned = HomeButtonPins.isPinned(thisPin.id, in: after)
+        AnalyticsService.shared.logEvent(pinned ? "widget_pinned_home_button" : "widget_unpinned_home_button",
+                                         parameters: ["widget_id": thisPin.id])
+        AlertPresenter.showBriefMessage(
+            pinned ? "Pinned. Press and hold Home to jump to \(thisPin.title) from anywhere."
+                   : "Unpinned from the Home button.",
+            from: self, duration: pinned ? 2.2 : 1.2)
     }
 
     @objc private func shareTapped(_ sender: UIBarButtonItem) {
