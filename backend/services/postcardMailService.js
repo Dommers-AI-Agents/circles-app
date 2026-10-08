@@ -58,7 +58,7 @@ class PostcardMailService {
    * happens on the device. Idempotent on orderId: a retried call returns the
    * same PaymentIntent rather than a second hold.
    */
-  async createOrder({ userId, orderId, imageUrl, message, templateId, recipient: recipientInput, placeRef, priceQuote }) {
+  async createOrder({ userId, orderId, imageUrl, message, templateId, recipient: recipientInput, placeRef, priceQuote, recordActivity }) {
     requireEnabled();
     if (!ORDER_ID_RE.test(String(orderId || ''))) {
       throw new MailError(400, 'invalid_order_id', 'A valid orderId is required.');
@@ -105,6 +105,8 @@ class PostcardMailService {
       imageUrl,
       message: text,
       templateId: typeof templateId === 'string' ? templateId.slice(0, 32) : 'classic',
+      // Off = no row in the sender's Activity (a surprise); older apps omit it
+      recordActivity: recordActivity !== false,
       placeName: placeRef?.name ? String(placeRef.name).slice(0, 120) : null,
       placeCity: placeRef?.city ? String(placeRef.city).slice(0, 80) : null,
       publicPageToken: null,
@@ -162,10 +164,12 @@ class PostcardMailService {
     const changed = await this.transition(ref, STATUS.CREATED, patch);
     if (!changed) return null;
     const row = { ...(await ref.get()).data() };
-    // The sender's own Activity tab ("Mailed a postcard to Mom").
-    recordPostcardMailed(row.userId, {
-      orderId, recipientName: row.recipient && row.recipient.name, imageUrl: row.imageUrl, placeName: row.placeName || null
-    });
+    // The sender's own Activity tab ("Mailed a postcard to Mom"), if they kept it on
+    if (row.recordActivity !== false) {
+      recordPostcardMailed(row.userId, {
+        orderId, recipientName: row.recipient && row.recipient.name, imageUrl: row.imageUrl, placeName: row.placeName || null
+      });
+    }
     return row;
   }
 

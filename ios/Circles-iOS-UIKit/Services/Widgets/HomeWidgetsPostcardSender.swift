@@ -19,7 +19,9 @@ enum HomeWidgetsPostcardSender {
             "recipientId": postcard.recipientId,
             "imageUrl": imageUrl,
             "message": postcard.message,
-            "templateId": postcard.templateId
+            "templateId": postcard.templateId,
+            // Off: no "Sent a postcard" row in the sender's Activity (a surprise)
+            "recordActivity": postcard.recordActivity
         ]
         if let place = postcard.place {
             var ref: [String: Any] = ["name": place.name]

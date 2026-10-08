@@ -49,7 +49,7 @@ const scalarOrNull = (v, max = 200) =>
 exports.sendPostcard = async (req, res) => {
   try {
     const senderId = req.user.uid;
-    const { recipientId, imageUrl, message, templateId, placeRef } = req.body || {};
+    const { recipientId, imageUrl, message, templateId, placeRef, recordActivity } = req.body || {};
 
     const recipient = normalizeUserId(recipientId);
     if (!recipient) return fail(res, 400, 'invalid_recipient', 'recipientId is required');
@@ -89,11 +89,15 @@ exports.sendPostcard = async (req, res) => {
       }
     });
 
-    // The sender's own Activity tab ("Sent a postcard to Mom").
-    recordPostcardSent(senderId, {
-      messageId: sent.id, recipientName: recipientDoc.data().displayName || null, imageUrl,
-      placeName: scalarOrNull(placeRef?.name), globalPlaceId: scalarOrNull(placeRef?.globalPlaceId)
-    });
+    // The sender's own Activity tab ("Sent a postcard to Mom") — unless they
+    // switched it off (a surprise; Wes, 2026-10-08). Older apps don't send
+    // the flag and keep the row.
+    if (recordActivity !== false) {
+      recordPostcardSent(senderId, {
+        messageId: sent.id, recipientName: recipientDoc.data().displayName || null, imageUrl,
+        placeName: scalarOrNull(placeRef?.name), globalPlaceId: scalarOrNull(placeRef?.globalPlaceId)
+      });
+    }
 
     let piggyBank;
     if (piggyEnabled()) {
