@@ -88,6 +88,57 @@ const newToken = () => require('crypto').randomBytes(15).toString('base64url'); 
 
 const isMember = (event, uid) => Array.isArray(event.memberIds) && event.memberIds.includes(uid);
 
+/**
+ * Where and when a photo was taken, as the app read it off the file's own
+ * GPS/EXIF (Wes, 2026-10-09). Optional on every photo; anything that
+ * doesn't parse is dropped rather than failing the upload. Pure.
+ */
+const PHOTO_TAKEN_EARLIEST = Date.parse('2000-01-01T00:00:00Z');
+const PHOTO_TAKEN_FUTURE_SLACK_MS = 24 * 60 * 60 * 1000;
+const parsePhotoCapture = (p, now = Date.now()) => {
+  const b = p || {};
+  let lat = Number(b.lat);
+  let lng = Number(b.lng);
+  const hasSpot = b.lat != null && b.lng != null && Number.isFinite(lat) && Number.isFinite(lng)
+    && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
+  if (!hasSpot) { lat = null; lng = null; }
+  let takenAt = null;
+  if (typeof b.takenAt === 'string' && b.takenAt) {
+    const t = Date.parse(b.takenAt);
+    if (Number.isFinite(t) && t >= PHOTO_TAKEN_EARLIEST && t <= now + PHOTO_TAKEN_FUTURE_SLACK_MS) takenAt = new Date(t).toISOString();
+  }
+  return { lat, lng, takenAt };
+};
+
+/** Metres between two points (haversine). Pure. */
+const distanceMeters = (aLat, aLng, bLat, bLng) => {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(h));
+};
+
+// A photo counts as taken at a tagged place within this far (same radius
+// the app uses to attach photos to a place)
+const PHOTO_PLACE_RADIUS_M = 150;
+
+/**
+ * The tagged place a photo was taken at: the nearest one within
+ * PHOTO_PLACE_RADIUS_M, or null. `places` are rows with id/name/lat/lng.
+ * Worked out when read, so places tagged after the photo count too. Pure.
+ */
+const nearestTaggedPlace = (photo, places, radius = PHOTO_PLACE_RADIUS_M) => {
+  if (!photo || !Number.isFinite(photo.lat) || !Number.isFinite(photo.lng)) return null;
+  let best = null;
+  for (const pl of Array.isArray(places) ? places : []) {
+    if (!pl || !Number.isFinite(pl.lat) || !Number.isFinite(pl.lng)) continue;
+    const d = distanceMeters(photo.lat, photo.lng, pl.lat, pl.lng);
+    if (d <= radius && (!best || d < best.d)) best = { d, id: pl.id, name: pl.name };
+  }
+  return best ? { id: best.id, name: best.name } : null;
+};
+
 /** Validates a tagged place from the app (a search result or a saved place). */
 const parsePlace = (body) => {
   const b = body || {};
@@ -162,9 +213,11 @@ const toClientRollCall = (data, viewerId) => {
   };
 };
 
-const toClientPhoto = (doc, viewerId, hostId) => {
+const toClientPhoto = (doc, viewerId, hostId, places = []) => {
   const d = doc.data();
   const likes = Array.isArray(d.likes) ? d.likes : [];
+  const hasSpot = Number.isFinite(d.lat) && Number.isFinite(d.lng);
+  const at = hasSpot ? nearestTaggedPlace(d, places) : null;
   return {
     id: doc.id,
     imageUrl: d.imageUrl,
@@ -176,7 +229,13 @@ const toClientPhoto = (doc, viewerId, hostId) => {
     createdAt: d.createdAt,
     likeCount: likes.length,
     likedByMe: likes.includes(viewerId),
-    canDelete: d.uploaderId === viewerId || hostId === viewerId
+    canDelete: d.uploaderId === viewerId || hostId === viewerId,
+    // Where and when it was taken, from the file (null when it had none)
+    takenAt: d.takenAt || null,
+    lat: hasSpot ? d.lat : null,
+    lng: hasSpot ? d.lng : null,
+    placeId: at ? at.id : null,
+    placeName: at ? at.name : null
   };
 };
 
@@ -268,9 +327,10 @@ async function getEvent(eventId, uid) {
   // The coordinator sees who pushes can't reach (notifications off, or no
   // device), so they know to text those people about roll call etc.
   if (data.hostId === uid) event.pushOffMemberIds = await pushOffMembers(data, uid);
+  const placeRows = places.docs.map(d => ({ id: d.id, ...d.data() }));
   return {
     event,
-    photos: photos.docs.map(d => toClientPhoto(d, uid, data.hostId)),
+    photos: photos.docs.map(d => toClientPhoto(d, uid, data.hostId, placeRows)),
     places: places.docs.map(d => toClientPlace(d, uid))
   };
 }
@@ -612,6 +672,8 @@ async function addPhotos(eventId, uid, photos) {
       thumbUrl: isAllowedImageUrl(p.thumbUrl) ? p.thumbUrl : null,
       caption: clean(p.caption, CAPTION_MAX) || '',
       challengeId: (data.challenges || []).some(c => c.id === p.challengeId) ? p.challengeId : null,
+      // Where and when the file said it was taken (nulls when it didn't)
+      ...parsePhotoCapture(p, now),
       likes: [],
       // Spread by a millisecond so a batch keeps the order it was picked in
       createdAt: new Date(now + i).toISOString()
@@ -650,7 +712,13 @@ async function addPhotos(eventId, uid, photos) {
       }, 'event_photos');
     }
   }
-  return created.map(c => toClientPhoto({ id: c.id, data: () => c.row }, uid, data.hostId));
+  // The reply names the tagged place each located photo was taken at
+  let placeRows = [];
+  if (created.some(c => Number.isFinite(c.row.lat))) {
+    const snap = await placesCol().where('eventId', '==', ref.id).limit(100).get().catch(() => null);
+    placeRows = snap ? snap.docs.map(d => ({ id: d.id, ...d.data() })) : [];
+  }
+  return created.map(c => toClientPhoto({ id: c.id, data: () => c.row }, uid, data.hostId, placeRows));
 }
 
 async function deletePhoto(eventId, uid, photoId) {
@@ -773,5 +841,6 @@ module.exports = {
   addPhotos, deletePhoto, togglePhotoLike, tagPlace, savePlaceToMyCircle,
   // pure (tested)
   cleanEventName, cleanEmoji, parsePlace, toClientEvent, listMembersFor, isMember,
+  parsePhotoCapture, distanceMeters, nearestTaggedPlace, toClientPhoto, PHOTO_PLACE_RADIUS_M,
   DEFAULT_NAME, LINK_BASE, TOKEN_RE
 };

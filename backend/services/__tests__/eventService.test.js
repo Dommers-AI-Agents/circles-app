@@ -31,6 +31,52 @@ describe('tagged places', () => {
   });
 });
 
+describe('where a photo was taken (Wes, 2026-10-09)', () => {
+  const now = Date.parse('2026-10-09T12:00:00Z');
+  test('keeps a real spot and time; drops anything that does not parse', () => {
+    expect(svc.parsePhotoCapture({ lat: 35.2271, lng: -80.8431, takenAt: '2026-10-04T18:10:05Z' }, now))
+      .toEqual({ lat: 35.2271, lng: -80.8431, takenAt: '2026-10-04T18:10:05.000Z' });
+    expect(svc.parsePhotoCapture({ lat: '35.2271', lng: '-80.8431' }, now)).toMatchObject({ lat: 35.2271, lng: -80.8431, takenAt: null });
+    expect(svc.parsePhotoCapture({}, now)).toEqual({ lat: null, lng: null, takenAt: null });
+    expect(svc.parsePhotoCapture({ lat: 0, lng: 0 }, now)).toMatchObject({ lat: null, lng: null });
+    expect(svc.parsePhotoCapture({ lat: 95, lng: 1 }, now)).toMatchObject({ lat: null, lng: null });
+    expect(svc.parsePhotoCapture({ lat: 35, lng: 'abc' }, now)).toMatchObject({ lat: null, lng: null });
+    expect(svc.parsePhotoCapture({ lat: 35 }, now)).toMatchObject({ lat: null, lng: null });
+    expect(svc.parsePhotoCapture({ takenAt: 'yesterday' }, now).takenAt).toBeNull();
+    expect(svc.parsePhotoCapture({ takenAt: '1999-12-31T00:00:00Z' }, now).takenAt).toBeNull();
+    expect(svc.parsePhotoCapture({ takenAt: '2026-10-12T00:00:00Z' }, now).takenAt).toBeNull();
+    expect(svc.parsePhotoCapture({ takenAt: '2026-10-09T20:00:00Z' }, now).takenAt).toBe('2026-10-09T20:00:00.000Z');
+  });
+  test('the nearest tagged place within 150 m, else none', () => {
+    const places = [
+      { id: 'a', name: 'Midnight Diner', lat: 35.2271, lng: -80.8431 },
+      { id: 'b', name: 'Next Door', lat: 35.2276, lng: -80.8431 },      // ~55 m north
+      { id: 'c', name: 'Across Town', lat: 35.30, lng: -80.80 },
+      { id: 'd', name: 'No spot' }
+    ];
+    expect(svc.distanceMeters(35.2271, -80.8431, 35.2276, -80.8431)).toBeCloseTo(55.6, 0);
+    expect(svc.nearestTaggedPlace({ lat: 35.2272, lng: -80.8431 }, places)).toEqual({ id: 'a', name: 'Midnight Diner' });
+    expect(svc.nearestTaggedPlace({ lat: 35.2275, lng: -80.8431 }, places)).toEqual({ id: 'b', name: 'Next Door' });
+    expect(svc.nearestTaggedPlace({ lat: 35.25, lng: -80.8431 }, places)).toBeNull();
+    expect(svc.nearestTaggedPlace({ lat: null, lng: null }, places)).toBeNull();
+    expect(svc.nearestTaggedPlace({ lat: 35.2271, lng: -80.8431 }, [])).toBeNull();
+    expect(svc.PHOTO_PLACE_RADIUS_M).toBe(150);
+  });
+  test('a member sees where and when; older photos read as unknown', () => {
+    const places = [{ id: 'a', name: 'Midnight Diner', lat: 35.2271, lng: -80.8431 }];
+    const located = { id: 'p1', data: () => ({ imageUrl: 'https://x/1.jpg', uploaderId: 'sal', uploaderName: 'Sal', likes: ['wes'],
+      createdAt: '2026-10-04T21:00:00Z', lat: 35.2272, lng: -80.8431, takenAt: '2026-10-04T18:10:05.000Z' }) };
+    expect(svc.toClientPhoto(located, 'wes', 'wes', places)).toMatchObject({
+      id: 'p1', likedByMe: true, canDelete: true,
+      lat: 35.2272, lng: -80.8431, takenAt: '2026-10-04T18:10:05.000Z', placeId: 'a', placeName: 'Midnight Diner'
+    });
+    // No places tagged (yet): the spot still comes back, the place does not
+    expect(svc.toClientPhoto(located, 'sal', 'wes')).toMatchObject({ lat: 35.2272, placeId: null, placeName: null });
+    const old = { id: 'p0', data: () => ({ imageUrl: 'https://x/0.jpg', uploaderId: 'sal', uploaderName: 'Sal', createdAt: '2026-10-04T20:00:00Z' }) };
+    expect(svc.toClientPhoto(old, 'wes', 'wes', places)).toMatchObject({ takenAt: null, lat: null, lng: null, placeId: null, placeName: null });
+  });
+});
+
 describe('what a member sees', () => {
   const data = {
     name: 'Party Bus', emoji: '🚌', hostId: 'wes', hostName: 'Wesley', joinOpen: true, inviteToken: 'abcdefghijklmnopqrst',
