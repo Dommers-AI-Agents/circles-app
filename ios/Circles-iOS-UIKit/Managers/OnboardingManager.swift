@@ -19,7 +19,9 @@ enum TutorialStep: String, CaseIterable {
     case addPlaces = "tour_add_places"
     case followUsers = "tour_follow_users"
     case viewActivity = "tour_view_activity"
-    case seeRewards = "tour_see_rewards"
+    // Was "See Your Rewards" (FavCoins 🌵) until 2026-10-09 — too much on
+    // day one; the last step now shows the widgets instead
+    case seeWidgets = "tour_see_widgets"
 
     var title: String {
         switch self {
@@ -29,8 +31,8 @@ enum TutorialStep: String, CaseIterable {
             return "Explore Other People's Maps"
         case .viewActivity:
             return "See What's New"
-        case .seeRewards:
-            return "See Your Rewards"
+        case .seeWidgets:
+            return "Your Widgets"
         }
     }
 
@@ -42,8 +44,8 @@ enum TutorialStep: String, CaseIterable {
             return "Tap a face to see their map. Follow people and their favorites show up on yours"
         case .viewActivity:
             return "What the people you follow are saving, checking into, and loving"
-        case .seeRewards:
-            return "Adding places and connecting earns FavCoins 🌵 — check your piggy bank here"
+        case .seeWidgets:
+            return "Weather, workouts, postcards, events and more — tap Widgets to scroll through them all"
         }
     }
 }

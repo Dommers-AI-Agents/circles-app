@@ -297,7 +297,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         if OnboardingManager.shared.isFirstSessionFlowActive {
             // Brand-new signup: no carousel (cut 2026-08-19) — go straight to
-            // the chain: first-people sheet → location → notifications → home tour.
+            // the chain: name → first-people sheet → location → notifications → home tour.
             // (Contacts onboarding was intentionally cut from first-run —
             // Find Contacts lives in the My Network tab.)
             continueFirstSessionAfterCarousel()
@@ -549,6 +549,23 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             finishFirstSessionChain()
             return
         }
+        // "What should friends call you?" first, when signup didn't give a name
+        if NameOnboardingViewController.isNeeded {
+            let nameVC = NameOnboardingViewController()
+            nameVC.onCompletion = { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self?.presentFirstPeopleSheet(over: tabBarController) }
+            }
+            nameVC.modalPresentationStyle = .fullScreen
+            var presenter: UIViewController = tabBarController
+            while let presented = presenter.presentedViewController { presenter = presented }
+            presenter.present(nameVC, animated: true)
+        } else {
+            presentFirstPeopleSheet(over: tabBarController)
+        }
+    }
+
+    /// Step 2: the "Explore other people's maps" sheet, then location.
+    private func presentFirstPeopleSheet(over tabBarController: CirclesTabBarController) {
         ensurePendingConnectionsLoaded { [weak self] in
             guard let self = self else { return }
             var presenter: UIViewController = tabBarController

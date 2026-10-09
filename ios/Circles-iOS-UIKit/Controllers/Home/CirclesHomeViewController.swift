@@ -1302,12 +1302,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     .viewActivity, targetView: self.contentSegmentedControl, in: self,
                     arrowDirection: .bottom, onAdvance: advance)
             }
-        case .seeRewards:
-            // Nav-bar $ button — scroll position is irrelevant, but return to
-            // the top so the tour ends where the session starts
-            scrollView.setContentOffset(CGPoint(x: 0, y: -scrollView.adjustedContentInset.top), animated: true)
-            let rewardsView = rewardsBarButton?.customView
-                ?? (rewardsBarButton?.value(forKey: "view") as? UIView)
+        case .seeWidgets:
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
                 guard let self = self else { return }
                 // A modal may have appeared during the settle delay — never
@@ -1317,8 +1312,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     return
                 }
                 OnboardingManager.shared.showTutorialStep(
-                    .seeRewards, targetView: rewardsView, in: self,
-                    arrowDirection: .top, onAdvance: advance)
+                    .seeWidgets, targetView: self.contentSegmentedControl, in: self,
+                    arrowDirection: .bottom, onAdvance: advance)
             }
         }
     }

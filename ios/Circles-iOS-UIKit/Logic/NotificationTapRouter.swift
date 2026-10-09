@@ -151,6 +151,13 @@ enum NotificationTapRouter {
         case "activity_update", "activity_like", "activity_comment":
             return .activity(id: activityId)
 
+        // First-week pushes (backend starterPushService): following → the
+        // people tab; starting the map → Home, where the Start-your-map card waits
+        case "starter_follow":
+            return .network(showPending: false)
+        case "starter_map":
+            return nil   // just open the app (Home shows the card)
+
         case "all_places_map":
             return .postOrStash(navName: "NavigateToAllPlacesMap", pending: "all-places-map", object: nil)
 

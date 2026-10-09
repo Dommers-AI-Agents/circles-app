@@ -9,7 +9,10 @@ class MyNetworkViewController: BaseViewController {
     // Circles — four of which were the same endpoint sorted differently. The
     // shared-circles list was removed from here entirely: circle management
     // doesn't belong in a people space.)
-    // Popular is the DEFAULT (Wes, 2026-08-12): it ranks everyone by
+    // Discover is the DEFAULT since 2026-10-09 (Wes, new-user audit: opening
+    // on a global leaderboard — "where do you land?" — put a new user last);
+    // Requests when someone's waiting. Popular stays one tap away. History:
+    // Popular was the default from 2026-08-12 — it ranks everyone by
     // collection size INCLUDING your own connections, so it works for both a
     // thin network (interesting strangers) and an established one (your
     // people near the top) — the best single landing view. Discover remains
@@ -23,7 +26,7 @@ class MyNetworkViewController: BaseViewController {
 
     // MARK: - SSE Integration
     private var sseConnected = false
-    private var selectedTab: NetworkTab = .popular
+    private var selectedTab: NetworkTab = .discover
     
     // MARK: - UI Elements
     private let searchBar: UISearchBar = {
@@ -37,8 +40,8 @@ class MyNetworkViewController: BaseViewController {
     
     private lazy var segmentedControl: UISegmentedControl = {
         let control = UISegmentedControl(items: NetworkTab.allCases.map { $0.rawValue })
-        // Must match the selectedTab default above (Popular)
-        control.selectedSegmentIndex = NetworkTab.allCases.firstIndex(of: .popular) ?? 0
+        // Must match the selectedTab default above (Discover)
+        control.selectedSegmentIndex = NetworkTab.allCases.firstIndex(of: .discover) ?? 0
         control.addTarget(self, action: #selector(segmentChanged), for: .valueChanged)
         control.translatesAutoresizingMaskIntoConstraints = false
         return control
@@ -121,9 +124,9 @@ class MyNetworkViewController: BaseViewController {
         setupView()
         setupNavigationBar()
         setupChildViewControllers()
-        // Default segment is Popular (Wes: surfaces your own connections too).
+        // Discover by default; Requests when someone's waiting for an answer.
         // This must match the selectedTab/segmentedControl defaults above.
-        selectTab(.popular)
+        selectTab(hasIncomingRequests ? .requests : .discover)
         setupSSE()
         
         // Check if user needs notification prompt for connections
@@ -393,6 +396,11 @@ class MyNetworkViewController: BaseViewController {
         return NetworkManager.shared.pendingConnections.first {
             $0.status == .pending && $0.connectedUserId == currentUserId
         }
+    }
+
+    private var hasIncomingRequests: Bool {
+        let me = AuthService.shared.getUserId()
+        return NetworkManager.shared.pendingConnections.contains { $0.status == .pending && $0.connectedUserId == me }
     }
 
     private func updateIncomingRequestBanner() {
