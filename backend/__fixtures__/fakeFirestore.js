@@ -77,7 +77,8 @@ class FakeCollection {
     this.store.docs.set(id, { ...data });
     return Promise.resolve(this.store.ref(id));
   }
-  doc(id) { return this.store.ref(id); }
+  // No id: a fresh auto id, like Firestore's doc()
+  doc(id) { return this.store.ref(id === undefined ? `auto_${++this.store.autoId}` : id); }
   where(...args) { return new FakeQuery(this.store).where(...args); }
   orderBy(...args) { return new FakeQuery(this.store).orderBy(...args); }
   limit(n) { return new FakeQuery(this.store).limit(n); }
@@ -156,7 +157,8 @@ class FakeFirestore {
     const writes = [];
     const storeOf = (ref) => ref.store || fallback;
     const tx = {
-      async get(ref) { return storeOf(ref).snapshot(ref.id, storeOf(ref).docs.get(ref.id)); },
+      // A query reads like the query itself; a ref reads its doc
+      async get(ref) { return ref.id === undefined && ref.get ? ref.get() : storeOf(ref).snapshot(ref.id, storeOf(ref).docs.get(ref.id)); },
       update(ref, patch) { writes.push([ref, patch]); },
       set(ref, data) { writes.push([ref, data]); }
     };

@@ -151,7 +151,7 @@ exports.protect = async (req, res, next) => {
 
       // Add user to request object with normalized ID
       const userData = serializeDoc(userDoc);
-      const finalUserId = normalizeUserId(actualUserId); // Ensure we always use normalized ID
+      const finalUserId = actualUserId; // the users doc id: the person's one key
 
       // Banned accounts are locked out everywhere, with an appeal path
       if (userData.banned === true) {

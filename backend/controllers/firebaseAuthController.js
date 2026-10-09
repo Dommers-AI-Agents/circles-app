@@ -365,6 +365,20 @@ exports.firebaseAuth = async (req, res, next) => {
           userDoc = await transaction.get(userRef);
         }
         
+        // A first sign-in racing itself (double tap) finds the account the
+        // other request just created by its provider identity
+        if (!userDoc.exists) {
+          const providerQuery = await transaction.get(
+            db.collection(COLLECTIONS.USERS)
+              .where(`linkedProviders.${provider}`, '==', uid)
+              .limit(1)
+          );
+          if (!providerQuery.empty) {
+            userDoc = providerQuery.docs[0];
+            userRef = userDoc.ref;
+          }
+        }
+
         // Also check for existing user by email one more time inside transaction
         if (!userDoc.exists && email) {
           const emailQuery = await transaction.get(
@@ -422,8 +436,13 @@ exports.firebaseAuth = async (req, res, next) => {
           transaction.update(userRef, updateData);
           return { userRef, isNew: false };
         } else {
-          // Completely new user - create within transaction
-          console.log(`🆕 Creating new user with ID: ${simpleUid}, provider: ${provider}`);
+          // Completely new user - create within transaction. Their key is
+          // FavCircles' own id, never a sign-in provider's (Wes, 2026-10-09:
+          // one plain key per person). Firebase Auth's uid already is ours;
+          // Apple/Google ids live only in linkedProviders, which is how a
+          // returning sign-in finds the account.
+          const newUserId = provider === 'firebase' ? uid : db.collection(COLLECTIONS.USERS).doc().id;
+          console.log(`🆕 Creating new user with ID: ${newUserId}, provider: ${provider}`);
           
           // Handle alternate emails for new users (especially Apple Sign In)
           // Only the provider-verified email: an address typed into the
@@ -433,7 +452,7 @@ exports.firebaseAuth = async (req, res, next) => {
           const primaryEmail = email;
           
           const userData = createUser({
-            uid: simpleUid,
+            uid: newUserId,
             email: primaryEmail,
             alternateEmails,
             displayName: name,
@@ -441,8 +460,7 @@ exports.firebaseAuth = async (req, res, next) => {
             linkedProviders: { [provider]: uid } // Store original complex UID in linkedProviders
           });
           
-          // Use simple UID for the document ID
-          userRef = db.collection(COLLECTIONS.USERS).doc(simpleUid);
+          userRef = db.collection(COLLECTIONS.USERS).doc(newUserId);
           transaction.set(userRef, userData);
           return { userRef, isNew: true, userData };
         }
@@ -454,6 +472,7 @@ exports.firebaseAuth = async (req, res, next) => {
       
       if (result.isNew) {
         isNewSocialUser = true;
+        simpleUid = result.userRef.id;
         console.log(`✅ New user created successfully with ID: ${simpleUid} (original: ${uid})`);
 
         // App Clip signups: stamp acquisition fields (analytics only — points
@@ -1304,10 +1323,19 @@ exports.refreshToken = async (req, res, next) => {
       });
     }
 
-    // Create new JWT token with the same format
+    // A merged-away account refreshes as the person it now is
+    if (userDoc.data().mergedInto) {
+      const survivor = await db.collection(COLLECTIONS.USERS).doc(userDoc.data().mergedInto).get();
+      if (survivor.exists) {
+        userDoc = survivor;
+        actualUserId = survivor.id;
+      }
+    }
+
+    // New token carrying the account's own key
     const token = jwt.sign(
       { 
-        uid: decoded.uid, // Keep the original complex ID format for consistency
+        uid: actualUserId, // the account's own key, so an old spelling heals on refresh
         email: decoded.email 
       },
       process.env.JWT_SECRET,
