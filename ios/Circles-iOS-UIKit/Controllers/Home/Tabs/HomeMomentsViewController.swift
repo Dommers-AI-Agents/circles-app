@@ -869,7 +869,7 @@ extension HomeMomentsViewController: VideoReelCellDelegate {
                     sourceView: cell,
                     onUntagged: { [weak self] in
                         guard let self = self, let idx = self.reels.firstIndex(where: { $0.id == reel.id }) else { return }
-                        self.reels[idx].taggedUsers?.removeAll { $0.id == AuthService.shared.currentUser?.id }
+                        self.reels[idx].taggedUsers?.removeAll { AuthService.shared.isMe($0.id) }
                         self.collectionView.reloadData()
                     },
                     onMoreOptions: moderate

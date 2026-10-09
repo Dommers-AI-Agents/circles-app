@@ -35,7 +35,7 @@ final class ProfileMomentsTabViewController: ProfileGridTabViewController {
     override func contextMenu(at index: Int) -> UIMenu? {
         let video = videos[index]
         // Only the owner can delete
-        guard video.userId == AuthService.shared.getUserId() else { return nil }
+        guard AuthService.shared.isMe(video.userId) else { return nil }
         let delete = UIAction(title: "Delete", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
             self?.confirmDelete(video)
         }
@@ -67,7 +67,7 @@ final class ProfileMomentsTabViewController: ProfileGridTabViewController {
         guard !isLoadingVideos else { return }
         isLoadingVideos = true
 
-        let isCurrentUser = userId == AuthService.shared.getUserId()
+        let isCurrentUser = AuthService.shared.isMe(userId)
         Logger.debug("📹 ProfileMoments: Fetching videos for user \(userId) (current user: \(isCurrentUser))")
 
         APIService.shared.getUserVideos(userId: userId) { [weak self] result in

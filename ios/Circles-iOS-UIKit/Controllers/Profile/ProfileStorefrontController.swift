@@ -33,7 +33,7 @@ final class ProfileStorefrontController: NSObject {
         RewardsService.shared.getRewardsProfile { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self, let delegate = self.delegate,
-                      delegate.user?.id == AuthService.shared.getUserId(),
+                      AuthService.shared.isMe(delegate.user?.id),
                       case .success(let profile) = result else { return }
                 let isSuper = profile.isSuperUser
                 guard isSuper || profile.ownsVenues == true else { return }

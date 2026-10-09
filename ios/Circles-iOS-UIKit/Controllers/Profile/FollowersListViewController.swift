@@ -509,7 +509,7 @@ class FollowerUserCell: UITableViewCell {
         updateFollowButton(listType: listType)
         
         // Hide follow button for current user
-        if user.id == AuthService.shared.getUserId() {
+        if AuthService.shared.isMe(user.id) {
             followButton.isHidden = true
         } else {
             followButton.isHidden = false

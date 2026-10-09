@@ -609,7 +609,7 @@ extension VideoCommentsViewController: VideoCommentCellDelegate {
         let comment = comments[indexPath.row]
         
         // Only allow deleting own comments
-        guard comment.userId == AuthService.shared.getUserId() else { return }
+        guard AuthService.shared.isMe(comment.userId) else { return }
         
         deleteComment(comment, at: indexPath)
     }

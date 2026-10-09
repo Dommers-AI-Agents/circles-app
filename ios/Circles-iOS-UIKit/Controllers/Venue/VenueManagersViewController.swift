@@ -114,7 +114,7 @@ class VenueManagersViewController: BaseViewController {
     }
 
     private func removeManager(_ manager: VenueManager) {
-        let isSelf = manager.userId == AuthService.shared.getUserId()
+        let isSelf = AuthService.shared.isMe(manager.userId)
         showConfirmation(
             title: isSelf ? "Leave This Store?" : "Remove Manager?",
             message: isSelf
@@ -145,7 +145,7 @@ class VenueManagersViewController: BaseViewController {
     }
 
     private func canRemove(_ manager: VenueManager) -> Bool {
-        canManage || manager.userId == AuthService.shared.getUserId()
+        canManage || AuthService.shared.isMe(manager.userId)
     }
 }
 
@@ -203,7 +203,7 @@ extension VenueManagersViewController: UITableViewDataSource, UITableViewDelegat
         guard indexPath.section == 1, indexPath.row < managers.count else { return nil }
         let manager = managers[indexPath.row]
         guard canRemove(manager) else { return nil }
-        let isSelf = manager.userId == AuthService.shared.getUserId()
+        let isSelf = AuthService.shared.isMe(manager.userId)
         let remove = UIContextualAction(style: .destructive, title: isSelf ? "Leave" : "Remove") { [weak self] _, _, done in
             self?.removeManager(manager)
             done(true)

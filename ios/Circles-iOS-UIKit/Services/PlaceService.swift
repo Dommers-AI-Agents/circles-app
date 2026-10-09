@@ -1837,7 +1837,7 @@ struct PlaceComment: Codable, Identifiable {
     }
     
     var isMyComment: Bool {
-        return userId == AuthService.shared.getUserId()
+        return AuthService.shared.isMe(userId)
     }
     
     var displayAuthorName: String {

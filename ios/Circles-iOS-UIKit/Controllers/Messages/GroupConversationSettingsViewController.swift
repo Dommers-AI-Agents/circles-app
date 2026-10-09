@@ -372,7 +372,7 @@ class GroupConversationSettingsViewController: BaseViewController {
     }
     
     private func removeParticipant(_ participant: User) {
-        let isCurrentUser = participant.id == AuthService.shared.getUserId()
+        let isCurrentUser = AuthService.shared.isMe(participant.id)
         let title = isCurrentUser ? "Leave Group" : "Remove Participant"
         let message = isCurrentUser ? 
             "Are you sure you want to leave this group?" :

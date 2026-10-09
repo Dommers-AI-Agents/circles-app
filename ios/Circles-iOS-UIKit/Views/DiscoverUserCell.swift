@@ -243,7 +243,7 @@ class DiscoverUserCell: UITableViewCell {
     /// the podium, #N for everyone else.
     func configure(with user: User, rank: Int? = nil) {
         self.user = user
-        isSelfRow = user.id == AuthService.shared.getUserId()
+        isSelfRow = AuthService.shared.isMe(user.id)
         dismissButton.isHidden = isSelfRow
 
         // Name and verification (with leaderboard rank when in scorecard mode)

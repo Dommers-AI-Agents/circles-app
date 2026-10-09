@@ -693,7 +693,7 @@ class VideoReelCell: UICollectionViewCell {
         
         // Follow button: hidden on your own moment and when you already
         // follow the owner; reset to a tappable "Follow" on cell reuse
-        let isOwnMoment = reel.userId == AuthService.shared.currentUser?.id
+        let isOwnMoment = AuthService.shared.isMe(reel.userId)
         // The feed says so, or the phone's own follow list does (a moment
         // opened from Activity arrives without the feed's isFollowing)
         let currentUser = AuthService.shared.currentUser

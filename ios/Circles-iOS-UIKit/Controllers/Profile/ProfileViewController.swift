@@ -18,7 +18,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     /// only on your own profile (both the inline control and the sticky mirror).
     private func updateActivitySegmentAvailability() {
         let title = ProfileViewController.activitySegmentTitle
-        let isCurrentUser = user?.id == AuthService.shared.getUserId()
+        let isCurrentUser = AuthService.shared.isMe(user?.id)
         for control in [contentTypeSegmentedControl, stickyTabBar.segmentedControl] {
             let has = control.numberOfSegments == 4
             if isCurrentUser && !has {
@@ -859,7 +859,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         super.viewWillAppear(animated)
         
         // Check if we need to clear profile picture cache due to corruption
-        let isCurrentUser = user?.id == AuthService.shared.getUserId()
+        let isCurrentUser = AuthService.shared.isMe(user?.id)
         if isCurrentUser {
             // Clear profile picture cache if there's an issue
             if let profilePictureUrl = user?.profilePicture {
@@ -893,7 +893,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 
         // (The old privacy-settings tutorial bubble was removed 2026-08-19 —
         // the tour now lives entirely on the home page.)
-        let isCurrentUser = user?.id == AuthService.shared.getUserId()
+        let isCurrentUser = AuthService.shared.isMe(user?.id)
 
         // Occasional nudge to add a real photo (at most weekly; the reminder
         // owns its own gating). Only on your own profile, and never while the
@@ -1394,7 +1394,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         )
         
         // Initially activate based on whether viewing current user
-        let isCurrentUser = user?.id == AuthService.shared.getUserId()
+        let isCurrentUser = AuthService.shared.isMe(user?.id)
         if isCurrentUser {
             // Current user - search bar anchored to segmented control, separator to profile
             searchBarContainerTopToSegmentedConstraint?.isActive = true
@@ -1504,7 +1504,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     func configureDragAndDrop() {
         // Only enable drag and drop for the current user's own profile
-        let isCurrentUser = user?.id == AuthService.shared.getUserId()
+        let isCurrentUser = AuthService.shared.isMe(user?.id)
         dragAndDropEnabled = isCurrentUser // Enable for current user
         
         if dragAndDropEnabled {
@@ -1635,7 +1635,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     @objc func contentTypeChanged() {
-        let isCurrentUser = user?.id == AuthService.shared.getUserId()
+        let isCurrentUser = AuthService.shared.isMe(user?.id)
         
         if contentTypeSegmentedControl.selectedSegmentIndex == 0 {
             // Show circles
@@ -1746,7 +1746,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     /// setViewMode meant the wand stayed hidden until the segments were
     /// toggled after everything had loaded.
     func updateOrganizeButtonVisibility() {
-        let isOwnProfile = user?.id == AuthService.shared.getUserId()
+        let isOwnProfile = AuthService.shared.isMe(user?.id)
         let isPremium = SubscriptionManager.shared.isSubscribed
         organizeCirclesButton.isHidden = (viewMode != .circles) || !isOwnProfile || !isPremium
     }
@@ -1754,7 +1754,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     @objc func handleSubscriptionStatusChanged() {
         Task { @MainActor in
             updateOrganizeButtonVisibility()
-            if let user = user, user.id == AuthService.shared.getUserId() {
+            if let user = user, AuthService.shared.isMe(user.id) {
                 premiumBadgeView.isHidden = !SubscriptionManager.shared.isSubscribed
                 updateMilestoneBadge(placeCount: lastKnownPlaceCount)
             }
@@ -2208,7 +2208,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     func updateButtonVisibility() {
         guard let user = user else { return }
-        let isCurrentUser = user.id == AuthService.shared.getUserId()
+        let isCurrentUser = AuthService.shared.isMe(user.id)
 
         // Only your own Connections stat opens a list; there's no endpoint for
         // another user's connections.
@@ -2494,7 +2494,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         usernameLabel.text = user.displayName
         
         // Check if this is the current user
-        let isCurrentUser = user.id == AuthService.shared.getUserId()
+        let isCurrentUser = AuthService.shared.isMe(user.id)
         
         // Show premium badge for current user if subscribed
         if isCurrentUser {
@@ -2811,7 +2811,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     @objc func handleConnectionsLoaded() {
         // Update connections count when NetworkManager finishes loading
-        if let userId = self.user?.id, userId == AuthService.shared.getUserId() {
+        if let userId = self.user?.id, AuthService.shared.isMe(userId) {
             let connectionsCount = NetworkManager.shared.connections.count
             Logger.debug("🔍 ProfileViewController - Updated connections count after load: \(connectionsCount)")
             connectionsStatView.configure(number: "\(connectionsCount)", title: "Connections")

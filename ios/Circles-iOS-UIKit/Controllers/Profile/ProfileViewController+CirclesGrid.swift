@@ -192,7 +192,7 @@ extension ProfileViewController: UICollectionViewDragDelegate {
         guard collectionView == circlesCollectionView else { return [] }
         
         // Only allow dragging for current user's own circles
-        guard user?.id == AuthService.shared.getUserId() else { return [] }
+        guard AuthService.shared.isMe(user?.id) else { return [] }
         
         let circle = circles[indexPath.item]
         let itemProvider = NSItemProvider(object: circle.id as NSString)
@@ -215,7 +215,7 @@ extension ProfileViewController: UICollectionViewDropDelegate {
         }
         
         // Only allow drops for current user's own profile
-        guard user?.id == AuthService.shared.getUserId() else {
+        guard AuthService.shared.isMe(user?.id) else {
             return UICollectionViewDropProposal(operation: .forbidden)
         }
         
@@ -263,7 +263,7 @@ extension ProfileViewController: UICollectionViewDropDelegate {
     
     func handleReorder(from sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath, coordinator: UICollectionViewDropCoordinator) {
         // Safety check: only allow reordering for current user's own profile
-        guard user?.id == AuthService.shared.getUserId() else {
+        guard AuthService.shared.isMe(user?.id) else {
             Logger.debug("❌ ProfileViewController: Attempted to reorder for non-current user")
             return
         }
@@ -310,7 +310,7 @@ extension ProfileViewController: UICollectionViewDropDelegate {
     
     func saveCircleOrder() {
         // Safety check: only allow saving for current user
-        guard user?.id == AuthService.shared.getUserId() else {
+        guard AuthService.shared.isMe(user?.id) else {
             Logger.debug("❌ ProfileViewController: Attempted to save circle order for non-current user")
             return
         }

@@ -333,7 +333,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         // Track circle viewed event
         AnalyticsService.shared.trackCircleViewed(
             circleId: circle.id,
-            isOwner: circle.owner == AuthService.shared.currentUser?.id
+            isOwner: AuthService.shared.isMe(circle.owner)
         )
         
         // Set a safe initial map region to prevent crashes during layout

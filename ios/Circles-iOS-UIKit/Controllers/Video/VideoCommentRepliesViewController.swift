@@ -309,7 +309,7 @@ extension VideoCommentRepliesViewController: VideoCommentCellDelegate {
         let reply = replies[indexPath.row]
         
         // Only allow deleting own comments
-        guard reply.userId == AuthService.shared.getUserId() else { return }
+        guard AuthService.shared.isMe(reply.userId) else { return }
         
         showConfirmation(
             title: "Delete Reply",
