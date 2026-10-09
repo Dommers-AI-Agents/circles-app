@@ -377,7 +377,9 @@ class ActivityFeedCell: UITableViewCell {
                                    // The picture that was mailed
                                    activity.type == .postcardSent ||
                                    activity.type == .postcardMailed ||
-                                   activity.type == .fridgemailSent) &&
+                                   activity.type == .fridgemailSent ||
+                                   // A posted run: the route map snapshot
+                                   activity.type == .runShared) &&
                                    thumbnailUrl != nil
 
         placeImageView.isHidden = !shouldShowPlaceImage
@@ -392,6 +394,16 @@ class ActivityFeedCell: UITableViewCell {
             placeImageView.tintColor = .white
             placeImageView.contentMode = .center
             placeImageView.backgroundColor = UIColor(red: 0.19, green: 0.51, blue: 0.81, alpha: 1)
+        } else if activity.type == .runShared && thumbnailUrl == nil {
+            // The route snapshot upload is best-effort; without one, the
+            // runner on FavRun's orange (the widget's accent, #DD6B20)
+            currentPlaceImageLoadId = nil
+            placeImageView.isHidden = false
+            placeImageView.image = UIImage(systemName: "figure.run",
+                                           withConfiguration: UIImage.SymbolConfiguration(pointSize: 26, weight: .semibold))
+            placeImageView.tintColor = .white
+            placeImageView.contentMode = .center
+            placeImageView.backgroundColor = UIColor(red: 0.87, green: 0.42, blue: 0.13, alpha: 1)
         } else if let placePhoto = thumbnailUrl, shouldShowPlaceImage {
             // Generate unique load ID for this place image request
             let loadId = UUID().uuidString
