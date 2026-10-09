@@ -37,7 +37,7 @@ class LoginViewController: BaseViewController {
 
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "CIRCLES"
+        label.text = "FavCircles"
         label.font = UIFont.systemFont(ofSize: 40, weight: .bold)
         label.textColor = .white
         label.textAlignment = .center
@@ -47,7 +47,7 @@ class LoginViewController: BaseViewController {
 
     private let taglineLabel: UILabel = {
         let label = UILabel()
-        label.text = "Share your favorite places with friends"
+        label.text = "Your personal map of favorite places — and everyone else's"
         label.font = UIFont.systemFont(ofSize: 18, weight: .regular)
         label.textColor = .white
         label.textAlignment = .center
@@ -164,7 +164,7 @@ class LoginViewController: BaseViewController {
 
     private let createAccountCaptionLabel: UILabel = {
         let label = UILabel()
-        label.text = "Because your Favorite Places are worth Saving"
+        label.text = "Build your map. Explore your friends'."
         label.font = UIFont.systemFont(ofSize: 13)
         label.textColor = UIColor.white.withAlphaComponent(0.85)
         label.textAlignment = .center
@@ -219,7 +219,7 @@ class LoginViewController: BaseViewController {
     private let privacyLabel: UITextView = {
         let textView = LegalLinks.makeLegalTextView(linkColor: .white)
         textView.attributedText = LegalLinks.agreementText(
-            "By using Circles, you agree to the Terms of Use and Privacy Policy",
+            "By using FavCircles, you agree to the Terms of Use and Privacy Policy",
             fontSize: 12,
             color: .white.withAlphaComponent(0.8)
         )

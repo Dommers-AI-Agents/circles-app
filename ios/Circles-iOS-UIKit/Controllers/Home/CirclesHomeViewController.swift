@@ -19,6 +19,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         state.onUserOwnPlacesChanged = { [weak self] places in
             // Keep the embedded map informed so it can center on the user's favorites
             self?.mapViewController?.ownPlaceIds = Set(places.map { $0.id })
+            // First real place saved → the "Start your map" card goes
+            DispatchQueue.main.async { self?.updateStartMapCard() }
         }
         return state
     }()
@@ -259,6 +261,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
+
+    /// "Start your map" card over the bottom of the map (+StartMap)
+    var startMapCard: UIView?
+    var startMapCardDismissed = false
 
     // Direct CTAs so a brand-new user can act from the empty state
     lazy var emptyStateButtonsStack: UIStackView = {
@@ -1215,14 +1221,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
 
-    /// The first bubble must not fight the system location dialog or a chain
-    /// modal still animating out — wait until both are gone, then start.
+    /// The first bubble must not land under a chain modal still on screen or
+    /// animating out — wait until it's gone, then start. (It used to wait on
+    /// location being undecided too, but Home never asks, so new users sat
+    /// ~30 s on an unexplained screen; the chain asks for location first now.)
     private func runHomeTourWhenSettled(attempt: Int = 0) {
         guard OnboardingManager.shared.shouldShowTutorial,
               TutorialStep.allCases.contains(where: { !OnboardingManager.shared.hasCompletedStep($0) }) else { return }
-        let blockedByLocation = CLLocationManager().authorizationStatus == .notDetermined
-        let blockedByModal = presentedViewController != nil
-        if (blockedByLocation || blockedByModal) && attempt < 30 {
+        let blockedByModal = presentedViewController != nil || tabBarController?.presentedViewController != nil
+        if blockedByModal && attempt < 120 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
                 self?.runHomeTourWhenSettled(attempt: attempt + 1)
             }
@@ -2517,6 +2524,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 emptyStateLabel.text = "You don't have any circles yet"
             }
         }
+        updateStartMapCard()
     }
     
     override func showLoadingState() {

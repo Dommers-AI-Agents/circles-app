@@ -1,10 +1,12 @@
 import UIKit
 
-/// "Your first people" — the one onboarding moment for both relationship
-/// kinds. Section 1: the welcome connection requests waiting for the new
-/// user, each with an inline Accept button ON the row (a bottom "Accept All"
-/// read as unrelated to the people above it — Wes, 2026-08-19). Section 2:
-/// popular users worth following, each with an inline Follow button.
+/// "Explore other people's maps" — the first-session moment for following
+/// people. Section 1 (only if any): connection requests waiting, each with
+/// an inline Accept button ON the row (a bottom "Accept All" read as
+/// unrelated to the people above it — Wes, 2026-08-19). Section 2: people
+/// with maps worth exploring, each with an inline Follow button. New users
+/// no longer get an automatic request from Wes (2026-10-09): they follow
+/// Wes and Brittany, so this always shows for a new account.
 ///
 /// Launch-night 2026-08-15 taught us nobody finds requests behind the
 /// Requests segment; this sheet is a step in the first-session chain
@@ -39,11 +41,8 @@ final class WelcomeConnectionsViewController: BaseViewController {
 
     private static func seenKey(for userId: String) -> String { "welcomeConnectionsShown_\(userId)" }
 
-    /// Presents over `presenter` when the account is young (<48h), this
-    /// account hasn't seen it, and incoming welcome requests exist. Backend
-    /// creates the requests synchronously at signup, so in the first-session
-    /// chain (after connections load) they're reliably present; if backend
-    /// onboarding failed, the zero-relationship overlay covers the gap later.
+    /// Presents over `presenter` when the account is young (<48h) and this
+    /// account hasn't seen it. Requests waiting (if any) lead the sheet.
     @discardableResult
     static func presentIfNeeded(from presenter: UIViewController, onDismiss: (() -> Void)? = nil) -> Bool {
         guard let me = AuthService.shared.currentUser,
@@ -55,7 +54,6 @@ final class WelcomeConnectionsViewController: BaseViewController {
         let incoming = NetworkManager.shared.pendingConnections.filter {
             $0.status == .pending && $0.connectedUserId == currentUserId
         }
-        guard !incoming.isEmpty else { return false }
 
         UserDefaults.standard.set(true, forKey: seenKey(for: me.id))
         let sheet = WelcomeConnectionsViewController(requests: incoming)
@@ -74,7 +72,7 @@ final class WelcomeConnectionsViewController: BaseViewController {
 
     private let titleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Your first people 🎉"
+        label.text = "Explore other people's maps 🗺️"
         label.font = .systemFont(ofSize: 26, weight: .bold)
         label.textAlignment = .center
         label.numberOfLines = 0
@@ -84,7 +82,7 @@ final class WelcomeConnectionsViewController: BaseViewController {
 
     private let subtitleLabel: UILabel = {
         let label = UILabel()
-        label.text = "Accept the requests waiting for you and follow a few locals — their favorite places fill your map."
+        label.text = "Everyone on FavCircles has a personal map of their favorite places. Follow people and their favorites show up on yours."
         label.font = .systemFont(ofSize: 15)
         label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
@@ -268,7 +266,7 @@ final class WelcomeConnectionsViewController: BaseViewController {
 
     private func loadRecommendations() {
         APIService.shared.request(
-            endpoint: "users/contacts/discover?type=popular&limit=10",
+            endpoint: "users/contacts/discover?type=popular&limit=12",
             method: .get
         ) { [weak self] (result: Result<DiscoveryUsersResponse, APIError>) in
             DispatchQueue.main.async {
@@ -278,22 +276,26 @@ final class WelcomeConnectionsViewController: BaseViewController {
                 // following yourself
                 let requestSenderIds = Set(self.requests.map { $0.userId })
                 let myId = AuthService.shared.getUserId()
+                // Already followed (Wes and Brittany are followed for you at
+                // signup) don't need a Follow button
+                let following = Set(AuthService.shared.currentUser?.following ?? [])
                 self.recommendations = response.users
                     .filter { !requestSenderIds.contains($0.id) }
+                    .filter { user in !following.contains { IDNormalizer.isSameUser($0, user.id) } }
                     .filter { user in
                         guard let me = myId else { return true }
                         return !IDNormalizer.isSameUser(me, user.id)
                     }
-                    .prefix(4).map { $0 }
+                    .prefix(6).map { $0 }
                 guard !self.recommendations.isEmpty else { return }
 
-                self.contentStack.addArrangedSubview(Self.sectionHeader("Popular on FavCircles"))
+                self.contentStack.addArrangedSubview(Self.sectionHeader("Maps worth exploring"))
                 for user in self.recommendations {
                     let places = user.placesCount ?? 0
                     self.contentStack.addArrangedSubview(self.personRow(
                         user: user,
                         title: user.displayName,
-                        detail: places > 0 ? "\(places) favorite place\(places == 1 ? "" : "s") to explore" : "New explorer",
+                        detail: places > 0 ? "\(places) place\(places == 1 ? "" : "s") on their map" : "Just getting started",
                         accessory: self.followButton(for: user)
                     ))
                 }
@@ -322,8 +324,9 @@ final class WelcomeConnectionsViewController: BaseViewController {
                     self?.followedIds.insert(user.id)
                     button.setTitle("Following ✓", for: .normal)
                     PiggyBankDepositView.play(credit: response.piggyBank)
-                case .failure:
+                case .failure(let error):
                     button.isEnabled = true
+                    self?.showError(error.serverMessage ?? "Couldn't follow right now. Try again.")
                 }
             }
         }
@@ -341,8 +344,9 @@ final class WelcomeConnectionsViewController: BaseViewController {
                     button.setTitle("Connected ✓", for: .normal)
                     NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
                     PiggyBankDepositView.play(credit: credit)
-                case .failure:
+                case .failure(let error):
                     button.isEnabled = true
+                    self.showError((error as? APIError)?.serverMessage ?? "Couldn't connect right now. Try again.")
                 }
             }
         }

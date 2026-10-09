@@ -40,7 +40,10 @@ extension CirclesHomeViewController {
             isSignedIn: AuthService.shared.currentUser != nil,
             isCardVisible: dailyCardView != nil,
             isPresentingModal: presentedViewController != nil,
-            isTourRunning: isShowingWelcomeTour,
+            // The 4-bubble home tour (isShowingWelcomeTour is an older
+            // overlay's flag and is never set for it — a card could land on
+            // top of the tour)
+            isTourRunning: isShowingWelcomeTour || OnboardingManager.shared.isHomeTourInProgress,
             isFirstSessionFlowActive: OnboardingManager.shared.isFirstSessionFlowActive,
             onboardingCheckDone: hasCheckedTutorialAndOverlay,
             trigger: trigger,

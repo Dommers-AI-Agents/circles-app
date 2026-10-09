@@ -80,6 +80,42 @@ final class HomeTabStatusView: UIView {
         set {
             messageLabel.text = newValue
             messageLabel.isHidden = newValue == nil
+            actionButton?.isHidden = newValue == nil
         }
+    }
+
+    // MARK: - Optional next step under the message (new-user audit,
+    // 2026-10-09: empty tabs were dead ends)
+
+    private var actionButton: UIButton?
+    private var actionHandler: (() -> Void)?
+
+    /// A button under the empty message ("Find people to follow"); shown
+    /// only while a message is.
+    func setAction(_ title: String, handler: @escaping () -> Void) {
+        actionHandler = handler
+        if actionButton == nil {
+            let button = UIButton.smallActionButton(title: title, style: .primary)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.addTarget(self, action: #selector(actionTapped), for: .touchUpInside)
+            addSubview(button)
+            NSLayoutConstraint.activate([
+                button.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 14),
+                button.centerXAnchor.constraint(equalTo: centerXAnchor)
+            ])
+            actionButton = button
+            isUserInteractionEnabled = true
+        } else {
+            actionButton?.setTitle(title, for: .normal)
+        }
+        actionButton?.isHidden = messageLabel.isHidden
+    }
+
+    @objc private func actionTapped() { actionHandler?() }
+
+    /// Taps outside the button still reach the list underneath.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hit = super.hitTest(point, with: event)
+        return hit === self ? nil : hit
     }
 }

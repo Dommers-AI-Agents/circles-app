@@ -88,6 +88,12 @@ class ConversationsListViewController: UIViewController {
         return label
     }()
     
+    private lazy var emptyFindPeopleButton: UIButton = {
+        let button = UIButton.smallActionButton(title: "Find people", style: .primary)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
     private let emptyDescriptionLabel: UILabel = {
         let label = UILabel()
         label.text = "Start a conversation with your connections"
@@ -293,6 +299,7 @@ class ConversationsListViewController: UIViewController {
         emptyStateView.addSubview(emptyImageView)
         emptyStateView.addSubview(emptyTitleLabel)
         emptyStateView.addSubview(emptyDescriptionLabel)
+        emptyStateView.addSubview(emptyFindPeopleButton)
         
         NSLayoutConstraint.activate([
             emptyImageView.topAnchor.constraint(equalTo: emptyStateView.topAnchor),
@@ -307,8 +314,18 @@ class ConversationsListViewController: UIViewController {
             emptyDescriptionLabel.topAnchor.constraint(equalTo: emptyTitleLabel.bottomAnchor, constant: 8),
             emptyDescriptionLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
             emptyDescriptionLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-            emptyDescriptionLabel.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
+
+            // A next step, not a dead end (new-user audit, 2026-10-09)
+            emptyFindPeopleButton.topAnchor.constraint(equalTo: emptyDescriptionLabel.bottomAnchor, constant: 16),
+            emptyFindPeopleButton.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
+            emptyFindPeopleButton.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
         ])
+        emptyFindPeopleButton.addTarget(self, action: #selector(emptyFindPeopleTapped), for: .touchUpInside)
+    }
+
+    @objc private func emptyFindPeopleTapped() {
+        AnalyticsService.shared.logEvent("empty_messages_find_people", parameters: [:])
+        tabBarController?.selectedIndex = 1
     }
     
     private func setupNewMessageButton() {
@@ -459,7 +476,7 @@ class ConversationsListViewController: UIViewController {
                 case .success(let connections):
                     if connections.isEmpty {
                         self.emptyTitleLabel.text = "No Messages Yet"
-                        self.emptyDescriptionLabel.text = "Connect with people to start messaging"
+                        self.emptyDescriptionLabel.text = "Connect with people to message them and send each other places"
                     } else {
                         self.emptyTitleLabel.text = "No Conversations"
                         self.emptyDescriptionLabel.text = "Send a message to one of your connections to get started"

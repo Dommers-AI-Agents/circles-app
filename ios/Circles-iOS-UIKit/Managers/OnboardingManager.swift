@@ -24,11 +24,11 @@ enum TutorialStep: String, CaseIterable {
     var title: String {
         switch self {
         case .addPlaces:
-            return "Add Your Favorite Places"
+            return "Build Your Map"
         case .followUsers:
-            return "Follow New Users"
+            return "Explore Other People's Maps"
         case .viewActivity:
-            return "View Recent Activity"
+            return "See What's New"
         case .seeRewards:
             return "See Your Rewards"
         }
@@ -37,11 +37,11 @@ enum TutorialStep: String, CaseIterable {
     var description: String {
         switch self {
         case .addPlaces:
-            return "Tap Add Place to save any spot you love — it lands on your map"
+            return "Tap Add Place to save a spot you love — it goes on your personal map, in a circle (a list like Want to Try)"
         case .followUsers:
-            return "Tap a face to see their places; suggested people are one tap away"
+            return "Tap a face to see their map. Follow people and their favorites show up on yours"
         case .viewActivity:
-            return "See what your people are saving, checking into, and loving"
+            return "What the people you follow are saving, checking into, and loving"
         case .seeRewards:
             return "Adding places and connecting earns FavCoins 🌵 — check your piggy bank here"
         }
@@ -164,6 +164,11 @@ class OnboardingManager {
         Logger.info("Onboarding tutorial reset")
     }
     
+    /// A home-tour bubble is on screen: nothing else should cover it (the
+    /// daily card checks this). Deliberately not `shouldShowTutorial`, which
+    /// stays true for anyone who never finished the tour.
+    var isHomeTourInProgress: Bool { currentBubbleView != nil }
+
     /// Check if a specific step has been completed
     func hasCompletedStep(_ step: TutorialStep) -> Bool {
         return completedSteps.contains(step.rawValue)

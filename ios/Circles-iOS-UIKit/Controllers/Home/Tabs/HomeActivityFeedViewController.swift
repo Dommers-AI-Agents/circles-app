@@ -317,7 +317,15 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
         }
 
         // Update empty state
-        statusView.message = activities.isEmpty ? "No recent activity from your network" : nil
+        statusView.message = activities.isEmpty
+            ? "When people you follow save places, check in or post, it shows up here."
+            : nil
+        if activities.isEmpty {
+            statusView.setAction("Find people to follow") { [weak self] in
+                AnalyticsService.shared.logEvent("empty_activity_find_people", parameters: [:])
+                self?.tabBarController?.selectedIndex = 1
+            }
+        }
 
         // Update table footer for loading more
         if isLoadingMoreActivities && hasMoreActivities {

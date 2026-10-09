@@ -14,6 +14,8 @@ enum PlaceMilestones {
     /// Ascending tiers. The profile badge always reflects the highest tier at
     /// or below the user's current place count; celebrations fire once per tier.
     static let all: [PlaceMilestone] = [
+        // The first save starts your map (new-user audit, 2026-10-09)
+        PlaceMilestone(threshold: 1, name: "Mapmaker", iconName: "mappin.and.ellipse", color: .systemRed),
         PlaceMilestone(threshold: 5, name: "Explorer", iconName: "mappin.circle.fill", color: .systemTeal),
         PlaceMilestone(threshold: 10, name: "Adventurer", iconName: "map.fill", color: .systemGreen),
         PlaceMilestone(threshold: 20, name: "Pathfinder", iconName: "signpost.right.fill", color: .systemBlue),

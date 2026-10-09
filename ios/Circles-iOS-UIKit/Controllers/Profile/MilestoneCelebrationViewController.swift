@@ -158,7 +158,9 @@ class MilestoneCelebrationViewController: BaseViewController {
         badgePillView.backgroundColor = milestone.color
         badgeNameLabel.text = milestone.name.uppercased()
 
-        if milestone.threshold == PlaceMilestones.all.first?.threshold {
+        if milestone.threshold == 1 {
+            messageLabel.text = "Your map has begun! Every place you save goes on it — for you and the people who follow you to explore."
+        } else if milestone.threshold == 5 {
             messageLabel.text = "You added your first \(milestone.threshold) places! The \(milestone.name) badge now shows on your profile."
         } else {
             messageLabel.text = "You've added \(milestone.threshold) places! The \(milestone.name) badge now shows on your profile."
@@ -205,7 +207,9 @@ class MilestoneCelebrationViewController: BaseViewController {
 
     @objc private func shareTapped() {
         // Achievement moments are peak share intent — one tap spreads the app
-        let shareText = "I just earned the \(milestone.name) badge on FavCircles — \(milestone.threshold) favorite places saved! 🎉"
+        let shareText = milestone.threshold == 1
+            ? "I just started my map of favorite places on FavCircles 🗺️ Come see it!"
+            : "I just earned the \(milestone.name) badge on FavCircles — \(milestone.threshold) favorite places saved! 🎉"
         let activityVC = UIActivityViewController(
             activityItems: [shareText, ShareLinks.appStoreURL],
             applicationActivities: nil

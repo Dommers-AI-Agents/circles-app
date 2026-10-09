@@ -297,17 +297,21 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         if OnboardingManager.shared.isFirstSessionFlowActive {
             // Brand-new signup: no carousel (cut 2026-08-19) — go straight to
-            // the chain: first-people sheet → notifications → home tour.
+            // the chain: first-people sheet → location → notifications → home tour.
             // (Contacts onboarding was intentionally cut from first-run —
             // Find Contacts lives in the My Network tab.)
             continueFirstSessionAfterCarousel()
-        } else if shouldShowNotificationOnboarding() {
-            showNotificationOnboarding()
         } else {
-            OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
-                if needsTutorial {
-                    OnboardingManager.shared.startTutorial()
-                    Logger.info("New user detected - starting onboarding tutorial")
+            shouldShowNotificationOnboarding { [weak self] show in
+                if show {
+                    self?.showNotificationOnboarding()
+                } else {
+                    OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
+                        if needsTutorial {
+                            OnboardingManager.shared.startTutorial()
+                            Logger.info("New user detected - starting onboarding tutorial")
+                        }
+                    }
                 }
             }
         }
@@ -437,12 +441,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
 
-    private var didRescheduleFirstSessionFailsafe = false
+    private var firstSessionFailsafeReschedules = 0
     private func firstSessionFailsafeFired() {
         guard OnboardingManager.shared.isFirstSessionFlowActive else { return }
-        if window?.rootViewController?.presentedViewController != nil,
-           !didRescheduleFirstSessionFailsafe {
-            didRescheduleFirstSessionFailsafe = true
+        // A chain screen still up (people / location / notifications) means
+        // they're reading, not stuck: keep waiting, up to ~5 minutes
+        if window?.rootViewController?.presentedViewController != nil, firstSessionFailsafeReschedules < 12 {
+            firstSessionFailsafeReschedules += 1
             DispatchQueue.main.asyncAfter(deadline: .now() + 25) { [weak self] in
                 self?.firstSessionFailsafeFired()
             }
@@ -1471,48 +1476,60 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // (showContactsOnboarding was deleted: the phone-contacts import is gone
     // from the app entirely — invites go out via the share sheet instead.)
 
-    /// Continues the first-launch onboarding chain after the welcome carousel:
-    /// notification prompt next (previously an else-if meant brand-new users
-    /// saw only one of the steps), then the tutorial.
+    /// After the first-people sheet: location (Wes, 2026-10-09 — it powers
+    /// the map, nearby, weather and more), then notifications, then the tour.
     private func continueOnboardingAfterContacts() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             guard let self = self else { return }
-            if self.shouldShowNotificationOnboarding() {
-                // Its onCompletion callback ends the chain
-                self.showNotificationOnboarding()
-            } else if OnboardingManager.shared.isFirstSessionFlowActive {
-                self.finishFirstSessionChain()
-            } else {
-                OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
-                    if needsTutorial {
-                        OnboardingManager.shared.startTutorial()
-                        Logger.info("Starting tutorial after contacts onboarding")
-                    }
+            guard LocationOnboardingViewController.isNeeded,
+                  let tabBarController = self.window?.rootViewController as? CirclesTabBarController else {
+                self.continueOnboardingAfterLocation()
+                return
+            }
+            let locationVC = LocationOnboardingViewController()
+            locationVC.onCompletion = { [weak self] in self?.continueOnboardingAfterLocation() }
+            let nav = UINavigationController(rootViewController: locationVC)
+            nav.modalPresentationStyle = .fullScreen
+            var presenter: UIViewController = tabBarController
+            while let presented = presenter.presentedViewController { presenter = presented }
+            presenter.present(nav, animated: true)
+        }
+    }
+
+    private func continueOnboardingAfterLocation() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            self?.shouldShowNotificationOnboarding { [weak self] show in
+                guard let self = self else { return }
+                self.continueOnboardingAfterLocation(showNotifications: show)
+            }
+        }
+    }
+
+    private func continueOnboardingAfterLocation(showNotifications: Bool) {
+        if showNotifications {
+            // Its onCompletion callback ends the chain
+            showNotificationOnboarding()
+        } else if OnboardingManager.shared.isFirstSessionFlowActive {
+            finishFirstSessionChain()
+        } else {
+            OnboardingManager.shared.checkIfUserNeedsTutorial { needsTutorial in
+                if needsTutorial {
+                    OnboardingManager.shared.startTutorial()
+                    Logger.info("Starting tutorial after onboarding")
                 }
             }
         }
     }
 
-    private func shouldShowNotificationOnboarding() -> Bool {
-        // Check if we've already shown notification onboarding
-        let hasShownOnboarding = UserDefaults.standard.bool(forKey: "hasShownNotificationOnboarding")
-        if hasShownOnboarding {
-            return false
-        }
-        
-        // Check if notifications are already enabled
-        let semaphore = DispatchSemaphore(value: 0)
-        var isEnabled = false
-        
+    /// Not yet shown on this install and notifications aren't already on.
+    /// Answers on the main queue (it used to block the main thread on a
+    /// semaphore while iOS looked the setting up).
+    private func shouldShowNotificationOnboarding(_ completion: @escaping (Bool) -> Void) {
+        guard !UserDefaults.standard.bool(forKey: "hasShownNotificationOnboarding") else { completion(false); return }
         UNUserNotificationCenter.current().getNotificationSettings { settings in
-            isEnabled = settings.authorizationStatus == .authorized
-            semaphore.signal()
+            let enabled = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
+            DispatchQueue.main.async { completion(!enabled) }
         }
-        
-        semaphore.wait()
-        
-        // Only show if notifications are not enabled
-        return !isEnabled
     }
     
     private func showNotificationOnboarding() {

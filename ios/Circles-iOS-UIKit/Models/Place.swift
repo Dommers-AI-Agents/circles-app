@@ -155,6 +155,9 @@ struct Place: Codable, Identifiable {
     /// Maps (still "Address pending"). Drives the circle-detail review banner;
     /// nil/false for normal places.
     var needsResolution: Bool? = nil
+    /// The example place onboarding adds to a new account's first circle;
+    /// doesn't count as one of theirs (the "Start your map" card)
+    var isSamplePlace: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -169,6 +172,7 @@ struct Place: Codable, Identifiable {
         case city, state, stateCode, neighborhood, country, countryCode
         case importSource
         case needsResolution
+        case isSamplePlace
     }
 
     /// Human-readable origin for imported saves ("Google import"), nil for
@@ -300,6 +304,7 @@ struct Place: Codable, Identifiable {
         self.countryCode = try container.decodeIfPresent(String.self, forKey: .countryCode)
         self.importSource = try container.decodeIfPresent(String.self, forKey: .importSource)
         self.needsResolution = try container.decodeIfPresent(Bool.self, forKey: .needsResolution)
+        self.isSamplePlace = try container.decodeIfPresent(Bool.self, forKey: .isSamplePlace)
     }
     
     // Manual initializer for creating Place instances in code

@@ -31,8 +31,11 @@ final class HomeState {
     /// The user's own places only. Changing this notifies the embedded map so
     /// it can center on the user's favorites (see `onUserOwnPlacesChanged`).
     var userOwnPlaces: [Place] = [] {
-        didSet { onUserOwnPlacesChanged?(userOwnPlaces) }
+        didSet { ownPlacesLoaded = true; onUserOwnPlacesChanged?(userOwnPlaces) }
     }
+    /// Set by the first write to `userOwnPlaces` — "none yet" means none,
+    /// not "not loaded yet" (the Start-your-map card waits for it)
+    private(set) var ownPlacesLoaded = false
     /// Fired on every write to `userOwnPlaces`, whoever writes it.
     var onUserOwnPlacesChanged: (([Place]) -> Void)?
     /// Network places fetched for search (the search overlay's second source).

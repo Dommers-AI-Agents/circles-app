@@ -106,7 +106,9 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
                             return offerItems + announcementItems
                         }
                         self.tableView.reloadData()
-                        self.statusView.message = self.specials.isEmpty ? "No specials right now — check back soon" : nil
+                        self.statusView.message = self.specials.isEmpty
+                            ? "No specials right now. Deals from places on your map and nearby show up here."
+                            : nil
 
                     case .failure:
                         if self.specials.isEmpty {

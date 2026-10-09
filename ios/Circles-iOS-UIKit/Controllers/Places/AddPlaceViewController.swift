@@ -1296,7 +1296,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Show message about using the search bar
         let alert = UIAlertController(
             title: "How to Add Places",
-            message: "To add a place:\n\n1. Type the address or place name in the search bar above\n2. Select the place from the search results\n3. Fill in the place name and details\n4. Tap 'Add Place' to save",
+            message: "To add a place:\n\n1. Type the address or place name in the search bar above\n2. Select the place from the search results\n3. Fill in the place name and details\n4. Tap 'Save Place'",
             preferredStyle: .alert
         )
         
