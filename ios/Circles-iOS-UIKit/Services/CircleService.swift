@@ -198,7 +198,7 @@ class CircleService {
     
     // MARK: - Create, Update, Delete
     
-    func createCircle(name: String, description: String?, privacy: PrivacyLevel, audienceListId: String? = nil, category: CircleCategory, customCategoryId: String? = nil, location: String? = nil, tags: [String]? = nil, coverImage: Data? = nil, completion: @escaping (Result<Circle, Error>) -> Void) {
+    func createCircle(name: String, description: String?, privacy: PrivacyLevel, audienceListId: String? = nil, category: CircleCategory, customCategoryId: String? = nil, location: String? = nil, tags: [String]? = nil, showOnMap: Bool = true, coverImage: Data? = nil, completion: @escaping (Result<Circle, Error>) -> Void) {
         
         // First check if we need to upload an image
         if let imageData = coverImage {
@@ -206,20 +206,21 @@ class CircleService {
                 switch result {
                 case .success(let imageUrl):
                     // Now create the circle with the image URL
-                    self?.performCreateCircle(name: name, description: description, privacy: privacy, audienceListId: audienceListId, category: category, customCategoryId: customCategoryId, location: location, tags: tags, coverImageUrl: imageUrl, completion: completion)
+                    self?.performCreateCircle(name: name, description: description, privacy: privacy, audienceListId: audienceListId, category: category, customCategoryId: customCategoryId, location: location, tags: tags, showOnMap: showOnMap, coverImageUrl: imageUrl, completion: completion)
                 case .failure(let error):
                     completion(.failure(error))
                 }
             }
         } else {
             // Create circle without image
-            performCreateCircle(name: name, description: description, privacy: privacy, audienceListId: audienceListId, category: category, customCategoryId: customCategoryId, location: location, tags: tags, coverImageUrl: nil, completion: completion)
+            performCreateCircle(name: name, description: description, privacy: privacy, audienceListId: audienceListId, category: category, customCategoryId: customCategoryId, location: location, tags: tags, showOnMap: showOnMap, coverImageUrl: nil, completion: completion)
         }
     }
     
-    private func performCreateCircle(name: String, description: String?, privacy: PrivacyLevel, audienceListId: String?, category: CircleCategory, customCategoryId: String?, location: String?, tags: [String]?, coverImageUrl: String?, completion: @escaping (Result<Circle, Error>) -> Void) {
+    private func performCreateCircle(name: String, description: String?, privacy: PrivacyLevel, audienceListId: String?, category: CircleCategory, customCategoryId: String?, location: String?, tags: [String]?, showOnMap: Bool = true, coverImageUrl: String?, completion: @escaping (Result<Circle, Error>) -> Void) {
         
         var body: [String: Any] = [
+            "showOnMap": showOnMap,
             "name": name,
             "privacy": privacy.rawValue,
             // Always sent, so clearing the list is as saveable as setting it.

@@ -16,7 +16,7 @@ struct Circle: Codable, Identifiable {
     /// The named Inner Circle list this is for, when the tier is that one.
     let audienceListId: String?
     let allowNetworkEdit: Bool? // Allow network connections to edit this circle
-    let showOnMap: Bool? // Whether this circle's places appear on the home map (nil = true)
+    var showOnMap: Bool? // Whether this circle's places appear on the home map (nil = true)
     let category: CircleCategory
     let customCategoryId: String? // Reference to user's custom category
     let location: String?

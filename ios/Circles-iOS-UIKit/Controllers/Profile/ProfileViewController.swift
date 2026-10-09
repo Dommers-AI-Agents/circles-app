@@ -1943,7 +1943,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         let reference = mapView.userLocation.location
             ?? CLLocation(latitude: mapView.region.center.latitude, longitude: mapView.region.center.longitude)
 
-        mapDistanceSortedPlaces = DistancePlaceSorter.sorted(filteredPlaces, from: reference)
+        mapDistanceSortedPlaces = DistancePlaceSorter.sorted(onMap(filteredPlaces), from: reference)
 
         if mapDistanceSortedPlaces.isEmpty {
             let emptyLabel = UILabel()
@@ -2044,7 +2044,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // filter but can broaden it as well as narrow it. The hamburger is
         // replaced by the chip bars (showsFilterChips).
         let fullScreenMapVC = FullScreenMapViewController(
-            places: allPlaces,
+            places: onMap(allPlaces),
             initialRegion: mapView.region,
             selectedCategory: nil,
             selectedConnectionId: nil
@@ -2371,12 +2371,19 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
     }
     
+    /// Places whose circle is on the map. A circle switched off "Include on
+    /// my map" keeps its list but stays off this map (and friends' views of it).
+    func onMap(_ places: [Place]) -> [Place] {
+        HomePlaceFilter.excludingHiddenCircles(places, hiddenIds: HomePlaceFilter.hiddenCircleIds(in: circles))
+    }
+
     func updateMapPins() {
         // Remove existing annotations
         mapView.removeAnnotations(mapView.annotations)
 
         // Add filtered places as pins using PlaceAnnotation for custom styling
-        for place in filteredPlaces {
+        // (circles switched off "Include on my map" stay off this map too)
+        for place in onMap(filteredPlaces) {
             if place.location?.clLocation != nil {
                 let annotation = PlaceAnnotation(place: place)
                 mapView.addAnnotation(annotation)

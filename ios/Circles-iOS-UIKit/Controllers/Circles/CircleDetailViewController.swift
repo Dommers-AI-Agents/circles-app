@@ -91,6 +91,18 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         return view
     }()
     
+    /// Owner only: "On my map" / "Not on my map", tap to switch
+    private lazy var mapPill: UIButton = {
+        var config = UIButton.Configuration.gray()
+        config.cornerStyle = .medium
+        config.imagePadding = 6
+        config.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10)
+        let button = UIButton(configuration: config)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(mapPillTapped), for: .touchUpInside)
+        return button
+    }()
+
     private let privacyImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFit
@@ -399,6 +411,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         editorsContainerView.addSubview(editorsLabel)
         editorsContainerView.addSubview(editorsStackView)
         
+        circleInfoView.addSubview(mapPill)
         privacyView.addSubview(privacyImageView)
         privacyView.addSubview(privacyLabel)
         
@@ -471,6 +484,11 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             privacyView.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.large),
             privacyView.heightAnchor.constraint(equalToConstant: 30),
             
+            mapPill.leadingAnchor.constraint(equalTo: privacyView.trailingAnchor, constant: Constants.Spacing.small),
+            mapPill.centerYAnchor.constraint(equalTo: privacyView.centerYAnchor),
+            mapPill.heightAnchor.constraint(equalToConstant: 30),
+            mapPill.trailingAnchor.constraint(lessThanOrEqualTo: circleInfoView.trailingAnchor, constant: -Constants.Spacing.large),
+
             // Privacy image view
             privacyImageView.leadingAnchor.constraint(equalTo: privacyView.leadingAnchor, constant: Constants.Spacing.small),
             privacyImageView.centerYAnchor.constraint(equalTo: privacyView.centerYAnchor),
@@ -750,6 +768,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         let privacyTier = circle.privacy.tier ?? .private
         privacyImageView.image = UIImage(systemName: privacyTier.systemIconName)
         privacyLabel.text = privacyTier.title
+        refreshMapPill()
         
         // Show shared circle info if applicable
         if !circle.isOwner {
@@ -1319,6 +1338,53 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         presentFullScreenMap()
     }
     
+    // MARK: - Include on my map
+
+    private func refreshMapPill() {
+        mapPill.isHidden = !circle.isOwner
+        let onMap = circle.showOnMap ?? true
+        var config = mapPill.configuration ?? .gray()
+        config.title = onMap ? "On my map" : "Not on my map"
+        config.image = UIImage(systemName: onMap ? "map" : "map.slash",
+                               withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+        config.baseForegroundColor = onMap ? Constants.Colors.secondaryLabel : Constants.Colors.primary
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attrs in
+            var a = attrs; a.font = .systemFont(ofSize: 13, weight: .semibold); return a
+        }
+        mapPill.configuration = config
+        mapPill.accessibilityHint = onMap ? "Takes this circle's places off your map" : "Puts this circle's places on your map"
+    }
+
+    @objc private func mapPillTapped() {
+        let next = !(circle.showOnMap ?? true)
+        let apply = { [weak self] in
+            guard let self else { return }
+            CircleService.shared.updateCircle(id: self.circle.id, showOnMap: next) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    switch result {
+                    case .success:
+                        // Only this setting: the loaded circle keeps its places
+                        self.circle.showOnMap = next
+                        self.refreshMapPill()
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        // The home map refetches circles, or the change never lands there
+                        NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+        if next {
+            apply()
+        } else {
+            // Taking it off the map: say what that means first (it still alerts)
+            showConfirmation(title: "Take off your map?", message: CircleMapCopy.offNote,
+                             confirmTitle: "Take off map", onConfirm: apply)
+        }
+    }
+
     @objc func exportButtonTapped() {
         // Check premium status
         if !SubscriptionManager.shared.checkExportAccess(from: self) {

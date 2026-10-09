@@ -151,6 +151,9 @@ class CreateCircleViewController: UIViewController {
         return picker
     }()
     
+    /// "Include on my map" (on by default)
+    private let showOnMapRow = IncludeOnMapRow()
+
     private let locationLabel: UILabel = {
         let label = UILabel()
         label.text = "Location (optional)"
@@ -249,6 +252,36 @@ class CreateCircleViewController: UIViewController {
         setupActions()
         setupKeyboardObservers()
         setupNavigation()
+        restoreLastPrivacy()
+    }
+
+    // MARK: - Remembered privacy
+
+    /// Open on the privacy of the last circle they made. A remembered Inner
+    /// Circle list that's gone falls back to Public once the lists load.
+    private func restoreLastPrivacy() {
+        guard let saved = AudienceMemory.load(.newCircle, userId: AuthService.shared.getUserId()),
+              let tier = PrivacyTier(rawValue: saved.tier) else { return }
+        guard tier == .innerCircle else {
+            privacyPicker.select(.tier(tier))
+            return
+        }
+        InnerCircleManager.shared.primeIfNeeded { [weak self] in
+            DispatchQueue.main.async {
+                let usable = InnerCircleManager.shared.usableLists.map(\.id)
+                guard let self, saved.listId != nil,
+                      AudienceMemory.resolve(saved, usableListIds: usable) != nil else { return }
+                self.privacyPicker.select(.tier(.innerCircle), listId: saved.listId)
+            }
+        }
+    }
+
+    /// After a circle is created: its privacy opens the next one.
+    private func rememberPrivacy() {
+        guard !privacyPicker.isLocked, case .tier(let tier) = privacyPicker.selected else { return }
+        AudienceMemory.save(AudienceMemory.Choice(tier: tier.rawValue,
+                                                  listId: tier == .innerCircle ? privacyPicker.selectedListId : nil),
+                            for: .newCircle, userId: AuthService.shared.getUserId())
     }
     
     // (The old create-circle tutorial bubble was removed 2026-08-19 — the
@@ -287,6 +320,7 @@ class CreateCircleViewController: UIViewController {
         contentView.addSubview(categoryButton)
         contentView.addSubview(privacyLabel)
         contentView.addSubview(privacyPicker)
+        contentView.addSubview(showOnMapRow)
         contentView.addSubview(locationLabel)
         contentView.addSubview(locationTextField)
         contentView.addSubview(tagsLabel)
@@ -373,8 +407,12 @@ class CreateCircleViewController: UIViewController {
             privacyPicker.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             privacyPicker.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             
+            showOnMapRow.topAnchor.constraint(equalTo: privacyPicker.bottomAnchor, constant: Constants.Spacing.medium),
+            showOnMapRow.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            showOnMapRow.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+
             // Location label
-            locationLabel.topAnchor.constraint(equalTo: privacyPicker.bottomAnchor, constant: Constants.Spacing.medium),
+            locationLabel.topAnchor.constraint(equalTo: showOnMapRow.bottomAnchor, constant: Constants.Spacing.medium),
             locationLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Location text field
@@ -619,6 +657,7 @@ class CreateCircleViewController: UIViewController {
                         // Share circle with selected connections
                         self.shareCircleWithConnections(circle, connections: selectedConnections, email: emailText)
                         
+                        self.rememberPrivacy()
                         self.delegate?.didCreateCircle(circle)
                         self.dismiss(animated: true)
                     case .failure(let error):
@@ -642,6 +681,7 @@ class CreateCircleViewController: UIViewController {
                 customCategoryId: selectedCategory?.customCategoryId,
                 location: location,
                 tags: tags,
+                showOnMap: showOnMapRow.isOn,
                 coverImage: coverImageData
             ) { [weak self] result in
                 guard let self = self else { return }
@@ -664,6 +704,7 @@ class CreateCircleViewController: UIViewController {
                         // Share circle with selected connections
                         self.shareCircleWithConnections(circle, connections: selectedConnections, email: emailText)
                         
+                        self.rememberPrivacy()
                         self.delegate?.didCreateCircle(circle)
                         self.dismiss(animated: true)
                         

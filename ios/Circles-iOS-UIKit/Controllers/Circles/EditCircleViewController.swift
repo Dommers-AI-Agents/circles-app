@@ -135,21 +135,9 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         return picker
     }()
     
-    private let showOnMapLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Show on home map"
-        label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
-        label.textColor = Constants.Colors.darkGray
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    /// "Include on my map" with what each position means
+    private let showOnMapRow = IncludeOnMapRow()
 
-    private let showOnMapSwitch: UISwitch = {
-        let toggle = UISwitch()
-        toggle.isOn = true
-        toggle.translatesAutoresizingMaskIntoConstraints = false
-        return toggle
-    }()
 
     private let locationLabel: UILabel = {
         let label = UILabel()
@@ -278,7 +266,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                descriptionTextView.text != (circle.description ?? "") ||
                getCurrentCategory() != circle.category ||
                (getCurrentPrivacy().map { $0 != circle.privacy } ?? false) ||
-               showOnMapSwitch.isOn != (circle.showOnMap ?? true) ||
+               showOnMapRow.isOn != (circle.showOnMap ?? true) ||
                locationTextField.text != (circle.location ?? "") ||
                getCurrentTags() != (circle.tags ?? []) ||
                selectedImage != nil ||
@@ -336,8 +324,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         contentView.addSubview(categoryButton)
         contentView.addSubview(privacyLabel)
         contentView.addSubview(privacyPicker)
-        contentView.addSubview(showOnMapLabel)
-        contentView.addSubview(showOnMapSwitch)
+        contentView.addSubview(showOnMapRow)
         contentView.addSubview(locationLabel)
         contentView.addSubview(locationTextField)
         contentView.addSubview(tagsLabel)
@@ -422,13 +409,12 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
             privacyPicker.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
 
             // Show on home map row
-            showOnMapLabel.topAnchor.constraint(equalTo: privacyPicker.bottomAnchor, constant: Constants.Spacing.medium),
-            showOnMapLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            showOnMapSwitch.centerYAnchor.constraint(equalTo: showOnMapLabel.centerYAnchor),
-            showOnMapSwitch.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            showOnMapRow.topAnchor.constraint(equalTo: privacyPicker.bottomAnchor, constant: Constants.Spacing.medium),
+            showOnMapRow.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            showOnMapRow.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
 
             // Location label
-            locationLabel.topAnchor.constraint(equalTo: showOnMapLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            locationLabel.topAnchor.constraint(equalTo: showOnMapRow.bottomAnchor, constant: Constants.Spacing.medium),
             locationLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Location text field
@@ -516,7 +502,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         privacyPicker.select(circle.privacy.tier.map(PrivacyOption.tier), listId: circle.audienceListId)
 
         // Set map visibility (missing = shown)
-        showOnMapSwitch.isOn = circle.showOnMap ?? true
+        showOnMapRow.isOn = circle.showOnMap ?? true
 
         // Set tags
         if let tags = circle.tags {
@@ -647,7 +633,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
             var body: [String: Any] = [
                 "name": name,
                 "category": category.rawValue,
-                "showOnMap": showOnMapSwitch.isOn
+                "showOnMap": showOnMapRow.isOn
             ]
             // Omitted entirely when the picker is locked on a tier this build
             // doesn't understand, so the rest of the edit still saves without
@@ -714,7 +700,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                 customCategoryId: selectedCategory?.customCategoryId,
                 location: location,
                 tags: tags,
-                showOnMap: showOnMapSwitch.isOn,
+                showOnMap: showOnMapRow.isOn,
                 coverImage: coverImageData
             ) { [weak self] result in
             DispatchQueue.main.async {

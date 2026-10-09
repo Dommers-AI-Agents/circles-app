@@ -143,7 +143,10 @@ class CircleCell: UICollectionViewCell {
         
         // Use placesCount if available, otherwise fall back to places array count
         let placeCount = circle.placesCount ?? circle.places?.count ?? 0
-        placeCountLabel.text = "\(placeCount) \(placeCount == 1 ? "place" : "places")"
+        let countText = "\(placeCount) \(placeCount == 1 ? "place" : "places")"
+        // The owner sees which circles they've kept off their map
+        placeCountLabel.text = (circle.isOwner && circle.showOnMap == false)
+            ? "\(countText) · \(CircleMapCopy.notOnMapTag)" : countText
         
         // Show/hide activity indicator based on hasNewPlaces
         let hasNew = circle.hasNewPlaces ?? false
