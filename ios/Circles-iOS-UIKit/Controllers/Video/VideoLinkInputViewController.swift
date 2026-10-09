@@ -12,6 +12,9 @@ class VideoLinkInputViewController: UIViewController {
     // MARK: - Properties
     weak var delegate: VideoLinkInputDelegate?
     private var selectedPlace: Place?
+    /// Who can see the link moment, chosen on the screen before this one.
+    var visibility: VideoVisibility = .followers
+    var audienceListId: String?
     private var videoMetadata: VideoMetadata?
     
     // MARK: - UI Elements
@@ -420,7 +423,8 @@ class VideoLinkInputViewController: UIViewController {
             "placeName": place.name,
             "title": metadata.title,
             "description": "",
-            "visibility": "public",
+            "visibility": visibility.rawValue,
+            "audienceListId": (visibility == .innerCircle ? audienceListId : nil) ?? NSNull(),
             "tags": []
         ]
         

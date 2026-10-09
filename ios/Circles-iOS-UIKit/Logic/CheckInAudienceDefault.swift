@@ -1,6 +1,6 @@
 import Foundation
 
-/// The check-in screen's "Who's it for?" choice, and the saved default
+/// The check-in screen's "Who's it for?" choice, and the remembered one (the last check-in's, since 2026-10-09)
 /// (Wes, 2026-10-08: "I want mine to be inner circle by default. Not
 /// connections"). Stored on the account as `preferences.checkInAudience`:
 /// "everyone", "connections", "justMe" or "list:<Inner Circle list id>".

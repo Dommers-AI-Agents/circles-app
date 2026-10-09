@@ -287,16 +287,10 @@ final class CheckInComposeViewController: BaseViewController {
         case .connections: title = "My connections"
         case .list(let id): title = lists.first { $0.id == id }?.name ?? "My connections"
         }
-        // Last row: keep this choice for every check-in
-        let isDefault = selectedAudience == CheckInAudienceChoice(storedValue: Self.savedDefault) ?? .connections
-        let makeDefault = UIAction(title: isDefault ? "\(title) is your default" : "Make \(title) my default",
-                                   image: UIImage(systemName: isDefault ? "checkmark.circle.fill" : "pin"),
-                                   attributes: isDefault ? .disabled : []) { [weak self] _ in
-            self?.saveDefaultAudience()
-        }
+        // No "make this my default" row: the last check-in's choice IS the
+        // default (Wes, 2026-10-09: remember the last selection everywhere)
         audienceButton.menu = UIMenu(children: [
-            UIMenu(options: .displayInline, children: [everyone, connections] + listActions + [justMe]),
-            UIMenu(options: .displayInline, children: [makeDefault])
+            UIMenu(options: .displayInline, children: [everyone, connections] + listActions + [justMe])
         ])
         audienceButton.setTitle("\(title)  ›", for: .normal)
         audienceButton.setTitleColor(Constants.Colors.label, for: .normal)
@@ -311,18 +305,18 @@ final class CheckInComposeViewController: BaseViewController {
 
     private static var defaultKey: String { "checkInAudienceDefault.\(AuthService.shared.currentUser?.id ?? "")" }
 
-    /// This device's copy first (set the moment the user picks it), then the
-    /// account's, so a default made on another phone still applies.
+    /// This device's copy first (written after each check-in), then the
+    /// account's, so the last choice made on another phone still applies.
     private static var savedDefault: String? {
         UserDefaults.standard.string(forKey: defaultKey) ?? AuthService.shared.currentUser?.preferences?.checkInAudience
     }
 
-    private func saveDefaultAudience() {
+    /// After a successful check-in: its audience opens the next one. Synced
+    /// to the account only when it changed, so routine check-ins cost no call.
+    private func rememberAudience() {
         let value = selectedAudience.storedValue
+        guard value != Self.savedDefault else { return }
         UserDefaults.standard.set(value, forKey: Self.defaultKey)
-        refreshAudienceMenu()
-        // The menu's last row now reads "… is your default"; a tap of feedback is enough
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
         UserService.shared.updateUserPreferences(checkInAudience: value) { result in
             if case .success(let user) = result { DispatchQueue.main.async { AuthService.shared.updateCurrentUser(user) } }
         }
@@ -419,6 +413,7 @@ final class CheckInComposeViewController: BaseViewController {
                     self.checkInButton.isEnabled = true
                     switch result {
                     case .success(let created):
+                        self.rememberAudience()
                         var message = isPrivate ? "Checked in privately — no one was notified." : "You're checked in!"
                         if let count = created.stats?.count, count > 1 {
                             message = "You're checked in\(isPrivate ? " privately" : ""). That's your \(CheckInHistoryFormatter.ordinal(count)) time here!"

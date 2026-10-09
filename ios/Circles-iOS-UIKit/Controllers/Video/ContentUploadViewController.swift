@@ -14,7 +14,8 @@ class ContentUploadViewController: UIViewController {
     weak var delegate: ContentUploadDelegate?
     private var selectedPlace: Place?
     private var pendingContent: ContentType?
-    private var selectedVisibility: VideoVisibility = .followers // Default to followers
+    /// Followers unless they shared to something else last time (seeded in viewDidLoad)
+    private var selectedVisibility: VideoVisibility = .followers
     /// The named Inner Circle list behind an Inner Circle moment, if one was picked.
     private var selectedAudienceListId: String?
     private var selectedTaggedUsers: [TaggedMomentUser] = []
@@ -81,6 +82,40 @@ class ContentUploadViewController: UIViewController {
         super.viewDidLoad()
         setupUI()
         createOptionButtons()
+        restoreLastAudience()
+    }
+
+    // MARK: - Remembered audience
+
+    /// Open on the audience of their last moment. A remembered list that's
+    /// gone falls back to Followers once the lists have loaded.
+    private func restoreLastAudience() {
+        guard let saved = AudienceMemory.load(.moment, userId: AuthService.shared.getUserId()),
+              let visibility = VideoVisibility(rawValue: saved.tier),
+              VideoVisibility.selectable.contains(visibility) else { return }
+        selectedVisibility = visibility
+        selectedAudienceListId = visibility == .innerCircle ? saved.listId : nil
+        InnerCircleManager.shared.primeIfNeeded { [weak self] in
+            DispatchQueue.main.async {
+                guard let self, self.selectedVisibility == .innerCircle else { return }
+                // An Inner Circle moment always names a list (never "anyone on
+                // my lists"), so a missing list id counts as gone too
+                let usable = InnerCircleManager.shared.usableLists.map(\.id)
+                let current = AudienceMemory.Choice(tier: self.selectedVisibility.rawValue, listId: self.selectedAudienceListId)
+                if self.selectedAudienceListId == nil || AudienceMemory.resolve(current, usableListIds: usable) == nil {
+                    self.selectedVisibility = .followers
+                    self.selectedAudienceListId = nil
+                }
+            }
+        }
+    }
+
+    /// Every successful share ends here: remember its audience, then hand the
+    /// moment on.
+    private func finishUpload(with moment: PlaceMoment) {
+        AudienceMemory.save(AudienceMemory.Choice(tier: selectedVisibility.rawValue, listId: selectedAudienceListId),
+                            for: .moment, userId: AuthService.shared.getUserId())
+        delegate?.contentUploadDidFinish(with: moment)
     }
     
     // MARK: - Setup
@@ -270,6 +305,10 @@ class ContentUploadViewController: UIViewController {
         showPrivacySelection { [weak self] in
             let linkInputVC = VideoLinkInputViewController()
             linkInputVC.delegate = self
+            // The audience they just picked; the link screen used to post
+            // every link moment as public regardless
+            linkInputVC.visibility = self?.selectedVisibility ?? .followers
+            linkInputVC.audienceListId = self?.selectedAudienceListId
             let nav = UINavigationController(rootViewController: linkInputVC)
             nav.modalPresentationStyle = .fullScreen
             self?.present(nav, animated: true)
@@ -580,7 +619,7 @@ extension ContentUploadViewController: VideoLinkInputDelegate {
     func videoLinkInputDidFinish(with video: PlaceVideo) {
         // Convert to PlaceMoment and notify delegate
         let moment = PlaceMoment(from: video)
-        delegate?.contentUploadDidFinish(with: moment)
+        finishUpload(with: moment)
         dismiss(animated: true)
     }
     
@@ -737,7 +776,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                 if self.shouldNavigateToMomentsOnSuccess {
                     self.navigateToMomentsTab(with: moment)
                 } else {
-                    self.delegate?.contentUploadDidFinish(with: moment)
+                    self.finishUpload(with: moment)
                     self.dismiss(animated: true)
                 }
             }
@@ -763,7 +802,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             // Embedded video already created
             let moment = PlaceMoment(from: video)
             loadingAlert.dismiss(animated: true) {
-                self.delegate?.contentUploadDidFinish(with: moment)
+                self.finishUpload(with: moment)
                 self.dismiss(animated: true)
             }
         }
@@ -771,7 +810,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
     
     private func navigateToMomentsTab(with moment: PlaceMoment) {
         // Notify delegate first
-        self.delegate?.contentUploadDidFinish(with: moment)
+        self.finishUpload(with: moment)
         
         // Dismiss this controller and navigate to moments
         self.dismiss(animated: true) { [weak self] in
@@ -1122,7 +1161,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                                 if self?.shouldNavigateToMomentsOnSuccess == true {
                                     self?.navigateToMomentsTab(with: moment)
                                 } else {
-                                    self?.delegate?.contentUploadDidFinish(with: moment)
+                                    self?.finishUpload(with: moment)
                                     self?.dismiss(animated: true)
                                 }
                             } else {
@@ -1220,7 +1259,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                                 if self?.shouldNavigateToMomentsOnSuccess == true {
                                     self?.navigateToMomentsTab(with: moment)
                                 } else {
-                                    self?.delegate?.contentUploadDidFinish(with: moment)
+                                    self?.finishUpload(with: moment)
                                     self?.dismiss(animated: true)
                                 }
                             } else {
