@@ -18,8 +18,11 @@ class HomePromptService {
     if (!userDoc.exists) return null;
     const user = { id: userDoc.id, ...userDoc.data() };
 
+    // The first 48 hours get only the first-week starter cards (and none in
+    // the first few hours, while the signup walkthrough runs) — they used to
+    // get nothing at all, exactly when they most needed a next step.
     const createdAt = toMillis(user.createdAt);
-    if (Number.isFinite(createdAt) && now - createdAt < NEW_ACCOUNT_GUARD_MS) return null;
+    const isNewAccount = Number.isFinite(createdAt) && now - createdAt < NEW_ACCOUNT_GUARD_MS;
 
     const state = user.homePrompt || {};
     const lastShownAt = toMillis(state.lastShownAt);
@@ -39,16 +42,18 @@ class HomePromptService {
     // a card today. That is the whole point of the tier: what Wes schedules
     // wins, and the rest of the ladder is untouched underneath it.
     let card = null;
-    try {
-      card = await this.overrideCard(ctx);
-    } catch (error) {
-      console.error('🃏 scheduled card lookup failed:', error.message);
+    if (!isNewAccount) {
+      try {
+        card = await this.overrideCard(ctx);
+      } catch (error) {
+        console.error('🃏 scheduled card lookup failed:', error.message);
+      }
     }
     if (card && withinWindow && !card.bypassInterval) card = null;
 
     if (!card) {
       if (withinWindow) return null;
-      card = await this.firstCandidate(ctx);
+      card = isNewAccount ? await this.safeStarterCard(ctx) : await this.firstCandidate(ctx);
     }
     if (!card) return null;
 
@@ -114,6 +119,8 @@ class HomePromptService {
     // feed, over the feed, is noise. The card's job is to tell someone
     // arriving about something they may not have tried.
     const builders = [
+      // First-week program: their own next step beats any feature tip
+      () => this.starterCard(ctx),
       () => this.postcardCard(ctx),
       () => this.favCoinsCard(ctx),
       () => this.scheduledCard(ctx),
@@ -128,6 +135,15 @@ class HomePromptService {
       }
     }
     return null;
+  }
+
+  async safeStarterCard(ctx) {
+    try {
+      return await this.starterCard(ctx);
+    } catch (error) {
+      console.error('🃏 starter card failed:', error.message);
+      return null;
+    }
   }
 
   isAcked(ctx, key) {
@@ -251,7 +267,7 @@ class HomePromptService {
   }
 }
 
-Object.assign(HomePromptService.prototype, require('./homePrompt/cards'));
+Object.assign(HomePromptService.prototype, require('./homePrompt/cards'), require('./homePrompt/starter').mixin);
 module.exports = new HomePromptService();
 module.exports.HomePromptService = HomePromptService;
 module.exports.HomePromptError = HomePromptError;

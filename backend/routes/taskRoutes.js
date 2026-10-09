@@ -47,6 +47,7 @@ router.post('/lunch-discovery', verifyCloudScheduler, tasks.lunchDiscovery);
 router.post('/weekend-recommendations', verifyCloudScheduler, tasks.weekendRecommendations);
 router.post('/reengagement', verifyCloudScheduler, tasks.reengagement);
 router.post('/tips', verifyCloudScheduler, tasks.tips);
+router.post('/starter-pushes', verifyCloudScheduler, tasks.starterPushes);
 router.post('/engagement-reminders', verifyCloudScheduler, tasks.engagementReminders);
 router.post('/weekly-summary', verifyCloudScheduler, tasks.weeklySummary);
 router.post('/monthly-summary', verifyCloudScheduler, tasks.monthlySummary);

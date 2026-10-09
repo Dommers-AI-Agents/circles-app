@@ -110,7 +110,7 @@ class EmailService {
 
     // Store email configuration
     this.fromAddress = process.env.EMAIL_FROM_ADDRESS || process.env.GMAIL_USER || process.env.SMTP_USER || 'noreply@circles-app.com';
-    this.fromName = process.env.EMAIL_FROM_NAME || 'Circles';
+    this.fromName = process.env.EMAIL_FROM_NAME || 'FavCircles';
   }
 
   // We sign our own mail. GoDaddy disabled DKIM on the cPanel account

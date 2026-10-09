@@ -288,10 +288,18 @@ extension MediaCaptureService: UIImagePickerControllerDelegate, UINavigationCont
             if picker.sourceType == .camera {
                 coordinate = LocationService.shared.cachedLocation?.coordinate
                 takenAt = Date()
-            } else if let fileURL = info[.imageURL] as? URL, let data = try? Data(contentsOf: fileURL) {
-                let meta = PhotoMetadataReader.metadata(from: data)
-                coordinate = meta.coordinate
-                takenAt = meta.takenAt
+            } else {
+                if let fileURL = info[.imageURL] as? URL, let data = try? Data(contentsOf: fileURL) {
+                    let meta = PhotoMetadataReader.metadata(from: data)
+                    coordinate = meta.coordinate
+                    takenAt = meta.takenAt
+                }
+                // The library's own record of the asset, when the app already
+                // has Photos access (nil otherwise — it never asks)
+                if let asset = info[.phAsset] as? PHAsset {
+                    if coordinate == nil, let spot = asset.location?.coordinate, CLLocationCoordinate2DIsValid(spot) { coordinate = spot }
+                    if takenAt == nil { takenAt = asset.creationDate }
+                }
             }
             let media = CapturedMedia(
                 type: .photo(image),

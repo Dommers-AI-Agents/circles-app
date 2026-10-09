@@ -59,10 +59,35 @@ describe('gates', () => {
     expect(state().lastShownAt).toBeUndefined();
   });
 
-  test('accounts younger than 48h get nothing', async () => {
-    seedUser(ME, { createdAt: iso(NOW - 47 * HOUR) });
+  test('accounts younger than 48h get only first-week starter cards, none in the first hours', async () => {
+    seedUser(ME, { createdAt: iso(NOW - 2 * HOUR) });
     homeTip('t1');
     expect(await pick()).toBeNull();
+    seedUser(ME, { createdAt: iso(NOW - 47 * HOUR) });
+    const card = await pick();
+    expect(card).toMatchObject({ key: 'starter_first_place', type: 'starter', target: 'add_place' });
+  });
+
+  test('starter steps follow what the person has done', () => {
+    const { starterStep } = require('../homePrompt/starter');
+    expect(starterStep({ realPlaces: 0 }).key).toBe('starter_first_place');
+    expect(starterStep({ realPlaces: 1, followingOthers: 0 }).key).toBe('starter_follow');
+    expect(starterStep({ realPlaces: 1, followingOthers: 3 }).key).toBe('starter_more_places');
+    expect(starterStep({ realPlaces: 4, followingOthers: 3, ownCircles: 0 }).key).toBe('starter_circle');
+    expect(starterStep({ realPlaces: 4, followingOthers: 3, ownCircles: 1, hasWidgetData: false }).key).toBe('starter_widgets');
+    expect(starterStep({ realPlaces: 4, followingOthers: 3, ownCircles: 1, hasWidgetData: true })).toBeNull();
+    expect(starterStep({ realPlaces: 2, followingOthers: 5 }).title).toBe('Your map has 2 places');
+  });
+
+  test('the sample place and the default follows do not count', async () => {
+    seedUser(ME, { createdAt: iso(NOW - 3 * DAY), following: ['wes', 'brit'] });
+    put('users', 'wes', { email: 'sgroiwes@gmail.com' });
+    put('users', 'brit', { email: 'brittanyvans@gmail.com' });
+    put('places', 'sample', { addedBy: ME, name: 'Sample', isSamplePlace: true, createdAt: iso(NOW - 3 * DAY) });
+    expect((await pick()).key).toBe('starter_first_place');
+    put('places', 'mine', { addedBy: ME, name: 'Mine', createdAt: iso(NOW - DAY) });
+    seedUser(ME, { createdAt: iso(NOW - 3 * DAY), following: ['wes', 'brit'] });
+    expect((await pick()).key).toBe('starter_follow');
   });
 
   test('a card shown within the last 2h blocks the next one', async () => {

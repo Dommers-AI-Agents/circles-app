@@ -267,8 +267,12 @@ const getDiscoverUsers = async (req, res) => {
         // No doc yet (new account, or the nightly job hasn't run). Fall back to
         // a shallow live walk of the follow graph so the section is never empty
         // just because the batch hasn't caught up.
+        // The default accounts (Wes, Brittany) follow nearly everyone, so
+        // "Followed by Wes" was a random slice of the user base — only people
+        // they chose to follow count as a bridge (new-user audit, 2026-10-09)
+        const defaults = await require('../services/defaultAccounts').defaultFollowIds(db);
         const viaMap = new Map();
-        const followedIds = [...following].slice(0, 50);
+        const followedIds = [...following].filter((id) => !defaults.has(id)).slice(0, 50);
         if (followedIds.length > 0) {
           const followedDocs = await db.getAll(
             ...followedIds.map((id) => db.collection(COLLECTIONS.USERS).doc(id))

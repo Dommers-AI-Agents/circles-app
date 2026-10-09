@@ -54,11 +54,15 @@ const daysBetween = (a, b) => Math.abs(a.getTime() - b.getTime()) / 86400000;
  * Pure: which users get the email this run. `users` are plain user docs with
  * their id. Returns { selected, skipped } where skipped counts each reason.
  */
-const selectCandidates = (users, { now = new Date(), maxAgeDays = maxAccountAgeDays() } = {}) => {
+const selectCandidates = (users, { now = new Date(), maxAgeDays = maxAccountAgeDays(), defaultIds = new Set() } = {}) => {
   const selected = [];
   const skipped = { following_enough: 0, no_usable_email: 0, internal: 0, too_old: 0, opted_out: 0, sent_recently: 0 };
   for (const user of users) {
-    const followingCount = Array.isArray(user.following) ? user.following.length : (user.followingCount || 0);
+    // Wes and Brittany are followed for everyone at signup — they don't count
+    // (one real follow used to switch this email off)
+    const followingCount = Array.isArray(user.following)
+      ? user.following.filter((id) => !defaultIds.has(id)).length
+      : (user.followingCount || 0);
     if (followingCount >= FOLLOW_THRESHOLD) { skipped.following_enough++; continue; }
     const email = (user.email || '').trim();
     if (!email || email.endsWith('@privaterelay.appleid.com')) { skipped.no_usable_email++; continue; }
@@ -195,14 +199,15 @@ const run = async ({
   // read, and candidates are picked a page at a time — only the few new
   // accounts that qualify are kept in memory.
   const idx = await suggestionEngine.buildIndexes();
+  const defaultIds = await require('./defaultAccounts').defaultFollowIds(db());
   let selected = [];
   let skipped = selectCandidates([]).skipped;
   if (onlyUserId) {
     const doc = await db().collection(COLLECTIONS.USERS).doc(onlyUserId).get();
-    ({ selected, skipped } = selectCandidates(doc.exists ? [{ id: doc.id, ...doc.data() }] : []));
+    ({ selected, skipped } = selectCandidates(doc.exists ? [{ id: doc.id, ...doc.data() }] : [], { defaultIds }));
   } else {
     await forEachPage(db().collection(COLLECTIONS.USERS), (docs) => {
-      const page = selectCandidates(docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      const page = selectCandidates(docs.map((doc) => ({ id: doc.id, ...doc.data() })), { defaultIds });
       selected.push(...page.selected);
       for (const [reason, n] of Object.entries(page.skipped)) skipped[reason] += n;
     });

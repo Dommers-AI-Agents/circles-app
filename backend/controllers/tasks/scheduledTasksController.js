@@ -44,6 +44,12 @@ exports.reengagement = scheduledTask({
   run: async () => ({ message: 'Reengagement notifications sent successfully', result: await scheduledNotifications.sendReengagementNotifications() })
 });
 
+// First-week pushes (new accounts, 6 PM local on days 1, 2 and 4), hourly tick.
+exports.starterPushes = scheduledTask({
+  name: 'starter-pushes', log: '🌱 Starter pushes triggered via API', failure: 'Failed to send starter pushes',
+  run: async (req) => ({ message: 'Starter pushes done', result: await require('../../services/starterPushService').run({ dryRun: flag(req, 'dryRun') }) })
+});
+
 // "Did you know…" tips, hourly tick; the service gates by local weekday + hour.
 // Test hooks: ?dryRun=true; ?userId=<id>&force=true
 exports.tips = scheduledTask({

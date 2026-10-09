@@ -10,10 +10,7 @@ const db = getFirestore();
 // Every new user automatically FOLLOWS these accounts (the most content-rich
 // ones), so their network isn't empty on day one. Combined with all-public
 // default circles, following is enough to see these users' places.
-const DEFAULT_FOLLOW_EMAILS = [
-  'sgroiwes@gmail.com',      // Wes
-  'brittanyvans@gmail.com'   // Brittany
-];
+const { DEFAULT_FOLLOW_EMAILS } = require('./defaultAccounts');
 
 // Retired 2026-10-09 (Wes): new users no longer get an automatic connection
 // request — following Wes and Brittany is enough to start. Kept so
