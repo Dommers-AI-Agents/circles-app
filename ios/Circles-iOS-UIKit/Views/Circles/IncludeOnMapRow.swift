@@ -19,7 +19,7 @@ final class IncludeOnMapRow: UIView {
         translatesAutoresizingMaskIntoConstraints = false
         titleLabel.text = CircleMapCopy.title
         titleLabel.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
-        titleLabel.textColor = Constants.Colors.darkGray
+        titleLabel.textColor = .label
         noteLabel.font = .systemFont(ofSize: 13)
         noteLabel.textColor = .secondaryLabel
         noteLabel.numberOfLines = 0

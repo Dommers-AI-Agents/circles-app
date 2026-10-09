@@ -71,6 +71,13 @@ class PlaceDetailViewController: BaseViewController {
     
     // MARK: - Photos & Moments section
 
+    /// "Your photos from here" (own saves): library photos taken at this place
+    private lazy var myPhotosView: PlaceMyPhotosView = {
+        let view = PlaceMyPhotosView()
+        view.onAdd = { [weak self] images in self?.uploadPhotos(images) }
+        return view
+    }()
+
     private lazy var photosMomentsView: PlacePhotosMomentsView = {
         let view = PlacePhotosMomentsView()
         view.onAddPhoto = { [weak self] button in
@@ -715,6 +722,7 @@ class PlaceDetailViewController: BaseViewController {
         // posted here — for everyone, not just the person who saved it
         let canEdit = place.isAddedByCurrentUser || isHomeOrWorkPlace
         infoContainerView.addSubview(photosMomentsView)
+        infoContainerView.addSubview(myPhotosView)
         
         if let tags = place.tags, !tags.isEmpty {
             infoContainerView.addSubview(tagsTitleLabel)
@@ -1034,6 +1042,17 @@ class PlaceDetailViewController: BaseViewController {
             photosMomentsView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium)
         ])
         lastAnchor = photosMomentsView.bottomAnchor
+        // Collapses to nothing when there's nothing to offer
+        NSLayoutConstraint.activate([
+            myPhotosView.topAnchor.constraint(equalTo: lastAnchor, constant: Constants.Spacing.small),
+            myPhotosView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
+            myPhotosView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium)
+        ])
+        lastAnchor = myPhotosView.bottomAnchor
+        if AddToCircleGate.isOwnSave(place, currentUserId: AuthService.shared.getUserId() ?? ""),
+           let coordinate = place.location?.clLocation?.coordinate {
+            myPhotosView.load(near: coordinate)
+        }
         _ = canEdit
         
         // Add tags if available

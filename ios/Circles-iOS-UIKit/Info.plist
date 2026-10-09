@@ -175,7 +175,7 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>FavCircles saves photos you choose to download, like an event's album or your profile QR code, to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>FavCircles needs access to your photo library to select photos for your places.</string>
+	<string>FavCircles uses your photos to add pictures to places and, when you ask, to find the places your photos were taken at. Your photos stay on your phone unless you add them to a place.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>PLIST_VERSION</key>

@@ -673,7 +673,7 @@
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "FavCircles uses your location in the background only for features you turn on: an alert when you walk into a place you have saved, and Visit Tracking to remember places you visit. You can turn either off in Settings at any time.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "FavCircles needs your location to show places near you and add new places to your circles.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "FavCircles needs permission to save photos to your library.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "FavCircles needs access to your photos to upload images for places and profiles.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "FavCircles uses your photos to add pictures to places and, when you ask, to find the places your photos were taken at. Your photos stay on your phone unless you add them to a place.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIBackgroundModes = "audio remote-notification fetch processing location";
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
@@ -722,7 +722,7 @@
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "FavCircles uses your location in the background only for features you turn on: an alert when you walk into a place you have saved, and Visit Tracking to remember places you visit. You can turn either off in Settings at any time.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "FavCircles needs your location to show places near you and add new places to your circles.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "FavCircles needs permission to save photos to your library.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "FavCircles needs access to your photos to upload images for places and profiles.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "FavCircles uses your photos to add pictures to places and, when you ask, to find the places your photos were taken at. Your photos stay on your phone unless you add them to a place.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIBackgroundModes = "audio remote-notification fetch processing location";
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;

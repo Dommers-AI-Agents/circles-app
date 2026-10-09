@@ -1854,6 +1854,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             },
             UIAction(title: "From photos", image: UIImage(systemName: "photo.on.rectangle")) { [weak self] _ in
                 self?.addPlacesFromPhotos()
+            },
+            // A trip, dates or an album → a new circle (Wes, 2026-10-09)
+            UIAction(title: "Build a circle from my photos", image: UIImage(systemName: "photo.stack")) { [weak self] _ in
+                guard let self else { return }
+                let scan = PhotoScanViewController(savedPlaces: self.userOwnPlaces, circles: self.circles)
+                self.navigationController?.pushViewController(scan, animated: true)
             }
         ])
         quickAddPlaceButton.showsMenuAsPrimaryAction = true
