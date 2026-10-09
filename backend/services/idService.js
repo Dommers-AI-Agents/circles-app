@@ -30,16 +30,19 @@ exports.normalizeUserId = (userId) => {
 };
 
 /**
- * Check if two IDs refer to the same user
- * Handles comparison between complex and simple formats
- * 
+ * Same person: both ids present and equal. A person's id is one plain key
+ * (their users doc id); an audit of every stored reference (2026-10-09)
+ * found no second spellings, so matching is exact. Old dotted Apple ids are
+ * translated only where they can still arrive — sign-in and the auth
+ * middleware, via normalizeUserId.
+ *
  * @param {string} id1 - First user ID
  * @param {string} id2 - Second user ID
  * @returns {boolean} - True if IDs refer to the same user
  */
 exports.isSameUser = (id1, id2) => {
   if (!id1 || !id2) return false;
-  return this.normalizeUserId(id1) === this.normalizeUserId(id2);
+  return String(id1) === String(id2);
 };
 
 /**

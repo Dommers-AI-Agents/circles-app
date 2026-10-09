@@ -172,22 +172,23 @@ describe('canViewMoment', () => {
   });
 });
 
-// Apple sign-in writes ids as "000454.<uid>.2127" in some places and the bare
-// uid in others. Every comparison here must see through that, or those accounts
-// lose access to their own content.
+// A person is one plain key (Wes, 2026-10-09). The 2026-10-09 audit found no
+// stored "000454.<uid>.2127" spellings, so the owner and guest-list checks
+// match exactly; an old dotted id is nobody.
 describe('Apple-format ids', () => {
   const complex = '000454.9b5eeac93282416c9bc6dcecbc49b40f.2127';
   const simple = '9b5eeac93282416c9bc6dcecbc49b40f';
 
-  test('the owner check sees both shapes as the same person', () => {
-    expect(canViewAtTier(complex, 'private', simple, strangerCtx())).toBe(true);
-    expect(canViewCircle({ owner: simple, privacy: 'private' }, complex, strangerCtx())).toBe(true);
-    expect(isPlaceVisibleToViewer({ addedBy: complex, privacy: 'private' }, simple, strangerCtx())).toBe(true);
+  test('the owner check matches the exact key only', () => {
+    expect(canViewAtTier(simple, 'private', simple, strangerCtx())).toBe(true);
+    expect(canViewCircle({ owner: simple, privacy: 'private' }, simple, strangerCtx())).toBe(true);
+    expect(canViewCircle({ owner: simple, privacy: 'private' }, complex, strangerCtx())).toBe(false);
+    expect(isPlaceVisibleToViewer({ addedBy: complex, privacy: 'private' }, simple, strangerCtx())).toBe(false);
   });
 
-  test('a guest list entry matches across shapes', () => {
-    const circle = { owner: 'someone', privacy: 'private', sharedWith: [complex] };
-    expect(canViewCircle(circle, simple, strangerCtx())).toBe(true);
+  test('a guest list entry matches the exact key', () => {
+    expect(canViewCircle({ owner: 'someone', privacy: 'private', sharedWith: [simple] }, simple, strangerCtx())).toBe(true);
+    expect(canViewCircle({ owner: 'someone', privacy: 'private', sharedWith: [complex] }, simple, strangerCtx())).toBe(false);
   });
 
   test('tier lookups match a normalised relationship set', () => {

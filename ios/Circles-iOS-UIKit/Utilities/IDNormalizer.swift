@@ -1,37 +1,22 @@
 import Foundation
 
-/// Utility class to handle user ID normalization between complex and simple formats
-/// Complex format: 000454.9b5eeac93282416c9bc6dcecbc49b40f.2127
-/// Simple format: 9b5eeac93282416c9bc6dcecbc49b40f
+/// A person's id is one plain key: their users-record id, exactly as the
+/// server sends it. Two ids are the same person only when they're equal.
+/// (Until 2026-10 this split Apple's dotted "000454.<hex>.<n>" ids; an audit
+/// of every stored reference found none left, so matching is now exact —
+/// Wes, 2026-10-09.) The server still translates old spellings at sign-in.
 class IDNormalizer {
     
-    /// Normalizes a user ID to its simple format
-    /// - Parameter userId: The user ID to normalize (can be complex or simple format)
-    /// - Returns: The normalized (simple) user ID, or the original if already simple
+    /// The id itself, or nil when missing/empty
     static func normalize(_ userId: String?) -> String? {
         guard let userId = userId, !userId.isEmpty else { return nil }
-        
-        // If complex format (contains dots), extract the Firebase UID (middle part)
-        if userId.contains(".") {
-            let parts = userId.split(separator: ".")
-            if parts.count >= 2 {
-                // No logging here: this runs per place per filter pass
-                return String(parts[1])
-            }
-        }
-        
-        // Already in simple format
         return userId
     }
     
-    /// Check if two IDs refer to the same user
-    /// - Parameters:
-    ///   - id1: First user ID
-    ///   - id2: Second user ID
-    /// - Returns: True if IDs refer to the same user
+    /// Same person: both present and equal
     static func isSameUser(_ id1: String?, _ id2: String?) -> Bool {
-        guard let id1 = id1, let id2 = id2 else { return false }
-        return normalize(id1) == normalize(id2)
+        guard let id1 = normalize(id1), let id2 = normalize(id2) else { return false }
+        return id1 == id2
     }
     
     /// Check if an ID is in complex format
