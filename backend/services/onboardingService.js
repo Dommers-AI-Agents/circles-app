@@ -15,10 +15,9 @@ const DEFAULT_FOLLOW_EMAILS = [
   'brittanyvans@gmail.com'   // Brittany
 ];
 
-// New users also receive a pending CONNECTION request from these accounts
-// (a two-way relationship they can accept). Following is passive/one-way and
-// needs no acceptance; a connection request is the active social nudge — Wes
-// ONLY (his call, 2026-08-19): Brittany follows new users but doesn't request.
+// Retired 2026-10-09 (Wes): new users no longer get an automatic connection
+// request — following Wes and Brittany is enough to start. Kept so
+// sendDefaultConnectionRequests (now uncalled) still documents the old flow.
 const DEFAULT_CONNECT_EMAILS = [
   'sgroiwes@gmail.com'       // Wes
 ];
@@ -152,9 +151,9 @@ class OnboardingService {
       // not fail onboarding)
       await OnboardingService.followDefaultUsers(userId, userData);
 
-      // And greet them with a pending connection request from each default
-      // account (best-effort as well)
-      await OnboardingService.sendDefaultConnectionRequests(userId, userData);
+      // No automatic connection request any more (Wes, 2026-10-09): new
+      // users just follow Wes and Brittany, so they start with people on
+      // their map without a request from a stranger to answer.
 
       // Personal touch: Wes sends one favorite place as a directed suggestion,
       // so their "For You" inbox has a real, human first item (best-effort)
@@ -358,7 +357,7 @@ class OnboardingService {
         const connectionData = createConnection(
           senderId,
           userId,
-          `Welcome to Circles! I'm ${senderFirstName} — let's connect so you can see my favorite places on your map.`
+          `Welcome to FavCircles! I'm ${senderFirstName} — let's connect so you can see my favorite places on your map.`
         );
         const ref = await db.collection(COLLECTIONS.CONNECTIONS).add(connectionData);
 
@@ -413,7 +412,7 @@ class OnboardingService {
 
       // Build the directed suggestion (author = Wes, recipient = the new user)
       const suggestionData = createSuggestion({
-        message: `Welcome to Circles! Here's one of my favorites to get you started — ${place.name}. ` +
+        message: `Welcome to FavCircles! Here's one of my favorites to get you started — ${place.name}. ` +
                  `Tap to check it out, then save your own favorite places so your friends can find them too.`,
         placeId: place.id,
         // _id mirrored alongside id — the iOS Place decoder keys on _id, and a

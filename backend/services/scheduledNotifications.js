@@ -320,15 +320,15 @@ class ScheduledNotifications {
       // Viral-growth review 2026-10-01: walk users a page at a time, reading
       // only the two fields the window check needs, instead of one snapshot
       // of every whole user doc. Only the lapsed few cost more than that.
-      for await (const docs of pagedQuery(db.collection('users'), { select: ['notificationPreferences', 'lastLogin'] })) {
+      for await (const docs of pagedQuery(db.collection('users'), { select: ['notificationPreferences', 'lastLogin', 'lastActive', 'lastAppOpenAt'] })) {
       for (const doc of docs) {
         const user = { id: doc.id, ...doc.data() };
         try {
           if (user.notificationPreferences?.reengagement === false) { skipped++; continue; }
-          if (!user.lastLogin) { skipped++; continue; }
-
-          const lastLogin = new Date(user.lastLogin);
-          if (isNaN(lastLogin.getTime()) || lastLogin > sevenDaysAgo || lastLogin < fourteenDaysAgo) {
+          // Last time they actually USED the app (lastLogin only moves on a
+          // sign-in, so someone using it daily got "we miss you" in week 2)
+          const lastLogin = ScheduledNotifications.lastSeen(user);
+          if (!lastLogin || lastLogin > sevenDaysAgo || lastLogin < fourteenDaysAgo) {
             skipped++;
             continue;
           }
@@ -492,6 +492,17 @@ class ScheduledNotifications {
   }
 }
 
+/** Pure: the latest of lastActive / lastAppOpenAt / lastLogin, or null. */
+ScheduledNotifications.lastSeen = (user) => {
+  const toDate = (v) => {
+    if (!v) return null;
+    const d = typeof v.toDate === 'function' ? v.toDate() : new Date(v);
+    return isNaN(d.getTime()) ? null : d;
+  };
+  const dates = [user.lastActive, user.lastAppOpenAt, user.lastLogin].map(toDate).filter(Boolean);
+  return dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))) : null;
+};
+
 // Create singleton instance
 const scheduledNotifications = new ScheduledNotifications();
 
@@ -501,5 +512,6 @@ module.exports = {
   stop: () => scheduledNotifications.stop(),
   sendDiscoveryPrompts: (timeOfDay) => scheduledNotifications.sendDiscoveryPrompts(timeOfDay),
   sendWeekendRecommendations: () => scheduledNotifications.sendWeekendRecommendations(),
-  sendReengagementNotifications: () => scheduledNotifications.sendReengagementNotifications()
+  sendReengagementNotifications: () => scheduledNotifications.sendReengagementNotifications(),
+  lastSeen: ScheduledNotifications.lastSeen
 };

@@ -472,45 +472,46 @@ See you on the map!
     try {
       const greeting = name ? `Hi ${name},` : 'Hi there,';
       const htmlGreeting = escapeHtml(greeting);
-      const subject = 'Welcome to Circles! 🎉 Here\'s how to get started';
+      // Personal-map framing + FavCircles name (new-user audit, 2026-10-09)
+      const subject = 'Welcome to FavCircles — start your map 🗺️';
 
       const htmlContent = `
         <div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1a202c;">
-          <h1 style="font-size: 22px;">Welcome to Circles! 🎉</h1>
+          <h1 style="font-size: 22px;">Welcome to FavCircles! 🗺️</h1>
           <p style="font-size: 15px; line-height: 1.6;">${htmlGreeting}</p>
           <p style="font-size: 15px; line-height: 1.6;">
-            Circles is where you and your friends share the places you actually love —
-            no strangers' reviews, just recommendations from people you trust.
+            FavCircles is your personal map of the places you love — and a window into the maps of people you follow.
+            No strangers' reviews, just favorites from people you trust.
           </p>
           <p style="font-size: 15px; line-height: 1.6;"><strong>Two quick things to do first:</strong></p>
           <ol style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
-            <li><strong>Add a few of your favorite places</strong> — tap "Add Your Places" on the home screen. Your go-to restaurant, coffee spot, anywhere you'd tell a friend about.</li>
-            <li><strong>Find your friends</strong> — the more people you connect with, the more great places show up on your map.</li>
+            <li><strong>Start your map</strong> — tap "Add Place" and save a few favorites: your go-to restaurant, coffee spot, anywhere you'd tell a friend about.</li>
+            <li><strong>Explore other people's maps</strong> — follow people and their favorite places show up on yours.</li>
           </ol>
           <p style="font-size: 15px; line-height: 1.6;">
-            That's it. Everything else — circles, the map, sharing — builds from there.
+            Group your places into circles (lists like "Want to Try"), and check out the Widgets tab for weather, workouts, postcards and more.
           </p>
           <div style="text-align:center;margin:22px 0 6px;">
             <a href="https://api.favcircles.com/app/open?path=add-place" style="display:inline-block;background:#3478F6;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 26px;border-radius:9px;">Add Your First Place</a>
           </div>
-          <p style="font-size: 15px; line-height: 1.6;">— Wesley &amp; the Circles team</p>
+          <p style="font-size: 15px; line-height: 1.6;">— Wesley &amp; the FavCircles team</p>
         </div>`;
 
-      const textContent = `Welcome to Circles! 🎉
+      const textContent = `Welcome to FavCircles! 🗺️
 
 ${greeting}
 
-Circles is where you and your friends share the places you actually love — no strangers' reviews, just recommendations from people you trust.
+FavCircles is your personal map of the places you love — and a window into the maps of people you follow. No strangers' reviews, just favorites from people you trust.
 
 Two quick things to do first:
-1. Add a few of your favorite places — tap "Add Your Places" on the home screen.
-2. Find your friends — the more people you connect with, the more great places show up on your map.
+1. Start your map — tap "Add Place" and save a few favorites.
+2. Explore other people's maps — follow people and their favorite places show up on yours.
 
-That's it. Everything else builds from there.
+Group your places into circles (lists like "Want to Try"), and check out the Widgets tab for weather, workouts, postcards and more.
 
 Add your first place: https://api.favcircles.com/app/open?path=add-place
 
-— Wesley & the Circles team`;
+— Wesley & the FavCircles team`;
 
       await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent });
       console.log(`✅ Welcome email sent to ${toEmail}`);
