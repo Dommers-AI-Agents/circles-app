@@ -83,9 +83,9 @@ extension CirclesHomeViewController {
         UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
     }
 
-    /// The mode control belongs to an active search — it appears with the
-    /// first keystroke and goes away with Cancel, so the home screen is
-    /// unchanged for anyone not searching.
+    /// The mode control belongs to an active search — it appears when the
+    /// bar takes focus (with the search layout) and goes away with Cancel,
+    /// so the home screen is unchanged for anyone not searching.
     func setSearchModeControlVisible(_ visible: Bool) {
         searchModeControl.isHidden = !visible
     }
@@ -128,7 +128,9 @@ extension CirclesHomeViewController {
     /// found", is the answer.
     func hideSearchResults() {
         searchResultsSheet.hide()
-        if !isSearching { exitSearchLayout() }
+        // A focused bar keeps the search layout even with the text cleared
+        // (the avatar row would come back under the Places/People control)
+        if !isSearching && !searchBar.isFirstResponder { exitSearchLayout() }
     }
 
     /// Tap on the map, pull the list down, or tap the handle: the sheet drops

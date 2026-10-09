@@ -119,7 +119,10 @@ extension CirclesHomeViewController: UISearchBarDelegate {
 
     func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
         refreshSearchOriginIfStale()
-        setSearchModeControlVisible(true)
+        // The search layout from the first tap, not the first keystroke: the
+        // Places/People control used to sit over the avatar row until a
+        // letter was typed (Wes, 2026-10-09)
+        enterSearchLayout()
         searchBar.setShowsCancelButton(true, animated: true)
         // Refocusing a collapsed sheet expands it again
         expandSearchSheet()
