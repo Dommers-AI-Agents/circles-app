@@ -177,6 +177,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         searchBar.placeholder = HomeSearchMode.places.placeholder   // "Search anything"
         searchBar.searchBarStyle = .minimal
         searchBar.backgroundColor = Constants.Colors.background
+        // One ✕, not two: iOS 26 draws the bar's Cancel button as an ✕, so
+        // the field's own clear (⊗) sat right beside it looking like a twin.
+        // Cancel clears the text and ends the search (Wes, 2026-10-09).
+        searchBar.searchTextField.clearButtonMode = .never
         searchBar.translatesAutoresizingMaskIntoConstraints = false
         return searchBar
     }()
