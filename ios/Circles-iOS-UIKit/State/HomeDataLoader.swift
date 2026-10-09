@@ -89,6 +89,7 @@ final class HomeDataLoader {
         let group = DispatchGroup()
 
         var myCirclesResult: [Circle] = []
+        var myCirclesFetched = false   // a failed request leaves the list empty, which is not "no circles"
         var networkCirclesResult: [Circle] = []
         var activitiesResult: [Activity] = []
         var reelsResult: [PlaceVideo] = []
@@ -99,6 +100,7 @@ final class HomeDataLoader {
             switch result {
             case .success(let circles):
                 myCirclesResult = circles
+                myCirclesFetched = true
                 Logger.debug("✅ Fetched \(circles.count) user circles")
             case .failure(let error):
                 Logger.debug("❌ Failed to fetch user circles: \(error)")
@@ -158,6 +160,7 @@ final class HomeDataLoader {
             guard let self = self else { return }
 
             self.state.circles = myCirclesResult
+            if myCirclesFetched { self.state.markCirclesLoaded() }
             self.state.networkCircles = networkCirclesResult
             self.delegate?.loaderDidLoadFeed(activities: activitiesResult, reels: reelsResult)
 
@@ -172,6 +175,8 @@ final class HomeDataLoader {
             // visible map region instead — only own circles are fan-out fetched.
             let allCircles = myCirclesResult
             guard !allCircles.isEmpty else {
+                // Circles answered and there are none: no own places either
+                if myCirclesFetched { self.state.markOwnPlacesLoaded() }
                 self.isMapDataReady = true
                 self.delegate?.updateMapWhenReady()
                 self.isLoadingPlaces = false
@@ -292,6 +297,7 @@ final class HomeDataLoader {
                 case .success(let circles):
                     Logger.debug("✅ Successfully fetched \(circles.count) user circles")
                     self.state.circles = circles
+                    self.state.markCirclesLoaded()
                     self.fetchAllPlacesFromCircles()
                     completion?()
                     // Don't mark as loaded here - wait until places are fetched
@@ -309,10 +315,10 @@ final class HomeDataLoader {
                         return
                     }
 
-                    // Show empty state instead of sample circles
+                    // Show empty state instead of sample circles. The own-places
+                    // list is left as it was: a failed request is not "no places"
                     self.state.circles = []
                     self.state.allPlaces = []
-                    self.state.userOwnPlaces = []
                     self.isLoadingCircles = false
                     self.isPerformingInitialLoad = false
                     self.delegate?.hideLoadingState()
@@ -418,6 +424,7 @@ final class HomeDataLoader {
             Logger.debug("📍 No circles to fetch places from")
             state.allPlaces = []
             state.userOwnPlaces = []
+            if state.circlesLoaded { state.markOwnPlacesLoaded() }
             delegate?.mapRefreshDidFilter([])
 
             // Mark data as ready (empty) and update map

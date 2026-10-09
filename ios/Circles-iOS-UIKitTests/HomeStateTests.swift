@@ -74,6 +74,23 @@ struct HomeStateTests {
         #expect(notified.map { $0.count } == [1, 0], "the map is told on every own-places write, including the clear")
     }
 
+    @Test func onlyARealAnswerCountsAsLoaded() {
+        // A failed request writes nothing; a clear or a cache paint writes an
+        // empty/partial list. None of those may read as "this person has no
+        // places" (that showed the Start-your-map card to a 900-place account).
+        let state = HomeState()
+        #expect(!state.ownPlacesLoaded && !state.circlesLoaded)
+        state.userOwnPlaces = []
+        #expect(!state.ownPlacesLoaded, "an empty write is not an answer")
+        state.userOwnPlaces = [place("a", circle: nil, addedBy: me)]
+        #expect(!state.ownPlacesLoaded, "a cache paint is not an answer either")
+        state.markOwnPlacesLoaded()
+        state.markCirclesLoaded()
+        #expect(state.ownPlacesLoaded && state.circlesLoaded)
+        state.invalidateCache()
+        #expect(state.ownPlacesLoaded, "a later clear doesn't unlearn the answer")
+    }
+
     // MARK: Dedupe
 
     @Test func dedupeKeepsFirstOccurrenceInOrder() {

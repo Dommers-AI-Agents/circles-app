@@ -2365,6 +2365,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                     circle.places?.contains(place.id) == true
                 }
             }
+            state.markOwnPlacesLoaded()   // a real answer, even when it's "none"
             Logger.debug("🗺️ [Progressive] Populated map with \(places.count) full places")
             
             // Update available categories now that we have places
@@ -2509,7 +2510,9 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             emptyStateView.isHidden = searchPlan.hasRows
             emptyStateLabel.text = "No results found"
         } else {
-            let isEmpty = isShowingNetworkCircles ? networkCircles.isEmpty : circles.isEmpty
+            // "No circles yet" only once the server said so; a failed load
+            // used to show it (with "Add Your Places") to a 900-place account
+            let isEmpty = isShowingNetworkCircles ? networkCircles.isEmpty : (state.circlesLoaded && circles.isEmpty)
             emptyStateView.isHidden = !isEmpty
             
             // Update empty state message based on filter

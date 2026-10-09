@@ -11,7 +11,7 @@ extension CirclesHomeViewController {
     }
 
     func updateStartMapCard() {
-        let show = state.ownPlacesLoaded && !isLoadingPlaces && !isSearching && !startMapCardDismissed
+        let show = state.circlesLoaded && state.ownPlacesLoaded && !isLoadingPlaces && !isSearching && !startMapCardDismissed
             && AuthService.shared.currentUser != nil && !hasOwnRealPlace
         if show {
             if startMapCard == nil { installStartMapCard() }

@@ -31,11 +31,20 @@ final class HomeState {
     /// The user's own places only. Changing this notifies the embedded map so
     /// it can center on the user's favorites (see `onUserOwnPlacesChanged`).
     var userOwnPlaces: [Place] = [] {
-        didSet { ownPlacesLoaded = true; onUserOwnPlacesChanged?(userOwnPlaces) }
+        didSet { onUserOwnPlacesChanged?(userOwnPlaces) }
     }
-    /// Set by the first write to `userOwnPlaces` — "none yet" means none,
-    /// not "not loaded yet" (the Start-your-map card waits for it)
+    /// True once the server has actually answered about the user's own
+    /// places: a full fetch, or circles known to be empty. Only those paths
+    /// call `markOwnPlacesLoaded()`; a failed request, a cache paint or a
+    /// clear never do. (Setting this on *any* write showed the Start-your-map
+    /// card and the "Add 3 places" sheet to a 900-place account after one
+    /// failed circles request — Wes, 2026-10-09.)
     private(set) var ownPlacesLoaded = false
+    func markOwnPlacesLoaded() { ownPlacesLoaded = true }
+    /// Same for circles: "You don't have any circles yet" waits for a
+    /// successful answer, not a failed one.
+    private(set) var circlesLoaded = false
+    func markCirclesLoaded() { circlesLoaded = true }
     /// Fired on every write to `userOwnPlaces`, whoever writes it.
     var onUserOwnPlacesChanged: (([Place]) -> Void)?
     /// Network places fetched for search (the search overlay's second source).
