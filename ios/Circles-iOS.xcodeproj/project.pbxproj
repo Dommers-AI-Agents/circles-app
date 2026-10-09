@@ -668,8 +668,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSCameraUsageDescription = "FavCircles uses your camera to take photos of places, update your profile picture, and scan a store's QR code for rewards.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "FavCircles uses your contacts to help you find friends, and to show the people you added most recently in the New Contacts widget. Contacts shown there stay on your phone.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "FavCircles reads your sleep from Apple Health to show your Sleep Score. It never writes to Health or shares it.";
-				INFOPLIST_KEY_NSContactsUsageDescription = "FavCircles needs access to your contacts to help you find friends.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "FavCircles uses your location in the background only for features you turn on: an alert when you walk into a place you have saved, and Visit Tracking to remember places you visit. You can turn either off in Settings at any time.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "FavCircles needs your location to show places near you and add new places to your circles.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "FavCircles needs permission to save photos to your library.";
@@ -717,8 +717,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSCameraUsageDescription = "FavCircles uses your camera to take photos of places, update your profile picture, and scan a store's QR code for rewards.";
+				INFOPLIST_KEY_NSContactsUsageDescription = "FavCircles uses your contacts to help you find friends, and to show the people you added most recently in the New Contacts widget. Contacts shown there stay on your phone.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "FavCircles reads your sleep from Apple Health to show your Sleep Score. It never writes to Health or shares it.";
-				INFOPLIST_KEY_NSContactsUsageDescription = "FavCircles needs access to your contacts to help you find friends.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "FavCircles uses your location in the background only for features you turn on: an alert when you walk into a place you have saved, and Visit Tracking to remember places you visit. You can turn either off in Settings at any time.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "FavCircles needs your location to show places near you and add new places to your circles.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "FavCircles needs permission to save photos to your library.";
@@ -1214,7 +1214,7 @@
 			repositoryURL = "https://github.com/Dommers-AI-Agents/favcircles-widgets";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.38.1;
+				minimumVersion = 0.39.0;
 			};
 		};
 		FAB6000000000000000000D0 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */ = {
