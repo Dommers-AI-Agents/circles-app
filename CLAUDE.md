@@ -620,7 +620,13 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
     `WidgetContext.api<T>()`; JSON through `WidgetJSON`; date copy through
     `WidgetDateCopy`; sheets/fields/thumbnails through `WidgetSheet` and `WidgetUI`;
     pure logic and copy enums live in `FavWidgetsCore` (Mac-testable), not in a
-    widget folder. **Shares are one bubble** (Wes, 2026-10-05): a Share sends the card as
+    widget folder. **Every widget has a share card** (Wes, 2026-10-09): the shell's Share
+    button calls `WidgetShareKit.items(for:context:)`, which renders the widget's
+    `shareCard(context:)` content (implement it when the widget has something worth showing,
+    like FavRun's latest route + distance/time/pace) or the generic card (icon, name, what it
+    does). Content is minimal but says what was shared; the link opens that widget. Health,
+    contacts, packages and other private data use the generic card.
+    **Shares are one bubble** (Wes, 2026-10-05): a Share sends the card as
     one tappable link via `WidgetShareCard.items` / `.link(...)` (app: `LinkPreviewItem`) —
     never extra text repeating the card, "get it on FavCircles" lines, or an App Store URL;
     the `/app/widget/:id` landing page (`backend/config/widgetCatalog.js`) does the pitching.

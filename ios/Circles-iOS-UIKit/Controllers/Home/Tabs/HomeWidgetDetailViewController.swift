@@ -92,20 +92,31 @@ final class HomeWidgetDetailViewController: BaseViewController {
             from: self, duration: pinned ? 2.2 : 1.2)
     }
 
+    /// Every widget's share card (WidgetShareKit): the widget's own card when
+    /// it has one (FavRun: the latest route), otherwise the generic card —
+    /// one tappable bubble that opens this widget (Wes, 2026-10-09).
     @objc private func shareTapped(_ sender: UIBarButtonItem) {
         let descriptor = widget.descriptor
-        guard let url = WidgetShareLink.url(widgetId: descriptor.id) else { return }
         AnalyticsService.shared.logEvent("widget_shared", parameters: ["widget_id": descriptor.id])
-        let share = UIActivityViewController(
-            // One bubble: the link with its title filled in, not a sentence
-            // bubble plus a fetched preview (Wes, 2026-10-05: shares must not be obnoxious)
-            activityItems: [LinkPreviewItem(url: url, title: "\(descriptor.title) · \(WidgetShareLink.message(title: descriptor.title, subtitle: descriptor.shareText))", image: nil)],
-            applicationActivities: nil
-        )
-        // An unanchored activity sheet is a crash on iPad, which is the device
-        // App Review uses.
-        share.popoverPresentationController?.barButtonItem = sender
-        present(share, animated: true)
+        sender.isEnabled = false
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let items = await WidgetShareKit.items(for: self.widget, context: self.context)
+            sender.isEnabled = true
+            let activityItems: [Any] = items.compactMap { item in
+                switch item {
+                case .text(let text): return text
+                case .url(let url): return url
+                case .imageJPEG(let data): return UIImage(data: data)
+                case .link(let url, let title, let jpeg): return LinkPreviewItem(url: url, title: title, image: jpeg.flatMap(UIImage.init(data:)))
+                }
+            }
+            let share = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+            // An unanchored activity sheet is a crash on iPad, which is the device
+            // App Review uses.
+            share.popoverPresentationController?.barButtonItem = sender
+            self.present(share, animated: true)
+        }
     }
 
     private weak var previousPopDelegate: UIGestureRecognizerDelegate?
