@@ -25,6 +25,10 @@ class ContentUploadViewController: UIViewController {
     private var originalImage: UIImage?
     private var processedImage: UIImage?
     private var isImageProcessingComplete = false
+    /// Where and when the picked photo was taken (from its file), sent with
+    /// the moment so the server knows the spot. Nil when the file had none.
+    private var photoCoordinate: CLLocationCoordinate2D?
+    private var photoTakenAt: Date?
     
     // MARK: - Shared Media Services
     private lazy var mediaCaptureService = MediaCaptureService()
@@ -414,6 +418,8 @@ class ContentUploadViewController: UIViewController {
 // MARK: - MediaCaptureServiceDelegate (Unified Media Handling)
 extension ContentUploadViewController: MediaCaptureServiceDelegate {
     func mediaCaptureService(_ service: MediaCaptureService, didCapture media: CapturedMedia) {
+        photoCoordinate = media.coordinate
+        photoTakenAt = media.takenAt
         switch media.type {
         case .photo(let image):
             // Use shared MediaProcessingService for consistent processing
@@ -867,6 +873,15 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             "duration": 0,
             "isNewPlace": isNewPlace
         ]
+
+        // Where and when the file said it was taken (the JPEG above carries none)
+        if let spot = photoCoordinate {
+            body["lat"] = spot.latitude
+            body["lng"] = spot.longitude
+        }
+        if let takenAt = photoTakenAt {
+            body["takenAt"] = ISO8601DateFormatter().string(from: takenAt)
+        }
         
         // Add place creation data if it's a new place
         if isNewPlace {

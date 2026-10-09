@@ -24,6 +24,7 @@ const bucket = getStorage().bucket();
 const notificationService = require('../../services/notificationService');
 const { MOMENT_PRIVACY_LEVELS, resolveIncomingPrivacy } = require('../../services/visibility');
 const { listIdFor } = require('../../services/innerCircleLists');
+const { parsePhotoCapture } = require('../../utils/photoCapture');
 const MAX_MOMENT_TAGS = 10;
 
 // Helper function to verify video processing is complete
@@ -359,7 +360,8 @@ exports.initiateVideoUpload = async (req, res) => {
       placePhone,
       placeWebsite,
       isNewPlace, // Flag to indicate if place needs to be created
-      taggedUserIds // people in this moment (accepted connections only)
+      taggedUserIds, // people in this moment (accepted connections only)
+      takenAt, lat, lng // where/when a photo was taken, from its own GPS/EXIF (optional)
     } = req.body;
     
     // Validate video data
@@ -479,6 +481,10 @@ exports.initiateVideoUpload = async (req, res) => {
       ? { taggedUserIds: [], taggedUsers: [] }
       : await resolveTaggedConnections(userId, taggedUserIds);
 
+    // Only a photo's file says where/when it was taken; anything not
+    // credible is dropped, never a reason to refuse the upload
+    const taken = contentType === 'photo' ? parsePhotoCapture({ takenAt, lat, lng }) : { takenAt: null, lat: null, lng: null };
+
     // Create video document (also used for photos in Reels)
     const videoData = createPlaceVideo({
       placeId: finalPlaceId,
@@ -495,7 +501,9 @@ exports.initiateVideoUpload = async (req, res) => {
       tags,
       taggedUserIds: resolvedTags.taggedUserIds,
       taggedUsers: resolvedTags.taggedUsers,
-      contentType: contentType || 'video' // Store content type
+      contentType: contentType || 'video', // Store content type
+      takenAt: taken.takenAt,
+      takenLocation: taken.lat != null ? { lat: taken.lat, lng: taken.lng } : null
     }, userId);
     
     const videoRef = db.collection(COLLECTIONS.PLACE_VIDEOS).doc();

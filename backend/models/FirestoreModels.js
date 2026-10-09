@@ -504,6 +504,10 @@ const createPlaceVideo = (videoData, userId) => {
     // so every read path gets them without a join (names may drift — accepted)
     taggedUserIds: videoData.taggedUserIds || [],
     taggedUsers: videoData.taggedUsers || [],
+    // Where and when the photo was taken, from the file's own GPS/EXIF
+    // (null when it had none; videos and embeds never carry them)
+    takenAt: videoData.takenAt || null,
+    takenLocation: videoData.takenLocation || null,   // { lat, lng }
     viewCount: 0,
     lastViewedAt: null,
     likeCount: 0,

@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import AVFoundation
 import Photos
+import CoreLocation
 
 // MARK: - Media Capture Types
 enum MediaCaptureType {
@@ -19,10 +20,22 @@ struct CapturedMedia {
     let type: MediaType
     let image: UIImage?
     let videoURL: URL?
+    /// Where and when a photo was taken: from the file's own GPS/EXIF for a
+    /// library pick, here and now for a camera shot. Nil when unknown.
+    let coordinate: CLLocationCoordinate2D?
+    let takenAt: Date?
     
     enum MediaType {
         case photo(UIImage)
         case video(URL)
+    }
+
+    init(type: MediaType, image: UIImage?, videoURL: URL?, coordinate: CLLocationCoordinate2D? = nil, takenAt: Date? = nil) {
+        self.type = type
+        self.image = image
+        self.videoURL = videoURL
+        self.coordinate = coordinate
+        self.takenAt = takenAt
     }
 }
 
@@ -266,11 +279,26 @@ extension MediaCaptureService: UIImagePickerControllerDelegate, UINavigationCont
             delegate?.mediaCaptureService(self, didCapture: media)
             
         } else if let image = info[.originalImage] as? UIImage {
-            // Handle photo capture
+            // Handle photo capture. A UIImage keeps no metadata, so where and
+            // when it was taken come from the picked file (the picker's copy
+            // of the original keeps its GPS/EXIF) or, for a camera shot, the
+            // last known position and now — no location request is made.
+            var coordinate: CLLocationCoordinate2D?
+            var takenAt: Date?
+            if picker.sourceType == .camera {
+                coordinate = LocationService.shared.cachedLocation?.coordinate
+                takenAt = Date()
+            } else if let fileURL = info[.imageURL] as? URL, let data = try? Data(contentsOf: fileURL) {
+                let meta = PhotoMetadataReader.metadata(from: data)
+                coordinate = meta.coordinate
+                takenAt = meta.takenAt
+            }
             let media = CapturedMedia(
                 type: .photo(image),
                 image: image,
-                videoURL: nil
+                videoURL: nil,
+                coordinate: coordinate,
+                takenAt: takenAt
             )
             delegate?.mediaCaptureService(self, didCapture: media)
             
