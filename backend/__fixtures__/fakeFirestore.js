@@ -123,6 +123,7 @@ class FakeFirestore {
       id,
       store,
       async get() { return store.snapshot(id, store.docs.get(id)); },
+      async delete() { store.docs.delete(id); },
       // merge applies increment sentinels like the real SDK does
       async set(data, options = {}) { store.docs.set(id, options.merge ? applyPatch(store.docs.get(id) || {}, data) : { ...data }); },
       async create(data) {

@@ -63,6 +63,8 @@ router.post('/events/:id/unarchive', events.unarchive);
 router.delete('/events/:id/members/:memberId', events.removeMember);
 router.post('/events/:id/photos', perUserLimit({ bucket: 'event-photos', windowMs: 3600000, max: 300 }), events.addPhotos);
 router.delete('/events/:id/photos/:photoId', events.deletePhoto);
+router.post('/events/:id/videos', perUserLimit({ bucket: 'event-videos', windowMs: 3600000, max: 40 }), events.startVideo);
+router.post('/events/:id/videos/:videoId/finish', perUserLimit({ bucket: 'event-videos-finish', windowMs: 3600000, max: 80 }), events.finishVideo);
 router.post('/events/:id/photos/:photoId/like', events.likePhoto);
 router.post('/events/:id/places', events.tagPlace);
 router.post('/events/:id/places/:placeId/save', events.savePlace);

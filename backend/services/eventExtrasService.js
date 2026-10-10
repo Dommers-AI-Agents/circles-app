@@ -341,7 +341,7 @@ async function getRecap(eventId, uid) {
   ]);
   return { recap: buildRecap({
     id: ref.id, data,
-    photos: photos.docs.map(d => d.data()),
+    photos: photos.docs.map(d => d.data()).filter(row => row.status !== 'uploading'),
     places: places.docs.map(d => d.data()),
     posts: posts.docs.map(d => d.data()),
     songs: songs.docs.map(d => d.data())

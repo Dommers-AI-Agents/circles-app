@@ -202,7 +202,11 @@ const toClientPhoto = (doc, viewerId, hostId, places = []) => {
     lat: hasSpot ? d.lat : null,
     lng: hasSpot ? d.lng : null,
     placeId: at ? at.id : null,
-    placeName: at ? at.name : null
+    placeName: at ? at.name : null,
+    // Videos (2026-10-10): imageUrl/thumbUrl are the poster frame
+    kind: d.kind === 'video' ? 'video' : 'photo',
+    videoUrl: d.kind === 'video' ? (d.videoUrl || null) : null,
+    durationSec: d.kind === 'video' ? (d.durationSec || null) : null
   };
 };
 
@@ -295,10 +299,14 @@ async function getEvent(eventId, uid) {
   // device), so they know to text those people about roll call etc.
   if (data.hostId === uid) event.pushOffMemberIds = await pushOffMembers(data, uid);
   const placeRows = places.docs.map(d => ({ id: d.id, ...d.data() }));
+  const videos = require('./eventVideoService');
   return {
     event,
-    photos: photos.docs.map(d => toClientPhoto(d, uid, data.hostId, placeRows)),
-    places: places.docs.map(d => toClientPlace(d, uid))
+    // A video still uploading isn't shown to anyone
+    photos: photos.docs.filter(d => videos.isVisible(d.data())).map(d => toClientPhoto(d, uid, data.hostId, placeRows)),
+    places: places.docs.map(d => toClientPlace(d, uid)),
+    // What this viewer may add, so the picker can say so before uploading
+    videoLimits: await videos.viewerVideoLimits(ref.id, uid).catch(() => null)
   };
 }
 
@@ -697,8 +705,14 @@ async function deletePhoto(eventId, uid, photoId) {
     throw new ServiceError(403, 'not_allowed', 'Only the person who added it or the coordinator can delete it');
   }
   await photoRef.delete();
-  await ref.update({ photoCount: FieldValue.increment(-1), updatedAt: nowIso() });
-  // The stored file is left alone on purpose: any bucket URL passes the
+  // A video still uploading was never counted
+  if (doc.data().status !== 'uploading') {
+    await ref.update({ photoCount: FieldValue.increment(-1), updatedAt: nowIso() });
+  }
+  // A video's files were named by the server at upload, so they're safe to
+  // remove (and worth removing: they're the big ones)
+  await require('./eventVideoService').deleteVideoFiles(doc.data());
+  // A photo's stored file is left alone on purpose: any bucket URL passes the
   // allow-list, so deleting by URL could delete someone else's file. Same
   // as drinks, postcards and workout cards (orphans are harmless).
   return { deleted: true };

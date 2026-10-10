@@ -33,6 +33,9 @@ exports.archive = handle('archive', async (req) => ({ event: await eventService.
 exports.unarchive = handle('unarchive', async (req) => ({ event: await eventService.unarchiveEvent(req.params.id, uid(req)) }));
 exports.addPhotos = handle('addPhotos', async (req) => ({ photos: await eventService.addPhotos(req.params.id, uid(req), (req.body || {}).photos) }));
 exports.deletePhoto = handle('deletePhoto', async (req) => eventService.deletePhoto(req.params.id, uid(req), req.params.photoId));
+// Videos: reserve + signed upload URLs, then publish once the files land
+exports.startVideo = handle('startVideo', async (req) => require('../../services/eventVideoService').startVideo(req.params.id, uid(req), req.body || {}));
+exports.finishVideo = handle('finishVideo', async (req) => ({ photo: await require('../../services/eventVideoService').finishVideo(req.params.id, uid(req), req.params.videoId) }));
 exports.likePhoto = handle('likePhoto', async (req) => ({ photo: await eventService.togglePhotoLike(req.params.id, uid(req), req.params.photoId) }));
 exports.tagPlace = handle('tagPlace', async (req) => ({ place: await eventService.tagPlace(req.params.id, uid(req), req.body || {}) }));
 exports.savePlace = handle('savePlace', async (req) => eventService.savePlaceToMyCircle(req.params.id, uid(req), req.params.placeId));

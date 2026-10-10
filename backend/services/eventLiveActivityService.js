@@ -30,7 +30,8 @@ function contentState(data, topSong) {
   const candidates = [];
   if (data.lastPhoto && data.lastPhoto.at) {
     const n = data.lastPhoto.count || 1;
-    candidates.push({ at: data.lastPhoto.at, text: `📸 ${data.lastPhoto.by || 'Someone'} added ${n === 1 ? 'a photo' : `${n} photos`}` });
+    const what = data.lastPhoto.kind === 'video' ? 'a video' : (n === 1 ? 'a photo' : `${n} photos`);
+    candidates.push({ at: data.lastPhoto.at, text: `${data.lastPhoto.kind === 'video' ? '🎬' : '📸'} ${data.lastPhoto.by || 'Someone'} added ${what}` });
   }
   if (data.lastShoutout && data.lastShoutout.at) {
     candidates.push({ at: data.lastShoutout.at, text: `💬 ${data.lastShoutout.authorName}: ${data.lastShoutout.text}`.slice(0, 120) });

@@ -89,7 +89,16 @@ async function deleteObjects(bucket, paths) {
   ));
 }
 
+/**
+ * Largest event video file allowed for a clip of up to `maxSeconds`: about
+ * 2 Mbit/s plus 2 MB of headroom (15 s ≈ 5.75 MB, 60 s ≈ 17 MB). The phone
+ * exports 720p well under this. The server can't check a clip's declared
+ * length, so this byte cap is what bounds storage and bandwidth.
+ */
+const maxEventVideoBytes = (maxSeconds) => Math.round(Math.max(0, Number(maxSeconds) || 0) * 250 * 1024 + 2 * 1024 * 1024);
+
 module.exports = {
+  maxEventVideoBytes,
   MAX_VIDEO_BYTES,
   MAX_IMAGE_BYTES,
   checkUploadSizes,

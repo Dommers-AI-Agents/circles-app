@@ -9,7 +9,12 @@ const SUBSCRIPTION_LIMITS = {
     MAX_TOTAL_PLACES: 90,              // Total theoretical max (6 circles × 15 places)
     CAN_EXPORT: false,                 // Export functionality
     CAN_IMPORT: false,                 // Importing places from other platforms
-    CAN_SHARE_WITHOUT_WATERMARK: false // Sharing without watermark
+    CAN_SHARE_WITHOUT_WATERMARK: false, // Sharing without watermark
+    // Event videos (Wes, 2026-10-10): short clips free, longer with Premium,
+    // and a hard per-event cap for everyone so one account can't run up
+    // storage and bandwidth
+    EVENT_VIDEO_MAX_SECONDS: 15,
+    EVENT_VIDEOS_PER_EVENT: 5
   },
   
   // Trial tier (same as premium during trial period)
@@ -19,7 +24,9 @@ const SUBSCRIPTION_LIMITS = {
     MAX_TOTAL_PLACES: Infinity,         // Unlimited total places
     CAN_EXPORT: true,
     CAN_IMPORT: true,
-    CAN_SHARE_WITHOUT_WATERMARK: true
+    CAN_SHARE_WITHOUT_WATERMARK: true,
+    EVENT_VIDEO_MAX_SECONDS: 60,
+    EVENT_VIDEOS_PER_EVENT: 20
   },
 
   // Premium tier (paid subscription)
@@ -29,7 +36,9 @@ const SUBSCRIPTION_LIMITS = {
     MAX_TOTAL_PLACES: Infinity,         // Unlimited total places
     CAN_EXPORT: true,
     CAN_IMPORT: true,
-    CAN_SHARE_WITHOUT_WATERMARK: true
+    CAN_SHARE_WITHOUT_WATERMARK: true,
+    EVENT_VIDEO_MAX_SECONDS: 60,
+    EVENT_VIDEOS_PER_EVENT: 20
   }
 };
 
