@@ -5,8 +5,9 @@
     {
       "title": "Family & friends",
       "widgets": [
-        { "id": "events", "emoji": "🎉", "name": "Events", "tagline": "Party bus, trip or night out: photos only your group sees.",
-          "features": ["Start an event and drop one link in the group text, or invite friends in the app", "A shared photo album only the people who joined can see, from the camera or your photo library", "Download every photo of the night to your Photos in one tap", "Tag the places you went and save them to a circle named after the event", "Roll call (\"everyone here?\") and photo challenges to keep the night fun", "A FavCoin 🌵 for joining"] },
+        { "id": "events", "emoji": "🎉", "name": "Events", "tagline": "Party bus, trip or night out: photos and videos only your group sees.",
+          "features": ["Start an event and drop one link in the group text, or invite friends in the app", "A shared album of photos and videos only the people who joined can see, from the camera or your photo library",
+    "Video clips up to 15 seconds free (5 per event), or up to a minute with Premium", "Download every photo of the night to your Photos in one tap", "Tag the places you went and save them to a circle named after the event", "Roll call (\"everyone here?\") and photo challenges to keep the night fun", "A FavCoin 🌵 for joining"] },
         { "id": "howareyou", "emoji": "💬", "name": "How Are You?", "tagline": "Check on Mom or Dad a few times a day.",
           "features": ["Questions at the times you pick; they answer with one tap from the Lock Screen", "Questions fit their life: pain from 0 to 10, meds, sleep, PT days, rides", "A heads-up when an answer needs attention, or when they go quiet", "Brothers and sisters can join the same check-in", "Send love on any answer, and say \"I'll call\" so the family knows it's handled", "Your parent sees their own week, trends and streaks too"] },
         { "id": "postcard", "emoji": "📮", "name": "Postcard", "tagline": "A real postcard from your trip photo.",

@@ -18,7 +18,7 @@ const WIDGETS = {
   motivation: { title: 'Coach Mane', blurb: 'A coach in your pocket who will not let you skip leg day.', emoji: '📣' },
   newcontacts: { title: 'Recent Contacts', blurb: 'See the last 50 people you added to your phone, newest first.', emoji: '📇' },
   nextbar: { title: 'NextBar', blurb: 'Your next bar, picked from the places your friends actually go.', emoji: '🍸' },
-  events: { title: 'Events', blurb: 'Start an event (a party bus, a trip, a night out): everyone joins with one link and shares photos only the group can see.', emoji: '🎉' },
+  events: { title: 'Events', blurb: 'Start an event (a party bus, a trip, a night out): everyone joins with one link and shares photos and videos only the group can see.', emoji: '🎉' },
   postcard: { title: 'Postcard', blurb: 'Send a real postcard from a trip photo, printed and mailed for you.', emoji: '📮' },
   run: { title: 'FavRun', blurb: 'Track your runs with GPS: route map, pace, splits and personal bests, right on your Lock Screen.', emoji: '🏃' },
   quotes: { title: 'Quotes', blurb: 'A good line a few times a day, on the topics you pick.', emoji: '💭' },
