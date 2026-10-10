@@ -283,6 +283,9 @@ class PaywallViewController: BaseViewController {
         case .importFeature:
             titleLabel.text = "Import Your Places"
             subtitleLabel.text = "Bring your saved places over from Google Maps, Mapstr, and Swarm with Premium"
+        case .eventVideo:
+            titleLabel.text = "Longer Event Videos"
+            subtitleLabel.text = "Free videos are up to 15 seconds, 5 per event. Premium allows up to a minute, 20 per event"
         case .generalUpgrade:
             titleLabel.text = "Unlock FavCircles Premium"
             subtitleLabel.text = "Get unlimited access to all features"

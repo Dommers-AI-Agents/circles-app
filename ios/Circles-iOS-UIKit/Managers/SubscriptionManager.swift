@@ -153,6 +153,7 @@ class SubscriptionManager {
         case exportFeature
         case exportData  // Alias for exportFeature, specifically for data export
         case importFeature
+        case eventVideo  // Events widget: longer and more videos (2026-10-10)
         case generalUpgrade
 
         var title: String {
@@ -161,7 +162,7 @@ class SubscriptionManager {
                 return "Circle Limit Reached"
             case .placeLimit:
                 return "Place Limit Reached"
-            case .exportFeature, .exportData, .importFeature:
+            case .exportFeature, .exportData, .importFeature, .eventVideo:
                 return "Premium Feature"
             case .generalUpgrade:
                 return "Upgrade to Premium"
@@ -180,6 +181,8 @@ class SubscriptionManager {
                 return "Export your data to CSV and keep a backup of all your places and circles. Available to Premium members only."
             case .importFeature:
                 return "Bring your saved places over from Google Maps, Mapstr, and Swarm. Available to Premium members only."
+            case .eventVideo:
+                return "Add videos up to a minute long, and up to 20 per event, with Premium."
             case .generalUpgrade:
                 return "Unlock all features with FavCircles Premium!"
             }

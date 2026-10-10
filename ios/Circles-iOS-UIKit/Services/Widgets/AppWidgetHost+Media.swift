@@ -35,4 +35,13 @@ extension AppWidgetHost {
         return url
     }
 
+
+    /// A widget feature Premium unlocks (event videos, widgets 0.43.0)
+    func presentPremiumPaywall(reason: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let presenter = self?.presentingViewController else { return }
+            let paywallReason: SubscriptionManager.PaywallReason = reason == "event_video" ? .eventVideo : .generalUpgrade
+            SubscriptionManager.shared.showPaywall(from: presenter, reason: paywallReason)
+        }
+    }
 }
