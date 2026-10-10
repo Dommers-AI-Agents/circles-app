@@ -16,7 +16,7 @@ const WIDGETS = {
   heartbeat: { title: 'Heartbeat', blurb: 'Measure your heart rate directly from your phone camera.', emoji: '❤️' },
   howareyou: { title: 'How Are You?', blurb: 'Check on Mom or Dad a few times a day — they answer with one tap from their Lock Screen.', emoji: '💬' },
   motivation: { title: 'Coach Mane', blurb: 'A coach in your pocket who will not let you skip leg day.', emoji: '📣' },
-  newcontacts: { title: 'New Contacts', blurb: 'See the last 50 people you added to your phone, newest first.', emoji: '📇' },
+  newcontacts: { title: 'Recent Contacts', blurb: 'See the last 50 people you added to your phone, newest first.', emoji: '📇' },
   nextbar: { title: 'NextBar', blurb: 'Your next bar, picked from the places your friends actually go.', emoji: '🍸' },
   events: { title: 'Events', blurb: 'Start an event (a party bus, a trip, a night out): everyone joins with one link and shares photos only the group can see.', emoji: '🎉' },
   postcard: { title: 'Postcard', blurb: 'Send a real postcard from a trip photo, printed and mailed for you.', emoji: '📮' },
