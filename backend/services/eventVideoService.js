@@ -30,8 +30,21 @@ const PREMIUM_MAX_SECONDS = 60;
 
 const bucket = () => require('firebase-admin/storage').getStorage().bucket();
 const bucketName = () => process.env.FIREBASE_STORAGE_BUCKET || bucket().name;
-const publicUrl = (path) =>
-  `https://firebasestorage.googleapis.com/v0/b/${bucketName()}/o/${encodeURIComponent(path)}?alt=media`;
+const publicUrl = (path, token) =>
+  `https://firebasestorage.googleapis.com/v0/b/${bucketName()}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
+
+/**
+ * Gives an uploaded file a Firebase download token and returns its URL.
+ * The events/ folder has no public-read storage rule (found in the live
+ * test, 2026-10-12: tokenless URLs answered 403), so each file carries its
+ * own unguessable token — whoever holds the URL can play it, nobody can
+ * list or guess it. Same exposure as a moment's URL.
+ */
+async function tokenUrl(path) {
+  const token = require('crypto').randomUUID();
+  await bucket().file(path).setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
+  return publicUrl(path, token);
+}
 
 /** The viewer's video limits from their subscription. */
 async function limitsFor(uid) {
@@ -155,11 +168,16 @@ async function finishVideo(eventId, uid, videoId) {
 
   const now = Date.now();
   const at = new Date(now).toISOString();
+  const [videoUrl, posterUrl, thumbUrl] = await Promise.all([
+    tokenUrl(paths.video),
+    tokenUrl(paths.poster),
+    sizes.thumb ? tokenUrl(paths.thumb) : null
+  ]);
   const ready = {
     status: 'ready',
-    videoUrl: publicUrl(paths.video),
-    imageUrl: publicUrl(paths.poster),
-    thumbUrl: sizes.thumb ? publicUrl(paths.thumb) : publicUrl(paths.poster),
+    videoUrl,
+    imageUrl: posterUrl,
+    thumbUrl: thumbUrl || posterUrl,
     fileSize: sizes.video,
     readyAt: at
   };

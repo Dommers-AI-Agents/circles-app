@@ -19,6 +19,7 @@ jest.mock('firebase-admin/storage', () => ({
     name: 'test-bucket',
     file: (path) => ({
       getSignedUrl: async () => [`https://signed/${path}`],
+      setMetadata: jest.fn(async () => {}),
       getMetadata: async () => {
         const slot = path.endsWith('_thumb.jpg') ? 'thumb' : path.endsWith('.jpg') ? 'poster' : 'video';
         return [{ size: String(mockSizes[slot]) }];
@@ -109,6 +110,8 @@ describe('upload and publish', () => {
     expect(photo.status).toBe('ready');
     expect(photo.videoUrl).toContain(encodeURIComponent(`events/ev1/videos/me/${videoId}.mp4`));
     expect(photo.imageUrl).toContain('.jpg');
+    // Each file carries its own download token (events/ has no public rule)
+    expect(photo.videoUrl).toMatch(/&token=[0-9a-f-]{36}$/);
     expect(mockEventRef.update).toHaveBeenCalledWith(expect.objectContaining({ lastPhoto: expect.objectContaining({ kind: 'video' }) }));
   });
 
