@@ -22,6 +22,7 @@ const db = getFirestore();
 //   discover / all   - only people you are NOT connected to and do NOT follow, ranked by places
 //   nearby           - users closest by zipcode
 //   friendsOfFriends - mutual connections (people your connections know)
+//   following        - people you follow but aren't connected with yet (Connect offered)
 const getDiscoverUsers = async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -303,6 +304,32 @@ const getDiscoverUsers = async (req, res) => {
             }));
         }
       }
+    } else if (type === 'following') {
+      // People you follow but aren't connected with (and haven't asked yet).
+      // Follow is one-way; Connect is the LinkedIn-style "I know them" step,
+      // and it was nowhere to be found for exactly these people: every
+      // suggestion surface dropped anyone already followed, so the only way
+      // to connect was to open each profile (Wes, 2026-10-12). Mutual follows
+      // first — they already opted in — then biggest collections.
+      const candidateIds = [...following].filter((id) =>
+        id !== userId && !dismissed.has(id) && !blockedSet.has(id) && !hasActiveConnection(id));
+      const placesOf = (id) => ((placeCounts.get(id) || {}).placesCount || 0);
+      const mutual = (id) => (myFollowers.has(id) ? 1 : 0);
+      const orderedIds = candidateIds
+        .sort((a, b) => (mutual(b) - mutual(a)) || (placesOf(b) - placesOf(a)))
+        .slice(0, pageWindow);
+      // `following` is raw ids, so merged/deactivated/test accounts aren't
+      // pre-filtered the way the place-count map does for the ranked lists
+      const order = new Map(orderedIds.map((id, i) => [id, i]));
+      users = (await fetchDocsByIds(orderedIds))
+        .filter((d) => {
+          const u = d.data();
+          return !u.mergedInto && u.active !== false && u.isFakeProfile !== true;
+        })
+        .map((d) => shape(d, 'following', {
+          suggestionReason: myFollowers.has(d.id) ? '👋 You follow each other' : 'You follow them'
+        }))
+        .sort((a, b) => order.get(a.id) - order.get(b.id));
     } else if (type === 'everyone') {
       // The full "People on FavCircles" list behind Discover's See all:
       // everyone on FavCircles, people with no places yet and people you

@@ -51,6 +51,10 @@ class DiscoveryListViewController: BaseViewController {
             return [
                 ("nearby", "📍 Near you", "People exploring your area — their saved spots are your next stop."),
                 ("followsYou", "👋 Follows you", "They're already following you — follow back with one tap."),
+                // People you follow but haven't connected with. Connect is
+                // the "I know them" step, and these are the people it was
+                // missing for (Wes, 2026-10-12).
+                ("following", "🤝 Connect if you know them", "You follow them — send a connection request to share your network-only circles with each other."),
                 // Backed by the suggestion engine, so these rows carry a real
                 // reason — a venue you both saved, a shared taste, or who
                 // already follows them.
@@ -69,6 +73,16 @@ class DiscoveryListViewController: BaseViewController {
 
     private var sections: [SuggestionSection] = []
     private var searchQuery: String = ""
+    /// The People screen's own search. Discover and Popular are embedded in
+    /// My Network, whose search field already drives updateSearchQuery.
+    private lazy var searchController: UISearchController = {
+        let controller = UISearchController(searchResultsController: nil)
+        controller.searchResultsUpdater = self
+        controller.obscuresBackgroundDuringPresentation = false
+        controller.searchBar.placeholder = "Search people by name"
+        controller.searchBar.autocapitalizationType = .none
+        return controller
+    }()
     private let locationManager = CLLocationManager()
     private var currentLocation: CLLocation?
 
@@ -183,7 +197,12 @@ class DiscoveryListViewController: BaseViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        if mode == .everyone { title = "People" }
+        if mode == .everyone {
+            title = "People"
+            navigationItem.searchController = searchController
+            navigationItem.hidesSearchBarWhenScrolling = false
+            definesPresentationContext = true
+        }
         setupUI()
         setupTableView()
         // Location only powers the "Near you" section, which is a Discover
@@ -402,6 +421,43 @@ class DiscoveryListViewController: BaseViewController {
         tableView.reloadData()
     }
 
+    /// Connect — the "I know them" step, offered once you follow someone.
+    /// The row flips to Request Sent right away and flips back if the
+    /// server says no.
+    private func connect(_ user: User) {
+        guard user.id != AuthService.shared.getUserId() else { return }
+        setConnectionStatus("pending", forUserId: user.id)
+
+        NetworkManager.shared.sendConnectionRequest(to: user.id) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch result {
+                case .success:
+                    NotificationCenter.default.post(name: .connectionRequestSent, object: nil)
+                case .failure(let error):
+                    self.setConnectionStatus(user.connectionStatus, forUserId: user.id)
+                    // The server's own wording ("Connection request already
+                    // sent") beats a raw localizedDescription
+                    self.showError((error as? APIError)?.serverMessage ?? error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func setConnectionStatus(_ status: String?, forUserId userId: String) {
+        for sectionIndex in sections.indices {
+            if let userIndex = sections[sectionIndex].users.firstIndex(where: { $0.id == userId }) {
+                let current = sections[sectionIndex].users[userIndex]
+                // Connecting implies following (the server auto-follows on connect)
+                sections[sectionIndex].users[userIndex] = current.copy(
+                    connectionStatus: status ?? "none",
+                    isFollowing: status == "pending" ? true : current.isFollowing
+                )
+            }
+        }
+        tableView.reloadData()
+    }
+
     /// Removes a suggestion for good. Without this the same faces come back
     /// every time, which reads as the list being broken.
     private func dismiss(_ user: User) {
@@ -538,6 +594,13 @@ extension DiscoveryListViewController: DiscoverUserCellDelegate {
         follow(visibleSections[indexPath.section].users[indexPath.row])
     }
 
+    func discoverUserCellDidTapConnect(_ cell: DiscoverUserCell) {
+        guard let indexPath = cell.indexPath,
+              indexPath.section < visibleSections.count,
+              indexPath.row < visibleSections[indexPath.section].users.count else { return }
+        connect(visibleSections[indexPath.section].users[indexPath.row])
+    }
+
     func discoverUserCellDidTapShare(_ cell: DiscoverUserCell) {
         // Same share sheet as the nav-bar invite: profile link + pitch. The
         // self row in Most active is the moment someone feels good about their
@@ -556,5 +619,13 @@ extension DiscoveryListViewController: DiscoverUserCellDelegate {
               indexPath.section < visibleSections.count,
               indexPath.row < visibleSections[indexPath.section].users.count else { return }
         dismiss(visibleSections[indexPath.section].users[indexPath.row])
+    }
+}
+
+// MARK: - UISearchResultsUpdating (People screen)
+
+extension DiscoveryListViewController: UISearchResultsUpdating {
+    func updateSearchResults(for searchController: UISearchController) {
+        updateSearchQuery((searchController.searchBar.text ?? "").trimmingCharacters(in: .whitespaces))
     }
 }

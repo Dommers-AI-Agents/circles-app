@@ -306,7 +306,10 @@ final class NetworkLeaderboardCardView: UIView {
 final class PersonSuggestionCell: UICollectionViewCell {
     static let reuseId = "PersonSuggestionCell"
     var onFollow: (() -> Void)?
+    /// Someone you already follow: the one button becomes Connect
+    var onConnect: (() -> Void)?
     var onDismiss: (() -> Void)?
+    private var action: NetworkDiscoverLayout.PersonAction = .follow
     private let face = UIImageView()
     private let name = UILabel()
     private let reason = UILabel()
@@ -358,19 +361,36 @@ final class PersonSuggestionCell: UICollectionViewCell {
         face.setUserAvatar(for: user, diameter: 60)
         name.text = user.displayName
         reason.text = NetworkDiscoverLayout.reason(for: user)
-        let following = user.isFollowing == true
-        follow.setTitle(following ? "Following" : "Follow", for: .normal)
-        follow.isEnabled = !following
-        follow.alpha = following ? 0.6 : 1
+        // The card has room for one button, so it shows the next step:
+        // Follow, then Connect once you follow them (Wes, 2026-10-12)
+        action = NetworkDiscoverLayout.action(for: user)
+        let title: String
+        switch action {
+        case .follow: title = "Follow"
+        case .connect: title = "Connect"
+        case .requestSent: title = "Request Sent"
+        case .connected: title = "Connected"
+        }
+        follow.setTitle(title, for: .normal)
+        let actionable = action == .follow || action == .connect
+        follow.isEnabled = actionable
+        follow.alpha = actionable ? 1 : 0.6
     }
 
-    @objc private func followTapped() { onFollow?() }
+    @objc private func followTapped() {
+        switch action {
+        case .follow: onFollow?()
+        case .connect: onConnect?()
+        case .requestSent, .connected: break
+        }
+    }
     @objc private func closeTapped() { onDismiss?() }
 }
 
 final class PeopleStripView: UIView, UICollectionViewDataSource, UICollectionViewDelegate {
     var onSeeAll: (() -> Void)?
     var onFollow: ((User) -> Void)?
+    var onConnect: ((User) -> Void)?
     var onDismiss: ((User) -> Void)?
     var onSelect: ((User) -> Void)?
     private(set) var people: [User] = []
@@ -435,6 +455,7 @@ final class PeopleStripView: UIView, UICollectionViewDataSource, UICollectionVie
         let user = people[indexPath.item]
         cell.configure(user)
         cell.onFollow = { [weak self] in self?.onFollow?(user) }
+        cell.onConnect = { [weak self] in self?.onConnect?(user) }
         cell.onDismiss = { [weak self] in self?.onDismiss?(user) }
         return cell
     }

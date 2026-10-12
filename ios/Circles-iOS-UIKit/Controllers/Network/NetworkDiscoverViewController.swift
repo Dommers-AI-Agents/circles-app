@@ -55,6 +55,7 @@ final class NetworkDiscoverViewController: BaseViewController {
             self?.navigationController?.pushViewController(DiscoveryListViewController(mode: .everyone), animated: true)
         }
         peopleCard.onFollow = { [weak self] user in self?.follow(user) }
+        peopleCard.onConnect = { [weak self] user in self?.connect(user) }
         peopleCard.onDismiss = { [weak self] user in self?.dismissSuggestion(user) }
         peopleCard.onSelect = { [weak self] user in
             self?.navigationController?.pushViewController(ProfileViewController(user: user), animated: true)
@@ -143,6 +144,23 @@ final class NetworkDiscoverViewController: BaseViewController {
                 case .failure(let error):
                     self?.setPerson(user.copy(isFollowing: false))
                     self?.showError(error)
+                }
+            }
+        }
+    }
+
+    /// Connect — the "I know them" step for someone you already follow. The
+    /// card shows Request Sent at once; a refused request puts Connect back.
+    private func connect(_ user: User) {
+        setPerson(user.copy(connectionStatus: "pending", isFollowing: true))
+        NetworkManager.shared.sendConnectionRequest(to: user.id) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    NotificationCenter.default.post(name: .connectionRequestSent, object: nil)
+                case .failure(let error):
+                    self?.setPerson(user.copy(connectionStatus: user.connectionStatus ?? "none"))
+                    self?.showError((error as? APIError)?.serverMessage ?? error.localizedDescription)
                 }
             }
         }

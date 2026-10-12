@@ -483,6 +483,12 @@ extension DiscoverUsersViewController: DiscoverUserCellDelegate {
         followUser(user, at: indexPath)
     }
 
+    func discoverUserCellDidTapConnect(_ cell: DiscoverUserCell) {
+        guard let indexPath = cell.indexPath else { return }
+        let user = isSearching ? searchResults[indexPath.row] : discoveryUsers[indexPath.row]
+        sendConnectionRequest(to: user)
+    }
+
     func discoverUserCellDidTapShare(_ cell: DiscoverUserCell) {
         let shareItems = NetworkManager.shared.shareConnectionInvite()
         let activityVC = UIActivityViewController(activityItems: shareItems, applicationActivities: nil)

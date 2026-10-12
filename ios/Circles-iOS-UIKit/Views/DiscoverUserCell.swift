@@ -2,6 +2,8 @@ import UIKit
 
 protocol DiscoverUserCellDelegate: AnyObject {
     func discoverUserCellDidTapFollow(_ cell: DiscoverUserCell)
+    /// Connect — the "I know them" step, offered once you follow someone
+    func discoverUserCellDidTapConnect(_ cell: DiscoverUserCell)
     func discoverUserCellDidTapDismiss(_ cell: DiscoverUserCell)
     /// The row is the signed-in user's own — the action is sharing their
     /// profile, not following themselves.
@@ -65,7 +67,9 @@ class DiscoverUserCell: UITableViewCell {
         label.numberOfLines = 2
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // High, not required: a long name wraps to its second line and then
+        // truncates, while Following · Connect · ✕ always keep their words
+        label.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         return label
     }()
 
@@ -172,9 +176,39 @@ class DiscoverUserCell: UITableViewCell {
         button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
         button.layer.cornerRadius = 16
         button.layer.borderWidth = 1
+        button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
         return button
+    }()
+
+    /// Shown beside the "Following" chip when you follow someone you aren't
+    /// connected with — connect if you know them, like LinkedIn. Hidden in
+    /// every other state.
+    private lazy var connectButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Connect", for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        button.layer.cornerRadius = 16
+        button.layer.borderWidth = 1
+        button.layer.borderColor = Constants.Colors.primary.cgColor
+        button.backgroundColor = Constants.Colors.primary
+        button.setTitleColor(.white, for: .normal)
+        button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        button.isHidden = true
+        button.addTarget(self, action: #selector(connectButtonTapped), for: .touchUpInside)
+        return button
+    }()
+
+    /// Following · Connect · ✕ in one row, so the text column always knows
+    /// exactly how much width is left.
+    private lazy var actionStack: UIStackView = {
+        let stack = UIStackView(arrangedSubviews: [followButton, connectButton, dismissButton])
+        stack.axis = .horizontal
+        stack.spacing = 6
+        stack.alignment = .center
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
     }()
     
     // MARK: - Init
@@ -196,8 +230,7 @@ class DiscoverUserCell: UITableViewCell {
         containerView.addSubview(profileImageView)
         containerView.addSubview(verifiedBadge)
         containerView.addSubview(textStack)
-        containerView.addSubview(followButton)
-        containerView.addSubview(dismissButton)
+        containerView.addSubview(actionStack)
 
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
@@ -222,18 +255,21 @@ class DiscoverUserCell: UITableViewCell {
             textStack.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),
             textStack.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
             textStack.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12),
-            textStack.trailingAnchor.constraint(lessThanOrEqualTo: followButton.leadingAnchor, constant: -8),
+            textStack.trailingAnchor.constraint(lessThanOrEqualTo: actionStack.leadingAnchor, constant: -8),
 
-            dismissButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -10),
-            dismissButton.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            actionStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -10),
+            actionStack.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
             dismissButton.widthAnchor.constraint(equalToConstant: 28),
             dismissButton.heightAnchor.constraint(equalToConstant: 28),
 
-            followButton.trailingAnchor.constraint(equalTo: dismissButton.leadingAnchor, constant: -4),
-            followButton.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
-            followButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
-            followButton.heightAnchor.constraint(equalToConstant: 32)
+            followButton.heightAnchor.constraint(equalToConstant: 32),
+            connectButton.heightAnchor.constraint(equalToConstant: 32)
         ])
+        // Buttons keep their words; the name column is what truncates
+        [followButton, connectButton].forEach {
+            $0.setContentCompressionResistancePriority(.required, for: .horizontal)
+            $0.setContentHuggingPriority(.required, for: .horizontal)
+        }
     }
     
     // MARK: - Configuration
@@ -412,6 +448,7 @@ class DiscoverUserCell: UITableViewCell {
     
     private func updateFollowButton() {
         guard let user = user else { return }
+        connectButton.isHidden = true
 
         // Your own row: the ask is outward. Same styling weight as Follow —
         // this is the row's primary action, not a passive state chip.
@@ -424,28 +461,29 @@ class DiscoverUserCell: UITableViewCell {
             return
         }
 
-        let isFollowing = user.isFollowing ?? false
-        let connectionStatus = user.connectionStatus ?? "none"
-        
-        if connectionStatus == "accepted" {
+        switch NetworkDiscoverLayout.action(for: user) {
+        case .connected:
             followButton.setTitle("Connected", for: .normal)
             followButton.backgroundColor = .systemGreen.withAlphaComponent(0.1)
             followButton.setTitleColor(.systemGreen, for: .normal)
             followButton.layer.borderColor = UIColor.systemGreen.cgColor
             followButton.isEnabled = false
-        } else if connectionStatus == "pending" {
+        case .requestSent:
             followButton.setTitle("Request Sent", for: .normal)
             followButton.backgroundColor = Constants.Colors.brightOrange.withAlphaComponent(0.1)
             followButton.setTitleColor(Constants.Colors.brightOrange, for: .normal)
             followButton.layer.borderColor = Constants.Colors.brightOrange.cgColor
             followButton.isEnabled = false
-        } else if isFollowing {
+        case .connect:
+            // Following, not connected: the chip says so, and Connect sits
+            // right next to it — "connect if you know them"
             followButton.setTitle("Following", for: .normal)
             followButton.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
             followButton.setTitleColor(Constants.Colors.primary, for: .normal)
             followButton.layer.borderColor = Constants.Colors.primary.cgColor
             followButton.isEnabled = false
-        } else {
+            connectButton.isHidden = false
+        case .follow:
             followButton.setTitle("Follow", for: .normal)
             followButton.backgroundColor = Constants.Colors.primary
             followButton.setTitleColor(.white, for: .normal)
@@ -463,6 +501,10 @@ class DiscoverUserCell: UITableViewCell {
         }
     }
 
+    @objc private func connectButtonTapped() {
+        delegate?.discoverUserCellDidTapConnect(self)
+    }
+
     @objc private func dismissButtonTapped() {
         delegate?.discoverUserCellDidTapDismiss(self)
     }
@@ -478,6 +520,7 @@ class DiscoverUserCell: UITableViewCell {
         locationLabel.isHidden = true
         tierChip.isHidden = true
         detailLabel.isHidden = false
+        connectButton.isHidden = true
         user = nil
         indexPath = nil
     }

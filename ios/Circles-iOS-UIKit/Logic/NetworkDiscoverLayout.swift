@@ -24,12 +24,32 @@ enum NetworkDiscoverLayout {
     }
 
     /// People lists in priority order, each person kept once (first wins),
-    /// minus anyone you're already connected to — "might know" means new
+    /// minus anyone you're already connected to or have already asked —
+    /// "might know" means someone you can still Follow or Connect with
     static func mergePeople(_ lists: [[User]]) -> [User] {
         var seen = Set<String>()
         return lists.flatMap { $0 }
-            .filter { !["accepted", "connected"].contains(($0.connectionStatus ?? "").lowercased()) }
+            .filter { !["accepted", "connected", "pending"].contains(($0.connectionStatus ?? "").lowercased()) }
             .filter { seen.insert($0.id).inserted }
+    }
+
+    /// What the button on a person's row or card does. Follow is one-way;
+    /// Connect is the "I know them" step, offered once you follow someone
+    /// (LinkedIn's split; Wes, 2026-10-12). Connected and a sent request are
+    /// states, not actions.
+    enum PersonAction: Equatable {
+        case follow
+        case connect
+        case requestSent
+        case connected
+    }
+
+    static func action(for user: User) -> PersonAction {
+        switch (user.connectionStatus ?? "none").lowercased() {
+        case "accepted", "connected": return .connected
+        case "pending": return .requestSent
+        default: return user.isFollowing == true ? .connect : .follow
+        }
     }
 
     /// "Saved by Brit, Sal + 3"

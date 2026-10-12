@@ -20,7 +20,22 @@ struct NetworkDiscoverLayoutTests {
         let merged = NetworkDiscoverLayout.mergePeople([[user("a"), user("b")], [user("b"), user("c")], [user("a")]])
         #expect(merged.map(\.id) == ["a", "b", "c"])
         let connected = User(id: "x", displayName: "x", profilePicture: nil, bio: nil, location: nil, friends: nil, friendRequests: nil, connectionStatus: "accepted")
-        #expect(NetworkDiscoverLayout.mergePeople([[connected, user("y")]]).map(\.id) == ["y"])
+        let asked = User(id: "z", displayName: "z", profilePicture: nil, bio: nil, location: nil, friends: nil, friendRequests: nil, connectionStatus: "pending")
+        #expect(NetworkDiscoverLayout.mergePeople([[connected, user("y"), asked]]).map(\.id) == ["y"])
+    }
+
+    @Test func followThenConnectThenStates() {
+        func person(_ status: String?, following: Bool?) -> User {
+            User(id: "p", displayName: "p", profilePicture: nil, bio: nil, location: nil, friends: nil, friendRequests: nil, connectionStatus: status, isFollowing: following)
+        }
+        #expect(NetworkDiscoverLayout.action(for: person(nil, following: nil)) == .follow)
+        #expect(NetworkDiscoverLayout.action(for: person("none", following: false)) == .follow)
+        // Following someone is when Connect appears — like LinkedIn
+        #expect(NetworkDiscoverLayout.action(for: person("none", following: true)) == .connect)
+        #expect(NetworkDiscoverLayout.action(for: person(nil, following: true)) == .connect)
+        #expect(NetworkDiscoverLayout.action(for: person("pending", following: true)) == .requestSent)
+        #expect(NetworkDiscoverLayout.action(for: person("accepted", following: true)) == .connected)
+        #expect(NetworkDiscoverLayout.action(for: person("connected", following: false)) == .connected)
     }
 
     @Test func savedByReadsNaturally() {

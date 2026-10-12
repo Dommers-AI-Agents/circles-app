@@ -38,10 +38,11 @@ final class NetworkDiscoverService {
         }
     }
 
-    /// Near you, follows you and suggested, merged — each person once, under
-    /// their strongest reason (same order the old Discover list used).
+    /// Near you, follows you, people you follow but haven't connected with,
+    /// and suggested — merged, each person once, under their strongest
+    /// reason (same order the old Discover list used).
     func people(location: CLLocation?, completion: @escaping ([User]) -> Void) {
-        let types = ["nearby", "followsYou", "friendsOfFriends"]
+        let types = ["nearby", "followsYou", "following", "friendsOfFriends"]
         var loaded: [String: [User]] = [:]
         let lock = NSLock()
         let group = DispatchGroup()
