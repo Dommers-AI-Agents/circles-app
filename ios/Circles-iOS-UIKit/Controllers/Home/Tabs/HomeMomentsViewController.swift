@@ -49,6 +49,26 @@ final class HomeMomentsViewController: BaseViewController, HomeContentTab {
         return collectionView
     }()
     private let statusView = HomeTabStatusView()
+    /// Newer moments from a quiet refresh, waiting for the pill tap
+    private var pendingFreshReels: (reels: [PlaceVideo], hasMore: Bool)?
+    private lazy var newMomentsPill: UIButton = {
+        let button = UIButton.smallActionButton(title: "New moments", style: .primary)
+        button.setImage(UIImage(systemName: "arrow.up"), for: .normal)
+        button.tintColor = .white
+        button.semanticContentAttribute = .forceLeftToRight
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 16)
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
+        button.layer.cornerRadius = 18
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.3
+        button.layer.shadowRadius = 6
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        button.accessibilityHint = "Shows the newest moments"
+        button.addTarget(self, action: #selector(showPendingFreshReels), for: .touchUpInside)
+        return button
+    }()
 
     // The host's segment switch drives loading; nothing loads on its own.
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -60,7 +80,11 @@ final class HomeMomentsViewController: BaseViewController, HomeContentTab {
         view.backgroundColor = Constants.Colors.background
         view.addSubview(collectionView)
         view.addSubview(statusView)
+        view.addSubview(newMomentsPill)
         NSLayoutConstraint.activate([
+            newMomentsPill.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            newMomentsPill.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            newMomentsPill.heightAnchor.constraint(equalToConstant: 36),
             collectionView.topAnchor.constraint(equalTo: view.topAnchor),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -110,9 +134,86 @@ final class HomeMomentsViewController: BaseViewController, HomeContentTab {
             collectionView.scrollToItem(at: IndexPath(item: 0, section: 0), at: .top, animated: false)
         }
 
-        // Always refresh when switching to Moments to get the latest videos;
-        // fetchReels plays the first one after loading.
-        fetchReels()
+        // Show what's already here right away and play it; newer moments are
+        // fetched quietly and offered with a pill (Wes, 2026-10-12: switching
+        // to Moments used to blank the feed and wait on the network). With
+        // nothing loaded yet, load (fetchReels plays the first one).
+        if reels.isEmpty {
+            fetchReels()
+        } else {
+            if isActiveTab {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    guard let self, self.isActiveTab, !self.reels.isEmpty else { return }
+                    self.playVideo(at: self.currentReelIndex)
+                }
+            }
+            refreshQuietly()
+        }
+    }
+
+    /// Checks for newer moments without touching what's on screen: same
+    /// moments → counts updated in place; new ones → the pill; a failure →
+    /// nothing changes.
+    private func refreshQuietly() {
+        guard !isLoadingReels, !isLoadingMoreReels else { return }
+        APIService.shared.request(
+            endpoint: "videos/reels/feed?limit=20&offset=0",
+            method: .get
+        ) { [weak self] (result: Result<VideosResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self, case .success(let response) = result else { return }
+                let fresh = Self.playable(response.data)
+                switch MomentsRefreshPlan.plan(current: self.reels.map(\.id), fresh: fresh.map(\.id)) {
+                case .unchanged:
+                    // Fresh likes/comments for the same moments; cells pick
+                    // them up when next shown
+                    let byId = Dictionary(fresh.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+                    for index in self.reels.indices {
+                        if let updated = byId[self.reels[index].id] { self.reels[index] = updated }
+                    }
+                case .newMoments:
+                    self.pendingFreshReels = (fresh, response.hasMore)
+                    self.setNewMomentsPillVisible(true)
+                }
+            }
+        }
+    }
+
+    private func setNewMomentsPillVisible(_ visible: Bool) {
+        guard newMomentsPill.isHidden == visible else { return }
+        if visible {
+            newMomentsPill.alpha = 0
+            newMomentsPill.isHidden = false
+            view.bringSubviewToFront(newMomentsPill)
+            UIView.animate(withDuration: 0.25) { self.newMomentsPill.alpha = 1 }
+        } else {
+            UIView.animate(withDuration: 0.2, animations: { self.newMomentsPill.alpha = 0 }) { _ in
+                self.newMomentsPill.isHidden = true
+            }
+        }
+    }
+
+    @objc private func showPendingFreshReels() {
+        guard let pending = pendingFreshReels else { return setNewMomentsPillVisible(false) }
+        pendingFreshReels = nil
+        setNewMomentsPillVisible(false)
+        for player in reelPlayers.values { player.pause() }
+        reelPlayers.removeAll()
+        reelVideoStates.removeAll()
+        reels = pending.reels
+        reelsOffset = reels.count
+        hasMoreReels = pending.hasMore
+        updateReelsFeed()
+        collectionView.setContentOffset(.zero, animated: false)
+        if isActiveTab, !reels.isEmpty { playVideo(at: 0) }
+    }
+
+    /// Ready moments that have something to show
+    private static func playable(_ videos: [PlaceVideo]) -> [PlaceVideo] {
+        videos.filter { video in
+            let hasValidUrl = video.contentType == "photo" ? video.thumbnailUrl != nil : video.videoUrl != nil
+            return video.uploadStatus == .ready && hasValidUrl
+        }
     }
 
     func tabWillHide() {
@@ -227,9 +328,11 @@ final class HomeMomentsViewController: BaseViewController, HomeContentTab {
                 switch result {
                 case .success(let response):
                     // Filter out failed uploads and videos without URLs
-                    let validReels = response.data.filter { video in
-                        let hasValidUrl = video.contentType == "photo" ? video.thumbnailUrl != nil : video.videoUrl != nil
-                        return video.uploadStatus == .ready && hasValidUrl
+                    let validReels = Self.playable(response.data)
+                    if !loadMore {
+                        // A full load already has the newest
+                        self.pendingFreshReels = nil
+                        self.setNewMomentsPillVisible(false)
                     }
 
                     if loadMore {
@@ -266,10 +369,15 @@ final class HomeMomentsViewController: BaseViewController, HomeContentTab {
                         }
                     }
 
-                    // Only show empty state if error wasn't handled with a specific fallback
+                    // A failed refresh never replaces moments with nothing: keep
+                    // what was on screen and play it again (the fresh load
+                    // stopped the players); empty only when there was nothing
                     if !isHandledError && !loadMore {
-                        self.reels = []
-                        self.updateReelsFeed()
+                        if self.reels.isEmpty {
+                            self.updateReelsFeed()
+                        } else if self.isActiveTab {
+                            self.playVideo(at: self.currentReelIndex)
+                        }
                     }
                 }
 
@@ -336,9 +444,11 @@ final class HomeMomentsViewController: BaseViewController, HomeContentTab {
         statusView.message = "Too much content to load right now! Try refreshing in a few moments, or check back later for your Moments feed."
         Logger.debug("🔍 Showing user-friendly message for Firestore query limit")
 
-        // Clear reels array to show empty state
-        reels = []
-        collectionView.reloadData()
+        // Keep moments already on screen; the message only shows on an empty feed
+        if !reels.isEmpty {
+            statusView.message = nil
+            if isActiveTab { playVideo(at: currentReelIndex) }
+        }
 
         // Auto-retry after 30 seconds
         DispatchQueue.main.asyncAfter(deadline: .now() + 30.0) { [weak self] in
@@ -353,9 +463,11 @@ final class HomeMomentsViewController: BaseViewController, HomeContentTab {
         statusView.message = "Feed temporarily unavailable due to high activity. Pull to refresh to try again!"
         Logger.debug("🔍 Showing fallback message for rate limited Moments feed")
 
-        // Clear reels array to show empty state; pull-to-refresh retries
-        reels = []
-        collectionView.reloadData()
+        // Keep moments already on screen; pull-to-refresh retries
+        if !reels.isEmpty {
+            statusView.message = nil
+            if isActiveTab { playVideo(at: currentReelIndex) }
+        }
     }
 
     // MARK: - Video management
