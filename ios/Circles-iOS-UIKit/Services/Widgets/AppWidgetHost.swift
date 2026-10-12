@@ -78,15 +78,7 @@ final class AppWidgetHost: FavWidgetHost {
     }
 
     func share(_ items: [WidgetShareItem]) {
-        let activityItems: [Any] = items.compactMap { item in
-            switch item {
-            case .text(let text): return text
-            case .url(let url): return url
-            case .imageJPEG(let data): return UIImage(data: data)
-            case .link(let url, let title, let jpeg):
-                return LinkPreviewItem(url: url, title: title, image: jpeg.flatMap(UIImage.init(data:)))
-            }
-        }
+        let activityItems = items.compactMap(\.activityItem)
         guard let presenter = presentingViewController, !activityItems.isEmpty else { return }
         let activityVC = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
         activityVC.popoverPresentationController?.sourceView = presenter.view
@@ -100,6 +92,24 @@ final class AppWidgetHost: FavWidgetHost {
 
     /// Accepted connections (the `connections` collection — not the legacy
     /// `users/me/friends` array, which is empty for most accounts).
+}
+
+extension WidgetShareItem {
+    /// What the share sheet gets for this item — the one place a widget
+    /// share item becomes an activity item (the host's share and the
+    /// widget page's Share button both use it).
+    var activityItem: Any? {
+        switch self {
+        case .text(let text): return text
+        case .url(let url): return url
+        case .imageJPEG(let data): return UIImage(data: data)
+        case .link(let url, let title, let jpeg):
+            return LinkPreviewItem(url: url, title: title, image: jpeg.flatMap(UIImage.init(data:)))
+        case .file(let url):
+            // A local file (an event video) shares as itself
+            return url
+        }
+    }
 }
 
 /// A link the share sheet hands Messages with its preview already filled in

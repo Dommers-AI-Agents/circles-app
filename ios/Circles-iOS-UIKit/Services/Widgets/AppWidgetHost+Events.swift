@@ -18,6 +18,47 @@ extension AppWidgetHost {
         }
     }
 
+    /// An event video into the camera roll (widgets 0.44.0)
+    func saveVideoToPhotos(_ file: URL) async throws {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else {
+            throw NSError(domain: "AppWidgetHost", code: 1, userInfo: [NSLocalizedDescriptionKey: "Photos access was declined"])
+        }
+        try await PHPhotoLibrary.shared().performChanges {
+            PHAssetCreationRequest.forAsset().addResource(with: .video, fileURL: file, options: nil)
+        }
+    }
+
+    /// A person's profile over the widget, with Close to come back
+    /// (event People list, widgets 0.44.0)
+    func openProfile(userId: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let presenter = self?.presentingViewController else { return }
+            let present: (User?) -> Void = { user in
+                let profile = ProfileViewController(user: user)
+                let navigation = UINavigationController(rootViewController: profile)
+                profile.navigationItem.leftBarButtonItem = UIBarButtonItem(
+                    systemItem: .close,
+                    primaryAction: UIAction { [weak navigation] _ in navigation?.dismiss(animated: true) })
+                navigation.modalPresentationStyle = .pageSheet
+                presenter.present(navigation, animated: true)
+            }
+            // Your own row opens your own profile
+            if AuthService.shared.isMe(userId) { return present(nil) }
+            let loading = AlertPresenter.showLoading(message: "Loading profile...", from: presenter)
+            UserService.shared.fetchUserProfile(userId: userId) { result in
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) {
+                        switch result {
+                        case .success(let user): present(user)
+                        case .failure(let error): AlertPresenter.showError(error, from: presenter)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     func searchPlaces(_ text: String, near: WidgetCoordinate?) async throws -> [WidgetPlaceCandidate] {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = text

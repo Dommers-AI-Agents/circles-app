@@ -103,14 +103,7 @@ final class HomeWidgetDetailViewController: BaseViewController {
             guard let self else { return }
             let items = await WidgetShareKit.items(for: self.widget, context: self.context)
             sender.isEnabled = true
-            let activityItems: [Any] = items.compactMap { item in
-                switch item {
-                case .text(let text): return text
-                case .url(let url): return url
-                case .imageJPEG(let data): return UIImage(data: data)
-                case .link(let url, let title, let jpeg): return LinkPreviewItem(url: url, title: title, image: jpeg.flatMap(UIImage.init(data:)))
-                }
-            }
+            let activityItems = items.compactMap(\.activityItem)
             let share = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
             // An unanchored activity sheet is a crash on iPad, which is the device
             // App Review uses.
