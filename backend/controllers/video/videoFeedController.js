@@ -426,52 +426,36 @@ exports.getVideoDetails = async (req, res) => {
 const fetchActivityDataForVideos = async (videos, userId) => {
   const videoIds = videos.map(v => v.id);
   if (videoIds.length === 0) return {};
-  
-  // Fetch activities for these videos
-  const activitiesQuery = await db.collection(COLLECTIONS.ACTIVITIES)
+
+  // Each moment's activity row, in parallel chunks (Firestore 'in' caps)
+  const activityDocs = await queryInChunks(videoIds, ids => db.collection(COLLECTIONS.ACTIVITIES)
     .where('targetType', '==', 'place_video')
-    .where('targetId', 'in', videoIds.slice(0, 10)) // Firestore 'in' limit
-    .get();
-  
+    .where('targetId', 'in', ids)
+    .get());
   const activitiesMap = {};
-  activitiesQuery.docs.forEach(doc => {
+  activityDocs.forEach(doc => {
     const activity = serializeDoc(doc);
     activitiesMap[activity.targetId] = activity;
   });
-  
-  // Fetch remaining activities if more than 10 videos
-  if (videoIds.length > 10) {
-    const remainingActivitiesQuery = await db.collection(COLLECTIONS.ACTIVITIES)
-      .where('targetType', '==', 'place_video')
-      .where('targetId', 'in', videoIds.slice(10))
-      .get();
-    
-    remainingActivitiesQuery.docs.forEach(doc => {
-      const activity = serializeDoc(doc);
-      activitiesMap[activity.targetId] = activity;
-    });
-  }
-  
-  // Check user reactions
+
+  // The viewer's reaction on every one of them (this used to check only the
+  // first 10, so reactions on later moments in a page showed as none)
   const activityIds = Object.values(activitiesMap).map(a => a.id);
   if (activityIds.length > 0) {
-    const reactionsQuery = await db.collection(COLLECTIONS.ACTIVITY_REACTIONS)
-      .where('activityId', 'in', activityIds.slice(0, 10))
+    const reactionDocs = await queryInChunks(activityIds, ids => db.collection(COLLECTIONS.ACTIVITY_REACTIONS)
+      .where('activityId', 'in', ids)
       .where('userId', '==', userId)
-      .get();
-    
+      .get());
     const userReactions = {};
-    reactionsQuery.docs.forEach(doc => {
+    reactionDocs.forEach(doc => {
       const reaction = doc.data();
       userReactions[reaction.activityId] = reaction.emoji;
     });
-    
-    // Add user reaction to activities
     Object.values(activitiesMap).forEach(activity => {
       activity.userReaction = userReactions[activity.id] || null;
     });
   }
-  
+
   return activitiesMap;
 };
 
@@ -481,8 +465,10 @@ exports.getReelsFeed = async (req, res) => {
     const userId = req.user.uid;
     const { limit, offset } = clampPagination(req.query, FEED_PAGINATION); // security audit 2026-10-01
     
-    // Get user's connections and following list
-    const [connections1, connections2, userDoc] = await Promise.all([
+    // Everything that depends only on the viewer, in one round trip
+    // (2026-10-12: the feed made ~9 sequential trips, 1-2 s and 5+ s on a
+    // cold instance; it now makes 3)
+    const [connections1, connections2, userDoc, innerCircleLists] = await Promise.all([
       db.collection(COLLECTIONS.CONNECTIONS)
         .where('userId', '==', userId)
         .where('status', '==', 'accepted')
@@ -491,7 +477,8 @@ exports.getReelsFeed = async (req, res) => {
         .where('connectedUserId', '==', userId)
         .where('status', '==', 'accepted')
         .get(),
-      db.collection(COLLECTIONS.USERS).doc(userId).get()
+      db.collection(COLLECTIONS.USERS).doc(userId).get(),
+      getInnerCircleGrantorLists(userId)
     ]);
     
     // Separate connections from following for proper visibility filtering
@@ -512,7 +499,7 @@ exports.getReelsFeed = async (req, res) => {
       viewerId: userId,
       connections: connectionIds,
       following: followingIds,
-      innerCircleLists: await getInnerCircleGrantorLists(userId)
+      innerCircleLists
     });
     const canView = (v) => canViewMoment(v, userId, viewerCtx);
 
@@ -556,12 +543,18 @@ exports.getReelsFeed = async (req, res) => {
     // Apply pagination
     const paginatedVideos = videos.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
     
-    // Populate user details
+    // Owners, the viewer's likes and the activity rows, all at once
     const userIds = [...new Set(paginatedVideos.map(v => v.userId))];
-    const userDocs = await Promise.all(
-      userIds.map(id => db.collection(COLLECTIONS.USERS).doc(id).get())
-    );
-    
+    const videoIds = paginatedVideos.map(v => v.id);
+    const [userDocs, likeDocs, activitiesMap] = await Promise.all([
+      userIds.length ? db.getAll(...userIds.map(id => db.collection(COLLECTIONS.USERS).doc(id))) : [],
+      queryInChunks(videoIds, ids => db.collection(COLLECTIONS.VIDEO_LIKES)
+        .where('userId', '==', userId)
+        .where('videoId', 'in', ids)
+        .get()),
+      fetchActivityDataForVideos(paginatedVideos, userId)
+    ]);
+
     // Viewer's follow state rides along so the reel cell can render
     // Follow vs already-following without a second request
     const viewerFollowing = new Set((userDoc.data() || {}).following || []);
@@ -578,36 +571,13 @@ exports.getReelsFeed = async (req, res) => {
         };
       }
     });
-    
-    // Check which videos are liked by current user
-    const videoIds = paginatedVideos.map(v => v.id);
-    const likesQuery = await db.collection(COLLECTIONS.VIDEO_LIKES)
-      .where('userId', '==', userId)
-      .where('videoId', 'in', videoIds.slice(0, 10)) // Firestore 'in' limit
-      .get();
-    
+
     const likedVideoIds = new Set();
-    likesQuery.docs.forEach(doc => {
+    likeDocs.forEach(doc => {
       const [_, videoId] = doc.id.split('_');
       likedVideoIds.add(videoId);
     });
-    
-    // Check remaining videos if more than 10
-    if (videoIds.length > 10) {
-      const remainingLikesQuery = await db.collection(COLLECTIONS.VIDEO_LIKES)
-        .where('userId', '==', userId)
-        .where('videoId', 'in', videoIds.slice(10))
-        .get();
-      
-      remainingLikesQuery.docs.forEach(doc => {
-        const [_, videoId] = doc.id.split('_');
-        likedVideoIds.add(videoId);
-      });
-    }
-    
-    // Fetch activity data for videos
-    const activitiesMap = await fetchActivityDataForVideos(paginatedVideos, userId);
-    
+
     // Add user details, like status, and activity data to videos
     const videosWithUsers = paginatedVideos.map(video => {
       const activity = activitiesMap[video.id];
