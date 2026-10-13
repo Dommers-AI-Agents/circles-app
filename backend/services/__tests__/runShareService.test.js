@@ -45,3 +45,27 @@ describe('run sharing', () => {
     expect(passesItemGates(row({ runAudience: 'connections' }), 'sal', { connections: new Set() })).toBe(false);
   });
 });
+
+describe('runs whose phone went quiet (2026-10-13)', () => {
+  const { isStaleLive, isAbandoned } = require('../runShareService');
+  const now = Date.parse('2026-10-13T23:00:00Z');
+  const live = { ownerId: 'wes', status: 'live', token: 'abcdefghijklmnopqrst', updatedAt: '2026-10-13T22:33:34Z', distanceM: 0 };
+
+  test('a live run updated recently stays live', () => {
+    expect(isStaleLive(live, now)).toBe(false);
+    expect(toClientRun('r', live, 'wes', now).status).toBe('live');
+  });
+
+  test('no update for two hours reads as finished', () => {
+    const later = Date.parse('2026-10-14T01:00:00Z');
+    expect(isStaleLive(live, later)).toBe(true);
+    expect(toClientRun('r', live, 'wes', later).status).toBe('finished');
+  });
+
+  test('a stale run that never moved and nobody was told about is left out', () => {
+    const later = Date.parse('2026-10-14T01:00:00Z');
+    expect(isAbandoned(live, later)).toBe(true);
+    expect(isAbandoned({ ...live, distanceM: 3400 }, later)).toBe(false);
+    expect(isAbandoned({ ...live, invitedIds: ['brit'] }, later)).toBe(false);
+  });
+});

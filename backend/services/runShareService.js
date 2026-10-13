@@ -81,13 +81,28 @@ const finishMessage = ({ name, unit, distanceM, movingSec }) => {
 const canView = (data, uid) =>
   data.ownerId === uid || (data.watcherIds || []).includes(uid) || (data.invitedIds || []).includes(uid);
 
-const toClientRun = (id, data, viewerId) => ({
+/**
+ * A live run the runner's phone stopped updating (dead battery, no signal,
+ * app killed) reads as over after this long, so nobody sees "Wes is
+ * running" for days (2026-10-13: a run whose start reply was lost stayed
+ * live at 0.00 mi in Wes's own list).
+ */
+const STALE_LIVE_MS = 2 * 60 * 60 * 1000;
+const lastUpdate = (data) => Date.parse(data.updatedAt || data.movingAsOf || data.createdAt || '') || 0;
+/** Pure. */
+const isStaleLive = (data, now = Date.now()) => data.status === 'live' && now - lastUpdate(data) > STALE_LIVE_MS;
+/** A stale live run nobody was told about and that never moved: nothing to show. Pure. */
+const isAbandoned = (data, now = Date.now()) => isStaleLive(data, now) && !(data.distanceM > 0)
+  && !(data.invitedIds || []).length && !(data.watcherIds || []).length;
+
+const toClientRun = (id, data, viewerId, now = Date.now()) => ({
   id,
   ownerId: data.ownerId,
   ownerName: data.ownerName,
   ownerAvatarUrl: data.ownerAvatarUrl || null,
   isMine: data.ownerId === viewerId,
-  status: data.status,                       // live | finished
+  // live | finished (a stale live run reads as finished)
+  status: isStaleLive(data, now) ? 'finished' : data.status,
   unit: data.unit || 'mi',
   startedAt: data.startedAt,
   finishedAt: data.finishedAt || null,
@@ -125,7 +140,17 @@ async function loadViewable(id, uid) {
   return run;
 }
 
-async function startLive(uid, { unit, startedAt } = {}) {
+async function startLive(uid, { unit, startedAt, clientKey } = {}) {
+  // The phone retries until it hears back; a retry after a lost reply gets
+  // the same run instead of a second one (keyed by the phone's own id)
+  const key = typeof clientKey === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(clientKey) ? clientKey : null;
+  if (key) {
+    const existing = await runsCol().where('ownerId', '==', uid).where('clientKey', '==', key).limit(1).get();
+    if (!existing.empty) {
+      const doc = existing.docs[0];
+      return { run: toClientRun(doc.id, doc.data(), uid) };
+    }
+  }
   const me = await userName(uid);
   const now = nowIso();
   const data = {
@@ -134,6 +159,7 @@ async function startLive(uid, { unit, startedAt } = {}) {
     startedAt: typeof startedAt === 'string' && startedAt.length < 40 ? startedAt : now,
     token: newToken(), watcherIds: [], watcherNames: {}, invitedIds: [],
     distanceM: 0, movingSec: 0, movingAsOf: now, splits: [], route: '', cheers: [],
+    clientKey: key,
     createdAt: now, updatedAt: now
   };
   const ref = await runsCol().add(data);
@@ -291,7 +317,7 @@ async function listWatching(uid) {
   const seen = new Map();
   for (const d of [...watching.docs, ...invited.docs, ...mine.docs]) seen.set(d.id, d);
   return {
-    runs: [...seen.values()].map(d => toClientRun(d.id, d.data(), uid))
+    runs: [...seen.values()].filter(d => !isAbandoned(d.data())).map(d => toClientRun(d.id, d.data(), uid))
       .sort((a, b) => (a.status === 'live' ? 0 : 1) - (b.status === 'live' ? 0 : 1)
         || String(b.startedAt).localeCompare(String(a.startedAt)))
   };
@@ -359,5 +385,5 @@ async function getPostedRun(id, uid, viewerCanSee) {
 module.exports = {
   startLive, invite, watch, getRun, progress, finish, cancel, cheer, listWatching, postToActivity, getPostedRun, publicPreview,
   // pure (tested)
-  splitMessage, finishMessage, toClientRun, canView, CHEERS
+  splitMessage, finishMessage, toClientRun, canView, CHEERS, isStaleLive, isAbandoned
 };
