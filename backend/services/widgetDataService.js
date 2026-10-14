@@ -18,7 +18,9 @@ const { COLLECTIONS } = require('../models/FirestoreModels');
 // Covers plain ids (`water`, `prefs`) and month shards (`calories_2026-09`).
 const WIDGET_ID_RE = /^[a-z][a-z0-9_-]{1,47}$/;
 const WIDGET_PAYLOAD_MAX_BYTES = 200 * 1024; // well under Firestore's 1 MiB doc cap
-const MAX_BATCH_IDS = 30;
+// 60 (2026-10-14): the tab's hot set grew past 30 (24 widgets → 41 ids) and every
+// open got a 400; the app now also splits requests into ≤30-id chunks
+const MAX_BATCH_IDS = 60;
 
 class ValidationError extends Error {
   constructor(status, code, message) {

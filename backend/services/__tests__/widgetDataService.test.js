@@ -192,6 +192,10 @@ describe('get / getMany / remove', () => {
     spy.mockRestore();
   });
 
+  test('the batch limit fits a full widget tab (41 ids) with room to grow', () => {
+    expect(MAX_BATCH_IDS).toBe(60);
+  });
+
   test('getMany rejects more than MAX_BATCH_IDS distinct ids', async () => {
     const ids = Array.from({ length: MAX_BATCH_IDS + 1 }, (_, i) => `w${i}`);
     await expect(service.getMany('u1', ids)).rejects.toMatchObject({ status: 400, code: 'too_many_ids' });
