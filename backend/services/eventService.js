@@ -624,13 +624,50 @@ async function runInnerListSync(eventId) {
 // Photos
 // ---------------------------------------------------------------------------
 
+// The phone's 64-bit picture fingerprint (16 hex chars). Two copies of the same
+// photo (re-saved, re-sent, re-compressed) land within a couple of bits.
+const FINGERPRINT_RE = /^[0-9a-f]{16}$/;
+const FINGERPRINT_MAX_DISTANCE = 2;
+const fingerprintDistance = (a, b) => {
+  let x = BigInt(`0x${a}`) ^ BigInt(`0x${b}`);
+  let n = 0;
+  while (x) { n += Number(x & 1n); x >>= 1n; }
+  return n;
+};
+
+/** Drops photos whose fingerprint matches one in `seen` (what this person
+ *  already added to the event) or an earlier photo in the same batch. Photos
+ *  without a fingerprint (older app versions) always pass. Pure. */
+function pickFreshPhotos(list, seen = []) {
+  const known = seen.filter(f => FINGERPRINT_RE.test(String(f || '')));
+  const fresh = [];
+  for (const p of list) {
+    const f = String((p && p.fingerprint) || '');
+    if (!FINGERPRINT_RE.test(f)) { fresh.push(p); continue; }
+    if (known.some(other => fingerprintDistance(f, other) <= FINGERPRINT_MAX_DISTANCE)) continue;
+    known.push(f);
+    fresh.push(p);
+  }
+  return fresh;
+}
+
+/** One person doesn't add the same photo to an event twice (Wes, 2026-10-14). */
+async function dropDuplicatePhotos(eventId, uid, list) {
+  if (!list.some(p => FINGERPRINT_RE.test(String(p.fingerprint || '')))) return { fresh: list, skipped: 0 };
+  const snap = await photosCol().where('eventId', '==', eventId).where('uploaderId', '==', uid).get();
+  const fresh = pickFreshPhotos(list, snap.docs.map(d => d.data().fingerprint));
+  return { fresh, skipped: list.length - fresh.length };
+}
+
 async function addPhotos(eventId, uid, photos) {
   const { ref, data } = await loadAsMember(eventId, uid);
-  const list = (Array.isArray(photos) ? photos : []).slice(0, 20);
-  if (!list.length) throw new ServiceError(400, 'no_photos', 'Add at least one photo');
-  for (const p of list) {
+  const requested = (Array.isArray(photos) ? photos : []).slice(0, 20);
+  if (!requested.length) throw new ServiceError(400, 'no_photos', 'Add at least one photo');
+  for (const p of requested) {
     if (!isAllowedImageUrl(p && p.imageUrl)) throw new ServiceError(400, 'invalid_image', 'Upload the photo first');
   }
+  const { fresh: list, skipped } = await dropDuplicatePhotos(ref.id, uid, requested);
+  if (!list.length) return { photos: [], skipped };
   const me = (data.members && data.members[uid]) || {};
   const now = Date.now();
   const batch = db().batch();
@@ -649,6 +686,7 @@ async function addPhotos(eventId, uid, photos) {
       challengeId: (data.challenges || []).some(c => c.id === p.challengeId) ? p.challengeId : null,
       // Where and when the file said it was taken (nulls when it didn't)
       ...parsePhotoCapture(p, now),
+      fingerprint: FINGERPRINT_RE.test(String(p.fingerprint || '')) ? p.fingerprint : null,
       likes: [],
       // Spread by a millisecond so a batch keeps the order it was picked in
       createdAt: new Date(now + i).toISOString()
@@ -693,7 +731,7 @@ async function addPhotos(eventId, uid, photos) {
     const snap = await placesCol().where('eventId', '==', ref.id).limit(100).get().catch(() => null);
     placeRows = snap ? snap.docs.map(d => ({ id: d.id, ...d.data() })) : [];
   }
-  return created.map(c => toClientPhoto({ id: c.id, data: () => c.row }, uid, data.hostId, placeRows));
+  return { photos: created.map(c => toClientPhoto({ id: c.id, data: () => c.row }, uid, data.hostId, placeRows)), skipped };
 }
 
 async function deletePhoto(eventId, uid, photoId) {
@@ -821,6 +859,7 @@ module.exports = {
   loadEvent, loadAsMember, eventsCol, photosCol, placesCol, DEFAULT_EMOJI,
   addPhotos, deletePhoto, togglePhotoLike, tagPlace, savePlaceToMyCircle,
   // pure (tested)
+  pickFreshPhotos,
   cleanEventName, cleanEmoji, parsePlace, toClientEvent, listMembersFor, isMember,
   parsePhotoCapture, distanceMeters, nearestTaggedPlace, toClientPhoto, PHOTO_PLACE_RADIUS_M,
   DEFAULT_NAME, LINK_BASE, TOKEN_RE

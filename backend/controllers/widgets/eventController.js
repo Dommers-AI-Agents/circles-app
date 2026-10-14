@@ -31,7 +31,7 @@ exports.resetLink = handle('resetLink', async (req) => ({ event: await eventServ
 exports.end = handle('end', async (req) => eventService.endEvent(req.params.id, uid(req)));
 exports.archive = handle('archive', async (req) => ({ event: await eventService.archiveEvent(req.params.id, uid(req), { forEveryone: (req.body || {}).forEveryone === true }) }));
 exports.unarchive = handle('unarchive', async (req) => ({ event: await eventService.unarchiveEvent(req.params.id, uid(req)) }));
-exports.addPhotos = handle('addPhotos', async (req) => ({ photos: await eventService.addPhotos(req.params.id, uid(req), (req.body || {}).photos) }));
+exports.addPhotos = handle('addPhotos', async (req) => eventService.addPhotos(req.params.id, uid(req), (req.body || {}).photos));
 exports.deletePhoto = handle('deletePhoto', async (req) => eventService.deletePhoto(req.params.id, uid(req), req.params.photoId));
 // Videos: reserve + signed upload URLs, then publish once the files land
 exports.startVideo = handle('startVideo', async (req) => require('../../services/eventVideoService').startVideo(req.params.id, uid(req), req.body || {}));

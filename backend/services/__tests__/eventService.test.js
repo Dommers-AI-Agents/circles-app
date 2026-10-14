@@ -77,6 +77,24 @@ describe('where a photo was taken (Wes, 2026-10-09)', () => {
   });
 });
 
+describe('the same photo twice (Wes, 2026-10-14)', () => {
+  const a = '8f3a5c0e1d2b4a69';
+  test('drops a photo this person already added, and a repeat inside one batch', () => {
+    const batch = [{ imageUrl: 'u1', fingerprint: a }, { imageUrl: 'u2', fingerprint: 'ffffffff00000000' }, { imageUrl: 'u3', fingerprint: 'ffffffff00000000' }];
+    expect(svc.pickFreshPhotos(batch, [a]).map(p => p.imageUrl)).toEqual(['u2']);
+  });
+  test('a re-compressed copy (a bit or two off) is the same photo; a different one is not', () => {
+    const near = '8f3a5c0e1d2b4a6a';   // 2 bits off
+    const far = '70c5a3f1e2d4b596';
+    expect(svc.pickFreshPhotos([{ imageUrl: 'n', fingerprint: near }], [a])).toEqual([]);
+    expect(svc.pickFreshPhotos([{ imageUrl: 'f', fingerprint: far }], [a])).toHaveLength(1);
+  });
+  test('photos with no (or a malformed) fingerprint always go through', () => {
+    const batch = [{ imageUrl: 'x' }, { imageUrl: 'y', fingerprint: 'nope' }, { imageUrl: 'z', fingerprint: 'nope' }];
+    expect(svc.pickFreshPhotos(batch, [a])).toHaveLength(3);
+  });
+});
+
 describe('what a member sees', () => {
   const data = {
     name: 'Party Bus', emoji: '🚌', hostId: 'wes', hostName: 'Wesley', joinOpen: true, inviteToken: 'abcdefghijklmnopqrst',
