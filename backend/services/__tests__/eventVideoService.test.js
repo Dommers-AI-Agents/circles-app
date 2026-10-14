@@ -36,7 +36,8 @@ jest.mock('../eventService', () => ({
   photosCol: () => mockDb.collection('eventPhotos'),
   parsePhotoCapture: () => ({ takenAt: null, lat: null, lng: null }),
   toClientPhoto: (doc) => ({ id: doc.id, ...doc.data() }),
-  DEFAULT_EMOJI: '🚌'
+  DEFAULT_EMOJI: '🚌',
+  ...(({ FINGERPRINT_RE, fingerprintDistance, FINGERPRINT_MAX_DISTANCE }) => ({ FINGERPRINT_RE, fingerprintDistance, FINGERPRINT_MAX_DISTANCE }))(jest.requireActual('../eventService'))
 }));
 
 const svc = require('../eventVideoService');
@@ -92,6 +93,29 @@ describe('limits', () => {
 
   test('members only', async () => {
     await expect(start(5, 'stranger')).rejects.toMatchObject({ code: 'not_member' });
+  });
+});
+
+describe('the same video twice (Wes, 2026-10-14)', () => {
+  const fp = '8f3a5c0e1d2b4a69';
+  const startWith = (secs, fingerprint, uid = 'me') => svc.startVideo('ev1', uid, { durationSec: secs, fingerprint });
+
+  test('the same clip again is refused, a different one is not', async () => {
+    await startWith(10, fp);
+    await expect(startWith(10.4, fp)).rejects.toMatchObject({ status: 409, code: 'duplicate_video' });
+    await expect(startWith(10, '70c5a3f1e2d4b596')).resolves.toHaveProperty('videoId');
+    await expect(startWith(14, fp)).resolves.toHaveProperty('videoId');   // same first frame, different length
+  });
+  test('only against your own videos, and clips with no fingerprint always pass', async () => {
+    await startWith(10, fp, 'sal');
+    await expect(startWith(10, fp)).resolves.toHaveProperty('videoId');
+    await expect(start(10)).resolves.toHaveProperty('videoId');
+    await expect(start(10)).resolves.toHaveProperty('videoId');
+  });
+  test('an abandoned upload does not block a retry', () => {
+    const old = { kind: 'video', uploaderId: 'me', status: 'uploading', fingerprint: fp, durationSec: 10, createdAt: '2026-10-01T00:00:00Z' };
+    expect(svc.isRepeatVideo([old], 'me', fp, 10, Date.parse('2026-10-14T00:00:00Z'))).toBe(false);
+    expect(svc.isRepeatVideo([{ ...old, createdAt: '2026-10-13T23:59:00Z' }], 'me', fp, 10, Date.parse('2026-10-14T00:00:00Z'))).toBe(true);
   });
 });
 

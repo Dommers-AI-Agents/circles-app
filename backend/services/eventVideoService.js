@@ -66,6 +66,20 @@ const countsTowardCap = (row, uid, now) => {
   return now - (Date.parse(row.createdAt) || 0) < UPLOAD_TTL_MS;
 };
 
+// A clip lasts the same however it was saved, give or take how a phone rounds
+const REPEAT_VIDEO_SECONDS = 1;
+
+/** Whether this person already added this clip to the event: one of their
+ *  videos (counting ones still uploading) with a fingerprint within a couple
+ *  of bits and nearly the same length. `rows` are the event's media. Pure. */
+const isRepeatVideo = (rows, uid, fingerprint, seconds, now = Date.now()) => {
+  if (!ev.FINGERPRINT_RE.test(String(fingerprint || ''))) return false;
+  return rows.some(r => countsTowardCap(r, uid, now)
+    && ev.FINGERPRINT_RE.test(String(r.fingerprint || ''))
+    && ev.fingerprintDistance(fingerprint, r.fingerprint) <= ev.FINGERPRINT_MAX_DISTANCE
+    && Math.abs((Number(r.durationSec) || 0) - seconds) <= REPEAT_VIDEO_SECONDS);
+};
+
 /** Whether a row should be shown: finished uploads only. Pure. */
 const isVisible = (row) => !(row && row.status === 'uploading');
 
@@ -96,7 +110,12 @@ async function startVideo(eventId, uid, body = {}) {
         : `Videos can be up to ${limits.maxSeconds} seconds. Premium allows up to ${PREMIUM_MAX_SECONDS}.`,
       { ...limits, upgradeRequired: !limits.isPremium });
   }
-  const used = await videosUsed(ref.id, uid);
+  const mediaSnap = await ev.photosCol().where('eventId', '==', ref.id).get();
+  const media = mediaSnap.docs.map(d => d.data());
+  if (isRepeatVideo(media, uid, body.fingerprint, seconds)) {
+    throw new ServiceError(409, 'duplicate_video', 'You already added that video to this event');
+  }
+  const used = media.filter(r => countsTowardCap(r, uid, Date.now())).length;
   if (used >= limits.perEvent) {
     throw new ServiceError(403, 'video_limit',
       limits.isPremium
@@ -122,6 +141,7 @@ async function startVideo(eventId, uid, body = {}) {
     imageUrl: null,
     thumbUrl: null,
     storagePaths,
+    fingerprint: ev.FINGERPRINT_RE.test(String(body.fingerprint || '')) ? body.fingerprint : null,
     ...ev.parsePhotoCapture(body, now),
     likes: [],
     createdAt: new Date(now).toISOString()
@@ -215,5 +235,5 @@ async function deleteVideoFiles(row) {
 module.exports = {
   startVideo, finishVideo, viewerVideoLimits, deleteVideoFiles,
   // pure (tested)
-  countsTowardCap, isVisible, UPLOAD_TTL_MS, PREMIUM_MAX_SECONDS
+  countsTowardCap, isRepeatVideo, isVisible, UPLOAD_TTL_MS, PREMIUM_MAX_SECONDS
 };

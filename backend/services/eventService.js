@@ -859,7 +859,7 @@ module.exports = {
   loadEvent, loadAsMember, eventsCol, photosCol, placesCol, DEFAULT_EMOJI,
   addPhotos, deletePhoto, togglePhotoLike, tagPlace, savePlaceToMyCircle,
   // pure (tested)
-  pickFreshPhotos,
+  pickFreshPhotos, FINGERPRINT_RE, fingerprintDistance, FINGERPRINT_MAX_DISTANCE,
   cleanEventName, cleanEmoji, parsePlace, toClientEvent, listMembersFor, isMember,
   parsePhotoCapture, distanceMeters, nearestTaggedPlace, toClientPhoto, PHOTO_PLACE_RADIUS_M,
   DEFAULT_NAME, LINK_BASE, TOKEN_RE
