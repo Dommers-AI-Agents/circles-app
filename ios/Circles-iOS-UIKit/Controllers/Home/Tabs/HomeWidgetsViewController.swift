@@ -67,6 +67,9 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
 
     func tabDidBecomeVisible() {
         guard ensureModel() else { return }
+        // Cards that poll (Stocks) start again; the tab is shown and hidden
+        // with isHidden, so SwiftUI's onAppear/onDisappear never fire for it
+        model?.setTabVisible(true)
         AnalyticsService.shared.logEvent("widgets_tab_viewed")
         maybeShowHint()
     }
@@ -77,6 +80,7 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
             self?.hintBubble = nil
         }
         guard let model else { return }
+        model.setTabVisible(false)
         Task { await model.flushAll() }
     }
 

@@ -8,7 +8,12 @@ import PassKit
 /// Places for the widgets (NextBar and friends): location, saved places, opening a place page.
 extension AppWidgetHost {
     func currentLocation() async -> WidgetCoordinate? {
-        await withCheckedContinuation { continuation in
+        // A fix from the last 5 minutes is good enough for every widget
+        // (Weather and NextBar each waited on their own GPS fix, up to 10 s)
+        if let recent = LocationService.shared.cachedLocation, -recent.timestamp.timeIntervalSinceNow < 5 * 60 {
+            return WidgetCoordinate(latitude: recent.coordinate.latitude, longitude: recent.coordinate.longitude)
+        }
+        return await withCheckedContinuation { continuation in
             // Belt and braces: LocationService now fires each completion once,
             // but a continuation resumed twice is a crash, so guard here too.
             let once = OnceFlag()
