@@ -36,6 +36,8 @@ enum PendingLink: Equatable {
     case runJoin(token: String)
     /// "care-ask:<askId>": a How Are You? answer push on a cold start.
     case careAnswer(askId: String)
+    /// "tab:<local|widgets>": a shared home tab opened before the app was ready.
+    case homeTab(HomeContentSegment)
 
     // "type:payload" links
     case shareToken(circleId: String, shareToken: String)
@@ -99,6 +101,7 @@ enum PendingLinkParser {
         case "run-id": return .runOpen(id: payload)
         case "run-token": return .runJoin(token: payload)
         case "care-ask": return .careAnswer(askId: payload)
+        case "tab": return HomeContentSegment(shareSlug: payload).map(PendingLink.homeTab)
         case "video": return .video(id: payload)
         case "daily-summary": return .dailySummary
         case "check-in": return .checkIn(placeId: payload)

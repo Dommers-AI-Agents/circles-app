@@ -868,6 +868,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             navigateToWidget(id: "postcard", postcardShareToken: token)
         case .eventInvite(let token):
             navigateToWidget(id: "events", eventToken: token)
+        case .homeTab(let segment):
+            navigateToHomeTab(segment)
         case .eventOpen(let id):
             navigateToWidget(id: "events", eventId: id)
         case .runJoin(let token):
@@ -1419,6 +1421,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case .runOpen(let id): self.navigateToWidget(id: "run", runId: id)
             case .runJoin(let token): self.navigateToWidget(id: "run", runToken: token)
             case .careAnswer(let askId): self.navigateToWidget(id: "howareyou", careAskId: askId)
+            case .homeTab(let segment): self.navigateToHomeTab(segment)
             case .openPath(let path):
                 if let destination = DeepLinkRouter().openPathDestination(path) { self.route(destination) }
             case .shareToken(let circleId, let shareToken):
@@ -2253,6 +2256,23 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                             motivationLineId: motivationLineId, motivationSend: motivationSend,
                             postcardShareToken: postcardShareToken, eventToken: eventToken, eventId: eventId,
                             runId: runId, runToken: runToken, careAskId: careAskId)
+    }
+
+    /// A shared tab link: Home → that segment. Stashed like a widget link
+    /// when nobody is signed in or the tab bar isn't up yet, which is the
+    /// usual case for a link someone was sent.
+    private func navigateToHomeTab(_ segment: HomeContentSegment) {
+        guard AuthService.shared.isLoggedIn,
+              let tabBar = window?.rootViewController as? CirclesTabBarController else {
+            if let slug = segment.shareSlug { UserDefaults.standard.set("tab:\(slug)", forKey: "pendingDeepLink") }
+            return
+        }
+        tabBar.presentedViewController?.dismiss(animated: false)
+        tabBar.selectedIndex = 0
+        guard let nav = tabBar.viewControllers?.first as? UINavigationController,
+              let home = nav.viewControllers.first as? CirclesHomeViewController else { return }
+        nav.popToRootViewController(animated: false)
+        home.showHomeTab(segment)
     }
 
     private func navigateToCreateWallet() {

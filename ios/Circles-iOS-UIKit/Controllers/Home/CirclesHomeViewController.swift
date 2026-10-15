@@ -649,6 +649,16 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         return control
     }()
     
+    /// Share button for the tabs that have a link (Local, Widgets): sends a
+    /// card that opens the app on that tab. Shares the header-row slot with
+    /// the camera button; no segment shows both.
+    private lazy var homeTabShareButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "square.and.arrow.up", pointSize: 18)
+        button.isHidden = true
+        button.accessibilityLabel = "Share this tab"
+        return button
+    }()
+
     // Camera button for Moments tab
     let momentsCameraButton: UIButton = {
         let button = UIButton(type: .system)
@@ -1577,6 +1587,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         activityFeedSection.addSubview(activityHeaderLabel)
         activityFeedSection.addSubview(contentSegmentedControl)
         activityFeedSection.addSubview(momentsCameraButton)
+        activityFeedSection.addSubview(homeTabShareButton)
         activityFeedSection.addSubview(dailyCardContainer)
         activityFeedSection.addSubview(tabContentContainer)
         embedContentTabs()
@@ -1596,6 +1607,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Add action to camera button
         momentsCameraButton.addTarget(self, action: #selector(recordReelTapped), for: .touchUpInside)
+        homeTabShareButton.addTarget(self, action: #selector(shareCurrentTabTapped), for: .touchUpInside)
         
         // Bring elements to proper z-order - filters and expand button above map
         contentView.bringSubviewToFront(filterContainer)
@@ -1794,6 +1806,12 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             momentsCameraButton.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor, constant: -Constants.Spacing.medium),
             momentsCameraButton.widthAnchor.constraint(equalToConstant: 40),
             momentsCameraButton.heightAnchor.constraint(equalToConstant: 40),
+
+            // Share button: same slot as the camera button (never both visible)
+            homeTabShareButton.centerYAnchor.constraint(equalTo: activityHeaderLabel.centerYAnchor),
+            homeTabShareButton.trailingAnchor.constraint(equalTo: activityFeedSection.trailingAnchor, constant: -Constants.Spacing.medium),
+            homeTabShareButton.widthAnchor.constraint(equalToConstant: 40),
+            homeTabShareButton.heightAnchor.constraint(equalToConstant: 40),
             
             // Daily card slot (zero height until a card is shown)
             dailyCardContainer.topAnchor.constraint(equalTo: contentSegmentedControl.bottomAnchor),
@@ -2107,9 +2125,30 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             contentTab(for: other).setTabVisible(false)
         }
         momentsCameraButton.isHidden = !segment.showsCameraButton
+        homeTabShareButton.isHidden = !segment.showsShareButton
         activityHeaderLabel.text = segment.headerTitle
         contentTab(for: segment).setTabVisible(true)
         anchorContentTab(animated: true)
+    }
+
+    /// Deep link: switch to `segment` (a shared tab link, `/app/tab/<slug>`).
+    func showHomeTab(_ segment: HomeContentSegment) {
+        contentSegmentedControl.selectedSegmentIndex = segment.rawValue
+        showContentTab(segment)
+    }
+
+    /// The header's Share button: one tappable card that opens the app on
+    /// this tab (the same one-bubble rule as the widget share cards).
+    @objc private func shareCurrentTabTapped() {
+        guard let segment = HomeContentSegment(rawValue: contentSegmentedControl.selectedSegmentIndex),
+              let url = HomeTabShareLink.url(for: segment) else { return }
+        AnalyticsService.shared.logEvent("home_tab_shared", parameters: ["tab": segment.shareSlug ?? ""])
+        let item = LinkPreviewItem(url: url, title: HomeTabShareLink.title(for: segment), image: HomeTabShareCard.image(for: segment))
+        let share = UIActivityViewController(activityItems: [item], applicationActivities: nil)
+        // An unanchored activity sheet is a crash on iPad, which is the device App Review uses.
+        share.popoverPresentationController?.sourceView = homeTabShareButton
+        share.popoverPresentationController?.sourceRect = homeTabShareButton.bounds
+        present(share, animated: true)
     }
 
     /// The slot's height before the first layout pass sizes it to the screen.
@@ -2247,6 +2286,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             contentTab(for: other).setTabVisible(false)
         }
         momentsCameraButton.isHidden = false
+        homeTabShareButton.isHidden = true
         activityHeaderLabel.text = HomeContentSegment.moments.headerTitle
         momentsTab.present(moment: video)
         anchorContentTab(animated: false)

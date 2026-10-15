@@ -428,6 +428,41 @@ app.get('/app/widget/:id', (req, res) => {
 </body></html>`);
 });
 
+// Shared home tab link (AASA /app/*): the header's Share button on the Local
+// and Widgets tabs. With the app installed the Universal Link opens that tab
+// directly; everyone else gets the tab's pitch and the App Store.
+app.get('/app/tab/:slug', (req, res) => {
+  const slug = String(req.params.slug).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32).toLowerCase();
+  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+  const { tabCopy } = require('./config/homeTabCatalog');
+  const copy = tabCopy(slug);
+
+  const esc = (s) => String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const title = esc(copy.title);
+  const blurb = esc(copy.blurb);
+
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title} on FavCircles</title>
+<meta property="og:title" content="${title} on FavCircles">
+<meta property="og:description" content="${blurb}">
+<meta property="og:site_name" content="FavCircles">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://api.favcircles.com/app/tab/${slug}">
+</head>
+<body style="font-family:-apple-system,Helvetica,Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#3182CE;color:#fff;text-align:center;padding:24px">
+<div><div style="font-size:64px;line-height:1;margin-bottom:16px">${copy.emoji}</div>
+<h1 style="margin:0 0 8px">${title}</h1>
+<p style="margin:0 0 24px;opacity:.9">${blurb}</p>
+<a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Get FavCircles</a></div>
+<script>
+  window.location = 'circles://tab/${slug}';
+  setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
+</script>
+</body></html>`);
+});
+
 // Shared quote link (AASA /app/*). With the app installed the Universal Link
 // opens the quote reel on this quote. Everyone else sees the quote itself,
 // set like the reel, with the way to get more.

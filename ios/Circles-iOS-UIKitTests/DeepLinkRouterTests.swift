@@ -34,6 +34,9 @@ struct DeepLinkRouterTests {
         #expect(dest("https://api.favcircles.com/app/widget/run") == .widget(id: "run"))
         // "Watch my run" links open FavRun on that run
         #expect(dest("https://api.favcircles.com/app/run/tok123") == .runJoin(token: "tok123"))
+        // A shared home tab lands on that tab
+        #expect(dest("https://api.favcircles.com/app/tab/local") == .homeTab(.specials))
+        #expect(dest("https://api.favcircles.com/app/tab/widgets") == .homeTab(.widgets))
     }
 
     @Test func emailOpenPaths() {

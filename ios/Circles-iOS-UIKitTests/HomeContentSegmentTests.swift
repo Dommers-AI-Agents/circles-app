@@ -17,6 +17,11 @@ struct HomeContentSegmentTests {
         #expect(HomeContentSegment.allCases.filter(\.showsCameraButton) == [.moments])
     }
 
+    @Test func shareAndCameraNeverShareASegment() {
+        // They occupy the same header slot
+        #expect(HomeContentSegment.allCases.filter { $0.showsCameraButton && $0.showsShareButton }.isEmpty)
+    }
+
     @Test func headerTitles() {
         #expect(HomeContentSegment.activity.headerTitle == "Recent Activity")
         #expect(HomeContentSegment.widgets.headerTitle == "Widgets")

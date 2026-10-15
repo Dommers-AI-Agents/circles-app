@@ -58,6 +58,9 @@ enum DeepLinkDestination: Equatable {
     case eventOpen(id: String)
     /// A "watch my run" link — `/app/run/<token>`. Opens FavRun on it.
     case runJoin(token: String)
+    /// A shared home tab — `/app/tab/<local|widgets>` or `circles://tab/<slug>`
+    /// (the header's Share button). Lands on that tab of the home screen.
+    case homeTab(HomeContentSegment)
 }
 
 /// Interprets universal links (https://api.favcircles.com/…) and the custom
@@ -112,6 +115,8 @@ struct DeepLinkRouter {
                 return parts.count >= 3 ? .eventInvite(token: parts[2]) : nil
             case "run":
                 return parts.count >= 3 ? .runJoin(token: parts[2]) : nil
+            case "tab":
+                return parts.count >= 3 ? HomeContentSegment(shareSlug: parts[2]).map(DeepLinkDestination.homeTab) : nil
             case "circle":
                 return parts.count >= 3 ? .circle(id: parts[2], shareToken: query(url, "share")) : nil
             case "connect":
@@ -194,6 +199,8 @@ struct DeepLinkRouter {
             return .postcardShare(token: hostPathId)
         case "event" where !hostPathId.isEmpty:
             return .eventInvite(token: hostPathId)
+        case "tab" where !hostPathId.isEmpty:
+            return HomeContentSegment(shareSlug: hostPathId).map(DeepLinkDestination.homeTab)
         case "network":
             return .network
         case "settings" where url.path == "/notifications":
@@ -226,6 +233,8 @@ struct DeepLinkRouter {
             return .postcardShare(token: parts[2])
         case "event" where parts.count >= 3:
             return .eventInvite(token: parts[2])
+        case "tab" where parts.count >= 3:
+            return HomeContentSegment(shareSlug: parts[2]).map(DeepLinkDestination.homeTab)
         case "connect" where parts.count >= 3:
             return .connectionInvite(userId: parts[2], referralCode: query(url, "code"), inviteToken: query(url, "t"))
         default:
