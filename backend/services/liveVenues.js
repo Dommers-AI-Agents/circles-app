@@ -1,4 +1,4 @@
-// Venues whose loyalty program is live: the set the Local tab may show
+// Venues whose loyalty program is live: the set the Locals tab may show
 // (offers, announcements, store events). Shared by GET /rewards/offers and
 // the nearby-events aggregator so both apply the same gate.
 const { getFirestore } = require('../config/firebase');

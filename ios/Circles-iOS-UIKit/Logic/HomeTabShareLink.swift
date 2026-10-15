@@ -1,6 +1,6 @@
 import Foundation
 
-/// The link the home header's Share button hands out for a tab: Local or
+/// The link the home header's Share button hands out for a tab: Locals or
 /// Widgets. Same shape and reasoning as `WidgetShareLink` — an
 /// `api.favcircles.com/app/*` universal link, so a phone with FavCircles
 /// opens straight onto the tab and any other phone lands on the backend's

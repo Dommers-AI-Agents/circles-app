@@ -14,7 +14,7 @@ enum HomeContentSegment: Int, CaseIterable {
         switch self {
         case .activity: return "Activity"
         case .moments: return "Moments"
-        case .specials: return "Local"
+        case .specials: return "Locals"
         case .widgets: return "Widgets"
         }
     }
@@ -24,7 +24,7 @@ enum HomeContentSegment: Int, CaseIterable {
         switch self {
         case .activity: return "Recent Activity"
         case .moments: return "Moments"
-        case .specials: return "Local"
+        case .specials: return "Locals"
         case .widgets: return "Widgets"
         }
     }
@@ -35,13 +35,13 @@ enum HomeContentSegment: Int, CaseIterable {
     // MARK: - Sharing a tab
 
     /// The slug a tab's share link carries (`/app/tab/<slug>`), for the tabs
-    /// worth sending someone: Local and Widgets (Wes, 2026-10-15). Activity
+    /// worth sending someone: Locals and Widgets (Wes, 2026-10-15). Activity
     /// and Moments are the viewer's own network, so a link to them means
     /// nothing to anyone else. The slug is the public name, not the case
     /// name: "specials" is a leftover.
     var shareSlug: String? {
         switch self {
-        case .specials: return "local"
+        case .specials: return "locals"
         case .widgets: return "widgets"
         case .activity, .moments: return nil
         }
@@ -49,7 +49,9 @@ enum HomeContentSegment: Int, CaseIterable {
 
     /// The segment a share link names; nil for any other slug.
     init?(shareSlug: String) {
-        guard let match = Self.allCases.first(where: { $0.shareSlug == shareSlug.lowercased() }) else { return nil }
+        // "local" was the slug for a day before the tab became Locals
+        let slug = shareSlug.lowercased() == "local" ? "locals" : shareSlug.lowercased()
+        guard let match = Self.allCases.first(where: { $0.shareSlug == slug }) else { return nil }
         self = match
     }
 
@@ -59,7 +61,7 @@ enum HomeContentSegment: Int, CaseIterable {
     /// What the shared card says the tab is, in one line.
     var shareBlurb: String {
         switch self {
-        case .specials: return "Deals at places near you, and what's on nearby."
+        case .specials: return "Deals at the places near you, and what's on nearby."
         case .widgets: return "Mini-apps for everyday life: water, workouts, events, postcards and more."
         case .activity: return "What the people you know are saving and doing."
         case .moments: return "Short videos from places people love."

@@ -69,7 +69,7 @@ router.post('/piggy-bank-resolve-claim', verifyCloudScheduler, tasks.piggyBankRe
 // 'abandoned' and their Storage objects deleted (≤200 per run, resumable).
 router.post('/orphan-uploads', verifyCloudScheduler, orphanUploads.sweep);
 router.post('/email-health', verifyCloudScheduler, emailHealthTask.check);
-// Monthly: copy the USDA farmers market directory (Local tab markets)
+// Monthly: copy the USDA farmers market directory (Locals tab markets)
 router.post('/farmers-markets-sync', verifyCloudScheduler, farmersMarketsTask.sync);
 
 // Health check endpoint for scheduled tasks

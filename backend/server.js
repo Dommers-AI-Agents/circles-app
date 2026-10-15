@@ -428,7 +428,7 @@ app.get('/app/widget/:id', (req, res) => {
 </body></html>`);
 });
 
-// Shared home tab link (AASA /app/*): the header's Share button on the Local
+// Shared home tab link (AASA /app/*): the header's Share button on the Locals
 // and Widgets tabs. With the app installed the Universal Link opens that tab
 // directly; everyone else gets the tab's pitch and the App Store.
 app.get('/app/tab/:slug', (req, res) => {

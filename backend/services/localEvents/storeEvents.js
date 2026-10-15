@@ -1,6 +1,6 @@
 // Events posted by stores on FavCircles: an announcement with an `event`
 // ({ startsAt, endsAt, localDate, localTime, isFree }). Same loyalty gate as
-// the rest of the Local tab (listLiveVenues).
+// the rest of the Locals tab (listLiveVenues).
 const geofire = require('geofire-common');
 const { listLiveVenues } = require('../liveVenues');
 const rewardService = require('../rewardService');

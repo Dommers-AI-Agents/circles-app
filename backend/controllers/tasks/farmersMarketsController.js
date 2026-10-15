@@ -1,4 +1,4 @@
-// Monthly: refresh the USDA farmers market directory copy the Local tab
+// Monthly: refresh the USDA farmers market directory copy the Locals tab
 // reads (services/localEvents/farmersMarkets.js).
 const { scheduledTask } = require('../../middleware/scheduledTask');
 const { syncUsdaMarkets } = require('../../services/localEvents/farmersMarkets');

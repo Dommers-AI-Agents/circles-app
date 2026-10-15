@@ -2,7 +2,7 @@ import UIKit
 
 /// Post or edit one announcement: a headline, the details, and an optional
 /// last day — or, switched to an event, when it happens and whether it's
-/// free (events also show under "Happening nearby" on the Local tab and
+/// free (events also show under "Happening nearby" on the Locals tab and
 /// come down on their own when they're over). Existing announcements can be
 /// deleted from here too.
 final class VenueAnnouncementFormViewController: BaseViewController {
@@ -179,7 +179,7 @@ final class VenueAnnouncementFormViewController: BaseViewController {
         eventEndRow.isHidden = !eventEndSwitch.isOn
         endsSection.isHidden = isEvent
         eventHint.text = isEvent
-            ? "Shows under \u{201C}Happening nearby\u{201D} on the Local tab and comes down on its own when it\u{2019}s over."
+            ? "Shows under \u{201C}Happening nearby\u{201D} on the Locals tab and comes down on its own when it\u{2019}s over."
             : "Live music, trivia, a tasting? Make it an event so people nearby see it."
         endsPicker.isHidden = !endsSwitch.isOn
         if endsSwitch.isOn {

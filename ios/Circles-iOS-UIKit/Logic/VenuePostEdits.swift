@@ -55,7 +55,7 @@ struct VenueOfferEdit: Equatable {
 /// An announcement as the owner edits it. The expiry is a day: the post stays
 /// up through the end of that day in the owner's time zone. An event (a time
 /// it happens) takes itself down when it's over instead, and shows under
-/// "Happening nearby" on the Local tab.
+/// "Happening nearby" on the Locals tab.
 struct VenueAnnouncementEdit: Equatable {
     var title: String
     var message: String

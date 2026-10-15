@@ -2,8 +2,9 @@ const { TABS, GENERIC, tabCopy } = require('../homeTabCatalog');
 
 describe('shared home tab landing copy', () => {
   test('the two shareable tabs have their own page', () => {
-    expect(Object.keys(TABS).sort()).toEqual(['local', 'widgets']);
-    expect(tabCopy('local').title).toBe('Local');
+    expect(Object.keys(TABS).sort()).toEqual(['locals', 'widgets']);
+    expect(tabCopy('locals').title).toBe('Locals');
+    expect(tabCopy('local').title).toBe('Locals'); // the one-day-old slug still lands
     expect(tabCopy('Widgets').title).toBe('Widgets'); // case never matters in a link
   });
 

@@ -4,9 +4,9 @@
 // the generic FavCircles pitch rather than a 404, because a link someone
 // already sent must still lead to the app.
 const TABS = {
-  local: {
-    title: 'Local',
-    blurb: 'Deals at places near you, and what\'s on nearby.',
+  locals: {
+    title: 'Locals',
+    blurb: 'Deals at the places near you, and what\'s on nearby.',
     emoji: '📍'
   },
   widgets: {
@@ -18,6 +18,12 @@ const TABS = {
 
 const GENERIC = { title: 'FavCircles', blurb: 'Favorite places, shared with the people you trust.', emoji: '⭕️' };
 
-const tabCopy = (slug) => TABS[String(slug || '').toLowerCase()] || GENERIC;
+// "local" was the slug for a day before the tab became Locals (Wes, 2026-10-15)
+const ALIASES = { local: 'locals' };
+
+const tabCopy = (slug) => {
+  const key = String(slug || '').toLowerCase();
+  return TABS[ALIASES[key] || key] || GENERIC;
+};
 
 module.exports = { TABS, GENERIC, tabCopy };

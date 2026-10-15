@@ -1,4 +1,4 @@
-// The Local tab's "Happening nearby" (Wes, 2026-10-15): events from stores
+// The Locals tab's "Happening nearby" (Wes, 2026-10-15): events from stores
 // on FavCircles, free library programs, and concerts/games/shows from
 // Ticketmaster, soonest first — plus the nearest farmers markets (USDA).
 // Each source caches on its own (services/localEvents/*); a source that is
@@ -97,7 +97,7 @@ const settle = (promise, label) => promise.catch((err) => {
   return [];
 });
 
-/** Everything for the Local tab's "Happening nearby" around (lat, lng). */
+/** Everything for the Locals tab's "Happening nearby" around (lat, lng). */
 async function getLocalFeed(lat, lng, { now = new Date() } = {}) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { events: [], markets: [], attribution: null };
   const cell = geofire.geohashForLocation([lat, lng], 5);

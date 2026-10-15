@@ -335,7 +335,7 @@ exports.getOffers = async (req, res) => {
   }
 };
 
-// @desc    "Happening nearby" for the Local tab: store events, free library
+// @desc    "Happening nearby" for the Locals tab: store events, free library
 //          programs, Ticketmaster shows (next two weeks) and the nearest
 //          farmers markets. Empty lists when there's no location or a
 //          source is down.

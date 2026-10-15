@@ -1,4 +1,4 @@
-// Free event calendars for the Local tab's "Happening nearby". Adding a
+// Free event calendars for the Locals tab's "Happening nearby". Adding a
 // city's library is one row: its BiblioCommons id (the subdomain of its
 // events page, e.g. cmlibrary.bibliocommons.com → "cmlibrary"), a centre
 // and the radius its branches cover.

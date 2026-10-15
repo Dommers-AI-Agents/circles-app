@@ -2,7 +2,7 @@ import UIKit
 import MapKit
 import SafariServices
 
-/// The home screen's Local tab (was Specials): live offers and announcements
+/// The home screen's Locals tab (was Specials): live offers and announcements
 /// from participating venues, one row per deal in the server's order (saved
 /// venues first, then nearest); then "Happening nearby" — events stores post
 /// on FavCircles, free library programs and Ticketmaster shows — and the

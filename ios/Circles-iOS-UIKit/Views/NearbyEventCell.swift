@@ -1,6 +1,6 @@
 import UIKit
 
-/// A "Happening nearby" row on the Local tab: the event's picture, name,
+/// A "Happening nearby" row on the Locals tab: the event's picture, name,
 /// when, where, and a "Free" or price chip. Also draws a farmers market
 /// (name, "Farmers market", address and distance).
 final class NearbyEventCell: UITableViewCell {
