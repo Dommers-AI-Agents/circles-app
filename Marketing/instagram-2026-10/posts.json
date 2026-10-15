@@ -5,396 +5,325 @@
       "id": "app-friends-map",
       "emoji": "📍",
       "accent": "#0E2A47",
-      "kicker": "FavCircles",
+      "kicker": "Your people",
       "headline": "Your friends' favorite places, on one map",
-      "features": [
-        "Save places into circles",
-        "See where the people you trust actually go",
-        "Private by default, shared on your terms"
-      ],
-      "caption": "Reviews from strangers vs. a spot your friend swears by. We built FavCircles for the second one 📍\n\nSave your favorite places into circles, share them with the people you choose, and see where your friends actually go.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #friends #travel"
+      "caption": "Reviews from strangers vs. a spot your friend swears by. We built FavCircles for the second one 📍\n\nSave your favorite places into circles, share them with the people you choose, and see where your friends actually go.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #friends #travel",
+      "shot": "home-zoomed",
+      "ready": true
     },
     {
       "id": "app-widgets-intro",
       "emoji": "✨",
       "accent": "#5A4BD1",
-      "kicker": "FavCircles",
-      "headline": "24 mini-apps, one app",
-      "features": [
-        "Water, workouts, runs and habits",
-        "Bill split, postcards and party photos",
-        "Weather, stocks, parking and more"
-      ],
-      "caption": "FavCircles comes with 24 built-in widgets — little apps for the stuff you do every day. Turn on the ones you like; skip the rest. Swipe through our posts to meet them one by one 👉\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #friends #travel"
+      "kicker": "Widgets",
+      "headline": "24 mini‑apps, one app",
+      "caption": "FavCircles comes with 24 built-in widgets — little apps for the stuff you do every day. Turn on the ones you like; skip the rest. Follow along to meet them one by one 👉\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #friends #travel",
+      "shot": "widgets",
+      "ready": true
     },
     {
-      "id": "app-party-bus",
-      "emoji": "🚌",
-      "accent": "#7B2FF7",
-      "kicker": "Events",
-      "headline": "Photos only your group sees",
-      "features": [
-        "One link and everyone is in",
-        "Photos and videos stay with the group",
-        "The places you went, saved for later"
-      ],
-      "caption": "Party bus, bachelorette, family trip: start an Event in FavCircles and everyone joins with one link. Photos and videos stay with the group — not on everyone's public feed.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #friends #travel"
+      "id": "app-place",
+      "emoji": "🍻",
+      "accent": "#B83280",
+      "kicker": "Places",
+      "headline": "Every place, and who you know that loves it",
+      "caption": "Every place in FavCircles shows the people you know who saved it, their photos, and one tap to check in, get directions, call or book. Fewer strangers' reviews, more friends' picks.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #friends #travel",
+      "shot": "place",
+      "ready": true
+    },
+    {
+      "id": "app-rewards",
+      "emoji": "🌵",
+      "accent": "#2F855A",
+      "kicker": "Rewards",
+      "headline": "Rewards at the local spots you love",
+      "caption": "Earn points at local shops and cafés that use FavCircles, and redeem them for free stuff. Supporting your favorite small businesses should pay you back 🌵\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #friends #travel",
+      "shot": "storepoints",
+      "ready": true
+    },
+    {
+      "id": "app-privacy",
+      "emoji": "🔒",
+      "accent": "#2D3748",
+      "kicker": "Privacy",
+      "headline": "You choose who sees what",
+      "caption": "Check-ins, photos, saved places: for each one you decide whether everyone, your connections, or just your Inner Circle sees it. Private by default, shared on your terms 🔒\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #friends #travel",
+      "shot": "privacy",
+      "ready": true
+    },
+    {
+      "id": "app-profile",
+      "emoji": "🗺️",
+      "accent": "#2B6CB0",
+      "kicker": "Your profile",
+      "headline": "All your favorite places in one profile",
+      "caption": "Your circles, the places in them, your moments and your check-ins, all on one profile. A map of you, shared with the people you choose.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #friends #travel",
+      "shot": "profile",
+      "ready": true
     },
     {
       "id": "widget-events",
       "widget": "events",
       "emoji": "🎉",
       "accent": "#7B2FF7",
-      "kicker": "Family & friends",
-      "headline": "Events",
-      "tagline": "Party bus, trip or night out: photos and videos only your group sees.",
-      "features": [
-        "Start an event and drop one link in the group text, or invite friends in the app",
-        "A shared album of photos and videos only the people who joined can see, from the camera or your photo library",
-        "Video clips up to 15 seconds free (5 per event), or up to a minute with Premium"
-      ],
-      "caption": "🎉 Events: Party bus, trip or night out: photos and videos only your group sees.\n\n• Start an event and drop one link in the group text, or invite friends in the app\n• A shared album of photos and videos only the people who joined can see, from the camera or your photo library\n• Video clips up to 15 seconds free (5 per event), or up to a minute with Premium\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #family #staytogether #grandparents #groupchat"
+      "kicker": "Events",
+      "headline": "Party photos only your group sees",
+      "caption": "🎉 Events: Party bus, trip or night out: photos and videos only your group sees.\n\n• Start an event and drop one link in the group text, or invite friends in the app\n• A shared album of photos and videos only the people who joined can see, from the camera or your photo library\n• Video clips up to 15 seconds free (5 per event), or up to a minute with Premium\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #family #staytogether #grandparents #groupchat",
+      "shot": "events",
+      "ready": true
     },
     {
       "id": "widget-howareyou",
       "widget": "howareyou",
       "emoji": "💬",
       "accent": "#E0567F",
-      "kicker": "Family & friends",
-      "headline": "How Are You?",
-      "tagline": "Check on Mom or Dad a few times a day.",
-      "features": [
-        "Questions at the times you pick; they answer with one tap from the Lock Screen",
-        "Questions fit their life: pain from 0 to 10, meds, sleep, PT days, rides",
-        "A heads-up when an answer needs attention, or when they go quiet"
-      ],
-      "caption": "💬 How Are You?: Check on Mom or Dad a few times a day.\n\n• Questions at the times you pick; they answer with one tap from the Lock Screen\n• Questions fit their life: pain from 0 to 10, meds, sleep, PT days, rides\n• A heads-up when an answer needs attention, or when they go quiet\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #family #staytogether #grandparents #groupchat"
+      "kicker": "How Are You?",
+      "headline": "Check on Mom or Dad a few times a day",
+      "caption": "💬 How Are You?: Check on Mom or Dad a few times a day.\n\n• Questions at the times you pick; they answer with one tap from the Lock Screen\n• Questions fit their life: pain from 0 to 10, meds, sleep, PT days, rides\n• A heads-up when an answer needs attention, or when they go quiet\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #family #staytogether #grandparents #groupchat",
+      "shot": "howareyou",
+      "ready": false
     },
     {
       "id": "widget-postcard",
       "widget": "postcard",
       "emoji": "📮",
       "accent": "#E53E3E",
-      "kicker": "Family & friends",
-      "headline": "Postcard",
-      "tagline": "A real postcard from your trip photo.",
-      "features": [
-        "Pick a photo and a design, add a note",
-        "Send it to a friend's chat, by email, or as a link anyone can open",
-        "Or have it printed and mailed anywhere in the US, with delivery updates"
-      ],
-      "caption": "📮 Postcard: A real postcard from your trip photo.\n\n• Pick a photo and a design, add a note\n• Send it to a friend's chat, by email, or as a link anyone can open\n• Or have it printed and mailed anywhere in the US, with delivery updates\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #family #staytogether #grandparents #groupchat"
+      "kicker": "Postcard",
+      "headline": "A real postcard from your trip photo",
+      "caption": "📮 Postcard: A real postcard from your trip photo.\n\n• Pick a photo and a design, add a note\n• Send it to a friend's chat, by email, or as a link anyone can open\n• Or have it printed and mailed anywhere in the US, with delivery updates\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #family #staytogether #grandparents #groupchat",
+      "shot": "postcard",
+      "ready": true
     },
     {
       "id": "widget-fridgemail",
       "widget": "fridgemail",
       "emoji": "🎨",
       "accent": "#D97706",
-      "kicker": "Family & friends",
-      "headline": "Fridge Mail",
-      "tagline": "Kids' drawings, mailed to Grandma every week.",
-      "features": [
-        "Snap the drawing; we print it and mail it",
-        "Send to up to three grandparents on a weekly schedule",
-        "Follow every card from the printer to Grandma's mailbox, and tap one to see it full size"
-      ],
-      "caption": "🎨 Fridge Mail: Kids' drawings, mailed to Grandma every week.\n\n• Snap the drawing; we print it and mail it\n• Send to up to three grandparents on a weekly schedule\n• Follow every card from the printer to Grandma's mailbox, and tap one to see it full size\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #family #staytogether #grandparents #groupchat"
+      "kicker": "Fridge Mail",
+      "headline": "Kids' drawings, mailed to Grandma every week",
+      "caption": "🎨 Fridge Mail: Kids' drawings, mailed to Grandma every week.\n\n• Snap the drawing; we print it and mail it\n• Send to up to three grandparents on a weekly schedule\n• Follow every card from the printer to Grandma's mailbox, and tap one to see it full size\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #family #staytogether #grandparents #groupchat",
+      "shot": "fridgemail",
+      "ready": false
     },
     {
       "id": "widget-billsplit",
       "widget": "billsplit",
       "emoji": "🧾",
       "accent": "#2C9C93",
-      "kicker": "Family & friends",
-      "headline": "Bill Split",
-      "tagline": "Split the check and the tip in seconds.",
-      "features": [
-        "Enter the bill, pick the tip, see what everyone owes",
-        "Tip on the pre-tax amount, and round up if you like",
-        "Share the split as a card in the group chat"
-      ],
-      "caption": "🧾 Bill Split: Split the check and the tip in seconds.\n\n• Enter the bill, pick the tip, see what everyone owes\n• Tip on the pre-tax amount, and round up if you like\n• Share the split as a card in the group chat\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #family #staytogether #grandparents #groupchat"
+      "kicker": "Bill Split",
+      "headline": "Split the check and the tip in seconds",
+      "caption": "🧾 Bill Split: Split the check and the tip in seconds.\n\n• Enter the bill, pick the tip, see what everyone owes\n• Tip on the pre-tax amount, and round up if you like\n• Share the split as a card in the group chat\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #family #staytogether #grandparents #groupchat",
+      "shot": null,
+      "ready": false
     },
     {
       "id": "widget-nextbar",
       "widget": "nextbar",
       "emoji": "🍸",
       "accent": "#9F7AEA",
-      "kicker": "Going out",
-      "headline": "NextBar",
-      "tagline": "Your next bar, picked from where your friends actually go.",
-      "features": [
-        "Picks a bar near you from your saved places and your friends'",
-        "Start a group vote and let everyone pick where to go next"
-      ],
-      "caption": "🍸 NextBar: Your next bar, picked from where your friends actually go.\n\n• Picks a bar near you from your saved places and your friends'\n• Start a group vote and let everyone pick where to go next\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #nightout #foodie #whattoeat #friends"
+      "kicker": "NextBar",
+      "headline": "Your next bar, from where your friends go",
+      "caption": "🍸 NextBar: Your next bar, picked from where your friends actually go.\n\n• Picks a bar near you from your saved places and your friends'\n• Start a group vote and let everyone pick where to go next\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #nightout #foodie #whattoeat #friends",
+      "shot": "nextbar",
+      "ready": true
     },
     {
       "id": "widget-whattoeat",
       "widget": "whattoeat",
       "emoji": "🍜",
       "accent": "#DD6B20",
-      "kicker": "Going out",
-      "headline": "What to Eat",
-      "tagline": "Can't decide? One tap picks for you.",
-      "features": [
-        "Spin for a craving and see where to get it nearby, starting with places you and your friends saved",
-        "Narrow it down: comfort, spicy, healthy, veggie, cheap eats or treat yourself",
-        "Not feeling it? Spin again"
-      ],
-      "caption": "🍜 What to Eat: Can't decide? One tap picks for you.\n\n• Spin for a craving and see where to get it nearby, starting with places you and your friends saved\n• Narrow it down: comfort, spicy, healthy, veggie, cheap eats or treat yourself\n• Not feeling it? Spin again\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #nightout #foodie #whattoeat #friends"
+      "kicker": "What to Eat",
+      "headline": "Can't decide? One tap picks for you",
+      "caption": "🍜 What to Eat: Can't decide? One tap picks for you.\n\n• Spin for a craving and see where to get it nearby, starting with places you and your friends saved\n• Narrow it down: comfort, spicy, healthy, veggie, cheap eats or treat yourself\n• Not feeling it? Spin again\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #nightout #foodie #whattoeat #friends",
+      "shot": "whattoeat",
+      "ready": true
     },
     {
       "id": "widget-drink",
       "widget": "drink",
       "emoji": "🍹",
       "accent": "#D53F8C",
-      "kicker": "Going out",
-      "headline": "Make Me a Drink",
-      "tagline": "A cocktail to order tonight, and how to make any classic.",
-      "features": [
-        "Recipes for every spirit, with a surprise-me shake",
-        "Calories on every drink",
-        "Send a recipe to a friend's chat"
-      ],
-      "caption": "🍹 Make Me a Drink: A cocktail to order tonight, and how to make any classic.\n\n• Recipes for every spirit, with a surprise-me shake\n• Calories on every drink\n• Send a recipe to a friend's chat\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #nightout #foodie #whattoeat #friends"
+      "kicker": "Make Me a Drink",
+      "headline": "A cocktail to order tonight, and how to make any classic",
+      "caption": "🍹 Make Me a Drink: A cocktail to order tonight, and how to make any classic.\n\n• Recipes for every spirit, with a surprise-me shake\n• Calories on every drink\n• Send a recipe to a friend's chat\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #nightout #foodie #whattoeat #friends",
+      "shot": "drink",
+      "ready": true
     },
     {
       "id": "widget-workouts",
       "widget": "workouts",
       "emoji": "🏋️",
       "accent": "#3182CE",
-      "kicker": "Health & fitness",
-      "headline": "Workouts",
-      "tagline": "Log sets, reps and personal records.",
-      "features": [
-        "Routines that remember last time's numbers",
-        "Cardio with calories, a rest timer and exercise photos",
-        "Share a workout with friends; they can copy it as their own routine"
-      ],
-      "caption": "🏋️ Workouts: Log sets, reps and personal records.\n\n• Routines that remember last time's numbers\n• Cardio with calories, a rest timer and exercise photos\n• Share a workout with friends; they can copy it as their own routine\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness"
+      "kicker": "Workouts",
+      "headline": "Log sets, reps and personal records",
+      "caption": "🏋️ Workouts: Log sets, reps and personal records.\n\n• Routines that remember last time's numbers\n• Cardio with calories, a rest timer and exercise photos\n• Share a workout with friends; they can copy it as their own routine\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness",
+      "shot": "workouts",
+      "ready": true
     },
     {
       "id": "widget-run",
       "widget": "run",
       "emoji": "🏃",
       "accent": "#DD6B20",
-      "kicker": "Health & fitness",
-      "headline": "FavRun",
-      "tagline": "Track your runs on a map.",
-      "features": [
-        "GPS route map, pace, splits and personal bests",
-        "Your run on the Lock Screen while you go",
-        "Share your runs with the friends you choose"
-      ],
-      "caption": "🏃 FavRun: Track your runs on a map.\n\n• GPS route map, pace, splits and personal bests\n• Your run on the Lock Screen while you go\n• Share your runs with the friends you choose\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness"
+      "kicker": "FavRun",
+      "headline": "Track your runs on a map",
+      "caption": "🏃 FavRun: Track your runs on a map.\n\n• GPS route map, pace, splits and personal bests\n• Your run on the Lock Screen while you go\n• Share your runs with the friends you choose\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness",
+      "shot": null,
+      "ready": false
     },
     {
       "id": "widget-motivation",
       "widget": "motivation",
       "emoji": "📣",
       "accent": "#E53E3E",
-      "kicker": "Health & fitness",
-      "headline": "Coach Mane",
-      "tagline": "A coach who won't let you skip.",
-      "features": [
-        "An animated coach with a fresh line every time: tough love, or savage if you dare",
-        "He'll remind you through the day; tap Did it to keep your streak",
-        "Send his line to a friend who needs to hear it"
-      ],
-      "caption": "📣 Coach Mane: A coach who won't let you skip.\n\n• An animated coach with a fresh line every time: tough love, or savage if you dare\n• He'll remind you through the day; tap Did it to keep your streak\n• Send his line to a friend who needs to hear it\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness"
+      "kicker": "Coach Mane",
+      "headline": "A coach who won't let you skip",
+      "caption": "📣 Coach Mane: A coach who won't let you skip.\n\n• An animated coach with a fresh line every time: tough love, or savage if you dare\n• He'll remind you through the day; tap Did it to keep your streak\n• Send his line to a friend who needs to hear it\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness",
+      "shot": null,
+      "ready": false
     },
     {
       "id": "widget-water",
       "widget": "water",
       "emoji": "💧",
       "accent": "#4299E1",
-      "kicker": "Health & fitness",
-      "headline": "Water",
-      "tagline": "One tap per glass.",
-      "features": [
-        "A daily goal, streaks and a month at a glance",
-        "Reminders every 1 to 4 hours, and log a cup right from the notification"
-      ],
-      "caption": "💧 Water: One tap per glass.\n\n• A daily goal, streaks and a month at a glance\n• Reminders every 1 to 4 hours, and log a cup right from the notification\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness"
+      "kicker": "Water",
+      "headline": "One tap per glass",
+      "caption": "💧 Water: One tap per glass.\n\n• A daily goal, streaks and a month at a glance\n• Reminders every 1 to 4 hours, and log a cup right from the notification\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness",
+      "shot": null,
+      "ready": false
     },
     {
       "id": "widget-habits",
       "widget": "habits",
       "emoji": "✅",
       "accent": "#38A169",
-      "kicker": "Health & fitness",
-      "headline": "Habits",
-      "tagline": "Daily check-ins and streaks.",
-      "features": [
-        "One-tap check-ins for the habits you want to keep",
-        "Every day, or just the days you choose",
-        "Streaks and your best streak; retired habits keep their history"
-      ],
-      "caption": "✅ Habits: Daily check-ins and streaks.\n\n• One-tap check-ins for the habits you want to keep\n• Every day, or just the days you choose\n• Streaks and your best streak; retired habits keep their history\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness"
+      "kicker": "Habits",
+      "headline": "Daily check‑ins and streaks",
+      "caption": "✅ Habits: Daily check-ins and streaks.\n\n• One-tap check-ins for the habits you want to keep\n• Every day, or just the days you choose\n• Streaks and your best streak; retired habits keep their history\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness",
+      "shot": "habits",
+      "ready": false
     },
     {
       "id": "widget-calories",
       "widget": "calories",
       "emoji": "🥗",
       "accent": "#FF8500",
-      "kicker": "Health & fitness",
-      "headline": "Calories",
-      "tagline": "Quick-add meals and macros.",
-      "features": [
-        "Log what you eat in a couple of taps",
-        "A daily calorie goal, plus macro goals if you want them",
-        "Recent foods one tap away, and your last 7 days at a glance"
-      ],
-      "caption": "🥗 Calories: Quick-add meals and macros.\n\n• Log what you eat in a couple of taps\n• A daily calorie goal, plus macro goals if you want them\n• Recent foods one tap away, and your last 7 days at a glance\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness"
+      "kicker": "Calories",
+      "headline": "Quick‑add meals and macros",
+      "caption": "🥗 Calories: Quick-add meals and macros.\n\n• Log what you eat in a couple of taps\n• A daily calorie goal, plus macro goals if you want them\n• Recent foods one tap away, and your last 7 days at a glance\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness",
+      "shot": null,
+      "ready": false
     },
     {
       "id": "widget-heartbeat",
       "widget": "heartbeat",
       "emoji": "❤️",
       "accent": "#F43F5E",
-      "kicker": "Health & fitness",
-      "headline": "Heartbeat",
-      "tagline": "Your pulse, from the camera or a strap.",
-      "features": [
-        "Measure your heart rate with your phone's camera, or connect a Bluetooth heart-rate strap",
-        "A lens guide shows when your finger is steady",
-        "A reading in under 20 seconds"
-      ],
-      "caption": "❤️ Heartbeat: Your pulse, from the camera or a strap.\n\n• Measure your heart rate with your phone's camera, or connect a Bluetooth heart-rate strap\n• A lens guide shows when your finger is steady\n• A reading in under 20 seconds\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness"
+      "kicker": "Heartbeat",
+      "headline": "Your pulse, from the camera or a strap",
+      "caption": "❤️ Heartbeat: Your pulse, from the camera or a strap.\n\n• Measure your heart rate with your phone's camera, or connect a Bluetooth heart-rate strap\n• A lens guide shows when your finger is steady\n• A reading in under 20 seconds\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness",
+      "shot": "heartbeat",
+      "ready": false
     },
     {
       "id": "widget-meds",
       "widget": "meds",
       "emoji": "💊",
       "accent": "#319795",
-      "kicker": "Health & fitness",
-      "headline": "Medications",
-      "tagline": "A reminder for every dose, and one tap to log it.",
-      "features": [
-        "Add each medication with its dose and the times you take it",
-        "A reminder at each time; tap Took it right from the notification, or snooze 10 minutes",
-        "Today's doses at a glance, with anything missed flagged after two hours"
-      ],
-      "caption": "💊 Medications: A reminder for every dose, and one tap to log it.\n\n• Add each medication with its dose and the times you take it\n• A reminder at each time; tap Took it right from the notification, or snooze 10 minutes\n• Today's doses at a glance, with anything missed flagged after two hours\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness"
+      "kicker": "Medications",
+      "headline": "A reminder for every dose, and one tap to log it",
+      "caption": "💊 Medications: A reminder for every dose, and one tap to log it.\n\n• Add each medication with its dose and the times you take it\n• A reminder at each time; tap Took it right from the notification, or snooze 10 minutes\n• Today's doses at a glance, with anything missed flagged after two hours\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness",
+      "shot": null,
+      "ready": false
     },
     {
       "id": "widget-sleep",
       "widget": "sleep",
       "emoji": "😴",
       "accent": "#6B46C1",
-      "kicker": "Health & fitness",
-      "headline": "Sleep Score",
-      "tagline": "How well you slept, scored every morning from Apple Health.",
-      "features": [
-        "A nightly score out of 100 from how long you slept, time asleep in bed, consistency and sleep stages",
-        "Reads your sleep from Apple Health (your Apple Watch or any sleep app), or log a night by hand",
-        "Your recent nights at a glance, with 7-night averages"
-      ],
-      "caption": "😴 Sleep Score: How well you slept, scored every morning from Apple Health.\n\n• A nightly score out of 100 from how long you slept, time asleep in bed, consistency and sleep stages\n• Reads your sleep from Apple Health (your Apple Watch or any sleep app), or log a night by hand\n• Your recent nights at a glance, with 7-night averages\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness"
+      "kicker": "Sleep Score",
+      "headline": "How well you slept, scored every morning from Apple Health",
+      "caption": "😴 Sleep Score: How well you slept, scored every morning from Apple Health.\n\n• A nightly score out of 100 from how long you slept, time asleep in bed, consistency and sleep stages\n• Reads your sleep from Apple Health (your Apple Watch or any sleep app), or log a night by hand\n• Your recent nights at a glance, with 7-night averages\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #fitness #healthyhabits #workout #wellness",
+      "shot": null,
+      "ready": false
     },
     {
       "id": "widget-weather",
       "widget": "weather",
       "emoji": "🌤️",
       "accent": "#2B8CD9",
-      "kicker": "Every day",
-      "headline": "Weather",
-      "tagline": "Right now, the next hours and 10 days.",
-      "features": [
-        "The weather where you are, hour by hour and 10 days out",
-        "Or pick a place and keep it",
-        "The temperature sits on the app's home screen too"
-      ],
-      "caption": "🌤️ Weather: Right now, the next hours and 10 days.\n\n• The weather where you are, hour by hour and 10 days out\n• Or pick a place and keep it\n• The temperature sits on the app's home screen too\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks"
+      "kicker": "Weather",
+      "headline": "Right now, the next hours and 10 days",
+      "caption": "🌤️ Weather: Right now, the next hours and 10 days.\n\n• The weather where you are, hour by hour and 10 days out\n• Or pick a place and keep it\n• The temperature sits on the app's home screen too\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks",
+      "shot": null,
+      "ready": false
     },
     {
       "id": "widget-stocks",
       "widget": "stocks",
       "emoji": "📈",
       "accent": "#6001D2",
-      "kicker": "Every day",
-      "headline": "Stocks",
-      "tagline": "Indexes, rates, crypto and the stocks you follow.",
-      "features": [
-        "The Nasdaq, Dow and S&P at a glance, plus your own watchlist",
-        "Named lists you can reorder, with a chart for each day",
-        "The 10-year yield and Bitcoin right on the card"
-      ],
-      "caption": "📈 Stocks: Indexes, rates, crypto and the stocks you follow.\n\n• The Nasdaq, Dow and S&P at a glance, plus your own watchlist\n• Named lists you can reorder, with a chart for each day\n• The 10-year yield and Bitcoin right on the card\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks"
+      "kicker": "Stocks",
+      "headline": "Indexes, rates, crypto and the stocks you follow",
+      "caption": "📈 Stocks: Indexes, rates, crypto and the stocks you follow.\n\n• The Nasdaq, Dow and S&P at a glance, plus your own watchlist\n• Named lists you can reorder, with a chart for each day\n• The 10-year yield and Bitcoin right on the card\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks",
+      "shot": null,
+      "ready": false
     },
     {
       "id": "widget-quotes",
       "widget": "quotes",
       "emoji": "💭",
       "accent": "#7C6BD6",
-      "kicker": "Every day",
-      "headline": "Quotes",
-      "tagline": "Good lines at the times you pick.",
-      "features": [
-        "Pick your topics and how many times a day",
-        "Share a quote with a friend"
-      ],
-      "caption": "💭 Quotes: Good lines at the times you pick.\n\n• Pick your topics and how many times a day\n• Share a quote with a friend\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks"
+      "kicker": "Quotes",
+      "headline": "Good lines at the times you pick",
+      "caption": "💭 Quotes: Good lines at the times you pick.\n\n• Pick your topics and how many times a day\n• Share a quote with a friend\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks",
+      "shot": null,
+      "ready": false
     },
     {
       "id": "widget-sleepsounds",
       "widget": "sleepsounds",
       "emoji": "🌙",
       "accent": "#5B6CFF",
-      "kicker": "Every day",
-      "headline": "Sleep Sounds",
-      "tagline": "Rain, ocean, fire: mix and drift off.",
-      "features": [
-        "Mix sounds into your own blend",
-        "A timer that fades out gently, with controls on the Lock Screen"
-      ],
-      "caption": "🌙 Sleep Sounds: Rain, ocean, fire: mix and drift off.\n\n• Mix sounds into your own blend\n• A timer that fades out gently, with controls on the Lock Screen\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks"
+      "kicker": "Sleep Sounds",
+      "headline": "Rain, ocean, fire: mix and drift off",
+      "caption": "🌙 Sleep Sounds: Rain, ocean, fire: mix and drift off.\n\n• Mix sounds into your own blend\n• A timer that fades out gently, with controls on the Lock Screen\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks",
+      "shot": "sleepsounds",
+      "ready": true
     },
     {
       "id": "widget-parking",
       "widget": "parking",
       "emoji": "🅿️",
       "accent": "#DD6B20",
-      "kicker": "Every day",
-      "headline": "Parking",
-      "tagline": "Remember where you parked.",
-      "features": [
-        "Save your spot in one tap, with an optional photo and note (level, row, landmark)",
-        "Walking directions back to your car",
-        "A meter reminder before time runs out, and another when it expires"
-      ],
-      "caption": "🅿️ Parking: Remember where you parked.\n\n• Save your spot in one tap, with an optional photo and note (level, row, landmark)\n• Walking directions back to your car\n• A meter reminder before time runs out, and another when it expires\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks"
+      "kicker": "Parking",
+      "headline": "Remember where you parked",
+      "caption": "🅿️ Parking: Remember where you parked.\n\n• Save your spot in one tap, with an optional photo and note (level, row, landmark)\n• Walking directions back to your car\n• A meter reminder before time runs out, and another when it expires\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks",
+      "shot": null,
+      "ready": false
     },
     {
       "id": "widget-packages",
       "widget": "packages",
       "emoji": "📦",
       "accent": "#B7791F",
-      "kicker": "Every day",
-      "headline": "Packages",
-      "tagline": "Every tracking number in one place.",
-      "features": [
-        "Paste or scan a shipping label; the carrier is detected for you (USPS, UPS, FedEx, Amazon, DHL, OnTrac)",
-        "Open each carrier's tracking page in a tap",
-        "A reminder the morning a package is expected"
-      ],
-      "caption": "📦 Packages: Every tracking number in one place.\n\n• Paste or scan a shipping label; the carrier is detected for you (USPS, UPS, FedEx, Amazon, DHL, OnTrac)\n• Open each carrier's tracking page in a tap\n• A reminder the morning a package is expected\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks"
+      "kicker": "Packages",
+      "headline": "Every tracking number in one place",
+      "caption": "📦 Packages: Every tracking number in one place.\n\n• Paste or scan a shipping label; the carrier is detected for you (USPS, UPS, FedEx, Amazon, DHL, OnTrac)\n• Open each carrier's tracking page in a tap\n• A reminder the morning a package is expected\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks",
+      "shot": null,
+      "ready": false
     },
     {
       "id": "widget-newcontacts",
       "widget": "newcontacts",
       "emoji": "📇",
       "accent": "#2B6CB0",
-      "kicker": "Every day",
-      "headline": "New Contacts",
-      "tagline": "The last 50 people you added to your phone.",
-      "features": [
-        "Newest first, so you can find the person you met last night without remembering their name",
-        "Call, text or open their contact card in a tap",
-        "Contacts added together are grouped as an import"
-      ],
-      "caption": "📇 New Contacts: The last 50 people you added to your phone.\n\n• Newest first, so you can find the person you met last night without remembering their name\n• Call, text or open their contact card in a tap\n• Contacts added together are grouped as an import\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks"
+      "kicker": "New Contacts",
+      "headline": "The last 50 people you added to your phone",
+      "caption": "📇 New Contacts: The last 50 people you added to your phone.\n\n• Newest first, so you can find the person you met last night without remembering their name\n• Call, text or open their contact card in a tap\n• Contacts added together are grouped as an import\n\nIt's one of 24 widgets inside FavCircles. Free to download on the App Store.\n\n📬 Want to hear when new widgets drop? Pop your email in at the link in bio — one short email now and then, never spam.\n\n#favcircles #iphoneapps #appoftheday #productivity #dailyroutine #lifehacks",
+      "shot": null,
+      "ready": false
     }
   ]
 }

@@ -1,7 +1,8 @@
 // Loads posts.json into the instagramPosts queue (backend/services/instagramPublisher.js).
 // Posts already posted (or publishing) are never touched; everything else is
-// upserted in posts.json order. Wes approved the whole set (2026-10-15), so new
-// posts arrive 'approved'; an existing paused/failed status is kept.
+// upserted in posts.json order. Wes approved the whole set (2026-10-15) and
+// asked that every post be pretty: a post whose card has a good app screenshot
+// (posts.json `ready`) is approved, the rest wait paused for a better capture.
 //
 //   node seed-queue.js            # dry run: prints what would change
 //   node seed-queue.js --write    # writes the queue
@@ -30,11 +31,20 @@ const IMAGE_BASE = 'https://favcircles.com/ig/posts/';
     const prev = snap.exists ? snap.data() : null;
     if (prev && ['posted', 'publishing'].includes(prev.status)) { kept++; continue; }
     const doc = { order, headline: p.headline, imageUrl: IMAGE_BASE + p.id + '.jpg', caption: p.caption,
-      status: prev ? prev.status : 'approved', updatedAt: new Date().toISOString() };
+      // Ready (a good screenshot in the card) = approved; not ready = paused until it has one
+      status: p.ready ? 'approved' : 'paused', updatedAt: new Date().toISOString() };
     if (WRITE) await ref.set(doc, { merge: true });
     prev ? updated++ : created++;
   }
-  console.log(`${WRITE ? '' : '[dry run] '}queue: ${created} new, ${updated} updated, ${kept} already posted`);
+  // A post dropped from posts.json must not stay queued with its old card
+  const ids = new Set(posts.map((p) => p.id));
+  let removed = 0;
+  for (const d of (await db.collection('instagramPosts').get()).docs) {
+    if (ids.has(d.id) || ['posted', 'publishing'].includes(d.data().status)) continue;
+    if (WRITE) await d.ref.delete();
+    removed++;
+  }
+  console.log(`${WRITE ? '' : '[dry run] '}queue: ${created} new, ${updated} updated, ${kept} already posted, ${removed} removed`);
 
   if (TOKEN) {
     const token = fs.readFileSync(path.join(os.homedir(), '.config/favcircles-instagram-token'), 'utf8').trim();
