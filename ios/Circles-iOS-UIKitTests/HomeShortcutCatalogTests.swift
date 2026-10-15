@@ -66,4 +66,11 @@ struct HomeShortcutCatalogTests {
         #expect(removed.outcome == .removed)
         #expect(removed.selection == ["check-in", "add-place", "widget:water"])
     }
+
+    @Test func swappingKeepsTheSlot() {
+        let full = ["check-in", "add-place", "postcard", "widget:water"]
+        #expect(HomeShortcutCatalog.replacing("add-place", with: "widget:weather", in: full)
+                == ["check-in", "widget:weather", "postcard", "widget:water"])
+        #expect(HomeShortcutCatalog.replacing("gone", with: "widget:weather", in: full) == full)
+    }
 }

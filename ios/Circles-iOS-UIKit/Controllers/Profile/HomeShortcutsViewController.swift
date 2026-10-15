@@ -28,6 +28,10 @@ final class HomeShortcutsViewController: BaseViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Home Screen Shortcuts"
+        let info = UIBarButtonItem(image: UIImage(systemName: "info.circle"), style: .plain,
+                                   target: self, action: #selector(infoTapped))
+        info.accessibilityLabel = "About Home Screen shortcuts"
+        navigationItem.rightBarButtonItem = info
         view.backgroundColor = Constants.Colors.background
         tableView.translatesAutoresizingMaskIntoConstraints = false
         tableView.dataSource = self
@@ -40,6 +44,10 @@ final class HomeShortcutsViewController: BaseViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+    }
+
+    @objc private func infoTapped() {
+        HomeShortcutPrompts.showInfo(from: self)
     }
 
     private func save() {
@@ -90,7 +98,15 @@ extension HomeShortcutsViewController: UITableViewDataSource, UITableViewDelegat
         let option = options[indexPath.row]
         let next = HomeShortcutCatalog.toggled(option.id, in: selection)
         if next == selection {
-            showError("You can choose up to \(HomeShortcutCatalog.maxSelected). Uncheck one first.")
+            // Full: show the four and swap the one they pick
+            let current = HomeShortcutCatalog.selection(stored: selection, options: options)
+            HomeShortcutPrompts.askToSwap(adding: option.title, current: current, from: self,
+                                          sourceView: tableView.cellForRow(at: indexPath)) { [weak self] removedId in
+                guard let self else { return }
+                self.selection = HomeShortcutCatalog.replacing(removedId, with: option.id, in: self.selection)
+                self.save()
+                self.tableView.reloadData()
+            }
             return
         }
         selection = next

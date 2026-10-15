@@ -46,7 +46,8 @@ final class HomeWidgetDetailViewController: BaseViewController {
         // any widget's own code.
         navigationItem.rightBarButtonItems = [
             UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareTapped)),
-            pinButton
+            pinButton,
+            infoButton
         ]
         refreshPinButton()
 
@@ -70,6 +71,18 @@ final class HomeWidgetDetailViewController: BaseViewController {
     /// Settings → Home Screen Shortcuts edits) and the Home tab's.
     private lazy var pinButton = UIBarButtonItem(image: nil, style: .plain, target: self, action: #selector(pinTapped))
 
+    /// What the shortcut menu is and how to open it
+    private lazy var infoButton: UIBarButtonItem = {
+        let item = UIBarButtonItem(image: UIImage(systemName: "info.circle"), style: .plain,
+                                   target: self, action: #selector(pinInfoTapped))
+        item.accessibilityLabel = "About Home Screen shortcuts"
+        return item
+    }()
+
+    @objc private func pinInfoTapped() {
+        HomeShortcutPrompts.showInfo(from: self)
+    }
+
     private var thisPin: HomeButtonPin { HomeButtonPin(id: widget.descriptor.id, title: widget.descriptor.title) }
 
     private var storedShortcuts: [String]? {
@@ -88,32 +101,52 @@ final class HomeWidgetDetailViewController: BaseViewController {
     }
 
     @objc private func pinTapped() {
-        let wasPinned = isPinned
-        let pins = HomeButtonPinStore.load()
-        var outcome = HomeShortcutCatalog.PinOutcome.removed
-        if wasPinned {
-            let optionId = HomeShortcutCatalog.optionId(forWidget: thisPin.id)
+        let optionId = HomeShortcutCatalog.optionId(forWidget: thisPin.id)
+        if isPinned {
             let stored = storedShortcuts ?? HomeShortcutCatalog.defaultSelection
-            UserDefaults.standard.set(stored.filter { $0 != optionId }, forKey: HomeShortcutCatalog.selectionKey)
-            HomeButtonPinStore.save(pins.filter { $0.id != thisPin.id })
-        } else {
-            let result = HomeShortcutCatalog.pinToggled(widgetId: thisPin.id, stored: storedShortcuts)
-            outcome = result.outcome
-            UserDefaults.standard.set(result.selection, forKey: HomeShortcutCatalog.selectionKey)
-            HomeButtonPinStore.save(HomeButtonPins.toggle(thisPin, in: pins))
+            saveShortcuts(stored.filter { $0 != optionId }, homeTabPinned: false)
+            announce(pinned: false)
+            return
         }
+        let result = HomeShortcutCatalog.pinToggled(widgetId: thisPin.id, stored: storedShortcuts)
+        guard result.outcome == .full else {
+            saveShortcuts(result.selection, homeTabPinned: true)
+            announce(pinned: true)
+            return
+        }
+        // All four taken: show them and let the user pick which one goes
+        let current = HomeShortcutCatalog.selection(stored: result.selection, options: shortcutOptions)
+        HomeShortcutPrompts.askToSwap(adding: thisPin.title, current: current, from: self) { [weak self] removedId in
+            guard let self else { return }
+            self.saveShortcuts(HomeShortcutCatalog.replacing(removedId, with: optionId, in: result.selection), homeTabPinned: true)
+            AnalyticsService.shared.logEvent("home_shortcut_swapped", parameters: ["added": optionId, "removed": removedId])
+            self.announce(pinned: true)
+        }
+    }
+
+    private var shortcutOptions: [HomeShortcutOption] {
+        HomeShortcutCatalog.options(widgets: FavWidgetRegistry.descriptors.map {
+            HomeShortcutCatalog.Widget(id: $0.id, title: $0.title, symbolName: $0.symbolName)
+        })
+    }
+
+    /// The app-icon menu and the Home tab menu move together.
+    private func saveShortcuts(_ selection: [String], homeTabPinned: Bool) {
+        UserDefaults.standard.set(selection, forKey: HomeShortcutCatalog.selectionKey)
+        let pins = HomeButtonPinStore.load().filter { $0.id != thisPin.id }
+        HomeButtonPinStore.save(homeTabPinned ? HomeButtonPins.toggle(thisPin, in: pins) : pins)
         QuickCheckInShortcuts.updateFromCache()
         refreshPinButton()
+    }
+
+    private func announce(pinned: Bool) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        AnalyticsService.shared.logEvent(wasPinned ? "widget_unpinned_home_button" : "widget_pinned_home_button",
-                                         parameters: ["widget_id": thisPin.id, "app_icon": outcome == .added ? "yes" : "no"])
-        let message: String
-        switch outcome {
-        case .added: message = "Pinned. Press and hold the FavCircles icon (or the Home tab) to jump to \(thisPin.title)."
-        case .full: message = "Pinned to the Home tab. Your app icon already has \(HomeShortcutCatalog.maxSelected) shortcuts. Remove one in Settings → Home Screen Shortcuts to add this one there."
-        case .removed: message = "Unpinned."
-        }
-        AlertPresenter.showBriefMessage(message, from: self, duration: outcome == .removed ? 1.2 : (outcome == .full ? 3.5 : 2.4))
+        AnalyticsService.shared.logEvent(pinned ? "widget_pinned_home_button" : "widget_unpinned_home_button",
+                                         parameters: ["widget_id": thisPin.id])
+        AlertPresenter.showBriefMessage(
+            pinned ? "Pinned. Press and hold the FavCircles icon (or the Home tab) to jump to \(thisPin.title)."
+                   : "Unpinned.",
+            from: self, duration: pinned ? 2.4 : 1.2)
     }
 
     /// Every widget's share card (WidgetShareKit): the widget's own card when

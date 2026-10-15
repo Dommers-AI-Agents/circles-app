@@ -101,6 +101,14 @@ enum HomeShortcutCatalog {
         return (current + [id], .added)
     }
 
+    /// Swapping one chosen item for another, in the same slot.
+    static func replacing(_ oldId: String, with newId: String, in selection: [String]) -> [String] {
+        var next = selection.filter { $0 != newId }
+        guard let index = next.firstIndex(of: oldId) else { return selection }
+        next[index] = newId
+        return next
+    }
+
     /// Slots left for nearby check-in rows.
     static func nearbySlots(selectedCount: Int) -> Int {
         max(0, maxSelected - selectedCount)
