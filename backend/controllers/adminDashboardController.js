@@ -25,3 +25,22 @@ exports.money = handle((req) => analytics.money(req.query));
 exports.messaging = handle((req) => analytics.messaging(req.query));
 // Email delivery: live login check of both routes + per-day outcomes
 exports.emailHealth = handle(() => require('../services/emailHealth').dashboard({ days: 14 }));
+// Instagram queue (services/instagramPublisher.js): see it, pause/approve a
+// post, or post the next one now
+const instagram = () => require('../services/instagramPublisher').createPublisher();
+exports.instagram = handle(() => instagram().dashboard());
+exports.instagramStatus = async (req, res) => {
+  try {
+    res.json({ success: true, ...(await instagram().setStatus(req.params.id, (req.body || {}).status)) });
+  } catch (error) {
+    res.status(error.status || 500).json({ success: false, message: error.status ? error.message : 'Could not update the post' });
+  }
+};
+exports.instagramPostNow = async (req, res) => {
+  try {
+    const result = await instagram().publishNext({ force: true });
+    res.status(result.posted ? 200 : 409).json({ success: !!result.posted, ...result, message: result.posted ? 'Posted' : (result.error || result.reason) });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

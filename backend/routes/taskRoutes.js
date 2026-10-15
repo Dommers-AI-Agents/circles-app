@@ -9,6 +9,7 @@ const tasks = require('../controllers/tasks/scheduledTasksController');
 const orphanUploads = require('../controllers/tasks/orphanUploadsController');
 const emailHealthTask = require('../controllers/tasks/emailHealthController');
 const farmersMarketsTask = require('../controllers/tasks/farmersMarketsController');
+const instagramTask = require('../controllers/tasks/instagramController');
 
 const router = express.Router();
 
@@ -71,6 +72,8 @@ router.post('/orphan-uploads', verifyCloudScheduler, orphanUploads.sweep);
 router.post('/email-health', verifyCloudScheduler, emailHealthTask.check);
 // Monthly: copy the USDA farmers market directory (Locals tab markets)
 router.post('/farmers-markets-sync', verifyCloudScheduler, farmersMarketsTask.sync);
+// Daily noon ET: the next approved post on @favcircles (admin dashboard → Instagram)
+router.post('/instagram-post', verifyCloudScheduler, instagramTask.post);
 
 // Health check endpoint for scheduled tasks
 router.get('/health', (req, res) => {
@@ -92,7 +95,8 @@ router.get('/health', (req, res) => {
       '/api/tasks/piggy-bank-clearing',
       '/api/tasks/piggy-bank-settlement',
       '/api/tasks/orphan-uploads',
-      '/api/tasks/email-health'
+      '/api/tasks/email-health',
+      '/api/tasks/instagram-post'
     ]
   });
 });

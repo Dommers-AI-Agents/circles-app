@@ -83,6 +83,7 @@ class FakeCollection {
   orderBy(...args) { return new FakeQuery(this.store).orderBy(...args); }
   limit(n) { return new FakeQuery(this.store).limit(n); }
   select(...fields) { return new FakeQuery(this.store).select(...fields); }
+  get() { return new FakeQuery(this.store).get(); }
 }
 
 class FakeFirestore {

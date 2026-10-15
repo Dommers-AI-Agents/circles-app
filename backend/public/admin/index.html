@@ -60,6 +60,11 @@
   tbody tr:hover{background:var(--soft)}
   .scroll{overflow-x:auto}
   .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+  .ig-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+  .ig-post img{width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:8px;display:block}
+  .ig-post .row{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap}
+  .ig-post details{margin-top:4px;font-size:12px;white-space:pre-wrap}
+  .ig-post button{padding:4px 10px;font-size:12px}
   .on{background:#E6F6EC;color:#22753F}.off{background:#FDECEC;color:#B83232}.unknown{background:#EEF2F8;color:#5B6780}.no_token{background:#FFF4E5;color:#A3570B}
   .plan-Premium{background:#EDE7FB;color:#5B3CC4}.plan-Business{background:#E3F0FF;color:#1E5BB8}.plan-Free{background:#EEF2F8;color:#5B6780}
   .avatar{width:26px;height:26px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px;background:var(--soft)}
@@ -136,6 +141,7 @@
         <button data-tab="people">People</button>
         <button data-tab="money">Money &amp; partners</button>
         <button data-tab="messaging">Email &amp; push</button>
+        <button data-tab="instagram">Instagram</button>
       </nav>
       <div class="spacer"></div>
       <select id="range" aria-label="Date range">
@@ -206,6 +212,17 @@
         <div class="card"><h2>Product update campaigns</h2><div id="campaigns"></div><h2 style="margin-top:18px">Unsubscribes</h2><div id="unsubs"></div></div>
       </section>
       <section class="card"><h2>Bounced addresses (not emailed)</h2><div class="scroll"><table id="suppressions"></table></div></section>
+    </div>
+    <div id="tab-instagram" class="hidden">
+      <div class="grid kpis" id="igKpis"></div>
+      <section class="card">
+        <h2>Post queue <span class="muted">(one approved post goes out every day at noon Eastern)</span></h2>
+        <div style="display:flex;gap:10px;align-items:center;margin:8px 0 14px">
+          <button id="igPostNow">Post the next one now</button>
+          <span class="muted" id="igMsg"></span>
+        </div>
+        <div class="ig-grid" id="igPosts"></div>
+      </section>
     </div>
   </main>
 </div>

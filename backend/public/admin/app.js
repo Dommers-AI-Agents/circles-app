@@ -165,7 +165,7 @@
   document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => {
     tab = b.dataset.tab;
     document.querySelectorAll('nav button').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
-    ['overview', 'people', 'money', 'messaging'].forEach((t) => $(`#tab-${t}`).classList.toggle('hidden', t !== tab));
+    ['overview', 'people', 'money', 'messaging', 'instagram'].forEach((t) => $(`#tab-${t}`).classList.toggle('hidden', t !== tab));
     load();
   }));
 
@@ -186,6 +186,7 @@
         renderMessaging(msg);
         renderEmailHealth(eh);
       }
+      if (tab === 'instagram') renderInstagram(await api('/admin/dashboard/instagram'));
     } catch (err) {
       if (err.message !== 'not admin') console.warn(err);
     } finally {
@@ -362,6 +363,57 @@
         : '<tr><td colspan="4" class="muted">No delivery problems in the last 14 days.</td></tr>') + '</tbody>';
   }
 
+  async function apiPost(path, body) {
+    const res = await fetch(API + path, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    const b = await res.json().catch(() => ({}));
+    if (res.status === 401) { signOut(); throw new Error('Your session ended. Sign in again.'); }
+    if (!res.ok || b.success === false) throw new Error(b.message || `Request failed (${res.status})`);
+    return b;
+  }
+
+  // Instagram: the queue the daily job posts from (services/instagramPublisher.js)
+  function renderInstagram(d) {
+    const by = (s) => d.posts.filter((p) => p.status === s).length;
+    $('#igKpis').innerHTML = [
+      kpi('Instagram', d.connected ? '<span class="pill on">Connected</span>' : '<span class="pill off">Not connected</span>',
+        d.tokenExpiresAt ? `login renews weekly · good until ${date(d.tokenExpiresAt)}` : 'login renews weekly'),
+      kpi('Posted', fmt(by('posted'))),
+      kpi('Waiting (approved)', fmt(by('approved')), by('approved') ? `about ${by('approved')} days of posts` : 'queue empty'),
+      kpi('Paused or failed', fmt(by('paused') + by('failed')))
+    ].join('');
+    const pill = { posted: 'on', approved: 'unknown', paused: 'no_token', failed: 'off', publishing: 'unknown' };
+    $('#igPosts').innerHTML = d.posts.map((p) => `<div class="ig-post card">
+        <img src="${esc(p.imageUrl)}" alt="" loading="lazy">
+        <div class="row"><b>${esc(p.order + 1)}. ${esc(p.headline)}</b></div>
+        <div class="row"><span class="pill ${pill[p.status] || 'unknown'}">${esc(p.status)}</span>
+          ${p.postedAt ? `<span class="muted">${esc(ago(p.postedAt))}</span>` : ''}
+          ${p.permalink ? `<a href="${esc(p.permalink)}" target="_blank" rel="noopener">View</a>` : ''}
+          ${p.status === 'approved' ? `<button class="ghost" data-ig="${esc(p.id)}" data-status="paused">Pause</button>` : ''}
+          ${p.status === 'paused' || p.status === 'failed' ? `<button class="ghost" data-ig="${esc(p.id)}" data-status="approved">${p.status === 'failed' ? 'Retry' : 'Approve'}</button>` : ''}
+        </div>
+        ${p.error ? `<div class="sub" style="color:#B83232;white-space:normal">${esc(p.error)}</div>` : ''}
+        <details><summary>Caption</summary>${esc(p.caption)}</details>
+      </div>`).join('') || '<p class="muted">No posts in the queue.</p>';
+    document.querySelectorAll('[data-ig]').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true;
+      try { await apiPost(`/admin/dashboard/instagram/${encodeURIComponent(b.dataset.ig)}/status`, { status: b.dataset.status }); load(); }
+      catch (err) { $('#igMsg').textContent = err.message; b.disabled = false; }
+    }));
+  }
+
+  $('#igPostNow').addEventListener('click', async () => {
+    const b = $('#igPostNow');
+    if (!confirm('Post the next approved card to @favcircles now?')) return;
+    b.disabled = true;
+    $('#igMsg').textContent = 'Posting… this takes up to a minute';
+    try {
+      const r = await apiPost('/admin/dashboard/instagram/post-now');
+      $('#igMsg').innerHTML = r.permalink ? `Posted · <a href="${esc(r.permalink)}" target="_blank" rel="noopener">view it</a>` : 'Posted';
+      load();
+    } catch (err) { $('#igMsg').textContent = err.message; }
+    finally { b.disabled = false; }
+  });
+
   function renderMessaging(d) {
     const p = d.push || {};
     const total = Object.values(p).reduce((a, b) => a + b, 0) || 1;
@@ -404,10 +456,10 @@
 
   // /admin#people (or #money, #messaging) opens that tab
   const fromHash = location.hash.slice(1);
-  if (['overview', 'people', 'money', 'messaging'].includes(fromHash)) {
+  if (['overview', 'people', 'money', 'messaging', 'instagram'].includes(fromHash)) {
     tab = fromHash;
     document.querySelectorAll('nav button').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.tab === tab)));
-    ['overview', 'people', 'money', 'messaging'].forEach((t) => $(`#tab-${t}`).classList.toggle('hidden', t !== tab));
+    ['overview', 'people', 'money', 'messaging', 'instagram'].forEach((t) => $(`#tab-${t}`).classList.toggle('hidden', t !== tab));
   }
 
   if (token) {
