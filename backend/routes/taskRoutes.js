@@ -9,6 +9,7 @@ const tasks = require('../controllers/tasks/scheduledTasksController');
 const orphanUploads = require('../controllers/tasks/orphanUploadsController');
 const emailHealthTask = require('../controllers/tasks/emailHealthController');
 const farmersMarketsTask = require('../controllers/tasks/farmersMarketsController');
+const localCoverageTask = require('../controllers/tasks/localCoverageController');
 const instagramTask = require('../controllers/tasks/instagramController');
 
 const router = express.Router();
@@ -72,6 +73,8 @@ router.post('/orphan-uploads', verifyCloudScheduler, orphanUploads.sweep);
 router.post('/email-health', verifyCloudScheduler, emailHealthTask.check);
 // Monthly: copy the USDA farmers market directory (Locals tab markets)
 router.post('/farmers-markets-sync', verifyCloudScheduler, farmersMarketsTask.sync);
+// Weekly: where people opened the Local tab with no library calendar
+router.post('/local-coverage-report', verifyCloudScheduler, localCoverageTask.report);
 // Daily noon ET: the next approved post on @favcircles (admin dashboard → Instagram)
 router.post('/instagram-post', verifyCloudScheduler, instagramTask.post);
 

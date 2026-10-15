@@ -69,3 +69,28 @@ describe('Maricopa County Library District', () => {
     expect(parseWhen('Thu, 1 Oct 2026, 9:00am - Sat, 31 Oct 2026, 5:00pm')).toBeNull();
   });
 });
+
+describe('coverage gaps', () => {
+  const mockSet = jest.fn(async () => {});
+  jest.doMock('../../config/firebase', () => ({
+    getFirestore: () => ({ collection: () => ({ doc: () => ({ set: mockSet }) }) }),
+    FieldValue: { increment: (n) => ({ inc: n }) }
+  }));
+
+  test('one count per cell per instance per few hours, no user ids', () => {
+    jest.isolateModules(() => {
+      const { recordGap } = require('../localEvents/coverageGaps');
+      recordGap(32.9778, -111.5177, 1000);
+      recordGap(32.9779, -111.5176, 2000); // same cell, too soon
+      recordGap(40.71, -74.0, 3000);
+    });
+    expect(mockSet).toHaveBeenCalledTimes(2);
+    expect(mockSet.mock.calls[0][0]).toEqual({ cell: '9tbe', lat: 33, lng: -111.5, opens: { inc: 1 }, lastSeenAt: new Date(1000).toISOString() });
+  });
+
+  test('weekly report text', () => {
+    const { reportText } = jest.requireActual('../localEvents/coverageGaps');
+    expect(reportText([])).toBeNull();
+    expect(reportText([{ place: 'Coolidge, Arizona', opens: 3, lat: 33, lng: -111.5 }])).toContain('1. Coolidge, Arizona — 3 opens');
+  });
+});

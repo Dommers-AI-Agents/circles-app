@@ -9,6 +9,7 @@ const library = require('./localEvents/library');
 const storeEvents = require('./localEvents/storeEvents');
 const farmersMarkets = require('./localEvents/farmersMarkets');
 const { cached } = require('./localEvents/cache');
+const coverageGaps = require('./localEvents/coverageGaps');
 
 const MAX_EVENTS = 30;
 const MAX_TICKETMASTER = 14;
@@ -109,6 +110,9 @@ async function getLocalFeed(lat, lng, { now = new Date() } = {}) {
       () => farmersMarkets.marketsNear(lat, lng)), 'farmers markets')
   ]);
   const events = mergeEvents({ store, tm, lib }, lat, lng, now);
+  // No library programs near this spot: note it for the weekly report of
+  // places to add a library system next
+  if (!events.some((e) => e.source === 'library')) coverageGaps.recordGap(lat, lng);
   const nearMarkets = markets.map((m) => ({
     ...m,
     distanceMeters: Math.round(geofire.distanceBetween([lat, lng], [m.lat, m.lng]) * 1000)

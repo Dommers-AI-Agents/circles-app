@@ -15,7 +15,7 @@ const stripHtml = (html) => String(html || '')
 
 // Help sessions are services, not outings: they stay on the library's own
 // calendar
-const SERVICE_PROGRAM = /\b(job|résumé|resume|tutor|tutoring|legal|assistance|application|support group|support for|ESL|learning english|citizenship|GED|tax help|medicaid|insurance|drop-in session|welcomeclt|tutores|apoyo|tecnolog[ií]a|career services|employment|arizona@ ?work|phxworks|information table|get connected|property tax|tax relief)\b/i;
+const SERVICE_PROGRAM = /\b(job|résumé|resume|tutor|tutoring|legal|assistance|application|support group|support for|ESL|learning english|citizenship|GED|tax help|medicaid|insurance|drop-in session|welcomeclt|tutores|apoyo|tecnolog[ií]a|career services|employment|arizona@ ?work|phxworks|information table|get connected|property tax|tax relief|tech help|tech mentor|computer and tech|one-to-one|ESOL|resource navigation|blood drive|legalworks|recovery support|civics for)\b/i;
 // Exhibits and displays are up all day: nothing to show up for
 const NOT_AN_OUTING = /^(on display|exhibit|display:)|\bstorywalk\b/i;
 

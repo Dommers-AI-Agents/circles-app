@@ -1,0 +1,1436 @@
+[
+ {
+  "type": "bibliocommons",
+  "libraryId": "chipublib",
+  "name": "Chicago Public Library",
+  "center": {
+   "lat": 41.8476,
+   "lng": -87.6789
+  },
+  "radiusMiles": 24,
+  "timeZone": "America/Chicago"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "sdcl",
+  "name": "San Diego County Library",
+  "center": {
+   "lat": 32.8909,
+   "lng": -116.955
+  },
+  "radiusMiles": 58,
+  "timeZone": "America/Los_Angeles"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "sjpl",
+  "name": "San Jos\u00e9 Public Library",
+  "center": {
+   "lat": 37.3146,
+   "lng": -121.8727
+  },
+  "radiusMiles": 19,
+  "timeZone": "America/Los_Angeles"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "sccl",
+  "name": "Santa Clara County Library",
+  "center": {
+   "lat": 37.2702,
+   "lng": -121.9252
+  },
+  "radiusMiles": 36,
+  "timeZone": "America/Los_Angeles"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "kcls",
+  "name": "King County Library System",
+  "center": {
+   "lat": 47.5224,
+   "lng": -122.1611
+  },
+  "radiusMiles": 49,
+  "timeZone": "America/Los_Angeles"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "bpl",
+  "name": "Boston Public Library",
+  "center": {
+   "lat": 42.3229,
+   "lng": -71.0895
+  },
+  "radiusMiles": 15,
+  "timeZone": "America/New_York"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "pima",
+  "name": "Pima County Public Library",
+  "center": {
+   "lat": 32.1902,
+   "lng": -110.9613
+  },
+  "radiusMiles": 57,
+  "timeZone": "America/Phoenix"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "oaklandlibrary",
+  "name": "Oakland Public Library",
+  "center": {
+   "lat": 37.7986,
+   "lng": -122.2374
+  },
+  "radiusMiles": 15,
+  "timeZone": "America/Los_Angeles"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "fulcolibrary",
+  "name": "Fulton County Library System",
+  "center": {
+   "lat": 33.7847,
+   "lng": -84.409
+  },
+  "radiusMiles": 32,
+  "timeZone": "America/New_York"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "omaha",
+  "name": "Omaha Public Library",
+  "center": {
+   "lat": 41.2719,
+   "lng": -96.0312
+  },
+  "radiusMiles": 20,
+  "timeZone": "America/Chicago"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "hclib",
+  "name": "Hennepin County Library",
+  "center": {
+   "lat": 44.9744,
+   "lng": -93.3744
+  },
+  "radiusMiles": 28,
+  "timeZone": "America/Chicago"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "cincinnatilibrary",
+  "name": "Cincinnati & Hamilton County Public Library",
+  "center": {
+   "lat": 39.1796,
+   "lng": -84.4971
+  },
+  "radiusMiles": 26,
+  "timeZone": "America/New_York"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "slpl",
+  "name": "St. Louis Public Library - City",
+  "center": {
+   "lat": 38.6356,
+   "lng": -90.256
+  },
+  "radiusMiles": 15,
+  "timeZone": "America/Chicago"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "jocolibrary",
+  "name": "Johnson County Library",
+  "center": {
+   "lat": 38.9308,
+   "lng": -94.7721
+  },
+  "radiusMiles": 27,
+  "timeZone": "America/Chicago"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "tacoma",
+  "name": "Tacoma Public Library",
+  "center": {
+   "lat": 47.2381,
+   "lng": -122.4528
+  },
+  "radiusMiles": 15,
+  "timeZone": "America/Los_Angeles"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "tpl",
+  "name": "Toronto Public Library",
+  "center": {
+   "lat": 43.7057,
+   "lng": -79.393
+  },
+  "radiusMiles": 23,
+  "timeZone": "America/Toronto"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "vpl",
+  "name": "Vancouver Public Library",
+  "center": {
+   "lat": 49.2529,
+   "lng": -123.1069
+  },
+  "radiusMiles": 15,
+  "timeZone": "America/Vancouver"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "epl",
+  "name": "Edmonton Public Library",
+  "center": {
+   "lat": 53.5362,
+   "lng": -113.4942
+  },
+  "radiusMiles": 19,
+  "timeZone": "America/Edmonton"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "halifax",
+  "name": "Halifax Public Libraries",
+  "center": {
+   "lat": 44.7229,
+   "lng": -63.5086
+  },
+  "radiusMiles": 59,
+  "timeZone": "America/Halifax"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "arapahoelibraries",
+  "name": "Arapahoe Libraries",
+  "center": {
+   "lat": 39.6174,
+   "lng": -104.7804
+  },
+  "radiusMiles": 49,
+  "timeZone": "America/Denver"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "aurora",
+  "name": "Aurora Public Library",
+  "center": {
+   "lat": 44.0042,
+   "lng": -79.4449
+  },
+  "radiusMiles": 15,
+  "timeZone": "America/Toronto"
+ },
+ {
+  "type": "libcal",
+  "host": "houstonlibrary.libcal.com",
+  "calendarId": -1,
+  "name": "Houston Public Library",
+  "center": {
+   "lat": 29.7437,
+   "lng": -95.4115
+  },
+  "radiusMiles": 23,
+  "timeZone": "America/Chicago",
+  "branches": [
+   {
+    "name": "Julia Ideson Building",
+    "match": [
+     "Julia Ideson Building"
+    ],
+    "lat": 29.75892,
+    "lng": -95.36914
+   },
+   {
+    "name": "Flores Neighborhood Library",
+    "match": [
+     "Flores Neighborhood Library"
+    ],
+    "lat": 29.75015,
+    "lng": -95.33486
+   },
+   {
+    "name": "McCrane-Kashmere Gardens Neighborhood Library",
+    "match": [
+     "McCrane-Kashmere Gardens Neighborhood Library"
+    ],
+    "lat": 29.80625,
+    "lng": -95.31664
+   },
+   {
+    "name": "Vinson Neighborhood Library",
+    "match": [
+     "Vinson Neighborhood Library"
+    ],
+    "lat": 29.61419,
+    "lng": -95.43359
+   },
+   {
+    "name": "Hillendahl Neighborhood Library",
+    "match": [
+     "Hillendahl Neighborhood Library"
+    ],
+    "lat": 29.81561,
+    "lng": -95.54479
+   },
+   {
+    "name": "Oak Forest Neighborhood Library",
+    "match": [
+     "Oak Forest Neighborhood Library"
+    ],
+    "lat": 29.82759,
+    "lng": -95.43394
+   },
+   {
+    "name": "Looscan Neighborhood Library",
+    "match": [
+     "Looscan Neighborhood Library"
+    ],
+    "lat": 29.74282,
+    "lng": -95.44203
+   },
+   {
+    "name": "Shepard-Acres Homes Neighborhood Library",
+    "match": [
+     "Shepard-Acres Homes Neighborhood Library"
+    ],
+    "lat": 29.87103,
+    "lng": -95.43738
+   },
+   {
+    "name": "Moody Neighborhood Library",
+    "match": [
+     "Moody Neighborhood Library"
+    ],
+    "lat": 29.84759,
+    "lng": -95.36286
+   },
+   {
+    "name": "Bracewell Neighborhood Library",
+    "match": [
+     "Bracewell Neighborhood Library"
+    ],
+    "lat": 29.60152,
+    "lng": -95.24546
+   },
+   {
+    "name": "Jungman Neighborhood Library",
+    "match": [
+     "Jungman Neighborhood Library"
+    ],
+    "lat": 29.73847,
+    "lng": -95.48129
+   },
+   {
+    "name": "Park Place Regional Library",
+    "match": [
+     "Park Place Regional Library"
+    ],
+    "lat": 29.68786,
+    "lng": -95.27521
+   },
+   {
+    "name": "Mancuso Neighborhood Library",
+    "match": [
+     "Mancuso Neighborhood Library"
+    ],
+    "lat": 29.66812,
+    "lng": -95.31029
+   },
+   {
+    "name": "Tuttle Neighborhood Library",
+    "match": [
+     "Tuttle Neighborhood Library"
+    ],
+    "lat": 29.77609,
+    "lng": -95.30772
+   },
+   {
+    "name": "Carnegie Neighborhood Library and Center for Learning",
+    "match": [
+     "Carnegie Neighborhood Library and Center for Learning"
+    ],
+    "lat": 29.78208,
+    "lng": -95.35856
+   },
+   {
+    "name": "Young Neighborhood Library",
+    "match": [
+     "Young Neighborhood Library"
+    ],
+    "lat": 29.69838,
+    "lng": -95.33713
+   },
+   {
+    "name": "Heights Neighborhood Library",
+    "match": [
+     "Heights Neighborhood Library"
+    ],
+    "lat": 29.79472,
+    "lng": -95.39725
+   },
+   {
+    "name": "Walker Neighborhood Library",
+    "match": [
+     "Walker Neighborhood Library"
+    ],
+    "lat": 29.65343,
+    "lng": -95.48197
+   },
+   {
+    "name": "Ring Neighborhood Library",
+    "match": [
+     "Ring Neighborhood Library"
+    ],
+    "lat": 29.80269,
+    "lng": -95.50803
+   },
+   {
+    "name": "Walter Neighborhood Library",
+    "match": [
+     "Walter Neighborhood Library"
+    ],
+    "lat": 29.70981,
+    "lng": -95.52088
+   },
+   {
+    "name": "Stanaker Neighborhood Library",
+    "match": [
+     "Stanaker Neighborhood Library"
+    ],
+    "lat": 29.74001,
+    "lng": -95.30308
+   },
+   {
+    "name": "Alief-David M. Henington Regional Library",
+    "match": [
+     "Alief-David M. Henington Regional Library"
+    ],
+    "lat": 29.70269,
+    "lng": -95.58911
+   },
+   {
+    "name": "Freed-Montrose Neighborhood Library",
+    "match": [
+     "Freed-Montrose Neighborhood Library"
+    ],
+    "lat": 29.74527,
+    "lng": -95.39078
+   },
+   {
+    "name": "Johnson Neighborhood Library",
+    "match": [
+     "Johnson Neighborhood Library"
+    ],
+    "lat": 29.65883,
+    "lng": -95.37083
+   },
+   {
+    "name": "Kendall Neighborhood Library",
+    "match": [
+     "Kendall Neighborhood Library"
+    ],
+    "lat": 29.77308,
+    "lng": -95.62056
+   },
+   {
+    "name": "Robinson-Westchase Neighborhood Library",
+    "match": [
+     "Robinson-Westchase Neighborhood Library"
+    ],
+    "lat": 29.72893,
+    "lng": -95.57109
+   },
+   {
+    "name": "Collier Regional Library",
+    "match": [
+     "Collier Regional Library"
+    ],
+    "lat": 29.84066,
+    "lng": -95.4827
+   },
+   {
+    "name": "Family History Research Center at the Clayton Library Campus",
+    "match": [
+     "Family History Research Center at the Clayton Library Campus"
+    ],
+    "lat": 29.72556,
+    "lng": -95.3866
+   },
+   {
+    "name": "Stimley-Blue Ridge Neighborhood Library",
+    "match": [
+     "Stimley-Blue Ridge Neighborhood Library"
+    ],
+    "lat": 29.59845,
+    "lng": -95.491
+   },
+   {
+    "name": "Smith Neighborhood Library",
+    "match": [
+     "Smith Neighborhood Library"
+    ],
+    "lat": 29.72275,
+    "lng": -95.35172
+   },
+   {
+    "name": "Scenic Woods Regional Library",
+    "match": [
+     "Scenic Woods Regional Library"
+    ],
+    "lat": 29.86987,
+    "lng": -95.30108
+   },
+   {
+    "name": "Central Library, Jesse H. Jones",
+    "match": [
+     "Central Library, Jesse H. Jones"
+    ],
+    "lat": 29.75896,
+    "lng": -95.36908
+   }
+  ]
+ },
+ {
+  "type": "libcal",
+  "host": "denverlibrary.libcal.com",
+  "calendarId": -1,
+  "name": "Denver Public Library",
+  "center": {
+   "lat": 39.7361,
+   "lng": -104.9689
+  },
+  "radiusMiles": 22,
+  "timeZone": "America/Denver",
+  "branches": [
+   {
+    "name": "Central Library",
+    "match": [
+     "Central Library"
+    ],
+    "lat": 39.73743,
+    "lng": -104.9882
+   },
+   {
+    "name": "Rodolfo \"Corky\" Gonzales",
+    "match": [
+     "Rodolfo \"Corky\" Gonzales"
+    ],
+    "lat": 39.73996,
+    "lng": -105.02964
+   },
+   {
+    "name": "Park Hill",
+    "match": [
+     "Park Hill"
+    ],
+    "lat": 39.74783,
+    "lng": -104.93254
+   },
+   {
+    "name": "Sam Gary",
+    "match": [
+     "Sam Gary"
+    ],
+    "lat": 39.75907,
+    "lng": -104.90115
+   },
+   {
+    "name": "Lena Archuleta",
+    "match": [
+     "Lena Archuleta"
+    ],
+    "lat": 39.70957,
+    "lng": -105.0303
+   },
+   {
+    "name": "Virginia Village",
+    "match": [
+     "Virginia Village"
+    ],
+    "lat": 39.68901,
+    "lng": -104.93112
+   },
+   {
+    "name": "Green Valley Ranch",
+    "match": [
+     "Green Valley Ranch"
+    ],
+    "lat": 39.77405,
+    "lng": -104.74517
+   },
+   {
+    "name": "Athmar Park",
+    "match": [
+     "Athmar Park"
+    ],
+    "lat": 39.69712,
+    "lng": -105.01355
+   },
+   {
+    "name": "Smiley",
+    "match": [
+     "Smiley"
+    ],
+    "lat": 39.78055,
+    "lng": -105.04509
+   },
+   {
+    "name": "Woodbury",
+    "match": [
+     "Woodbury"
+    ],
+    "lat": 39.76315,
+    "lng": -105.02575
+   },
+   {
+    "name": "Bear Valley",
+    "match": [
+     "Bear Valley"
+    ],
+    "lat": 39.65649,
+    "lng": -105.05141
+   },
+   {
+    "name": "Montbello",
+    "match": [
+     "Montbello"
+    ],
+    "lat": 39.78024,
+    "lng": -104.8405
+   },
+   {
+    "name": "Hadley",
+    "match": [
+     "Hadley"
+    ],
+    "lat": 39.68262,
+    "lng": -105.02589
+   },
+   {
+    "name": "Pauline Robinson",
+    "match": [
+     "Pauline Robinson"
+    ],
+    "lat": 39.76408,
+    "lng": -104.92274
+   },
+   {
+    "name": "Ross-Cherry Creek",
+    "match": [
+     "Ross-Cherry Creek"
+    ],
+    "lat": 39.72123,
+    "lng": -104.95254
+   },
+   {
+    "name": "Ford-Warren",
+    "match": [
+     "Ford-Warren"
+    ],
+    "lat": 39.75729,
+    "lng": -104.96512
+   },
+   {
+    "name": "Blair-Caldwell African American Research Library",
+    "match": [
+     "Blair-Caldwell African American Research Library"
+    ],
+    "lat": 39.75244,
+    "lng": -104.9816
+   },
+   {
+    "name": "Valdez-Perry",
+    "match": [
+     "Valdez-Perry"
+    ],
+    "lat": 39.78176,
+    "lng": -104.96217
+   },
+   {
+    "name": "Bob Ragland",
+    "match": [
+     "Bob Ragland"
+    ],
+    "lat": 39.77107,
+    "lng": -104.98014
+   },
+   {
+    "name": "Decker",
+    "match": [
+     "Decker"
+    ],
+    "lat": 39.6892,
+    "lng": -104.98308
+   },
+   {
+    "name": "Westwood",
+    "match": [
+     "Westwood"
+    ],
+    "lat": 39.70397,
+    "lng": -105.03911
+   }
+  ]
+ },
+ {
+  "type": "libcal",
+  "host": "cpl.libcal.com",
+  "calendarId": -1,
+  "name": "Cleveland Public Library",
+  "center": {
+   "lat": 41.4846,
+   "lng": -81.6659
+  },
+  "radiusMiles": 18,
+  "timeZone": "America/New_York",
+  "branches": [
+   {
+    "name": "Main Library - Downtown",
+    "match": [
+     "Main Library - Downtown"
+    ],
+    "lat": 41.50133,
+    "lng": -81.69145
+   },
+   {
+    "name": "Woodland",
+    "match": [
+     "Woodland"
+    ],
+    "lat": 41.48776,
+    "lng": -81.64865
+   },
+   {
+    "name": "Carnegie West",
+    "match": [
+     "Carnegie West"
+    ],
+    "lat": 41.48244,
+    "lng": -81.7113
+   },
+   {
+    "name": "Glenville",
+    "match": [
+     "Glenville"
+    ],
+    "lat": 41.54106,
+    "lng": -81.60249
+   },
+   {
+    "name": "West Park",
+    "match": [
+     "West Park"
+    ],
+    "lat": 41.45141,
+    "lng": -81.80757
+   },
+   {
+    "name": "Harvard-Lee",
+    "match": [
+     "Harvard-Lee"
+    ],
+    "lat": 41.44956,
+    "lng": -81.56161
+   },
+   {
+    "name": "Rice",
+    "match": [
+     "Rice"
+    ],
+    "lat": 41.48485,
+    "lng": -81.60329
+   },
+   {
+    "name": "Fulton",
+    "match": [
+     "Fulton"
+    ],
+    "lat": 41.45794,
+    "lng": -81.7127
+   },
+   {
+    "name": "Brooklyn",
+    "match": [
+     "Brooklyn"
+    ],
+    "lat": 41.4542,
+    "lng": -81.70173
+   },
+   {
+    "name": "Memorial Nottingham",
+    "match": [
+     "Memorial Nottingham"
+    ],
+    "lat": 41.58293,
+    "lng": -81.56187
+   },
+   {
+    "name": "Eastman",
+    "match": [
+     "Eastman"
+    ],
+    "lat": 41.46243,
+    "lng": -81.76802
+   },
+   {
+    "name": "South",
+    "match": [
+     "South"
+    ],
+    "lat": 41.4702,
+    "lng": -81.69723
+   },
+   {
+    "name": "Sterling",
+    "match": [
+     "Sterling"
+    ],
+    "lat": 41.49755,
+    "lng": -81.66673
+   },
+   {
+    "name": "Union",
+    "match": [
+     "Union"
+    ],
+    "lat": 41.46447,
+    "lng": -81.62092
+   },
+   {
+    "name": "Lorain",
+    "match": [
+     "Lorain"
+    ],
+    "lat": 41.47118,
+    "lng": -81.74154
+   },
+   {
+    "name": "Hough",
+    "match": [
+     "Hough"
+    ],
+    "lat": 41.51074,
+    "lng": -81.64478
+   },
+   {
+    "name": "East 131st Street",
+    "match": [
+     "East 131st Street"
+    ],
+    "lat": 41.45463,
+    "lng": -81.59156
+   },
+   {
+    "name": "Garden Valley",
+    "match": [
+     "Garden Valley"
+    ],
+    "lat": 41.47984,
+    "lng": -81.63786
+   },
+   {
+    "name": "Jefferson",
+    "match": [
+     "Jefferson"
+    ],
+    "lat": 41.47924,
+    "lng": -81.68556
+   },
+   {
+    "name": "Collinwood",
+    "match": [
+     "Collinwood"
+    ],
+    "lat": 41.55598,
+    "lng": -81.57584
+   },
+   {
+    "name": "Addison",
+    "match": [
+     "Addison"
+    ],
+    "lat": 41.51919,
+    "lng": -81.64262
+   },
+   {
+    "name": "Walz",
+    "match": [
+     "Walz"
+    ],
+    "lat": 41.48205,
+    "lng": -81.73977
+   },
+   {
+    "name": "Rockport",
+    "match": [
+     "Rockport"
+    ],
+    "lat": 41.43383,
+    "lng": -81.79034
+   },
+   {
+    "name": "Mount Pleasant",
+    "match": [
+     "Mount Pleasant"
+    ],
+    "lat": 41.46417,
+    "lng": -81.58444
+   },
+   {
+    "name": "Langston Hughes",
+    "match": [
+     "Langston Hughes"
+    ],
+    "lat": 41.52127,
+    "lng": -81.61721
+   },
+   {
+    "name": "South Brooklyn",
+    "match": [
+     "South Brooklyn"
+    ],
+    "lat": 41.4384,
+    "lng": -81.70716
+   }
+  ]
+ },
+ {
+  "type": "libcal",
+  "host": "durhamcountylibrary.libcal.com",
+  "calendarId": -1,
+  "name": "Durham County Library",
+  "center": {
+   "lat": 35.9923,
+   "lng": -78.8905
+  },
+  "radiusMiles": 16,
+  "timeZone": "America/New_York",
+  "branches": [
+   {
+    "name": "North Regional Library",
+    "match": [
+     "North Regional Library"
+    ],
+    "lat": 36.08759,
+    "lng": -78.91446
+   },
+   {
+    "name": "Main Library",
+    "match": [
+     "Main Library"
+    ],
+    "lat": 35.9949,
+    "lng": -78.89665
+   },
+   {
+    "name": "South Regional Library",
+    "match": [
+     "South Regional Library"
+    ],
+    "lat": 35.90308,
+    "lng": -78.8885
+   },
+   {
+    "name": "Southwest Regional Library",
+    "match": [
+     "Southwest Regional Library"
+    ],
+    "lat": 35.95865,
+    "lng": -78.95454
+   },
+   {
+    "name": "East Regional Library",
+    "match": [
+     "East Regional Library"
+    ],
+    "lat": 35.97859,
+    "lng": -78.80958
+   },
+   {
+    "name": "Stanford L. Warren Branch Library",
+    "match": [
+     "Stanford L. Warren Branch Library"
+    ],
+    "lat": 35.98558,
+    "lng": -78.89769
+   },
+   {
+    "name": "Bragtown Branch Library",
+    "match": [
+     "Bragtown Branch Library"
+    ],
+    "lat": 36.03753,
+    "lng": -78.87179
+   }
+  ]
+ },
+ {
+  "type": "libcal",
+  "host": "arlingtonva.libcal.com",
+  "calendarId": -1,
+  "name": "Arlington Public Library",
+  "center": {
+   "lat": 38.8733,
+   "lng": -77.1009
+  },
+  "radiusMiles": 15,
+  "timeZone": "America/New_York",
+  "branches": [
+   {
+    "name": "Central Library",
+    "match": [
+     "Central Library"
+    ],
+    "lat": 38.88379,
+    "lng": -77.10718
+   },
+   {
+    "name": "Glencarlyn Library",
+    "match": [
+     "Glencarlyn Library"
+    ],
+    "lat": 38.86359,
+    "lng": -77.12589
+   },
+   {
+    "name": "Aurora Hills Library",
+    "match": [
+     "Aurora Hills Library"
+    ],
+    "lat": 38.85749,
+    "lng": -77.05902
+   },
+   {
+    "name": "Courthouse Library",
+    "match": [
+     "Courthouse Library"
+    ],
+    "lat": 38.89055,
+    "lng": -77.08536
+   },
+   {
+    "name": "Westover Library",
+    "match": [
+     "Westover Library"
+    ],
+    "lat": 38.88642,
+    "lng": -77.14215
+   },
+   {
+    "name": "Shirlington Library",
+    "match": [
+     "Shirlington Library"
+    ],
+    "lat": 38.84094,
+    "lng": -77.09032
+   },
+   {
+    "name": "Columbia Pike Library",
+    "match": [
+     "Columbia Pike Library"
+    ],
+    "lat": 38.86469,
+    "lng": -77.08794
+   },
+   {
+    "name": "Cherrydale Library",
+    "match": [
+     "Cherrydale Library"
+    ],
+    "lat": 38.89872,
+    "lng": -77.10927
+   }
+  ]
+ },
+ {
+  "type": "libcal",
+  "host": "bccls.libcal.com",
+  "calendarId": -1,
+  "name": "Bergen County libraries (BCCLS)",
+  "center": {
+   "lat": 40.9397,
+   "lng": -74.0559
+  },
+  "radiusMiles": 19,
+  "timeZone": "America/New_York",
+  "branches": [
+   {
+    "name": "Ridgefield Park Public Library",
+    "match": [
+     "Ridgefield Park Public Library"
+    ],
+    "lat": 40.85434,
+    "lng": -74.02212
+   },
+   {
+    "name": "Leonia Public Library",
+    "match": [
+     "Leonia Public Library"
+    ],
+    "lat": 40.8627,
+    "lng": -73.98888
+   },
+   {
+    "name": "Oradell Public Library",
+    "match": [
+     "Oradell Public Library"
+    ],
+    "lat": 40.95365,
+    "lng": -74.03208
+   },
+   {
+    "name": "Cresskill Public Library",
+    "match": [
+     "Cresskill Public Library"
+    ],
+    "lat": 40.94198,
+    "lng": -73.96033
+   },
+   {
+    "name": "Washington Township Public Library",
+    "match": [
+     "Washington Township Public Library"
+    ],
+    "lat": 40.98663,
+    "lng": -74.06203
+   },
+   {
+    "name": "Rutherford Free Public Library",
+    "match": [
+     "Rutherford Free Public Library"
+    ],
+    "lat": 40.82675,
+    "lng": -74.10653
+   },
+   {
+    "name": "Rochelle Park Public Library",
+    "match": [
+     "Rochelle Park Public Library"
+    ],
+    "lat": 40.91222,
+    "lng": -74.07833
+   },
+   {
+    "name": "Paramus Public Library",
+    "match": [
+     "Paramus Public Library"
+    ],
+    "lat": 40.92639,
+    "lng": -74.06056
+   },
+   {
+    "name": "Waldwick Public Library",
+    "match": [
+     "Waldwick Public Library"
+    ],
+    "lat": 41.01111,
+    "lng": -74.11762
+   },
+   {
+    "name": "Northvale Public Library",
+    "match": [
+     "Northvale Public Library"
+    ],
+    "lat": 41.00726,
+    "lng": -73.95191
+   },
+   {
+    "name": "Ridgefield Public Library",
+    "match": [
+     "Ridgefield Public Library"
+    ],
+    "lat": 40.83218,
+    "lng": -74.00531
+   },
+   {
+    "name": "Saddle Brook Public Library",
+    "match": [
+     "Saddle Brook Public Library"
+    ],
+    "lat": 40.90503,
+    "lng": -74.08901
+   },
+   {
+    "name": "Lodi Memorial Library",
+    "match": [
+     "Lodi Memorial Library"
+    ],
+    "lat": 40.87591,
+    "lng": -74.08831
+   },
+   {
+    "name": "Englewood Public Library",
+    "match": [
+     "Englewood Public Library"
+    ],
+    "lat": 40.8939,
+    "lng": -73.97157
+   },
+   {
+    "name": "Wyckoff Public Library",
+    "match": [
+     "Wyckoff Public Library"
+    ],
+    "lat": 41.00741,
+    "lng": -74.16639
+   },
+   {
+    "name": "Upper Saddle River Public Library",
+    "match": [
+     "Upper Saddle River Public Library"
+    ],
+    "lat": 41.05956,
+    "lng": -74.09406
+   },
+   {
+    "name": "Bergenfield Public Library",
+    "match": [
+     "Bergenfield Public Library"
+    ],
+    "lat": 40.92335,
+    "lng": -73.99959
+   },
+   {
+    "name": "Glen Rock Public Library",
+    "match": [
+     "Glen Rock Public Library"
+    ],
+    "lat": 40.9627,
+    "lng": -74.12638
+   },
+   {
+    "name": "Westwood Public Library",
+    "match": [
+     "Westwood Public Library"
+    ],
+    "lat": 40.99011,
+    "lng": -74.03409
+   },
+   {
+    "name": "Tenafly Public Library",
+    "match": [
+     "Tenafly Public Library"
+    ],
+    "lat": 40.92649,
+    "lng": -73.96875
+   },
+   {
+    "name": "Ramsey Free Public Library",
+    "match": [
+     "Ramsey Free Public Library"
+    ],
+    "lat": 41.05596,
+    "lng": -74.14667
+   },
+   {
+    "name": "Lyndhurst Public Library",
+    "match": [
+     "Lyndhurst Public Library"
+    ],
+    "lat": 40.81263,
+    "lng": -74.12495
+   },
+   {
+    "name": "Closter Public Library",
+    "match": [
+     "Closter Public Library"
+    ],
+    "lat": 40.97399,
+    "lng": -73.96736
+   },
+   {
+    "name": "Demarest Public Library",
+    "match": [
+     "Demarest Public Library"
+    ],
+    "lat": 40.95767,
+    "lng": -73.96746
+   },
+   {
+    "name": "New Milford Public Library",
+    "match": [
+     "New Milford Public Library"
+    ],
+    "lat": 40.92004,
+    "lng": -74.02338
+   },
+   {
+    "name": "Elmwood Park Public Library",
+    "match": [
+     "Elmwood Park Public Library"
+    ],
+    "lat": 40.90864,
+    "lng": -74.11861
+   },
+   {
+    "name": "East Rutherford Library",
+    "match": [
+     "East Rutherford Library"
+    ],
+    "lat": 40.83288,
+    "lng": -74.09848
+   },
+   {
+    "name": "Montvale Public Library",
+    "match": [
+     "Montvale Public Library"
+    ],
+    "lat": 41.0481,
+    "lng": -74.06101
+   },
+   {
+    "name": "Franklin Lakes Public Library",
+    "match": [
+     "Franklin Lakes Public Library"
+    ],
+    "lat": 41.01874,
+    "lng": -74.19833
+   },
+   {
+    "name": "Hillsdale Public Library",
+    "match": [
+     "Hillsdale Public Library"
+    ],
+    "lat": 41.00242,
+    "lng": -74.04589
+   },
+   {
+    "name": "Bloomfield Public Library",
+    "match": [
+     "Bloomfield Public Library"
+    ],
+    "lat": 40.79663,
+    "lng": -74.19819
+   },
+   {
+    "name": "Dumont's Dixon Homestead Library",
+    "match": [
+     "Dumont's Dixon Homestead Library"
+    ],
+    "lat": 40.94183,
+    "lng": -73.99373
+   },
+   {
+    "name": "Fair Lawn's Maurice M. Pine Library",
+    "match": [
+     "Fair Lawn's Maurice M. Pine Library"
+    ],
+    "lat": 40.93654,
+    "lng": -74.1314
+   },
+   {
+    "name": "Ho-Ho-Kus's Worth-Pinkham Memorial Library",
+    "match": [
+     "Ho-Ho-Kus's Worth-Pinkham Memorial Library"
+    ],
+    "lat": 40.99904,
+    "lng": -74.11218
+   },
+   {
+    "name": "Montclair Public Library",
+    "match": [
+     "Montclair Public Library"
+    ],
+    "lat": 40.81165,
+    "lng": -74.21877
+   },
+   {
+    "name": "Secaucus Public Library",
+    "match": [
+     "Secaucus Public Library"
+    ],
+    "lat": 40.79403,
+    "lng": -74.05912
+   },
+   {
+    "name": "Wallington's John F. Kennedy Memorial Library",
+    "match": [
+     "Wallington's John F. Kennedy Memorial Library"
+    ],
+    "lat": 40.85516,
+    "lng": -74.11254
+   },
+   {
+    "name": "West Caldwell Public Library",
+    "match": [
+     "West Caldwell Public Library"
+    ],
+    "lat": 40.85074,
+    "lng": -74.29351
+   },
+   {
+    "name": "West Orange Public Library",
+    "match": [
+     "West Orange Public Library"
+    ],
+    "lat": 40.79698,
+    "lng": -74.25448
+   }
+  ]
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "rclreads",
+  "name": "Ramsey County Library",
+  "center": {
+   "lat": 45.058,
+   "lng": -93.1074
+  },
+  "radiusMiles": 16,
+  "timeZone": "America/Chicago"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "sppl",
+  "name": "Saint Paul Public Library",
+  "center": {
+   "lat": 44.9548,
+   "lng": -93.112
+  },
+  "radiusMiles": 15,
+  "timeZone": "America/Chicago"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "grpl",
+  "name": "Grand Rapids Public Library",
+  "center": {
+   "lat": 42.9625,
+   "lng": -85.6587
+  },
+  "radiusMiles": 15,
+  "timeZone": "America/Detroit"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "kdl",
+  "name": "Kent District Library",
+  "center": {
+   "lat": 42.9894,
+   "lng": -85.586
+  },
+  "radiusMiles": 31,
+  "timeZone": "America/Detroit"
+ },
+ {
+  "type": "bibliocommons",
+  "libraryId": "dayton",
+  "name": "Dayton Metro Library",
+  "center": {
+   "lat": 39.7579,
+   "lng": -84.2309
+  },
+  "radiusMiles": 21,
+  "timeZone": "America/New_York"
+ }
+]

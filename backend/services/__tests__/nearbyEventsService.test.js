@@ -117,7 +117,7 @@ describe('library programs', () => {
 
   test('a library only serves its own area', () => {
     expect(library.feedsNear(CLT.lat, CLT.lng).map((f) => f.libraryId)).toContain('cmlibrary');
-    expect(library.feedsNear(40.71, -74.0)).toEqual([]);
+    expect(library.feedsNear(46.8083, -100.7837)).toEqual([]); // Bismarck, ND
   });
 });
 
