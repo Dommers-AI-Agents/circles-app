@@ -172,12 +172,15 @@ class FakeFirestore {
   }
 }
 
-// Mirrors FieldValue.increment, the only sentinel the order machine uses.
+// Mirrors FieldValue.increment and arrayUnion.
 function applyPatch(current, patch) {
   const next = { ...current };
   for (const [key, value] of Object.entries(patch)) {
     if (value && typeof value === 'object' && value.__increment !== undefined) {
       next[key] = (next[key] || 0) + value.__increment;
+    } else if (value && typeof value === 'object' && Array.isArray(value.__arrayUnion)) {
+      const prev = Array.isArray(next[key]) ? next[key] : [];
+      next[key] = [...prev, ...value.__arrayUnion.filter((v) => !prev.includes(v))];
     } else {
       next[key] = value;
     }
@@ -185,6 +188,6 @@ function applyPatch(current, patch) {
   return next;
 }
 
-const FakeFieldValue = { increment: (n) => ({ __increment: n }) };
+const FakeFieldValue = { increment: (n) => ({ __increment: n }), arrayUnion: (...items) => ({ __arrayUnion: items }) };
 
 module.exports = { FakeFirestore, FakeFieldValue };

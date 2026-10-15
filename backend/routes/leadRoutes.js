@@ -5,7 +5,7 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
-const { getFirestore } = require('../config/firebase');
+const { getFirestore, admin } = require('../config/firebase');
 const db = getFirestore();
 
 const leadLimiter = rateLimit({
@@ -16,10 +16,14 @@ const leadLimiter = rateLimit({
 });
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+// Where the form lives: the homepage, or the Instagram link-in-bio page
+// (favcircles.com/ig, Wes 2026-10-15). Anything else counts as 'website'.
+const SOURCES = new Set(['website', 'instagram']);
 
 router.post('/website', leadLimiter, async (req, res) => {
   try {
     const raw = String((req.body || {}).email || '').trim().toLowerCase();
+    const source = SOURCES.has((req.body || {}).source) ? req.body.source : 'website';
     if (!EMAIL_RE.test(raw) || raw.length > 254) {
       return res.status(400).json({ success: false, message: 'Please enter a valid email address.' });
     }
@@ -30,6 +34,8 @@ router.post('/website', leadLimiter, async (req, res) => {
     const existing = await ref.get();
 
     if (existing.exists && existing.data().emailedAt) {
+      // Remember every page they signed up from; the first one stays `source`
+      await ref.set({ sources: admin.firestore.FieldValue.arrayUnion(source) }, { merge: true }).catch(() => {});
       // Already emailed — same friendly answer, no re-send (no enumeration,
       // no spamming an address twice)
       return res.status(200).json({ success: true, message: 'Check your inbox — your FavCoins guide is on the way!' });
@@ -37,7 +43,8 @@ router.post('/website', leadLimiter, async (req, res) => {
 
     await ref.set({
       email: raw,
-      source: 'website',
+      source: existing.exists ? (existing.data().source || source) : source,
+      sources: admin.firestore.FieldValue.arrayUnion(source),
       createdAt: existing.exists ? existing.data().createdAt : new Date().toISOString()
     }, { merge: true });
 

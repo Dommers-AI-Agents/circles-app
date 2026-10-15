@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>FavCircles Instagram card</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&display=block" rel="stylesheet">
+<style>
+  /* 1080 × 1350 (Instagram portrait). ?id=<post id> picks the post from posts.json */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1350px; background: #0E2A47; font-family: Inter, -apple-system, sans-serif; }
+  .card { position: relative; width: 1080px; height: 1350px; padding: 96px 88px 0; color: #fff; overflow: hidden;
+    background: radial-gradient(120% 80% at 15% 0%, rgba(255,255,255,.18), rgba(255,255,255,0) 55%), linear-gradient(160deg, var(--a), var(--b)); }
+  .card::after { content: ""; position: absolute; right: -180px; top: -180px; width: 620px; height: 620px; border-radius: 50%;
+    background: rgba(255,255,255,.07); }
+  .kicker { font-size: 30px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; opacity: .82; }
+  .emoji { margin-top: 70px; width: 200px; height: 200px; border-radius: 52px; display: flex; align-items: center; justify-content: center;
+    font-size: 116px; background: rgba(255,255,255,.18); box-shadow: inset 0 0 0 2px rgba(255,255,255,.25); }
+  h1 { margin-top: 56px; font-size: 104px; line-height: 1.02; font-weight: 800; letter-spacing: -2px; max-width: 900px; }
+  h1.long { font-size: 84px; }
+  .tagline { margin-top: 26px; font-size: 44px; line-height: 1.25; font-weight: 500; opacity: .92; max-width: 880px; }
+  ul { list-style: none; margin-top: 54px; display: flex; flex-direction: column; gap: 22px; }
+  li { display: flex; gap: 22px; align-items: flex-start; font-size: 36px; line-height: 1.3; font-weight: 500; }
+  li::before { content: ""; flex: none; margin-top: 15px; width: 16px; height: 16px; border-radius: 50%; background: #fff; opacity: .85; }
+  .footer { position: absolute; left: 0; right: 0; bottom: 0; height: 170px; padding: 0 88px; display: flex; align-items: center; gap: 26px;
+    background: rgba(0,0,0,.22); backdrop-filter: blur(4px); }
+  .footer img { width: 96px; height: 96px; border-radius: 22px; }
+  .brand { font-size: 44px; font-weight: 800; }
+  .sub { font-size: 28px; font-weight: 500; opacity: .85; margin-top: 2px; }
+  .bio { margin-left: auto; padding: 18px 30px; border-radius: 999px; background: #fff; color: var(--b); font-size: 30px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <div class="kicker" id="kicker"></div>
+  <div class="emoji" id="emoji"></div>
+  <h1 id="headline"></h1>
+  <div class="tagline" id="tagline"></div>
+  <ul id="features"></ul>
+  <div class="footer">
+    <img src="favcircles-icon.png" alt="">
+    <div><div class="brand">FavCircles</div><div class="sub">Free on the App Store</div></div>
+    <div class="bio">Link in bio</div>
+  </div>
+</div>
+<script>
+  // Darker partner for the gradient: same hue, ~40% darker
+  function darker(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const f = (v) => Math.round(v * 0.6).toString(16).padStart(2, '0');
+    return '#' + f(n >> 16) + f((n >> 8) & 255) + f(n & 255);
+  }
+  const id = new URLSearchParams(location.search).get('id');
+  fetch('posts.json').then((r) => r.json()).then(({ posts }) => {
+    const p = posts.find((x) => x.id === id) || posts[0];
+    const card = document.getElementById('card');
+    card.style.setProperty('--a', p.accent);
+    card.style.setProperty('--b', darker(p.accent));
+    document.getElementById('kicker').textContent = p.kicker;
+    document.getElementById('emoji').textContent = p.emoji;
+    const h = document.getElementById('headline');
+    h.textContent = p.headline;
+    if (p.headline.length > 16) h.className = 'long';
+    document.getElementById('tagline').textContent = p.tagline || '';
+    document.getElementById('features').innerHTML = p.features.map((f) => '<li></li>').join('');
+    [...document.querySelectorAll('li')].forEach((li, i) => { li.textContent = p.features[i]; });
+    return document.fonts.ready;
+  }).then(() => {
+    // Text must stop above the footer bar (render.sh can check this)
+    const bottom = document.getElementById('features').getBoundingClientRect().bottom;
+    document.body.dataset.fits = bottom <= 1350 - 170 - 24 ? 'yes' : 'no:' + Math.round(bottom);
+    document.body.dataset.ready = '1';
+  });
+</script>
+</body>
+</html>
