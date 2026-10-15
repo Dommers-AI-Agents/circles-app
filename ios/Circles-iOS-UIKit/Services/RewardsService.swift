@@ -140,9 +140,10 @@ class RewardsService {
     // MARK: - Browse offers (participating venues, saved + nearby)
 
     func getOffers(lat: Double? = nil, lng: Double? = nil, completion: @escaping (Result<RewardOffersData, Error>) -> Void) {
-        var endpoint = "rewards/offers"
+        // events=1: store events come back from nearby-events instead
+        var endpoint = "rewards/offers?events=1"
         if let lat = lat, let lng = lng {
-            endpoint += "?lat=\(lat)&lng=\(lng)"
+            endpoint += "&lat=\(lat)&lng=\(lng)"
         }
 
         apiService.request(
@@ -164,7 +165,7 @@ class RewardsService {
 
     /// Concerts, games and shows near the user for the next two weeks
     /// (Ticketmaster, cached on the server). Empty when unavailable.
-    func getNearbyEvents(lat: Double, lng: Double, completion: @escaping (Result<[NearbyEvent], Error>) -> Void) {
+    func getNearbyEvents(lat: Double, lng: Double, completion: @escaping (Result<NearbyEventsData, Error>) -> Void) {
         apiService.request(
             endpoint: "rewards/nearby-events?lat=\(lat)&lng=\(lng)",
             method: .get,
@@ -173,7 +174,7 @@ class RewardsService {
         ) { (result: Result<RewardsEnvelope<NearbyEventsData>, APIError>) in
             switch result {
             case .success(let response):
-                completion(.success(response.data.events))
+                completion(.success(response.data))
             case .failure(let error):
                 completion(.failure(error))
             }
@@ -267,9 +268,10 @@ class RewardsService {
 
     // MARK: - Venue owner announcements
 
-    func addAnnouncement(venueId: String, title: String, message: String, expiresAt: String? = nil, completion: @escaping (Result<[VenueAnnouncement], Error>) -> Void) {
+    func addAnnouncement(venueId: String, title: String, message: String, expiresAt: String? = nil, event: [String: Any]? = nil, completion: @escaping (Result<[VenueAnnouncement], Error>) -> Void) {
         var body: [String: Any] = ["title": title, "message": message]
         if let expiresAt = expiresAt { body["expiresAt"] = expiresAt }
+        if let event = event { body["event"] = event }
 
         apiService.request(
             endpoint: "rewards/venues/\(venueId)/announcements",
@@ -287,8 +289,14 @@ class RewardsService {
     }
 
     /// Pass `clearExpiry: true` to remove an expiry date (sends an explicit null)
-    func updateAnnouncement(venueId: String, announcementId: String, title: String? = nil, message: String? = nil, expiresAt: String? = nil, clearExpiry: Bool = false, completion: @escaping (Result<[VenueAnnouncement], Error>) -> Void) {
+    /// `event`: a payload sets the event; `clearEvent` makes it a plain announcement again
+    func updateAnnouncement(venueId: String, announcementId: String, title: String? = nil, message: String? = nil, expiresAt: String? = nil, clearExpiry: Bool = false, event: [String: Any]? = nil, clearEvent: Bool = false, completion: @escaping (Result<[VenueAnnouncement], Error>) -> Void) {
         var body: [String: Any] = [:]
+        if clearEvent {
+            body["event"] = NSNull()
+        } else if let event = event {
+            body["event"] = event
+        }
         if let title = title { body["title"] = title }
         if let message = message { body["message"] = message }
         if clearExpiry {
@@ -993,13 +1001,24 @@ struct OfferVenue: Codable {
 
 struct NearbyEventsData: Codable {
     let events: [NearbyEvent]
+    /// Nearest farmers markets (USDA directory); absent from older servers
+    let markets: [FarmersMarket]?
+    /// "Events from Ticketmaster and … · Farmers markets from …"
+    let attribution: String?
 }
 
-/// One event near the user, as the server normalized it from Ticketmaster.
-/// Dates are the venue's own local date and time ("2026-10-18", "20:00:00").
+/// One thing happening near the user: a store's event on FavCircles, a
+/// free library program, or a Ticketmaster show. Dates are the venue's own
+/// local date and time ("2026-10-18", "20:00:00").
 struct NearbyEvent: Codable, Equatable {
     let id: String
+    /// "store", "library", "ticketmaster"
+    let source: String?
+    /// The store's or library's name, or "Ticketmaster"
+    let sourceName: String?
     let name: String
+    /// A store's details, or a library program's description
+    let message: String?
     let startLocalDate: String
     let startLocalTime: String?
     let venueName: String?
@@ -1014,6 +1033,27 @@ struct NearbyEvent: Codable, Equatable {
     let priceMin: Double?
     let priceMax: Double?
     let currency: String?
+    let isFree: Bool?
+    /// Store events: the venue, to open its place page
+    let venueId: String?
+    let globalPlaceId: String?
+    let googlePlaceId: String?
+
+    var isStoreEvent: Bool { source == "store" }
+}
+
+/// A farmers market near the user (USDA directory). No days or hours: the
+/// directory doesn't keep them reliably.
+struct FarmersMarket: Codable, Equatable {
+    let id: String
+    let name: String
+    let address: String?
+    let directions: String?
+    let lat: Double
+    let lng: Double
+    let distanceMeters: Double?
+    let acceptsSnap: Bool?
+    let organic: Bool?
 }
 
 // MARK: - Place-page venue models (offers + announcements shown on a place)
@@ -1184,6 +1224,8 @@ struct VenueAnnouncement: Codable {
     let message: String
     let expiresAt: String?
     let createdAt: String?
+    /// Set when the post is an event ("Live music Friday 7 PM")
+    let event: AnnouncementEvent?
 
     var expiryDate: Date? {
         guard let expiresAt = expiresAt else { return nil }
@@ -1197,6 +1239,27 @@ struct VenueAnnouncement: Codable {
     var isExpired: Bool {
         guard let expiry = expiryDate else { return false }
         return expiry <= Date()
+    }
+}
+
+/// When a store's event happens. `localDate`/`localTime` are the store's own
+/// clock ("2026-10-17", "19:00:00"); `startsAt`/`endsAt` are UTC.
+struct AnnouncementEvent: Codable, Equatable {
+    let startsAt: String
+    let endsAt: String?
+    let localDate: String
+    let localTime: String?
+    let isFree: Bool?
+
+    var startDate: Date? { Self.parse(startsAt) }
+    var endDate: Date? { endsAt.flatMap(Self.parse) }
+
+    private static func parse(_ text: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: text) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: text)
     }
 }
 

@@ -8,6 +8,7 @@ const quotes = require('../controllers/widgets/quotesController');
 const tasks = require('../controllers/tasks/scheduledTasksController');
 const orphanUploads = require('../controllers/tasks/orphanUploadsController');
 const emailHealthTask = require('../controllers/tasks/emailHealthController');
+const farmersMarketsTask = require('../controllers/tasks/farmersMarketsController');
 
 const router = express.Router();
 
@@ -68,6 +69,8 @@ router.post('/piggy-bank-resolve-claim', verifyCloudScheduler, tasks.piggyBankRe
 // 'abandoned' and their Storage objects deleted (≤200 per run, resumable).
 router.post('/orphan-uploads', verifyCloudScheduler, orphanUploads.sweep);
 router.post('/email-health', verifyCloudScheduler, emailHealthTask.check);
+// Monthly: copy the USDA farmers market directory (Local tab markets)
+router.post('/farmers-markets-sync', verifyCloudScheduler, farmersMarketsTask.sync);
 
 // Health check endpoint for scheduled tasks
 router.get('/health', (req, res) => {

@@ -213,9 +213,10 @@ class PlaceVenueRewardsView: UIView {
         let row = UIView()
         row.translatesAutoresizingMaskIntoConstraints = false
 
-        let icon = UIImageView(image: UIImage(systemName: "megaphone.fill"))
+        // An event shows when it happens instead of when the post comes down
+        let icon = UIImageView(image: UIImage(systemName: announcement.event == nil ? "megaphone.fill" : "calendar"))
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.tintColor = .systemOrange
+        icon.tintColor = announcement.event == nil ? .systemOrange : Constants.Colors.primary
         icon.contentMode = .scaleAspectFit
 
         let titleLabel = UILabel()
@@ -234,7 +235,10 @@ class PlaceVenueRewardsView: UIView {
 
         let expiryLabel = UILabel()
         expiryLabel.translatesAutoresizingMaskIntoConstraints = false
-        if let expiry = announcement.expiryDate {
+        if let event = announcement.event {
+            let when = NearbyEventFormatter.dateLine(localDate: event.localDate, localTime: event.localTime)
+            expiryLabel.text = event.isFree == true ? "\(when) · Free" : when
+        } else if let expiry = announcement.expiryDate {
             let formatter = DateFormatter()
             formatter.dateStyle = .medium
             formatter.timeStyle = .none

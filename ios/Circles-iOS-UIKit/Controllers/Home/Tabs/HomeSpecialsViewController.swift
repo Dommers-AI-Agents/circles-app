@@ -2,20 +2,24 @@ import UIKit
 import MapKit
 import SafariServices
 
-/// The home screen's Specials tab: live offers and announcements from
-/// participating venues, one row per deal in the server's order (saved
-/// venues first, then nearest), then "Happening nearby" — concerts, games
-/// and shows from Ticketmaster (Wes, 2026-10-15). Loads once when first
-/// shown; pull-to-refresh and the `specialsUpdated` SSE event refetch.
+/// The home screen's Local tab (was Specials): live offers and announcements
+/// from participating venues, one row per deal in the server's order (saved
+/// venues first, then nearest); then "Happening nearby" — events stores post
+/// on FavCircles, free library programs and Ticketmaster shows — and the
+/// nearest farmers markets (Wes, 2026-10-15). Loads once when first shown;
+/// pull-to-refresh and the `specialsUpdated` SSE event refetch.
 final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
     weak var host: HomeContentTabHost?
     var isActiveTab = false
 
     private(set) var specials: [SpecialItem] = []
     private(set) var events: [NearbyEvent] = []
+    private(set) var markets: [FarmersMarket] = []
+    /// The server's credits line for the sources shown
+    private var attribution: String?
     private var isLoadingSpecials = false
 
-    private enum Section: Int, CaseIterable { case specials, events }
+    private enum Section: Int, CaseIterable { case specials, events, markets }
     /// A fetch finished since the last invalidate — an empty answer counts,
     /// so a quiet day doesn't refetch behind a spinner on every tap.
     private var hasLoaded = false
@@ -68,7 +72,7 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
         guard !hasLoaded else { return }
         if specials.isEmpty, events.isEmpty {
             if let cached: RewardOffersData = SpecialsCache.load("specials") { apply(cached) }
-            if let cached: [NearbyEvent] = SpecialsCache.load("nearby-events") { applyEvents(cached) }
+            if let cached: NearbyEventsData = SpecialsCache.load("local-feed") { applyFeed(cached) }
         }
         fetchSpecials()
     }
@@ -94,7 +98,7 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
         guard !isLoadingSpecials else { return }
         isLoadingSpecials = true
 
-        if specials.isEmpty && events.isEmpty {
+        if specials.isEmpty && events.isEmpty && markets.isEmpty {
             statusView.isLoading = true
         }
 
@@ -126,9 +130,9 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
                     DispatchQueue.main.async {
                         defer { group.leave() }
                         // A failed refresh keeps what's showing
-                        guard let self, case .success(let events) = result else { return }
-                        self.applyEvents(events)
-                        SpecialsCache.save(events, as: "nearby-events")
+                        guard let self, case .success(let feed) = result else { return }
+                        self.applyFeed(feed)
+                        SpecialsCache.save(feed, as: "local-feed")
                     }
                 }
             }
@@ -158,14 +162,16 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
         if !specials.isEmpty || !events.isEmpty { statusView.isLoading = false; statusView.message = nil }
     }
 
-    private func applyEvents(_ events: [NearbyEvent]) {
-        self.events = events
+    private func applyFeed(_ feed: NearbyEventsData) {
+        events = feed.events
+        markets = feed.markets ?? []
+        attribution = feed.attribution
         tableView.reloadData()
-        if !events.isEmpty { statusView.isLoading = false; statusView.message = nil }
+        if !events.isEmpty || !markets.isEmpty { statusView.isLoading = false; statusView.message = nil }
     }
 
     private func updateStatusMessage(failed: Bool) {
-        guard specials.isEmpty && events.isEmpty else {
+        guard specials.isEmpty && events.isEmpty && markets.isEmpty else {
             statusView.message = nil
             return
         }
@@ -174,11 +180,34 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
             : "No specials right now. Deals from places on your map and nearby show up here."
     }
 
-    /// The event's own page (tickets, details) in an in-app browser.
+    /// A store's event opens the store's place page; anything else opens
+    /// its own page (tickets, details) in an in-app browser.
     func openEvent(_ event: NearbyEvent) {
+        AnalyticsService.shared.logEvent("nearby_event_opened", parameters: [
+            "source": event.source ?? "ticketmaster", "category": event.category ?? "none"
+        ])
+        if event.isStoreEvent, let placeId = event.globalPlaceId ?? event.googlePlaceId {
+            openPlace(id: placeId) { [weak self] in
+                self?.pushPlace(name: event.venueName ?? event.name, address: event.venueAddress,
+                                lat: event.lat, lng: event.lng, globalPlaceId: event.globalPlaceId, googlePlaceId: event.googlePlaceId)
+            }
+            return
+        }
         guard let url = URL(string: event.url) else { return }
-        AnalyticsService.shared.logEvent("nearby_event_opened", parameters: ["category": event.category ?? "none"])
         present(SFSafariViewController(url: url), animated: true)
+    }
+
+    /// A market's place page: save it, see photos, get directions.
+    func openMarket(_ market: FarmersMarket) {
+        AnalyticsService.shared.logEvent("farmers_market_opened", parameters: [:])
+        pushPlace(name: market.name, address: market.address, lat: market.lat, lng: market.lng,
+                  globalPlaceId: nil, googlePlaceId: nil, category: .retail)
+    }
+
+    func openMarketDirections(_ market: FarmersMarket) {
+        let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: market.lat, longitude: market.lng)))
+        mapItem.name = market.name
+        mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDefault])
     }
 
     /// Apple Maps directions to the event's venue.
@@ -206,7 +235,11 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
             pushSpecialPlaceFallback(venue)
             return
         }
+        openPlace(id: placeId) { [weak self] in self?.pushSpecialPlaceFallback(venue) }
+    }
 
+    /// The canonical place page by id, or `fallback` when it can't load.
+    private func openPlace(id placeId: String, fallback: @escaping () -> Void) {
         let loading = AlertPresenter.showLoading(message: "Loading place...", from: self)
         GlobalPlaceService.shared.getGlobalPlace(id: placeId) { [weak self] result in
             DispatchQueue.main.async {
@@ -218,7 +251,7 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
                         let detailVC = PlaceDetailViewController(place: place)
                         self.navigationController?.pushViewController(detailVC, animated: true)
                     case .failure:
-                        self.pushSpecialPlaceFallback(venue)
+                        fallback()
                     }
                 }
             }
@@ -250,25 +283,35 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
     }
 
     private func pushSpecialPlaceFallback(_ venue: OfferVenue) {
+        pushPlace(name: venue.placeName ?? venue.venueName, address: venue.placeAddress,
+                  lat: venue.location?.lat, lng: venue.location?.lng,
+                  globalPlaceId: venue.globalPlaceId, googlePlaceId: venue.googlePlaceId,
+                  id: venue.venueId, category: PlaceCategory(rawValue: venue.category ?? "") ?? .restaurant)
+    }
+
+    /// A place page built from what the row knows (no saved record behind it).
+    private func pushPlace(name: String, address: String?, lat: Double?, lng: Double?,
+                           globalPlaceId: String?, googlePlaceId: String?,
+                           id: String? = nil, category: PlaceCategory = .restaurant) {
         var location: GeoLocation?
-        if let coordinate = venue.location {
+        if let lat, let lng {
             // GeoJSON order: [longitude, latitude]
-            location = GeoLocation(type: "Point", coordinates: [coordinate.lng, coordinate.lat])
+            location = GeoLocation(type: "Point", coordinates: [lng, lat])
         }
 
         let place = Place(
-            id: venue.globalPlaceId ?? venue.googlePlaceId ?? venue.venueId,
-            globalPlaceId: venue.globalPlaceId,
-            name: venue.placeName ?? venue.venueName,
+            id: globalPlaceId ?? googlePlaceId ?? id ?? "local-\(name.lowercased().filter { $0.isLetter || $0.isNumber })",
+            globalPlaceId: globalPlaceId,
+            name: name,
             description: nil,
-            address: venue.placeAddress ?? "",
+            address: address ?? "",
             location: location,
             website: nil,
             phone: nil,
-            googlePlaceId: venue.googlePlaceId,
+            googlePlaceId: googlePlaceId,
             photos: nil,
             videos: nil,
-            category: PlaceCategory(rawValue: venue.category ?? "") ?? .restaurant,
+            category: category,
             customCategoryId: nil,
             subcategory: nil,
             rating: nil,
@@ -298,8 +341,15 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
 // MARK: - Table
 
 extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource {
-    /// No store deals but events to show: one quiet line says so.
-    private var showsNoSpecialsNote: Bool { specials.isEmpty && !events.isEmpty }
+    /// No store deals but other things to show: one quiet line says so.
+    private var showsNoSpecialsNote: Bool { specials.isEmpty && (!events.isEmpty || !markets.isEmpty) }
+
+    /// The credits line sits under the last section with rows.
+    private var attributionSection: Section? {
+        guard attribution != nil else { return nil }
+        if !markets.isEmpty { return .markets }
+        return events.isEmpty ? nil : .events
+    }
 
     func numberOfSections(in tableView: UITableView) -> Int {
         Section.allCases.count
@@ -309,16 +359,23 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
         switch Section(rawValue: section) {
         case .specials: return showsNoSpecialsNote ? 1 : specials.count
         case .events: return events.count
+        case .markets: return markets.count
         case nil: return 0
         }
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        if indexPath.section == Section.events.rawValue {
+        switch Section(rawValue: indexPath.section) {
+        case .events:
             let cell = tableView.dequeueReusableCell(withIdentifier: NearbyEventCell.identifier, for: indexPath) as! NearbyEventCell
-            guard indexPath.row < events.count else { return cell }
-            cell.configure(with: events[indexPath.row])
+            if indexPath.row < events.count { cell.configure(with: events[indexPath.row]) }
             return cell
+        case .markets:
+            let cell = tableView.dequeueReusableCell(withIdentifier: NearbyEventCell.identifier, for: indexPath) as! NearbyEventCell
+            if indexPath.row < markets.count { cell.configure(with: markets[indexPath.row]) }
+            return cell
+        default:
+            break
         }
         if showsNoSpecialsNote {
             let cell = tableView.dequeueReusableCell(withIdentifier: "note", for: indexPath)
@@ -337,57 +394,79 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
         return cell
     }
 
+    private func headerTitle(_ section: Int) -> String? {
+        switch Section(rawValue: section) {
+        case .events: return events.isEmpty ? nil : "Happening nearby"
+        case .markets: return markets.isEmpty ? nil : "Farmers markets"
+        default: return nil
+        }
+    }
+
     func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-        guard section == Section.events.rawValue, !events.isEmpty else { return nil }
+        guard let title = headerTitle(section) else { return nil }
         let label = UILabel()
-        label.text = "Happening nearby"
+        label.text = title
         label.font = .systemFont(ofSize: 20, weight: .bold)
         label.textColor = Constants.Colors.label
         let container = UIView()
         label.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(label)
+        let isFirst = specials.isEmpty && !showsNoSpecialsNote && (section == Section.events.rawValue || events.isEmpty)
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
             label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
-            label.topAnchor.constraint(equalTo: container.topAnchor, constant: specials.isEmpty && !showsNoSpecialsNote ? 8 : 20),
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: isFirst ? 8 : 20),
             label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6)
         ])
         return container
     }
 
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
-        section == Section.events.rawValue && !events.isEmpty ? UITableView.automaticDimension : .leastNormalMagnitude
+        headerTitle(section) == nil ? .leastNormalMagnitude : UITableView.automaticDimension
     }
 
     func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
-        guard section == Section.events.rawValue, !events.isEmpty else { return nil }
+        guard Section(rawValue: section) == attributionSection, let attribution else { return nil }
         let label = UILabel()
-        label.text = "Events from Ticketmaster"
+        label.text = attribution
         label.font = .systemFont(ofSize: 11)
         label.textColor = Constants.Colors.secondaryLabel
         label.textAlignment = .center
-        return label
+        label.numberOfLines = 0
+        let container = UIView()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 24),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -24),
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -16)
+        ])
+        return container
     }
 
     func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
-        section == Section.events.rawValue && !events.isEmpty ? 36 : .leastNormalMagnitude
+        Section(rawValue: section) == attributionSection ? UITableView.automaticDimension : .leastNormalMagnitude
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        if indexPath.section == Section.events.rawValue {
-            guard indexPath.row < events.count else { return }
-            openEvent(events[indexPath.row])
-            return
+        switch Section(rawValue: indexPath.section) {
+        case .events:
+            if indexPath.row < events.count { openEvent(events[indexPath.row]) }
+        case .markets:
+            if indexPath.row < markets.count { openMarket(markets[indexPath.row]) }
+        default:
+            guard !showsNoSpecialsNote, indexPath.row < specials.count else { return }
+            openSpecialPlace(specials[indexPath.row].venue)
         }
-        guard !showsNoSpecialsNote, indexPath.row < specials.count else { return }
-        openSpecialPlace(specials[indexPath.row].venue)
     }
 
-    // Long-press: share a deal (with the place link), or share / get
-    // directions to an event
+    // Long-press: share a deal (with the place link); share or get
+    // directions to an event or a market
     func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
-        if indexPath.section == Section.events.rawValue {
+        switch Section(rawValue: indexPath.section) {
+        case .events:
             guard indexPath.row < events.count else { return nil }
             let event = events[indexPath.row]
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
@@ -403,14 +482,25 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
                 }
                 return UIMenu(children: actions)
             }
-        }
-        guard !showsNoSpecialsNote, indexPath.row < specials.count else { return nil }
-        let item = specials[indexPath.row]
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
-            let share = UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
-                self?.shareSpecial(item)
+        case .markets:
+            guard indexPath.row < markets.count else { return nil }
+            let market = markets[indexPath.row]
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+                UIMenu(children: [
+                    UIAction(title: "Directions", image: UIImage(systemName: "car.fill")) { [weak self] _ in
+                        self?.openMarketDirections(market)
+                    }
+                ])
             }
-            return UIMenu(children: [share])
+        default:
+            guard !showsNoSpecialsNote, indexPath.row < specials.count else { return nil }
+            let item = specials[indexPath.row]
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+                let share = UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
+                    self?.shareSpecial(item)
+                }
+                return UIMenu(children: [share])
+            }
         }
     }
 }

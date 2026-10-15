@@ -7,8 +7,9 @@ const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { sanitizeKeyPart, STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const rewardService = require('../../services/rewardService');
 const nearbyEventsService = require('../../services/nearbyEventsService');
+const { listLiveVenues } = require('../../services/liveVenues');
 const rewardConfig = require('../../config/rewardConfig');
-const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, isCompActive, venueLoyaltyStatus } = require('../../services/ownerSubscriptionService');
+const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, venueLoyaltyStatus } = require('../../services/ownerSubscriptionService');
 const db = getFirestore();
 const { isVenueTeamMember, publicVenueInfo, activeOffers } = require('../../services/venueHelpers.js');
 
@@ -270,39 +271,17 @@ exports.getOffers = async (req, res) => {
     const lng = parseFloat(req.query.lng);
     const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
 
-    // Single equality filter — served by the automatic index (no orderBy here;
-    // adding one would require a composite index)
-    const snapshot = await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
-      .where('active', '==', true)
-      .limit(200)
-      .get();
+    // Apps that show store events under "Happening nearby" ask for them to
+    // be left out here (events=1); older apps still get them as announcements
+    const eventsSeparately = req.query.events === '1';
+    const announcementsFor = (venue) => rewardService.activeAnnouncements(venue)
+      .filter((a) => !(eventsSeparately && a.event));
 
-    // Owners whose business subscription lapsed have their offers hidden
-    // (announcements stay up until natural expiry). Unowned venues stay live.
-    const allVenues = snapshot.docs.map((doc) => ({ venueId: doc.id, ...doc.data() }));
-    const ownerIds = [...new Set(allVenues.map((v) => v.ownerUserId).filter(Boolean))];
-    const ownerUsers = new Map();
-    if (ownerIds.length > 0) {
-      const ownerDocs = await db.getAll(
-        ...ownerIds.map((id) => db.collection(COLLECTIONS.USERS).doc(id))
-      );
-      ownerDocs.forEach((doc) => { if (doc.exists) ownerUsers.set(doc.id, doc.data()); });
-    }
-    // Loyalty is live via an explicit comp OR a premium owner — no longer the
-    // implicit "unowned => always live" pass (that ran the paid program free
-    // and invisibly). Comp keeps hands-on pilot venues working. The owner's
-    // subscription only covers the venue it was purchased for.
-    const loyaltyLive = (venue) =>
-      isCompActive(venue) || isOwnerPremiumForVenue(ownerUsers.get(venue.ownerUserId), venue.venueId, venue);
-
-    // A venue belongs in the browse list only while its loyalty is live and it
-    // has something to show — a redeemable offer or an announcement. A lapsed
-    // owner's offers AND announcements are both hidden (consistent behavior).
-    const liveVenues = allVenues
-      .filter((venue) =>
-        loyaltyLive(venue) &&
-        (activeOffers(venue).length > 0 || rewardService.activeAnnouncements(venue).length > 0)
-      );
+    // A venue belongs in the browse list only while its loyalty is live
+    // (listLiveVenues) and it has something to show — a redeemable offer or
+    // an announcement.
+    const liveVenues = (await listLiveVenues())
+      .filter((venue) => activeOffers(venue).length > 0 || announcementsFor(venue).length > 0);
 
     const savedPlaceIds = await rewardService.getSavedVenuePlaceIds(
       userId,
@@ -319,10 +298,10 @@ exports.getOffers = async (req, res) => {
       distanceMeters: hasCoords && venue.location
         ? geofire.distanceBetween([lat, lng], [venue.location.lat, venue.location.lng]) * 1000
         : null,
-      offers: (loyaltyLive(venue) ? activeOffers(venue) : []).map(({ offerId, title, pointsCost }) => ({
+      offers: activeOffers(venue).map(({ offerId, title, pointsCost }) => ({
         offerId, title, pointsCost
       })),
-      announcements: rewardService.activeAnnouncements(venue)
+      announcements: announcementsFor(venue)
     }));
 
     // Saved venues first (alphabetical), then by distance, unknown-distance last
@@ -356,19 +335,20 @@ exports.getOffers = async (req, res) => {
   }
 };
 
-// @desc    "Happening nearby" for the Specials tab: concerts, games and shows
-//          within 25 miles over the next two weeks (Ticketmaster). Empty when
-//          there's no location, no key, or the provider is down.
+// @desc    "Happening nearby" for the Local tab: store events, free library
+//          programs, Ticketmaster shows (next two weeks) and the nearest
+//          farmers markets. Empty lists when there's no location or a
+//          source is down.
 // @route   GET /api/rewards/nearby-events?lat=&lng=
 // @access  Private
 exports.getNearbyEvents = async (req, res) => {
   const lat = parseFloat(req.query.lat);
   const lng = parseFloat(req.query.lng);
-  const events = await nearbyEventsService.getNearbyEvents(lat, lng).catch((error) => {
+  const feed = await nearbyEventsService.getLocalFeed(lat, lng).catch((error) => {
     console.error('❌ Failed to load nearby events:', error);
-    return [];
+    return { events: [], markets: [], attribution: null };
   });
-  res.json({ success: true, data: { events, source: 'ticketmaster' } });
+  res.json({ success: true, data: { ...feed, source: 'ticketmaster' } });
 };
 
 // @desc    Rewards data for a place page: the venue's offers, announcements,

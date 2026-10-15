@@ -65,7 +65,7 @@ struct VenuePostEditsTests {
     }
 
     @Test func announcementEditSendsOnlyWhatChanged() {
-        let existing = VenueAnnouncement(announcementId: "a1", title: "HH", message: "3–5", expiresAt: "2026-10-01T23:59:59Z", createdAt: nil)
+        let existing = VenueAnnouncement(announcementId: "a1", title: "HH", message: "3–5", expiresAt: "2026-10-01T23:59:59Z", createdAt: nil, event: nil)
         var draft = VenueAnnouncementEdit(announcement: existing)
         #expect(draft.changes(from: existing, calendar: utc).isEmpty)
 
@@ -75,5 +75,36 @@ struct VenuePostEditsTests {
         draft.endsOn = day("2026-10-05T10:00:00Z")
         draft.message = "4–6"
         #expect(draft.changes(from: existing, calendar: utc) == .init(message: "4–6", expiresAt: "2026-10-05T23:59:59Z"))
+    }
+
+    @Test func eventPayloadUsesTheOwnersClock() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        let start = calendar.date(from: DateComponents(year: 2026, month: 10, day: 17, hour: 19, minute: 0))!
+        let edit = VenueAnnouncementEdit(title: "Live music", message: "Local band", eventStart: start, eventIsFree: true)
+        let payload = edit.eventPayload(calendar: calendar)
+        #expect(payload?.localDate == "2026-10-17")
+        #expect(payload?.localTime == "19:00:00")
+        #expect(payload?.startsAt == "2026-10-17T23:00:00Z")
+        #expect(payload?.endsAt == nil)
+        #expect(edit.expiresAt(calendar: calendar) == nil) // the server sets an event's expiry
+        let now = calendar.date(from: DateComponents(year: 2026, month: 10, day: 15, hour: 9))!
+        #expect(edit.problem(now: now, calendar: calendar) == nil)
+        var backwards = edit
+        backwards.eventEnd = start.addingTimeInterval(-60)
+        #expect(backwards.problem(now: now, calendar: calendar) != nil)
+    }
+
+    @Test func turningAnEventBackIntoAnAnnouncement() {
+        let event = AnnouncementEvent(startsAt: "2026-10-17T23:00:00Z", endsAt: nil, localDate: "2026-10-17", localTime: "19:00:00", isFree: true)
+        let existing = VenueAnnouncement(announcementId: "a1", title: "Trivia", message: "Teams of 4", expiresAt: "2026-10-18T03:00:00Z", createdAt: nil, event: event)
+        var edit = VenueAnnouncementEdit(announcement: existing)
+        #expect(edit.isEvent)
+        #expect(edit.changes(from: existing).isEmpty)
+        edit.eventIsFree = false
+        #expect(edit.changes(from: existing).event?.isFree == false)
+        edit.eventStart = nil
+        edit.eventEnd = nil
+        #expect(edit.changes(from: existing).clearEvent)
     }
 }

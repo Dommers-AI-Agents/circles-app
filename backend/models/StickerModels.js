@@ -143,6 +143,51 @@ const validateAnnouncementInput = (announcement, label = 'announcement') => {
   return errors;
 };
 
+// An announcement that is an event ("Live music Friday 7 PM"): when it
+// starts (UTC, plus the venue's own local date/time for display), an
+// optional end, and whether it's free. Shown under "Happening nearby".
+const validateAnnouncementEvent = (event, label = 'announcement.event') => {
+  if (event === undefined || event === null) return [];
+  if (typeof event !== 'object' || Array.isArray(event)) return [`${label} must be an object or null`];
+  const errors = [];
+  const start = new Date(event.startsAt);
+  if (!event.startsAt || Number.isNaN(start.getTime())) {
+    errors.push(`${label}.startsAt must be an ISO date string`);
+  } else {
+    if (start.getTime() > Date.now() + 366 * 86400000) errors.push(`${label}.startsAt must be within a year`);
+    if (event.endsAt !== undefined && event.endsAt !== null) {
+      const end = new Date(event.endsAt);
+      if (Number.isNaN(end.getTime())) errors.push(`${label}.endsAt must be an ISO date string or null`);
+      else if (end <= start) errors.push(`${label}.endsAt must be after it starts`);
+      else if (end <= new Date()) errors.push(`${label}.endsAt must be in the future`);
+    } else if (start.getTime() + 4 * 3600000 <= Date.now()) {
+      errors.push(`${label}.startsAt must not be in the past`);
+    }
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(event.localDate || ''))) errors.push(`${label}.localDate must be YYYY-MM-DD`);
+  if (event.localTime !== undefined && event.localTime !== null && !/^\d{2}:\d{2}(:\d{2})?$/.test(String(event.localTime))) {
+    errors.push(`${label}.localTime must be HH:MM or null`);
+  }
+  if (event.isFree !== undefined && event.isFree !== null && typeof event.isFree !== 'boolean') {
+    errors.push(`${label}.isFree must be true, false or null`);
+  }
+  return errors;
+};
+
+/** The stored form of a validated event. */
+const cleanAnnouncementEvent = (event) => (event ? {
+  startsAt: new Date(event.startsAt).toISOString(),
+  endsAt: event.endsAt ? new Date(event.endsAt).toISOString() : null,
+  localDate: String(event.localDate),
+  localTime: event.localTime ? (String(event.localTime).length === 5 ? `${event.localTime}:00` : String(event.localTime)) : null,
+  isFree: typeof event.isFree === 'boolean' ? event.isFree : null
+} : null);
+
+/** An event's announcement hides itself once the event is over. */
+const eventExpiry = (event) => (event
+  ? (event.endsAt || new Date(new Date(event.startsAt).getTime() + 4 * 3600000).toISOString())
+  : null);
+
 // Ownership claim filed from a place page. Doc ID is `${venueId}_${userId}`
 // (or `place_${placeKey}_${userId}` when no rewards venue is enrolled yet),
 // so a user can only ever hold one claim per business.
@@ -291,6 +336,9 @@ module.exports = {
   validateStickerVenue,
   validateOfferInput,
   validateAnnouncementInput,
+  validateAnnouncementEvent,
+  cleanAnnouncementEvent,
+  eventExpiry,
   validateEarnRate,
   createRewardEvent,
   createVenueClaimRequest,

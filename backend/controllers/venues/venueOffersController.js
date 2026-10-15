@@ -2,7 +2,7 @@
 // Owner specials: offers and announcements
 // Split out of rewardController.js (handlers unchanged).
 const { getFirestore } = require('../../config/firebase');
-const { validateOfferInput, validateAnnouncementInput, STICKER_COLLECTIONS, MAX_ANNOUNCEMENTS } = require('../../models/StickerModels');
+const { validateOfferInput, validateAnnouncementInput, validateAnnouncementEvent, cleanAnnouncementEvent, eventExpiry, STICKER_COLLECTIONS, MAX_ANNOUNCEMENTS } = require('../../models/StickerModels');
 const { createActivity } = require('../activityController');
 const sseService = require('../../services/sseService');
 const db = getFirestore();
@@ -140,11 +140,12 @@ const saveAnnouncements = async (venueId, announcements) => {
 // @access  Venue owner (or super user)
 exports.addAnnouncement = async (req, res) => {
   try {
-    const { title, message, expiresAt } = req.body;
+    const { title, message, expiresAt, event } = req.body;
     const errors = [];
     if (title === undefined) errors.push('title is required');
     if (message === undefined) errors.push('message is required');
     errors.push(...validateAnnouncementInput({ title, message, expiresAt }));
+    errors.push(...validateAnnouncementEvent(event));
     if (errors.length > 0) {
       return res.status(400).json({ success: false, error: errors.join('. ') });
     }
@@ -162,7 +163,9 @@ exports.addAnnouncement = async (req, res) => {
       announcementId: `ann_${Date.now()}`,
       title: String(title).trim(),
       message: String(message).trim(),
-      expiresAt: expiresAt || null,
+      // An event takes itself down when it's over
+      expiresAt: event ? eventExpiry(cleanAnnouncementEvent(event)) : (expiresAt || null),
+      ...(event && { event: cleanAnnouncementEvent(event) }),
       createdAt: now,
       updatedAt: now
     });
@@ -185,8 +188,8 @@ exports.addAnnouncement = async (req, res) => {
 // @access  Venue owner (or super user)
 exports.updateAnnouncement = async (req, res) => {
   try {
-    const { title, message, expiresAt } = req.body;
-    const errors = validateAnnouncementInput({ title, message, expiresAt });
+    const { title, message, expiresAt, event } = req.body;
+    const errors = [...validateAnnouncementInput({ title, message, expiresAt }), ...validateAnnouncementEvent(event)];
     if (errors.length > 0) {
       return res.status(400).json({ success: false, error: errors.join('. ') });
     }
@@ -204,6 +207,17 @@ exports.updateAnnouncement = async (req, res) => {
       ...(expiresAt !== undefined && { expiresAt: expiresAt || null }),
       updatedAt: new Date().toISOString()
     };
+    // event: an object sets it (and its expiry), null turns it back into a
+    // plain announcement
+    if (event !== undefined) {
+      const cleaned = cleanAnnouncementEvent(event);
+      if (cleaned) {
+        announcements[index].event = cleaned;
+        announcements[index].expiresAt = eventExpiry(cleaned);
+      } else {
+        delete announcements[index].event;
+      }
+    }
 
     await saveAnnouncements(req.venue.venueId, announcements);
     notifySpecialsChanged(req.venue.venueId);

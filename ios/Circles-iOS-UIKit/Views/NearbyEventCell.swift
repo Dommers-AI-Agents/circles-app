@@ -1,7 +1,8 @@
 import UIKit
 
-/// A "Happening nearby" row on the Specials tab: the event's picture, name,
-/// when, where, and a price chip when Ticketmaster knows one.
+/// A "Happening nearby" row on the Local tab: the event's picture, name,
+/// when, where, and a "Free" or price chip. Also draws a farmers market
+/// (name, "Farmers market", address and distance).
 final class NearbyEventCell: UITableViewCell {
     static let identifier = "NearbyEventCell"
 
@@ -110,17 +111,37 @@ final class NearbyEventCell: UITableViewCell {
         titleLabel.text = event.name
         whenLabel.text = NearbyEventFormatter.dateLine(localDate: event.startLocalDate, localTime: event.startLocalTime)
         placeLabel.text = NearbyEventFormatter.placeLine(venueName: event.venueName, city: event.city, distanceMeters: event.distanceMeters)
-        priceLabel.text = NearbyEventFormatter.priceText(min: event.priceMin, currency: event.currency)
+        priceLabel.text = event.isFree == true ? "Free" : NearbyEventFormatter.priceText(min: event.priceMin, currency: event.currency)
+        priceLabel.textColor = event.isFree == true ? .systemGreen : Constants.Colors.secondaryLabel
+        placeholderSymbol = event.isStoreEvent ? "storefront" : (event.source == "library" ? "books.vertical" : "ticket")
         accessibilityLabel = [titleLabel.text, whenLabel.text, placeLabel.text, priceLabel.text].compactMap { $0 }.joined(separator: ", ")
         isAccessibilityElement = true
 
+        loadImage(event.imageUrl, key: "nearby-event-\(event.id)")
+    }
+
+    func configure(with market: FarmersMarket) {
+        titleLabel.text = market.name
+        whenLabel.text = "Farmers market"
+        placeLabel.text = NearbyEventFormatter.placeLine(venueName: market.address, city: nil, distanceMeters: market.distanceMeters)
+        priceLabel.text = market.acceptsSnap == true ? "SNAP/EBT" : nil
+        priceLabel.textColor = Constants.Colors.secondaryLabel
+        placeholderSymbol = "basket.fill"
+        accessibilityLabel = [titleLabel.text, whenLabel.text, placeLabel.text, priceLabel.text].compactMap { $0 }.joined(separator: ", ")
+        isAccessibilityElement = true
+        loadImage(nil, key: "")
+    }
+
+    private var placeholderSymbol = "ticket"
+
+    private func loadImage(_ imageUrl: String?, key: String) {
         currentImageLoadId = nil
-        guard let imageUrl = event.imageUrl else { return showPlaceholder() }
+        guard let imageUrl else { return showPlaceholder() }
         let loadId = UUID().uuidString
         currentImageLoadId = loadId
         thumbnailImageView.contentMode = .scaleAspectFill
         thumbnailImageView.image = nil
-        ImageService.shared.loadImageWithKey(from: imageUrl, cacheKey: "nearby-event-\(event.id)") { [weak self] image in
+        ImageService.shared.loadImageWithKey(from: imageUrl, cacheKey: key) { [weak self] image in
             DispatchQueue.main.async {
                 guard let self, self.currentImageLoadId == loadId else { return }
                 if let image { self.thumbnailImageView.image = image } else { self.showPlaceholder() }
@@ -130,7 +151,7 @@ final class NearbyEventCell: UITableViewCell {
 
     private func showPlaceholder() {
         thumbnailImageView.contentMode = .center
-        thumbnailImageView.image = UIImage(systemName: "ticket")
+        thumbnailImageView.image = UIImage(systemName: placeholderSymbol)
     }
 
     override func prepareForReuse() {

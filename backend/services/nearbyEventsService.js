@@ -1,190 +1,117 @@
-// Nearby events for the Specials tab's "Happening nearby" section
-// (Wes, 2026-10-15): concerts, sports, theater and family shows within
-// 25 miles over the next two weeks, from the Ticketmaster Discovery API.
-//
-// Cached per ~5 km cell per day (memory 30 min, Firestore 6 h) so the free
-// 5,000 calls/day quota is never close and repeat opens are instant. Never
-// throws: no key, a timeout or an upstream error all mean "no events".
+// The Local tab's "Happening nearby" (Wes, 2026-10-15): events from stores
+// on FavCircles, free library programs, and concerts/games/shows from
+// Ticketmaster, soonest first — plus the nearest farmers markets (USDA).
+// Each source caches on its own (services/localEvents/*); a source that is
+// down just drops out. Never throws.
 const geofire = require('geofire-common');
-const { getFirestore } = require('../config/firebase');
+const ticketmaster = require('./localEvents/ticketmaster');
+const library = require('./localEvents/library');
+const storeEvents = require('./localEvents/storeEvents');
+const farmersMarkets = require('./localEvents/farmersMarkets');
+const { cached } = require('./localEvents/cache');
 
-const API_URL = 'https://app.ticketmaster.com/discovery/v2/events.json';
-const CACHE_COLLECTION = 'nearbyEventsCache';
-const RADIUS_MILES = 25;
-const WINDOW_DAYS = 14;
-const MAX_EVENTS = 20;
-const FETCH_TIMEOUT_MS = 4000;
-const MEMORY_TTL_MS = 30 * 60 * 1000;
-const STORE_TTL_MS = 6 * 60 * 60 * 1000;
-const SKIP_STATUSES = new Set(['cancelled', 'canceled', 'postponed', 'offsale']);
+const MAX_EVENTS = 30;
+const MAX_TICKETMASTER = 14;
+const MAX_LIBRARY = 10;
+// Library programs are for the branches near you, not the whole county
+const LIBRARY_RADIUS_M = 10 * 1609.344;
 
-const memory = new Map();
+const withDistance = (event, lat, lng) => ({
+  ...event,
+  distanceMeters: Number.isFinite(event.lat) && Number.isFinite(event.lng)
+    ? Math.round(geofire.distanceBetween([lat, lng], [event.lat, event.lng]) * 1000)
+    : null
+});
 
-/** The 16:9 image closest to 640 px wide (cards are ~120 pt). */
-function pickImage(images) {
-  if (!Array.isArray(images) || images.length === 0) return null;
-  const wide = images.filter((img) => img && img.ratio === '16_9' && img.url);
-  const pool = wide.length ? wide : images.filter((img) => img && img.url);
-  if (!pool.length) return null;
-  return pool.reduce((best, img) =>
-    Math.abs((img.width || 0) - 640) < Math.abs((best.width || 0) - 640) ? img : best
-  ).url;
-}
-
-/** One Ticketmaster event → the app's shape; null when it can't be shown. */
-function normalizeEvent(raw, origin) {
-  if (!raw || !raw.id || !raw.name || !raw.url) return null;
-  const status = String(raw.dates?.status?.code || '').toLowerCase();
-  if (SKIP_STATUSES.has(status)) return null;
-  const start = raw.dates?.start || {};
-  if (!start.localDate) return null;
-  const venue = raw._embedded?.venues?.[0] || {};
-  const lat = parseFloat(venue.location?.latitude);
-  const lng = parseFloat(venue.location?.longitude);
-  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
-  const classification = raw.classifications?.[0] || {};
-  const genre = classification.genre?.name;
-  const segment = classification.segment?.name;
-  const price = Array.isArray(raw.priceRanges) ? raw.priceRanges[0] : null;
-  return {
-    id: String(raw.id),
-    name: String(raw.name),
-    startLocalDate: start.localDate,
-    startLocalTime: start.timeTBA || start.noSpecificTime ? null : (start.localTime || null),
-    startUtc: start.dateTime || null,
-    venueName: venue.name || null,
-    venueAddress: venue.address?.line1 || null,
-    city: venue.city?.name || null,
-    lat: hasCoords ? lat : null,
-    lng: hasCoords ? lng : null,
-    distanceMeters: hasCoords && origin
-      ? Math.round(geofire.distanceBetween([origin.lat, origin.lng], [lat, lng]) * 1000)
-      : null,
-    category: genre && genre !== 'Undefined' ? genre : (segment && segment !== 'Undefined' ? segment : null),
-    imageUrl: pickImage(raw.images),
-    url: String(raw.url),
-    priceMin: Number.isFinite(price?.min) ? price.min : null,
-    priceMax: Number.isFinite(price?.max) ? price.max : null,
-    currency: price?.currency || null
-  };
-}
+const startKey = (event) => `${event.startLocalDate} ${event.startLocalTime || '99'}`;
+const bySoonest = (a, b) => startKey(a).localeCompare(startKey(b))
+  || (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity);
 
 /**
- * Normalized, deduped (a show running every night keeps only its next
- * date), soonest first, capped.
+ * One row per thing to go to: a show running every night keeps its next
+ * date; a library program held at several branches keeps the nearest one.
  */
-function normalizeEvents(payload, origin) {
-  const raw = payload?._embedded?.events;
-  if (!Array.isArray(raw)) return [];
+function dedupe(events, keyOf) {
   const seen = new Set();
-  const events = [];
-  for (const item of raw) {
-    const event = normalizeEvent(item, origin);
-    if (!event) continue;
-    const key = `${event.name.toLowerCase()}|${(event.venueName || '').toLowerCase()}`;
-    if (seen.has(key)) continue;
+  return events.filter((event) => {
+    const key = keyOf(event);
+    if (seen.has(key)) return false;
     seen.add(key);
-    events.push(event);
-  }
-  events.sort((a, b) =>
-    `${a.startLocalDate} ${a.startLocalTime || '99'}`.localeCompare(`${b.startLocalDate} ${b.startLocalTime || '99'}`)
-  );
-  return events.slice(0, MAX_EVENTS);
-}
-
-/** Ticketmaster wants second precision with a Z. */
-function tmTime(date) {
-  return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
-}
-
-async function fetchFromTicketmaster(lat, lng, apiKey, now) {
-  const params = new URLSearchParams({
-    apikey: apiKey,
-    latlong: `${lat},${lng}`,
-    radius: String(RADIUS_MILES),
-    unit: 'miles',
-    startDateTime: tmTime(now),
-    endDateTime: tmTime(new Date(now.getTime() + WINDOW_DAYS * 86400000)),
-    sort: 'date,asc',
-    size: '50',
-    includeTBA: 'no',
-    includeTest: 'no',
-    locale: '*'
+    return true;
   });
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${API_URL}?${params}`, { signal: controller.signal });
-    if (!res.ok) {
-      console.warn(`[nearbyEvents] Ticketmaster answered ${res.status}`);
-      return null;
-    }
-    return await res.json();
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
-/**
- * Events near (lat, lng). Distances are measured from the caller even when
- * the list came from the cell's cache.
- */
-async function getNearbyEvents(lat, lng, { now = new Date(), apiKey = process.env.TICKETMASTER_API_KEY } = {}) {
-  if (!apiKey || !Number.isFinite(lat) || !Number.isFinite(lng)) return [];
-  const origin = { lat, lng };
-  const cell = geofire.geohashForLocation([lat, lng], 5);
-  const key = `${cell}_${now.toISOString().slice(0, 10)}`;
+const normName = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+// Every story time is the same outing; one is plenty
+const programKey = (event) => (/story ?time/i.test(event.name) ? 'storytime' : normName(event.name));
 
-  const withDistances = (events) => events.map((event) => ({
-    ...event,
-    distanceMeters: event.lat !== null && event.lng !== null
-      ? Math.round(geofire.distanceBetween([origin.lat, origin.lng], [event.lat, event.lng]) * 1000)
-      : null
-  }));
-
-  const inMemory = memory.get(key);
-  if (inMemory && now.getTime() - inMemory.at < MEMORY_TTL_MS) return withDistances(inMemory.events);
-
-  const db = getFirestore();
-  const ref = db.collection(CACHE_COLLECTION).doc(key);
-  try {
-    const doc = await ref.get();
-    const data = doc.exists ? doc.data() : null;
-    if (data && Array.isArray(data.events) && data.fetchedAtMs && now.getTime() - data.fetchedAtMs < STORE_TTL_MS) {
-      memory.set(key, { at: now.getTime(), events: data.events });
-      return withDistances(data.events);
-    }
-  } catch (err) {
-    console.warn('[nearbyEvents] cache read failed:', err.message);
-  }
-
-  let payload = null;
-  try {
-    payload = await fetchFromTicketmaster(lat, lng, apiKey, now);
-  } catch (err) {
-    console.warn('[nearbyEvents] Ticketmaster request failed:', err.name === 'AbortError' ? 'timeout' : err.message);
-  }
-  if (!payload) {
-    // Hold off five minutes before asking again (a bad key or an outage
-    // shouldn't cost a call per tab open)
-    memory.set(key, { at: now.getTime() - MEMORY_TTL_MS + 5 * 60 * 1000, events: [] });
-    return [];
-  }
-
-  const events = normalizeEvents(payload, origin);
-  memory.set(key, { at: now.getTime(), events });
-  ref.set({
-    events,
-    fetchedAtMs: now.getTime(),
-    expiresAt: new Date(now.getTime() + STORE_TTL_MS)
-  }).catch((err) => console.warn('[nearbyEvents] cache write failed:', err.message));
-  return withDistances(events);
-}
-
-module.exports = {
-  getNearbyEvents,
-  normalizeEvents,
-  normalizeEvent,
-  pickImage,
-  _memory: memory
+/** Started more than an hour ago (when the source gives a real start). */
+const isPast = (event, now) => {
+  const start = event.startUtc ? Date.parse(event.startUtc) : NaN;
+  return Number.isFinite(start) && start < now.getTime() - 3600000;
 };
+
+/** Merge the sources' lists into the tab's list (pure, tested). */
+function mergeEvents({ store = [], tm = [], lib = [] }, lat, lng, now = new Date()) {
+  const near = (list) => list.filter((event) => !isPast(event, now)).map((event) => withDistance(event, lat, lng));
+
+  const tmRows = dedupe(near(tm).sort(bySoonest), (e) => `${normName(e.name)}|${normName(e.venueName)}`)
+    .slice(0, MAX_TICKETMASTER);
+
+  const libRows = near(lib)
+    .filter((e) => e.distanceMeters === null || e.distanceMeters <= LIBRARY_RADIUS_M)
+    .sort((a, b) => bySoonest(a, b));
+  const libNearestFirst = [...libRows].sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity));
+  const keepLib = new Set(dedupe(libNearestFirst, (e) => e.seriesId || programKey(e)).map((e) => e.id));
+  const libPicked = libRows.filter((e) => keepLib.has(e.id));
+  const libFinal = dedupe(libPicked, programKey).slice(0, MAX_LIBRARY);
+
+  // Stores on FavCircles always make the list
+  const storeRows = near(store).sort(bySoonest);
+  const others = [...tmRows, ...libFinal].sort(bySoonest).slice(0, Math.max(0, MAX_EVENTS - storeRows.length));
+  return [...storeRows, ...others].sort(bySoonest).map(({ seriesId, ...event }) => event);
+}
+
+/** Who to credit under the list. */
+function attributionFor(events, markets) {
+  const names = [];
+  if (events.some((e) => e.source === 'ticketmaster')) names.push('Ticketmaster');
+  for (const e of events) {
+    if (e.source === 'library' && !names.includes(e.sourceName)) names.push(e.sourceName);
+  }
+  const parts = [];
+  if (names.length) parts.push(`Events from ${names.join(' and ')}`);
+  if (markets.length) parts.push('Farmers markets from the USDA directory');
+  return parts.join(' · ') || null;
+}
+
+const settle = (promise, label) => promise.catch((err) => {
+  console.warn(`[nearbyEvents] ${label} failed:`, err.message);
+  return [];
+});
+
+/** Everything for the Local tab's "Happening nearby" around (lat, lng). */
+async function getLocalFeed(lat, lng, { now = new Date() } = {}) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { events: [], markets: [], attribution: null };
+  const cell = geofire.geohashForLocation([lat, lng], 5);
+  const [store, tm, lib, markets] = await Promise.all([
+    settle(storeEvents.eventsNear(lat, lng, { now }), 'store events'),
+    settle(ticketmaster.eventsNear(lat, lng, { now }), 'Ticketmaster'),
+    settle(library.eventsNear(lat, lng, { now }), 'library'),
+    settle(cached(`fm_${cell}`, { memoryMs: 6 * 3600000, storeMs: 24 * 3600000, now: now.getTime() },
+      () => farmersMarkets.marketsNear(lat, lng)), 'farmers markets')
+  ]);
+  const events = mergeEvents({ store, tm, lib }, lat, lng, now);
+  const nearMarkets = markets.map((m) => ({
+    ...m,
+    distanceMeters: Math.round(geofire.distanceBetween([lat, lng], [m.lat, m.lng]) * 1000)
+  })).sort((a, b) => a.distanceMeters - b.distanceMeters);
+  return { events, markets: nearMarkets, attribution: attributionFor(events, nearMarkets) };
+}
+
+/** Events only (the 2026-10-15 builds read just this). */
+async function getNearbyEvents(lat, lng, options) {
+  return (await getLocalFeed(lat, lng, options)).events;
+}
+
+module.exports = { getLocalFeed, getNearbyEvents, mergeEvents, attributionFor };
