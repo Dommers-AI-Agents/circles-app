@@ -160,6 +160,26 @@ class RewardsService {
         }
     }
 
+    // MARK: - Happening nearby (Specials tab)
+
+    /// Concerts, games and shows near the user for the next two weeks
+    /// (Ticketmaster, cached on the server). Empty when unavailable.
+    func getNearbyEvents(lat: Double, lng: Double, completion: @escaping (Result<[NearbyEvent], Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/nearby-events?lat=\(lat)&lng=\(lng)",
+            method: .get,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<NearbyEventsData>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data.events))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     // MARK: - Place-page rewards (venue offers + announcements on a place)
 
     /// Rewards data for a place's detail page. `data.venue == nil` means the
@@ -967,6 +987,33 @@ struct OfferVenue: Codable {
         if miles < 0.1 { return "nearby" }
         return String(format: "%.1f mi", miles)
     }
+}
+
+// MARK: - Happening nearby models
+
+struct NearbyEventsData: Codable {
+    let events: [NearbyEvent]
+}
+
+/// One event near the user, as the server normalized it from Ticketmaster.
+/// Dates are the venue's own local date and time ("2026-10-18", "20:00:00").
+struct NearbyEvent: Codable, Equatable {
+    let id: String
+    let name: String
+    let startLocalDate: String
+    let startLocalTime: String?
+    let venueName: String?
+    let venueAddress: String?
+    let city: String?
+    let lat: Double?
+    let lng: Double?
+    let distanceMeters: Double?
+    let category: String?
+    let imageUrl: String?
+    let url: String
+    let priceMin: Double?
+    let priceMax: Double?
+    let currency: String?
 }
 
 // MARK: - Place-page venue models (offers + announcements shown on a place)

@@ -9,6 +9,7 @@ const {
   getBalance,
   redeemOffer,
   getOffers,
+  getNearbyEvents,
   getVenueByPlace,
   getMe
 } = require('../controllers/venues/rewardScanController');
@@ -89,6 +90,7 @@ router.post('/scan', scan);
 router.post('/sticker-save', confirmStickerSave);
 router.get('/balance', getBalance);
 router.get('/offers', getOffers);
+router.get('/nearby-events', getNearbyEvents);
 router.post('/redeem-offer', redeemOffer);
 // Single-use brand loyalty codes (order-box cards, booth handouts)
 router.post('/redeem-code', redeemCode);

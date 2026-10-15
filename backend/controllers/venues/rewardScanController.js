@@ -6,6 +6,7 @@ const geofire = require('geofire-common');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { sanitizeKeyPart, STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const rewardService = require('../../services/rewardService');
+const nearbyEventsService = require('../../services/nearbyEventsService');
 const rewardConfig = require('../../config/rewardConfig');
 const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, isCompActive, venueLoyaltyStatus } = require('../../services/ownerSubscriptionService');
 const db = getFirestore();
@@ -353,6 +354,21 @@ exports.getOffers = async (req, res) => {
     console.error('❌ Failed to load offers:', error);
     res.status(500).json({ success: false, error: 'Failed to load offers' });
   }
+};
+
+// @desc    "Happening nearby" for the Specials tab: concerts, games and shows
+//          within 25 miles over the next two weeks (Ticketmaster). Empty when
+//          there's no location, no key, or the provider is down.
+// @route   GET /api/rewards/nearby-events?lat=&lng=
+// @access  Private
+exports.getNearbyEvents = async (req, res) => {
+  const lat = parseFloat(req.query.lat);
+  const lng = parseFloat(req.query.lng);
+  const events = await nearbyEventsService.getNearbyEvents(lat, lng).catch((error) => {
+    console.error('❌ Failed to load nearby events:', error);
+    return [];
+  });
+  res.json({ success: true, data: { events, source: 'ticketmaster' } });
 };
 
 // @desc    Rewards data for a place page: the venue's offers, announcements,
