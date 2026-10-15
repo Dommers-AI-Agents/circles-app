@@ -7,7 +7,7 @@ import Testing
 struct HomeContentSegmentTests {
     @Test func orderMatchesSegmentedControl() {
         #expect(HomeContentSegment.allCases.map(\.rawValue) == [0, 1, 2, 3])
-        #expect(HomeContentSegment.allCases.map(\.title) == ["Activity", "Moments", "Specials", "Widgets"])
+        #expect(HomeContentSegment.allCases.map(\.title) == ["Activity", "Moments", "Local", "Widgets"])
         #expect(HomeContentSegment(rawValue: 2) == .specials)
         #expect(HomeContentSegment(rawValue: 3) == .widgets)
         #expect(HomeContentSegment(rawValue: 4) == nil)

@@ -14,7 +14,7 @@ enum HomeContentSegment: Int, CaseIterable {
         switch self {
         case .activity: return "Activity"
         case .moments: return "Moments"
-        case .specials: return "Specials"
+        case .specials: return "Local"
         case .widgets: return "Widgets"
         }
     }
@@ -24,7 +24,7 @@ enum HomeContentSegment: Int, CaseIterable {
         switch self {
         case .activity: return "Recent Activity"
         case .moments: return "Moments"
-        case .specials: return "Specials"
+        case .specials: return "Local"
         case .widgets: return "Widgets"
         }
     }

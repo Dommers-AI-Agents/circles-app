@@ -898,7 +898,7 @@ class HelpContentProvider {
 
                 **Watching it work:**
                 • The Stats & Insights dashboard tracks saves, followers, visits, QR scans, and redemptions
-                • Announcements you post reach your followers' feeds and the Specials tab
+                • Announcements you post reach your followers' feeds and the Local tab
 
                 **What about FavCoins?**
                 Customers also earn FavCoins — a separate crypto coin — for using FavCircles generally. You don't fund, grant, or redeem FavCoins. Your loyalty currency is store points.
@@ -932,7 +932,7 @@ class HelpContentProvider {
 
                 **With FavCircles Business (subscription):**
                 • Offers customers redeem with points
-                • Announcements to your followers and the Specials tab
+                • Announcements to your followers and the Local tab
                 • Your own points-per-purchase earn rate
                 • The register QR card and single-use loyalty codes
                 • Full monthly stats history
@@ -987,7 +987,7 @@ class HelpContentProvider {
                 **Your online store:**
                 • Create it from My Venues → the globe button
                 • It gets everything a physical store gets: offers, announcements, loyalty codes, a register QR for your booth, and a dashboard
-                • It never appears on the map — customers find you through the Specials tab, your profile, and follows
+                • It never appears on the map — customers find you through the Local tab, your profile, and follows
 
                 **Circles are your content:**
                 • Create circles your customers actually want — "Places We Ride", "Conference Schedule"

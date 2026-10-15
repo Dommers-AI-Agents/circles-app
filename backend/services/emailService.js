@@ -630,7 +630,7 @@ Import now: https://api.favcircles.com/app/import
           <ul style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
             <li><strong>Your loyalty program is on</strong> — customers earn points scanning your window sticker and your register card, and you set how many points a purchase pays. Points earned at your store can only be spent at your store — never at a competitor.</li>
             <li><strong>Post offers</strong> — "Free coffee — 100 points" style rewards customers redeem with a short-lived voucher at your counter. You choose the offers and the prices.</li>
-            <li><strong>Announcements</strong> — reach your followers' feeds and the app's Specials tab whenever you have news, an event, or a special.</li>
+            <li><strong>Announcements</strong> — reach your followers' feeds and the app's Local tab whenever you have news, an event, or a special.</li>
             <li><strong>Stats &amp; Insights</strong> — saves, followers, visits, scans, and redemptions, live on your dashboard, plus a monthly report by email.</li>
             <li><strong>Redemption codes</strong> — single-use codes to pack into orders or hand out at events; each one pays points when redeemed.</li>
           </ul>
@@ -652,7 +652,7 @@ Your Business subscription${forVenue} is active. Everything below is live now �
 
 • Your loyalty program is on — customers earn points scanning your window sticker and register card; you set how many points a purchase pays. Points earned at your store can only be spent at your store.
 • Post offers — rewards customers redeem with a short-lived voucher at your counter.
-• Announcements — reach your followers' feeds and the app's Specials tab.
+• Announcements — reach your followers' feeds and the app's Local tab.
 • Stats & Insights — saves, followers, visits, scans, and redemptions, plus a monthly report by email.
 • Redemption codes — single-use codes for orders or events.
 
@@ -796,7 +796,7 @@ Reply to this email if you get stuck.
           <ul style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
             <li>A loyalty program at your counter — customers earn points with you that can only be spent at your store</li>
             <li>Offers customers redeem in person, at prices you set</li>
-            <li>Announcements that reach your followers' feeds and the app's Specials tab</li>
+            <li>Announcements that reach your followers' feeds and the app's Local tab</li>
           </ul>
           <p style="font-size: 15px; line-height: 1.6;">
             The upgrade lives on your place page in the app. Questions, or need a window sticker? Just reply to this email — happy to help personally.
@@ -817,7 +817,7 @@ What you can do right away (free):
 With a FavCircles Business subscription you also get:
 • A loyalty program at your counter — customers earn points with you that can only be spent at your store
 • Offers customers redeem in person, at prices you set
-• Announcements that reach your followers' feeds and the app's Specials tab
+• Announcements that reach your followers' feeds and the app's Local tab
 
 The upgrade lives on your place page in the app. Questions, or need a window sticker? Just reply to this email.
 
