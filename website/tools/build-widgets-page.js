@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Builds favcircles.com/widgets.html from website/widgets/widgets.json.
 // usage: node website/tools/build-widgets-page.js
+// Also writes ios/Circles-iOS-UIKit/Resources/WidgetAbout.json (the app's
+// per-widget "i" sheet), so commit that alongside widgets.json.
 // Also checks the list against the widget package's registry (when the
 // favcircles-widgets clone is at ~/favcircles-widgets) so a new widget can't
 // ship without a line on the website.
@@ -27,6 +29,12 @@ if (fs.existsSync(registry)) {
     process.exitCode = 1;
   }
 }
+
+// The app's "i" on each widget page reads the same words (one source)
+const appCopy = path.resolve(root, '../ios/Circles-iOS-UIKit/Resources/WidgetAbout.json');
+const about = {};
+for (const g of data.groups) for (const w of g.widgets) about[w.id] = { name: w.name, tagline: w.tagline, features: w.features };
+fs.writeFileSync(appCopy, JSON.stringify(about, null, 1) + '\n');
 
 const total = ids.length;
 const card = (w) => `

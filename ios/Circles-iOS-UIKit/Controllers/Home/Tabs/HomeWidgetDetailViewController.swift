@@ -71,16 +71,26 @@ final class HomeWidgetDetailViewController: BaseViewController {
     /// Settings → Home Screen Shortcuts edits) and the Home tab's.
     private lazy var pinButton = UIBarButtonItem(image: nil, style: .plain, target: self, action: #selector(pinTapped))
 
-    /// What the shortcut menu is and how to open it
+    /// What this widget is and what it does
     private lazy var infoButton: UIBarButtonItem = {
         let item = UIBarButtonItem(image: UIImage(systemName: "info.circle"), style: .plain,
                                    target: self, action: #selector(pinInfoTapped))
-        item.accessibilityLabel = "About Home Screen shortcuts"
+        item.accessibilityLabel = "About \(widget.descriptor.title)"
         return item
     }()
 
     @objc private func pinInfoTapped() {
-        HomeShortcutPrompts.showInfo(from: self)
+        let descriptor = widget.descriptor
+        let about = WidgetAboutCatalog.about(id: descriptor.id, in: WidgetAboutCatalog.bundled,
+                                             fallbackName: descriptor.title, fallbackTagline: descriptor.subtitle,
+                                             fallbackDetail: descriptor.shareText)
+        let aboutVC = WidgetAboutViewController(about: about, symbolName: descriptor.symbolName,
+                                                accent: UIColor(hex: descriptor.accentHex))
+        let nav = UINavigationController(rootViewController: aboutVC)
+        nav.sheetPresentationController?.detents = [.medium(), .large()]
+        nav.sheetPresentationController?.prefersGrabberVisible = true
+        AnalyticsService.shared.logEvent("widget_about_opened", parameters: ["widget_id": descriptor.id])
+        present(nav, animated: true)
     }
 
     private var thisPin: HomeButtonPin { HomeButtonPin(id: widget.descriptor.id, title: widget.descriptor.title) }
@@ -111,7 +121,7 @@ final class HomeWidgetDetailViewController: BaseViewController {
         let result = HomeShortcutCatalog.pinToggled(widgetId: thisPin.id, stored: storedShortcuts)
         guard result.outcome == .full else {
             saveShortcuts(result.selection, homeTabPinned: true)
-            announce(pinned: true)
+            announce(pinned: true, explain: true)
             return
         }
         // All four taken: show them and let the user pick which one goes
@@ -139,10 +149,14 @@ final class HomeWidgetDetailViewController: BaseViewController {
         refreshPinButton()
     }
 
-    private func announce(pinned: Bool) {
+    private func announce(pinned: Bool, explain: Bool = false) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         AnalyticsService.shared.logEvent(pinned ? "widget_pinned_home_button" : "widget_unpinned_home_button",
                                          parameters: ["widget_id": thisPin.id])
+        if explain {
+            HomeShortcutPrompts.showPinned(title: thisPin.title, from: self)
+            return
+        }
         AlertPresenter.showBriefMessage(
             pinned ? "Pinned. Press and hold the FavCircles icon (or the Home tab) to jump to \(thisPin.title)."
                    : "Unpinned.",

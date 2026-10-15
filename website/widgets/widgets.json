@@ -1,6 +1,6 @@
 {
   "_readme": "Source for favcircles.com/widgets.html. Edit here, then run: node website/tools/build-widgets-page.js — and upload widgets.html (see the website SFTP notes). Keep in step with the favcircles-widgets registry: every widget in FavWidgetRegistry.all appears here, new features get a line.",
-  "updated": "2026-10-07",
+  "updated": "2026-10-15",
   "groups": [
     {
       "title": "Family & friends",
@@ -45,7 +45,11 @@
         { "id": "calories", "emoji": "🥗", "name": "Calories", "tagline": "Quick-add meals and macros.",
           "features": ["Log what you eat in a couple of taps"] },
         { "id": "heartbeat", "emoji": "❤️", "name": "Heartbeat", "tagline": "Your pulse, from the camera or a strap.",
-          "features": ["Measure your heart rate with your phone's camera, or connect a Bluetooth heart-rate strap"] }
+          "features": ["Measure your heart rate with your phone's camera, or connect a Bluetooth heart-rate strap"] },
+        { "id": "meds", "emoji": "💊", "name": "Medications", "tagline": "A reminder for every dose, and one tap to log it.",
+          "features": ["Add each medication with its dose and the times you take it", "A reminder at each time; tap Took it right from the notification, or snooze 10 minutes", "Today's doses at a glance, with anything missed flagged after two hours", "How many doses you took over the last 7 days and this month", "Private: only you see it"] },
+        { "id": "sleep", "emoji": "😴", "name": "Sleep Score", "tagline": "How well you slept, scored every morning from Apple Health.",
+          "features": ["A nightly score out of 100 from how long you slept, time asleep in bed, consistency and sleep stages", "Reads your sleep from Apple Health (your Apple Watch or any sleep app), or log a night by hand", "Your recent nights at a glance, with 7-night averages", "Private: your Health data stays on your phone"] }
       ]
     },
     {
@@ -58,7 +62,13 @@
         { "id": "quotes", "emoji": "💭", "name": "Quotes", "tagline": "Good lines at the times you pick.",
           "features": ["Pick your topics and how many times a day", "Share a quote with a friend"] },
         { "id": "sleepsounds", "emoji": "🌙", "name": "Sleep Sounds", "tagline": "Rain, ocean, fire: mix and drift off.",
-          "features": ["Mix sounds into your own blend", "A timer that fades out gently, with controls on the Lock Screen"] }
+          "features": ["Mix sounds into your own blend", "A timer that fades out gently, with controls on the Lock Screen"] },
+        { "id": "parking", "emoji": "🅿️", "name": "Parking", "tagline": "Remember where you parked.",
+          "features": ["Save your spot in one tap, with an optional photo and note (level, row, landmark)", "Walking directions back to your car", "A meter reminder before time runs out, and another when it expires", "Private: the photo stays on your phone"] },
+        { "id": "packages", "emoji": "📦", "name": "Packages", "tagline": "Every tracking number in one place.",
+          "features": ["Paste or scan a shipping label; the carrier is detected for you (USPS, UPS, FedEx, Amazon, DHL, OnTrac)", "Open each carrier's tracking page in a tap", "A reminder the morning a package is expected", "Private: only you see your packages"] },
+        { "id": "newcontacts", "emoji": "📇", "name": "New Contacts", "tagline": "The last 50 people you added to your phone.",
+          "features": ["Newest first, so you can find the person you met last night without remembering their name", "Call, text or open their contact card in a tap", "Contacts added together are grouped as an import", "Stays on your phone: nothing is uploaded"] }
       ]
     }
   ]

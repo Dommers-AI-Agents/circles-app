@@ -1,4 +1,6 @@
+import Foundation
 import Testing
+import FavWidgets
 @testable import Circles_iOS
 
 /// User-chosen Home Screen quick actions: the catalog, the saved selection,
@@ -72,5 +74,21 @@ struct HomeShortcutCatalogTests {
         #expect(HomeShortcutCatalog.replacing("add-place", with: "widget:weather", in: full)
                 == ["check-in", "widget:weather", "postcard", "widget:water"])
         #expect(HomeShortcutCatalog.replacing("gone", with: "widget:weather", in: full) == full)
+    }
+
+    @Test func widgetAboutUsesThePageCopyOrFallsBack() {
+        let json = #"{"water":{"name":"Water","tagline":"Drink up.","features":["Log a cup","Reminders"]}}"#
+        let catalog = WidgetAboutCatalog.decode(Data(json.utf8))
+        #expect(WidgetAboutCatalog.about(id: "water", in: catalog, fallbackName: "W", fallbackTagline: "x", fallbackDetail: nil).features == ["Log a cup", "Reminders"])
+        let fallback = WidgetAboutCatalog.about(id: "new", in: catalog, fallbackName: "New", fallbackTagline: "Short", fallbackDetail: "Longer words")
+        #expect(fallback == WidgetAbout(name: "New", tagline: "Short", features: ["Longer words"]))
+        #expect(WidgetAboutCatalog.about(id: "new", in: catalog, fallbackName: "New", fallbackTagline: "Same", fallbackDetail: "Same").features.isEmpty)
+    }
+
+    /// The "i" sheet has words for every widget in the app (the website
+    /// build script writes them; a new widget needs its row there).
+    @MainActor @Test func bundledAboutCoversEveryWidget() {
+        let missing = FavWidgetRegistry.descriptors.map(\.id).filter { WidgetAboutCatalog.bundled[$0] == nil }
+        #expect(missing.isEmpty, "No about copy for: \(missing)")
     }
 }
