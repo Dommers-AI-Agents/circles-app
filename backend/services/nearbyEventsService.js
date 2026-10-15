@@ -13,6 +13,8 @@ const { cached } = require('./localEvents/cache');
 const MAX_EVENTS = 30;
 const MAX_TICKETMASTER = 14;
 const MAX_LIBRARY = 10;
+// A busy library day shouldn't bury tonight's shows
+const MAX_LIBRARY_PER_DAY = 3;
 // Library programs are for the branches near you, not the whole county
 const LIBRARY_RADIUS_M = 10 * 1609.344;
 
@@ -64,7 +66,12 @@ function mergeEvents({ store = [], tm = [], lib = [] }, lat, lng, now = new Date
   const libNearestFirst = [...libRows].sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity));
   const keepLib = new Set(dedupe(libNearestFirst, (e) => e.seriesId || programKey(e)).map((e) => e.id));
   const libPicked = libRows.filter((e) => keepLib.has(e.id));
-  const libFinal = dedupe(libPicked, programKey).slice(0, MAX_LIBRARY);
+  const perDay = new Map();
+  const libFinal = dedupe(libPicked, programKey).filter((e) => {
+    const count = perDay.get(e.startLocalDate) || 0;
+    perDay.set(e.startLocalDate, count + 1);
+    return count < MAX_LIBRARY_PER_DAY;
+  }).slice(0, MAX_LIBRARY);
 
   // Stores on FavCircles always make the list
   const storeRows = near(store).sort(bySoonest);

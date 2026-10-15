@@ -176,6 +176,11 @@ describe('merging', () => {
     expect(events[0].seriesId).toBeUndefined();
   });
 
+  test('at most three library programs a day', () => {
+    const lib = ['a', 'b', 'c', 'd'].map((n, i) => libRow(n, '2026-10-16', `1${i}:00:00`, `Program ${n}`));
+    expect(service.mergeEvents({ lib }, CLT.lat, CLT.lng, new Date('2026-10-15T12:00:00Z')).map((e) => e.id)).toEqual(['a', 'b', 'c']);
+  });
+
   test('credits each source once', () => {
     expect(service.attributionFor([{ source: 'ticketmaster' }, { source: 'library', sourceName: 'Charlotte Mecklenburg Library' }], [{}]))
       .toBe('Events from Ticketmaster and Charlotte Mecklenburg Library · Farmers markets from the USDA directory');
