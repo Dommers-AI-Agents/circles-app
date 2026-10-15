@@ -1,9 +1,13 @@
-// Free library programs (story times, workshops, concerts, author talks)
-// from library systems on BiblioCommons — its public events gateway, the
-// same one the library's own events page reads. One list per library per
-// day, shared by everyone; each user gets the branches near them.
+// Free library programs (story times, workshops, concerts, author talks).
+// Each library system in config/eventFeeds.js names its calendar type:
+// BiblioCommons (here), LibCal (libcal.js) or Maricopa County's site
+// (mcldaz.js). One list per system every few hours, shared by everyone;
+// each user gets the branches near them (nearbyEventsService).
 const { cached, fetchJson } = require('./cache');
 const { LIBRARY_FEEDS } = require('../../config/eventFeeds');
+const { SERVICE_PROGRAM, NOT_AN_OUTING, stripHtml, dayKey } = require('./libraryCommon');
+const { loadLibcal } = require('./libcal');
+const { loadMcld } = require('./mcldaz');
 const geofire = require('geofire-common');
 
 const GATEWAY = 'https://gateway.bibliocommons.com/v2/libraries';
@@ -11,23 +15,8 @@ const WINDOW_DAYS = 3;
 // The gateway answers at most 50 per page whatever limit says
 const PAGE_SIZE = 50;
 const MAX_PAGES = 5;
-// Help sessions are services, not outings: they stay on the library's own
-// calendar
-const SERVICE_PROGRAM = /\b(job|résumé|resume|tutor|tutoring|legal|assistance|application|support group|support for|ESL|learning english|citizenship|GED|tax help|medicaid|insurance|drop-in session|welcomeclt|tutores|apoyo|tecnolog[ií]a)\b/i;
 
-const stripHtml = (html) => String(html || '')
-  .replace(/<[^>]+>/g, ' ')
-  .replace(/&nbsp;/g, ' ')
-  .replace(/&amp;/g, '&')
-  .replace(/&#39;|&rsquo;/g, "'")
-  .replace(/&quot;|&ldquo;|&rdquo;/g, '"')
-  .replace(/\s+/g, ' ')
-  .trim();
-
-const dayKey = (date, timeZone) =>
-  new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
-
-/** One page of the gateway's search → the shared event shape. */
+/** One page of the BiblioCommons gateway's search → the shared event shape. */
 function normalizePage(payload, feed) {
   const ids = payload?.events?.results;
   const entities = payload?.entities || {};
@@ -41,7 +30,7 @@ function normalizePage(payload, feed) {
     // All-day items are displays and exhibits, not something to go to;
     // programs with no branch are online
     if (!def.start.includes('T') || !def.branchLocationId) return null;
-    if (SERVICE_PROGRAM.test(def.title)) return null;
+    if (SERVICE_PROGRAM.test(def.title) || NOT_AN_OUTING.test(def.title)) return null;
     const [date, time] = def.start.split('T');
     const branch = locations[def.branchLocationId] || {};
     const point = branch.mapLocation?.centrePoint || {};
@@ -75,11 +64,9 @@ function normalizePage(payload, feed) {
   }).filter(Boolean);
 }
 
-async function loadFeed(feed, now) {
-  const start = dayKey(now, feed.timeZone);
-  const end = dayKey(new Date(now.getTime() + WINDOW_DAYS * 86400000), feed.timeZone);
+async function loadBiblioCommons(feed, { fromDay, toDay }) {
   const pageOf = (page) => fetchJson(`${GATEWAY}/${feed.libraryId}/events/search?${new URLSearchParams({
-    startDate: start, endDate: end, limit: String(PAGE_SIZE), page: String(page)
+    startDate: fromDay, endDate: toDay, limit: String(PAGE_SIZE), page: String(page)
   })}`, { label: feed.name, timeoutMs: 5000 });
   const first = await pageOf(1);
   if (!first) return null;
@@ -88,6 +75,8 @@ async function loadFeed(feed, now) {
   return [first, ...rest].filter(Boolean).flatMap((payload) => normalizePage(payload, feed));
 }
 
+const LOADERS = { bibliocommons: loadBiblioCommons, libcal: loadLibcal, mcldaz: loadMcld };
+
 /** Library systems whose service area covers (lat, lng). */
 function feedsNear(lat, lng) {
   return LIBRARY_FEEDS.filter((feed) =>
@@ -95,12 +84,20 @@ function feedsNear(lat, lng) {
   );
 }
 
+const feedKey = (feed) => feed.libraryId || feed.host;
+
 async function eventsNear(lat, lng, { now = new Date() } = {}) {
-  const lists = await Promise.all(feedsNear(lat, lng).map((feed) =>
-    cached(`lib_${feed.libraryId}_${now.toISOString().slice(0, 10)}_${Math.floor(now.getUTCHours() / 3)}`,
+  const lists = await Promise.all(feedsNear(lat, lng).map((feed) => {
+    const load = LOADERS[feed.type || 'bibliocommons'];
+    if (!load) return [];
+    const window = {
+      fromDay: dayKey(now, feed.timeZone),
+      toDay: dayKey(new Date(now.getTime() + WINDOW_DAYS * 86400000), feed.timeZone)
+    };
+    return cached(`lib_${feedKey(feed).replace(/\./g, '_')}_${now.toISOString().slice(0, 10)}_${Math.floor(now.getUTCHours() / 3)}`,
       { memoryMs: 30 * 60 * 1000, storeMs: 3 * 60 * 60 * 1000, now: now.getTime() },
-      () => loadFeed(feed, now))
-  ));
+      () => load(feed, window));
+  }));
   return lists.flat();
 }
 
