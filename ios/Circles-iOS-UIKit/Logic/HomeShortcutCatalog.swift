@@ -84,6 +84,23 @@ enum HomeShortcutCatalog {
         return selection + [id]
     }
 
+    /// A widget's option id in the selection ("postcard" keeps its old id).
+    static func optionId(forWidget widgetId: String) -> String {
+        widgetId == "postcard" ? "postcard" : "widget:\(widgetId)"
+    }
+
+    enum PinOutcome: Equatable { case added, removed, full }
+
+    /// A widget page's pin button: adds or removes that widget from the
+    /// app-icon menu, the same list Settings edits. `nil` stored = defaults.
+    static func pinToggled(widgetId: String, stored: [String]?) -> (selection: [String], outcome: PinOutcome) {
+        let current = stored ?? defaultSelection
+        let id = optionId(forWidget: widgetId)
+        if current.contains(id) { return (current.filter { $0 != id }, .removed) }
+        guard current.count < maxSelected else { return (current, .full) }
+        return (current + [id], .added)
+    }
+
     /// Slots left for nearby check-in rows.
     static func nearbySlots(selectedCount: Int) -> Int {
         max(0, maxSelected - selectedCount)

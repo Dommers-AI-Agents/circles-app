@@ -51,4 +51,19 @@ struct HomeShortcutCatalogTests {
         #expect(QuickCheckInShortcutPlanner.pendingLink(forShortcutType: "com.favcircles.circles.widget.water", userInfo: nil) == "widget:water")
         #expect(QuickCheckInShortcutPlanner.pendingLink(forShortcutType: QuickCheckInShortcutPlanner.checkInAtPlaceType, userInfo: ["placeId": "p1"]) == "check-in:p1")
     }
+
+    @Test func widgetPinUsesTheSameListAsSettings() {
+        // Defaults have a free slot: the pin adds there
+        let added = HomeShortcutCatalog.pinToggled(widgetId: "water", stored: nil)
+        #expect(added.outcome == .added)
+        #expect(added.selection == ["check-in", "add-place", "postcard", "widget:water"])
+        // Full: unchanged, reported
+        let full = HomeShortcutCatalog.pinToggled(widgetId: "weather", stored: added.selection)
+        #expect(full.outcome == .full)
+        #expect(full.selection == added.selection)
+        // Postcard keeps its legacy id
+        let removed = HomeShortcutCatalog.pinToggled(widgetId: "postcard", stored: added.selection)
+        #expect(removed.outcome == .removed)
+        #expect(removed.selection == ["check-in", "add-place", "widget:water"])
+    }
 }
