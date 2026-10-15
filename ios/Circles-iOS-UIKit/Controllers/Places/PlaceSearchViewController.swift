@@ -221,7 +221,7 @@ class PlaceSearchViewController: BaseViewController {
     }
     
     private func getCurrentLocation() {
-        LocationService.shared.getCurrentLocation { [weak self] location in
+        LocationService.shared.recentLocation(timeout: 3) { [weak self] location in
             guard let self = self else { return }
             guard let location = location else { return }
             self.currentLocation = location

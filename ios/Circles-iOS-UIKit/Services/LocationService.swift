@@ -75,6 +75,20 @@ class LocationService: NSObject {
         }
     }
 
+    /// For ordering lists and finding what's nearby, where a fix a few minutes
+    /// old is as good as a new one: a recent fix straight away, otherwise a
+    /// fresh one bounded by `timeout` (then the cached one). Screens must
+    /// never wait on an unbounded GPS request before showing content — the
+    /// Specials tab did, for seconds (2026-10-15). Calls `completion` once.
+    func recentLocation(maxAge: TimeInterval = 5 * 60, timeout: TimeInterval = 2,
+                        completion: @escaping (CLLocation?) -> Void) {
+        if let recent = cachedLocation, -recent.timestamp.timeIntervalSinceNow < maxAge {
+            completion(recent)
+            return
+        }
+        getCurrentLocation(timeout: timeout, completion: completion)
+    }
+
     /// Hands the result to everyone waiting, once, then forgets them.
     private func deliver(_ location: CLLocation?) {
         pendingLock.lock()

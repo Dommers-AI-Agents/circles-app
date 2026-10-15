@@ -121,7 +121,7 @@ class MomentPlacePickerViewController: BaseViewController {
         // location), then re-sort by distance and load the active tab once the
         // location resolves.
         loadMyPlaces()
-        LocationService.shared.getCurrentLocation { [weak self] location in
+        LocationService.shared.recentLocation(timeout: 3) { [weak self] location in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.currentLocation = location

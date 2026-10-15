@@ -10,6 +10,9 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
 
     private(set) var specials: [SpecialItem] = []
     private var isLoadingSpecials = false
+    /// A fetch finished since the last invalidate — an empty answer counts,
+    /// so a quiet day doesn't refetch behind a spinner on every tap.
+    private var hasLoaded = false
 
     let tableView: UITableView = {
         let tableView = UITableView()
@@ -51,10 +54,13 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
     // MARK: - HomeContentTab
 
     func tabDidBecomeVisible() {
-        // Load once; pull-to-refresh refetches
-        if specials.isEmpty {
-            fetchSpecials()
+        // Load once; pull-to-refresh refetches. Last time's list paints
+        // straight away while the fresh one loads.
+        guard !hasLoaded else { return }
+        if specials.isEmpty, let cached = SpecialsCache.load() {
+            apply(cached)
         }
+        fetchSpecials()
     }
 
     func tabWillHide() {}
@@ -66,7 +72,7 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
     /// A venue changed its offers while this tab was hidden: drop the loaded
     /// list so the next visit refetches.
     func invalidate() {
-        specials = []
+        hasLoaded = false
     }
 
     // MARK: - Loading
@@ -82,8 +88,9 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
         }
 
         // Location improves ordering but is optional — denied/unavailable
-        // falls back to the server's alphabetical order
-        LocationService.shared.getCurrentLocation { [weak self] location in
+        // falls back to the server's alphabetical order. A recent fix is
+        // plenty for "nearest first"; never wait on the GPS for it.
+        LocationService.shared.recentLocation { [weak self] location in
             RewardsService.shared.getOffers(
                 lat: location?.coordinate.latitude,
                 lng: location?.coordinate.longitude
@@ -96,19 +103,9 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
 
                     switch result {
                     case .success(let data):
-                        self.specials = data.venues.flatMap { venue -> [SpecialItem] in
-                            let offerItems = venue.offers.map {
-                                SpecialItem(venue: venue, kind: .offer($0))
-                            }
-                            let announcementItems = (venue.announcements ?? []).map {
-                                SpecialItem(venue: venue, kind: .announcement($0))
-                            }
-                            return offerItems + announcementItems
-                        }
-                        self.tableView.reloadData()
-                        self.statusView.message = self.specials.isEmpty
-                            ? "No specials right now. Deals from places on your map and nearby show up here."
-                            : nil
+                        self.hasLoaded = true
+                        self.apply(data)
+                        SpecialsCache.save(data)
 
                     case .failure:
                         if self.specials.isEmpty {
@@ -118,6 +115,22 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
                 }
             }
         }
+    }
+
+    private func apply(_ data: RewardOffersData) {
+        specials = data.venues.flatMap { venue -> [SpecialItem] in
+            let offerItems = venue.offers.map {
+                SpecialItem(venue: venue, kind: .offer($0))
+            }
+            let announcementItems = (venue.announcements ?? []).map {
+                SpecialItem(venue: venue, kind: .announcement($0))
+            }
+            return offerItems + announcementItems
+        }
+        tableView.reloadData()
+        statusView.message = specials.isEmpty
+            ? "No specials right now. Deals from places on your map and nearby show up here."
+            : nil
     }
 
     // MARK: - Actions
@@ -248,5 +261,24 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
             }
             return UIMenu(children: [share])
         }
+    }
+}
+
+/// Last list per account, in Caches, so the tab opens on it.
+private enum SpecialsCache {
+    private static var url: URL? {
+        guard let userId = AuthService.shared.getUserId() else { return nil }
+        return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("specials-\(userId).json")
+    }
+
+    static func load() -> RewardOffersData? {
+        guard let url, let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(RewardOffersData.self, from: data)
+    }
+
+    static func save(_ offers: RewardOffersData) {
+        guard let url, let data = try? JSONEncoder().encode(offers) else { return }
+        try? data.write(to: url, options: .atomic)
     }
 }

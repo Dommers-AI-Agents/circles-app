@@ -132,7 +132,8 @@ enum PostSaveOfferPresenter {
             completion(nil)
             return
         }
-        LocationService.shared.getCurrentLocation { current in
+        // "Standing there" needs a fresh-ish fix, but not an unbounded wait
+        LocationService.shared.recentLocation(maxAge: 60, timeout: 5) { current in
             completion(current.map { $0.distance(from: placeLocation) })
         }
     }

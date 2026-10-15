@@ -41,11 +41,12 @@ extension CirclesHomeViewController {
         showWidgetsTab(openingWidget: "weather")
     }
 
-    /// One fix from the app's LocationService (nil if denied or it stalls)
+    /// A recent fix (or one fresh one) from the app's LocationService; nil
+    /// if denied or it stalls. The temperature shouldn't wait on the GPS.
     private static func weatherLocation() async -> WidgetCoordinate? {
         await withCheckedContinuation { continuation in
             let once = OnceFlag()
-            LocationService.shared.getCurrentLocation { location in
+            LocationService.shared.recentLocation(timeout: 8) { location in
                 guard once.claim() else { return }
                 continuation.resume(returning: location.map {
                     WidgetCoordinate(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude)
