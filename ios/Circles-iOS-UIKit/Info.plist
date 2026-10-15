@@ -162,6 +162,8 @@
 	<string>FavCircles uses Face ID to securely sign you in and protect your account.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>FavCircles reads your sleep from Apple Health to show your Sleep Score. It never writes to Health or shares it.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>FavCircles never writes to Apple Health. This permission exists only because the Health framework is included; Sleep Score reads your sleep and nothing more.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>FavCircles finds nearby friends' phones so you can connect by holding them together.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
