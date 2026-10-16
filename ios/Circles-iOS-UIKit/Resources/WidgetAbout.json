@@ -84,7 +84,8 @@
   "features": [
    "Routines that remember last time's numbers",
    "Cardio with calories, a rest timer and exercise photos",
-   "Share a workout with friends; they can copy it as their own routine"
+   "Share a workout with friends; they can copy it as their own routine",
+   "Let your Inner Circle see your whole workout history"
   ]
  },
  "run": {
@@ -167,7 +168,8 @@
   "features": [
    "The weather where you are, hour by hour and 10 days out",
    "Or pick a place and keep it",
-   "The temperature sits on the app's home screen too"
+   "The temperature sits on the app's home screen too",
+   "Live rain radar around US places, like the Weather app"
   ]
  },
  "stocks": {
