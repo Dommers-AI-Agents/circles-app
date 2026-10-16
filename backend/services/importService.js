@@ -18,7 +18,9 @@ const { categoryFromGoogleTypes, categoryFromMapstrTags } = require('./importCat
 
 const db = getFirestore();
 
-const VALID_SOURCES = ['mapstr', 'google_maps', 'swarm', 'google_list'];
+// 'photos' (Build my map from my photos) is accepted here but only reached
+// through POST /api/import/photos, which applies the photo allowance first
+const VALID_SOURCES = ['mapstr', 'google_maps', 'swarm', 'google_list', 'photos'];
 
 // google_list = a shared Google Maps LIST (share extension / app). Unlike the
 // bulk sources it does NOT pool into a per-source import circle: the list
@@ -37,7 +39,8 @@ const LIST_SOURCES = new Set(['google_list']);
 const IMPORT_CIRCLE_NAMES = {
   google_maps: 'Google Imports',
   mapstr: 'Mapstr Imports',
-  swarm: 'Swarm Imports'
+  swarm: 'Swarm Imports',
+  photos: 'Places from my photos'
 };
 
 // User-visible tag stamped on every imported place (filter/sweep handle)
@@ -45,7 +48,8 @@ const IMPORT_TAGS = {
   google_maps: 'google-import',
   mapstr: 'mapstr-import',
   swarm: 'swarm-import',
-  google_list: 'google-list'
+  google_list: 'google-list',
+  photos: 'from-photos'
 };
 
 // The source list name ("Want to go", "Favorite places") also becomes a tag —
@@ -407,7 +411,11 @@ async function executeImport(userId, payload) {
     circleRef = await db.collection(COLLECTIONS.CIRCLES).add(circleData);
     createdImportCircleThisRun = true;
   } else {
-    const limitCheck = await subscriptionLimitService.canCreateCircle(userId);
+    // The photo circle is the app's own, not one of the user's six: it
+    // never counts against the circle cap
+    const limitCheck = payload.source === 'photos'
+      ? { canCreate: true }
+      : await subscriptionLimitService.canCreateCircle(userId);
     if (!limitCheck.canCreate) {
       return { error: limitCheck.error };
     }
@@ -417,7 +425,9 @@ async function executeImport(userId, payload) {
     // pins overwhelming can hide the circle via its showOnMap toggle.
     const circleData = createCircle({
       name: importCircleName,
-      description: `Places imported from ${payload.source === 'google_maps' ? 'Google Maps' : payload.source === 'mapstr' ? 'Mapstr' : 'Swarm'}`,
+      description: payload.source === 'photos'
+        ? 'Places found in your photos. Turn this circle off the map any time.'
+        : `Places imported from ${payload.source === 'google_maps' ? 'Google Maps' : payload.source === 'mapstr' ? 'Mapstr' : 'Swarm'}`,
       privacy: 'myNetwork',
       showOnMap: true
     }, userId);
@@ -492,7 +502,12 @@ async function executeImport(userId, payload) {
         applePoiCategory: typeof place.applePoiCategory === 'string' ? place.applePoiCategory : null,
         privacy: 'followCircle',
         importSource: payload.source,
-        sourceExternalId: sourceId
+        sourceExternalId: sourceId,
+        // Photo places carry the user's own photo of the spot (already
+        // uploaded, GPS stripped); other imports have none
+        photos: payload.source === 'photos' && Array.isArray(place.photos)
+          ? place.photos.filter((url) => typeof url === 'string' && url.startsWith('https://')).slice(0, 3)
+          : []
       }, circleRef.id, userId);
 
       // createPlace drops unknown keys: stamp extras after. sourceListName

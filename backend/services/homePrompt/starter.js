@@ -14,14 +14,28 @@ const STARTER_MIN_AGE_MS = 3 * HOUR;
 const STARTER_REPEAT_MS = DAY;
 
 const { DEFAULT_FOLLOW_EMAILS, defaultFollowIds, chosenFollowCount } = require('../defaultAccounts');
+const { needsNewerBuild } = require('../homeCards');
+/** The first build with "Build my map from my photos" (after 1.3.9). */
+const PHOTO_MAP_MIN_VERSION = '1.3.10';
 const DEFAULT_CIRCLE_NAMES = new Set(['Want to Try', 'Favorite Local Spots', 'Vacation']);
 
 /**
  * Pure (tested): the next step for `progress`, or null when they've done
- * them all. progress = { realPlaces, followingOthers, ownCircles, hasWidgetData }
+ * them all. progress = { realPlaces, followingOthers, ownCircles, hasWidgetData,
+ * photoMapAvailable } (photoMapAvailable: a build with the photo builder that
+ * hasn't run it yet)
  */
 function starterStep(progress) {
   const p = progress || {};
+  // Build my map from my photos (Wes, 2026-10-16): the fastest way to a full
+  // map, so it leads while the map is still small
+  if (p.photoMapAvailable && (p.realPlaces || 0) < 3) {
+    return {
+      key: 'starter_photo_map', target: 'photo_map', actionLabel: 'Build my map',
+      title: 'Build your map from your photos 📸',
+      body: 'We find the places you\u2019ve photographed near you and add them to your map. Turn them off the map any time.'
+    };
+  }
   if ((p.realPlaces || 0) === 0) {
     return {
       key: 'starter_first_place', target: 'add_place', actionLabel: 'Add a place',
@@ -61,7 +75,7 @@ function starterStep(progress) {
 }
 
 module.exports = {
-  starterStep, STARTER_DAYS, STARTER_MIN_AGE_MS, DEFAULT_FOLLOW_EMAILS,
+  starterStep, STARTER_DAYS, STARTER_MIN_AGE_MS, DEFAULT_FOLLOW_EMAILS, PHOTO_MAP_MIN_VERSION,
 
   mixin: {
     /** Account age in ms, or null when createdAt is unknown. */
@@ -88,7 +102,9 @@ module.exports = {
       const ownCircles = circlesSnap.docs.map(d => d.data())
         .filter(c => !c.deletedAt && !c.isDefaultCircle && !DEFAULT_CIRCLE_NAMES.has(c.name)).length;
       const followingOthers = chosenFollowCount(ctx.user.following, defaults);
-      return { realPlaces, followingOthers, ownCircles, hasWidgetData: evidence.hasWidgetData };
+      const photoMapAvailable = !ctx.user.photoMapBuiltAt && !!ctx.appVersion
+        && !needsNewerBuild(PHOTO_MAP_MIN_VERSION, ctx.appVersion);
+      return { realPlaces, followingOthers, ownCircles, hasWidgetData: evidence.hasWidgetData, photoMapAvailable };
     },
 
     /** The first-week card, when one is due. */

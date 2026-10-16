@@ -4,6 +4,7 @@
 const jwt = require('jsonwebtoken');
 const importService = require('../services/importService');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
+const { LIMIT_ERROR_MESSAGES } = require('../config/subscriptionLimits');
 const swarmService = require('../services/swarmService');
 const { resolveGoogleList, GoogleListError } = require('../services/googleListResolver');
 const { getFirestore } = require('../config/firebase');
@@ -12,6 +13,67 @@ const db = getFirestore();
 const IMPORT_TOKENS_COLLECTION = 'importTokens';
 // Deep link back into the iOS app after the OAuth dance
 const SWARM_APP_REDIRECT = 'circles://import/swarm';
+
+const PHOTO_PLACES_PER_REQUEST = 25;
+
+// @desc    Build my map from my photos: add places found in the user's own
+//          photos (matched on the phone with Apple Maps, so no Google calls)
+//          to their "Places from my photos" circle. Free up to the photo
+//          allowance (25), then Premium.
+// @route   POST /api/import/photos  { places: [{ name, address, lat, lng, category, applePoiCategory, photos }] }
+// @access  Private
+exports.importFromPhotos = async (req, res) => {
+  try {
+    const places = Array.isArray(req.body?.places) ? req.body.places : null;
+    if (!places || places.length === 0) {
+      return res.status(400).json({ success: false, error: 'places must be a non-empty array' });
+    }
+    if (places.length > PHOTO_PLACES_PER_REQUEST) {
+      return res.status(400).json({ success: false, error: `at most ${PHOTO_PLACES_PER_REQUEST} places per request` });
+    }
+    const allowance = await subscriptionLimitService.photoPlacesAllowance(req.user.uid);
+    if (allowance.remaining <= 0) {
+      return res.status(403).json({
+        success: false,
+        error: LIMIT_ERROR_MESSAGES.PHOTO_PLACES_LIMIT,
+        upgradeRequired: true,
+        data: { added: 0, remainingFree: 0, maxFree: allowance.max }
+      });
+    }
+    const accepted = places.slice(0, allowance.remaining === Infinity ? places.length : allowance.remaining);
+    const result = await importService.executeImport(req.user.uid, {
+      source: 'photos',
+      lists: [{ name: 'Places from my photos', places: accepted }]
+    });
+    if (result.error) {
+      return res.status(400).json({ success: false, error: result.error });
+    }
+    const list = result.results[0] || { created: 0, skippedDuplicates: 0, failed: [], circleId: null };
+    if (list.created > 0) {
+      db.collection('users').doc(req.user.uid)
+        .set({ photoMapBuiltAt: new Date().toISOString() }, { merge: true })
+        .catch((err) => console.warn('photoMapBuiltAt stamp failed:', err.message));
+    }
+    const remainingFree = allowance.remaining === Infinity ? null : Math.max(0, allowance.remaining - list.created);
+    res.json({
+      success: true,
+      data: {
+        added: list.created,
+        skippedDuplicates: list.skippedDuplicates,
+        failed: list.failed.length,
+        circleId: list.circleId,
+        circleName: 'Places from my photos',
+        remainingFree,
+        maxFree: allowance.max === Infinity ? null : allowance.max,
+        // Some of this batch didn't fit in the free allowance
+        upgradeRequired: accepted.length < places.length
+      }
+    });
+  } catch (error) {
+    console.error('❌ Photo places import failed:', error);
+    res.status(500).json({ success: false, error: 'Could not add places from photos' });
+  }
+};
 
 // @desc    Resolve, categorize and dedup an import payload (read-only preview)
 // @route   POST /api/import/prepare
@@ -90,6 +152,10 @@ exports.executeImport = async (req, res) => {
       });
     }
 
+    // Photo places go through POST /import/photos (it applies the allowance)
+    if (req.body?.source === 'photos') {
+      return res.status(400).json({ success: false, message: 'Use /api/import/photos for places from photos' });
+    }
     const result = await importService.executeImport(req.user.uid, req.body);
     if (result.error) {
       return res.status(result.upgradeRequired ? 403 : 400)

@@ -164,6 +164,25 @@ class SubscriptionLimitService {
   }
 
   /**
+   * How many more places "Build my map from my photos" may add.
+   * @returns {Promise<{remaining:number, max:number, used:number}>} remaining
+   *   is Infinity on Premium/Trial
+   */
+  async photoPlacesAllowance(userId) {
+    const subscriptionData = await this.getUserSubscriptionData(userId);
+    const tier = getTierForStatus(subscriptionData.subscriptionStatus);
+    const max = tier.PHOTO_PLACES ?? 25;
+    if (max === Infinity) return { remaining: Infinity, max, used: 0 };
+    // Equality filters only: served by single-field indexes
+    const snap = await db.collection(COLLECTIONS.PLACES)
+      .where('addedBy', '==', userId)
+      .where('importSource', '==', 'photos')
+      .where('deletedAt', '==', null)
+      .get();
+    return { remaining: Math.max(0, max - snap.size), max, used: snap.size };
+  }
+
+  /**
    * Check if user can export content
    * @param {string} userId - The user's ID
    * @returns {Promise<Object>} Result with canExport flag and error message if applicable

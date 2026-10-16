@@ -79,6 +79,21 @@ describe('gates', () => {
     expect(starterStep({ realPlaces: 2, followingOthers: 5 }).title).toBe('Your map has 2 places');
   });
 
+  test('Build my map from my photos leads the first week on builds that have it', async () => {
+    const { starterStep } = require('../homePrompt/starter');
+    expect(starterStep({ realPlaces: 0, photoMapAvailable: true })).toMatchObject({ key: 'starter_photo_map', target: 'photo_map' });
+    expect(starterStep({ realPlaces: 3, photoMapAvailable: true }).key).not.toBe('starter_photo_map');
+    expect(starterStep({ realPlaces: 0, photoMapAvailable: false }).key).toBe('starter_first_place');
+
+    seedUser(ME, { createdAt: iso(NOW - 3 * DAY) });
+    const withBuild = (appVersion) => service.pick(ME, { now: NOW }, { appVersion });
+    expect((await withBuild('1.3.10')).key).toBe('starter_photo_map');
+    seedUser(ME, { createdAt: iso(NOW - 3 * DAY) });
+    expect((await withBuild('1.3.9')).key).toBe('starter_first_place'); // no builder in that build
+    seedUser(ME, { createdAt: iso(NOW - 3 * DAY), photoMapBuiltAt: iso(NOW - DAY) });
+    expect((await withBuild('1.4.0')).key).toBe('starter_first_place'); // already built it
+  });
+
   test('the sample place and the default follows do not count', async () => {
     seedUser(ME, { createdAt: iso(NOW - 3 * DAY), following: ['wes', 'brit'] });
     put('users', 'wes', { email: 'sgroiwes@gmail.com' });

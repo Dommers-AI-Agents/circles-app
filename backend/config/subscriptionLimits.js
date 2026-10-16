@@ -14,7 +14,12 @@ const SUBSCRIPTION_LIMITS = {
     // and a hard per-event cap for everyone so one account can't run up
     // storage and bandwidth
     EVENT_VIDEO_MAX_SECONDS: 15,
-    EVENT_VIDEOS_PER_EVENT: 5
+    EVENT_VIDEOS_PER_EVENT: 5,
+    // Build my map from my photos (Wes, 2026-10-16): the first 25 places
+    // free, nearest first, so a new map is their own neighborhood; the rest
+    // with Premium. Its own allowance: the photo circle isn't held to
+    // MAX_PLACES_PER_CIRCLE.
+    PHOTO_PLACES: 25
   },
   
   // Trial tier (same as premium during trial period)
@@ -26,7 +31,8 @@ const SUBSCRIPTION_LIMITS = {
     CAN_IMPORT: true,
     CAN_SHARE_WITHOUT_WATERMARK: true,
     EVENT_VIDEO_MAX_SECONDS: 60,
-    EVENT_VIDEOS_PER_EVENT: 20
+    EVENT_VIDEOS_PER_EVENT: 20,
+    PHOTO_PLACES: Infinity
   },
 
   // Premium tier (paid subscription)
@@ -38,7 +44,8 @@ const SUBSCRIPTION_LIMITS = {
     CAN_IMPORT: true,
     CAN_SHARE_WITHOUT_WATERMARK: true,
     EVENT_VIDEO_MAX_SECONDS: 60,
-    EVENT_VIDEOS_PER_EVENT: 20
+    EVENT_VIDEOS_PER_EVENT: 20,
+    PHOTO_PLACES: Infinity
   }
 };
 
@@ -64,7 +71,8 @@ const LIMIT_ERROR_MESSAGES = {
   PLACE_LIMIT: 'Free users can add up to 15 places per circle. Upgrade to Premium for unlimited places!',
   EXPORT_LIMIT: 'Export functionality is available to Premium members only.',
   IMPORT_LIMIT: 'Importing places from other apps is available to Premium members only.',
-  WATERMARK_LIMIT: 'Share without watermarks with Premium membership.'
+  WATERMARK_LIMIT: 'Share without watermarks with Premium membership.',
+  PHOTO_PLACES_LIMIT: 'Your first 25 places from your photos are free. Add the rest with Premium.'
 };
 
 module.exports = {

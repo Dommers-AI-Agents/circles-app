@@ -16,7 +16,9 @@ const { compareVersions } = require('../utils/appVersion');
 // older build the card shows as "update to get it" (the build gate below)
 // instead of a button that does nothing.
 const TARGET_MIN_VERSION = {
-  postcard: '1.3.5', widget: '1.3.5', inner_circle: '1.3.5', app_store: '1.3.8'
+  postcard: '1.3.5', widget: '1.3.5', inner_circle: '1.3.5', app_store: '1.3.8',
+  // Build my map from my photos
+  photo_map: '1.3.10'
 };
 const KNOWN_TARGETS = new Set([
   'place', 'video', 'moment', 'add_place', 'add-place', 'widgets_tab',

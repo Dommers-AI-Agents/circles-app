@@ -8,12 +8,15 @@ const {
   resolveGoogleListLink,
   getSwarmAuthUrl,
   swarmCallback,
-  fetchSwarmData
+  fetchSwarmData,
+  importFromPhotos
 } = require('../controllers/importController');
 
 // Import saved places from other platforms (Mapstr, Google Takeout, Swarm)
 router.post('/prepare', protect, perUserLimit({ bucket: 'import', windowMs: 3600000, max: 60 }), prepareImport);
 router.post('/execute', protect, perUserLimit({ bucket: 'import', windowMs: 3600000, max: 60 }), executeImport);
+// Build my map from my photos (batches of up to 25; free allowance, then Premium)
+router.post('/photos', protect, perUserLimit({ bucket: 'import-photos', windowMs: 3600000, max: 120 }), importFromPhotos);
 // Shared Google Maps LIST link → its places (share-extension "save a whole list")
 router.post('/resolve-google-list', protect, resolveGoogleListLink);
 
