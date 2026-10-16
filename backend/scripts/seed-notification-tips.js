@@ -65,15 +65,16 @@ const TIPS = [
   // moments_tab / all_places_map / create_wallet). A tip that deep-links to a
   // target the installed build can't open renders a "Show me" that does
   // nothing — the exact dead button App Review rejects. Widget-specific tips
-  // open the Widgets tab for now; switch them to target 'widget' +
-  // data.widgetId once the build carrying that route is out (re-running this
-  // script updates them in place).
+  // open THAT widget (target 'widget' + data.widgetId, builds 1.3.5+; older
+  // builds get the "update to get it" card via homeCards' build gate). A tip
+  // about one widget that only opens the Widgets tab reads as broken.
   {
     id: 'home-postcard',
     title: 'Send a postcard 📮',
     body: 'Digital, or printed and mailed for $3.99 — pick a photo, write a note, done. It lives in the Postcard widget.',
-    actionLabel: 'Open Widgets',
-    target: 'widgets_tab',
+    actionLabel: 'Open Postcard',
+    target: 'widget',
+    data: { widgetId: 'postcard' },
     surfaces: ['home'],
     order: 90,
     enabled: true
@@ -82,8 +83,9 @@ const TIPS = [
     id: 'home-heartbeat',
     title: 'Check your heart rate ❤️',
     body: 'Fingertip over the camera, or a Bluetooth strap. The Heartbeat widget keeps a log — not a medical device, just a nudge to notice.',
-    actionLabel: 'Open Widgets',
-    target: 'widgets_tab',
+    actionLabel: 'Open Heartbeat',
+    target: 'widget',
+    data: { widgetId: 'heartbeat' },
     surfaces: ['home'],
     order: 120,
     enabled: true
@@ -92,8 +94,9 @@ const TIPS = [
     id: 'home-workouts',
     title: 'Log a workout 💪',
     body: 'Track your sessions, and see what your Inner Circle has been doing in the Workouts widget.',
-    actionLabel: 'Open Widgets',
-    target: 'widgets_tab',
+    actionLabel: 'Open Workouts',
+    target: 'widget',
+    data: { widgetId: 'workouts' },
     surfaces: ['home'],
     order: 130,
     enabled: true
@@ -102,8 +105,9 @@ const TIPS = [
     id: 'home-sleep-sounds',
     title: 'Fall asleep to rain 🌧️',
     body: 'Rain, thunder, indoor hum — mix your own in the Sleep Sounds widget.',
-    actionLabel: 'Open Widgets',
-    target: 'widgets_tab',
+    actionLabel: 'Open Sleep Sounds',
+    target: 'widget',
+    data: { widgetId: 'sleepsounds' },
     surfaces: ['home'],
     order: 140,
     enabled: true
@@ -112,8 +116,9 @@ const TIPS = [
     id: 'home-water',
     title: 'Drink more water 💧',
     body: 'Log a cup in one tap and get a gentle reminder — quiet hours respected — from the Water widget.',
-    actionLabel: 'Open Widgets',
-    target: 'widgets_tab',
+    actionLabel: 'Open Water',
+    target: 'widget',
+    data: { widgetId: 'water' },
     surfaces: ['home'],
     order: 150,
     enabled: true
@@ -122,8 +127,9 @@ const TIPS = [
     id: 'home-habits',
     title: 'Keep a streak going ✅',
     body: 'Pick a few daily habits and check them off. The Habits widget shows the streak.',
-    actionLabel: 'Open Widgets',
-    target: 'widgets_tab',
+    actionLabel: 'Open Habits',
+    target: 'widget',
+    data: { widgetId: 'habits' },
     surfaces: ['home'],
     order: 160,
     enabled: true
@@ -132,8 +138,9 @@ const TIPS = [
     id: 'home-bill-split',
     title: 'Split the bill 🧾',
     body: 'Dinner with friends? The Bill Split widget does the math, tip included.',
-    actionLabel: 'Open Widgets',
-    target: 'widgets_tab',
+    actionLabel: 'Open Bill Split',
+    target: 'widget',
+    data: { widgetId: 'billsplit' },
     surfaces: ['home'],
     order: 170,
     enabled: true
@@ -142,8 +149,9 @@ const TIPS = [
     id: 'home-stocks',
     title: 'Watch your stocks 📈',
     body: 'Named watchlists, the indexes, bitcoin and the 10-year — all on one card in the Stocks widget.',
-    actionLabel: 'Open Widgets',
-    target: 'widgets_tab',
+    actionLabel: 'Open Stocks',
+    target: 'widget',
+    data: { widgetId: 'stocks' },
     surfaces: ['home'],
     order: 180,
     enabled: true
@@ -152,8 +160,9 @@ const TIPS = [
     id: 'home-calories',
     title: 'Track what you eat 🍽️',
     body: 'A quick calorie log that lives on your home screen — the Calories widget.',
-    actionLabel: 'Open Widgets',
-    target: 'widgets_tab',
+    actionLabel: 'Open Calories',
+    target: 'widget',
+    data: { widgetId: 'calories' },
     surfaces: ['home'],
     order: 190,
     enabled: true

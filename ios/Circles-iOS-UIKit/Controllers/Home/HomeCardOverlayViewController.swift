@@ -134,8 +134,11 @@ final class HomeCardOverlayViewController: UIViewController {
         // stray tap would burn the card's one showing without an answer.
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
+    // The pop-in starts in viewWillAppear, alongside the cross-dissolve. Doing
+    // it in viewDidAppear hid a card the dissolve had already shown and
+    // brought it in again: the card flashed twice.
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
         sheet.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
         sheet.alpha = 0
         UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0.4) {
