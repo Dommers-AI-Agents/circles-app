@@ -8,6 +8,7 @@ const db = getFirestore();
 const { createActivity } = require('../../controllers/activityController');
 const SSEService = require('../sseService');
 const notificationService = require('../notificationService');
+const { wantsActivityPush } = require('../activityPushPrefs');
 
 
 // Track when a user adds a reaction
@@ -225,7 +226,7 @@ const trackSuggestionSent = async (suggestionId, placeId, placeName, fromUserId,
       });
       
       // Send push notification only if enabled for this connection
-      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+      if (wantsActivityPush(connectionData, otherUserId)) { // they turned on the bell for this person
         (async () => {
           try {
             // Get sender's display name
@@ -439,7 +440,7 @@ const trackUserFollowed = async (followedUserId, followerUserId, action = 'follo
       });
       
       // Send push notification only if enabled for this connection and it's a follow
-      if (connectionData.activityNotificationsEnabled === true && action === 'followed') { // Explicit opt-in required
+      if (wantsActivityPush(connectionData, otherUserId) && action === 'followed') { // they turned on the bell for this person
         (async () => {
           try {
             // Get both users' display names
@@ -523,7 +524,7 @@ const trackProfileUpdated = async (userId, updateType = 'profile', updateDetails
       });
       
       // Send push notification only if enabled for this connection
-      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+      if (wantsActivityPush(connectionData, otherUserId)) { // they turned on the bell for this person
         (async () => {
           try {
             let updateText = '';
@@ -613,7 +614,7 @@ const trackUserActivity = async (userId, activityType = 'active', metadata = {})
         });
         
         // Send push notification only if enabled for this connection
-        if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+        if (wantsActivityPush(connectionData, otherUserId)) { // they turned on the bell for this person
           (async () => {
             try {
               let activityText = '';

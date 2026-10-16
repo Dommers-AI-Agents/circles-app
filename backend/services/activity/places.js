@@ -8,6 +8,7 @@ const db = getFirestore();
 const { createActivity } = require('../../controllers/activityController');
 const SSEService = require('../sseService');
 const notificationService = require('../notificationService');
+const { wantsActivityPush, claimPushSlot } = require('../activityPushPrefs');
 const { resolvePlacePhoto } = require('./core');
 const { circleAudience, narrowedByPlace, gridAudience } = require('./audience');
 
@@ -155,7 +156,7 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
         });
         
         // Send push notification if enabled for this connection
-        if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+        if (wantsActivityPush(connectionData, otherUserId)) { // they turned on the bell for this person
           (async () => {
             try {
               // Get place adder's display name
@@ -194,11 +195,11 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
           return cd.userId === addedByUserId ? cd.connectedUserId : cd.userId;
         }));
         const alreadyPushedIds = new Set(allConnections
-          .filter(doc => doc.data().activityNotificationsEnabled === true)
           .map(doc => {
             const cd = doc.data();
             return cd.userId === addedByUserId ? cd.connectedUserId : cd.userId;
-          }));
+          })
+          .filter((otherId, i) => wantsActivityPush(allConnections[i].data(), otherId)));
 
         const actorDoc = await db.collection(COLLECTIONS.USERS).doc(addedByUserId).get();
         const actorName = actorDoc.exists ? (actorDoc.data().displayName || 'Someone') : 'Someone';
@@ -399,7 +400,7 @@ const trackPlaceLiked = async (placeId, placeName, circleId, circleName, likedBy
       });
       
       // Send push notification only if enabled for this connection
-      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+      if (wantsActivityPush(connectionData, otherUserId)) { // they turned on the bell for this person
         (async () => {
           try {
             // Get liker's display name
@@ -483,7 +484,7 @@ const trackPlaceDiscovered = async (placeId, placeName, discoveredByUserId, disc
       });
       
       // Send push notification only if enabled for this connection
-      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+      if (wantsActivityPush(connectionData, otherUserId)) { // they turned on the bell for this person
         (async () => {
           try {
             // Get discoverer's display name
@@ -588,7 +589,7 @@ const trackCheckIn = async (placeId, placeName, circleId, circleName, checkedInB
       });
       
       // Send push notification only if enabled for this connection
-      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+      if (wantsActivityPush(connectionData, otherUserId)) { // they turned on the bell for this person
         (async () => {
           try {
             // Get checker's display name
@@ -658,6 +659,11 @@ const trackPhotoUploaded = async (photoId, placeId, placeName, photoUrl, uploade
     const otherOf = (doc) => (doc.data().userId === uploadedByUserId ? doc.data().connectedUserId : doc.data().userId);
     const toldConnections = allConnections.filter(doc => grid.allows(otherOf(doc)));
     
+    // Adding several photos is one thing to tell people about: one push per
+    // place per window, however many photos (the feed rows stay per photo)
+    const pushThisOne = toldConnections.some(doc => wantsActivityPush(doc.data(), otherOf(doc)))
+      && await claimPushSlot('photo_uploaded', uploadedByUserId, placeId);
+
     toldConnections.forEach(doc => {
       const connectionData = doc.data();
       const otherUserId = connectionData.userId === uploadedByUserId 
@@ -692,7 +698,7 @@ const trackPhotoUploaded = async (photoId, placeId, placeName, photoUrl, uploade
       });
       
       // Send push notification if enabled for this connection
-      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+      if (pushThisOne && wantsActivityPush(connectionData, otherUserId)) { // they turned on the bell for this person
         (async () => {
           try {
             // Get uploader's display name
@@ -701,8 +707,8 @@ const trackPhotoUploaded = async (photoId, placeId, placeName, photoUrl, uploade
             
             await notificationService.sendToUser(otherUserId, {
               type: 'activity_notification',
-              title: 'New Photo Shared',
-              body: `${uploaderName} uploaded a photo at ${placeName}`,
+              title: 'New Photos Shared',
+              body: `${uploaderName} added photos at ${placeName}`,
               data: {
                 type: 'photo_uploaded',
                 photoId: photoId,
@@ -805,7 +811,7 @@ const trackGlobalPlaceLiked = async (uploadId, globalPlaceId, placeName, likedBy
       });
       
       // Send push notification only if enabled for this connection
-      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+      if (wantsActivityPush(connectionData, otherUserId)) { // they turned on the bell for this person
         (async () => {
           try {
             // Get liker's display name
@@ -857,7 +863,7 @@ const markPlaceAsViewed = async (userId, placeId, circleId) => {
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     let updateCount = 0;
 
-    toldConnections.forEach(doc => {
+    allConnections.forEach(doc => {
       const connectionData = doc.data();
       const recentActivity = connectionData.recentActivity || [];
       

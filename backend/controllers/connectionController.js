@@ -23,6 +23,7 @@ const { decorateUserCards } = require('../services/userCardEnrichment');
 const { getPlaceCountMap } = require('../services/userStatsCache');
 const { revokeMutualGrants } = require('../services/innerCircleService');
 const { isBlockedEitherWay } = require('../services/moderationService');
+const { wantsActivityPush } = require('../services/activityPushPrefs');
 const dailyBudget = require('../services/dailyBudget');
 const {
   signInviteToken,
@@ -82,6 +83,7 @@ const getConnectionById = async (req, res) => {
     }
 
     const connection = serializeDoc(connectionDoc);
+    connection.activityNotificationsEnabled = wantsActivityPush(connection, req.user.firebaseDocId || req.user.uid);
     
     // Verify user is part of this connection
     if (!isSameUser(connection.userId, userId) && !isSameUser(connection.connectedUserId, userId)) {
@@ -156,6 +158,9 @@ const getConnections = async (req, res) => {
     const connections = await Promise.all(
       uniqueConnections.map(async (doc) => {
         const connection = serializeDoc(doc);
+        // The bell is the caller's own choice about this person (see
+        // services/activityPushPrefs.js); the old shared flag means nothing now
+        connection.activityNotificationsEnabled = wantsActivityPush(connection, userId);
 
         // Determine which user is the "other" user
         const otherUserIdRaw = connection.userId === userId ? connection.connectedUserId : connection.userId;
@@ -1577,9 +1582,11 @@ const updateConnectionNotificationPreferences = async (req, res) => {
       });
     }
 
-    // Update the connection document
+    // Record it as THIS member's choice about the other one. The shared
+    // boolean used to send the other member pushes about the caller too.
+    const member = isSameUser(connection.userId, userId) ? connection.userId : connection.connectedUserId;
     await db.collection(COLLECTIONS.CONNECTIONS).doc(connectionId).update({
-      activityNotificationsEnabled: activityNotificationsEnabled,
+      activityNotifyUserIds: activityNotificationsEnabled ? FieldValue.arrayUnion(member) : FieldValue.arrayRemove(member),
       updatedAt: new Date().toISOString()
     });
 

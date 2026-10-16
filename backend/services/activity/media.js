@@ -8,6 +8,7 @@ const db = getFirestore();
 const { createActivity } = require('../../controllers/activityController');
 const SSEService = require('../sseService');
 const notificationService = require('../notificationService');
+const { wantsActivityPush, claimPushSlot } = require('../activityPushPrefs');
 const { normalizePrivacy, PRIVACY } = require('../visibility');
 
 
@@ -100,7 +101,7 @@ const trackMomentUpload = async (momentId, placeId, placeName, uploadedByUserId)
       });
       
       // Send push notification if enabled for this connection
-      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+      if (wantsActivityPush(connectionData, otherUserId)) { // they turned on the bell for this person
         (async () => {
           try {
             // Get uploader's display name
@@ -228,7 +229,7 @@ const trackVideoLiked = async (videoId, placeId, placeName, likedByUserId, video
       });
       
       // Send push notification only if enabled for this connection
-      if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+      if (wantsActivityPush(connectionData, otherUserId)) { // they turned on the bell for this person
         (async () => {
           try {
             // Get liker's display name

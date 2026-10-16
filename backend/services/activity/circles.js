@@ -10,6 +10,7 @@ const { circleAudience } = require('./audience');
 const { normalizePrivacy, PRIVACY } = require('../visibility');
 const SSEService = require('../sseService');
 const notificationService = require('../notificationService');
+const { wantsActivityPush } = require('../activityPushPrefs');
 
 
 // Track when a user adds a new circle
@@ -135,7 +136,7 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
           
           // Send push notification if enabled for this connection
           const connectionData = doc.data();
-          if (connectionData.activityNotificationsEnabled === true) { // Explicit opt-in required
+          if (wantsActivityPush(connectionData, otherUserId)) { // they turned on the bell for this person
             try {
               // Get creator's display name
               const creatorDoc = await db.collection(COLLECTIONS.USERS).doc(createdByUserId).get();
