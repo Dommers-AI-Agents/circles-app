@@ -252,10 +252,14 @@ exports.getPlaceSavers = async (req, res, next) => {
       }
     }
 
-    // Group circle IDs by saver
+    // Group circle IDs by saver. An unsaved copy (deletedAt, sitting in its
+    // owner's trash) is not a save: counting it kept people listed as saving
+    // a place they had removed (Wes, 2026-10-16: a CVS unsaved in August
+    // still read "saved by me").
     const circleIdsBySaver = new Map();
     for (const doc of placeDocs) {
       const data = doc.data();
+      if (data.deletedAt) continue;
       const saverId = normalizeUserId(data.addedBy);
       if (!saverId) continue;
       if (!circleIdsBySaver.has(saverId)) {
