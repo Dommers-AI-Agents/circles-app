@@ -32,3 +32,14 @@ exports.post = async (req, res) => {
 exports.feed = async (req, res) => {
   try { res.json({ success: true, posts: await feed.feed(req.user.uid) }); } catch (e) { fail(res, e); }
 };
+
+// The person's own history, sent by their phone (enabled: false removes it)
+exports.syncHistory = async (req, res) => {
+  const { enabled, workouts } = req.body || {};
+  try { res.json({ success: true, ...(await feed.syncHistory({ userId: req.user.uid, enabled: enabled === true, workouts })) }); } catch (e) { fail(res, e); }
+};
+
+// Someone's history, for their Inner Circle
+exports.history = async (req, res) => {
+  try { res.json({ success: true, history: await feed.history(req.params.userId, req.user.uid) }); } catch (e) { fail(res, e); }
+};

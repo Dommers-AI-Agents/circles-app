@@ -169,6 +169,7 @@ app.use('/api', (req, res, next) => {
 app.use('/api/upload', express.json({ limit: '2mb' }));
 app.use('/api/users/subscription', express.json({ limit: '2mb' }));
 app.use('/api/widgets/postcard/mail/upload', express.json({ limit: '8mb' }));
+app.use('/api/widgets/workouts/history', express.json({ limit: '3mb' }));
 app.use('/api/import', express.json({ limit: '5mb' }));
 app.use('/api/users/contacts', express.json({ limit: '5mb' }));
 app.use(express.json({ limit: '1mb' }));

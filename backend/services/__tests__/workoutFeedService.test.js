@@ -181,3 +181,46 @@ describe('texted link', () => {
     expect(await feed.postByLink('../etc')).toBeNull();
   });
 });
+
+describe('workout history for the Inner Circle', () => {
+  beforeEach(() => mockDb.rows(COLLECTIONS.WORKOUT_HISTORY).clear());
+  const at = (iso) => summary({ startedAt: iso });
+
+  it('stores the history newest first, one per workout, dropping empty ones', async () => {
+    const r = await feed.syncHistory({ userId: 'wes', enabled: true, workouts: [
+      at('2026-09-01T10:00:00Z'), at('2026-09-20T10:00:00Z'), at('2026-09-01T10:00:00Z'),
+      summary({ startedAt: '2026-09-10T10:00:00Z', exercises: [], cardio: [] })
+    ] });
+    expect(r).toEqual({ enabled: true, count: 2 });
+    const stored = mockDb.rows(COLLECTIONS.WORKOUT_HISTORY).get('wes');
+    expect(stored.workouts.map((w) => w.summary.startedAt)).toEqual(['2026-09-20T10:00:00.000Z', '2026-09-01T10:00:00.000Z']);
+    expect(stored.workouts[0].postId).toBe(`wes_${Date.parse('2026-09-20T10:00:00Z')}`);
+  });
+
+  it('only a connected Inner Circle member (or the author) may browse it', async () => {
+    await feed.syncHistory({ userId: 'wes', enabled: true, workouts: [at('2026-09-20T10:00:00Z')] });
+    await expect(feed.history('wes', 'stranger')).rejects.toMatchObject({ status: 404 });
+    mockConnections.add('wes');
+    await expect(feed.history('wes', 'friend')).rejects.toMatchObject({ status: 404 }); // connected, not Inner Circle
+    mockGrantors.add('wes');
+    const h = await feed.history('wes', 'friend');
+    expect(h.workouts).toHaveLength(1);
+    expect((await feed.history('wes', 'wes')).workouts).toHaveLength(1);
+  });
+
+  it('switching it off removes it for everyone', async () => {
+    mockConnections.add('wes'); mockGrantors.add('wes');
+    await feed.syncHistory({ userId: 'wes', enabled: true, workouts: [at('2026-09-20T10:00:00Z')] });
+    await feed.syncHistory({ userId: 'wes', enabled: false });
+    await expect(feed.history('wes', 'friend')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('a post tells an Inner Circle viewer the history is there', async () => {
+    mockConnections.add('wes'); mockGrantors.add('wes');
+    const { postId } = await feed.share({ userId: 'wes', summary: summary(), now: SEPT });
+    expect((await feed.getPost(postId, 'friend')).historyAvailable).toBe(false);
+    await feed.syncHistory({ userId: 'wes', enabled: true, workouts: [summary()] });
+    expect((await feed.getPost(postId, 'friend')).historyAvailable).toBe(true);
+    expect((await feed.getPost(postId, 'wes')).historyAvailable).toBe(false);
+  });
+});

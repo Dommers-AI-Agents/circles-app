@@ -27,6 +27,10 @@ const MAX_ROUTINE = 30;
 const AUDIENCES = ['connections', 'innerCircle'];
 const MAX_POSTS = 60;
 const FEED_DAYS = 45;
+// Workout history the author lets their Inner Circle browse: one doc per
+// author, newest first, kept under Firestore's 1 MB document cap.
+const MAX_HISTORY = 200;
+const HISTORY_MAX_BYTES = 800 * 1024;
 
 const { clean } = require('../utils/text');
 const crypto = require('crypto');
@@ -84,6 +88,7 @@ class WorkoutFeedService {
 
   get posts() { return this.db.collection(COLLECTIONS.WORKOUT_POSTS); }
   get links() { return this.db.collection(COLLECTIONS.WORKOUT_LINKS); }
+  get histories() { return this.db.collection(COLLECTIONS.WORKOUT_HISTORY); }
 
   /**
    * One post per finished workout; re-sharing the same workout replaces it
@@ -143,6 +148,62 @@ class WorkoutFeedService {
   }
 
   /**
+   * The author's workout history, as their phone last sent it (Wes,
+   * 2026-10-16: "Allow my inner circle to view my workout history"). Custom
+   * exercise names live only on the phone, so the app sends summaries, the
+   * whole recent history each time: a replace, so an edited or deleted
+   * workout follows. Switched off = the doc is gone, nobody else sees it.
+   */
+  async syncHistory({ userId, enabled, workouts, now = new Date() }) {
+    const ref = this.histories.doc(String(userId));
+    if (!enabled) {
+      await ref.delete();
+      return { enabled: false, count: 0 };
+    }
+    const byStart = new Map();
+    for (const raw of (Array.isArray(workouts) ? workouts : [])) {
+      try {
+        const summary = normalizeSummary(raw);
+        byStart.set(Date.parse(summary.startedAt), summary);
+      } catch (_) { /* an empty or undated workout is just left out */ }
+    }
+    let kept = [...byStart.entries()].sort((a, b) => b[0] - a[0]).slice(0, MAX_HISTORY)
+      .map(([ms, summary]) => ({ postId: `${userId}_${ms}`, summary }));
+    while (kept.length > 1 && Buffer.byteLength(JSON.stringify(kept)) > HISTORY_MAX_BYTES) kept = kept.slice(0, -1);
+    await ref.set({ userId, audience: 'innerCircle', workouts: kept, updatedAt: now.toISOString() });
+    return { enabled: true, count: kept.length };
+  }
+
+  /**
+   * Someone else may browse the author's history while the author has it
+   * switched on, they're connected, and the author put them on an Inner
+   * Circle list (any list). The author always may.
+   */
+  async canViewHistory(authorId, viewerId, historyDoc = undefined) {
+    const doc = historyDoc === undefined ? await this.histories.doc(String(authorId)).get() : historyDoc;
+    if (!doc || !doc.exists) return false;
+    if (String(authorId) === String(viewerId)) return true;
+    const [connections, grantors] = await Promise.all([getConnectedUserIds(viewerId), getInnerCircleGrantorLists(viewerId)]);
+    return connections.has(String(authorId)) && grantors.has(String(authorId));
+  }
+
+  /** The author's history for a permitted viewer; 404 otherwise. */
+  async history(authorId, viewerId) {
+    const doc = await this.histories.doc(String(authorId)).get();
+    if (!(await this.canViewHistory(authorId, viewerId, doc))) {
+      throw new WorkoutFeedError(404, 'not_found', 'This workout history isn\'t shared with you.');
+    }
+    const users = await this.usersById([String(authorId)]);
+    const author = users[String(authorId)] || {};
+    return {
+      userId: String(authorId),
+      userName: author.displayName || 'Someone',
+      avatarUrl: author.profilePicture || null,
+      workouts: doc.data().workouts || []
+    };
+  }
+
+  /**
    * A link for texting a finished workout: anyone holding it may view that
    * one workout (and copy it), signed in or not. The workout is saved as a
    * post if it wasn't shared to the feed — audience 'link', which no feed
@@ -195,7 +256,13 @@ class WorkoutFeedService {
       throw new WorkoutFeedError(404, 'not_found', 'This workout isn\'t available.');
     }
     const post = doc.data();
-    const users = await this.usersById([post.userId]);
+    // Whether the row can lead on to the author's whole history (never for
+    // a texted link or the author's own post: they have it in the widget)
+    const mine = String(post.userId) === String(viewerId);
+    const [users, historyAvailable] = await Promise.all([
+      this.usersById([post.userId]),
+      viaLink || mine ? false : this.canViewHistory(post.userId, viewerId).catch(() => false)
+    ]);
     const author = users[post.userId] || {};
     return {
       postId: doc.id,
@@ -203,7 +270,8 @@ class WorkoutFeedService {
       userName: author.displayName || 'Someone',
       avatarUrl: author.profilePicture || null,
       summary: post.summary,
-      createdAt: post.createdAt
+      createdAt: post.createdAt,
+      historyAvailable
     };
   }
 

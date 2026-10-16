@@ -179,6 +179,9 @@ router.post('/workouts/share', messageLimiter, workoutFeed.share);
 router.post('/workouts/link', messageLimiter, workoutFeed.link);
 router.get('/workouts/feed', workoutFeed.feed);
 router.get('/workouts/posts/:postId', workoutFeed.post);
+// Workout history the author lets their Inner Circle browse
+router.put('/workouts/history', messageLimiter, workoutFeed.syncHistory);
+router.get('/workouts/history/:userId', workoutFeed.history);
 // The widget may only call widgets/ paths; this is the Inner Circle lists
 // read the share picker needs (same handler as /users/me/inner-circle/lists)
 router.get('/workouts/lists', getMyInnerCircleLists);
