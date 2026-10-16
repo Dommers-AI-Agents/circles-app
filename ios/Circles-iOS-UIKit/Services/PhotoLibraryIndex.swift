@@ -105,6 +105,21 @@ final class PhotoLibraryIndex {
         image(for: id, size: CGSize(width: 2048, height: 2048), completion: completion)
     }
 
+    // MARK: - Already added
+
+    /// Library photos already added to a place from "your photos from here",
+    /// so the section doesn't offer them again. Kept on this phone.
+    func addedIds(toPlace placeKey: String) -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: Self.addedKey(placeKey)) ?? [])
+    }
+
+    func markAdded(_ ids: [String], toPlace placeKey: String) {
+        let all = addedIds(toPlace: placeKey).union(ids)
+        UserDefaults.standard.set(Array(all), forKey: Self.addedKey(placeKey))
+    }
+
+    private static func addedKey(_ placeKey: String) -> String { "photosAddedToPlace.\(placeKey)" }
+
     // MARK: - Reading
 
     private func readLibrary(after date: Date?) -> [Shot] {

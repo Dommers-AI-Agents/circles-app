@@ -17,6 +17,10 @@ final class PlaceMyPhotosView: UIView {
     private var shots: [PhotoLibraryMath.Shot] = []
     private var selected = Set<String>()
     private var coordinate: CLLocationCoordinate2D?
+    /// The place's id for remembering what was already added (nil = don't)
+    private var placeKey: String?
+    /// Photos that couldn't be read from the library on the last Add
+    private var unreadable = 0
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -51,12 +55,19 @@ final class PlaceMyPhotosView: UIView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Looks for your photos taken at `coordinate`.
-    func load(near coordinate: CLLocationCoordinate2D) {
+    /// Looks for your photos taken at `coordinate`, minus any already added
+    /// to this place from here.
+    func load(near coordinate: CLLocationCoordinate2D, placeKey: String? = nil) {
         self.coordinate = coordinate
+        unreadable = 0
+        if let placeKey { self.placeKey = placeKey }
         let index = PhotoLibraryIndex.shared
         if index.canRead {
-            index.shots(near: coordinate) { [weak self] found in self?.show(found) }
+            index.shots(near: coordinate) { [weak self] found in
+                guard let self else { return }
+                let added = self.placeKey.map { index.addedIds(toPlace: $0) } ?? []
+                self.show(found.filter { !added.contains($0.id) })
+            }
         } else if index.mayAsk {
             showAsk()
         } else {
@@ -74,7 +85,7 @@ final class PlaceMyPhotosView: UIView {
     @objc private func askTapped() {
         PhotoLibraryIndex.shared.requestAccess { [weak self] granted in
             guard let self, let coordinate = self.coordinate else { return }
-            if granted { self.load(near: coordinate) } else { self.clear() }
+            if granted { self.load(near: coordinate, placeKey: self.placeKey) } else { self.clear() }
         }
     }
 
@@ -113,7 +124,14 @@ final class PlaceMyPhotosView: UIView {
     }
 
     private func refresh() {
-        header.text = shots.count == 1 ? "1 of your photos is from here" : "\(shots.count) of your photos are from here"
+        if unreadable > 0 {
+            header.text = unreadable == 1
+                ? "1 photo couldn't be loaded from your library. Try again?"
+                : "\(unreadable) photos couldn't be loaded from your library. Try again?"
+            header.numberOfLines = 0
+        } else {
+            header.text = shots.count == 1 ? "1 of your photos is from here" : "\(shots.count) of your photos are from here"
+        }
         addButton.setTitle(selected.isEmpty ? "Add" : "Add \(selected.count)", for: .normal)
         addButton.isEnabled = !selected.isEmpty
         for case let thumb as UIButton in strip.arrangedSubviews {
@@ -139,10 +157,22 @@ final class PlaceMyPhotosView: UIView {
             }
         }
         group.notify(queue: .main) { [weak self] in
-            images = ids.compactMap { byId[$0] }
-            self?.onAdd?(images)
-            // Added: they're part of the place now
-            self?.clear()
+            guard let self else { return }
+            let loadedIds = ids.filter { byId[$0] != nil }
+            images = loadedIds.compactMap { byId[$0] }
+            if !images.isEmpty { self.onAdd?(images) }
+            if let placeKey = self.placeKey { PhotoLibraryIndex.shared.markAdded(loadedIds, toPlace: placeKey) }
+            // Added ones are part of the place now. Any the library couldn't
+            // hand over stay here, selected, with a line saying so, rather
+            // than vanishing as if they'd been added.
+            let missed = self.shots.filter { ids.contains($0.id) && byId[$0.id] == nil }
+            self.unreadable = missed.count
+            if missed.isEmpty {
+                self.clear()
+            } else {
+                self.show(missed)
+                self.addButton.isEnabled = true
+            }
         }
     }
 }

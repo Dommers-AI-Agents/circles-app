@@ -1051,7 +1051,7 @@ class PlaceDetailViewController: BaseViewController {
         lastAnchor = myPhotosView.bottomAnchor
         if AddToCircleGate.isOwnSave(place, currentUserId: AuthService.shared.getUserId() ?? ""),
            let coordinate = place.location?.clLocation?.coordinate {
-            myPhotosView.load(near: coordinate)
+            myPhotosView.load(near: coordinate, placeKey: place.globalPlaceId ?? place.id)
         }
         _ = canEdit
         
