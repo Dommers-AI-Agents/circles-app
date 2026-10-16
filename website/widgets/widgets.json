@@ -33,7 +33,7 @@
       "title": "Health & fitness",
       "widgets": [
         { "id": "workouts", "emoji": "🏋️", "name": "Workouts", "tagline": "Log sets, reps and personal records.",
-          "features": ["Routines that remember last time's numbers", "Cardio with calories, a rest timer and exercise photos", "Share a workout with friends; they can copy it as their own routine"] },
+          "features": ["Routines that remember last time's numbers", "Cardio with calories, a rest timer and exercise photos", "Share a workout with friends; they can copy it as their own routine", "Let your Inner Circle see your whole workout history"] },
         { "id": "run", "emoji": "🏃", "name": "FavRun", "tagline": "Track your runs on a map.",
           "features": ["GPS route map, pace, splits and personal bests", "Your run on the Lock Screen while you go", "Share your runs with the friends you choose"] },
         { "id": "motivation", "emoji": "📣", "name": "Coach Mane", "tagline": "A coach who won't let you skip.",
