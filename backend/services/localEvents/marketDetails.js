@@ -135,7 +135,9 @@ async function withDetails(markets, { now = Date.now(), apiKey = process.env.GOO
         console.warn('[markets] lookup failed:', err.message);
       }
     }
-    if (google && google.closed) return null;
+    // Only markets Google confirms are shown (Wes, 2026-10-17: "if you can't
+    // confirm the market, remove it"); the USDA list has stale entries
+    if (!google || google.closed || !google.googlePlaceId) return null;
     const { google: _drop, ...rest } = market;
     return {
       ...rest,
@@ -151,7 +153,6 @@ async function withDetails(markets, { now = Date.now(), apiKey = process.env.GOO
   const seen = new Set();
   return enriched.filter((m) => {
     if (!m) return false;
-    if (!m.googlePlaceId) return true;
     if (seen.has(m.googlePlaceId)) return false;
     seen.add(m.googlePlaceId);
     return true;

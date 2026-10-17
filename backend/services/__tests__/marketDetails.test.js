@@ -22,7 +22,7 @@ test('a Google result counts as the market only if close and sharing a name word
   expect(isSameMarket(market, { name: 'Kings Drive Market', geometry: { location: { lat: 35.25, lng: -80.8391 } } })).toBe(false);
 });
 
-test('cached details are used without a lookup; closed markets and repeats drop out', async () => {
+test('cached details are used without a lookup; closed, unconfirmed and repeated markets drop out', async () => {
   global.fetch = jest.fn();
   const fresh = new Date().toISOString();
   const out = await withDetails([
@@ -32,7 +32,7 @@ test('cached details are used without a lookup; closed markets and repeats drop 
     { id: '4', name: 'Unknown', lat: 1, lng: 1, google: { noMatch: true, checkedAt: fresh } }
   ], { apiKey: 'k' });
   expect(global.fetch).not.toHaveBeenCalled();
-  expect(out.map((m) => m.id)).toEqual(['1', '4']);
+  expect(out.map((m) => m.id)).toEqual(['1']); // 4: Google doesn't know it, so it isn't shown
   expect(out[0]).toMatchObject({ googlePlaceId: 'g1', photoUrl: 'p', hoursSummary: 'Sat 8 AM–1 PM' });
   expect(out[0].google).toBeUndefined();
 });
