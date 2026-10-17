@@ -33,6 +33,9 @@ struct HomePlaceFilter {
         var networkCircleOwners: [String: String] = [:]
         /// Circles hidden from the home map (`showOnMap == false`), own or network.
         var hiddenCircleIds: Set<String> = []
+        /// Origins of the user's own places they switched off the map
+        /// ("photos", "google_maps", "in_app"); see MapOriginVisibility.
+        var hiddenOrigins: Set<String> = []
         var acceptedConnectionUserIds: [String] = []
         var everyoneAuthorIds: Set<String> = []
     }
@@ -54,8 +57,20 @@ struct HomePlaceFilter {
         }
     }
 
+    /// The user's own places from origins they turned off ("From your
+    /// photos" off: those pins go; others' places are never touched).
+    static func excludingHiddenOrigins(_ places: [Place], hidden: Set<String>, currentUserId: String) -> [Place] {
+        guard !hidden.isEmpty else { return places }
+        return places.filter { place in
+            guard IDNormalizer.isSameUser(place.addedBy, currentUserId) else { return true }
+            return !hidden.contains(MapOriginVisibility.origin(of: place))
+        }
+    }
+
     static func apply(_ input: [Place], context: Context) -> [Place] {
-        let places = excludingHiddenCircles(input, hiddenIds: context.hiddenCircleIds)
+        let places = excludingHiddenOrigins(
+            excludingHiddenCircles(input, hiddenIds: context.hiddenCircleIds),
+            hidden: context.hiddenOrigins, currentUserId: context.currentUserId)
 
         /// Owner of the place's circle when known, else who added it.
         func author(of place: Place) -> String? {

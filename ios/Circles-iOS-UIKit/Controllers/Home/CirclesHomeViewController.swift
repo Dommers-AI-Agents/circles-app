@@ -1879,6 +1879,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             UIAction(title: "From photos", image: UIImage(systemName: "photo.on.rectangle")) { [weak self] _ in
                 self?.addPlacesFromPhotos()
             },
+            // Every place in your photos → "Places from my photos", nearest
+            // first (Wes, 2026-10-16)
+            UIAction(title: "Build my map from my photos", image: UIImage(systemName: "photo.stack.fill")) { [weak self] _ in
+                self?.showPhotoMapBuilder()
+            },
             // A trip, dates or an album → a new circle (Wes, 2026-10-09)
             UIAction(title: "Build a circle from my photos", image: UIImage(systemName: "photo.stack")) { [weak self] _ in
                 guard let self else { return }
@@ -2804,6 +2809,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             object: nil
         )
 
+        // My Places + → an origin switched on/off ("From your photos"):
+        // redraw from what's loaded, no refetch
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMapOriginVisibilityChanged),
+            name: MapOriginVisibility.changed,
+            object: nil
+        )
+
         // Listen for refresh circles notification (e.g., when a place is added)
         NotificationCenter.default.addObserver(
             self,
@@ -2910,6 +2924,17 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
+    /// Build my map from my photos (Add Place menu, the first-week card)
+    func showPhotoMapBuilder() {
+        let builder = PhotoMapBuilderViewController(savedPlaces: userOwnPlaces)
+        navigationController?.pushViewController(builder, animated: true)
+    }
+
+    @objc func handleMapOriginVisibilityChanged() {
+        // Redraws from the loaded places, the full-screen map included
+        refreshMapDisplay(adjustRegion: false)
+    }
+
     @objc func handleRefreshCircles() {
         // Invalidate cache when circles/places are modified
         invalidateCache()

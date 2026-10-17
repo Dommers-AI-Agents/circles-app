@@ -196,6 +196,8 @@ extension CirclesHomeViewController {
             navigationController?.pushViewController(InnerCircleListsViewController(), animated: true)
         case .createCircle:
             addButtonTapped()
+        case .photoMap:
+            showPhotoMapBuilder()
         case .appStore:
             if let url = URL(string: ShareLinks.appStore) { UIApplication.shared.open(url) }
         case .unknown(let target):

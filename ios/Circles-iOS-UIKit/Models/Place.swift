@@ -182,6 +182,7 @@ struct Place: Codable, Identifiable {
         case "google_maps": return "Google import"
         case "mapstr": return "Mapstr import"
         case "swarm": return "Swarm import"
+        case "photos": return "From your photos"
         case .some(let other): return "\(other) import"
         case nil: return nil
         }

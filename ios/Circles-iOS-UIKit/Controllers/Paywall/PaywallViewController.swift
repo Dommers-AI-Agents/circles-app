@@ -286,6 +286,9 @@ class PaywallViewController: BaseViewController {
         case .eventVideo:
             titleLabel.text = "Longer Event Videos"
             subtitleLabel.text = "Free videos are up to 15 seconds, 5 per event. Premium allows up to a minute, 20 per event"
+        case .photoPlaces:
+            titleLabel.text = "Your Whole Map"
+            subtitleLabel.text = "Your first 25 places from your photos are free. Add every place you've photographed with Premium"
         case .generalUpgrade:
             titleLabel.text = "Unlock FavCircles Premium"
             subtitleLabel.text = "Get unlimited access to all features"

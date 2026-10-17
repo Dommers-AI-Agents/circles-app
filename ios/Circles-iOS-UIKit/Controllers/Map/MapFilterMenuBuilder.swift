@@ -9,6 +9,8 @@ enum MapFilterMenuAction {
     case selectMyPlaces
     /// An origin sub-row under My Places ("in_app", "google_maps", …).
     case selectImportOrigin(String)
+    /// Show/hide one origin of your own places on every map
+    case toggleOrigin(String)
     case selectChipGroup(PlaceCategoryGroup)
     /// nil = All Places.
     case selectRegion(id: String?)
@@ -122,14 +124,16 @@ final class MapFilterMenuBuilder {
         // behind a "+" on the My Places row (Wes, 2026-10-07): tapping the
         // row selects My Places and unfolds them ("−"); tapping again folds.
         let currentUserIdForOrigins = AuthService.shared.getUserId() ?? ""
+        // Hidden origins' places are filtered out upstream: list them anyway
+        // so they can be switched back on
+        let hiddenOrigins = MapOriginVisibility.hidden(uid: currentUserIdForOrigins)
         let mySources = Set(state.places
             .filter { IDNormalizer.isSameUser($0.addedBy, currentUserIdForOrigins) }
             .compactMap { $0.importSource })
+            .union(hiddenOrigins.subtracting(["in_app"]))
         var origins: [String] = []
         if !mySources.isEmpty {
             origins = ["in_app"] + mySources.sorted()
-            // Keep the active selection pickable even if its places vanished
-            if let active = state.selectedImportOrigin, !origins.contains(active) { origins.append(active) }
         }
         let hasOrigins = !origins.isEmpty
         let expanded = hasOrigins && importsExpanded
@@ -148,20 +152,28 @@ final class MapFilterMenuBuilder {
             }
         }
         if hasOrigins {
-            myPlaces.accessibilityHint = expanded ? "Hides your imported places" : "Shows your imported places"
+            myPlaces.accessibilityHint = expanded ? "Folds the list of where your places came from"
+                                                  : "Lists where your places came from, to show or hide each"
         }
         actions.append(myPlaces)
         if expanded {
+            // Each origin is a switch (Wes, 2026-10-16): checked = on your
+            // maps. Turn "From your photos" off to see only what you added
             for origin in origins {
-                let icon = UIImage(systemName: origin == "in_app" ? "plus.app.fill" : "square.and.arrow.down.fill")?
-                    .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal)
-                actions.append(UIAction(
+                let visible = !hiddenOrigins.contains(origin)
+                let symbol = origin == "in_app" ? "hand.tap.fill" : origin == "photos" ? "photo.on.rectangle" : "square.and.arrow.down.fill"
+                let icon = UIImage(systemName: symbol)?
+                    .withTintColor(visible ? Constants.Colors.primary : .secondaryLabel, renderingMode: .alwaysOriginal)
+                let row = UIAction(
                     title: "      \(MapChipFilter.originTitle(origin))",
                     image: icon,
-                    state: state.selectedConnectionId == HomePlaceFilter.myPlacesOnlyId && state.selectedImportOrigin == origin ? .on : .off
+                    attributes: .keepsMenuPresented,
+                    state: visible ? .on : .off
                 ) { [weak self] _ in
-                    self?.perform(.selectImportOrigin(origin))
-                })
+                    self?.perform(.toggleOrigin(origin))
+                }
+                row.accessibilityHint = visible ? "On your map. Tap to hide these places" : "Hidden. Tap to show these places"
+                actions.append(row)
             }
         }
 

@@ -189,8 +189,13 @@ final class HomeState {
         HomePlaceFilter.hiddenCircleIds(in: circles + networkCircles)
     }
 
+    /// Hidden circles, then the user's own places from origins they turned
+    /// off the map (My Places + → "From your photos" off).
     func excludingHiddenCircles(_ places: [Place]) -> [Place] {
-        HomePlaceFilter.excludingHiddenCircles(places, hiddenIds: hiddenCircleIds)
+        let uid = AuthService.shared.getUserId() ?? ""
+        return HomePlaceFilter.excludingHiddenOrigins(
+            HomePlaceFilter.excludingHiddenCircles(places, hiddenIds: hiddenCircleIds),
+            hidden: MapOriginVisibility.hidden(uid: uid), currentUserId: uid)
     }
 
     /// Everything `HomePlaceFilter` needs, read once per filter pass. The
@@ -205,6 +210,7 @@ final class HomeState {
         context.ownCircleIds = ownCircleIds
         context.networkCircleOwners = networkCircleOwners
         context.hiddenCircleIds = hiddenCircleIds
+        context.hiddenOrigins = MapOriginVisibility.hidden(uid: currentUserId)
         context.acceptedConnectionUserIds = acceptedConnectionUserIds
         context.everyoneAuthorIds = everyoneAuthorIds
         return context

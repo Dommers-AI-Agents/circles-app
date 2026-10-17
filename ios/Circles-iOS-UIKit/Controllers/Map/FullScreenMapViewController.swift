@@ -221,7 +221,10 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
     /// Applies the My Places origin sub-filter (no-op when none selected).
     private func applyOriginFilter(_ list: [Place]) -> [Place] {
-        MapChipFilter.applyOrigin(list, origin: selectedImportOrigin)
+        let uid = AuthService.shared.getUserId() ?? ""
+        return HomePlaceFilter.excludingHiddenOrigins(
+            MapChipFilter.applyOrigin(list, origin: selectedImportOrigin),
+            hidden: MapOriginVisibility.hidden(uid: uid), currentUserId: uid)
     }
 
     /// Zooms to enclose exactly the filtered places (tap NJ → the camera frames
@@ -2179,6 +2182,14 @@ extension FullScreenMapViewController: MapFilterMenuBuilderDelegate {
         case .selectMyPlaces:
             selectedImportOrigin = nil
             selectConnectionFromHeader(id: HomePlaceFilter.myPlacesOnlyId, user: nil)
+
+        case .toggleOrigin(let origin):
+            let uid = AuthService.shared.getUserId() ?? ""
+            let visible = MapOriginVisibility.toggle(origin, uid: uid)
+            AnalyticsService.shared.logEvent("map_origin_toggled", parameters: ["origin": origin, "visible": visible ? "1" : "0"])
+            // The home controller redraws on the notification and hands the
+            // new list back; standalone, re-run the pipeline here
+            chipFiltersChanged()
 
         case .selectImportOrigin(let origin):
             selectedImportOrigin = origin

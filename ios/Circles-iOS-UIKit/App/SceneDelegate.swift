@@ -1516,7 +1516,25 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
     }
 
+    /// After location: "Fill your map from your photos" (Wes, 2026-10-16),
+    /// once, during the first session; then notifications.
     private func continueOnboardingAfterLocation() {
+        guard OnboardingManager.shared.isFirstSessionFlowActive, PhotoMapOnboardingViewController.isNeeded,
+              let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+            return continueOnboardingAfterPhotoMap()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            let photoVC = PhotoMapOnboardingViewController()
+            photoVC.onCompletion = { [weak self] in self?.continueOnboardingAfterPhotoMap() }
+            let nav = UINavigationController(rootViewController: photoVC)
+            nav.modalPresentationStyle = .fullScreen
+            var presenter: UIViewController = tabBarController
+            while let presented = presenter.presentedViewController { presenter = presented }
+            presenter.present(nav, animated: true)
+        }
+    }
+
+    private func continueOnboardingAfterPhotoMap() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             self?.shouldShowNotificationOnboarding { [weak self] show in
                 guard let self = self else { return }

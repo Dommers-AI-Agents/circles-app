@@ -51,7 +51,8 @@ enum MapChipFilter {
     /// "Google Places") — the menu marks these as sub-rows of My Places.
     static func originTitle(_ origin: String) -> String {
         switch origin {
-        case "in_app": return "FavCircles"
+        case "in_app": return "Added by you"
+        case "photos": return "From your photos"
         case "google_maps": return "Google Places"
         case "mapstr": return "Mapstr"
         case "swarm": return "Swarm"

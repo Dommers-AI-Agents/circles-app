@@ -154,6 +154,7 @@ class SubscriptionManager {
         case exportData  // Alias for exportFeature, specifically for data export
         case importFeature
         case eventVideo  // Events widget: longer and more videos (2026-10-10)
+        case photoPlaces // Build my map from my photos: past the free 25 (2026-10-16)
         case generalUpgrade
 
         var title: String {
@@ -164,6 +165,8 @@ class SubscriptionManager {
                 return "Place Limit Reached"
             case .exportFeature, .exportData, .importFeature, .eventVideo:
                 return "Premium Feature"
+            case .photoPlaces:
+                return "Your Whole Map"
             case .generalUpgrade:
                 return "Upgrade to Premium"
             }
@@ -183,6 +186,8 @@ class SubscriptionManager {
                 return "Bring your saved places over from Google Maps, Mapstr, and Swarm. Available to Premium members only."
             case .eventVideo:
                 return "Add videos up to a minute long, and up to 20 per event, with Premium."
+            case .photoPlaces:
+                return "Your first 25 places from your photos are free. Put every place you've photographed on your map with Premium."
             case .generalUpgrade:
                 return "Unlock all features with FavCircles Premium!"
             }

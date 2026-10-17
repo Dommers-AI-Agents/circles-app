@@ -102,6 +102,8 @@ enum HomePromptTarget: Equatable {
     case appStore
     /// New circle sheet (the first-week "Make your own circle" card)
     case createCircle
+    /// Build my map from my photos (the first-week card, 2026-10-16)
+    case photoMap
     case unknown(String)
 
     init(target: String, data: [String: HomePromptValue]) {
@@ -134,6 +136,7 @@ enum HomePromptTarget: Equatable {
         case "inner_circle": self = .innerCircle
         case "app_store": self = .appStore
         case "create_circle": self = .createCircle
+        case "photo_map": self = .photoMap
         default: self = .unknown(target)
         }
     }
