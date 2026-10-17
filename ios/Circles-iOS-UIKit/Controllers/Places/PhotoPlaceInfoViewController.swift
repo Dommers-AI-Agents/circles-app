@@ -211,13 +211,13 @@ final class PhotoPlaceInfoViewController: BaseViewController {
                 button.setImage(image, for: .normal)
             }
         }
-        button.addAction(UIAction { [weak self] _ in self?.showPhoto(photo) }, for: .touchUpInside)
+        button.addAction(UIAction { [weak self] _ in self?.showPhoto(at: index) }, for: .touchUpInside)
         return button
     }
 
-    /// One photo, full screen; tap anywhere to close
-    private func showPhoto(_ photo: PhotoRef) {
-        present(FoundPhotoViewer(photo: photo), animated: true)
+    /// Full screen, starting on the tapped photo; swipe through the rest
+    private func showPhoto(at index: Int) {
+        present(FoundPhotosViewer(photos: Array(find.photos.prefix(Self.carouselLimit)), start: index), animated: true)
     }
 
     private func loadPicture(for item: MKMapItem) {
@@ -311,18 +311,36 @@ final class PhotoPlaceInfoViewController: BaseViewController {
     }
 }
 
-/// A photo from "Build my map", full screen on black; tap to close. Loads a
-/// screen-sized copy (from iCloud only now that the person asked for it).
-private final class FoundPhotoViewer: BaseViewController {
+/// The photos from "Build my map", full screen on black: swipe between them,
+/// tap the X (or swipe down) to close. Each page loads a screen-sized copy
+/// only when it's reached (from iCloud only then).
+private final class FoundPhotosViewer: BaseViewController, UICollectionViewDataSource, UICollectionViewDelegate {
     override var loadsDataOnViewDidLoad: Bool { false }
     override var showsLoadingIndicator: Bool { false }
 
-    private let photo: PhotoRef
-    private let imageView = UIImageView()
-    private let spinner = UIActivityIndicatorView(style: .large)
+    private let photos: [PhotoRef]
+    private let start: Int
+    private lazy var collection: UICollectionView = {
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .horizontal
+        layout.minimumLineSpacing = 0
+        let view = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        view.isPagingEnabled = true
+        view.showsHorizontalScrollIndicator = false
+        view.backgroundColor = .black
+        view.contentInsetAdjustmentBehavior = .never
+        view.register(PhotoPage.self, forCellWithReuseIdentifier: PhotoPage.id)
+        view.dataSource = self
+        view.delegate = self
+        return view
+    }()
+    private let counter = UILabel()
+    private lazy var closeButton = UIButton.iconButton(systemName: "xmark", pointSize: 18)
+    private var didScrollToStart = false
 
-    init(photo: PhotoRef) {
-        self.photo = photo
+    init(photos: [PhotoRef], start: Int) {
+        self.photos = photos
+        self.start = min(max(0, start), max(0, photos.count - 1))
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .fullScreen
     }
@@ -332,28 +350,104 @@ private final class FoundPhotoViewer: BaseViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
+        collection.frame = view.bounds
+        collection.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(collection)
+
+        closeButton.tintColor = .white
+        closeButton.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        closeButton.layer.cornerRadius = 20
+        closeButton.accessibilityLabel = "Close"
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        closeButton.addTarget(self, action: #selector(close), for: .touchUpInside)
+        counter.font = .systemFont(ofSize: 15, weight: .semibold)
+        counter.textColor = .white
+        counter.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(closeButton)
+        view.addSubview(counter)
+        NSLayoutConstraint.activate([
+            closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            closeButton.widthAnchor.constraint(equalToConstant: 40),
+            closeButton.heightAnchor.constraint(equalToConstant: 40),
+            counter.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            counter.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor)
+        ])
+        let down = UISwipeGestureRecognizer(target: self, action: #selector(close))
+        down.direction = .down
+        view.addGestureRecognizer(down)
+        updateCounter(start)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        (collection.collectionViewLayout as? UICollectionViewFlowLayout)?.itemSize = view.bounds.size
+        guard !didScrollToStart, view.bounds.width > 0 else { return }
+        didScrollToStart = true
+        collection.layoutIfNeeded()
+        collection.scrollToItem(at: IndexPath(item: start, section: 0), at: .centeredHorizontally, animated: false)
+    }
+
+    @objc private func close() { dismiss(animated: true) }
+
+    private func updateCounter(_ index: Int) {
+        counter.text = photos.count > 1 ? "\(index + 1) of \(photos.count)" : nil
+        counter.accessibilityLabel = counter.text.map { "Photo \($0)" }
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        guard scrollView.bounds.width > 0 else { return }
+        updateCounter(Int((scrollView.contentOffset.x / scrollView.bounds.width).rounded()))
+    }
+
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { photos.count }
+
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: PhotoPage.id, for: indexPath) as! PhotoPage
+        let side = max(view.bounds.width, view.bounds.height) * UIScreen.main.scale
+        cell.show(photos[indexPath.item], side: side)
+        return cell
+    }
+}
+
+/// One full-screen page; ignores a late image meant for a reused cell.
+private final class PhotoPage: UICollectionViewCell {
+    static let id = "PhotoPage"
+    private let imageView = UIImageView()
+    private let spinner = UIActivityIndicatorView(style: .large)
+    private var token = UUID()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
         imageView.contentMode = .scaleAspectFit
-        imageView.frame = view.bounds
+        imageView.frame = contentView.bounds
         imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        view.addSubview(imageView)
+        contentView.addSubview(imageView)
         spinner.color = .white
-        spinner.center = view.center
-        spinner.autoresizingMask = [.flexibleTopMargin, .flexibleBottomMargin, .flexibleLeftMargin, .flexibleRightMargin]
-        view.addSubview(spinner)
-        view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(close)))
-        view.accessibilityHint = "Tap to close"
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(spinner)
+        NSLayoutConstraint.activate([
+            spinner.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: contentView.centerYAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func show(_ photo: PhotoRef, side: CGFloat) {
+        let mine = UUID()
+        token = mine
+        imageView.image = nil
         switch photo {
         case .image(let image):
             imageView.image = image
         case .asset(let id):
             spinner.startAnimating()
-            let side = max(view.bounds.width, view.bounds.height) * UIScreen.main.scale
             PhotoLibraryIndex.shared.image(for: id, size: CGSize(width: side, height: side)) { [weak self] image in
-                self?.spinner.stopAnimating()
-                self?.imageView.image = image
+                guard let self, self.token == mine else { return }
+                self.spinner.stopAnimating()
+                self.imageView.image = image
             }
         }
     }
-
-    @objc private func close() { dismiss(animated: true) }
 }
