@@ -89,7 +89,12 @@ function attributionFor(events, markets) {
   }
   const parts = [];
   if (names.length) parts.push(`Events from ${names.join(' and ')}`);
-  if (markets.length) parts.push('Farmers markets from the USDA directory');
+  if (markets.length) {
+    // OpenStreetMap data is ODbL: credit it wherever its hours show
+    parts.push(markets.some((m) => m.hoursSource === 'osm' || m.onOpenStreetMap)
+      ? 'Farmers markets from the USDA directory, hours from © OpenStreetMap contributors and Google'
+      : 'Farmers markets from the USDA directory');
+  }
   return parts.join(' · ') || null;
 }
 
@@ -106,7 +111,7 @@ async function getLocalFeed(lat, lng, { now = new Date() } = {}) {
     settle(storeEvents.eventsNear(lat, lng, { now }), 'store events'),
     settle(ticketmaster.eventsNear(lat, lng, { now }), 'Ticketmaster'),
     settle(library.eventsNear(lat, lng, { now }), 'library'),
-    settle(cached(`fm3_${cell}`, { memoryMs: 6 * 3600000, storeMs: 24 * 3600000, now: now.getTime() },
+    settle(cached(`fm4_${cell}`, { memoryMs: 6 * 3600000, storeMs: 24 * 3600000, now: now.getTime() },
       () => farmersMarkets.marketsNear(lat, lng)), 'farmers markets')
   ]);
   const events = mergeEvents({ store, tm, lib }, lat, lng, now);

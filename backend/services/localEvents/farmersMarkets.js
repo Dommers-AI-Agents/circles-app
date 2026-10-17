@@ -91,7 +91,8 @@ async function marketsNear(lat, lng) {
         distanceMeters: Math.round(meters),
         acceptsSnap: !!m.acceptsSnap,
         organic: !!m.organic,
-        google: m.google || null
+        google: m.google || null,
+        details: m.details || null
       });
     }
   }
