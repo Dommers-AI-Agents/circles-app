@@ -2,10 +2,10 @@ import Photos
 import UIKit
 
 /// Where and when every photo in the library was taken, read on the phone
-/// and cached (Caches), so "your photos from here" and "build a circle from
-/// my photos" answer instantly (Wes, 2026-10-09). Nothing leaves the phone
-/// except a photo the person chooses to add. Asks for library access only
-/// when a photo feature is used.
+/// and cached (Caches), so "Add from photos" answers instantly (Wes,
+/// 2026-10-09). Nothing leaves the phone: the photos only help find and
+/// recognize places (2026-10-17). Asks for library access only when a
+/// photo feature is used.
 final class PhotoLibraryIndex {
     static let shared = PhotoLibraryIndex()
 
@@ -101,39 +101,6 @@ final class PhotoLibraryIndex {
             DispatchQueue.main.async { completion(image) }
         }
     }
-
-    /// The ≤2048 px image used when a photo is added to a place.
-    func uploadImage(for id: String, completion: @escaping (UIImage?) -> Void) {
-        image(for: id, size: CGSize(width: 2048, height: 2048), completion: completion)
-    }
-
-    // MARK: - Already added
-
-    /// Library photos already added to a place from "your photos from here",
-    /// so the section doesn't offer them again. Kept on this phone.
-    func addedIds(toPlace placeKey: String) -> Set<String> {
-        Set(UserDefaults.standard.stringArray(forKey: Self.addedKey(placeKey)) ?? [])
-    }
-
-    func markAdded(_ ids: [String], toPlace placeKey: String) {
-        let all = addedIds(toPlace: placeKey).union(ids)
-        UserDefaults.standard.set(Array(all), forKey: Self.addedKey(placeKey))
-    }
-
-    private static func addedKey(_ placeKey: String) -> String { "photosAddedToPlace.\(placeKey)" }
-
-    /// Photos the person said aren't from this place ("Dismiss"): never
-    /// offered for it again. Kept on this phone.
-    func dismissedIds(forPlace placeKey: String) -> Set<String> {
-        Set(UserDefaults.standard.stringArray(forKey: Self.dismissedKey(placeKey)) ?? [])
-    }
-
-    func markDismissed(_ ids: [String], forPlace placeKey: String) {
-        let all = dismissedIds(forPlace: placeKey).union(ids)
-        UserDefaults.standard.set(Array(all), forKey: Self.dismissedKey(placeKey))
-    }
-
-    private static func dismissedKey(_ placeKey: String) -> String { "photosDismissedForPlace.\(placeKey)" }
 
     // MARK: - Reading
 

@@ -80,9 +80,6 @@ final class PhotoFind {
     /// Saved already (a later batch failed or hit the free limit)
     var saved = false
 
-    /// Your own photo goes on the place only if you ask (off: the photo is
-    /// just how the place was found; saved places get Apple's street photo)
-    var addMyPhoto = false
     /// Every visit to this place in the photos (repeat visits merge into the
     /// first row instead of listing the same place again)
     private(set) var spotKeys: [String]

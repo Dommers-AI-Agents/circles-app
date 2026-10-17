@@ -391,37 +391,20 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
         }
     }
 
+    /// The places to save. The photos that found them are never uploaded:
+    /// they only help the person choose (Wes, 2026-10-17: "the images are
+    /// only meant to help a user save places"). The server gives each save
+    /// its Google photo and details like a manual save.
     private func uploadPhotos(_ rows: [PhotoFind], completion: @escaping ([PhotoMapPlace]) -> Void) {
-        var urls = [String?](repeating: nil, count: rows.count)
-        let group = DispatchGroup()
-        // Only photos the person chose to add; the rest stay on the phone. The
-        // server gives each save its Google photo and details like a manual
-        // save, and Apple's street photo where Google has none
-        for (index, find) in rows.enumerated() where find.addMyPhoto {
-            group.enter()
-            let upload: (UIImage?) -> Void = { image in
-                guard let data = image?.jpegData(compressionQuality: 0.8) else { return group.leave() }
-                PlaceService.shared.uploadImage(data) { result in
-                    urls[index] = try? result.get()
-                    group.leave()
-                }
-            }
-            switch find.spot.photo {
-            case .image(let image): upload(image)
-            case .asset(let id): PhotoLibraryIndex.shared.uploadImage(for: id, completion: upload)
-            }
-        }
-        group.notify(queue: .main) {
-            completion(rows.enumerated().map { index, find in
-                let item = find.item
-                let mapping = AppleMapItemFormFill.categoryMapping(poiCategory: item.pointOfInterestCategory, name: item.name)
-                return PhotoMapPlace(name: item.name ?? "Place", address: Self.address(item.placemark),
-                                     coordinate: item.placemark.coordinate, category: mapping.category.rawValue,
-                                     applePoiCategory: item.pointOfInterestCategory?.rawValue,
-                                     photoUrl: urls[index], spotKey: find.spot.key,
-                                     applePlaceId: item.applePlaceId)
-            })
-        }
+        completion(rows.map { find in
+            let item = find.item
+            let mapping = AppleMapItemFormFill.categoryMapping(poiCategory: item.pointOfInterestCategory, name: item.name)
+            return PhotoMapPlace(name: item.name ?? "Place", address: Self.address(item.placemark),
+                                 coordinate: item.placemark.coordinate, category: mapping.category.rawValue,
+                                 applePoiCategory: item.pointOfInterestCategory?.rawValue,
+                                 photoUrl: nil, spotKey: find.spot.key,
+                                 applePlaceId: item.applePlaceId)
+        })
     }
 
     private func reachedLimit(saved: Int, circleId: String?, coins: Double) {

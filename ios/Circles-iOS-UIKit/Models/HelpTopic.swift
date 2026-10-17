@@ -312,12 +312,10 @@ class HelpContentProvider {
 
                 **Your privacy:**
                 • Your photos stay on your phone. Only where a photo was taken is used to find the place
-                • Your photo is added to a place only if you turn on **Also add my photo** for it
+                • They're never added to the places you save. To share a photo of a place, open it and tap **Add photo**
                 • Saved places get their photo and details (hours, phone, website) from Google Maps, like any place you add
 
                 **No duplicates:** places you've already saved are skipped, even when Apple and Google name them differently.
-
-                **On a place's page:** "Your photos from here" offers photos you took there. Tap **Add** to add them to the place, or **Dismiss** if they're not from there; dismissed photos aren't offered again.
 
                 Your first 25 places from photos are free; Premium adds the rest.
                 """,

@@ -105,13 +105,6 @@ final class PhotoPlaceInfoViewController: BaseViewController {
             self?.find.include = on
             self?.onChange()
         })
-        stack.addArrangedSubview(switchRow(
-            title: "Also add my photo",
-            subtitle: "Your photos stay on your phone. Only where they were taken is used to find the place; a saved place gets its photo from Google Maps, like any place you add.",
-            isOn: find.addMyPhoto) { [weak self] on in
-                self?.find.addMyPhoto = on
-                self?.onChange()
-            })
 
         if !find.photos.isEmpty {
             stack.setCustomSpacing(20, after: stack.arrangedSubviews.last!)
@@ -152,7 +145,7 @@ final class PhotoPlaceInfoViewController: BaseViewController {
         header.text = find.photos.count == 1 ? "Your photo from here" : "Your \(find.photos.count) photos from here"
         header.font = .systemFont(ofSize: 15, weight: .semibold)
         let caption = UILabel()
-        caption.text = "On your phone only. Tap one to see it bigger."
+        caption.text = "Only to help you recognize the place. They stay on your phone and are never added to it."
         caption.font = .systemFont(ofSize: 12)
         caption.textColor = Constants.Colors.secondaryLabel
 
