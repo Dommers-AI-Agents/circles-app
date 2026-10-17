@@ -56,6 +56,14 @@ const canSee = (photo, viewerId) => {
   return true;
 };
 
+/**
+ * Does the place have a photo anyone can see? Removed and private entries
+ * stay in the array, so `photos.length` overstates it: a venue whose only
+ * photos were removed counted as pictured, and never got its Google photo
+ * (2026-10-17).
+ */
+const hasVisiblePhotos = (photos) => visiblePhotos(photos, null).length > 0;
+
 /** The pool as `viewerId` sees it: visible entries, stored order, one per URL. */
 const visiblePhotos = (photos, viewerId) => {
   const seen = new Set();
@@ -373,7 +381,7 @@ async function saveIdsForPlace(globalPlaceId, placeData) {
 
 module.exports = {
   // rules
-  urlOf, isRemoved, canSee, visiblePhotos, hiddenUrls, coverUrl, reordered, movedToFront, permissionsFor,
+  urlOf, isRemoved, canSee, visiblePhotos, hasVisiblePhotos, hiddenUrls, coverUrl, reordered, movedToFront, permissionsFor,
   // data
   effectivelyPrivate, saveIsPrivate, venueForPlace, rightsFor, uploaderSaveIsPrivate, mutatePhotos, reorder, setCover, remove, setLiked, append, adoptSavePhotos, saveIdsForPlace
 };

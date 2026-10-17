@@ -522,7 +522,7 @@ exports.setDefaultGooglePhoto = async (req, res) => {
     if (Array.isArray(place.photos) && place.photos.length > 0) return settle('has_photo');
     if (place.globalPlaceId) {
       const venue = await db.collection('globalPlaces').doc(place.globalPlaceId).get();
-      if (venue.exists && (venue.data().photos || []).length > 0) return settle('venue_has_photo');
+      if (venue.exists && require('../../services/placePhotoService').hasVisiblePhotos(venue.data().photos)) return settle('venue_has_photo');
     }
     // Bulk imports never spend on Google; Build my map saves do (chosen one by one)
     if ((place.importSource && place.importSource !== 'photos') || place.googlePhotoChecked) return done(false, 'not_eligible');

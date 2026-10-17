@@ -181,3 +181,14 @@ describe('photos that arrive on a save join the one library', () => {
   });
 });
 
+
+// A venue whose only photos were removed is not "pictured" (2026-10-17):
+// it gets a Google photo like any bare save.
+test('hasVisiblePhotos ignores removed and private entries', () => {
+  expect(svc.hasVisiblePhotos([])).toBe(false);
+  expect(svc.hasVisiblePhotos(undefined)).toBe(false);
+  expect(svc.hasVisiblePhotos([{ id: 'a', url: 'https://x/a.jpg', removedAt: '2026-10-17T19:00:00Z' }])).toBe(false);
+  expect(svc.hasVisiblePhotos([{ id: 'b', url: 'https://x/b.jpg', private: true, uploadedBy: 'me' }])).toBe(false);
+  expect(svc.hasVisiblePhotos([{ id: 'c', url: 'https://x/c.jpg' }])).toBe(true);
+  expect(svc.hasVisiblePhotos(['https://x/legacy.jpg'])).toBe(true);
+});

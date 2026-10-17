@@ -160,7 +160,7 @@ async function enrichSaveFromGoogle(placeData) {
         // A bare canonical can still carry photos (copied from the first
         // save) — re-hosting Google's photo again would add a
         // byte-identical duplicate under a new URL.
-        skipPhotos: !!(canonicalData && (canonicalData.photos || []).length)
+        skipPhotos: !!(canonicalData && require('./placePhotoService').hasVisiblePhotos(canonicalData.photos))
       });
       if (googleData.googlePlaceId) {
         placeData.googlePlaceId = googleData.googlePlaceId;
@@ -216,7 +216,7 @@ async function enrichSaveFromGoogle(placeData) {
             canonicalUpdates.descriptionSource = 'google_editorial';
           }
           if (googleData.photos && googleData.photos.length > 0 &&
-              !(canonicalData.photos || []).length) {
+              !require('./placePhotoService').hasVisiblePhotos(canonicalData.photos)) {
             canonicalUpdates.photos = googleData.photos.map(url => createAttributedPhoto({
               url,
               uploadedBy: null,

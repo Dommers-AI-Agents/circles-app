@@ -1079,7 +1079,7 @@ exports.createPlace = async (req, res, next) => {
       if (!(placeData.photos || []).length) {
         try {
           const venue = await db.collection('globalPlaces').doc(globalPlaceId).get();
-          if (!venue.exists || !(venue.data().photos || []).length) {
+          if (!venue.exists || !require('../../services/placePhotoService').hasVisiblePhotos(venue.data().photos)) {
             await placeRef.update({ needsPhoto: true });
           }
         } catch (e) { /* best-effort: the place is saved either way */ }
