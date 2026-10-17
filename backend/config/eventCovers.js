@@ -23,4 +23,7 @@ function eventCoverUrl(emoji) {
 /** Whether a circle's cover is one of these (so an emoji change may swap it). */
 const isEventCover = (url) => typeof url === 'string' && url.startsWith(`${BASE}/`);
 
-module.exports = { eventCoverUrl, isEventCover };
+/** "Places from my photos" when none of its photos uploaded (a real photo replaces it). */
+const PHOTOS_FALLBACK_COVER = `${BASE}/photos-cover.jpg`;
+
+module.exports = { eventCoverUrl, isEventCover, PHOTOS_FALLBACK_COVER };

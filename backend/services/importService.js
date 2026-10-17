@@ -358,6 +358,17 @@ async function prepareImport(userId, payload) {
  * Idempotent — re-runs skip anything whose sourceExternalId (or
  * googlePlaceId / name+address) already exists.
  */
+/**
+ * The photo circle's cover after a batch: keep a cover someone chose; a
+ * user photo replaces nothing or the 📸 placeholder; no photo at all gets
+ * the placeholder.
+ */
+function photoCircleCover(current, firstPhoto, fallback) {
+  if (current && current !== fallback) return current;
+  if (firstPhoto) return firstPhoto;
+  return current || fallback;
+}
+
 async function executeImport(userId, payload) {
   const shapeError = validatePayloadShape(payload);
   if (shapeError) return { error: shapeError };
@@ -557,21 +568,20 @@ async function executeImport(userId, payload) {
       await batch.commit();
       listResult.created = newPlaceIds.length;
 
-      // "Places from my photos" gets one of the uploaded photos as its cover
-      // (Wes, 2026-10-17) — only while it has none, so a cover the person
-      // picked themselves stays
+      // "Places from my photos" always has a cover (Wes, 2026-10-17): one of
+      // the uploaded photos, or the 📸 cover until a photo arrives. A cover
+      // the person picked themselves stays.
       if (payload.source === 'photos') {
         const firstPhoto = (list.places || []).flatMap((p) => Array.isArray(p.photos) ? p.photos : [])
           .find((url) => typeof url === 'string' && url.startsWith('https://'));
-        if (firstPhoto) {
-          try {
-            const circleSnap = await circleRef.get();
-            if (circleSnap.exists && !circleSnap.data().coverImage) {
-              await circleRef.update({ coverImage: firstPhoto });
-            }
-          } catch (coverError) {
-            console.error('⚠️ Photo circle cover failed (non-fatal):', coverError.message);
-          }
+        try {
+          const { PHOTOS_FALLBACK_COVER } = require('../config/eventCovers');
+          const circleSnap = await circleRef.get();
+          const current = circleSnap.exists ? circleSnap.data().coverImage : null;
+          const next = photoCircleCover(current, firstPhoto, PHOTOS_FALLBACK_COVER);
+          if (circleSnap.exists && next !== current) await circleRef.update({ coverImage: next });
+        } catch (coverError) {
+          console.error('⚠️ Photo circle cover failed (non-fatal):', coverError.message);
         }
       }
 
@@ -605,6 +615,7 @@ async function executeImport(userId, payload) {
 }
 
 module.exports = {
+  photoCircleCover,
   prepareImport,
   executeImport,
   MAX_PLACES_PER_REQUEST
