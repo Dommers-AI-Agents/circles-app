@@ -1876,19 +1876,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             UIAction(title: "Search for a place", image: UIImage(systemName: "magnifyingglass")) { [weak self] _ in
                 self?.quickAddPlaceButtonTapped()
             },
-            UIAction(title: "From photos", image: UIImage(systemName: "photo.on.rectangle")) { [weak self] _ in
-                self?.addPlacesFromPhotos()
-            },
-            // Every place in your photos → "Places from my photos", nearest
-            // first (Wes, 2026-10-16)
-            UIAction(title: "Build my map from my photos", image: UIImage(systemName: "photo.stack.fill")) { [weak self] _ in
-                self?.showPhotoMapBuilder()
-            },
-            // A trip, dates or an album → a new circle (Wes, 2026-10-09)
-            UIAction(title: "Build a circle from my photos", image: UIImage(systemName: "photo.stack")) { [weak self] _ in
-                guard let self else { return }
-                let scan = PhotoScanViewController(savedPlaces: self.userOwnPlaces, circles: self.circles)
-                self.navigationController?.pushViewController(scan, animated: true)
+            // One entry for every photo way (Wes, 2026-10-17): pick photos,
+            // scan a time period, or build my map — explained on the next page
+            UIAction(title: "Add from photos", image: UIImage(systemName: "photo.on.rectangle")) { [weak self] _ in
+                self?.showAddFromPhotos()
             }
         ])
         quickAddPlaceButton.showsMenuAsPrimaryAction = true
@@ -2924,9 +2915,15 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    /// Build my map from my photos (Add Place menu, the first-week card)
+    /// Add Place → Add from photos: pick photos, a time period, or build my map
+    func showAddFromPhotos() {
+        let hub = AddFromPhotosViewController(savedPlaces: userOwnPlaces, circles: circles)
+        navigationController?.pushViewController(hub, animated: true)
+    }
+
+    /// The first-week card goes straight to Build my map
     func showPhotoMapBuilder() {
-        let builder = PhotoMapBuilderViewController(savedPlaces: userOwnPlaces)
+        let builder = PhotoMapBuilderViewController(savedPlaces: userOwnPlaces, circles: circles)
         navigationController?.pushViewController(builder, animated: true)
     }
 
@@ -3152,26 +3149,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         let navController = UINavigationController(rootViewController: quickStartVC)
         navController.modalPresentationStyle = .pageSheet
         present(navController, animated: true)
-    }
-
-    /// Pick photos, then "Places from your photos" groups them by where they
-    /// were taken and offers each spot.
-    func addPlacesFromPhotos() {
-        guard !circles.isEmpty else { quickAddPlaceButtonTapped(); return }   // seeds circles first
-        PhotoPickerRelay.present(from: self, configuration: PhotoMetadataReader.pickerConfiguration()) { [weak self] results in
-            guard let self else { return }
-            let loading = AlertPresenter.showLoading(message: "Reading your photos…", from: self)
-            PhotoMetadataReader.load(results) { [weak self] picked in
-                loading.dismiss(animated: true) {
-                    guard let self, !picked.isEmpty else { return }
-                    let lastUsed = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey)
-                    let circleId = self.circles.first { $0.id == lastUsed }?.id ?? self.circles[0].id
-                    let screen = PhotoPlacesViewController(picked: picked, savedPlaces: self.userOwnPlaces,
-                                                           circles: self.circles, defaultCircleId: circleId)
-                    self.navigationController?.pushViewController(screen, animated: true)
-                }
-            }
-        }
     }
 
     @objc func quickAddPlaceButtonTapped() {

@@ -2,7 +2,7 @@ import CoreLocation
 
 /// "From photos": which picked photos were taken at the same spot. Photos
 /// keep their GPS fix and capture time even with no signal, so a day out can
-/// be saved later (Wes, 2026-10-04). Pure; PhotoPlacesViewController reads the
+/// be saved later (Wes, 2026-10-04). Pure; the Pick photos way of Add from photos reads the
 /// metadata and runs the lookups.
 enum PhotoPlaceGrouper {
     struct Fix: Equatable {

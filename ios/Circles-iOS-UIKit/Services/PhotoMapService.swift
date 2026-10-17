@@ -28,6 +28,7 @@ struct PhotoMapBatchResult: Decodable {
     let added: Int
     let skippedDuplicates: Int?
     let circleId: String?
+    let circleName: String?
     /// nil on Premium
     let remainingFree: Int?
     let maxFree: Int?
@@ -40,9 +41,26 @@ struct PhotoMapBatchResult: Decodable {
 /// POST /api/import/photos: places from photos into "Places from my photos"
 /// (free up to 25, then Premium; no Google calls on the server).
 enum PhotoMapService {
+    /// Where the places go
+    enum Target: Equatable {
+        /// "Places from my photos"
+        case photos
+        case circle(id: String, name: String)
+        case new(name: String, privacy: PrivacyLevel, showOnMap: Bool)
+
+        var body: [String: Any] {
+            switch self {
+            case .photos: return ["kind": "photos"]
+            case .circle(let id, _): return ["kind": "circle", "circleId": id]
+            case .new(let name, let privacy, let showOnMap):
+                return ["kind": "new", "name": name, "privacy": privacy.rawValue, "showOnMap": showOnMap]
+            }
+        }
+    }
+
     enum Outcome {
         case added(PhotoMapBatchResult)
-        /// The free allowance is used up
+        /// The free allowance is used up (or, for a new circle, the free circle cap)
         case limitReached
         case failed(Error)
     }
@@ -52,11 +70,11 @@ enum PhotoMapService {
         let data: PhotoMapBatchResult?
     }
 
-    static func add(_ places: [PhotoMapPlace], completion: @escaping (Outcome) -> Void) {
+    static func add(_ places: [PhotoMapPlace], to target: Target = .photos, completion: @escaping (Outcome) -> Void) {
         APIService.shared.request(
             endpoint: "import/photos",
             method: .post,
-            body: ["places": places.map(\.body)],
+            body: ["places": places.map(\.body), "target": target.body],
             requiresAuth: true
         ) { (result: Result<Envelope, APIError>) in
             DispatchQueue.main.async {

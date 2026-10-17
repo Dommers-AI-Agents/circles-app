@@ -544,7 +544,9 @@ async function executeImport(userId, payload) {
         privateNotes: place.notes || null,
         // Source tag makes the whole batch filterable/sweepable later; the
         // original list name rides along as a tag too ("want-to-go")
-        tags: [...new Set([...(place.tags || []), importTag, listNameTag(circleName)].filter(Boolean))],
+        // Photo places: just "from-photos" (the circle's own name as a tag
+        // only repeated the circle as a filter chip)
+        tags: [...new Set([...(place.tags || []), importTag, payload.source === 'photos' ? null : listNameTag(circleName)].filter(Boolean))],
         website: place.sourceUrl || null,
         googlePlaceId: place.googlePlaceId || null,
         applePoiCategory: typeof place.applePoiCategory === 'string' ? place.applePoiCategory : null,
