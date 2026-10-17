@@ -252,7 +252,10 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
         let when = DateFormatter.localizedString(from: find.lastVisit, dateStyle: .medium, timeStyle: .none)
         let photos = "\(find.photoCount) photo\(find.photoCount == 1 ? "" : "s")"
         let visits = find.visits > 1 ? "\(find.visits) visits" : when
-        cell.detailTextLabel?.text = find.saved ? "Saved" : "\(PhotoPlaceKind.label(item)) \u{00B7} \(visits) \u{00B7} \(photos)"
+        // Rough location with another place about as close: say so, so it
+        // gets a tap before saving (the place card lists the others)
+        let guess = find.isBestGuess ? "Best guess \u{00B7} " : ""
+        cell.detailTextLabel?.text = find.saved ? "Saved" : "\(guess)\(PhotoPlaceKind.label(item)) \u{00B7} \(visits) \u{00B7} \(photos)"
         cell.detailTextLabel?.textColor = find.saved ? .systemGreen : .secondaryLabel
         cell.accessoryView = find.saved ? nil : checkButton(for: find, row: indexPath.row)
         cell.selectionStyle = .default

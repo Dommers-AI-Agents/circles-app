@@ -55,7 +55,8 @@ final class PhotoFillPicker: NSObject, PHPickerViewControllerDelegate {
         PhotoMetadataReader.load(results) { [weak self] picked in
             guard let self, let form = self.form else { loading.dismiss(animated: true); return }
             let groups = PhotoPlaceGrouper.group(picked.enumerated().map {
-                PhotoPlaceGrouper.Fix(id: $0.offset, coordinate: $0.element.coordinate, takenAt: $0.element.takenAt)
+                PhotoPlaceGrouper.Fix(id: $0.offset, coordinate: $0.element.coordinate, takenAt: $0.element.takenAt,
+                                  accuracy: $0.element.accuracy)
             })
             guard let group = groups.first(where: { $0.center != nil }), let center = group.center else {
                 loading.dismiss(animated: true) {

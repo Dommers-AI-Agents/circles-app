@@ -13,6 +13,8 @@ enum PhotoRef {
 struct PhotoFindSpot {
     let key: String
     let center: CLLocationCoordinate2D
+    /// How far off `center` may be, meters (from the photos' own GPS accuracy)
+    var uncertainty: Double = PhotoPlaceGrouper.assumedAccuracy
     let start: Date
     let photoCount: Int
     let photo: PhotoRef
@@ -24,14 +26,17 @@ struct PhotoFindSpot {
     init(spot: PhotoLibraryMath.Spot) {
         key = PhotoMapPlanner.key(spot)
         center = spot.center
+        uncertainty = spot.uncertainty
         start = spot.start
         photoCount = spot.shots.count
         photo = .asset(spot.shots[spot.shots.count / 2].id)
         photos = spot.shots.map { .asset($0.id) }
     }
 
-    init(key: String, center: CLLocationCoordinate2D, start: Date, photoCount: Int, photo: PhotoRef, photos: [PhotoRef]? = nil) {
-        self.key = key; self.center = center; self.start = start; self.photoCount = photoCount; self.photo = photo
+    init(key: String, center: CLLocationCoordinate2D, uncertainty: Double = PhotoPlaceGrouper.assumedAccuracy,
+         start: Date, photoCount: Int, photo: PhotoRef, photos: [PhotoRef]? = nil) {
+        self.key = key; self.center = center; self.uncertainty = uncertainty
+        self.start = start; self.photoCount = photoCount; self.photo = photo
         self.photos = photos ?? [photo]
     }
 
@@ -52,7 +57,8 @@ struct PhotoFindSpot {
     /// Picked photos: one spot per group of photos within 75 m. Returns the
     /// spots and how many picked photos had no location.
     static func fromPicked(_ picked: [PhotoMetadataReader.Picked]) -> (spots: [PhotoFindSpot], unlocated: Int) {
-        let fixes = picked.enumerated().map { PhotoPlaceGrouper.Fix(id: $0.offset, coordinate: $0.element.coordinate, takenAt: $0.element.takenAt) }
+        let fixes = picked.enumerated().map { PhotoPlaceGrouper.Fix(id: $0.offset, coordinate: $0.element.coordinate, takenAt: $0.element.takenAt,
+                                  accuracy: $0.element.accuracy) }
         var unlocated = 0
         var spots: [PhotoFindSpot] = []
         for group in PhotoPlaceGrouper.group(fixes) {
@@ -62,6 +68,7 @@ struct PhotoFindSpot {
             }
             spots.append(PhotoFindSpot(
                 key: String(format: "%.3f,%.3f", center.latitude, center.longitude), center: center,
+                uncertainty: group.uncertainty,
                 start: group.takenAt ?? Date(), photoCount: group.photoIds.count, photo: .image(picked[first].image),
                 photos: group.photoIds.map { .image(picked[$0].image) }))
         }
@@ -99,6 +106,16 @@ final class PhotoFind {
     }
 
     var item: MKMapItem { candidates[min(choice, candidates.count - 1)] }
+
+    /// The photos' location is rough and another place is about as close:
+    /// the row calls it a best guess so it gets a look before saving
+    var isBestGuess: Bool {
+        let here = CLLocation(latitude: spot.center.latitude, longitude: spot.center.longitude)
+        let distances = candidates.prefix(2).map {
+            here.distance(from: CLLocation(latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude))
+        }
+        return choice == 0 && PhotoPlaceKind.isBestGuess(distances: distances, uncertainty: spot.uncertainty)
+    }
 
     /// Another visit to the same place
     func absorb(_ other: PhotoFindSpot) {
@@ -224,7 +241,7 @@ final class PhotoPlaceFinder {
             self.handle(spot: spot, started: started, result: .failure(LookupTimeout()))
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.lookupTimeout, execute: timeout)
-        NearbyPOILookup.savablePlacesResult(near: spot.center) { [weak self] result in
+        NearbyPOILookup.savablePlacesResult(near: spot.center, uncertainty: spot.uncertainty) { [weak self] result in
             guard let self, self.lookupToken == token else { return }
             self.lookupToken = nil
             timeout.cancel()

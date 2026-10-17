@@ -108,6 +108,8 @@ final class PhotoMapBuilderViewController: BaseViewController {
                 self.primaryButton.isEnabled = true
                 self.primaryButton.setTitle("Build my map", for: .normal)
                 AnalyticsService.shared.logEvent("photo_map_scanned", parameters: ["photos": String(shots.count), "spots": String(spots.count)])
+                AnalyticsService.shared.logEvent("photo_map_accuracy",
+                                                 parameters: PhotoLibraryMath.accuracyReport(shots: shots, spotUncertainties: spots.map(\.uncertainty)))
                 guard !spots.isEmpty else {
                     return self.showError("No new places in your photos: they were taken at home, at places you\u{2019}ve already saved, or without a location.")
                 }

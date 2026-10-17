@@ -12,6 +12,8 @@ enum PhotoMetadataReader {
         let image: UIImage                         // downscaled for display + upload; carries no metadata
         let coordinate: CLLocationCoordinate2D?
         let takenAt: Date?
+        /// The phone's GPS error estimate, meters (EXIF GPSHPositioningError)
+        var accuracy: Double? = nil
     }
 
     /// Picker set up to hand over the original files (with their metadata).
@@ -47,7 +49,7 @@ enum PhotoMetadataReader {
                 guard let data, let image = displayImage(from: data) else { return }
                 let meta = metadata(from: data)
                 lock.lock()
-                picked[index] = Picked(image: image, coordinate: meta.coordinate, takenAt: meta.takenAt)
+                picked[index] = Picked(image: image, coordinate: meta.coordinate, takenAt: meta.takenAt, accuracy: meta.accuracy)
                 lock.unlock()
             }
         }
@@ -56,12 +58,21 @@ enum PhotoMetadataReader {
     }
 
     /// GPS position and capture time from an image file's properties.
-    static func metadata(from data: Data) -> (coordinate: CLLocationCoordinate2D?, takenAt: Date?) {
+    static func metadata(from data: Data) -> (coordinate: CLLocationCoordinate2D?, takenAt: Date?, accuracy: Double?) {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else { return (nil, nil) }
-        return (coordinate(fromGPS: props[kCGImagePropertyGPSDictionary] as? [CFString: Any]),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else { return (nil, nil, nil) }
+        let gps = props[kCGImagePropertyGPSDictionary] as? [CFString: Any]
+        return (coordinate(fromGPS: gps),
                 takenAt(exif: props[kCGImagePropertyExifDictionary] as? [CFString: Any],
-                        tiff: props[kCGImagePropertyTIFFDictionary] as? [CFString: Any]))
+                        tiff: props[kCGImagePropertyTIFFDictionary] as? [CFString: Any]),
+                accuracy(fromGPS: gps))
+    }
+
+    /// How sure the phone was of the fix, meters; nil when not recorded.
+    static func accuracy(fromGPS gps: [CFString: Any]?) -> Double? {
+        guard let value = (gps?[kCGImagePropertyGPSHPositioningError] as? NSNumber)?.doubleValue,
+              value.isFinite, value > 0 else { return nil }
+        return value
     }
 
     static func coordinate(fromGPS gps: [CFString: Any]?) -> CLLocationCoordinate2D? {

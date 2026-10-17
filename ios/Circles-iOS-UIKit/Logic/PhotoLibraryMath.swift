@@ -11,13 +11,18 @@ enum PhotoLibraryMath {
         let lat: Double
         let lng: Double
         let date: Date
+        /// The phone's error estimate for the fix, meters (nil = not recorded)
+        var acc: Double? = nil
         var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: lat, longitude: lng) }
     }
 
     /// A stop: photos taken together at one spot
     struct Spot: Equatable {
         let shots: [Shot]           // in the order taken
+        /// Weighted by each fix's accuracy (PhotoPlaceGrouper.estimate)
         let center: CLLocationCoordinate2D
+        /// How far off `center` may be, meters
+        var uncertainty: Double = PhotoPlaceGrouper.assumedAccuracy
         var start: Date { shots.first!.date }
         var end: Date { shots.last!.date }
         static func == (a: Spot, b: Spot) -> Bool { a.shots == b.shots }
@@ -56,9 +61,11 @@ enum PhotoLibraryMath {
         var out: [Spot] = []
         var current: [Shot] = []
         func flush() {
-            guard let center = PhotoPlaceGrouper.median(current.map(\.coordinate)) else { return }
+            guard let best = PhotoPlaceGrouper.estimate(current.map { ($0.coordinate, $0.acc) }) else { return }
             let minutes = (current.last!.date.timeIntervalSince(current.first!.date)) / 60
-            if current.count >= 2 || minutes >= minStopMinutes { out.append(Spot(shots: current, center: center)) }
+            if current.count >= 2 || minutes >= minStopMinutes {
+                out.append(Spot(shots: current, center: best.center, uncertainty: best.uncertainty))
+            }
         }
         for shot in shots.sorted(by: { $0.date < $1.date }) {
             if let center = PhotoPlaceGrouper.median(current.map(\.coordinate)), distance(center, shot.coordinate) > stopRadius {
@@ -122,6 +129,23 @@ enum PhotoLibraryMath {
     static func isSkippable(_ spot: Spot, home: CLLocationCoordinate2D?, saved: [CLLocationCoordinate2D]) -> Bool {
         if let home, distance(spot.center, home) <= homeRadius { return true }
         return saved.contains { distance($0, spot.center) <= placeRadius }
+    }
+
+    /// How good the library's locations are, for one analytics event per
+    /// scan (tunes the accuracy rules from real phones): photo counts by the
+    /// phone's error estimate, and the middle spot's uncertainty in meters.
+    static func accuracyReport(shots: [Shot], spotUncertainties: [Double]) -> [String: String] {
+        var buckets = ["acc_le10": 0, "acc_le30": 0, "acc_le65": 0, "acc_gt65": 0, "acc_none": 0]
+        for shot in shots {
+            guard let acc = shot.acc else { buckets["acc_none", default: 0] += 1; continue }
+            let key = acc <= 10 ? "acc_le10" : acc <= 30 ? "acc_le30" : acc <= 65 ? "acc_le65" : "acc_gt65"
+            buckets[key, default: 0] += 1
+        }
+        var out = buckets.mapValues(String.init)
+        let sorted = spotUncertainties.sorted()
+        out["spot_uncertainty_median"] = sorted.isEmpty ? "0" : String(Int(sorted[sorted.count / 2].rounded()))
+        out["spots"] = String(sorted.count)
+        return out
     }
 
     /// "Charleston · Sep 2026" / "Sep 12–15, 2026"

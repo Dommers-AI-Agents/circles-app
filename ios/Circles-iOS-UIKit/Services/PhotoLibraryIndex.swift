@@ -20,7 +20,7 @@ final class PhotoLibraryIndex {
 
     private var cacheURL: URL? {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("photo-library-index-v2.json")
+            .appendingPathComponent("photo-library-index-v3.json")
     }
 
     // MARK: - Access
@@ -142,7 +142,9 @@ final class PhotoLibraryIndex {
         guard let location = asset.location, let date = asset.creationDate,
               CLLocationCoordinate2DIsValid(location.coordinate),
               !(location.coordinate.latitude == 0 && location.coordinate.longitude == 0) else { return nil }
-        return Shot(id: asset.localIdentifier, lat: location.coordinate.latitude, lng: location.coordinate.longitude, date: date)
+        let accuracy = location.horizontalAccuracy > 0 ? location.horizontalAccuracy : nil
+        return Shot(id: asset.localIdentifier, lat: location.coordinate.latitude, lng: location.coordinate.longitude,
+                    date: date, acc: accuracy)
     }
 
     private struct CacheFile: Codable {
@@ -151,9 +153,11 @@ final class PhotoLibraryIndex {
     }
 
     private func loadCache() {
-        // v1 had no photo count; it's rebuilt as v2
-        if let old = cacheURL?.deletingLastPathComponent().appendingPathComponent("photo-library-index-v1.json") {
-            try? FileManager.default.removeItem(at: old)
+        // v1 had no photo count, v2 no fix accuracy; both are rebuilt as v3
+        for old in ["photo-library-index-v1.json", "photo-library-index-v2.json"] {
+            if let url = cacheURL?.deletingLastPathComponent().appendingPathComponent(old) {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
         guard let url = cacheURL, let data = try? Data(contentsOf: url),
               let file = try? JSONDecoder().decode(CacheFile.self, from: data) else { return }

@@ -46,7 +46,9 @@ enum NearbyPOILookup {
     }
 
     /// Same, with Apple Maps failures reported (Build my map retries them)
-    static func savablePlacesResult(near coordinate: CLLocationCoordinate2D, limit: Int = 6,
+    /// `uncertainty` (meters, from the photos' GPS accuracy) sets how far a
+    /// place may be and how much a café's head start counts.
+    static func savablePlacesResult(near coordinate: CLLocationCoordinate2D, uncertainty: Double? = nil, limit: Int = 6,
                                     completion: @escaping (Result<[MKMapItem], Error>) -> Void) {
         // No category filter on the search: a church or venue Apple leaves
         // uncategorized would vanish; PhotoPlaceKind judges each result
@@ -60,8 +62,8 @@ enum NearbyPOILookup {
                 let raw = item.pointOfInterestCategory?.rawValue
                 let d = here.distance(from: CLLocation(latitude: item.placemark.coordinate.latitude,
                                                        longitude: item.placemark.coordinate.longitude))
-                guard d <= PhotoPlaceKind.reach(categoryRaw: raw) else { return nil }
-                return (item, PhotoPlaceKind.rankScore(distance: d, categoryRaw: raw))
+                guard d <= PhotoPlaceKind.reach(categoryRaw: raw, uncertainty: uncertainty) else { return nil }
+                return (item, PhotoPlaceKind.rankScore(distance: d, categoryRaw: raw, uncertainty: uncertainty))
             }
             completion(.success(Array(ranked.sorted { $0.1 < $1.1 }.prefix(limit).map(\.0))))
         }

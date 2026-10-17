@@ -94,20 +94,35 @@ enum PhotoPlaceKind {
     ])
     private static let minor: Set<String> = raw(["Beauty", "AutomotiveRepair", "CarRental", "EVCharger", "Pharmacy"])
 
-    /// How far from the photo a place may be (meters)
-    static func reach(categoryRaw: String?) -> Double {
-        categoryRaw.map { largeVenues.contains($0) } == true ? 220 : 100
+    /// How far from the photo a place may be (meters). With the spot's
+    /// uncertainty (2026-10-17): 3× it, 60–150 m, so a sharp outdoor fix
+    /// doesn't reach the next block and a rough indoor one still finds the
+    /// place. Without it (Add Place's map tap): the old flat 100 m.
+    static func reach(categoryRaw: String?, uncertainty: Double? = nil) -> Double {
+        if categoryRaw.map({ largeVenues.contains($0) }) == true { return 220 }
+        guard let uncertainty else { return 100 }
+        return min(150, max(60, 3 * uncertainty))
     }
 
     /// Lower is better: distance, minus a head start for the places people
-    /// mean (a large venue's point is far by nature).
-    static func rankScore(distance: Double, categoryRaw: String?) -> Double {
-        guard let category = categoryRaw else { return distance + 15 }
+    /// mean (a large venue's point is far by nature). The head start shrinks
+    /// on a sharp spot: when the fix is good to 8 m, the shop it sits on
+    /// beats a café 40 m away (2026-10-17).
+    static func rankScore(distance: Double, categoryRaw: String?, uncertainty: Double? = nil) -> Double {
+        let scale = uncertainty.map { min(1, max(0.25, $0 / PhotoPlaceGrouper.assumedAccuracy)) } ?? 1
+        guard let category = categoryRaw else { return distance + 15 * scale }
         var score = distance
-        if largeVenues.contains(category) { score -= 60 }
-        if favored.contains(category) { score -= 35 }
-        if minor.contains(category) { score += 30 }
+        if largeVenues.contains(category) { score -= 60 * scale }
+        if favored.contains(category) { score -= 35 * scale }
+        if minor.contains(category) { score += 30 * scale }
         return score
+    }
+
+    /// A rough spot with a close runner-up: the row says it's a best guess.
+    /// `distances` are the top choices' distances from the spot, best first.
+    static func isBestGuess(distances: [Double], uncertainty: Double) -> Bool {
+        guard uncertainty > 50, distances.count >= 2 else { return false }
+        return abs(distances[1] - distances[0]) < uncertainty
     }
 
     /// For a live MapKit result

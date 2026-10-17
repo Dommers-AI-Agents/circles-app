@@ -113,7 +113,7 @@ final class PhotoPlaceInfoViewController: BaseViewController {
 
         if find.candidates.count > 1 {
             let header = UILabel()
-            header.text = "Not this? Other places here"
+            header.text = find.isBestGuess ? "Not sure it\u{2019}s this one? Other places here" : "Not this? Other places here"
             header.font = .systemFont(ofSize: 15, weight: .semibold)
             stack.setCustomSpacing(20, after: stack.arrangedSubviews.last!)
             stack.addArrangedSubview(header)
