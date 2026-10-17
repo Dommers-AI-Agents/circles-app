@@ -113,6 +113,11 @@ final class PhotoPlaceInfoViewController: BaseViewController {
                 self?.onChange()
             })
 
+        if !find.photos.isEmpty {
+            stack.setCustomSpacing(20, after: stack.arrangedSubviews.last!)
+            stack.addArrangedSubview(photoCarousel())
+        }
+
         if find.candidates.count > 1 {
             let header = UILabel()
             header.text = "Not this? Other places here"
@@ -132,6 +137,87 @@ final class PhotoPlaceInfoViewController: BaseViewController {
                 stack.addArrangedSubview(button)
             }
         }
+    }
+
+    // MARK: - Your photos
+
+    /// Most a carousel shows; a place photographed on dozens of visits says
+    /// "+N more" rather than laying out hundreds of thumbnails
+    private static let carouselLimit = 30
+
+    /// The photos that led here, from the phone's own library: nothing is
+    /// uploaded or downloaded (iCloud-only ones wait for a tap).
+    private func photoCarousel() -> UIView {
+        let header = UILabel()
+        header.text = find.photos.count == 1 ? "Your photo from here" : "Your \(find.photos.count) photos from here"
+        header.font = .systemFont(ofSize: 15, weight: .semibold)
+        let caption = UILabel()
+        caption.text = "On your phone only. Tap one to see it bigger."
+        caption.font = .systemFont(ofSize: 12)
+        caption.textColor = Constants.Colors.secondaryLabel
+
+        let strip = UIStackView()
+        strip.axis = .horizontal
+        strip.spacing = 8
+        strip.translatesAutoresizingMaskIntoConstraints = false
+        let scroll = UIScrollView()
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.addSubview(strip)
+        NSLayoutConstraint.activate([
+            strip.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            strip.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            strip.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            strip.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            strip.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
+            scroll.heightAnchor.constraint(equalToConstant: 96)
+        ])
+        for (index, photo) in find.photos.prefix(Self.carouselLimit).enumerated() {
+            strip.addArrangedSubview(thumbnail(photo, index: index))
+        }
+        let extra = find.photos.count - Self.carouselLimit
+        if extra > 0 {
+            let more = UILabel()
+            more.text = "+\(extra) more"
+            more.font = .systemFont(ofSize: 14, weight: .semibold)
+            more.textColor = Constants.Colors.secondaryLabel
+            more.textAlignment = .center
+            more.widthAnchor.constraint(equalToConstant: 80).isActive = true
+            strip.addArrangedSubview(more)
+        }
+        let column = UIStackView(arrangedSubviews: [header, caption, scroll])
+        column.axis = .vertical
+        column.spacing = 6
+        return column
+    }
+
+    private func thumbnail(_ photo: PhotoRef, index: Int) -> UIView {
+        let button = UIButton(type: .custom)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.widthAnchor.constraint(equalToConstant: 96).isActive = true
+        button.layer.cornerRadius = 8
+        button.clipsToBounds = true
+        button.backgroundColor = .secondarySystemBackground
+        button.imageView?.contentMode = .scaleAspectFill
+        button.setImage(UIImage(systemName: "photo"), for: .normal)
+        button.tintColor = Constants.Colors.tertiaryLabel
+        button.accessibilityLabel = "Photo \(index + 1)"
+        switch photo {
+        case .image(let image):
+            button.setImage(image.preparingThumbnail(of: CGSize(width: 192, height: 192)) ?? image, for: .normal)
+        case .asset(let id):
+            // Small, and only if it's already on the phone
+            PhotoLibraryIndex.shared.image(for: id, size: CGSize(width: 192, height: 192), fromICloud: false) { [weak button] image in
+                guard let button, let image else { return }
+                button.setImage(image, for: .normal)
+            }
+        }
+        button.addAction(UIAction { [weak self] _ in self?.showPhoto(photo) }, for: .touchUpInside)
+        return button
+    }
+
+    /// One photo, full screen; tap anywhere to close
+    private func showPhoto(_ photo: PhotoRef) {
+        present(FoundPhotoViewer(photo: photo), animated: true)
     }
 
     private func loadPicture(for item: MKMapItem) {
@@ -223,4 +309,51 @@ final class PhotoPlaceInfoViewController: BaseViewController {
                      placemark.locality, placemark.administrativeArea].compactMap { $0 }.filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
+}
+
+/// A photo from "Build my map", full screen on black; tap to close. Loads a
+/// screen-sized copy (from iCloud only now that the person asked for it).
+private final class FoundPhotoViewer: BaseViewController {
+    override var loadsDataOnViewDidLoad: Bool { false }
+    override var showsLoadingIndicator: Bool { false }
+
+    private let photo: PhotoRef
+    private let imageView = UIImageView()
+    private let spinner = UIActivityIndicatorView(style: .large)
+
+    init(photo: PhotoRef) {
+        self.photo = photo
+        super.init(nibName: nil, bundle: nil)
+        modalPresentationStyle = .fullScreen
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        imageView.contentMode = .scaleAspectFit
+        imageView.frame = view.bounds
+        imageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(imageView)
+        spinner.color = .white
+        spinner.center = view.center
+        spinner.autoresizingMask = [.flexibleTopMargin, .flexibleBottomMargin, .flexibleLeftMargin, .flexibleRightMargin]
+        view.addSubview(spinner)
+        view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(close)))
+        view.accessibilityHint = "Tap to close"
+        switch photo {
+        case .image(let image):
+            imageView.image = image
+        case .asset(let id):
+            spinner.startAnimating()
+            let side = max(view.bounds.width, view.bounds.height) * UIScreen.main.scale
+            PhotoLibraryIndex.shared.image(for: id, size: CGSize(width: side, height: side)) { [weak self] image in
+                self?.spinner.stopAnimating()
+                self?.imageView.image = image
+            }
+        }
+    }
+
+    @objc private func close() { dismiss(animated: true) }
 }

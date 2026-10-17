@@ -16,6 +16,9 @@ struct PhotoFindSpot {
     let start: Date
     let photoCount: Int
     let photo: PhotoRef
+    /// Every photo taken at this spot, in the order taken (the place card
+    /// shows them; they never leave the phone)
+    let photos: [PhotoRef]
 
     /// Library scans: a stop from PhotoLibraryMath with its middle photo.
     init(spot: PhotoLibraryMath.Spot) {
@@ -24,10 +27,12 @@ struct PhotoFindSpot {
         start = spot.start
         photoCount = spot.shots.count
         photo = .asset(spot.shots[spot.shots.count / 2].id)
+        photos = spot.shots.map { .asset($0.id) }
     }
 
-    init(key: String, center: CLLocationCoordinate2D, start: Date, photoCount: Int, photo: PhotoRef) {
+    init(key: String, center: CLLocationCoordinate2D, start: Date, photoCount: Int, photo: PhotoRef, photos: [PhotoRef]? = nil) {
         self.key = key; self.center = center; self.start = start; self.photoCount = photoCount; self.photo = photo
+        self.photos = photos ?? [photo]
     }
 
     /// Library scans: stops in these photos, minus home, places already saved
@@ -57,7 +62,8 @@ struct PhotoFindSpot {
             }
             spots.append(PhotoFindSpot(
                 key: String(format: "%.3f,%.3f", center.latitude, center.longitude), center: center,
-                start: group.takenAt ?? Date(), photoCount: group.photoIds.count, photo: .image(picked[first].image)))
+                start: group.takenAt ?? Date(), photoCount: group.photoIds.count, photo: .image(picked[first].image),
+                photos: group.photoIds.map { .image(picked[$0].image) }))
         }
         return (spots, unlocated)
     }
@@ -83,6 +89,8 @@ final class PhotoFind {
     private(set) var photoCount: Int
     private(set) var visits = 1
     private(set) var lastVisit: Date
+    /// Every photo from every visit, oldest visit first
+    private(set) var photos: [PhotoRef]
 
     init(spot: PhotoFindSpot, candidates: [MKMapItem]) {
         self.spot = spot
@@ -90,6 +98,7 @@ final class PhotoFind {
         spotKeys = [spot.key]
         photoCount = spot.photoCount
         lastVisit = spot.start
+        photos = spot.photos
     }
 
     var item: MKMapItem { candidates[min(choice, candidates.count - 1)] }
@@ -100,6 +109,7 @@ final class PhotoFind {
         photoCount += other.photoCount
         visits += 1
         lastVisit = max(lastVisit, other.start)
+        photos += other.photos
     }
 
     /// Same place: same name, pins within 60 m (a chain's other branch is

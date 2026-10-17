@@ -87,12 +87,14 @@ final class PhotoLibraryIndex {
 
     /// A thumbnail (or full-size, for uploading) for one photo; may fetch
     /// from iCloud. Completion on main, nil when the photo is gone.
-    func image(for id: String, size: CGSize, completion: @escaping (UIImage?) -> Void) {
+    /// `fromICloud: false` = only what's already on the phone (a carousel of
+    /// thumbnails must not pull a trip's worth of photos down from iCloud).
+    func image(for id: String, size: CGSize, fromICloud: Bool = true, completion: @escaping (UIImage?) -> Void) {
         guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject else {
             return completion(nil)
         }
         let options = PHImageRequestOptions()
-        options.isNetworkAccessAllowed = true
+        options.isNetworkAccessAllowed = fromICloud
         options.deliveryMode = .highQualityFormat
         options.resizeMode = .fast
         imageManager.requestImage(for: asset, targetSize: size, contentMode: .aspectFill, options: options) { image, _ in
