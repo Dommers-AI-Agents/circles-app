@@ -391,21 +391,19 @@ class OnboardingService {
       const wesId = wesSnap.docs[0].id;
       if (wesId === userId || wesSnap.docs[0].data().email === userData.email) return;
 
-      // Pick one of Wes's saved places to recommend. Filter deletedAt/private in
-      // memory (no composite index needed), then prefer a place with a photo and
-      // the most likes so the first impression is a strong one.
-      const placesSnap = await db.collection(COLLECTIONS.PLACES)
-        .where('addedBy', '==', wesId).get();
-      const candidates = placesSnap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(p => !p.deletedAt && p.privacy !== 'private' && p.name);
-      if (candidates.length === 0) return;
-
-      candidates.sort((a, b) => {
-        const score = p => ((p.photos && p.photos.length) ? 100 : 0) + (p.likesCount || 0);
-        return score(b) - score(a);
-      });
-      const place = candidates[0];
+      // Pick one of Wes's real favorites that anyone may see: a place in a
+      // public circle, not a want-to-go save or a bare street address
+      // (services/welcomePlacePick.js). None qualifies → no suggestion.
+      const { pickWelcomePlace } = require('./welcomePlacePick');
+      const [placesSnap, circlesSnap] = await Promise.all([
+        db.collection(COLLECTIONS.PLACES).where('addedBy', '==', wesId).get(),
+        db.collection(COLLECTIONS.CIRCLES).where('owner', '==', wesId).where('privacy', '==', 'public').get()
+      ]);
+      const place = pickWelcomePlace(
+        placesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+        new Set(circlesSnap.docs.map(d => d.id))
+      );
+      if (!place) return;
 
       // Build the directed suggestion (author = Wes, recipient = the new user)
       const suggestionData = createSuggestion({
