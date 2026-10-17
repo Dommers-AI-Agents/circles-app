@@ -81,7 +81,14 @@ class PaywallViewController: BaseViewController {
     
     // Action buttons
     private lazy var purchaseButton = UIButton.primaryButton(title: "Start Free Trial")
-    private lazy var restoreButton = UIButton.secondaryButton(title: "Restore Purchases")
+    // Apple requires a way to restore a subscription, but most people have
+    // never bought one: a quiet link, not a second big button (Wes, 2026-10-17)
+    private lazy var restoreButton: UIButton = {
+        let button = UIButton.captionLinkButton()
+        button.setTitle("Already subscribed? Restore your subscription", for: .normal)
+        button.contentHorizontalAlignment = .center
+        return button
+    }()
     
     // Functional Terms/Privacy links are REQUIRED on subscription screens
     // (App Review 3.1.2(c)) — the previous version mentioned them without
@@ -214,8 +221,7 @@ class PaywallViewController: BaseViewController {
     }
     
     private func setupFeatures() {
-        let topFeatures = Array(PremiumFeatures.features.prefix(3))
-        for feature in topFeatures {
+        for feature in PremiumFeatures.features {
             let featureView = createCompactFeatureView(feature)
             featuresStackView.addArrangedSubview(featureView)
         }
@@ -702,7 +708,7 @@ class PaywallViewController: BaseViewController {
                             }
                         }
                     } else {
-                        self?.showError("No active subscription found")
+                        self?.showError("We couldn't find a FavCircles subscription on this Apple Account.")
                     }
                 }
             } catch {

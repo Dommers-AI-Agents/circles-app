@@ -87,7 +87,7 @@ class SubscriptionViewController: BaseViewController {
     // Action buttons
     private lazy var upgradeButton = UIButton.primaryButton(title: "Upgrade to Premium")
     private lazy var manageButton = UIButton.secondaryButton(title: "Manage Subscription")
-    private lazy var restoreButton = UIButton.secondaryButton(title: "Restore Purchases")
+    private lazy var restoreButton = UIButton.secondaryButton(title: "Already Subscribed? Restore")
     
     // MARK: - Lifecycle
     override func viewDidLoad() {

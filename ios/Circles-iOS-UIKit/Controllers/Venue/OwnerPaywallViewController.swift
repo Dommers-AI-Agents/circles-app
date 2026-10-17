@@ -69,7 +69,13 @@ class OwnerPaywallViewController: BaseViewController {
         return stack
     }()
 
-    private lazy var restoreButton = UIButton.secondaryButton(title: "Restore Purchases")
+    // A quiet link, like the Premium paywall: most owners have never subscribed
+    private lazy var restoreButton: UIButton = {
+        let button = UIButton.captionLinkButton()
+        button.setTitle("Already subscribed? Restore your subscription", for: .normal)
+        button.contentHorizontalAlignment = .center
+        return button
+    }()
 
     // MARK: - Lifecycle
 

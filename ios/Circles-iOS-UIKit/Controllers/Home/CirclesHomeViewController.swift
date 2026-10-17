@@ -2710,20 +2710,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         setupNotificationBadge()
         updateNotificationBadge()
 
-        var rightBarButtons = [checkInButton, rewardsButton, notificationButton]
-
-        if !SubscriptionManager.shared.isSubscribed {
-            let upgradeButton = UIBarButtonItem(
-                image: UIImage(systemName: "crown.fill"),
-                style: .plain,
-                target: self,
-                action: #selector(upgradeButtonTapped)
-            )
-            upgradeButton.tintColor = Constants.Colors.primary
-            rightBarButtons.insert(upgradeButton, at: 0) // Add as first button
-        }
-
-        return rightBarButtons
+        // No upgrade crown (Wes, 2026-10-17): it crowded the weather and asked
+        // for money before anyone hit a limit. The paywall shows at a limit,
+        // and Settings → Subscription is always there.
+        return [checkInButton, rewardsButton, notificationButton]
     }
     
     // MARK: - Notifications
@@ -2987,10 +2977,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         let navController = UINavigationController(rootViewController: createCircleVC)
         navController.modalPresentationStyle = .pageSheet
         present(navController, animated: true)
-    }
-    
-    @objc func upgradeButtonTapped() {
-        SubscriptionManager.shared.showPaywall(from: self, reason: .generalUpgrade)
     }
     
     func updateNavigationBarForSubscription() {

@@ -166,31 +166,43 @@ struct PremiumFeatures {
         let iconName: String
     }
     
+    // Only what Premium really unlocks today (Wes, 2026-10-17); keep in step
+    // with backend/config/subscriptionLimits.js
     static let features: [Feature] = [
         Feature(
             title: "Unlimited Circles",
-            description: "Create as many circles as you want",
+            description: "Free accounts get \(maxFreeCircles). Make as many as you like",
             iconName: "infinity.circle.fill"
         ),
         Feature(
             title: "Unlimited Places",
-            description: "Add unlimited places to each circle",
+            description: "No \(maxFreePlacesPerCircle)-place limit on any circle",
             iconName: "mappin.circle.fill"
         ),
         Feature(
-            title: "Export & Share",
-            description: "Export your circles and share without watermarks",
-            iconName: "square.and.arrow.up.circle.fill"
+            title: "Your Whole Map From Photos",
+            description: "Add every place you've photographed, not just the first 25",
+            iconName: "photo.on.rectangle.angled"
         ),
         Feature(
-            title: "Priority Support",
-            description: "Get help faster with priority customer support",
-            iconName: "person.2.circle.fill"
+            title: "Import Your Places",
+            description: "Bring your saves from Google Maps, Mapstr and Swarm",
+            iconName: "square.and.arrow.down.on.square.fill"
         ),
         Feature(
-            title: "Advanced Features",
-            description: "Access to new features as they're released",
-            iconName: "sparkles.rectangle.stack.fill"
+            title: "Circle Advisor",
+            description: "Get ideas for organizing your circles, from the wand on your profile",
+            iconName: "wand.and.stars"
+        ),
+        Feature(
+            title: "Longer Event Videos",
+            description: "Up to a minute each and 20 per event (free: 15 seconds, 5)",
+            iconName: "video.fill"
+        ),
+        Feature(
+            title: "Export Your Data",
+            description: "Download all your circles and places as a spreadsheet",
+            iconName: "tablecells.fill"
         )
     ]
 }

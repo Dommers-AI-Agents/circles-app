@@ -136,7 +136,7 @@ class SubscriptionManager {
             } else {
                 AlertPresenter.showError(
                     title: "No Subscription Found",
-                    message: "No active subscription found. Would you like to start a free trial?",
+                    message: "We couldn't find a FavCircles subscription on this Apple Account.",
                     from: viewController
                 )
             }
