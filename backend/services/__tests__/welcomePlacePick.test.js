@@ -32,8 +32,8 @@ test('ties at the top are picked at random, never a lower score', () => {
     { id: 'b', name: 'B Bar', circleId: 'pub', userRating: 10 },
     { id: 'c', name: 'C Deli', circleId: 'pub', userRating: 3 }
   ];
-  expect(pickWelcomePlace(places, pub, () => 0).id).toBe('a');
-  expect(pickWelcomePlace(places, pub, () => 0.99).id).toBe('b');
+  expect(pickWelcomePlace(places, pub, { random: () => 0 }).id).toBe('a');
+  expect(pickWelcomePlace(places, pub, { random: () => 0.99 }).id).toBe('b');
 });
 
 test('a place to discover beats a service at the same rating', () => {
@@ -42,5 +42,19 @@ test('a place to discover beats a service at the same rating', () => {
     { id: 'tires', name: 'Tire Shop', circleId: 'pub', userRating: 10, category: 'service' },
     { id: 'bar', name: 'The Blind Pig', circleId: 'pub', userRating: 10, category: 'bar' }
   ];
-  expect(pickWelcomePlace(places, pub, () => 0).id).toBe('bar');
+  expect(pickWelcomePlace(places, pub, { random: () => 0 }).id).toBe('bar');
+});
+
+test('near the new user when Wes has a favorite there, otherwise anywhere', () => {
+  const pub = new Set(['pub']);
+  const charlotte = { latitude: 35.2169, longitude: -80.8593 };
+  const places = [
+    { id: 'shore', name: 'La Dolce Vita', circleId: 'pub', userRating: 10, photos: ['p'],
+      location: { type: 'Point', coordinates: [-74.0218, 40.1784] } },
+    { id: 'clt', name: 'Optimist Hall', circleId: 'pub', userRating: 8,
+      location: { type: 'Point', coordinates: [-80.8253, 35.2340] } }
+  ];
+  expect(pickWelcomePlace(places, pub, { near: charlotte }).id).toBe('clt');
+  expect(pickWelcomePlace(places, pub, { near: { latitude: 47.6, longitude: -122.3 } }).id).toBe('shore');
+  expect(pickWelcomePlace(places, pub).id).toBe('shore');
 });

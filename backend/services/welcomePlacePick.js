@@ -29,19 +29,48 @@ const DISCOVERY_CATEGORIES = new Set(['restaurant', 'bar', 'cafe', 'coffee', 'ba
   'outdoor', 'park', 'entertainment', 'attraction', 'museum', 'retail', 'shopping']);
 const OPEN_PLACE_TIERS = new Set([undefined, null, '', 'followCircle', 'public']);
 
+const NEARBY_KM = 80;
+
+/** [lat, lng] from a save's GeoJSON point or a { latitude, longitude } pair. */
+const latLng = (loc) => {
+  if (!loc) return null;
+  if (Array.isArray(loc.coordinates) && loc.coordinates.length === 2) return [loc.coordinates[1], loc.coordinates[0]];
+  if (typeof loc.latitude === 'number' && typeof loc.longitude === 'number') return [loc.latitude, loc.longitude];
+  return null;
+};
+
+const distanceKm = ([lat1, lng1], [lat2, lng2]) => {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const a = Math.sin(toRad(lat2 - lat1) / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(toRad(lng2 - lng1) / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(a));
+};
+
 /**
  * @param {object[]} places          Wes's save records ({ id, ...data })
  * @param {Set<string>} publicCircleIds  his circles anyone may see
- * @param {() => number} [random]  injectable for tests
+ * @param {object} [options]
+ * @param {{latitude:number, longitude:number}} [options.near]  the new user's
+ *   location: only places within 80 km of it, if any qualify
+ * @param {() => number} [options.random]  injectable for tests
  * @returns {object|null} the place to suggest, or null when none qualifies
  *   (better no welcome suggestion than a bad one)
  */
-const pickWelcomePlace = (places, publicCircleIds, random = Math.random) => {
-  const eligible = places.filter(p => p && p.name && !p.deletedAt
+const pickWelcomePlace = (places, publicCircleIds, { near = null, random = Math.random } = {}) => {
+  let eligible = places.filter(p => p && p.name && !p.deletedAt
     && publicCircleIds.has(p.circleId)
     && OPEN_PLACE_TIERS.has(p.privacy)
     && !(p.tags || []).some(t => WANT_TO_GO.has(String(t).toLowerCase()))
     && !isStreetAddressName(p.name, p.address));
+  // Somewhere they can actually go, when Wes has a favorite near them
+  const here = latLng(near);
+  if (here) {
+    const nearby = eligible.filter(p => {
+      const there = latLng(p.location);
+      return there && distanceKm(here, there) <= NEARBY_KM;
+    });
+    if (nearby.length) eligible = nearby;
+  }
   if (eligible.length === 0) return null;
   // His own rating first (0–10), then a photo, then a place to discover
   const score = p => (Number(p.userRating) || 0) * 10

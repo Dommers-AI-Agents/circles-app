@@ -152,9 +152,13 @@ class OnboardingService {
       // users just follow Wes and Brittany, so they start with people on
       // their map without a request from a stranger to answer.
 
-      // Personal touch: Wes sends one favorite place as a directed suggestion,
-      // so their "For You" inbox has a real, human first item (best-effort)
-      await OnboardingService.sendWelcomeSuggestion(userId, userData);
+      // Personal touch: Wes sends one favorite place near them as a directed
+      // suggestion. Only when signup told us where they are (an email
+      // signup's zipcode); otherwise the first app open with a location fix
+      // sends it (maybeSendWelcomeSuggestion).
+      if (userData.lastKnownLocation) {
+        await OnboardingService.sendWelcomeSuggestion(userId, userData, userData.lastKnownLocation);
+      }
 
       // Send SSE notification about onboarding completion
       const sseService = require('./sseService');
@@ -378,7 +382,24 @@ class OnboardingService {
    * their "For You" inbox has a personal first item at signup instead of being
    * empty. Reuses the directed-suggestion model + notification. Best-effort.
    */
-  static async sendWelcomeSuggestion(userId, userData = {}) {
+  /**
+   * The welcome suggestion for accounts signup couldn't place (Apple, Google
+   * and passkey signups ask no zipcode). Called on app open: with a location
+   * fix it sends one nearby; without one it waits a day for a fix, then sends
+   * one from anywhere. Only for accounts under a week old, and only once.
+   */
+  static async maybeSendWelcomeSuggestion(userId, userData = {}, near = null) {
+    if (userData.welcomeSuggestionAt) return;
+    const created = Date.parse(userData.createdAt && userData.createdAt.toDate
+      ? userData.createdAt.toDate().toISOString() : userData.createdAt);
+    if (!Number.isFinite(created)) return;
+    const age = Date.now() - created;
+    if (age > 7 * 86400000) return;
+    if (!near && age < 86400000) return;
+    await OnboardingService.sendWelcomeSuggestion(userId, userData, near);
+  }
+
+  static async sendWelcomeSuggestion(userId, userData = {}, near = null) {
     try {
       const { createSuggestion } = require('../models/FirestoreModels');
       const notificationService = require('./notificationService');
@@ -391,8 +412,24 @@ class OnboardingService {
       const wesId = wesSnap.docs[0].id;
       if (wesId === userId || wesSnap.docs[0].data().email === userData.email) return;
 
-      // Pick one of Wes's real favorites that anyone may see: a place in a
-      // public circle, not a want-to-go save or a bare street address
+      // Accounts from before the welcomeSuggestionAt flag already have one
+      const earlier = await db.collection(COLLECTIONS.SUGGESTIONS)
+        .where('recipientId', '==', userId).get();
+      if (earlier.docs.some(d => d.data().userId === wesId)) return;
+
+      // Once per account: claim it before sending, so a signup and an app
+      // open racing each other can't both send one
+      const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
+      const claimed = await db.runTransaction(async (tx) => {
+        const fresh = await tx.get(userRef);
+        if (!fresh.exists || fresh.data().welcomeSuggestionAt) return false;
+        tx.update(userRef, { welcomeSuggestionAt: new Date().toISOString() });
+        return true;
+      });
+      if (!claimed) return;
+
+      // Pick one of Wes's real favorites that anyone may see, near them when
+      // he has one there: a place in a public circle, not a want-to-go save or a bare street address
       // (services/welcomePlacePick.js). None qualifies → no suggestion.
       const { pickWelcomePlace } = require('./welcomePlacePick');
       const [placesSnap, circlesSnap] = await Promise.all([
@@ -401,7 +438,8 @@ class OnboardingService {
       ]);
       const place = pickWelcomePlace(
         placesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-        new Set(circlesSnap.docs.map(d => d.id))
+        new Set(circlesSnap.docs.map(d => d.id)),
+        { near }
       );
       if (!place) return;
 

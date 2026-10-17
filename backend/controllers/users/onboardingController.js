@@ -113,6 +113,11 @@ exports.recordAppOpen = async (req, res, next) => {
         .seedSamplePlaceIfMissing(userId, { latitude, longitude })
         .catch(() => {});
     }
+    // Welcome suggestion for signups that didn't say where they are: one of
+    // Wes's favorites near this fix (services/onboardingService)
+    require('../../services/onboardingService')
+      .maybeSendWelcomeSuggestion(userId, req.user, hasCoords ? { latitude, longitude } : null)
+      .catch(() => {});
   } catch (error) {
     console.error('Error recording app open:', error);
     next(error);
