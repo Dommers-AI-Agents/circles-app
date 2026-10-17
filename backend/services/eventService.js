@@ -50,6 +50,7 @@ function canOpenEvents(user) {
 const NAME_MAX = 40;
 const DEFAULT_NAME = 'Party Bus';
 const DEFAULT_EMOJI = '🚌';
+const { eventCoverUrl, isEventCover } = require('../config/eventCovers');
 const MAX_MEMBERS = 100;
 const MAX_EVENTS_LISTED = 30;
 const MAX_INVITES_PER_CALL = 50;
@@ -503,6 +504,9 @@ async function updateEvent(eventId, hostUid, { name, emoji, joinOpen } = {}) {
   if (update.name && update.name !== data.name) {
     syncAllInnerLists(ref.id).catch(err => console.error('🚌 inner list rename failed:', err.message));
   }
+  if (update.emoji && update.emoji !== data.emoji) {
+    syncEventCircleCovers(ref.id, update.emoji).catch(err => console.error('🚌 cover swap failed:', err.message));
+  }
   return toClientEvent(ref.id, next, hostUid);
 }
 
@@ -788,6 +792,18 @@ async function tagPlace(eventId, uid, body) {
   return toClientPlace({ id: docRef.id, data: () => row }, uid);
 }
 
+/**
+ * The coordinator picked a new emoji: members' event circles still showing
+ * an event cover follow it (a cover someone chose themselves is kept).
+ */
+async function syncEventCircleCovers(eventId, emoji) {
+  const snap = await db().collection(COLLECTIONS.CIRCLES).where('eventId', '==', eventId).get();
+  const url = eventCoverUrl(emoji);
+  await Promise.all(snap.docs
+    .filter(d => !d.data().deletedAt && (!d.data().coverImage || isEventCover(d.data().coverImage)))
+    .map(d => d.ref.update({ coverImage: url, icon: emoji, updatedAt: nowIso() })));
+}
+
 /** The member's public circle named after the event — created on first save. */
 async function findOrCreateEventCircle(ref, data, uid) {
   const known = data.members && data.members[uid] && data.members[uid].circleId;
@@ -806,7 +822,9 @@ async function findOrCreateEventCircle(ref, data, uid) {
       name: data.name,
       description: `Places from ${data.name}`,
       privacy: 'public',
-      icon: data.emoji || DEFAULT_EMOJI
+      icon: data.emoji || DEFAULT_EMOJI,
+      // The event's picture (bus, ring, …) as the cover
+      coverImage: eventCoverUrl(data.emoji || DEFAULT_EMOJI)
     }, uid);
     const created = await db().collection(COLLECTIONS.CIRCLES).add({ ...circle, eventId: ref.id });
     circleId = created.id;

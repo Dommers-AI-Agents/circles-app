@@ -198,17 +198,28 @@ final class PhotoScanReviewViewController: BaseViewController, UITableViewDataSo
         guard !name.isEmpty else { return showError("Give the circle a name.") }
         createButton.isEnabled = false
         let loading = AlertPresenter.showLoading(message: "Creating \(name)…", from: self)
-        CircleService.shared.createCircle(name: name, description: nil, privacy: privacy, category: .travel,
-                                          showOnMap: mapRow.isOn) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                switch result {
-                case .success(let circle):
-                    self.save(chosen, into: circle, index: 0, saved: 0, loading: loading)
-                case .failure(let error):
-                    loading.dismiss(animated: true) { self.createButton.isEnabled = true; self.showError(error) }
+        // The trip's first stop photo is the circle's cover (Wes, 2026-10-17)
+        let createCircle: (Data?) -> Void = { [weak self] cover in
+            guard let self else { return }
+            CircleService.shared.createCircle(name: name, description: nil, privacy: self.privacy, category: .travel,
+                                              showOnMap: self.mapRow.isOn, coverImage: cover) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    switch result {
+                    case .success(let circle):
+                        self.save(chosen, into: circle, index: 0, saved: 0, loading: loading)
+                    case .failure(let error):
+                        loading.dismiss(animated: true) { self.createButton.isEnabled = true; self.showError(error) }
+                    }
                 }
             }
+        }
+        if let shot = chosen.first?.spot.shots.first {
+            PhotoLibraryIndex.shared.uploadImage(for: shot.id) { image in
+                createCircle(image?.jpegData(compressionQuality: 0.8))
+            }
+        } else {
+            createCircle(nil)
         }
     }
 

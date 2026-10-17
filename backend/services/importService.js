@@ -557,6 +557,24 @@ async function executeImport(userId, payload) {
       await batch.commit();
       listResult.created = newPlaceIds.length;
 
+      // "Places from my photos" gets one of the uploaded photos as its cover
+      // (Wes, 2026-10-17) — only while it has none, so a cover the person
+      // picked themselves stays
+      if (payload.source === 'photos') {
+        const firstPhoto = (list.places || []).flatMap((p) => Array.isArray(p.photos) ? p.photos : [])
+          .find((url) => typeof url === 'string' && url.startsWith('https://'));
+        if (firstPhoto) {
+          try {
+            const circleSnap = await circleRef.get();
+            if (circleSnap.exists && !circleSnap.data().coverImage) {
+              await circleRef.update({ coverImage: firstPhoto });
+            }
+          } catch (coverError) {
+            console.error('⚠️ Photo circle cover failed (non-fatal):', coverError.message);
+          }
+        }
+      }
+
       // These circles are network-visible, so imported places must behave
       // like normal saves: link the canonical venue record now. This is FREE
       // (text-based category + address-derived city/state lens — zero Google
