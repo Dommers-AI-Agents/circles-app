@@ -66,4 +66,49 @@ const canViewCircleFor = async (circle, viewerId) => {
   return !!named && listIncludes(named.userIds, viewerId);
 };
 
-module.exports = { canViewCircleFor, areConnected };
+/**
+ * How many places a connection would find in this circle: not trashed, and
+ * not narrowed to Inner Circle or Private (an unset or "followCircle" place
+ * inherits the circle, so it counts). Connecting never shows fewer places
+ * than the locked card promised.
+ */
+const countConnectionPlaces = async (circleId) => {
+  const snap = await db.collection(COLLECTIONS.PLACES)
+    .where('circleId', '==', circleId)
+    .select('deletedAt', 'privacy')
+    .get();
+  return snap.docs.filter(doc => {
+    const d = doc.data();
+    if (d.deletedAt) return false;
+    const tier = normalizePrivacy(d.privacy);
+    return tier !== PRIVACY.INNER_CIRCLE && tier !== PRIVACY.PRIVATE;
+  }).length;
+};
+
+/**
+ * A Connections circle as a viewer who isn't connected sees it on the
+ * owner's profile (Wes, 2026-10-17): greyed and locked, so they know there is
+ * more and ask to connect instead of only following. Name, cover and place
+ * count only — never places, guests, editors or the description. The detail
+ * endpoint still refuses it.
+ *
+ * @param {object} circle  the serialized circle (`_id`, ISO dates)
+ * @param {number} placesCount
+ */
+const lockedCircleStub = (circle, placesCount) => ({
+  _id: circle._id,
+  name: circle.name,
+  coverImage: circle.coverImage || null,
+  owner: circle.owner,
+  privacy: PRIVACY.CONNECTIONS,
+  category: circle.category,
+  customCategoryId: circle.customCategoryId || null,
+  createdAt: circle.createdAt,
+  updatedAt: circle.updatedAt,
+  placesCount,
+  places: [],
+  placesWithDetails: [],
+  locked: true
+});
+
+module.exports = { canViewCircleFor, areConnected, lockedCircleStub, countConnectionPlaces };

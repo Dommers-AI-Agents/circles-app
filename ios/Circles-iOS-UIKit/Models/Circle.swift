@@ -39,6 +39,10 @@ struct Circle: Codable, Identifiable {
     var isNew: Bool? // Indicates if this is new activity
     var hasNewPlaces: Bool? // Indicates if circle has new places since last login
     var newPlacesCount: Int? // Number of new places since last login
+    /// A Connections circle on someone else's profile that the viewer isn't
+    /// connected enough to open: shown greyed with a lock, tap offers Connect.
+    /// Only name, cover and place count come with it.
+    var locked: Bool?
     
     // Circle Groups support
     let groupId: String? // ID of the group this circle belongs to (nil if not grouped)
@@ -52,7 +56,7 @@ struct Circle: Codable, Identifiable {
         case location, tags, sharedWith, followers, activeShares, shareSettings
         case isSharedWithMe, sharedBy, myAccessLevel
         case likes, likesCount, commentsCount
-        case createdAt, updatedAt, isNew, hasNewPlaces, newPlacesCount
+        case createdAt, updatedAt, isNew, hasNewPlaces, newPlacesCount, locked
         case groupId, orderInGroup
     }
     
@@ -104,6 +108,7 @@ struct Circle: Codable, Identifiable {
         isNew = try container.decodeIfPresent(Bool.self, forKey: .isNew)
         hasNewPlaces = try container.decodeIfPresent(Bool.self, forKey: .hasNewPlaces)
         newPlacesCount = try container.decodeIfPresent(Int.self, forKey: .newPlacesCount)
+        locked = try container.decodeIfPresent(Bool.self, forKey: .locked)
         groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
         orderInGroup = try container.decodeIfPresent(Int.self, forKey: .orderInGroup)
     }

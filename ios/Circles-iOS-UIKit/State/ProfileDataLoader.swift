@@ -60,7 +60,9 @@ final class ProfileDataLoader {
     }
     var requestUserCircles: (_ userId: String, _ completion: @escaping (Result<UserCirclesResponse, APIError>) -> Void) -> Void = { userId, completion in
         APIService.shared.request(
-            endpoint: "network/user-circles/\(userId)",
+            // includeLocked: Connections circles the viewer can't open come
+            // back as locked stubs (name, cover, count) instead of missing
+            endpoint: "network/user-circles/\(userId)?includeLocked=1",
             method: .get,
             requiresAuth: true,
             completion: completion
@@ -75,7 +77,8 @@ final class ProfileDataLoader {
     func loadAllPlaces() {
         guard let delegate = delegate else { return }
         // Load places from all circles
-        for circle in delegate.circles {
+        // Locked circles have no places to fetch (the server refuses them)
+        for circle in delegate.circles where circle.locked != true {
             fetchPlaces(circle.id) { [weak self] result in
                 guard let self = self else { return }
 

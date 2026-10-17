@@ -98,7 +98,6 @@ extension ProfileViewController {
         filteredCircles = []
         hideSearchResults()
 
-        let circleDetailVC = CircleDetailViewController(circle: circle)
-        navigationController?.pushViewController(circleDetailVC, animated: true)
+        openCircle(circle)
     }
 }

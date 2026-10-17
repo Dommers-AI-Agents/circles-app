@@ -22,14 +22,45 @@ extension ProfileViewController: UICollectionViewDataSource {
 // MARK: - UICollectionViewDelegate
 extension ProfileViewController: UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        let circle = circles[indexPath.item]
-        let detailVC = CircleDetailViewController(circle: circle)
-        navigationController?.pushViewController(detailVC, animated: true)
+        openCircle(circles[indexPath.item])
+    }
+
+    /// Opens a circle from the grid or circle search. A locked one (a
+    /// Connections circle the viewer isn't connected for) explains itself and
+    /// offers the connection instead: that's the point of showing it.
+    func openCircle(_ circle: Circle) {
+        guard circle.locked == true else {
+            navigationController?.pushViewController(CircleDetailViewController(circle: circle), animated: true)
+            return
+        }
+        let name = user?.displayName ?? "They"
+        let title = "\(circle.name) is for connections"
+        if connectionStatus == .pending && user?.connectionDirection == "outgoing" {
+            AlertPresenter.showInfo(
+                title: title,
+                message: "Request sent. You'll see this circle once \(name) accepts.",
+                from: self
+            )
+            return
+        }
+        let incoming = connectionStatus == .pending && user?.connectionDirection == "incoming"
+        AlertPresenter.showConfirmation(
+            title: title,
+            message: incoming
+                ? "\(name) asked to connect with you. Accept to see their Connections circles."
+                : "\(name) shares this circle with connections. Ask to connect to see its places.",
+            confirmTitle: incoming ? "Accept" : "Connect",
+            cancelTitle: "Not now",
+            from: self,
+            onConfirm: { [weak self] in self?.relationshipController.connectTapped() }
+        )
     }
     
     func collectionView(_ collectionView: UICollectionView, contextMenuConfigurationForItemAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
         // Handle context menu for circles
         let circle = circles[indexPath.item]
+        // A locked circle has nothing to edit, share or delete
+        if circle.locked == true { return nil }
         
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             guard let self = self else { return UIMenu(title: "", children: []) }
@@ -387,7 +418,8 @@ extension ProfileViewController: UICollectionViewDropDelegate {
         allPlaces.removeAll()
         let dispatchGroup = DispatchGroup()
         
-        for circle in circles {
+        // Locked circles have no places to fetch (the server refuses them)
+        for circle in circles where circle.locked != true {
             Logger.debug("🔍 [Places Debug] Loading places for circle: \(circle.name) (id: \(circle.id))")
             dispatchGroup.enter()
             PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { [weak self] result in

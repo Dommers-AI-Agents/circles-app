@@ -73,6 +73,33 @@ struct PrivacyDecodingTests {
         #expect(circle.privacy == .unknown)
     }
 
+    /// A locked Connections circle on someone else's profile arrives as a stub:
+    /// name, cover and count, no places. It must decode and say it's locked.
+    @Test func aLockedCircleStubDecodes() throws {
+        let json = """
+        {
+          "_id": "c2",
+          "name": "Date Nights",
+          "owner": "u1",
+          "privacy": "myNetwork",
+          "category": "food",
+          "coverImage": null,
+          "placesCount": 7,
+          "places": [],
+          "placesWithDetails": [],
+          "locked": true,
+          "createdAt": "2026-09-18T00:00:00.000Z",
+          "updatedAt": "2026-09-18T00:00:00.000Z"
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let circle = try decoder.decode(Circle.self, from: Data(json.utf8))
+        #expect(circle.locked == true)
+        #expect(circle.placesCount == 7)
+        #expect(circle.privacy == .myNetwork)
+    }
+
     /// The moments equivalent: PlaceVideo has no lossy array wrapper, so an
     /// unrecognised value here used to fail the whole response.
     @Test func momentsKeepTheirOwnSpellingForConnections() throws {

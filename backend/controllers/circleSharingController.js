@@ -1029,6 +1029,39 @@ const getUserCircles = async (req, res) => {
       return circle;
     }));
 
+    // Connections circles a viewer who isn't connected can't open still show,
+    // greyed and locked, so the profile says "connect to see more" instead of
+    // looking smaller than it is (Wes, 2026-10-17). Opt-in per request: older
+    // builds would draw a stub as an ordinary circle and 403 on tap. Inner
+    // Circle and Private circles are never shown or counted. A blocked
+    // relationship (either way) gets nothing extra.
+    const isOwner = normalizeUserId(currentUserId) === normalizeUserId(targetUserId);
+    const { isBlockedEitherWay } = require('../services/moderationService');
+    if (req.query.includeLocked === '1' && !isConnected && !isOwner
+        && !isBlockedEitherWay(req.user, targetUserId) && !isBlockedEitherWay(userData, currentUserId)) {
+      const { lockedCircleStub, countConnectionPlaces } = require('../services/circleAccess');
+      const lockedQuery = await db.collection(COLLECTIONS.CIRCLES)
+        .where('owner', '==', targetUserId)
+        .where('privacy', '==', 'myNetwork')
+        .get();
+      const shown = new Set(circles.map(c => c._id));
+      // A circle shared with this viewer by name already came back unlocked
+      // from the query above, or opens via sharedWith; never lock it here.
+      const lockedDocs = lockedQuery.docs.filter(doc => !shown.has(doc.id)
+        && !canViewCircle(doc.data(), currentUserId, viewerCtx));
+      if (lockedDocs.length) {
+        const stubs = await Promise.all(lockedDocs.map(async doc =>
+          lockedCircleStub(serializeDoc(doc), await countConnectionPlaces(doc.id))));
+        // Keep the owner's own arrangement across open and locked circles
+        const byId = new Map([...circles, ...stubs].map(c => [c._id, c]));
+        const ordered = sortCirclesByUserOrder(
+          [...sortedDocs, ...lockedDocs].map(doc => ({ id: doc.id, ...doc.data() })),
+          userData?.circleOrder
+        ).map(c => byId.get(c.id));
+        circles.splice(0, circles.length, ...ordered);
+      }
+    }
+
     // Embedded places need the same addedByUser enrichment as
     // circles/:id/places — without it iOS shows "Added by Unknown" on every
     // pin/row rendered from this payload

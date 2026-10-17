@@ -65,6 +65,36 @@ class CircleCell: UICollectionViewCell {
         return view
     }()
     
+    /// Locked circles (a Connections circle the viewer can't open): the cover
+    /// greys out under a lock and "Connections only".
+    private let lockOverlay: UIView = {
+        let view = UIView()
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+        view.isUserInteractionEnabled = false
+        view.isHidden = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
+    private let lockStack: UIStackView = {
+        let lock = UIImageView(image: UIImage(systemName: "lock.fill"))
+        lock.tintColor = .white
+        lock.contentMode = .scaleAspectFit
+        lock.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
+        let label = UILabel()
+        label.text = "Connections\nonly"
+        label.numberOfLines = 2
+        label.font = UIFont.systemFont(ofSize: 10, weight: .semibold)
+        label.textColor = .white
+        label.textAlignment = .center
+        let stack = UIStackView(arrangedSubviews: [lock, label])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 3
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }()
+
     // MARK: - Init
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -83,6 +113,8 @@ class CircleCell: UICollectionViewCell {
         containerView.addSubview(placeCountLabel)
         containerView.addSubview(privacyImageView)
         containerView.addSubview(activityIndicatorView)
+        coverImageView.addSubview(lockOverlay)
+        lockOverlay.addSubview(lockStack)
         
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -114,7 +146,14 @@ class CircleCell: UICollectionViewCell {
             activityIndicatorView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 8),
             activityIndicatorView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
             activityIndicatorView.widthAnchor.constraint(equalToConstant: 10),
-            activityIndicatorView.heightAnchor.constraint(equalToConstant: 10)
+            activityIndicatorView.heightAnchor.constraint(equalToConstant: 10),
+
+            lockOverlay.topAnchor.constraint(equalTo: coverImageView.topAnchor),
+            lockOverlay.leadingAnchor.constraint(equalTo: coverImageView.leadingAnchor),
+            lockOverlay.trailingAnchor.constraint(equalTo: coverImageView.trailingAnchor),
+            lockOverlay.bottomAnchor.constraint(equalTo: coverImageView.bottomAnchor),
+            lockStack.centerXAnchor.constraint(equalTo: lockOverlay.centerXAnchor),
+            lockStack.centerYAnchor.constraint(equalTo: lockOverlay.centerYAnchor)
         ])
         
         // Set initial corner radius based on expected size
@@ -148,8 +187,14 @@ class CircleCell: UICollectionViewCell {
         placeCountLabel.text = (circle.isOwner && circle.showOnMap == false)
             ? "\(countText) · \(CircleMapCopy.notOnMapTag)" : countText
         
+        // Locked: greyed cover under a lock; no new-activity dot or tier badge
+        let isLocked = circle.locked == true
+        lockOverlay.isHidden = !isLocked
+        nameLabel.textColor = isLocked ? Constants.Colors.secondaryLabel : Constants.Colors.label
+        privacyImageView.isHidden = isLocked
+
         // Show/hide activity indicator based on hasNewPlaces
-        let hasNew = circle.hasNewPlaces ?? false
+        let hasNew = !isLocked && (circle.hasNewPlaces ?? false)
         activityIndicatorView.isHidden = !hasNew
         
         // Add pulsing animation if there are new places
@@ -270,6 +315,9 @@ class CircleCell: UICollectionViewCell {
         nameLabel.text = nil
         placeCountLabel.text = nil
         privacyImageView.image = nil
+        privacyImageView.isHidden = false
         activityIndicatorView.isHidden = true
+        lockOverlay.isHidden = true
+        nameLabel.textColor = Constants.Colors.label
     }
 }
