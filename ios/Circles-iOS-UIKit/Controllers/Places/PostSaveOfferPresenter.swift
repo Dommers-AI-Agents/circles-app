@@ -59,22 +59,19 @@ enum PostSaveOfferPresenter {
         let key = HomePromptService.postcardNudgeKey
         whenFree(presenter) { presenter in
         AnalyticsService.shared.logEvent("postcard_nudge_shown", parameters: ["source": "photo_upload"])
-        AlertPresenter.showConfirmation(
-            title: "Photo added to \(place.name)",
-            message: "Want to send it as a postcard?",
-            confirmTitle: "Make One",
-            cancelTitle: "Not Now",
-            from: presenter,
-            onConfirm: {
+        let offer = PostcardOfferViewController(
+            placeName: place.name, photo: photo, photoUrl: nil,
+            onMake: {
                 AnalyticsService.shared.logEvent("postcard_nudge_accepted", parameters: ["source": "photo_upload"])
                 HomePromptService.shared.ack(key: key, action: .acted)
                 PostcardComposerRouter.open(photo: photo, place: place, from: presenter)
             },
-            onCancel: {
+            onDecline: {
                 AnalyticsService.shared.logEvent("postcard_nudge_declined", parameters: ["source": "photo_upload"])
                 HomePromptService.shared.ack(key: key, action: .skipped)
             }
         )
+        presenter.present(offer, animated: true)
         }
         return true
     }
@@ -98,13 +95,9 @@ enum PostSaveOfferPresenter {
         let key = HomePromptService.postcardNudgeKey
         whenFree(presenter) { presenter in
         AnalyticsService.shared.logEvent("postcard_nudge_shown", parameters: ["source": "post_save"])
-        AlertPresenter.showConfirmation(
-            title: "Send a postcard from \(place.name)?",
-            message: "Put a photo of \(place.name) on a card and send it to someone.",
-            confirmTitle: "Make One",
-            cancelTitle: "Not Now",
-            from: presenter,
-            onConfirm: {
+        let offer = PostcardOfferViewController(
+            placeName: place.name, photo: nil, photoUrl: photoUrl,
+            onMake: {
                 AnalyticsService.shared.logEvent("postcard_nudge_accepted", parameters: ["source": "post_save"])
                 // Acked either way: being asked is what spends the fortnight,
                 // and the home card reads the same key.
@@ -115,11 +108,12 @@ enum PostSaveOfferPresenter {
                     from: presenter
                 )
             },
-            onCancel: {
+            onDecline: {
                 AnalyticsService.shared.logEvent("postcard_nudge_declined", parameters: ["source": "post_save"])
                 HomePromptService.shared.ack(key: key, action: .skipped)
             }
         )
+        presenter.present(offer, animated: true)
         }
     }
 
@@ -159,6 +153,7 @@ enum PostSaveOfferPresenter {
     private static func isClear(_ presenter: UIViewController) -> Bool {
         if presenter is UIAlertController { return false }
         if presenter is MilestoneCelebrationViewController { return false }
+        if presenter is PostcardOfferViewController { return false }
         if presenter.isBeingDismissed { return false }
         return true
     }

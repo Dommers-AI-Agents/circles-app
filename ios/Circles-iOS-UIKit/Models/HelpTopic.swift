@@ -324,6 +324,38 @@ class HelpContentProvider {
                 videoTimestamp: nil
             ),
             HelpTopic(
+                id: "postcards",
+                title: "Postcards",
+                subtitle: "Turn your photo of a place into a postcard",
+                content: """
+                Any photo you take at a place can become a postcard, with "Greetings from" and the place's name on the front and your note on the back.
+
+                **How to make one:**
+                1. Add your photo to a place, or choose **Send a Postcard from Here** in a place's menu
+                2. Pick a design and drag or pinch the photo to fit
+                3. Write a short note on the back
+                4. Choose who gets it, then tap **Send**
+
+                **Free ways to send it:**
+                • To friends on FavCircles. It lands in their messages
+                • By email, with a link to see it online
+                • By text or any other app, after you send
+
+                **A real postcard in the mail:**
+                • We print it on a 4×6 card and mail it anywhere in the US
+                • The price is shown before you pay (usually $3.99), with Apple Pay or a card
+                • You can cancel before it prints, within an hour of sending
+                • It typically arrives in 4 to 6 business days. Follow it in the Postcard widget, from printing to delivered
+
+                Pick any or all of these: one **Send** does them together.
+
+                **Where else to find it:** the Postcard widget on the Widgets tab, and the share button on any photo Moment.
+                """,
+                category: .places,
+                relatedTopics: ["add-from-photos"],
+                videoTimestamp: nil
+            ),
+            HelpTopic(
                 id: "import-places",
                 title: "Importing Your Places",
                 subtitle: "Bring your saves from Google, Mapstr & Swarm",
