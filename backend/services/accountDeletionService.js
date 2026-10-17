@@ -81,6 +81,10 @@ async function deleteAccount(uid, { db = getFirestore(), auth = getAuth(), stora
   await deleteAll('moments', db.collection(COLLECTIONS.PLACE_VIDEOS).where('userId', '==', uid));
   await deleteAll('activities', db.collection(COLLECTIONS.ACTIVITIES).where('actorId', '==', uid));
   await deleteAll('notifications', db.collection(COLLECTIONS.NOTIFICATIONS).where('userId', '==', uid));
+  // …and the ones they caused in other people's bells ("X started following
+  // you", requests, likes): a deleted person mustn't keep showing up there
+  await deleteAll('notificationsFrom', db.collection(COLLECTIONS.NOTIFICATIONS).where('data.fromUserId', '==', uid));
+  await deleteAll('notificationsFrom', db.collection(COLLECTIONS.NOTIFICATIONS).where('data.followerId', '==', uid));
   await deleteAll('connections', db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', uid));
   await deleteAll('connections', db.collection(COLLECTIONS.CONNECTIONS).where('connectedUserId', '==', uid));
   await deleteAll('blocks', db.collection(COLLECTIONS.BLOCKS).where('blockerId', '==', uid));
