@@ -208,7 +208,9 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
     private func refreshFooter() {
         let found = finder.finds.count
         if finder.isRunning {
-            statusLabel.text = "Looking\u{2026} checked \(finder.checked) of \(finder.spots.count) spots \u{00B7} \(found) place\(found == 1 ? "" : "s") found"
+            statusLabel.text = finder.throttledUntil != nil
+                ? "Apple Maps asked us to slow down. Picking up again in a moment\u{2026} \(found) place\(found == 1 ? "" : "s") found"
+                : "Looking\u{2026} checked \(finder.checked) of \(finder.spots.count) spots \u{00B7} \(found) place\(found == 1 ? "" : "s") found"
             lookButton.setTitle("Stop", for: .normal)
             lookButton.isHidden = false
         } else if !finder.isDone {

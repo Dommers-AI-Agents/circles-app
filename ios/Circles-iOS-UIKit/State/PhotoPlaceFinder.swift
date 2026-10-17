@@ -137,6 +137,61 @@ final class PhotoPlaceFinder {
 
     init(spots: [PhotoFindSpot]) { self.spots = spots }
 
+    /// The lookup in flight (an answer for any other one is ignored)
+    private var lookupToken: UUID?
+    /// Tries left for the current spot before it's skipped
+    private var retries = 0
+    /// Apple asked us to slow down: when it's safe to look again
+    private(set) var throttledUntil: Date?
+
+    static let lookupTimeout: TimeInterval = 12
+    static let maxRetries = 2
+    static let throttleWait: TimeInterval = 30
+
+    private struct LookupTimeout: Error {}
+
+    /// An answer (or a failure) for `spot`: record it, then the next spot. A
+    /// failure retries the same spot (after 30 s when Apple throttled us)
+    /// instead of counting it as "nothing there".
+    private func handle(spot: PhotoFindSpot, started: Date, result: Result<[MKMapItem], Error>) {
+        guard isRunning else { return }
+        switch result {
+        case .success(let items):
+            retries = 0
+            throttledUntil = nil
+            checked += 1
+            if let best = items.first {
+                if let existing = finds.first(where: { $0.isSamePlace(as: best) }) {
+                    existing.absorb(spot)
+                    onEvent?(.merged(existing))
+                } else {
+                    let find = PhotoFind(spot: spot, candidates: items)
+                    finds.append(find)
+                    onEvent?(.found(find))
+                }
+            }
+            onEvent?(.progress)
+            let pace = max(0, 1.2 - Date().timeIntervalSince(started))
+            DispatchQueue.main.asyncAfter(deadline: .now() + pace) { [weak self] in self?.next() }
+        case .failure(let error):
+            let throttled = (error as? MKError)?.code == .loadingThrottled
+            if retries < Self.maxRetries {
+                retries += 1
+                let wait = throttled ? Self.throttleWait : 3
+                throttledUntil = throttled ? Date().addingTimeInterval(wait) : nil
+                onEvent?(.progress)
+                DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in self?.next() }
+            } else {
+                // Give up on this spot only; the rest still get looked at
+                retries = 0
+                throttledUntil = nil
+                checked += 1
+                onEvent?(.progress)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.next() }
+            }
+        }
+    }
+
     var isDone: Bool { checked >= spots.count }
 
     func start() {
@@ -148,7 +203,8 @@ final class PhotoPlaceFinder {
     func stop() { isRunning = false }
 
     private func next() {
-        guard isRunning else { return }
+        // One lookup at a time, however many times next() was scheduled
+        guard isRunning, lookupToken == nil else { return }
         if let pause = pauseAfterFinds, finds.count >= pause {
             isRunning = false
             onEvent?(.finished)
@@ -161,22 +217,21 @@ final class PhotoPlaceFinder {
         }
         let spot = spots[checked]
         let started = Date()
-        NearbyPOILookup.savablePlaces(near: spot.center) { [weak self] items in
-            guard let self, self.isRunning else { return }
-            self.checked += 1
-            if let best = items.first {
-                if let existing = self.finds.first(where: { $0.isSamePlace(as: best) }) {
-                    existing.absorb(spot)
-                    self.onEvent?(.merged(existing))
-                } else {
-                    let find = PhotoFind(spot: spot, candidates: items)
-                    self.finds.append(find)
-                    self.onEvent?(.found(find))
-                }
-            }
-            self.onEvent?(.progress)
-            let pace = max(0, 1.2 - Date().timeIntervalSince(started))
-            DispatchQueue.main.asyncAfter(deadline: .now() + pace) { self.next() }
+        // One answer per lookup: Apple's, or the timeout's, whichever is first
+        // (a lookup that never answered used to stop the whole scan)
+        let token = UUID()
+        lookupToken = token
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self, self.lookupToken == token else { return }
+            self.lookupToken = nil
+            self.handle(spot: spot, started: started, result: .failure(LookupTimeout()))
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.lookupTimeout, execute: timeout)
+        NearbyPOILookup.savablePlacesResult(near: spot.center) { [weak self] result in
+            guard let self, self.lookupToken == token else { return }
+            self.lookupToken = nil
+            timeout.cancel()
+            self.handle(spot: spot, started: started, result: result)
         }
     }
 }
