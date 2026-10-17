@@ -74,18 +74,48 @@ final class PhotoFind {
     /// Saved already (a later batch failed or hit the free limit)
     var saved = false
 
+    /// Your own photo goes on the place only if you ask (off: the photo is
+    /// just how the place was found; saved places get Apple's street photo)
+    var addMyPhoto = false
+    /// Every visit to this place in the photos (repeat visits merge into the
+    /// first row instead of listing the same place again)
+    private(set) var spotKeys: [String]
+    private(set) var photoCount: Int
+    private(set) var visits = 1
+    private(set) var lastVisit: Date
+
     init(spot: PhotoFindSpot, candidates: [MKMapItem]) {
         self.spot = spot
         self.candidates = candidates
+        spotKeys = [spot.key]
+        photoCount = spot.photoCount
+        lastVisit = spot.start
     }
 
     var item: MKMapItem { candidates[min(choice, candidates.count - 1)] }
+
+    /// Another visit to the same place
+    func absorb(_ other: PhotoFindSpot) {
+        spotKeys.append(other.key)
+        photoCount += other.photoCount
+        visits += 1
+        lastVisit = max(lastVisit, other.start)
+    }
+
+    /// Same place: same name, pins within 60 m (a chain's other branch is
+    /// farther away than that)
+    func isSamePlace(as other: MKMapItem) -> Bool {
+        guard let a = item.name?.lowercased(), let b = other.name?.lowercased(), a == b else { return false }
+        let here = CLLocation(latitude: item.placemark.coordinate.latitude, longitude: item.placemark.coordinate.longitude)
+        let there = CLLocation(latitude: other.placemark.coordinate.latitude, longitude: other.placemark.coordinate.longitude)
+        return here.distance(from: there) <= 60
+    }
 }
 
 /// Looks up each spot with Apple Maps, one at a time (paced for Apple's ~50
 /// a minute), keeping only real places (PhotoPlaceKind). Main thread.
 final class PhotoPlaceFinder {
-    enum Event { case found(PhotoFind), progress, finished }
+    enum Event { case found(PhotoFind), merged(PhotoFind), progress, finished }
 
     private(set) var spots: [PhotoFindSpot]
     private(set) var checked = 0
@@ -124,10 +154,15 @@ final class PhotoPlaceFinder {
         NearbyPOILookup.savablePlaces(near: spot.center) { [weak self] items in
             guard let self, self.isRunning else { return }
             self.checked += 1
-            if !items.isEmpty {
-                let find = PhotoFind(spot: spot, candidates: items)
-                self.finds.append(find)
-                self.onEvent?(.found(find))
+            if let best = items.first {
+                if let existing = self.finds.first(where: { $0.isSamePlace(as: best) }) {
+                    existing.absorb(spot)
+                    self.onEvent?(.merged(existing))
+                } else {
+                    let find = PhotoFind(spot: spot, candidates: items)
+                    self.finds.append(find)
+                    self.onEvent?(.found(find))
+                }
             }
             self.onEvent?(.progress)
             let pace = max(0, 1.2 - Date().timeIntervalSince(started))

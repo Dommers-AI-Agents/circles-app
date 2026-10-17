@@ -79,8 +79,16 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
 
         finder.onEvent = { [weak self] event in
             guard let self else { return }
-            if case .found = event {
+            switch event {
+            case .found:
                 self.tableView.insertRows(at: [IndexPath(row: self.finder.finds.count - 1, section: 0)], with: .automatic)
+            case .merged(let find):
+                // Another visit to a place already listed: one row, more photos
+                if let row = self.finder.finds.firstIndex(where: { $0 === find }) {
+                    self.tableView.reloadRows(at: [IndexPath(row: row, section: 0)], with: .none)
+                }
+            default:
+                break
             }
             self.refreshFooter()
         }
@@ -136,7 +144,7 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
         hint.font = .systemFont(ofSize: 13)
         hint.textColor = Constants.Colors.secondaryLabel
         hint.numberOfLines = 0
-        hint.text = "Only places like caf\u{00E9}s, restaurants, shops, hotels and parks are listed. Uncheck any you don\u{2019}t want; hold one to pick a different place there."
+        hint.text = "Only real places Apple Maps knows, like caf\u{00E9}s, restaurants, shops, hotels and parks. Your photos stay on your phone; only where they were taken is used. Tap a place to see it; tap the check to leave it out."
 
         [destinationButton, nameField, privacyControl, mapRow, freeNote, hint].forEach(header.addArrangedSubview)
         renderDestination()
@@ -239,36 +247,61 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
         let item = find.item
         cell.textLabel?.text = item.name
         cell.textLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
-        let when = DateFormatter.localizedString(from: find.spot.start, dateStyle: .medium, timeStyle: .none)
-        let photos = "\(find.spot.photoCount) photo\(find.spot.photoCount == 1 ? "" : "s")"
-        cell.detailTextLabel?.text = find.saved ? "Saved" : "\(PhotoPlaceKind.label(item)) \u{00B7} \(when) \u{00B7} \(photos)"
+        let when = DateFormatter.localizedString(from: find.lastVisit, dateStyle: .medium, timeStyle: .none)
+        let photos = "\(find.photoCount) photo\(find.photoCount == 1 ? "" : "s")"
+        let visits = find.visits > 1 ? "\(find.visits) visits" : when
+        cell.detailTextLabel?.text = find.saved ? "Saved" : "\(PhotoPlaceKind.label(item)) \u{00B7} \(visits) \u{00B7} \(photos)"
         cell.detailTextLabel?.textColor = find.saved ? .systemGreen : .secondaryLabel
-        cell.accessoryType = find.include ? .checkmark : .none
-        cell.selectionStyle = find.saved ? .none : .default
-        cell.imageView?.image = UIImage(systemName: "photo")
+        cell.accessoryView = find.saved ? nil : checkButton(for: find, row: indexPath.row)
+        cell.selectionStyle = .default
+        // Apple's street-level picture of the place (free, on the phone);
+        // a map symbol until it arrives or where Apple has none
+        cell.imageView?.image = UIImage(systemName: "mappin.circle.fill")
+        cell.imageView?.tintColor = Constants.Colors.secondaryLabel
         cell.imageView?.layer.cornerRadius = 6
         cell.imageView?.clipsToBounds = true
-        switch find.spot.photo {
-        case .image(let image):
-            cell.imageView?.image = image.preparingThumbnail(of: CGSize(width: 44, height: 44)) ?? image
-        case .asset(let id):
-            PhotoLibraryIndex.shared.image(for: id, size: CGSize(width: 88, height: 88)) { [weak cell] image in
-                guard let cell, let image else { return }
-                cell.imageView?.image = image.preparingThumbnail(of: CGSize(width: 44, height: 44)) ?? image
-                cell.setNeedsLayout()
-            }
+        PlaceStreetThumbnails.shared.thumbnail(for: item) { [weak cell] image in
+            guard let cell, let image else { return }
+            cell.imageView?.image = image
+            cell.setNeedsLayout()
         }
-        cell.accessibilityHint = find.include ? "Will be saved. Tap to leave it out" : "Left out. Tap to save it"
+        cell.accessibilityHint = "Shows what Apple Maps knows about this place"
         return cell
     }
 
+    /// Tap a place: what Apple Maps knows about it, its street picture, and
+    /// the choices (save it, add my photo, a different place here)
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         let find = finder.finds[indexPath.row]
-        guard !find.saved else { return }
-        find.include.toggle()
-        tableView.reloadRows(at: [indexPath], with: .none)
-        refreshFooter()
+        let info = PhotoPlaceInfoViewController(find: find) { [weak self] in
+            guard let self, let row = self.finder.finds.firstIndex(where: { $0 === find }) else { return }
+            self.tableView.reloadRows(at: [IndexPath(row: row, section: 0)], with: .none)
+            self.refreshFooter()
+        }
+        let nav = UINavigationController(rootViewController: info)
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.large()]
+            sheet.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
+    }
+
+    /// The check on the right: in or out, without opening the place
+    private func checkButton(for find: PhotoFind, row: Int) -> UIButton {
+        let button = UIButton.iconButton(systemName: find.include ? "checkmark.circle.fill" : "circle", pointSize: 22)
+        button.tintColor = find.include ? Constants.Colors.primary : Constants.Colors.secondaryLabel
+        button.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
+        button.accessibilityLabel = find.include ? "Will be saved" : "Left out"
+        button.addAction(UIAction { [weak self, weak find] _ in
+            guard let self, let find else { return }
+            find.include.toggle()
+            if let index = self.finder.finds.firstIndex(where: { $0 === find }) {
+                self.tableView.reloadRows(at: [IndexPath(row: index, section: 0)], with: .none)
+            }
+            self.refreshFooter()
+        }, for: .touchUpInside)
+        return button
     }
 
     /// Hold a row: the other places Apple Maps found at that spot
@@ -316,7 +349,7 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
                 case .added(let result):
                     let accepted = min(batch.count, result.added + (result.skippedDuplicates ?? 0))
                     batch.prefix(accepted).forEach { $0.saved = true }
-                    PhotoMapProgressStore.markDone(batch.prefix(accepted).map(\.spot.key), uid: self.uid)
+                    PhotoMapProgressStore.markDone(batch.prefix(accepted).flatMap(\.spotKeys), uid: self.uid)
                     self.tableView.reloadData()
                     self.refreshFooter()
                     // A new circle exists now: later batches add to it
@@ -359,7 +392,9 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
     private func uploadPhotos(_ rows: [PhotoFind], completion: @escaping ([PhotoMapPlace]) -> Void) {
         var urls = [String?](repeating: nil, count: rows.count)
         let group = DispatchGroup()
-        for (index, find) in rows.enumerated() {
+        // Only photos the person chose to add; the rest stay on the phone and
+        // the place gets Apple's street photo after saving (ImportPhotoQueue)
+        for (index, find) in rows.enumerated() where find.addMyPhoto {
             group.enter()
             let upload: (UIImage?) -> Void = { image in
                 guard let data = image?.jpegData(compressionQuality: 0.8) else { return group.leave() }
@@ -405,6 +440,8 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
 
     private func finish(saved: Int, circleId: String?, coins: Double) {
         NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+        // Places saved without the person's photo get Apple's street photo now
+        ImportPhotoQueue.shared.kick()
         AnalyticsService.shared.logEvent("photo_places_saved", parameters: ["saved": String(saved)])
         let coinLine = PhotoMapPlanner.coinsLine(coins).map { "\n\($0)" } ?? ""
         if let onFinished {

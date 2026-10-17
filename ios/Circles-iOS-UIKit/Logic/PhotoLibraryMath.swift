@@ -71,20 +71,27 @@ enum PhotoLibraryMath {
         return out
     }
 
-    /// Where you live, as far as the photos say: the ~1 km cell photographed
-    /// on the most different days.
+    /// Where they live: the ~110 m square photographed on the most distinct
+    /// days, centred on the median of the photos in it and its neighbours.
+    /// (It used ~1 km squares and their average, which drifted toward the
+    /// neighborhood's cafés and let home itself through as a "place" again
+    /// and again; Wes, 2026-10-17.)
     static func home(_ shots: [Shot], calendar: Calendar = .current) -> CLLocationCoordinate2D? {
+        func cell(_ s: Shot) -> (Int, Int) { (Int((s.lat * 1000).rounded()), Int((s.lng * 1000).rounded())) }
         var days: [String: Set<DateComponents>] = [:]
-        var sums: [String: (lat: Double, lng: Double, n: Double)] = [:]
         for s in shots {
-            let key = "\((s.lat * 100).rounded()):\((s.lng * 100).rounded())"
-            days[key, default: []].insert(calendar.dateComponents([.year, .month, .day], from: s.date))
-            let acc = sums[key] ?? (0, 0, 0)
-            sums[key] = (acc.lat + s.lat, acc.lng + s.lng, acc.n + 1)
+            let c = cell(s)
+            days["\(c.0):\(c.1)", default: []].insert(calendar.dateComponents([.year, .month, .day], from: s.date))
         }
-        guard let best = days.max(by: { $0.value.count < $1.value.count })?.key, let acc = sums[best], acc.n > 0 else { return nil }
-        return CLLocationCoordinate2D(latitude: acc.lat / acc.n, longitude: acc.lng / acc.n)
+        guard let best = days.max(by: { $0.value.count < $1.value.count })?.key else { return nil }
+        let parts = best.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return nil }
+        let near = shots.filter { abs(cell($0).0 - parts[0]) <= 1 && abs(cell($0).1 - parts[1]) <= 1 }
+        return PhotoPlaceGrouper.median(near.map(\.coordinate))
     }
+
+    /// How far around home a stop is treated as home (GPS indoors drifts)
+    static let homeRadius: CLLocationDistance = 200
 
     /// Trips: days whose photos are mostly `awayKm`+ from home, joined when
     /// back to back (one quiet day between is still the same trip). Newest first.
@@ -113,7 +120,7 @@ enum PhotoLibraryMath {
 
     /// Stops near home or an existing save don't become new places.
     static func isSkippable(_ spot: Spot, home: CLLocationCoordinate2D?, saved: [CLLocationCoordinate2D]) -> Bool {
-        if let home, distance(spot.center, home) <= 150 { return true }
+        if let home, distance(spot.center, home) <= homeRadius { return true }
         return saved.contains { distance($0, spot.center) <= placeRadius }
     }
 

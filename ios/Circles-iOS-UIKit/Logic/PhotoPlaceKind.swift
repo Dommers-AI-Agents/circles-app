@@ -45,6 +45,12 @@ enum PhotoPlaceKind {
     private static let residential = try! NSRegularExpression(
         pattern: #"\b(apartments?|apts|residences?|lofts|condos?|condominiums|townhomes?|townhouses?|flats|estates|senior living|assisted living|homes|at the park|subdivision|homeowners)\b"#,
         options: [.caseInsensitive])
+    /// Plainly somebody's home whatever Apple calls it ("Townhome" came back
+    /// as a Hotel; Wes, 2026-10-17). Narrower than `residential`: "Residence
+    /// Inn" and "Homewood Suites" are real hotels.
+    private static let housing = try! NSRegularExpression(
+        pattern: #"\b(apartments?|apts|townhomes?|townhouses?|condos?|condominiums|duplex|subdivision|homeowners|hoa|senior living|assisted living)\b"#,
+        options: [.caseInsensitive])
     private static let notAPlace = try! NSRegularExpression(
         pattern: #"\b(parking|atm|bank|credit union|office|offices|llc|inc)\b"#, options: [.caseInsensitive])
 
@@ -57,6 +63,7 @@ enum PhotoPlaceKind {
     /// - isBareAddress: `BareAddressHeuristic.isBareAddress` for the item
     static func isPlace(name: String?, categoryRaw: String?, isBareAddress: Bool) -> Bool {
         guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty, !isBareAddress else { return false }
+        if housing.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) != nil { return false }
         if let category = categoryRaw {
             if denied.contains(category) { return false }
             guard allowed.contains(category) else { return false }

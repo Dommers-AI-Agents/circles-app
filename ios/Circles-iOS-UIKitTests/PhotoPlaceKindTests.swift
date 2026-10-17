@@ -54,3 +54,18 @@ struct PhotoPlaceKindTests {
                 < PhotoPlaceKind.rankScore(distance: 20, categoryRaw: beauty))
     }
 }
+
+/// Homes never come back as places, whatever Apple calls them (2026-10-17).
+struct PhotoPlaceKindHousingTests {
+    @Test func housingNamesAreNeverPlaces() {
+        #expect(!PhotoPlaceKind.isPlace(name: "Townhome", categoryRaw: MKPointOfInterestCategory.hotel.rawValue, isBareAddress: false))
+        #expect(!PhotoPlaceKind.isPlace(name: "Ashley Park Apartments", categoryRaw: MKPointOfInterestCategory.restaurant.rawValue, isBareAddress: false))
+        #expect(!PhotoPlaceKind.isPlace(name: "South End Condos", categoryRaw: nil, isBareAddress: false))
+    }
+
+    @Test func realHotelsWithHomeyNamesStay() {
+        #expect(PhotoPlaceKind.isPlace(name: "Residence Inn by Marriott", categoryRaw: MKPointOfInterestCategory.hotel.rawValue, isBareAddress: false))
+        #expect(PhotoPlaceKind.isPlace(name: "Homewood Suites", categoryRaw: MKPointOfInterestCategory.hotel.rawValue, isBareAddress: false))
+        #expect(PhotoPlaceKind.isPlace(name: "Goldie's", categoryRaw: MKPointOfInterestCategory.restaurant.rawValue, isBareAddress: false))
+    }
+}

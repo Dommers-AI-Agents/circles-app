@@ -38,6 +38,22 @@ struct PhotoLibraryMathTests {
         #expect(abs(home.latitude - 35.2) < 0.01)
     }
 
+    @Test func homeStaysOnTheHouseNotTheNeighborhood() {
+        // Home on 20 days, a café ~600 m away on 12 days: the old ~1 km
+        // average landed between them and let home through as a place
+        var shots: [M.Shot] = []
+        for day in 0..<20 { shots.append(shot("h\(day)", 35.21000, -80.86000, minutes: Double(day) * 1440 + 1200)) }
+        for day in 0..<12 { shots.append(shot("c\(day)", 35.21540, -80.86000, minutes: Double(day) * 1440 + 600)) }
+        let home = M.home(shots, calendar: cal)!
+        #expect(M.distance(home, CLLocationCoordinate2D(latitude: 35.21, longitude: -80.86)) < 30)
+        // A stop indoors with drifting GPS (~180 m off) is still home
+        let drift = M.Spot(shots: [shot("d", 35.2116, -80.86, minutes: 0)], center: CLLocationCoordinate2D(latitude: 35.2116, longitude: -80.86))
+        #expect(M.isSkippable(drift, home: home, saved: []))
+        // The café is not
+        let cafe = M.Spot(shots: [shot("c", 35.2154, -80.86, minutes: 0)], center: CLLocationCoordinate2D(latitude: 35.2154, longitude: -80.86))
+        #expect(!M.isSkippable(cafe, home: home, saved: []))
+    }
+
     @Test func backToBackDaysAwayAreOneTrip() {
         let home = CLLocationCoordinate2D(latitude: 35.2, longitude: -80.8)
         var shots: [M.Shot] = []
