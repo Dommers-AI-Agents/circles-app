@@ -38,6 +38,8 @@ const {
 const {
   followPlace,
   unfollowPlace,
+  turnOnPlaceAlerts,
+  turnOffPlaceAlerts,
   getPlaceFollowers
 } = require('../controllers/placeFollowController');
 const { protect } = require('../middleware/firebaseAuth');
@@ -120,6 +122,10 @@ router.route('/:id/savers')
 router.route('/:id/follow')
   .post(followPlace)
   .delete(unfollowPlace);
+// The bell: a follower's opt-in to the store's alerts
+router.route('/:id/follow/alerts')
+  .post(turnOnPlaceAlerts)
+  .delete(turnOffPlaceAlerts);
 
 router.route('/:id/followers')
   .get(getPlaceFollowers);

@@ -1490,6 +1490,20 @@ class PlaceService {
         )
     }
 
+    /// The bell on a followed place: its new specials, events and news as
+    /// pushes (at most one a day per store). Followers only.
+    func setPlaceAlerts(id: String, on: Bool, completion: @escaping (Result<PlaceAlertsResponse, Error>) -> Void) {
+        APIService.shared.request(
+            endpoint: "places/\(id)/follow/alerts",
+            method: on ? .post : .delete,
+            body: on ? [:] : nil,
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceAlertsResponse, Error>) in
+                completion(result)
+            }
+        )
+    }
+
     func fetchPlaceSavers(id: String, completion: @escaping (Result<PlaceSaversResponse, Error>) -> Void) {
         APIService.shared.request(
             endpoint: "places/\(id)/savers",
@@ -1770,6 +1784,12 @@ struct PlaceSaversResponse: Decodable {
     let savers: [User]
     let count: Int
     let totalCount: Int
+}
+
+struct PlaceAlertsResponse: Decodable {
+    let success: Bool
+    let alertsOn: Bool
+    let alertFollowersCount: Int?
 }
 
 struct PlaceFollowResponse: Decodable {

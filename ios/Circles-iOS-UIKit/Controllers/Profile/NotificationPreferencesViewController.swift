@@ -49,6 +49,7 @@ class NotificationPreferencesViewController: BaseTableViewController {
         case nearbyCheckIns
         case discoveryPrompts
         case weekendRecommendations
+        case storeAlerts
 
         /// The arrival alert shows for everyone whose phone can do it;
         /// switching it on asks for Always location when needed.
@@ -375,6 +376,16 @@ extension NotificationPreferencesViewController {
                     isOn: preferences.weekendRecommendations,
                     onToggle: { [weak self] isOn in
                         self?.preferences.weekendRecommendations = isOn
+                        self?.markAsChanged()
+                    }
+                )
+            case .storeAlerts:
+                // Master switch; each store is opted into with its bell
+                cell.configure(
+                    title: "Stores You Follow",
+                    isOn: preferences.storeAlerts,
+                    onToggle: { [weak self] isOn in
+                        self?.preferences.storeAlerts = isOn
                         self?.markAsChanged()
                     }
                 )

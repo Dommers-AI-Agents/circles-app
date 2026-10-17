@@ -13,6 +13,7 @@ const { normalizeUserId, isSameUser } = require('../../services/idService');
 const db = getFirestore();
 const { isVenueTeamMember, venueGlobalPlaceId, ownerVenueInfo } = require('../../services/venueHelpers.js');
 const { canViewCircle } = require('../../services/visibility');
+const { alertAudience } = require('../../services/placeAlerts');
 const { makeViewerContext } = require('../../services/viewerContext');
 const { getInnerCircleGrantorLists } = require('../../utils/networkAccess');
 const placePhotos = require('../../services/placePhotoService');
@@ -127,10 +128,13 @@ exports.getVenueDashboard = async (req, res) => {
 
     // Followers live on the canonical globalPlaces record
     let followersCount = 0;
+    // Followers who turned on the store's bell: who a new post will alert
+    let alertFollowersCount = 0;
     if (globalPlaceId) {
       const globalDoc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
         .doc(globalPlaceId).get();
       followersCount = (globalDoc.exists && globalDoc.data().followersCount) || 0;
+      alertFollowersCount = globalDoc.exists ? alertAudience(globalDoc.data()).length : 0;
     }
 
     // Organic saves = thin save docs referencing the venue, distinct by saver.
@@ -150,6 +154,7 @@ exports.getVenueDashboard = async (req, res) => {
     const headline = {
       saves: distinctSavers.size,
       followers: followersCount,
+      alertFollowers: alertFollowersCount,
       visits: stats.visits || 0,
       scans: stats.scans || 0,
       signups: stats.signups || 0,

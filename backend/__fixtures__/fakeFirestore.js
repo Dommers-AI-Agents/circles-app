@@ -173,7 +173,7 @@ class FakeFirestore {
   }
 }
 
-// Mirrors FieldValue.increment and arrayUnion.
+// Mirrors FieldValue.increment, arrayUnion and arrayRemove.
 function applyPatch(current, patch) {
   const next = { ...current };
   for (const [key, value] of Object.entries(patch)) {
@@ -182,6 +182,9 @@ function applyPatch(current, patch) {
     } else if (value && typeof value === 'object' && Array.isArray(value.__arrayUnion)) {
       const prev = Array.isArray(next[key]) ? next[key] : [];
       next[key] = [...prev, ...value.__arrayUnion.filter((v) => !prev.includes(v))];
+    } else if (value && typeof value === 'object' && Array.isArray(value.__arrayRemove)) {
+      const prev = Array.isArray(next[key]) ? next[key] : [];
+      next[key] = prev.filter((v) => !value.__arrayRemove.includes(v));
     } else {
       next[key] = value;
     }
@@ -189,6 +192,10 @@ function applyPatch(current, patch) {
   return next;
 }
 
-const FakeFieldValue = { increment: (n) => ({ __increment: n }), arrayUnion: (...items) => ({ __arrayUnion: items }) };
+const FakeFieldValue = {
+  increment: (n) => ({ __increment: n }),
+  arrayUnion: (...items) => ({ __arrayUnion: items }),
+  arrayRemove: (...items) => ({ __arrayRemove: items })
+};
 
 module.exports = { FakeFirestore, FakeFieldValue };

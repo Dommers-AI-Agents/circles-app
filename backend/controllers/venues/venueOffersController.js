@@ -10,6 +10,21 @@ const db = getFirestore();
 // the embedded array (and the venue doc) small permanently.
 const PRUNE_EXPIRED_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
 const { venueGlobalPlaceId } = require('../../services/venueHelpers.js');
+const { alertFollowers } = require('../../services/placeAlerts');
+
+// A NEW offer/announcement/event pushes to followers who turned on the
+// store's bell (at most once a day per store; see services/placeAlerts.js).
+// Awaited so the owner hears how many it reached. Edits never push.
+const alertStoreFollowers = async (venue, kind, title, message) => {
+  const globalPlaceId = await venueGlobalPlaceId(venue).catch(() => null);
+  return alertFollowers({
+    globalPlaceId,
+    placeName: venue.placeName || venue.venueName,
+    kind,
+    title,
+    message
+  });
+};
 
 // Fire-and-forget activity for venue announcements/offers so they surface in
 // followers' feeds. Actor id 'place_<globalPlaceId>' — the feed query adds a
@@ -77,8 +92,9 @@ exports.addOffer = async (req, res) => {
 
     emitVenueActivity(req.venue, 'venue_offer', String(title).trim());
     notifySpecialsChanged(req.venue.venueId);
+    const alerted = await alertStoreFollowers(req.venue, 'offer', String(title).trim());
 
-    res.status(201).json({ success: true, data: { offers } });
+    res.status(201).json({ success: true, data: { offers, alerted } });
   } catch (error) {
     console.error('❌ Failed to add offer:', error);
     res.status(500).json({ success: false, error: 'Failed to add offer' });
@@ -174,8 +190,10 @@ exports.addAnnouncement = async (req, res) => {
 
     emitVenueActivity(req.venue, 'venue_announcement', String(title).trim());
     notifySpecialsChanged(req.venue.venueId);
+    const alerted = await alertStoreFollowers(req.venue, event ? 'event' : 'announcement',
+      String(title).trim(), String(message).trim());
 
-    res.status(201).json({ success: true, data: { announcements } });
+    res.status(201).json({ success: true, data: { announcements, alerted } });
   } catch (error) {
     console.error('❌ Failed to add announcement:', error);
     res.status(500).json({ success: false, error: 'Failed to add announcement' });

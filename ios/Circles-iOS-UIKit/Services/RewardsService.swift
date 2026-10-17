@@ -268,7 +268,7 @@ class RewardsService {
 
     // MARK: - Venue owner announcements
 
-    func addAnnouncement(venueId: String, title: String, message: String, expiresAt: String? = nil, event: [String: Any]? = nil, completion: @escaping (Result<[VenueAnnouncement], Error>) -> Void) {
+    func addAnnouncement(venueId: String, title: String, message: String, expiresAt: String? = nil, event: [String: Any]? = nil, alerted: ((StoreAlertResult?) -> Void)? = nil, completion: @escaping (Result<[VenueAnnouncement], Error>) -> Void) {
         var body: [String: Any] = ["title": title, "message": message]
         if let expiresAt = expiresAt { body["expiresAt"] = expiresAt }
         if let event = event { body["event"] = event }
@@ -281,6 +281,7 @@ class RewardsService {
         ) { (result: Result<RewardsEnvelope<VenueAnnouncementsData>, APIError>) in
             switch result {
             case .success(let response):
+                alerted?(response.data.alerted)
                 completion(.success(response.data.announcements))
             case .failure(let error):
                 completion(.failure(error))
@@ -600,7 +601,7 @@ class RewardsService {
         }
     }
 
-    func addOffer(venueId: String, title: String, pointsCost: Int, completion: @escaping (Result<[RewardOffer], Error>) -> Void) {
+    func addOffer(venueId: String, title: String, pointsCost: Int, alerted: ((StoreAlertResult?) -> Void)? = nil, completion: @escaping (Result<[RewardOffer], Error>) -> Void) {
         let body: [String: Any] = ["title": title, "pointsCost": pointsCost]
 
         apiService.request(
@@ -611,6 +612,7 @@ class RewardsService {
         ) { (result: Result<RewardsEnvelope<VenueOffersData>, APIError>) in
             switch result {
             case .success(let response):
+                alerted?(response.data.alerted)
                 completion(.success(response.data.offers))
             case .failure(let error):
                 completion(.failure(error))
@@ -1272,6 +1274,8 @@ struct AnnouncementEvent: Codable, Equatable {
 
 struct VenueAnnouncementsData: Codable {
     let announcements: [VenueAnnouncement]
+    /// Who a NEW post alerted (absent on edits and deletes)
+    let alerted: StoreAlertResult?
 }
 
 // MARK: - Ownership claim models
@@ -1319,6 +1323,8 @@ struct RewardsProfile: Codable {
 
 struct VenueOffersData: Codable {
     let offers: [RewardOffer]
+    /// Who a NEW offer alerted (absent on edits)
+    let alerted: StoreAlertResult?
 }
 
 struct VenueSettingsData: Codable {

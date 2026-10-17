@@ -146,11 +146,17 @@ exports.updateNotificationPreferences = async (req, res, next) => {
       });
     }
     
+    // MERGE, never replace: the settings screen sends only its own switches,
+    // and replacing the map wiped every preference kept elsewhere (Daily
+    // Quotes, How Are You?, tips, store alerts…), quietly un-muting them.
+    if (typeof notificationPreferences !== 'object' || Array.isArray(notificationPreferences)) {
+      return res.status(400).json({ success: false, message: 'notificationPreferences must be an object' });
+    }
     const userRef = db.collection(COLLECTIONS.USERS).doc(req.user.uid);
-    await userRef.update({
-      notificationPreferences: notificationPreferences,
+    await userRef.set({
+      notificationPreferences,
       updatedAt: new Date().toISOString()
-    });
+    }, { merge: true });
     
     console.log(`🔔 Notification preferences updated for user ${req.user.uid}`);
     

@@ -715,7 +715,9 @@ exports.getPlace = async (req, res, next) => {
       likesCount: social.likes.length,
       commentsCount: social.commentsCount,
       followersCount: (social.venueData && social.venueData.followersCount) || 0,
-      isFollowing: ((social.venueData && social.venueData.followers) || []).includes(req.user.uid)
+      isFollowing: ((social.venueData && social.venueData.followers) || []).includes(req.user.uid),
+      // The bell: this follower gets the store's alerts
+      followAlerts: ((social.venueData && social.venueData.alertFollowerIds) || []).includes(req.user.uid)
     };
     if (social.venueData) {
       placeData = overlayVenuePhotos(overlayVenueFields(placeData, social.venueData), social.venueData, req.user.uid);

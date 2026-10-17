@@ -6,6 +6,9 @@ import UIKit
 /// come down on their own when they're over). Existing announcements can be
 /// deleted from here too.
 final class VenueAnnouncementFormViewController: BaseViewController {
+    /// Who a new post alerted, told to the owner once the form closes
+    private var alertedLine: String?
+
 
     private let venueId: String
     private let existing: VenueAnnouncement?
@@ -244,6 +247,7 @@ final class VenueAnnouncementFormViewController: BaseViewController {
                 message: draft.trimmedMessage,
                 expiresAt: draft.expiresAt(),
                 event: draft.eventPayload()?.dictionary,
+                alerted: { [weak self] in self?.alertedLine = StoreAlertCopy.line($0) },
                 completion: finish
             )
         }
@@ -271,7 +275,7 @@ final class VenueAnnouncementFormViewController: BaseViewController {
             switch result {
             case .success(let announcements):
                 self.onSaved?(announcements)
-                self.navigationController?.popViewController(animated: true)
+                self.closeAndReportAlerts()
             case .failure(let error):
                 self.showProblem((error as? APIError)?.serverMessage ?? error.localizedDescription)
             }
@@ -287,5 +291,21 @@ extension VenueAnnouncementFormViewController: UITextFieldDelegate, UITextViewDe
 
     func textViewDidChange(_ textView: UITextView) {
         fieldsChanged()
+    }
+}
+
+extension VenueAnnouncementFormViewController {
+    /// Close the form; if the post alerted followers, say so on the screen
+    /// underneath (the form itself is gone by then).
+    fileprivate func closeAndReportAlerts() {
+        let line = alertedLine
+        alertedLine = nil
+        let nav = navigationController
+        nav?.popViewController(animated: true)
+        if let line, let presenter = nav?.topViewController {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                AlertPresenter.showSuccess(line, from: presenter)
+            }
+        }
     }
 }

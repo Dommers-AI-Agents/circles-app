@@ -121,6 +121,10 @@ enum NotificationTapRouter {
         case "new_place":
             return circleId.map { .circle(id: $0, showComments: nil) }
 
+        case "store_alert":
+            // A followed store's new special, event or news → its place page
+            return placeId.map { .place(id: $0, showComments: nil) }
+
         case "place_liked", "place_commented":
             if let placeId { return .place(id: placeId, showComments: type == "place_commented") }
             return activityId.map { .activity(id: $0) }

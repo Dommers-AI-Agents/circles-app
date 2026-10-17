@@ -30,7 +30,7 @@ enum VenueManageCopy {
         case .announcements:
             return Header(
                 title: "Announcements",
-                explanation: "Short updates shown on your place's page and in your followers' feeds — deals, happy hours, events. Expired announcements hide automatically.")
+                explanation: "Short updates shown on your place's page and in your followers' feeds — deals, happy hours, events. Followers who turn on alerts for your store also get a notification when you post something new (at most one a day). Expired announcements hide automatically.")
         case .windowSticker:
             return Header(
                 title: "Window sticker",
@@ -54,6 +54,8 @@ enum VenueManageCopy {
             return isVirtual
                 ? nil
                 : "Making a new register card turns the printed one off immediately — only do it if the card leaked or was lost."
+        case .announcements:
+            return "New posts alert followers who turned on your store's bell, at most once a day."
         case .windowSticker:
             return "The email has both printable codes: the window sticker and the register card."
         default:

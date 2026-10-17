@@ -43,6 +43,9 @@ const TYPES = {
   activity_comment:        { category: null,                      pref: null,                     badge: true },
   moment_tag:              { category: null,                      pref: null,                     badge: true },
   store_claim:             { category: null,                      pref: null,                     badge: true },
+  // A followed store's new offer/announcement/event, to followers who turned
+  // on its bell (services/placeAlerts.js). Muted by 'Stores you follow'.
+  store_alert:             { category: null,                      pref: 'storeAlerts',            badge: false, record: true },
   store_claim_approved:    { category: null,                      pref: null,                     badge: true },
   premium_signup:          { category: null,                      pref: null,                     badge: true },
   // Operational alerts to the admin account (services/adminAlerts.js)

@@ -289,6 +289,7 @@ class UserService {
                 "discoveryPrompts": preferences.discoveryPrompts,
                 "milestones": preferences.milestones,
                 "weekendRecommendations": preferences.weekendRecommendations,
+                "storeAlerts": preferences.storeAlerts,
                 "reengagement": preferences.reengagement,
                 "frequency": preferences.frequency,
                 "quietHoursEnabled": preferences.quietHoursEnabled,

@@ -30,6 +30,7 @@ const OLD_TYPE_MAP = {
   care_watcher_request: 'careCheckins', care_watcher_invite: 'careCheckins', care_watcher_accepted: 'careCheckins',
   care_watcher_declined: 'careCheckins', care_watcher_joined: 'careCheckins', care_watcher_removed: 'careCheckins',
   daily_quote: 'dailyQuote',
+  store_alert: 'storeAlerts',
   check_in_response: 'checkIns', reengagement: 'reengagement', activity_notification: 'socialActivity'
 };
 const OLD_BADGE_WORTHY = ['new_message', 'connection_request', 'connection_accepted', 'place_like', 'place_comment', 'new_follower',
@@ -66,7 +67,7 @@ test('the rows a person can catch up on in Notifications (Wes, 2026-10-01)', () 
     'care_accepted', 'care_alert_response', 'care_comment', 'care_invite', 'care_silence', 'care_watcher_accepted', 'care_watcher_declined',
     'care_watcher_invite', 'care_watcher_joined', 'care_watcher_removed', 'care_watcher_request',
     'check_in_response', 'event_invite', 'event_joined', 'favcoin_claim_settled', 'fridgemail', 'milestone', 'nextbar_result',
-    'nextbar_round', 'postcard_order', 'run_live_finished', 'run_live_invite'
+    'nextbar_round', 'postcard_order', 'run_live_finished', 'run_live_invite', 'store_alert'
   ]);
   // Reminders, digests and the questions themselves stay push-only
   ['engagement_reminder', 'reengagement', 'daily_summary', 'weekly_summary', 'daily_quote', 'care_ask', 'care_answer',

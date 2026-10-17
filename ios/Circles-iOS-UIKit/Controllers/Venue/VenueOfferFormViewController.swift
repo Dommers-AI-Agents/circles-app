@@ -3,6 +3,9 @@ import UIKit
 /// Add or edit one offer customers redeem with their points: what they get,
 /// what it costs, and (for an existing offer) whether it's live right now.
 final class VenueOfferFormViewController: BaseViewController {
+    /// Who a new post alerted, told to the owner once the form closes
+    private var alertedLine: String?
+
 
     private let venueId: String
     private let existing: RewardOffer?
@@ -102,7 +105,7 @@ final class VenueOfferFormViewController: BaseViewController {
                 switch result {
                 case .success(let offers):
                     self.onSaved?(offers)
-                    self.navigationController?.popViewController(animated: true)
+                    self.closeAndReportAlerts()
                 case .failure(let error):
                     self.problemLabel.text = (error as? APIError)?.serverMessage ?? error.localizedDescription
                     self.problemLabel.isHidden = false
@@ -125,7 +128,9 @@ final class VenueOfferFormViewController: BaseViewController {
                 completion: done
             )
         } else {
-            RewardsService.shared.addOffer(venueId: venueId, title: draft.trimmedTitle, pointsCost: cost, completion: done)
+            RewardsService.shared.addOffer(venueId: venueId, title: draft.trimmedTitle, pointsCost: cost,
+                                           alerted: { [weak self] in self?.alertedLine = StoreAlertCopy.line($0) },
+                                           completion: done)
         }
     }
 }
@@ -134,5 +139,21 @@ extension VenueOfferFormViewController: UITextFieldDelegate {
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         pointsField.becomeFirstResponder()
         return true
+    }
+}
+
+extension VenueOfferFormViewController {
+    /// Close the form; if the post alerted followers, say so on the screen
+    /// underneath (the form itself is gone by then).
+    fileprivate func closeAndReportAlerts() {
+        let line = alertedLine
+        alertedLine = nil
+        let nav = navigationController
+        nav?.popViewController(animated: true)
+        if let line, let presenter = nav?.topViewController {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                AlertPresenter.showSuccess(line, from: presenter)
+            }
+        }
     }
 }

@@ -12,6 +12,7 @@ const {
 } = require('../models/FirestoreModels');
 const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
 const { resolveGlobalPlace, ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
+const { setAlerts, PlaceAlertError } = require('../services/placeAlerts');
 
 const db = getFirestore();
 
@@ -92,6 +93,9 @@ async function updateFollowers(globalPlaceRef, userId, shouldFollow) {
     transaction.update(globalPlaceRef, {
       followers: newFollowers,
       followersCount: newFollowers.length,
+      // Unfollowing turns the store's alerts off too; following never turns
+      // them on (the bell is a separate opt-in)
+      ...(shouldFollow ? {} : { alertFollowerIds: FieldValue.arrayRemove(userId) }),
       updatedAt: new Date().toISOString()
     });
     return { followers: newFollowers, globalData: globalDoc.data(), changed: true };
@@ -275,5 +279,28 @@ exports.getPlaceFollowers = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Turn a followed place's alerts on or off (the bell)
+// @route   POST /api/places/:id/follow/alerts   (on)
+// @route   DELETE /api/places/:id/follow/alerts (off)
+// @access  Private (on: followers only)
+const setPlaceAlerts = (on) => async (req, res, next) => {
+  try {
+    const globalPlaceRef = await resolveFollowTarget(req.params.id);
+    if (!globalPlaceRef) {
+      return res.status(404).json({ success: false, message: 'Place not found' });
+    }
+    const result = await setAlerts(globalPlaceRef, req.user.uid, on);
+    res.status(200).json({ success: true, globalPlaceId: globalPlaceRef.id, ...result });
+  } catch (error) {
+    if (error instanceof PlaceAlertError) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
+    console.error('Error updating place alerts:', error);
+    next(error);
+  }
+};
+exports.turnOnPlaceAlerts = setPlaceAlerts(true);
+exports.turnOffPlaceAlerts = setPlaceAlerts(false);
 
 exports.findOrCreateFollowCircle = findOrCreateFollowCircle;

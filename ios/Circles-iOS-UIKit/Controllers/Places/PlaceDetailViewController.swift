@@ -270,6 +270,16 @@ class PlaceDetailViewController: BaseViewController {
     // Follow state survives place reassignment (like/refresh responses may not
     // carry isFollowing) — seeded from the server copy, updated optimistically
     private var isFollowingPlace = false
+    /// The bell: this follower gets the store's new specials, events and news
+    private var followAlertsOn = false
+    private lazy var alertsBellButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "bell", pointSize: 18)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.accessibilityLabel = "Alerts from this place"
+        return button
+    }()
+    private var alertsBellWidth: NSLayoutConstraint?
+    private var alertsBellGap: NSLayoutConstraint?
     private var placeFollowersCount = 0
     
     // MARK: - Comments Section UI
@@ -756,6 +766,7 @@ class PlaceDetailViewController: BaseViewController {
         actionButtonsContainer.addSubview(commentCountLabel)
         actionButtonsContainer.addSubview(addToCircleButton)
         actionButtonsContainer.addSubview(followButton)
+        actionButtonsContainer.addSubview(alertsBellButton)
 
         // Add comments section
         infoContainerView.addSubview(commentsSection)
@@ -766,6 +777,7 @@ class PlaceDetailViewController: BaseViewController {
         // Add targets for action buttons
         likeButton.addTarget(self, action: #selector(likeButtonTapped), for: .touchUpInside)
         followButton.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
+        alertsBellButton.addTarget(self, action: #selector(alertsBellTapped), for: .touchUpInside)
         commentButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
         viewAllCommentsButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
         
@@ -945,8 +957,12 @@ class PlaceDetailViewController: BaseViewController {
             followButton.trailingAnchor.constraint(equalTo: actionButtonsContainer.trailingAnchor, constant: -Constants.Spacing.medium),
             followButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
 
-            // Add to Circle sits left of Follow, same size (sibling actions)
-            addToCircleButton.trailingAnchor.constraint(equalTo: followButton.leadingAnchor, constant: -Constants.Spacing.small),
+            // The bell sits just left of Follow, only while following
+            alertsBellButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
+            alertsBellButton.heightAnchor.constraint(equalToConstant: 30),
+
+            // Add to Circle sits left of Follow (and the bell), same size (sibling actions)
+            addToCircleButton.trailingAnchor.constraint(equalTo: alertsBellButton.leadingAnchor, constant: -Constants.Spacing.small),
             addToCircleButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
             addToCircleButton.leadingAnchor.constraint(greaterThanOrEqualTo: commentCountLabel.trailingAnchor, constant: Constants.Spacing.small),
 
@@ -2097,6 +2113,7 @@ class PlaceDetailViewController: BaseViewController {
                     self.isFollowingPlace = response.following
                     self.placeFollowersCount = response.followersCount
                     self.updateFollowButton()
+                    if !wasFollowing && response.following { self.offerAlertsAfterFollow() }
                 case .failure(let error):
                     Logger.error("Failed to toggle follow: \(error)")
                     self.isFollowingPlace = wasFollowing
@@ -3146,6 +3163,70 @@ extension PlaceDetailViewController {
         } else {
             followButton.setTitle("Follow", for: .normal)
             followButton.setStyle(.primary)
+            followAlertsOn = false
+        }
+        updateAlertsBell()
+    }
+
+    /// Shown only while following; filled when alerts are on. Collapses to
+    /// nothing otherwise so Add to Circle sits right against Follow.
+    private func updateAlertsBell() {
+        guard alertsBellButton.superview != nil, followButton.superview != nil else { return }
+        if alertsBellWidth == nil {
+            alertsBellWidth = alertsBellButton.widthAnchor.constraint(equalToConstant: 30)
+            alertsBellGap = alertsBellButton.trailingAnchor.constraint(equalTo: followButton.leadingAnchor, constant: -Constants.Spacing.small)
+            NSLayoutConstraint.activate([alertsBellWidth!, alertsBellGap!])
+        }
+        let shown = isFollowingPlace
+        alertsBellButton.isHidden = !shown
+        alertsBellWidth?.constant = shown ? 30 : 0
+        alertsBellGap?.constant = shown ? -Constants.Spacing.small : 0
+        let symbol = followAlertsOn ? "bell.fill" : "bell"
+        alertsBellButton.setImage(UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 18)), for: .normal)
+        alertsBellButton.tintColor = followAlertsOn ? Constants.Colors.primary : Constants.Colors.secondaryLabel
+        alertsBellButton.accessibilityValue = followAlertsOn ? "On" : "Off"
+    }
+
+    @objc private func alertsBellTapped() {
+        setAlerts(!followAlertsOn)
+    }
+
+    /// Turn the store's alerts on or off (optimistic; reverts on failure).
+    private func setAlerts(_ on: Bool) {
+        let previous = followAlertsOn
+        followAlertsOn = on
+        updateAlertsBell()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        PlaceService.shared.setPlaceAlerts(id: place.id, on: on) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let response):
+                    self.followAlertsOn = response.alertsOn
+                    self.updateAlertsBell()
+                    if response.alertsOn {
+                        self.showSuccess("You'll get alerts from \(self.place.name). At most one a day.")
+                    }
+                case .failure(let error):
+                    self.followAlertsOn = previous
+                    self.updateAlertsBell()
+                    self.showError(error)
+                }
+            }
+        }
+    }
+
+    /// Right after following: the opt-in, asked once. Following stays silent
+    /// unless they say yes here or tap the bell later (Wes, 2026-10-17).
+    private func offerAlertsAfterFollow() {
+        guard isFollowingPlace, !followAlertsOn else { return }
+        showConfirmation(
+            title: "Get alerts from \(place.name)?",
+            message: "Their new specials, events and news as notifications, at most one a day. You can change this anytime with the bell.",
+            confirmTitle: "Turn on alerts",
+            cancelTitle: "Not now"
+        ) { [weak self] in
+            self?.setAlerts(true)
         }
     }
 
@@ -3153,6 +3234,9 @@ extension PlaceDetailViewController {
     private func syncFollowState(from updatedPlace: Place) {
         if let following = updatedPlace.isFollowing {
             isFollowingPlace = following
+        }
+        if let alerts = updatedPlace.followAlerts {
+            followAlertsOn = alerts
         }
         if let count = updatedPlace.followersCount {
             placeFollowersCount = count

@@ -136,6 +136,7 @@ struct Place: Codable, Identifiable {
     var circleName: String? // Added by backend for check-in place selection
     var followersCount: Int? = nil // Venue followers (from the canonical global place record)
     var isFollowing: Bool? = nil // Whether the current user follows this venue
+    var followAlerts: Bool? = nil // Whether they turned on this venue's alerts (the bell)
     /// The viewer's own check-in history at this venue (place detail only)
     var myCheckInStats: CheckInStats? = nil
     // Derived location lens (cached server-side from the address; see the
@@ -166,7 +167,7 @@ struct Place: Codable, Identifiable {
         case photos, videos, category, customCategoryId, subcategory, rating, userRatingsTotal, userRating, notes, privateNotes, publicNotes, tags, reviews, openingHours
         case delivery, dineIn, reservable, takeout, curbsidePickup
         case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, audienceListId, createdAt, updatedAt, isNew, circleName
-        case followersCount, isFollowing
+        case followersCount, isFollowing, followAlerts
         case myCheckInStats
         case userRatedAt, ratingHistory
         case city, state, stateCode, neighborhood, country, countryCode
@@ -296,6 +297,7 @@ struct Place: Codable, Identifiable {
         self.isNew = try container.decodeIfPresent(Bool.self, forKey: .isNew)
         self.followersCount = try container.decodeIfPresent(Int.self, forKey: .followersCount)
         self.isFollowing = try container.decodeIfPresent(Bool.self, forKey: .isFollowing)
+        self.followAlerts = try container.decodeIfPresent(Bool.self, forKey: .followAlerts)
         self.myCheckInStats = try container.decodeIfPresent(CheckInStats.self, forKey: .myCheckInStats)
         self.city = try container.decodeIfPresent(String.self, forKey: .city)
         self.state = try container.decodeIfPresent(String.self, forKey: .state)
