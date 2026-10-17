@@ -1,6 +1,16 @@
 import UIKit
+import CoreLocation
 
 struct Constants {
+    /// Where the app assumes someone is when it doesn't know (Wes,
+    /// 2026-10-17): FavCircles starts in Charlotte, so maps, Locals and
+    /// suggestions open there, never New York or San Francisco. Same place as
+    /// the server's config/defaultLocation.js.
+    enum DefaultLocation {
+        static let name = "Charlotte, NC"
+        static let coordinate = CLLocationCoordinate2D(latitude: 35.2271, longitude: -80.8431)
+    }
+
     struct Auth {
         // Fallback token lifetime when the backend doesn't send expiresIn.
         // Matches the backend JWT_EXPIRE of 30 days.

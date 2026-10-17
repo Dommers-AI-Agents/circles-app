@@ -12,12 +12,14 @@
 //                   feed has the times, its list page has the branch.
 // `branches` (libcal, mcldaz): name, words that identify it in an event's
 // location, and where it is (OpenStreetMap, 2026-10-15).
+const { DEFAULT_LOCATION } = require('./defaultLocation');
+
 const LIBRARY_FEEDS = [
   {
     type: 'bibliocommons',
     libraryId: 'cmlibrary',
     name: 'Charlotte Mecklenburg Library',
-    center: { lat: 35.2271, lng: -80.8431 },
+    center: { lat: DEFAULT_LOCATION.latitude, lng: DEFAULT_LOCATION.longitude },
     radiusMiles: 35,
     timeZone: 'America/New_York'
   },

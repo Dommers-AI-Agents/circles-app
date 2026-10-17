@@ -29,6 +29,8 @@ const DISCOVERY_CATEGORIES = new Set(['restaurant', 'bar', 'cafe', 'coffee', 'ba
   'outdoor', 'park', 'entertainment', 'attraction', 'museum', 'retail', 'shopping']);
 const OPEN_PLACE_TIERS = new Set([undefined, null, '', 'followCircle', 'public']);
 
+const { DEFAULT_LOCATION } = require('../config/defaultLocation');
+
 const NEARBY_KM = 80;
 
 /** [lat, lng] from a save's GeoJSON point or a { latitude, longitude } pair. */
@@ -51,7 +53,9 @@ const distanceKm = ([lat1, lng1], [lat2, lng2]) => {
  * @param {Set<string>} publicCircleIds  his circles anyone may see
  * @param {object} [options]
  * @param {{latitude:number, longitude:number}} [options.near]  the new user's
- *   location: only places within 80 km of it, if any qualify
+ *   location. Places within 80 km of it first; then within 80 km of
+ *   Charlotte, the default location (config/defaultLocation.js), which is
+ *   also where an unknown location starts; then anywhere
  * @param {() => number} [options.random]  injectable for tests
  * @returns {object|null} the place to suggest, or null when none qualifies
  *   (better no welcome suggestion than a bad one)
@@ -62,14 +66,15 @@ const pickWelcomePlace = (places, publicCircleIds, { near = null, random = Math.
     && OPEN_PLACE_TIERS.has(p.privacy)
     && !(p.tags || []).some(t => WANT_TO_GO.has(String(t).toLowerCase()))
     && !isStreetAddressName(p.name, p.address));
-  // Somewhere they can actually go, when Wes has a favorite near them
-  const here = latLng(near);
-  if (here) {
-    const nearby = eligible.filter(p => {
-      const there = latLng(p.location);
-      return there && distanceKm(here, there) <= NEARBY_KM;
-    });
-    if (nearby.length) eligible = nearby;
+  // Somewhere they can actually go: near them, else near Charlotte
+  const within = (center) => eligible.filter(p => {
+    const there = latLng(p.location);
+    return there && distanceKm(center, there) <= NEARBY_KM;
+  });
+  for (const center of [latLng(near), latLng(DEFAULT_LOCATION)]) {
+    if (!center) continue;
+    const nearby = within(center);
+    if (nearby.length) { eligible = nearby; break; }
   }
   if (eligible.length === 0) return null;
   // His own rating first (0–10), then a photo, then a place to discover

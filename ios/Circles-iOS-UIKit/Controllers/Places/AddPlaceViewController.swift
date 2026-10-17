@@ -1063,7 +1063,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         
         // Set initial region
         let region = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
+            center: Constants.DefaultLocation.coordinate,
             latitudinalMeters: 20000,
             longitudinalMeters: 20000
         )

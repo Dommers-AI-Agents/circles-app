@@ -13,6 +13,7 @@ const { projectPublicUser } = require('../services/publicUserProjection');
 const { excludedUserIds } = require('../services/moderationService');
 const { canViewCircle, isPlaceVisibleToViewer } = require('../services/visibility');
 const { isSameUser } = require('../services/idService');
+const { DEFAULT_LOCATION } = require('../config/defaultLocation');
 const db = getFirestore();
 
 // Cap on the caller's own circles in one dashboard read — far above real use.
@@ -21,7 +22,7 @@ const isLive = (data) => !!data && (data.deletedAt === null || data.deletedAt ==
 
 // Helper function to calculate map center from places
 const calculateMapCenter = (places) => {
-  if (places.length === 0) return { latitude: 37.7749, longitude: -122.4194 }; // Default SF
+  if (places.length === 0) return { latitude: DEFAULT_LOCATION.latitude, longitude: DEFAULT_LOCATION.longitude };
   
   const sum = places.reduce((acc, place) => ({
     latitude: acc.latitude + place.coordinates.latitude,

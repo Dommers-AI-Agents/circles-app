@@ -1,5 +1,6 @@
 // When the welcome suggestion goes out: once, near the new user when we know
-// where they are, otherwise after a day without a location fix.
+// where they are, otherwise after an hour without a location fix, near
+// Charlotte.
 const { FakeFirestore } = require('../../__fixtures__/fakeFirestore');
 const mockDb = new FakeFirestore({ namespaced: true });
 jest.mock('../../config/firebase', () => ({ getFirestore: () => mockDb }));
@@ -33,11 +34,11 @@ test('a location fix sends one nearby, once', async () => {
   expect(sent()).toHaveLength(1);
 });
 
-test('no fix: waits a day, then sends from anywhere', async () => {
-  await OnboardingService.maybeSendWelcomeSuggestion('u1', await newUser({ createdAt: ago(3600000) }), null);
+test('no fix: waits an hour, then sends one near Charlotte', async () => {
+  await OnboardingService.maybeSendWelcomeSuggestion('u1', await newUser({ createdAt: ago(10 * 60000) }), null);
   expect(sent()).toHaveLength(0);
-  await OnboardingService.maybeSendWelcomeSuggestion('u1', await newUser({ createdAt: ago(2 * 86400000) }), null);
-  expect(sent().map(s => s.placeId)).toEqual(['shore']);
+  await OnboardingService.maybeSendWelcomeSuggestion('u1', await newUser({ createdAt: ago(2 * 3600000) }), null);
+  expect(sent().map(s => s.placeId)).toEqual(['clt']);
 });
 
 test('older accounts and ones that already got one are left alone', async () => {

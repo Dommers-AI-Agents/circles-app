@@ -385,8 +385,9 @@ class OnboardingService {
   /**
    * The welcome suggestion for accounts signup couldn't place (Apple, Google
    * and passkey signups ask no zipcode). Called on app open: with a location
-   * fix it sends one nearby; without one it waits a day for a fix, then sends
-   * one from anywhere. Only for accounts under a week old, and only once.
+   * fix it sends one nearby; without one it waits an hour for a fix (the
+   * location prompt comes right after signup), then sends one near Charlotte,
+   * the default location. Only for accounts under a week old, and only once.
    */
   static async maybeSendWelcomeSuggestion(userId, userData = {}, near = null) {
     if (userData.welcomeSuggestionAt) return;
@@ -395,7 +396,7 @@ class OnboardingService {
     if (!Number.isFinite(created)) return;
     const age = Date.now() - created;
     if (age > 7 * 86400000) return;
-    if (!near && age < 86400000) return;
+    if (!near && age < 3600000) return;
     await OnboardingService.sendWelcomeSuggestion(userId, userData, near);
   }
 

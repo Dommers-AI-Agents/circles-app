@@ -102,17 +102,18 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
             statusView.isLoading = true
         }
 
-        // Location improves ordering but is optional — denied/unavailable
-        // falls back to the server's alphabetical order (and no events). A
-        // recent fix is plenty for "nearest first"; never wait on the GPS.
+        // Nearest first from where they are; without a fix (denied or not
+        // yet), from Charlotte, the default location. A recent fix is plenty
+        // for "nearest first"; never wait on the GPS.
         LocationService.shared.recentLocation { [weak self] location in
+            let here = location?.coordinate ?? Constants.DefaultLocation.coordinate
             let group = DispatchGroup()
             var offersOK = false
 
             group.enter()
             RewardsService.shared.getOffers(
-                lat: location?.coordinate.latitude,
-                lng: location?.coordinate.longitude
+                lat: here.latitude,
+                lng: here.longitude
             ) { result in
                 DispatchQueue.main.async {
                     defer { group.leave() }
@@ -123,17 +124,14 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
                 }
             }
 
-            if let location {
-                group.enter()
-                RewardsService.shared.getNearbyEvents(lat: location.coordinate.latitude,
-                                                      lng: location.coordinate.longitude) { result in
-                    DispatchQueue.main.async {
-                        defer { group.leave() }
-                        // A failed refresh keeps what's showing
-                        guard let self, case .success(let feed) = result else { return }
-                        self.applyFeed(feed)
-                        SpecialsCache.save(feed, as: "local-feed")
-                    }
+            group.enter()
+            RewardsService.shared.getNearbyEvents(lat: here.latitude, lng: here.longitude) { result in
+                DispatchQueue.main.async {
+                    defer { group.leave() }
+                    // A failed refresh keeps what's showing
+                    guard let self, case .success(let feed) = result else { return }
+                    self.applyFeed(feed)
+                    SpecialsCache.save(feed, as: "local-feed")
                 }
             }
 

@@ -45,16 +45,20 @@ test('a place to discover beats a service at the same rating', () => {
   expect(pickWelcomePlace(places, pub, { random: () => 0 }).id).toBe('bar');
 });
 
-test('near the new user when Wes has a favorite there, otherwise anywhere', () => {
+test('near the new user, else near Charlotte (the default), else anywhere', () => {
   const pub = new Set(['pub']);
   const charlotte = { latitude: 35.2169, longitude: -80.8593 };
-  const places = [
-    { id: 'shore', name: 'La Dolce Vita', circleId: 'pub', userRating: 10, photos: ['p'],
-      location: { type: 'Point', coordinates: [-74.0218, 40.1784] } },
-    { id: 'clt', name: 'Optimist Hall', circleId: 'pub', userRating: 8,
-      location: { type: 'Point', coordinates: [-80.8253, 35.2340] } }
-  ];
+  const shore = { id: 'shore', name: 'La Dolce Vita', circleId: 'pub', userRating: 10, photos: ['p'],
+    location: { type: 'Point', coordinates: [-74.0218, 40.1784] } };
+  const clt = { id: 'clt', name: 'Optimist Hall', circleId: 'pub', userRating: 8,
+    location: { type: 'Point', coordinates: [-80.8253, 35.2340] } };
+  const places = [shore, clt];
   expect(pickWelcomePlace(places, pub, { near: charlotte }).id).toBe('clt');
-  expect(pickWelcomePlace(places, pub, { near: { latitude: 47.6, longitude: -122.3 } }).id).toBe('shore');
-  expect(pickWelcomePlace(places, pub).id).toBe('shore');
+  expect(pickWelcomePlace(places, pub, { near: { latitude: 40.2, longitude: -74.0 } }).id).toBe('shore');
+  // Seattle has nothing nearby: Charlotte, not the higher-rated shore place
+  expect(pickWelcomePlace(places, pub, { near: { latitude: 47.6, longitude: -122.3 } }).id).toBe('clt');
+  // No location at all: Charlotte
+  expect(pickWelcomePlace(places, pub).id).toBe('clt');
+  // Nothing in Charlotte either: anywhere
+  expect(pickWelcomePlace([shore], pub).id).toBe('shore');
 });

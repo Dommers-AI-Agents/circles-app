@@ -62,48 +62,15 @@ class ConversationsListViewController: UIViewController {
         return table
     }()
     
-    private let emptyStateView: UIView = {
-        let view = UIView()
+    /// What the tab shows before there are any conversations
+    private lazy var emptyStateView: MessagesStarterView = {
+        let view = MessagesStarterView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isHidden = true
+        view.delegate = self
         return view
     }()
-    
-    private let emptyImageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.image = UIImage(systemName: "message.circle")
-        imageView.tintColor = .systemGray3
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
-    
-    private let emptyTitleLabel: UILabel = {
-        let label = UILabel()
-        label.text = "No Messages Yet"
-        label.font = .systemFont(ofSize: 20, weight: .semibold)
-        label.textColor = .label
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private lazy var emptyFindPeopleButton: UIButton = {
-        let button = UIButton.smallActionButton(title: "Find people", style: .primary)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-
-    private let emptyDescriptionLabel: UILabel = {
-        let label = UILabel()
-        label.text = "Start a conversation with your connections"
-        label.font = .systemFont(ofSize: 16)
-        label.textColor = .secondaryLabel
-        label.textAlignment = .center
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
+    private var starterLoadedAt: Date?
     
     private let newMessageButton: UIButton = {
         let button = UIButton(type: .system)
@@ -131,7 +98,6 @@ class ConversationsListViewController: UIViewController {
         Logger.debug("🔍 ConversationsListViewController: viewDidLoad called")
         setupView()
         setupTableView()
-        setupEmptyState()
         setupNewMessageButton()
 
         // Push/notification taps land here with a conversation id — open it
@@ -198,6 +164,10 @@ class ConversationsListViewController: UIViewController {
         }
         
         checkForNewSuggestions()
+        // viewWillDisappear stops the poll; start it again, and show what we
+        // already know instead of waiting for it
+        startPollingTimer()
+        updateEmptyState()
     }
     
     private func showLoadingIndicator() {
@@ -272,10 +242,10 @@ class ConversationsListViewController: UIViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             
-            emptyStateView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            emptyStateView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            emptyStateView.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 40),
-            emptyStateView.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -40),
+            emptyStateView.topAnchor.constraint(equalTo: headerContainer.bottomAnchor),
+            emptyStateView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            emptyStateView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            emptyStateView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             
             newMessageButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             newMessageButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
@@ -293,39 +263,6 @@ class ConversationsListViewController: UIViewController {
         let refreshControl = UIRefreshControl()
         refreshControl.addTarget(self, action: #selector(refreshConversations), for: .valueChanged)
         tableView.refreshControl = refreshControl
-    }
-    
-    private func setupEmptyState() {
-        emptyStateView.addSubview(emptyImageView)
-        emptyStateView.addSubview(emptyTitleLabel)
-        emptyStateView.addSubview(emptyDescriptionLabel)
-        emptyStateView.addSubview(emptyFindPeopleButton)
-        
-        NSLayoutConstraint.activate([
-            emptyImageView.topAnchor.constraint(equalTo: emptyStateView.topAnchor),
-            emptyImageView.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
-            emptyImageView.widthAnchor.constraint(equalToConstant: 80),
-            emptyImageView.heightAnchor.constraint(equalToConstant: 80),
-            
-            emptyTitleLabel.topAnchor.constraint(equalTo: emptyImageView.bottomAnchor, constant: 24),
-            emptyTitleLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
-            emptyTitleLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-            
-            emptyDescriptionLabel.topAnchor.constraint(equalTo: emptyTitleLabel.bottomAnchor, constant: 8),
-            emptyDescriptionLabel.leadingAnchor.constraint(equalTo: emptyStateView.leadingAnchor),
-            emptyDescriptionLabel.trailingAnchor.constraint(equalTo: emptyStateView.trailingAnchor),
-
-            // A next step, not a dead end (new-user audit, 2026-10-09)
-            emptyFindPeopleButton.topAnchor.constraint(equalTo: emptyDescriptionLabel.bottomAnchor, constant: 16),
-            emptyFindPeopleButton.centerXAnchor.constraint(equalTo: emptyStateView.centerXAnchor),
-            emptyFindPeopleButton.bottomAnchor.constraint(equalTo: emptyStateView.bottomAnchor)
-        ])
-        emptyFindPeopleButton.addTarget(self, action: #selector(emptyFindPeopleTapped), for: .touchUpInside)
-    }
-
-    @objc private func emptyFindPeopleTapped() {
-        AnalyticsService.shared.logEvent("empty_messages_find_people", parameters: [:])
-        tabBarController?.selectedIndex = 1
     }
     
     private func setupNewMessageButton() {
@@ -444,46 +381,49 @@ class ConversationsListViewController: UIViewController {
     private func updateEmptyState() {
         let conversations = messagingManager.conversations
         
-        Logger.debug("🔍 ConversationsListViewController: updateEmptyState - total conversations: \(conversations.count)")
-        
         // Hide loading indicator if we're not actively loading
         if !messagingManager.isLoadingConversations && isInitialLoadComplete {
             hideLoadingIndicator()
         }
         
-        // Show empty state only if there are truly no conversations at all
-        let shouldShowEmptyState = conversations.isEmpty
+        // Only once the list is known to be empty — never during the first load
+        let shouldShowEmptyState = conversations.isEmpty && messagingManager.hasLoadedConversations
         emptyStateView.isHidden = !shouldShowEmptyState
         tableView.isHidden = shouldShowEmptyState
         
-        Logger.debug("🔍 ConversationsListViewController: shouldShowEmptyState: \(shouldShowEmptyState)")
-        
-        // Always reload table to ensure all conversations are displayed
-        if !shouldShowEmptyState {
+        if shouldShowEmptyState {
+            hideLoadingIndicator()
+            loadStarterContent()
+        } else {
             tableView.reloadData()
         }
-        
-        // Update empty state message based on context
-        updateEmptyStateMessage()
     }
     
-    private func updateEmptyStateMessage() {
-        // Check if user has any connections
+    /// Fills the starter screen: connections (which wording), the places
+    /// people sent them, and people they may know. At most once a minute —
+    /// the poll calls updateEmptyState every 5 seconds.
+    private func loadStarterContent(force: Bool = false) {
+        if !force, let loadedAt = starterLoadedAt, Date().timeIntervalSince(loadedAt) < 60 { return }
+        starterLoadedAt = Date()
+        
         NetworkManager.shared.getConnections { [weak self] result in
-            guard let self = self else { return }
             DispatchQueue.main.async {
-                switch result {
-                case .success(let connections):
-                    if connections.isEmpty {
-                        self.emptyTitleLabel.text = "No Messages Yet"
-                        self.emptyDescriptionLabel.text = "Connect with people to message them and send each other places"
-                    } else {
-                        self.emptyTitleLabel.text = "No Conversations"
-                        self.emptyDescriptionLabel.text = "Send a message to one of your connections to get started"
-                    }
-                case .failure:
-                    self.emptyTitleLabel.text = "No Messages Yet"
-                    self.emptyDescriptionLabel.text = "Start a conversation with your connections"
+                if case .success(let connections) = result {
+                    self?.emptyStateView.setHasConnections(!connections.isEmpty)
+                }
+            }
+        }
+        SuggestionService.shared.fetchReceivedSuggestions { [weak self] result in
+            DispatchQueue.main.async {
+                if case .success(let suggestions) = result {
+                    self?.emptyStateView.setSuggestions(suggestions)
+                }
+            }
+        }
+        ContactsService.shared.fetchSuggestedUsers(limit: 5) { [weak self] result in
+            DispatchQueue.main.async {
+                if case .success(let people) = result {
+                    self?.emptyStateView.setPeople(people)
                 }
             }
         }
@@ -951,5 +891,57 @@ extension ConversationsListViewController: GroupConnectionSelectionViewControlle
                 }
             }
         }
+    }
+}
+
+// MARK: - MessagesStarterViewDelegate
+extension ConversationsListViewController: MessagesStarterViewDelegate {
+    func messagesStarterDidTapSuggestions(_ view: MessagesStarterView) {
+        AnalyticsService.shared.logEvent("empty_messages_suggestion", parameters: [:])
+        suggestionsButtonTapped()
+    }
+    
+    func messagesStarter(_ view: MessagesStarterView, didSelectUser user: User) {
+        navigationController?.pushViewController(ProfileViewController(user: user), animated: true)
+    }
+    
+    /// Same as the suggested-people overlay: follow, then ask to connect
+    func messagesStarter(_ view: MessagesStarterView, didTapConnect user: User, button: UIButton) {
+        AnalyticsService.shared.logEvent("empty_messages_connect", parameters: [:])
+        button.setTitle("Requested", for: .normal)
+        button.setStyle(.following)
+        button.isEnabled = false
+        APIService.shared.request(
+            endpoint: "users/\(user.id)/follow",
+            method: .post,
+            body: [:]
+        ) { (result: Result<SimpleAPIResponse, APIError>) in
+            if case .success(let response) = result {
+                AuthService.shared.recordFollowChange(userId: user.id, isFollowing: true)
+                PiggyBankDepositView.play(credit: response.piggyBank)
+            }
+            NetworkManager.shared.sendConnectionRequest(to: user.id) { [weak self] result in
+                guard case .failure(let error) = result else { return }
+                DispatchQueue.main.async {
+                    button.setTitle("Connect", for: .normal)
+                    button.setStyle(.primary)
+                    button.isEnabled = true
+                    if let self { AlertPresenter.showError(error, from: self) }
+                }
+            }
+        }
+    }
+    
+    func messagesStarterDidTapInvite(_ view: MessagesStarterView) {
+        AnalyticsService.shared.logEvent("empty_messages_invite", parameters: [:])
+        let share = UIActivityViewController(activityItems: NetworkManager.shared.shareConnectionInvite(),
+                                             applicationActivities: nil)
+        share.popoverPresentationController?.sourceView = view
+        present(share, animated: true)
+    }
+    
+    func messagesStarterDidTapFindPeople(_ view: MessagesStarterView) {
+        AnalyticsService.shared.logEvent("empty_messages_find_people", parameters: [:])
+        tabBarController?.selectedIndex = 1
     }
 }

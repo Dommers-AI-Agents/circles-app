@@ -7,6 +7,8 @@ class MessagingManager {
     private(set) var activeMessages: [String: [Message]] = [:] // conversationId: messages
     private(set) var unreadCount: Int = 0
     private(set) var isLoadingConversations = false
+    /// True once a conversation list has arrived (cache or server), even an empty one
+    private(set) var hasLoadedConversations = false
     private(set) var isLoadingMessages = false
     private(set) var error: String?
     
@@ -69,6 +71,7 @@ class MessagingManager {
     
     private func clearData() {
         conversations = []
+        hasLoadedConversations = false
         activeMessages = [:]
         unreadCount = 0
         conversationsCache = nil
@@ -175,6 +178,7 @@ class MessagingManager {
             if cacheAge < cacheValidityDuration {
                 // Using cached conversations
                 self.conversations = cachedConversations
+                didLoadConversations()
                 return
             }
         }
@@ -220,6 +224,7 @@ class MessagingManager {
                     self?.conversationsCacheTime = Date()
                     
                     self?.conversations = sortedConversations
+                    self?.didLoadConversations()
                 case .failure(let error):
                     // Logger.debug("⚠️ MessagingManager: Failed to fetch conversations: \(error.localizedDescription)")
                     self?.error = error.localizedDescription
@@ -229,6 +234,15 @@ class MessagingManager {
     }
     
     
+    /// The list is known (even when it's empty): the Messages tab can stop
+    /// loading and show the conversations, or what to do without any. Before
+    /// this the tab only found out from its 5-second poll, which stopped for
+    /// good once you left the tab, so a new user saw a blank screen.
+    private func didLoadConversations() {
+        hasLoadedConversations = true
+        NotificationCenter.default.post(name: Notification.Name("ConversationsUpdated"), object: nil)
+    }
+
     // MARK: - Messages
     
     func loadMessages(for conversationId: String, limit: Int = 50, before: String? = nil, showLoading: Bool = true) {

@@ -338,7 +338,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         
         // Set a safe initial map region to prevent crashes during layout
         let safeInitialRegion = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060), // NYC
+            center: Constants.DefaultLocation.coordinate,
             latitudinalMeters: 10000,
             longitudinalMeters: 10000
         )
@@ -1118,7 +1118,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                 guard centerLat >= -90 && centerLat <= 90 && centerLon >= -180 && centerLon <= 180 else {
                     Logger.debug("❌ Invalid center coordinates: lat=\(centerLat), lon=\(centerLon)")
                     // Fall back to default location
-                    let defaultCenter = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
+                    let defaultCenter = Constants.DefaultLocation.coordinate
                     let region = MKCoordinateRegion(
                         center: defaultCenter,
                         latitudinalMeters: 5000,
@@ -1164,7 +1164,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             }
         } else {
             // No places or user location, show default region
-            let defaultCenter = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060) // NYC
+            let defaultCenter = Constants.DefaultLocation.coordinate
             let region = MKCoordinateRegion(
                 center: defaultCenter,
                 latitudinalMeters: 5000,

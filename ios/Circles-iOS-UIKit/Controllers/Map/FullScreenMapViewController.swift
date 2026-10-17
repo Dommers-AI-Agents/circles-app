@@ -666,9 +666,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 longitudinalMeters: 5000
             )
         } else {
-            // Default to San Francisco if no location available
+            // No places yet: Charlotte, the default location
             self.initialRegion = MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+                center: Constants.DefaultLocation.coordinate,
                 latitudinalMeters: 20000,
                 longitudinalMeters: 20000
             )
