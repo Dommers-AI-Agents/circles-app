@@ -392,8 +392,9 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
     private func uploadPhotos(_ rows: [PhotoFind], completion: @escaping ([PhotoMapPlace]) -> Void) {
         var urls = [String?](repeating: nil, count: rows.count)
         let group = DispatchGroup()
-        // Only photos the person chose to add; the rest stay on the phone and
-        // the place gets Apple's street photo after saving (ImportPhotoQueue)
+        // Only photos the person chose to add; the rest stay on the phone. The
+        // server gives each save its Google photo and details like a manual
+        // save, and Apple's street photo where Google has none
         for (index, find) in rows.enumerated() where find.addMyPhoto {
             group.enter()
             let upload: (UIImage?) -> Void = { image in
@@ -440,7 +441,7 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
 
     private func finish(saved: Int, circleId: String?, coins: Double) {
         NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
-        // Places saved without the person's photo get Apple's street photo now
+        // A place Google had no photo for gets Apple's street photo now
         ImportPhotoQueue.shared.kick()
         AnalyticsService.shared.logEvent("photo_places_saved", parameters: ["saved": String(saved)])
         let coinLine = PhotoMapPlanner.coinsLine(coins).map { "\n\($0)" } ?? ""

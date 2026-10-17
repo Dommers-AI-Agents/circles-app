@@ -479,7 +479,10 @@ exports.getPlacesNeedingPhoto = async (req, res) => {
       if (!Array.isArray(coords) || coords.length !== 2) return;
       // A save the app stored without a photo tries the place's Google photo
       // first (once — imports never spend on Google)
-      const tryGoogle = !!p.needsPhoto && !p.importSource && !p.googlePhotoChecked;
+      // Build my map saves are saves the person chose, so they get the
+      // manual-save treatment too (Wes, 2026-10-17); bulk imports don't
+      const manualLike = !p.importSource || p.importSource === 'photos';
+      const tryGoogle = manualLike && (!!p.needsPhoto || p.importSource === 'photos') && !p.googlePhotoChecked;
       places.push({ id: doc.id, name: p.name, lat: coords[1], lng: coords[0], tryGoogle });
     });
     // Newest imports first; the client caps each pass
@@ -521,7 +524,8 @@ exports.setDefaultGooglePhoto = async (req, res) => {
       const venue = await db.collection('globalPlaces').doc(place.globalPlaceId).get();
       if (venue.exists && (venue.data().photos || []).length > 0) return settle('venue_has_photo');
     }
-    if (place.importSource || place.googlePhotoChecked) return done(false, 'not_eligible');
+    // Bulk imports never spend on Google; Build my map saves do (chosen one by one)
+    if ((place.importSource && place.importSource !== 'photos') || place.googlePhotoChecked) return done(false, 'not_eligible');
 
     const { fetchGooglePhotoUrl } = require('../../services/googlePlacePhoto');
     const photoUrl = await fetchGooglePhotoUrl({

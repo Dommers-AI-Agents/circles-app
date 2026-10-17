@@ -41,15 +41,12 @@ const visibleCheckIns = async (docs, userId) => {
   return out;
 };
 const sseService = require('../services/sseService');
-const { Client } = require('@googlemaps/google-maps-services-js');
-const { googleMapsApiKey } = require('../config/config');
 const { indexSavedPlace } = require('../services/circleLocationSummary');
 const { ensureGlobalPlaceLink, findCanonicalByNameAndLocation } = require('../services/globalPlaceResolver');
 const checkInStats = require('../services/checkInStatsService');
 const { sanitizeCheckInRecipients, capPlaceText, gatedPlacesLookup } = require('../services/checkInGuards');
 
 const db = getFirestore();
-const googleMapsClient = new Client({});
 
 // Helper function to find or create user's check-in circle
 async function findOrCreateCheckInCircle(userId) {
@@ -110,120 +107,9 @@ async function findOrCreateCheckInCircle(userId) {
   }
 }
 
-// Helper function to enrich place data with Google Places API
-// options.skipPhotos: don't fetch/re-host the Google photo — pass it when the
-// canonical venue already has photos, or every additional saver mints another
-// Firebase Storage copy of the same image (billed Photo request + a
-// byte-identical duplicate in the gallery).
-async function enrichPlaceWithGoogleData(placeName, location, options = {}) {
-  try {
-    if (!googleMapsApiKey) {
-      console.warn('Google Maps API key not configured, skipping enrichment');
-      return {};
-    }
-    
-    // Search for the place using name and location
-    const searchQuery = placeName;
-    const searchLocation = location ? `${location.latitude},${location.longitude}` : null;
-    
-    // First try to find the place
-    const searchResponse = await googleMapsClient.findPlaceFromText({
-      params: {
-        input: searchQuery,
-        inputtype: 'textquery',
-        fields: ['place_id', 'name', 'formatted_address', 'photos', 'types', 'rating', 'price_level'],
-        locationbias: searchLocation ? `circle:1000@${searchLocation}` : undefined,
-        key: googleMapsApiKey
-      }
-    });
-    
-    if (!searchResponse.data.candidates || searchResponse.data.candidates.length === 0) {
-      console.log(`No Google Places results found for: ${placeName}`);
-      // A definite "no such place" (not an error): check-ins remember it so
-      // the same name at the same spot doesn't bill again (checkInGuards).
-      return { noMatch: true };
-    }
-    
-    const candidate = searchResponse.data.candidates[0];
-    const placeId = candidate.place_id;
-    
-    // Get detailed place information
-    const detailsResponse = await googleMapsClient.placeDetails({
-      params: {
-        place_id: placeId,
-        fields: ['name', 'formatted_address', 'photos', 'types', 'rating', 'user_ratings_total', 'price_level', 'website', 'formatted_phone_number', 'opening_hours',
-                 // editorial_summary + the service-option booleans ride the
-                 // Atmosphere SKU this call already bills for
-                 // rating/price_level — no incremental cost
-                 'editorial_summary',
-                 'delivery', 'dine_in', 'reservable', 'takeout', 'curbside_pickup'],
-        // Pin to English so weekday_text day names match the dayIndex map below
-        language: 'en',
-        key: googleMapsApiKey
-      }
-    });
-    
-    const placeDetails = detailsResponse.data.result;
-
-    // Re-host the photo on Firebase Storage. Persisting raw
-    // maps.googleapis.com URLs (the old behavior) billed a Places Photo
-    // request on every render of the place, forever, and embedded the server
-    // API key in client-readable documents — the create-place path rejects
-    // exactly these URLs for the same reason.
-    let photos = [];
-    if (!options.skipPhotos && placeDetails.photos && placeDetails.photos.length > 0) {
-      const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${placeDetails.photos[0].photo_reference}&key=${googleMapsApiKey}`;
-      try {
-        const { downloadAndUploadMultipleImages } = require('../services/storage');
-        const { uploadedUrls } = await downloadAndUploadMultipleImages([photoUrl]);
-        photos = uploadedUrls || [];
-      } catch (photoError) {
-        console.error('⚠️ Check-in photo re-host failed, continuing without photo:', photoError.message);
-      }
-    }
-
-    // Forward Google's raw types and let the shared cascade
-    // (services/placeCategoryDerivation) classify the venue. This replaced a
-    // hand-rolled if-chain here that covered five categories and emitted
-    // 'shopping' — not a value in the place-category enum ('retail' is), so
-    // check-ins at stores were filed under Other and never matched the
-    // Shopping filter chip.
-    return {
-      googlePlaceId: placeId,
-      name: placeDetails.name || placeName,
-      address: placeDetails.formatted_address || '',
-      photos: photos,
-      googleTypes: placeDetails.types || [],
-      rating: placeDetails.rating || null,
-      userRatingsTotal: placeDetails.user_ratings_total || null,
-      priceLevel: placeDetails.price_level || null,
-      website: placeDetails.website || null,
-      phoneNumber: placeDetails.formatted_phone_number || null,
-      description: placeDetails.editorial_summary?.overview || null,
-      // ?? not || — false is a real answer ("does not deliver"), null = unknown
-      delivery: placeDetails.delivery ?? null,
-      dineIn: placeDetails.dine_in ?? null,
-      reservable: placeDetails.reservable ?? null,
-      takeout: placeDetails.takeout ?? null,
-      curbsidePickup: placeDetails.curbside_pickup ?? null,
-      // Convert Google's weekday_text strings to { day, hours } objects -
-      // the iOS OpeningHour model requires an integer `day` and fails to
-      // decode plain strings (which breaks any response containing the place)
-      openingHours: placeDetails.opening_hours && placeDetails.opening_hours.weekday_text
-        ? placeDetails.opening_hours.weekday_text.map((text, i) => {
-            const dayIndex = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
-            const dayName = text.split(':')[0].trim().toLowerCase();
-            // weekday_text is Monday-first; iOS uses 0=Sunday, so the positional
-            // fallback (unrecognized day name) is (i + 1) % 7
-            return { day: dayIndex[dayName] != null ? dayIndex[dayName] : (i + 1) % 7, hours: text };
-          })
-        : null
-    };
-  } catch (error) {
-    console.error('Error enriching place with Google data:', error);
-    return {};
-  }
-}
+// The Google lookup lives in services/googleEnrichment.js (shared with
+// Add Place and Build my map); check-ins use it through the same name.
+const { enrichPlaceWithGoogleData } = require('../services/googleEnrichment');
 // Has this user already saved this VENUE? (services/ownSaveOfVenue — shared
 // with Add Place's duplicate answer)
 const { findExistingSaveOfVenue } = require('../services/ownSaveOfVenue');

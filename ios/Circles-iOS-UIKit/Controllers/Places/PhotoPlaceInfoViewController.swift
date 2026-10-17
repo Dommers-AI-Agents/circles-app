@@ -107,7 +107,7 @@ final class PhotoPlaceInfoViewController: BaseViewController {
         })
         stack.addArrangedSubview(switchRow(
             title: "Also add my photo",
-            subtitle: "Your photos stay on your phone. Only where they were taken is used to find the place; a saved place gets Apple's street photo.",
+            subtitle: "Your photos stay on your phone. Only where they were taken is used to find the place; a saved place gets its photo from Google Maps, like any place you add.",
             isOn: find.addMyPhoto) { [weak self] on in
                 self?.find.addMyPhoto = on
                 self?.onChange()

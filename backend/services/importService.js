@@ -610,8 +610,15 @@ async function executeImport(userId, payload) {
       // "Places from my photos" always has a cover (Wes, 2026-10-17): one of
       // the uploaded photos, or the 📸 cover until a photo arrives. A cover
       // the person picked themselves stays.
+      // Places saved from photos get the same Google enrichment as a manual
+      // save (Wes, 2026-10-17): canonical venue first (free), else Google's
+      // photo and details. The person's own photo is never replaced.
+      const enrichedPhotos = payload.source === 'photos'
+        ? await enrichPhotoSaves(newPlaceIds)
+        : [];
+
       if (payload.source === 'photos') {
-        const firstPhoto = (list.places || []).flatMap((p) => Array.isArray(p.photos) ? p.photos : [])
+        const firstPhoto = [...(list.places || []).flatMap((p) => Array.isArray(p.photos) ? p.photos : []), ...enrichedPhotos]
           .find((url) => typeof url === 'string' && url.startsWith('https://'));
         try {
           const { PHOTOS_FALLBACK_COVER } = require('../config/eventCovers');
@@ -656,7 +663,52 @@ async function executeImport(userId, payload) {
   return { results };
 }
 
+// Fields a Google enrichment may fill on a photo save (venue fields; the
+// canonical overlay keeps them in sync afterwards)
+const ENRICHED_FIELDS = ['googlePlaceId', 'name', 'address', 'googleTypes', 'rating', 'userRatingsTotal', 'priceLevel',
+  'website', 'phone', 'openingHours', 'delivery', 'dineIn', 'reservable', 'takeout', 'curbsidePickup',
+  'description', 'descriptionSource'];
+
+/**
+ * Build my map: give each new save the manual-save enrichment
+ * (services/googleEnrichment). Returns the Google photo URLs added, for the
+ * circle cover. Best-effort per place; three at a time.
+ */
+async function enrichPhotoSaves(placeIds) {
+  const { enrichSaveFromGoogle } = require('./googleEnrichment');
+  const added = [];
+  await mapWithConcurrency(placeIds, 3, async (placeId) => {
+    try {
+      const ref = db.collection(COLLECTIONS.PLACES).doc(placeId);
+      const snap = await ref.get();
+      if (!snap.exists) return;
+      const save = snap.data();
+      if (save.googlePlaceId) return;
+      const draft = { ...save };
+      if (!(await enrichSaveFromGoogle(draft))) return;
+      const update = {};
+      for (const field of ENRICHED_FIELDS) {
+        if (draft[field] !== undefined && draft[field] !== save[field]) update[field] = draft[field];
+      }
+      const ownPhotos = Array.isArray(save.photos) && save.photos.length > 0;
+      if (!ownPhotos && Array.isArray(draft.photos) && draft.photos.length > 0) {
+        update.photos = draft.photos;
+        update.photoSource = 'google_places';
+        added.push(draft.photos[0]);
+      }
+      if (Object.keys(update).length) {
+        update.updatedAt = new Date().toISOString();
+        await ref.update(update);
+      }
+    } catch (error) {
+      console.error(`⚠️ Photo save enrichment failed for ${placeId} (non-fatal):`, error.message);
+    }
+  });
+  return added;
+}
+
 module.exports = {
+  enrichPhotoSaves,
   photoCircleCover,
   prepareImport,
   executeImport,
