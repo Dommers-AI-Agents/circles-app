@@ -51,6 +51,8 @@ struct PhotoMapPlannerTests {
         #expect(PhotoMapPlanner.progressLine(added: 1, checked: 3, total: 40) == "Added 1 place \u{00B7} checked 3 of 40 spots")
         #expect(PhotoMapPlanner.limitLine(added: 25, freeMax: 25, more: 12).contains("12 more spots"))
         #expect(PhotoMapPlanner.doneLine(added: 0).hasPrefix("No new places"))
+        #expect(PhotoMapPlanner.coinsLine(3) == "+3 FavCoins for building your map")
+        #expect(PhotoMapPlanner.coinsLine(0) == nil)
     }
 
     @Test func doneStoreIsPerAccount() {

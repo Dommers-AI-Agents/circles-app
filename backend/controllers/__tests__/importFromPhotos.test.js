@@ -5,11 +5,13 @@ jest.mock('../../config/firebase', () => ({
 jest.mock('../../services/importService', () => ({ executeImport: jest.fn() }));
 jest.mock('../../services/subscriptionLimitService', () => ({ photoPlacesAllowance: jest.fn(), canImport: jest.fn(async () => ({ canImport: true })) }));
 jest.mock('../../services/swarmService', () => ({}));
+jest.mock('../../services/piggyBankService', () => ({ credit: jest.fn(async () => ({ credited: true, coins: 3 })) }));
 jest.mock('../../services/googleListResolver', () => ({ resolveGoogleList: jest.fn(), GoogleListError: class {} }));
 
 const importService = require('../../services/importService');
 const limits = require('../../services/subscriptionLimitService');
 const controller = require('../importController');
+const piggyBank = require('../../services/piggyBankService');
 
 const res = () => {
   const r = {};
@@ -42,6 +44,20 @@ test('free users: the batch is cut to what is left of the 25, and told to upgrad
   expect(mockSet).toHaveBeenCalledWith({ photoMapBuiltAt: expect.any(String) }, { merge: true });
 });
 
+test('FavCoins: one 3-coin earn for the import, not one per place', async () => {
+  limits.photoPlacesAllowance.mockResolvedValue({ remaining: 25, max: 25, used: 0 });
+  const r = await run({ places: places(10) });
+  expect(piggyBank.credit).toHaveBeenCalledTimes(1);
+  expect(piggyBank.credit).toHaveBeenCalledWith({ userId: 'u1', eventType: 'photo_map_built', sourceRef: { circleId: 'c1' } });
+  expect(r.json.mock.calls[0][0].data.coins).toBe(3);
+
+  // Nothing added: nothing earned
+  importService.executeImport.mockResolvedValueOnce({ results: [{ circleId: 'c1', created: 0, skippedDuplicates: 2, failed: [] }] });
+  piggyBank.credit.mockClear();
+  await run({ places: places(2) });
+  expect(piggyBank.credit).not.toHaveBeenCalled();
+});
+
 test('allowance used up: 403 upgradeRequired, nothing added', async () => {
   limits.photoPlacesAllowance.mockResolvedValue({ remaining: 0, max: 25, used: 25 });
   const r = await run({ places: places(3) });
@@ -67,4 +83,12 @@ test('the general import endpoint refuses the photos source (it would skip the a
   await controller.executeImport({ user: { uid: 'u1' }, body: { source: 'photos', lists: [] } }, r);
   expect(r.status).toHaveBeenCalledWith(400);
   expect(importService.executeImport).not.toHaveBeenCalled();
+});
+
+test('the earn is keyed once per person', () => {
+  const { derivePiggyDedupKey } = jest.requireActual('../../models/PiggyBankModels');
+  const config = jest.requireActual('../../config/piggyBankConfig');
+  expect(derivePiggyDedupKey('photo_map_built', { userId: 'u1', circleId: 'c1' })).toBe('photo_map:u1');
+  expect(derivePiggyDedupKey('photo_map_built', { userId: 'u1', circleId: 'c2' })).toBe('photo_map:u1');
+  expect(config.COINS.PHOTO_MAP_BUILT).toBe(3);
 });

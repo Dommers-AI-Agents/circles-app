@@ -74,6 +74,13 @@ enum PhotoMapPlanner {
         return firstPart + "\(more) more spot\(more == 1 ? "" : "s") in your photos can go on your map with Premium."
     }
 
+    /// "+3 FavCoins for building your map" (the one-time earn), or nil
+    static func coinsLine(_ coins: Double) -> String? {
+        guard coins > 0 else { return nil }
+        let amount = coins.rounded() == coins ? String(Int(coins)) : String(format: "%.1f", coins)
+        return "+\(amount) FavCoins for building your map"
+    }
+
     static func doneLine(added: Int) -> String {
         added == 0
             ? "No new places this time. Everything in your photos is already on your map, or wasn't a business."

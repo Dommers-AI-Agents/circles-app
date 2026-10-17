@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const importService = require('../services/importService');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
 const { LIMIT_ERROR_MESSAGES } = require('../config/subscriptionLimits');
+const piggyBankService = require('../services/piggyBankService');
 const swarmService = require('../services/swarmService');
 const { resolveGoogleList, GoogleListError } = require('../services/googleListResolver');
 const { getFirestore } = require('../config/firebase');
@@ -49,6 +50,17 @@ exports.importFromPhotos = async (req, res) => {
       return res.status(400).json({ success: false, error: result.error });
     }
     const list = result.results[0] || { created: 0, skippedDuplicates: 0, failed: [], circleId: null };
+    // FavCoins: 3 once for building your map from photos, not per place
+    // (Wes, 2026-10-16). Later batches and re-runs hit the same dedup key.
+    let coins = 0;
+    if (list.created > 0 && list.circleId) {
+      const earn = await piggyBankService.credit({
+        userId: req.user.uid,
+        eventType: 'photo_map_built',
+        sourceRef: { circleId: list.circleId }
+      });
+      if (earn && earn.credited) coins = earn.coins || 0;
+    }
     if (list.created > 0) {
       db.collection('users').doc(req.user.uid)
         .set({ photoMapBuiltAt: new Date().toISOString() }, { merge: true })
@@ -65,6 +77,7 @@ exports.importFromPhotos = async (req, res) => {
         circleName: 'Places from my photos',
         remainingFree,
         maxFree: allowance.max === Infinity ? null : allowance.max,
+        coins,
         // Some of this batch didn't fit in the free allowance
         upgradeRequired: accepted.length < places.length
       }

@@ -25,6 +25,7 @@ final class PhotoMapBuilderViewController: BaseViewController {
     private var pending: [PhotoMapPlace] = []
     private var noMatchKeys: [String] = []
     private var added = 0
+    private var coinsEarned: Double = 0
     private var remainingFree: Int?
     private var circleId: String?
     private var stopped = false
@@ -140,7 +141,8 @@ final class PhotoMapBuilderViewController: BaseViewController {
             titleLabel.text = "Your map is filling in"
             let more = max(0, queue.count - index) + pending.count
             bodyLabel.text = PhotoMapPlanner.limitLine(added: added, freeMax: 25, more: more)
-            statusLabel.text = PhotoMapPlanner.progressLine(added: added, checked: index, total: queue.count)
+            statusLabel.text = [PhotoMapPlanner.progressLine(added: added, checked: index, total: queue.count),
+                                PhotoMapPlanner.coinsLine(coinsEarned)].compactMap { $0 }.joined(separator: "\n")
             primaryButton.setTitle("Add the rest with Premium", for: .normal)
             secondaryButton.setTitle("See my map", for: .normal)
         case .failed:
@@ -151,7 +153,10 @@ final class PhotoMapBuilderViewController: BaseViewController {
         case .done:
             titleLabel.text = added > 0 ? "Your map is ready" : "All caught up"
             bodyLabel.text = PhotoMapPlanner.doneLine(added: added)
-            statusLabel.text = added > 0 ? "Turn them off the map any time: the circle\u{2019}s switch, or My Places + on the map." : nil
+            statusLabel.text = added > 0
+                ? [PhotoMapPlanner.coinsLine(coinsEarned), "Turn them off the map any time: the circle\u{2019}s switch, or My Places + on the map."]
+                    .compactMap { $0 }.joined(separator: "\n")
+                : nil
             primaryButton.setTitle("See my map", for: .normal)
             secondaryButton.setTitle("Open the circle", for: .normal)
             secondaryButton.isHidden = circleId == nil
@@ -307,6 +312,7 @@ final class PhotoMapBuilderViewController: BaseViewController {
                     ? min(batch.count, result.added + (result.skippedDuplicates ?? 0))
                     : batch.count
                 self.added += result.added
+                self.coinsEarned += result.coins ?? 0
                 PhotoMapProgressStore.markDone(batch.prefix(accepted).map(\.spotKey) + self.noMatchKeys, uid: self.uid)
                 self.noMatchKeys = []
                 self.pending = Array(batch.dropFirst(accepted))
@@ -340,6 +346,7 @@ final class PhotoMapBuilderViewController: BaseViewController {
             guard let self else { return }
             if case .added(let result) = outcome {
                 self.added += result.added
+                self.coinsEarned += result.coins ?? 0
                 self.circleId = result.circleId ?? self.circleId
                 PhotoMapProgressStore.markDone(self.pending.map(\.spotKey) + self.noMatchKeys, uid: self.uid)
                 self.pending = []

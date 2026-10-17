@@ -189,6 +189,15 @@ class PiggyBankService {
     const ref = entry.sourceRef || {};
     try {
       switch (entry.eventType) {
+        case 'photo_map_built': {
+          // Holds while any place from the import is still saved
+          if (!ref.circleId) return { valid: false, reason: 'missing_circle_ref' };
+          const doc = await this.db.collection(COLLECTIONS.CIRCLES).doc(ref.circleId).get();
+          if (!doc.exists || doc.data().deletedAt || (doc.data().placesCount || 0) < 1) {
+            return { valid: false, reason: 'photo_places_removed' };
+          }
+          return { valid: true };
+        }
         case 'add_place': {
           if (!ref.placeId) return { valid: false, reason: 'missing_place_ref' };
           const doc = await this.db.collection(COLLECTIONS.PLACES).doc(ref.placeId).get();

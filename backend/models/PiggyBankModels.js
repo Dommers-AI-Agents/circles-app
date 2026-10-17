@@ -48,7 +48,9 @@ const PIGGY_EVENT_TYPES = [
   // 2026.10-b: joined an event (Events widget)
   'event_joined',
   // 2026.10-c: a photo for one of an event's challenges
-  'event_challenge'
+  'event_challenge',
+  // 2026.10-d: Build my map from my photos (once per user)
+  'photo_map_built'
 ];
 
 // Earn statuses and claim statuses are disjoint vocabularies on the same
@@ -103,6 +105,10 @@ function derivePiggyDedupKey(eventType, parts = {}) {
       if (!parts.userId || !venue) return null;
       return `add_place:${s(parts.userId)}:${s(venue)}`;
     }
+    case 'photo_map_built':
+      // One earn per person, however many runs or places
+      if (!parts.userId) return null;
+      return `photo_map:${s(parts.userId)}`;
     case 'create_circle':
       if (!parts.userId || !parts.circleId) return null;
       return `create_circle:${s(parts.userId)}:${s(parts.circleId)}`;

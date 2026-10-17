@@ -33,6 +33,8 @@ struct PhotoMapBatchResult: Decodable {
     let maxFree: Int?
     /// Some of the batch didn't fit in the free allowance
     let upgradeRequired: Bool?
+    /// FavCoins this request earned (3, once per person, for the whole import)
+    let coins: Double?
 }
 
 /// POST /api/import/photos: places from photos into "Places from my photos"

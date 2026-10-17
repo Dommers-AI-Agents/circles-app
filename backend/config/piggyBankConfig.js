@@ -52,7 +52,11 @@ module.exports = {
   // 2026.10-b: joined an event (Events widget / Party Bus) — 1 coin, once per
   // event per person, at most 3 a day; reverses if they leave or are removed
   // inside the clearing window. The coordinator doesn't earn for creating.
-  RULE_VERSION: '2026.10-b',
+  //
+  // 2026.10-d: "Build my map from my photos" pays 3 coins ONCE for the whole
+  // import, not per place (Wes, 2026-10-16): the app found the places, the
+  // person didn't pick them one by one. A place added by hand still pays 3.
+  RULE_VERSION: '2026.10-d',
   CLEARING_WINDOW_HOURS: 24,
   COINS: {
     ADD_PLACE: 3,
@@ -82,10 +86,12 @@ module.exports = {
     POSTCARD_SENT: 2,           // digital postcard delivered to a connection's chat
     DRINK_RECEIVED: 1,          // a connection sent you a drink recipe (paid to the recipient)
     EVENT_JOINED: 1,            // joined an event (Events widget), once per event
-    EVENT_CHALLENGE: 1          // a photo for an event's challenge, once per challenge per person
+    EVENT_CHALLENGE: 1,         // a photo for an event's challenge, once per challenge per person
+    PHOTO_MAP_BUILT: 3          // Build my map from my photos: once per user, the whole import
   },
   DAILY_CAPS: {              // earns past the cap: action still succeeds, pays 0
     ADD_PLACE: 20,
+    PHOTO_MAP_BUILT: 1,
     CREATE_CIRCLE: 5,
     SHARE_CIRCLE: 15,
     CONNECTION_ACCEPTED: 20,
