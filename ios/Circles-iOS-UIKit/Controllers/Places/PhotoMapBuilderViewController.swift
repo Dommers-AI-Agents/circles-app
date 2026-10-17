@@ -45,7 +45,7 @@ final class PhotoMapBuilderViewController: BaseViewController {
         bodyLabel.textColor = Constants.Colors.secondaryLabel
         bodyLabel.textAlignment = .center
         bodyLabel.numberOfLines = 0
-        bodyLabel.text = "We find the caf\u{00E9}s, restaurants, shops and other places in your photos, nearest to you first. You check the list, and only the ones you keep go into \u{201C}Places from my photos.\u{201D} Your first 25 are free.\n\nYour photos stay on your phone; one photo per place is added, and you can switch these places off your map any time."
+        bodyLabel.text = "We find the caf\u{00E9}s, restaurants, shops and other places in your photos, nearest to you first. You check the list, and only the ones you keep go into \u{201C}Places from my photos.\u{201D} Your first 25 are free.\n\nYour photos stay on your phone and are never added to places. Only where they were taken is used, and you can switch these places off your map any time."
         let stack = UIStackView(arrangedSubviews: [iconView, titleLabel, bodyLabel, UIView(), primaryButton, secondaryButton])
         stack.axis = .vertical
         stack.spacing = 14

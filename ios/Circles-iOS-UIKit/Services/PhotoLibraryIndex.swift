@@ -14,11 +14,13 @@ final class PhotoLibraryIndex {
     private let queue = DispatchQueue(label: "photo-library-index", qos: .userInitiated)
     private var cached: [Shot]?
     private var newest: Date?
+    /// Photos (located or not) in the library when `cached` was read
+    private var imageCount = 0
     private let imageManager = PHCachingImageManager()
 
     private var cacheURL: URL? {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("photo-library-index-v1.json")
+            .appendingPathComponent("photo-library-index-v2.json")
     }
 
     // MARK: - Access
@@ -44,11 +46,23 @@ final class PhotoLibraryIndex {
         queue.async { [weak self] in
             guard let self else { return }
             if self.cached == nil { self.loadCache() }
-            let fresh = self.readLibrary(after: self.newest)
-            if !fresh.isEmpty || self.cached == nil {
-                let all = (self.cached ?? []) + fresh
-                self.cached = all
-                self.newest = all.map(\.date).max()
+            // Only photos newer than the newest one seen are read, unless the
+            // count doesn't add up: older photos arriving later (iCloud still
+            // downloading on a new phone, a shared or AirDropped photo) or
+            // deletions mean the whole library is read again (2026-10-17).
+            let total = Self.imageTotal()
+            let fresh = self.cached == nil ? nil : self.readLibrary(after: self.newest)
+            if let fresh, self.imageCount + fresh.scanned == total {
+                if !fresh.shots.isEmpty {
+                    self.cached = (self.cached ?? []) + fresh.shots
+                    self.newest = self.cached?.map(\.date).max()
+                }
+                if fresh.scanned > 0 { self.imageCount = total; self.saveCache() }
+            } else {
+                let all = self.readLibrary(after: nil)
+                self.cached = all.shots
+                self.newest = all.shots.map(\.date).max()
+                self.imageCount = all.scanned
                 self.saveCache()
             }
             let result = self.cached ?? []
@@ -104,7 +118,14 @@ final class PhotoLibraryIndex {
 
     // MARK: - Reading
 
-    private func readLibrary(after date: Date?) -> [Shot] {
+    private static func imageTotal() -> Int {
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
+        return PHAsset.fetchAssets(with: options).count
+    }
+
+    /// Located photos taken after `date` (all, when nil), and how many photos were looked at.
+    private func readLibrary(after date: Date?) -> (shots: [Shot], scanned: Int) {
         let options = PHFetchOptions()
         var predicates = [NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)]
         if let date { predicates.append(NSPredicate(format: "creationDate > %@", date as NSDate)) }
@@ -114,7 +135,7 @@ final class PhotoLibraryIndex {
         var out: [Shot] = []
         out.reserveCapacity(assets.count)
         assets.enumerateObjects { asset, _, _ in if let shot = Self.shot(asset) { out.append(shot) } }
-        return out
+        return (out, assets.count)
     }
 
     private static func shot(_ asset: PHAsset) -> Shot? {
@@ -124,15 +145,26 @@ final class PhotoLibraryIndex {
         return Shot(id: asset.localIdentifier, lat: location.coordinate.latitude, lng: location.coordinate.longitude, date: date)
     }
 
+    private struct CacheFile: Codable {
+        let shots: [Shot]
+        let imageCount: Int
+    }
+
     private func loadCache() {
+        // v1 had no photo count; it's rebuilt as v2
+        if let old = cacheURL?.deletingLastPathComponent().appendingPathComponent("photo-library-index-v1.json") {
+            try? FileManager.default.removeItem(at: old)
+        }
         guard let url = cacheURL, let data = try? Data(contentsOf: url),
-              let shots = try? JSONDecoder().decode([Shot].self, from: data) else { return }
-        cached = shots
-        newest = shots.map(\.date).max()
+              let file = try? JSONDecoder().decode(CacheFile.self, from: data) else { return }
+        cached = file.shots
+        imageCount = file.imageCount
+        newest = file.shots.map(\.date).max()
     }
 
     private func saveCache() {
-        guard let url = cacheURL, let cached, let data = try? JSONEncoder().encode(cached) else { return }
+        guard let url = cacheURL, let cached,
+              let data = try? JSONEncoder().encode(CacheFile(shots: cached, imageCount: imageCount)) else { return }
         try? data.write(to: url, options: .atomic)
     }
 }
