@@ -1,4 +1,5 @@
 import Foundation
+import MapKit
 import CoreLocation
 
 /// One place found in the user's photos, ready for the server.
@@ -11,6 +12,9 @@ struct PhotoMapPlace {
     let photoUrl: String?
     /// The spot it came from, marked done once the server took it
     let spotKey: String
+    /// Apple Maps' own id for the venue (iOS 18+): the server's exact
+    /// duplicate check, and how the venue record learns it
+    var applePlaceId: String? = nil
 
     var body: [String: Any] {
         var body: [String: Any] = [
@@ -19,6 +23,7 @@ struct PhotoMapPlace {
             "category": category
         ]
         if let applePoiCategory { body["applePoiCategory"] = applePoiCategory }
+        if let applePlaceId { body["applePlaceId"] = applePlaceId }
         if let photoUrl { body["photos"] = [photoUrl] }
         return body
     }
@@ -88,5 +93,14 @@ enum PhotoMapService {
                 }
             }
         }
+    }
+}
+
+extension MKMapItem {
+    /// Apple Maps' stable id for this venue, when the system gives one
+    /// (iOS 18+; older phones fall back to the name-and-distance check).
+    var applePlaceId: String? {
+        if #available(iOS 18.0, *) { return identifier?.rawValue }
+        return nil
     }
 }

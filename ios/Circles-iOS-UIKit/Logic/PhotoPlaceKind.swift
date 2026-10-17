@@ -86,7 +86,10 @@ enum PhotoPlaceKind {
     /// What people photograph and want on their map ahead of the small shop
     /// next door (Wes: "cafés, restaurants, bars, hotels")
     private static let favored: Set<String> = raw([
-        "Restaurant", "Cafe", "Bakery", "Brewery", "Winery", "Distillery", "Nightlife", "FoodMarket", "Hotel",
+        // Not FoodMarket: it already gets the large-venue head start, and with
+        // both a market beat the restaurant inside it the photos were taken at
+        // (South End Market over Indaco; Wes, 2026-10-17)
+        "Restaurant", "Cafe", "Bakery", "Brewery", "Winery", "Distillery", "Nightlife", "Hotel",
         "Museum", "Theater", "MusicVenue", "Stadium", "Park", "Beach", "Zoo", "Aquarium", "AmusementPark"
     ])
     private static let minor: Set<String> = raw(["Beauty", "AutomotiveRepair", "CarRental", "EVCharger", "Pharmacy"])

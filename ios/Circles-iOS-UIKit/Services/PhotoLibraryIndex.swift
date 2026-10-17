@@ -122,6 +122,19 @@ final class PhotoLibraryIndex {
 
     private static func addedKey(_ placeKey: String) -> String { "photosAddedToPlace.\(placeKey)" }
 
+    /// Photos the person said aren't from this place ("Dismiss"): never
+    /// offered for it again. Kept on this phone.
+    func dismissedIds(forPlace placeKey: String) -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: Self.dismissedKey(placeKey)) ?? [])
+    }
+
+    func markDismissed(_ ids: [String], forPlace placeKey: String) {
+        let all = dismissedIds(forPlace: placeKey).union(ids)
+        UserDefaults.standard.set(Array(all), forKey: Self.dismissedKey(placeKey))
+    }
+
+    private static func dismissedKey(_ placeKey: String) -> String { "photosDismissedForPlace.\(placeKey)" }
+
     // MARK: - Reading
 
     private func readLibrary(after date: Date?) -> [Shot] {

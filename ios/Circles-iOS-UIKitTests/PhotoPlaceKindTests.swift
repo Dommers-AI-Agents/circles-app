@@ -46,12 +46,26 @@ struct PhotoPlaceKindTests {
         let foodHall = MKPointOfInterestCategory.foodMarket.rawValue
         let park = MKPointOfInterestCategory.park.rawValue
         let beauty = "MKPOICategoryBeauty"
-        // A food hall 90 m away beats a shop 30 m away; a park 160 m away is in reach
-        #expect(PhotoPlaceKind.rankScore(distance: 90, categoryRaw: foodHall) < PhotoPlaceKind.rankScore(distance: 30, categoryRaw: store))
+        // A food hall 80 m away beats a shop 30 m away; a park 160 m away is in reach
+        #expect(PhotoPlaceKind.rankScore(distance: 80, categoryRaw: foodHall) < PhotoPlaceKind.rankScore(distance: 30, categoryRaw: store))
         #expect(PhotoPlaceKind.reach(categoryRaw: park) > 160)
         #expect(PhotoPlaceKind.reach(categoryRaw: store) == 100)
         #expect(PhotoPlaceKind.rankScore(distance: 40, categoryRaw: MKPointOfInterestCategory.cafe.rawValue)
                 < PhotoPlaceKind.rankScore(distance: 20, categoryRaw: beauty))
+    }
+}
+
+/// The restaurant you were in beats the market it's next to (2026-10-17).
+struct PhotoPlaceRankTests {
+    @Test func aCloseRestaurantBeatsTheFoodMarket() {
+        let market = MKPointOfInterestCategory.foodMarket.rawValue
+        let restaurant = MKPointOfInterestCategory.restaurant.rawValue
+        // Indaco 20 m from the photos, South End Market's pin 50 m
+        #expect(PhotoPlaceKind.rankScore(distance: 20, categoryRaw: restaurant)
+                < PhotoPlaceKind.rankScore(distance: 50, categoryRaw: market))
+        // A market right where you stood still wins over a restaurant down the block
+        #expect(PhotoPlaceKind.rankScore(distance: 10, categoryRaw: market)
+                < PhotoPlaceKind.rankScore(distance: 60, categoryRaw: restaurant))
     }
 }
 

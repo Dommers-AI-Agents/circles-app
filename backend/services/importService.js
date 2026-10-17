@@ -119,6 +119,8 @@ async function loadUserPlaceIndex(userId) {
   const byGooglePlaceId = new Map();
   const byNameAddress = new Map(); // key → [{placeId, circleId, name}]
   const byNormName = new Map();    // normalized name → [{...entry, lat, lng}]
+  const byApplePlaceId = new Map(); // Apple Maps place id → entry (exact venue)
+  const byGlobalPlaceId = new Map(); // canonical venue → entry
 
   snapshot.forEach(doc => {
     const place = doc.data();
@@ -126,6 +128,8 @@ async function loadUserPlaceIndex(userId) {
     const entry = { placeId: doc.id, circleId: place.circleId, name: place.name };
     if (place.sourceExternalId) bySourceExternalId.set(place.sourceExternalId, entry);
     if (place.googlePlaceId) byGooglePlaceId.set(place.googlePlaceId, entry);
+    if (place.applePlaceId) byApplePlaceId.set(place.applePlaceId, entry);
+    if (place.globalPlaceId) byGlobalPlaceId.set(place.globalPlaceId, entry);
     const key = nameAddressKey(place.name, place.address);
     if (!byNameAddress.has(key)) byNameAddress.set(key, []);
     byNameAddress.get(key).push(entry);
@@ -137,7 +141,45 @@ async function loadUserPlaceIndex(userId) {
     }
   });
 
-  return { bySourceExternalId, byGooglePlaceId, byNameAddress, byNormName };
+  return { bySourceExternalId, byGooglePlaceId, byNameAddress, byNormName, byApplePlaceId, byGlobalPlaceId };
+}
+
+/**
+ * Apple Maps place ids → the canonical venue already carrying them, in one
+ * batched read (10 ids a query). How a photo save finds a venue the person
+ * saved before under Google's name ("Goldie's on Morehead" vs Apple's
+ * "Goldie's"). Unknown ids are simply absent.
+ */
+async function venuesByApplePlaceId(applePlaceIds) {
+  const ids = [...new Set((applePlaceIds || []).filter((id) => typeof id === 'string' && id))];
+  const out = new Map();
+  if (!ids.length) return out;
+  const { queryInChunks } = require('../utils/firestoreChunks');
+  const docs = await queryInChunks(ids, (chunk) =>
+    db.collection('globalPlaces').where('applePlaceId', 'in', chunk).get());
+  docs.forEach((doc) => out.set(doc.data().applePlaceId, doc.id));
+  return out;
+}
+
+const SIMILAR_NAME_RADIUS_METERS = 100;
+
+// "Goldie's" vs "Goldie's on Morehead": one name's words all inside the
+// other's, both pinned within 100 m. Apple and Google name the same venue
+// differently, and the exact-name check misses it.
+function findNearbySimilarName(index, name, lat, lng) {
+  if (typeof lat !== 'number' || typeof lng !== 'number') return null;
+  const words = (value) => normalizedName(value).split(' ').filter((w) => w.length > 1);
+  const mine = words(name);
+  if (!mine.length) return null;
+  for (const [otherName, entries] of index.byNormName) {
+    const theirs = otherName.split(' ').filter((w) => w.length > 1);
+    if (!theirs.length) continue;
+    const [shorter, longer] = mine.length <= theirs.length ? [mine, theirs] : [theirs, mine];
+    if (!shorter.every((w) => longer.includes(w))) continue;
+    const hit = entries.find((c) => distanceMeters(lat, lng, c.lat, c.lng) < SIMILAR_NAME_RADIUS_METERS);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 // Venue-level duplicate check: same normalized name saved within
@@ -170,7 +212,9 @@ function indexForCircle(index, circleId) {
     bySourceExternalId: filterMap(index.bySourceExternalId),
     byGooglePlaceId: filterMap(index.byGooglePlaceId),
     byNameAddress: filterMap(index.byNameAddress),
-    byNormName: filterMap(index.byNormName)
+    byNormName: filterMap(index.byNormName),
+    byApplePlaceId: filterMap(index.byApplePlaceId),
+    byGlobalPlaceId: filterMap(index.byGlobalPlaceId)
   };
 }
 
@@ -511,17 +555,27 @@ async function executeImport(userId, payload) {
     const batch = db.batch();
     const newPlaceIds = [];
     const linkablePlaceIds = []; // mapped rows only — canonical linking needs a location
+    // Photo saves carry Apple's place id: the venue it already belongs to
+    // (if anyone saved it) makes the duplicate check exact
+    const appleVenues = payload.source === 'photos'
+      ? await venuesByApplePlaceId((list.places || []).map((p) => p.applePlaceId))
+      : new Map();
 
     for (const place of list.places || []) {
       const sourceId = place.sourceExternalId || null;
+      const applePlaceId = typeof place.applePlaceId === 'string' && place.applePlaceId ? place.applePlaceId : null;
+      const knownVenue = applePlaceId ? appleVenues.get(applePlaceId) : null;
       const dupKey = nameAddressKey(place.name, place.address);
+      const lat = typeof place.lat === 'number' ? place.lat : null;
+      const lng = typeof place.lng === 'number' ? place.lng : null;
       const alreadyExists =
         (sourceId && dedupeIndex.bySourceExternalId.has(sourceId)) ||
         (place.googlePlaceId && dedupeIndex.byGooglePlaceId.has(place.googlePlaceId)) ||
+        (applePlaceId && dedupeIndex.byApplePlaceId.has(applePlaceId)) ||
+        (knownVenue && dedupeIndex.byGlobalPlaceId.has(knownVenue)) ||
         dedupeIndex.byNameAddress.has(dupKey) ||
-        !!findNearbySameName(dedupeIndex, place.name,
-          typeof place.lat === 'number' ? place.lat : null,
-          typeof place.lng === 'number' ? place.lng : null);
+        !!findNearbySameName(dedupeIndex, place.name, lat, lng) ||
+        (payload.source === 'photos' && !!findNearbySimilarName(dedupeIndex, place.name, lat, lng));
 
       if (alreadyExists) {
         listResult.skippedDuplicates++;
@@ -564,6 +618,7 @@ async function executeImport(userId, payload) {
       // feeds future favorites signals; needsResolution marks rows a future
       // promote/resolve step would look up.
       placeData.sourceListName = circleName || null;
+      if (applePlaceId) placeData.applePlaceId = applePlaceId;
       if (!hasCoordinates) placeData.needsResolution = true;
 
       if (hasCoordinates) {
@@ -589,6 +644,8 @@ async function executeImport(userId, payload) {
       const entry = { placeId: placeRef.id, circleId: circleRef.id, name: place.name };
       if (sourceId) dedupeIndex.bySourceExternalId.set(sourceId, entry);
       if (place.googlePlaceId) dedupeIndex.byGooglePlaceId.set(place.googlePlaceId, entry);
+      if (applePlaceId) dedupeIndex.byApplePlaceId.set(applePlaceId, entry);
+      if (knownVenue) dedupeIndex.byGlobalPlaceId.set(knownVenue, entry);
       dedupeIndex.byNameAddress.set(dupKey, [entry]);
       if (hasCoordinates) {
         const nameKey = normalizedName(place.name);
@@ -642,7 +699,8 @@ async function executeImport(userId, payload) {
       await mapWithConcurrency(linkablePlaceIds, 4, async (placeId) => {
         try {
           const snap = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
-          await ensureGlobalPlaceLink(snap);
+          const linked = await ensureGlobalPlaceLink(snap);
+          await stampApplePlaceId(placeId, linked);
         } catch (linkError) {
           console.error(`⚠️ Import: global-place link failed for ${placeId} (non-fatal):`, linkError.message);
         }
@@ -661,6 +719,21 @@ async function executeImport(userId, payload) {
   }
 
   return { results };
+}
+
+/**
+ * The venue learns its Apple Maps id from the first photo save that names
+ * it, so the next save of it (by anyone) is matched exactly and fast.
+ */
+async function stampApplePlaceId(placeId, linkedGlobalId) {
+  const save = (await db.collection(COLLECTIONS.PLACES).doc(placeId).get()).data() || {};
+  const globalId = (typeof linkedGlobalId === 'string' && linkedGlobalId) || save.globalPlaceId;
+  if (!save.applePlaceId || !globalId) return;
+  const ref = db.collection('globalPlaces').doc(globalId);
+  const venue = await ref.get();
+  if (venue.exists && !venue.data().applePlaceId) {
+    await ref.update({ applePlaceId: save.applePlaceId });
+  }
 }
 
 // Fields a Google enrichment may fill on a photo save (venue fields; the
@@ -709,6 +782,8 @@ async function enrichPhotoSaves(placeIds) {
 
 module.exports = {
   enrichPhotoSaves,
+  findNearbySimilarName,
+  loadUserPlaceIndex,
   photoCircleCover,
   prepareImport,
   executeImport,

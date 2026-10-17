@@ -13,6 +13,8 @@ final class PlaceMyPhotosView: UIView {
     private let strip = UIStackView()
     private let scroll = UIScrollView()
     private lazy var addButton = UIButton.smallActionButton(title: "Add", style: .primary)
+    /// "Not from here": hide these and never offer them for this place again
+    private lazy var dismissButton = UIButton.smallActionButton(title: "Dismiss", style: .secondary)
     private lazy var askButton = UIButton.smallActionButton(title: "See your photos from here", style: .secondary)
     private var shots: [PhotoLibraryMath.Shot] = []
     private var selected = Set<String>()
@@ -36,6 +38,11 @@ final class PlaceMyPhotosView: UIView {
             column.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
         header.font = .systemFont(ofSize: 15, weight: .semibold)
+        // Wraps rather than truncating beside Dismiss and Add
+        header.numberOfLines = 0
+        header.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        dismissButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        addButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         strip.axis = .horizontal
         strip.spacing = 8
         strip.translatesAutoresizingMaskIntoConstraints = false
@@ -50,6 +57,8 @@ final class PlaceMyPhotosView: UIView {
             scroll.heightAnchor.constraint(equalToConstant: 84)
         ])
         addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
+        dismissButton.addTarget(self, action: #selector(dismissTapped), for: .touchUpInside)
+        dismissButton.accessibilityHint = "These photos won't be offered for this place again"
         askButton.addTarget(self, action: #selector(askTapped), for: .touchUpInside)
     }
 
@@ -65,8 +74,8 @@ final class PlaceMyPhotosView: UIView {
         if index.canRead {
             index.shots(near: coordinate) { [weak self] found in
                 guard let self else { return }
-                let added = self.placeKey.map { index.addedIds(toPlace: $0) } ?? []
-                self.show(found.filter { !added.contains($0.id) })
+                let handled = self.placeKey.map { index.addedIds(toPlace: $0).union(index.dismissedIds(forPlace: $0)) } ?? []
+                self.show(found.filter { !handled.contains($0.id) })
             }
         } else if index.mayAsk {
             showAsk()
@@ -94,7 +103,8 @@ final class PlaceMyPhotosView: UIView {
         shots = found
         selected = Set(found.map(\.id))
         guard !found.isEmpty else { return }
-        let top = UIStackView(arrangedSubviews: [header, UIView(), addButton])
+        let top = UIStackView(arrangedSubviews: [header, UIView(), dismissButton, addButton])
+        top.spacing = 8
         top.alignment = .center
         column.addArrangedSubview(top)
         column.addArrangedSubview(scroll)
@@ -140,6 +150,14 @@ final class PlaceMyPhotosView: UIView {
             thumb.layer.borderWidth = on ? 2 : 0
             thumb.layer.borderColor = Constants.Colors.primary.cgColor
         }
+    }
+
+    /// Not from here: remembered for this place, so the same photos never
+    /// come back (new photos taken here later still show)
+    @objc private func dismissTapped() {
+        if let placeKey { PhotoLibraryIndex.shared.markDismissed(shots.map(\.id), forPlace: placeKey) }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        clear()
     }
 
     @objc private func addTapped() {

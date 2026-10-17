@@ -418,7 +418,8 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
                 return PhotoMapPlace(name: item.name ?? "Place", address: Self.address(item.placemark),
                                      coordinate: item.placemark.coordinate, category: mapping.category.rawValue,
                                      applePoiCategory: item.pointOfInterestCategory?.rawValue,
-                                     photoUrl: urls[index], spotKey: find.spot.key)
+                                     photoUrl: urls[index], spotKey: find.spot.key,
+                                     applePlaceId: item.applePlaceId)
             })
         }
     }

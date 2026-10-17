@@ -150,6 +150,17 @@ class FakeFirestore {
     });
   }
 
+  /** A write batch: set/update/delete queued, applied on commit. */
+  batch() {
+    const ops = [];
+    return {
+      set(ref, data, options = {}) { ops.push(() => ref.set(data, options)); return this; },
+      update(ref, patch) { ops.push(() => ref.update(patch)); return this; },
+      delete(ref) { ops.push(() => ref.delete()); return this; },
+      async commit() { for (const op of ops) await op(); }
+    };
+  }
+
   /**
    * Runs the body once. Real Firestore retries on contention; tests drive
    * conflicts deterministically instead, by mutating between calls.

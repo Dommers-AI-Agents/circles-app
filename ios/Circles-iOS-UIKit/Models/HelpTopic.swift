@@ -281,11 +281,49 @@ class HelpContentProvider {
                 3. Tap a place marker
                 4. Select "Add to Circle"
                 
+                **Add a lot at once:** tap Add Place → **Add from photos** to save the places in your photos. See "Adding Places from Your Photos."
+
                 **Pro tip:** Add notes to explain why you love each place!
                 """,
                 category: .places,
-                relatedTopics: ["search-places", "place-notes", "map-discovery"],
+                relatedTopics: ["add-from-photos", "search-places", "place-notes", "map-discovery"],
                 videoTimestamp: 240
+            ),
+            HelpTopic(
+                id: "add-from-photos",
+                title: "Adding Places from Your Photos",
+                subtitle: "Build your map from the places you've photographed",
+                content: """
+                Your photos already know where you've been. FavCircles can turn them into places on your map, either all at once or a few at a time.
+
+                **How to start:**
+                1. On Home, tap **Add Place**
+                2. Choose **Add from photos**
+                3. Pick one:
+                   • **Build my map**: every place near you in all your photos, saved to "Places from my photos"
+                   • **Scan a time period**: a trip or a month, into a new circle
+                   • **Pick photos**: choose the exact photos yourself
+
+                **What you'll see:**
+                • Only real places Apple Maps knows, like restaurants, cafés, shops, hotels and parks. Homes and offices are left out
+                • Each place shows Apple's street-level picture. Tap it to see the place: address, phone, website, the photos that found it, and other places at the same spot ("Not this?")
+                • Visits to the same place are grouped into one row
+                • Tap the check to leave a place out
+
+                **Your privacy:**
+                • Your photos stay on your phone. Only where a photo was taken is used to find the place
+                • Your photo is added to a place only if you turn on **Also add my photo** for it
+                • Saved places get their photo and details (hours, phone, website) from Google Maps, like any place you add
+
+                **No duplicates:** places you've already saved are skipped, even when Apple and Google name them differently.
+
+                **On a place's page:** "Your photos from here" offers photos you took there. Tap **Add** to add them to the place, or **Dismiss** if they're not from there; dismissed photos aren't offered again.
+
+                Your first 25 places from photos are free; Premium adds the rest.
+                """,
+                category: .places,
+                relatedTopics: ["add-place", "import-places", "privacy-controls"],
+                videoTimestamp: nil
             ),
             HelpTopic(
                 id: "import-places",
