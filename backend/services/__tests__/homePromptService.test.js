@@ -94,6 +94,27 @@ describe('gates', () => {
     expect((await withBuild('1.4.0')).key).toBe('starter_first_place'); // already built it
   });
 
+  test('existing accounts hear about Build my map once it is in their build (2026-10-17)', async () => {
+    const older = { createdAt: iso(NOW - 60 * DAY) };
+    const withBuild = (appVersion) => service.pick(ME, { now: NOW }, { appVersion });
+    seedUser(ME, older);
+    const card = await withBuild('1.3.10');
+    expect(card).toMatchObject({ key: 'photo_map_intro', target: 'photo_map', actionLabel: 'Build my map' });
+    expect(card.body).toContain('your photos stay on your phone');
+    // Not on a build without the feature, nor once they've built their map
+    seedUser(ME, older);
+    expect((await withBuild('1.3.9'))?.key).not.toBe('photo_map_intro');
+    seedUser(ME, { ...older, photoMapBuiltAt: iso(NOW - DAY) });
+    expect((await withBuild('1.4.0'))?.key).not.toBe('photo_map_intro');
+    // Opened it: never again. Skipped: back after three weeks
+    seedUser(ME, { ...older, homePrompt: { acks: { photo_map_intro: { action: 'acted', at: iso(NOW - 90 * DAY) } } } });
+    expect((await withBuild('1.4.0'))?.key).not.toBe('photo_map_intro');
+    seedUser(ME, { ...older, homePrompt: { acks: { photo_map_intro: { action: 'skipped', at: iso(NOW - 10 * DAY) } } } });
+    expect((await withBuild('1.4.0'))?.key).not.toBe('photo_map_intro');
+    seedUser(ME, { ...older, homePrompt: { acks: { photo_map_intro: { action: 'skipped', at: iso(NOW - 22 * DAY) } } } });
+    expect((await withBuild('1.4.0')).key).toBe('photo_map_intro');
+  });
+
   test('the sample place and the default follows do not count', async () => {
     seedUser(ME, { createdAt: iso(NOW - 3 * DAY), following: ['wes', 'brit'] });
     put('users', 'wes', { email: 'sgroiwes@gmail.com' });
@@ -388,7 +409,8 @@ describe('catalog feature tips', () => {
     put('users', ME, { ...rows('users').get(ME), homePrompt: { lastShownAt: null, lastCardId: null, acks: {} } });
     const canOpen = await service.pick(ME, { now: NOW }, { appVersion: '1.3.7', canOpenAppStore: true });
     expect(canOpen).toMatchObject({ key: 'app_update', target: 'app_store', actionLabel: 'Update' });
-    put('users', ME, { ...rows('users').get(ME), homePrompt: { lastShownAt: null, lastCardId: null, acks: {} } });
+    // (photoMapBuiltAt: past the Build my map intro, which 1.3.10 would show first)
+    put('users', ME, { ...rows('users').get(ME), photoMapBuiltAt: iso(NOW - DAY), homePrompt: { lastShownAt: null, lastCardId: null, acks: {} } });
     expect(await service.pick(ME, { now: NOW }, { appVersion: '1.3.10' })).toMatchObject({ key: 'events', target: 'widget' });
   });
 

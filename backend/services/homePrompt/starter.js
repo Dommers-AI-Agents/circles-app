@@ -33,7 +33,7 @@ function starterStep(progress) {
     return {
       key: 'starter_photo_map', target: 'photo_map', actionLabel: 'Build my map',
       title: 'Build your map from your photos 📸',
-      body: 'We find the places you\u2019ve photographed near you and add them to your map. Turn them off the map any time.'
+      body: 'We find the places you\u2019ve photographed near you and add them to your map in one go, or add places one at a time. Your photos stay on your phone; only where they were taken is used.'
     };
   }
   if ((p.realPlaces || 0) === 0) {

@@ -39,7 +39,8 @@ enum TutorialStep: String, CaseIterable {
     var description: String {
         switch self {
         case .addPlaces:
-            return "Tap Add Place to save a spot you love — it goes on your personal map, in a circle (a list like Want to Try)"
+            // Both ways in (Wes, 2026-10-17): one place, or the whole map from photos
+            return "Tap Add Place to search for a spot you love, or choose Add from photos to build your map from the places in your photos. Your photos stay on your phone."
         case .followUsers:
             return "Tap a face to see their map. Follow people and their favorites show up on yours"
         case .viewActivity:

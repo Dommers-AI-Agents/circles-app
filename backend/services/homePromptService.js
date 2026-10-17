@@ -121,6 +121,8 @@ class HomePromptService {
     const builders = [
       // First-week program: their own next step beats any feature tip
       () => this.starterCard(ctx),
+      // Build my map, for accounts past the first-week program
+      () => this.photoMapIntroCard(ctx),
       () => this.postcardCard(ctx),
       () => this.favCoinsCard(ctx),
       () => this.scheduledCard(ctx),

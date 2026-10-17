@@ -1,7 +1,37 @@
 // services/homePrompt/cards.js — methods of HomePromptService (mixed into its prototype by the facade).
 const { COLLECTIONS, METERS_PER_MILE, PIGGY_COLLECTIONS, POSTCARD_PLACE_SCAN_LIMIT, POSTCARD_PLACE_WINDOW_MS, getAssumedLocation, haversineMeters, homeCards, minTripMiles, tipsService, toMillis, TIP_REPEAT_MS, TIP_REPEAT_SKIPPED_MS, TIP_REPEAT_ACTED_MS } = require('./shared');
 
+const { PHOTO_MAP_MIN_VERSION } = require('./starter');
+const { needsNewerBuild } = require('../homeCards');
+/** "New: build your map from your photos" comes back this long after a skip */
+const PHOTO_MAP_INTRO_REPEAT_MS = 21 * 24 * 60 * 60 * 1000;
+
 module.exports = {
+  // 0. Existing accounts hear about Build my map once it's in their build
+  //    (Wes, 2026-10-17): new accounts get it from the first-week program.
+  //    Gone for good once they open it or build their map; a skip brings it
+  //    back three weeks later.
+  async photoMapIntroCard(ctx) {
+    const key = 'photo_map_intro';
+    if (ctx.user.photoMapBuiltAt) return null;
+    if (this.isStarterAge(ctx)) return null;
+    if (!ctx.appVersion || needsNewerBuild(PHOTO_MAP_MIN_VERSION, ctx.appVersion)) return null;
+    const ack = ctx.acks[key];
+    if (ack && ack.action === 'acted') return null;
+    if (!this.nudgeDue(ctx, key, PHOTO_MAP_INTRO_REPEAT_MS)) return null;
+    return {
+      key,
+      type: 'feature',
+      title: 'New: build your map from your photos 📸',
+      body: 'We find the restaurants, caf\u00e9s and shops in your photos and add them to your map in one go. Only where a photo was taken is used; your photos stay on your phone.',
+      actionLabel: 'Build my map',
+      skipLabel: 'Not now',
+      target: 'photo_map',
+      data: {},
+      imageUrl: null
+    };
+  },
+
    // 1. "Send a postcard from Lisbon?" — a place this user photographed in the
   //    last week. Their OWN photo, never the venue's stock one: nobody mails a
   //    postcard of a Google photo, so `hasOwnPhotos` (stamped when the app
