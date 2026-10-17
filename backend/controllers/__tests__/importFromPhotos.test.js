@@ -92,3 +92,32 @@ test('the earn is keyed once per person', () => {
   expect(derivePiggyDedupKey('photo_map_built', { userId: 'u1', circleId: 'c2' })).toBe('photo_map:u1');
   expect(config.COINS.PHOTO_MAP_BUILT).toBe(3);
 });
+
+describe('where the places go', () => {
+  beforeEach(() => limits.photoPlacesAllowance.mockResolvedValue({ remaining: 25, max: 25, used: 0 }));
+
+  test('default: Places from my photos', async () => {
+    await run({ places: places(2) });
+    expect(importService.executeImport.mock.calls[0][1].target).toEqual({ kind: 'photos' });
+  });
+
+  test('a circle of mine, or a new one with its name', async () => {
+    await run({ places: places(2), target: { kind: 'circle', circleId: 'mine' } });
+    expect(importService.executeImport.mock.calls[0][1].target).toEqual({ kind: 'circle', circleId: 'mine' });
+    await run({ places: places(2), target: { kind: 'new', name: '  Lisbon · May 2026 ', privacy: 'private' } });
+    const payload = importService.executeImport.mock.calls[1][1];
+    expect(payload.target).toEqual({ kind: 'new', name: 'Lisbon · May 2026', privacy: 'private', showOnMap: true });
+    expect(payload.lists[0].name).toBe('Lisbon · May 2026');
+  });
+
+  test('bad targets are refused; the service decides ownership and the circle cap', async () => {
+    expect((await run({ places: places(1), target: { kind: 'new', name: ' ' } })).status).toHaveBeenCalledWith(400);
+    expect((await run({ places: places(1), target: { kind: 'circle' } })).status).toHaveBeenCalledWith(400);
+    importService.executeImport.mockResolvedValueOnce({ error: 'You can only add places to your own circles', status: 403 });
+    expect((await run({ places: places(1), target: { kind: 'circle', circleId: 'theirs' } })).status).toHaveBeenCalledWith(403);
+    importService.executeImport.mockResolvedValueOnce({ error: 'Free users can create up to 6 circles', upgradeRequired: true });
+    const r = await run({ places: places(1), target: { kind: 'new', name: 'Trip' } });
+    expect(r.status).toHaveBeenCalledWith(403);
+    expect(r.json.mock.calls[0][0].upgradeRequired).toBe(true);
+  });
+});

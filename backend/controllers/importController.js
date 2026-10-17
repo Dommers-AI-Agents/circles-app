@@ -17,6 +17,20 @@ const SWARM_APP_REDIRECT = 'circles://import/swarm';
 
 const PHOTO_PLACES_PER_REQUEST = 25;
 
+/** Where photo places go: "Places from my photos", one of theirs, or a new circle. */
+function normalizePhotoTarget(raw) {
+  if (!raw || raw.kind === undefined || raw.kind === 'photos') return { kind: 'photos' };
+  if (raw.kind === 'circle') {
+    return typeof raw.circleId === 'string' && raw.circleId ? { kind: 'circle', circleId: raw.circleId } : { error: 'target.circleId is required' };
+  }
+  if (raw.kind === 'new') {
+    const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+    if (!name) return { error: 'Give the new circle a name' };
+    return { kind: 'new', name: name.slice(0, 50), privacy: raw.privacy, showOnMap: raw.showOnMap !== false };
+  }
+  return { error: 'target.kind must be photos, circle or new' };
+}
+
 // @desc    Build my map from my photos: add places found in the user's own
 //          photos (matched on the phone with Apple Maps, so no Google calls)
 //          to their "Places from my photos" circle. Free up to the photo
@@ -42,12 +56,16 @@ exports.importFromPhotos = async (req, res) => {
       });
     }
     const accepted = places.slice(0, allowance.remaining === Infinity ? places.length : allowance.remaining);
+    const target = normalizePhotoTarget(req.body?.target);
+    if (target.error) return res.status(400).json({ success: false, error: target.error });
     const result = await importService.executeImport(req.user.uid, {
       source: 'photos',
-      lists: [{ name: 'Places from my photos', places: accepted }]
+      target,
+      lists: [{ name: target.kind === 'new' ? target.name : 'Places from my photos', places: accepted }]
     });
     if (result.error) {
-      return res.status(400).json({ success: false, error: result.error });
+      return res.status(result.status || (result.upgradeRequired ? 403 : 400))
+        .json({ success: false, error: result.error, upgradeRequired: !!result.upgradeRequired });
     }
     const list = result.results[0] || { created: 0, skippedDuplicates: 0, failed: [], circleId: null };
     // FavCoins: 3 once for building your map from photos, not per place
@@ -74,7 +92,7 @@ exports.importFromPhotos = async (req, res) => {
         skippedDuplicates: list.skippedDuplicates,
         failed: list.failed.length,
         circleId: list.circleId,
-        circleName: 'Places from my photos',
+        circleName: list.circleName || 'Places from my photos',
         remainingFree,
         maxFree: allowance.max === Infinity ? null : allowance.max,
         coins,

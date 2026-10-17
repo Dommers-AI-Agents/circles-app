@@ -196,7 +196,7 @@ async function loadOwnedCircles(userId) {
   const circles = [];
   snapshot.forEach(doc => {
     const data = doc.data();
-    circles.push({ id: doc.id, name: data.name, placesCount: data.placesCount || 0 });
+    circles.push({ id: doc.id, name: data.name, placesCount: data.placesCount || 0, deletedAt: data.deletedAt || null });
   });
   return circles;
 }
@@ -366,7 +366,7 @@ async function prepareImport(userId, payload) {
 function photoCircleCover(current, firstPhoto, fallback) {
   if (current && current !== fallback) return current;
   if (firstPhoto) return firstPhoto;
-  return current || fallback;
+  return current || fallback || null;
 }
 
 async function executeImport(userId, payload) {
@@ -394,10 +394,44 @@ async function executeImport(userId, payload) {
     if (!importCircleName) return { error: 'every list needs a name' };
   }
 
+  // Add from photos (2026-10-17): into "Places from my photos" (default), a
+  // circle of the person's own they picked, or a new circle they named
+  const photoTarget = payload.source === 'photos' ? (payload.target || { kind: 'photos' }) : null;
+  if (photoTarget && photoTarget.kind === 'circle') {
+    const owned = ownedCircles.find(c => c.id === photoTarget.circleId && !c.deletedAt);
+    if (!owned) return { error: 'You can only add places to your own circles', status: 403 };
+    existingImportCircle = owned;
+    importCircleName = owned.name;
+  } else if (photoTarget && photoTarget.kind === 'new') {
+    importCircleName = String(photoTarget.name || '').trim().slice(0, 50);
+    if (!importCircleName) return { error: 'Give the new circle a name' };
+    existingImportCircle = null;
+  }
+
   let circleRef;
   let createdImportCircleThisRun = false;
   if (existingImportCircle) {
     circleRef = db.collection(COLLECTIONS.CIRCLES).doc(existingImportCircle.id);
+  } else if (photoTarget && photoTarget.kind === 'new') {
+    // A circle the person named (a trip, a month): one of their own, so it
+    // counts toward the free circle cap like any other
+    const limitCheck = await subscriptionLimitService.canCreateCircle(userId);
+    if (!limitCheck.canCreate) {
+      return { error: limitCheck.error, upgradeRequired: true };
+    }
+    const privacy = ['public', 'myNetwork', 'private'].includes(photoTarget.privacy) ? photoTarget.privacy : 'myNetwork';
+    const circleData = createCircle({
+      name: importCircleName,
+      description: 'Places from my photos',
+      privacy,
+      showOnMap: photoTarget.showOnMap !== false
+    }, userId);
+    const circleErrors = validateCircle(circleData);
+    if (circleErrors.length > 0) {
+      return { error: circleErrors.join(', ') };
+    }
+    circleRef = await db.collection(COLLECTIONS.CIRCLES).add(circleData);
+    createdImportCircleThisRun = true;
   } else if (isListImport) {
     const limitCheck = await subscriptionLimitService.canCreateCircle(userId);
     if (!limitCheck.canCreate) {
@@ -455,7 +489,10 @@ async function executeImport(userId, payload) {
 
   // List imports dedupe against the TARGET circle only (see LIST_SOURCES);
   // a brand-new circle has nothing to collide with.
-  const dedupeIndex = isListImport ? indexForCircle(index, circleRef.id) : index;
+  // Photos into a chosen or new circle: a place already saved elsewhere
+  // still belongs in "Lisbon · May 2026", like Add-to-Circle
+  const perCircle = isListImport || (photoTarget && photoTarget.kind !== 'photos');
+  const dedupeIndex = perCircle ? indexForCircle(index, circleRef.id) : index;
 
   for (const list of payload.lists) {
     const listResult = {
@@ -578,7 +615,10 @@ async function executeImport(userId, payload) {
           const { PHOTOS_FALLBACK_COVER } = require('../config/eventCovers');
           const circleSnap = await circleRef.get();
           const current = circleSnap.exists ? circleSnap.data().coverImage : null;
-          const next = photoCircleCover(current, firstPhoto, PHOTOS_FALLBACK_COVER);
+          // The 📸 placeholder is only for circles this made, never for a
+          // circle of the person's own they picked
+          const fallback = photoTarget && photoTarget.kind === 'circle' ? null : PHOTOS_FALLBACK_COVER;
+          const next = photoCircleCover(current, firstPhoto, fallback);
           if (circleSnap.exists && next !== current) await circleRef.update({ coverImage: next });
         } catch (coverError) {
           console.error('⚠️ Photo circle cover failed (non-fatal):', coverError.message);
