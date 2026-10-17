@@ -22,14 +22,29 @@ struct HomePromptCard: Decodable, Equatable {
     /// a card that renders in the wrong style is better than one that takes
     /// over the screen by accident.
     let presentation: String
+    /// An optional second answer between the main button and Skip, e.g.
+    /// "Build my map from photos" or "Add one place" (2026-10-17). Older
+    /// builds ignore it and show the main button only.
+    let altActionLabel: String?
+    let altTarget: String?
 
     var destination: HomePromptTarget { HomePromptTarget(target: target, data: data) }
+
+    /// The main button's destination, or the second button's.
+    func destination(alt: Bool) -> HomePromptTarget { alt ? (altDestination ?? destination) : destination }
+
+    /// Where the second button goes, when the card has one.
+    var altDestination: HomePromptTarget? {
+        guard let label = altActionLabel, !label.isEmpty, let altTarget, !altTarget.isEmpty else { return nil }
+        return HomePromptTarget(target: altTarget, data: data)
+    }
 
     /// A scheduled card covers the home screen; organic ones do not.
     var isOverlay: Bool { presentation == "overlay" }
 
     enum CodingKeys: String, CodingKey {
         case key, type, title, body, actionLabel, skipLabel, target, data, imageUrl, actorPhoto, presentation
+        case altActionLabel, altTarget
     }
 
     init(from decoder: Decoder) throws {
@@ -45,15 +60,19 @@ struct HomePromptCard: Decodable, Equatable {
         imageUrl = try c.decodeIfPresent(String.self, forKey: .imageUrl)
         actorPhoto = try c.decodeIfPresent(String.self, forKey: .actorPhoto)
         presentation = try c.decodeIfPresent(String.self, forKey: .presentation) ?? "inline"
+        altActionLabel = try c.decodeIfPresent(String.self, forKey: .altActionLabel)
+        altTarget = try c.decodeIfPresent(String.self, forKey: .altTarget)
     }
 
     init(key: String, type: String, title: String, body: String, actionLabel: String = "Show me",
          skipLabel: String = "Skip", target: String, data: [String: HomePromptValue] = [:],
-         imageUrl: String? = nil, actorPhoto: String? = nil, presentation: String = "inline") {
+         imageUrl: String? = nil, actorPhoto: String? = nil, presentation: String = "inline",
+         altActionLabel: String? = nil, altTarget: String? = nil) {
         self.key = key; self.type = type; self.title = title; self.body = body
         self.actionLabel = actionLabel; self.skipLabel = skipLabel; self.target = target
         self.data = data; self.imageUrl = imageUrl; self.actorPhoto = actorPhoto
         self.presentation = presentation
+        self.altActionLabel = altActionLabel; self.altTarget = altTarget
     }
 }
 

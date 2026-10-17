@@ -28,12 +28,14 @@ const DEFAULT_CIRCLE_NAMES = new Set(['Want to Try', 'Favorite Local Spots', 'Va
 function starterStep(progress) {
   const p = progress || {};
   // Build my map from my photos (Wes, 2026-10-16): the fastest way to a full
-  // map, so it leads while the map is still small
+  // map, so it leads while the map is still small. Both ways to start are
+  // buttons (2026-10-17): from photos, or one place at a time.
   if (p.photoMapAvailable && (p.realPlaces || 0) < 3) {
     return {
-      key: 'starter_photo_map', target: 'photo_map', actionLabel: 'Build my map',
-      title: 'Build your map from your photos 📸',
-      body: 'We find the places you\u2019ve photographed near you and add them to your map in one go, or add places one at a time. Your photos stay on your phone; only where they were taken is used.'
+      key: 'starter_photo_map', target: 'photo_map', actionLabel: 'Build my map from photos',
+      altActionLabel: 'Add one place', altTarget: 'add_place',
+      title: (p.realPlaces || 0) === 0 ? 'Start your map 🗺️' : 'Fill in your map 🗺️',
+      body: 'We find the caf\u00e9s, restaurants and shops in your photos and add them in one go, or add the places you love one at a time. Your photos stay on your phone.'
     };
   }
   if ((p.realPlaces || 0) === 0) {
@@ -118,6 +120,7 @@ module.exports = {
         title: step.title,
         body: step.body,
         actionLabel: step.actionLabel,
+        ...(step.altActionLabel ? { altActionLabel: step.altActionLabel, altTarget: step.altTarget } : {}),
         skipLabel: 'Later',
         target: step.target,
         data: {},

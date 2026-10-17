@@ -81,7 +81,11 @@ describe('gates', () => {
 
   test('Build my map from my photos leads the first week on builds that have it', async () => {
     const { starterStep } = require('../homePrompt/starter');
-    expect(starterStep({ realPlaces: 0, photoMapAvailable: true })).toMatchObject({ key: 'starter_photo_map', target: 'photo_map' });
+    expect(starterStep({ realPlaces: 0, photoMapAvailable: true })).toMatchObject({
+      key: 'starter_photo_map', target: 'photo_map', altTarget: 'add_place', altActionLabel: 'Add one place', title: 'Start your map 🗺️'
+    });
+    expect(starterStep({ realPlaces: 1, photoMapAvailable: true }).title).toBe('Fill in your map 🗺️');
+    expect(starterStep({ realPlaces: 0 }).altTarget).toBeUndefined();
     expect(starterStep({ realPlaces: 3, photoMapAvailable: true }).key).not.toBe('starter_photo_map');
     expect(starterStep({ realPlaces: 0, photoMapAvailable: false }).key).toBe('starter_first_place');
 

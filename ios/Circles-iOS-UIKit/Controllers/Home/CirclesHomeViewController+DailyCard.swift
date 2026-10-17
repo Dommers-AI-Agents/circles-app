@@ -95,18 +95,21 @@ extension CirclesHomeViewController {
         let overlay = HomeCardOverlayViewController(
             card: card,
             onAct: { [weak self] in self?.overlayCardActed() },
+            onAlt: { [weak self] in self?.overlayCardActed(alt: true) },
             onSkip: { [weak self] in self?.overlayCardSkipped() }
         )
         present(overlay, animated: true)
         AnalyticsService.shared.logEvent("home_card_shown", parameters: ["card_key": card.key, "card_type": card.type])
     }
 
-    private func overlayCardActed() {
+    private func overlayCardActed(alt: Bool = false) {
         guard let card = overlayCard else { return }
         overlayCard = nil
-        AnalyticsService.shared.logEvent("home_card_acted", parameters: ["card_key": card.key, "card_type": card.type])
+        AnalyticsService.shared.logEvent("home_card_acted", parameters: [
+            "card_key": card.key, "card_type": card.type, "choice": alt ? "alt" : "main"
+        ])
         HomePromptService.shared.ack(key: card.key, action: .acted)
-        route(dailyCard: card)
+        route(card.destination(alt: alt))
     }
 
     private func overlayCardSkipped() {
@@ -146,7 +149,11 @@ extension CirclesHomeViewController {
     // MARK: Routing
 
     private func route(dailyCard card: HomePromptCard) {
-        switch card.destination {
+        route(card.destination)
+    }
+
+    private func route(_ destination: HomePromptTarget) {
+        switch destination {
         case .place(let id):
             NotificationCenter.default.post(name: Notification.Name("NavigateToPlace"), object: id)
         case .video(let id):

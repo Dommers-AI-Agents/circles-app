@@ -167,4 +167,25 @@ struct HomePromptGateTests {
         #expect(HomePromptTarget(target: "postcard", data: ["placeId": .string("p1")]) == .unknown("postcard"))
         #expect(HomePromptTarget(target: "postcard", data: ["photoUrl": .string("https://x/1.jpg")]) == .unknown("postcard"))
     }
+
+    /// The first-week map card offers two answers: build from photos, or add
+    /// one place (2026-10-17). A card without the second answer has none.
+    @Test func decodesASecondAnswer() throws {
+        struct Envelope: Decodable { let card: HomePromptCard? }
+        let json = """
+        {"card":{"key":"starter_photo_map","type":"starter","title":"Start your map","target":"photo_map",
+          "actionLabel":"Build my map from photos","altActionLabel":"Add one place","altTarget":"add_place","skipLabel":"Later"}}
+        """
+        let card = try #require(JSONDecoder().decode(Envelope.self, from: Data(json.utf8)).card)
+        #expect(card.destination == .photoMap)
+        #expect(card.altDestination == .addPlace)
+        #expect(card.destination(alt: true) == .addPlace)
+        #expect(card.destination(alt: false) == .photoMap)
+
+        let plain = HomePromptCard(key: "k", type: "starter", title: "t", body: "", target: "add_place")
+        #expect(plain.altDestination == nil)
+        #expect(plain.destination(alt: true) == .addPlace)
+        let labelOnly = HomePromptCard(key: "k", type: "starter", title: "t", body: "", target: "add_place", altActionLabel: "Add one place")
+        #expect(labelOnly.altDestination == nil)
+    }
 }
