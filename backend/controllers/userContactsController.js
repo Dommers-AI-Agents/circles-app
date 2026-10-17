@@ -6,6 +6,7 @@ const dailyBudget = require('../services/dailyBudget');
 const { recordEmailInvite } = require('../services/connectionRequestPolicy');
 const { isValidEmailAddress, normalizeEmail } = require('../utils/emailAddress');
 const { clean } = require('../utils/text');
+const { viewerCenter, localSaverCounts, rankSuggestedUsers } = require('../services/localPeople');
 
 const db = getFirestore();
 
@@ -257,6 +258,29 @@ const getSuggestedUsers = async (req, res) => {
       ...usersQuery.docs.filter(doc => !coreUserIds.has(doc.id))
     ];
 
+    // People who save places near them (or near Charlotte, the default)
+    // first, and the scan above can miss them: add the busiest locals
+    let localCounts = new Map();
+    let center = null;
+    try {
+      const viewerDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+      center = await viewerCenter(userId, viewerDoc.exists ? viewerDoc.data() : null);
+      localCounts = await localSaverCounts(center);
+      const have = new Set(candidateDocs.map(doc => doc.id));
+      const missing = [...localCounts.entries()]
+        .filter(([id]) => !have.has(id) && id !== userId)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 30)
+        .map(([id]) => db.collection(COLLECTIONS.USERS).doc(id));
+      if (missing.length) {
+        const docs = await db.getAll(...missing);
+        candidateDocs.push(...docs.filter(doc => doc.exists));
+      }
+    } catch (e) {
+      console.warn('⚠️ Local people lookup failed:', e.message);
+    }
+    const localReason = center && center.isDefault ? 'Favorites in Charlotte' : 'Favorites near you';
+
     console.log(`📊 Found ${usersQuery.size} total users in database (+${coreSnap.size} core)`);
     
     // Get existing connections for the user — BOTH directions, and include
@@ -286,6 +310,14 @@ const getSuggestedUsers = async (req, res) => {
     let skippedConnected = 0;
     const userCandidates = [];
     
+    // Everyone's circles at once, not one query after another
+    const circlesByOwner = new Map();
+    await Promise.all(candidateDocs
+      .filter(doc => doc.id !== userId && !connectedUserIds.has(doc.id))
+      .map(async doc => {
+        circlesByOwner.set(doc.id, await db.collection(COLLECTIONS.CIRCLES).where('owner', '==', doc.id).get());
+      }));
+
     // First pass: collect all eligible users
     for (const doc of candidateDocs) {
       const userData = doc.data();
@@ -302,9 +334,7 @@ const getSuggestedUsers = async (req, res) => {
       }
       
       // Get actual places count from circles
-      const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
-        .where('owner', '==', doc.id)
-        .get();
+      const circlesSnapshot = circlesByOwner.get(doc.id);
       
       let totalPlaces = 0;
       let circlesCount = circlesSnapshot.size;
@@ -328,8 +358,10 @@ const getSuggestedUsers = async (req, res) => {
           followersCount: userData.followersCount || 0,
           connectionsCount: userData.connectionsCount || 0,
           isVerified: userData.isVerified || false,
+          ...(localCounts.get(doc.id) ? { suggestionReason: localReason } : {}),
           _actualPlacesCount: totalPlaces, // For sorting
-          _isCore: coreUserIds.has(doc.id) // Core users pin to the front
+          _isCore: coreUserIds.has(doc.id), // Core users pin to the front
+          _localCount: localCounts.get(doc.id) || 0
         });
       } else {
         console.log(`⏭️ Skipping user with 0 places: ${userData.displayName}`);
@@ -337,14 +369,11 @@ const getSuggestedUsers = async (req, res) => {
       }
     }
     
-    // Sort: core users first, then by actual places count; take the limit
-    userCandidates.sort((a, b) => {
-      if (a._isCore !== b._isCore) return a._isCore ? -1 : 1;
-      return b._actualPlacesCount - a._actualPlacesCount;
-    });
-    const topUsers = userCandidates.slice(0, limit).map(user => {
+    // Core users first, then people with favorites nearby, then by places
+    const topUsers = rankSuggestedUsers(userCandidates).slice(0, limit).map(user => {
       delete user._actualPlacesCount; // Remove sorting fields
       delete user._isCore;
+      delete user._localCount;
       return user;
     });
 
