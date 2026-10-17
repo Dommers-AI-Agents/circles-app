@@ -199,9 +199,18 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
 
     /// A market's place page: save it, see photos, get directions.
     func openMarket(_ market: FarmersMarket) {
-        AnalyticsService.shared.logEvent("farmers_market_opened", parameters: [:])
-        pushPlace(name: market.name, address: market.address, lat: market.lat, lng: market.lng,
-                  globalPlaceId: nil, googlePlaceId: nil, category: .retail)
+        AnalyticsService.shared.logEvent("farmers_market_opened", parameters: ["google": market.googlePlaceId == nil ? "0" : "1"])
+        let fallback: () -> Void = { [weak self] in
+            self?.pushPlace(name: market.name, address: market.address, lat: market.lat, lng: market.lng,
+                            globalPlaceId: nil, googlePlaceId: market.googlePlaceId, category: .retail,
+                            photos: market.photoUrl.map { [$0] }, website: market.website, openingHours: market.openingHours)
+        }
+        // The real place page (days, hours, photos) when Google knows the market
+        guard let googlePlaceId = market.googlePlaceId else {
+            fallback()
+            return
+        }
+        openPlace(id: googlePlaceId, fallback: fallback)
     }
 
     func openMarketDirections(_ market: FarmersMarket) {
@@ -292,7 +301,8 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
     /// A place page built from what the row knows (no saved record behind it).
     private func pushPlace(name: String, address: String?, lat: Double?, lng: Double?,
                            globalPlaceId: String?, googlePlaceId: String?,
-                           id: String? = nil, category: PlaceCategory = .restaurant) {
+                           id: String? = nil, category: PlaceCategory = .restaurant,
+                           photos: [String]? = nil, website: String? = nil, openingHours: [OpeningHour]? = nil) {
         var location: GeoLocation?
         if let lat, let lng {
             // GeoJSON order: [longitude, latitude]
@@ -306,10 +316,10 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
             description: nil,
             address: address ?? "",
             location: location,
-            website: nil,
+            website: website,
             phone: nil,
             googlePlaceId: googlePlaceId,
-            photos: nil,
+            photos: photos,
             videos: nil,
             category: category,
             customCategoryId: nil,
@@ -321,7 +331,7 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
             publicNotes: nil,
             tags: nil,
             reviews: nil,
-            openingHours: nil,
+            openingHours: openingHours,
             priceLevel: nil,
             likes: nil,
             likesCount: nil,

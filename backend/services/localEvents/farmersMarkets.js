@@ -90,7 +90,8 @@ async function marketsNear(lat, lng) {
         lng: m.lng,
         distanceMeters: Math.round(meters),
         acceptsSnap: !!m.acceptsSnap,
-        organic: !!m.organic
+        organic: !!m.organic,
+        google: m.google || null
       });
     }
   }
@@ -100,7 +101,10 @@ async function marketsNear(lat, lng) {
     const key = market.name.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!byName.has(key)) byName.set(key, market);
   }
-  return [...byName.values()].slice(0, MAX_MARKETS);
+  // Photos, days and hours from Google (cached on each market); closed ones
+  // drop out, so look at a few extra
+  const { withDetails } = require('./marketDetails');
+  return (await withDetails([...byName.values()].slice(0, MAX_MARKETS + 3))).slice(0, MAX_MARKETS);
 }
 
 module.exports = { syncUsdaMarkets, marketsNear, normalizeMarket };

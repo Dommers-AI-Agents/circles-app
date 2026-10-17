@@ -110,6 +110,7 @@ final class NearbyEventCell: UITableViewCell {
     func configure(with event: NearbyEvent) {
         titleLabel.text = event.name
         whenLabel.text = NearbyEventFormatter.dateLine(localDate: event.startLocalDate, localTime: event.startLocalTime)
+        whenLabel.numberOfLines = 1
         placeLabel.text = NearbyEventFormatter.placeLine(venueName: event.venueName, city: event.city, distanceMeters: event.distanceMeters)
         priceLabel.text = event.isFree == true ? "Free" : NearbyEventFormatter.priceText(min: event.priceMin, currency: event.currency)
         priceLabel.textColor = event.isFree == true ? .systemGreen : Constants.Colors.secondaryLabel
@@ -122,14 +123,16 @@ final class NearbyEventCell: UITableViewCell {
 
     func configure(with market: FarmersMarket) {
         titleLabel.text = market.name
-        whenLabel.text = "Farmers market"
+        // Its days and times when Google knows them
+        whenLabel.text = market.hoursSummary ?? "Farmers market"
+        whenLabel.numberOfLines = 2
         placeLabel.text = NearbyEventFormatter.placeLine(venueName: market.address, city: nil, distanceMeters: market.distanceMeters)
         priceLabel.text = market.acceptsSnap == true ? "SNAP/EBT" : nil
         priceLabel.textColor = Constants.Colors.secondaryLabel
         placeholderSymbol = "basket.fill"
         accessibilityLabel = [titleLabel.text, whenLabel.text, placeLabel.text, priceLabel.text].compactMap { $0 }.joined(separator: ", ")
         isAccessibilityElement = true
-        loadImage(nil, key: "")
+        loadImage(market.photoUrl, key: "market-\(market.id)")
     }
 
     private var placeholderSymbol = "ticket"

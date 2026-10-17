@@ -1044,7 +1044,7 @@ struct NearbyEvent: Codable, Equatable {
 
 /// A farmers market near the user (USDA directory). No days or hours: the
 /// directory doesn't keep them reliably.
-struct FarmersMarket: Codable, Equatable {
+struct FarmersMarket: Codable {
     let id: String
     let name: String
     let address: String?
@@ -1054,6 +1054,13 @@ struct FarmersMarket: Codable, Equatable {
     let distanceMeters: Double?
     let acceptsSnap: Bool?
     let organic: Bool?
+    /// From Google, looked up once per market on the server (2026-10-17)
+    let googlePlaceId: String?
+    let photoUrl: String?
+    let website: String?
+    /// "Sat 8 AM–1 PM" / "Tue, Thu 3–7 PM · Sat 8 AM–1 PM"
+    let hoursSummary: String?
+    let openingHours: [OpeningHour]?
 }
 
 // MARK: - Place-page venue models (offers + announcements shown on a place)

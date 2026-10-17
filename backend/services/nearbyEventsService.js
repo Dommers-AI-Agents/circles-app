@@ -106,7 +106,7 @@ async function getLocalFeed(lat, lng, { now = new Date() } = {}) {
     settle(storeEvents.eventsNear(lat, lng, { now }), 'store events'),
     settle(ticketmaster.eventsNear(lat, lng, { now }), 'Ticketmaster'),
     settle(library.eventsNear(lat, lng, { now }), 'library'),
-    settle(cached(`fm_${cell}`, { memoryMs: 6 * 3600000, storeMs: 24 * 3600000, now: now.getTime() },
+    settle(cached(`fm2_${cell}`, { memoryMs: 6 * 3600000, storeMs: 24 * 3600000, now: now.getTime() },
       () => farmersMarkets.marketsNear(lat, lng)), 'farmers markets')
   ]);
   const events = mergeEvents({ store, tm, lib }, lat, lng, now);
