@@ -2267,6 +2267,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             UserDefaults.standard.set(pending, forKey: "pendingDeepLink")
             return
         }
+        // A shared quote opens straight on the quote, over whatever is showing
+        if id == "quotes", let quoteId, tabBar.presentQuoteReel(quoteId: quoteId) { return }
         tabBar.presentedViewController?.dismiss(animated: false)
         tabBar.selectedIndex = 0
         guard let nav = tabBar.viewControllers?.first as? UINavigationController,

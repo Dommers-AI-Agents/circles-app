@@ -6,6 +6,9 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
+# Fonts for server-drawn images (shared quote cards: services/quoteCard.js)
+RUN apk add --no-cache fontconfig font-dejavu
+
 # Install dependencies
 RUN npm ci --production
 

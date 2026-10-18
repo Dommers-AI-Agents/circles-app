@@ -256,7 +256,11 @@ app.get('/connect/:userId', async (req, res) => {
   res.send(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${ogTitle}</title>
-<meta property="og:title" content="${ogTitle}">
+<meta property="og:title" content="${quote ? cardTitle : ogTitle}">
+${quote ? `<meta property="og:image" content="${cardUrl}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${ogTitle} ${author ? `— ${esc(author)}` : ''}">` : ''}
 <meta property="og:description" content="Share and discover favorite places together on Circles.">
 <meta property="og:site_name" content="Circles">
 <meta property="og:type" content="website">
@@ -468,8 +472,27 @@ app.get('/app/tab/:slug', (req, res) => {
 // opens the quote reel on this quote. Everyone else sees the quote itself,
 // set like the reel, with the way to get more.
 //
-// Deliberately no og:image: Messages then draws a compact card (the quote as
-// its title, the app icon beside it) instead of a big image bubble.
+// og:image is the quote drawn like the app shows it (author, source, topics;
+// services/quoteCard.js) — Wes, 2026-10-18: the compact title-only card had
+// room for the quote and nothing else.
+app.get('/share/quote/:id/card.png', async (req, res) => {
+  const id = String(req.params.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  try {
+    const { getFirestore } = require('./config/firebase');
+    const doc = id ? await getFirestore().collection('quotes').doc(id).get() : null;
+    if (!doc || !doc.exists || doc.data().enabled === false) return res.status(404).end();
+    const { CATEGORIES } = require('./services/quotesService');
+    const labels = Object.fromEntries(CATEGORIES.map((c) => [c.id, c.label]));
+    const png = await require('./services/quoteCard').renderQuoteCard(id, doc.data(), labels);
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(png);
+  } catch (e) {
+    console.warn('Quote card: could not draw:', e.message);
+    res.status(500).end();
+  }
+});
+
 app.get('/app/quote/:id', async (req, res) => {
   const id = String(req.params.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
   const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
@@ -492,6 +515,9 @@ app.get('/app/quote/:id', async (req, res) => {
   const ogDescription = author
     ? `— ${esc(author)} · More quotes on FavCircles`
     : 'A good line a few times a day, on the topics you pick.';
+  // The card shows the whole quote, so the line under it names who said it
+  const cardTitle = author ? `A quote from ${esc(author)}` : ogTitle;
+  const cardUrl = `https://api.favcircles.com/share/quote/${id}/card.png`;
 
   res.send(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">

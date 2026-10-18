@@ -139,6 +139,21 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
 
     // MARK: - Navigation
 
+    /// A shared quote link or a quote push: the reel on its own, for the
+    /// caller to present over whatever is on screen. Going through this tab
+    /// and the Quotes page first flashed both by (Wes, 2026-10-18).
+    func quoteReelController(quoteId: String) -> UIViewController? {
+        guard ensureModel(), let model,
+              let descriptor = model.descriptors.first(where: { $0.id == "quotes" }) else { return nil }
+        let context = model.context(for: descriptor)
+        let hosting = UIHostingController(rootView: AnyView(EmptyView()))
+        hosting.rootView = QuoteReelScreen.view(context: context, startId: quoteId) { [weak hosting] in
+            hosting?.dismiss(animated: true)
+        }
+        hosting.modalPresentationStyle = .fullScreen
+        return hosting
+    }
+
     /// Refetches one widget's data — a push about it just arrived, so what is
     /// on screen ("Waiting for Mom to accept") may be minutes stale.
     func refreshWidget(id widgetId: String) {

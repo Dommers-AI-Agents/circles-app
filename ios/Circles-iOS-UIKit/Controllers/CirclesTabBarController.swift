@@ -559,7 +559,25 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         NotificationCenter.default.post(name: .navigateToHomeWidget, object: id)
     }
 
+    /// A shared quote or a quote push: the reel straight over the current
+    /// screen, without switching tabs or opening the Quotes page under it.
+    /// Returns false when it couldn't (the caller falls back to the page).
+    @discardableResult
+    func presentQuoteReel(quoteId: String) -> Bool {
+        guard let navController = viewControllers?.first as? UINavigationController,
+              let home = navController.viewControllers.first as? CirclesHomeViewController,
+              let reel = home.widgetsTab.quoteReelController(quoteId: quoteId) else { return false }
+        var top: UIViewController = self
+        while let presented = top.presentedViewController, !presented.isBeingDismissed { top = presented }
+        top.present(reel, animated: true)
+        return true
+    }
+
     @objc private func navigateToHomeWidget(_ note: Notification) {
+        if note.object as? String == "quotes", let quoteId = note.userInfo?["quoteId"] as? String,
+           presentQuoteReel(quoteId: quoteId) {
+            return
+        }
         selectedIndex = 0
         guard let navController = viewControllers?[0] as? UINavigationController,
               let circlesVC = navController.viewControllers.first as? CirclesHomeViewController else { return }
