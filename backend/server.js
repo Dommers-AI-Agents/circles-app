@@ -256,11 +256,7 @@ app.get('/connect/:userId', async (req, res) => {
   res.send(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${ogTitle}</title>
-<meta property="og:title" content="${quote ? cardTitle : ogTitle}">
-${quote ? `<meta property="og:image" content="${cardUrl}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="${ogTitle} ${author ? `— ${esc(author)}` : ''}">` : ''}
+<meta property="og:title" content="${ogTitle}">
 <meta property="og:description" content="Share and discover favorite places together on Circles.">
 <meta property="og:site_name" content="Circles">
 <meta property="og:type" content="website">
@@ -522,7 +518,11 @@ app.get('/app/quote/:id', async (req, res) => {
   res.send(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${ogTitle}</title>
-<meta property="og:title" content="${ogTitle}">
+<meta property="og:title" content="${quote ? cardTitle : ogTitle}">
+${quote ? `<meta property="og:image" content="${cardUrl}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${ogTitle} ${author ? `— ${esc(author)}` : ''}">` : ''}
 <meta property="og:description" content="${ogDescription}">
 <meta property="og:site_name" content="FavCircles">
 <meta property="og:type" content="article">
