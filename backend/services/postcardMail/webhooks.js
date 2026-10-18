@@ -125,9 +125,10 @@ module.exports = {
     }).catch(() => false);
     if (patch.status === STATUS.DELIVERED && row.status !== STATUS.DELIVERED && !row.deliveryPushedAt && await claimPush()) {
       const who = row.recipient?.name || 'your recipient';
+      const card = row.kind === 'fridgemail' ? 'Fridge Mail card' : 'postcard';
       this.notify(row.userId, patch.deliveryConfirmed
-        ? { title: 'Your postcard was delivered', body: `Your card to ${who} has arrived.`, data: { orderId: doc.id, status: STATUS.DELIVERED } }
-        : { title: 'Your postcard is out for delivery', body: `Your card to ${who} is with the mail carrier and should arrive today or tomorrow.`, data: { orderId: doc.id, status: STATUS.DELIVERED } });
+        ? { title: `Your ${card} was delivered`, body: `Your card to ${who} has arrived.`, data: { orderId: doc.id, status: STATUS.DELIVERED } }
+        : { title: `Your ${card} is out for delivery`, body: `Your card to ${who} is with the mail carrier and should arrive today or tomorrow.`, data: { orderId: doc.id, status: STATUS.DELIVERED } });
     }
     return { handled: patch.status };
   },

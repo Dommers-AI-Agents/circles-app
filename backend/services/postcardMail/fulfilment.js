@@ -141,6 +141,14 @@ module.exports = {
    * notification must never fail or retry the order it is describing.
    */
   notify(userId, { title, body, data }) {
+    // Fridge Mail cards share this collection and these webhooks, but they
+    // live in the Fridge Mail widget: a tap there opens that card (Wes,
+    // 2026-10-18 — "out for delivery" used to open a blank Postcard page)
+    const orderId = data && data.orderId;
+    if (typeof orderId === 'string' && orderId.startsWith('fm_')) {
+      sendInBackground(userId, { type: 'fridgemail', title, body, data: { ...data, cardId: orderId } }, 'postcard-mail');
+      return;
+    }
     sendInBackground(userId, { type: 'postcard_order', title, body, data }, 'postcard-mail');
   },
 

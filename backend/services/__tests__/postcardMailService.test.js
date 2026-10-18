@@ -543,6 +543,23 @@ describe('Lob tracking events', () => {
     expect(notificationService.sendToUser).toHaveBeenCalledTimes(1);
   });
 
+  it('a Fridge Mail card says so and its push opens the Fridge Mail card (2026-10-18)', async () => {
+    await placeOrder('o1');
+    closeWindow(ID('o1'));
+    await service.releaseDue();
+    // The same row shape, as Fridge Mail's weekly job writes it
+    const row = rowOf(ID('o1'));
+    mockDb.docs.delete(ID('o1'));
+    mockDb.docs.set('fm_abc', { ...row, kind: 'fridgemail', prepaid: true });
+    notificationService.sendToUser.mockClear();
+    await service.handleLobEvent({ event_type: { id: 'postcard.processed_for_delivery' }, body: { id: row.lobPostcardId } });
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(USER, expect.objectContaining({
+      type: 'fridgemail',
+      title: 'Your Fridge Mail card is out for delivery',
+      data: expect.objectContaining({ orderId: 'fm_abc', cardId: 'fm_abc' })
+    }));
+  });
+
   it('a late transit scan never moves a delivered card back, so it never pushes twice', async () => {
     // Sgroi Family, 2026-10-02: processed_for_delivery → in_local_area → processed_for_delivery pushed twice
     await placeOrder('o1');

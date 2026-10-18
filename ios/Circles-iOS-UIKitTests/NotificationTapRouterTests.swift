@@ -60,6 +60,15 @@ struct NotificationTapRouterTests {
         }
     }
 
+    @Test func fridgeMailCardsOpenTheirCard() {
+        // Pushes from 2026-10-18 on
+        #expect(route(["type": "fridgemail", "cardId": "fm_abc"]) == .fridgeMailCard(id: "fm_abc"))
+        #expect(route(["type": "fridgemail"]) == .homeWidget(id: "fridgemail"))
+        // Older bell rows: Fridge Mail cards went out as postcard_order
+        #expect(route(["type": "postcard_order", "orderId": "fm_abc"]) == .fridgeMailCard(id: "fm_abc"))
+        #expect(route(["type": "postcard_order", "orderId": "5EC184CC"]) == .postcardOrder(id: "5EC184CC"))
+    }
+
     @Test func placesCirclesAndActivity() {
         #expect(route(["type": "new_suggestion", "placeId": "p", "suggestionId": "s"]) == .suggestions(placeId: "p", suggestionId: "s"))
         #expect(route(["type": "new_suggestion"]) == .suggestions(placeId: nil, suggestionId: nil))

@@ -154,7 +154,8 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
     func open(widgetId: String, postcardOrderId: String? = nil, quoteId: String? = nil, workoutPostId: String? = nil,
               drinkId: String? = nil, motivationLineId: String? = nil, motivationSend: Bool = false,
               postcardShareToken: String? = nil, eventToken: String? = nil, eventId: String? = nil,
-              runId: String? = nil, runToken: String? = nil, careAskId: String? = nil) {
+              runId: String? = nil, runToken: String? = nil, careAskId: String? = nil,
+              fridgeMailCardId: String? = nil) {
         guard ensureModel(), let model,
               let descriptor = model.descriptors.first(where: { $0.id == widgetId }),
               let widget = model.widget(for: descriptor) else { return }
@@ -180,6 +181,8 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         if widgetId == "run", let runToken { context.launchRunToken = runToken }
         // How Are You?: an answer push opens that answer
         if widgetId == "howareyou", let careAskId { context.launchCareAskId = careAskId }
+        // Fridge Mail: a card's push or bell row opens that card
+        if widgetId == "fridgemail", let fridgeMailCardId { context.launchFridgeMailCardId = fridgeMailCardId }
         // A shared workout tapped in the activity feed opens over the page
         if widgetId == "workouts", let workoutPostId { context.launchWorkoutPostId = workoutPostId }
         // A drink a friend sent, tapped in chat, opens on that recipe

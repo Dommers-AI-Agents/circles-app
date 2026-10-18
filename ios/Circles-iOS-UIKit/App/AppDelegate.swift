@@ -657,6 +657,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case .careAnswer(let askId):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "care-ask:\(askId)",
                                 object: "howareyou", userInfo: ["careAskId": askId])
+        case .fridgeMailCard(let id):
+            postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "fridgemail-card:\(id)",
+                                object: "fridgemail", userInfo: ["fridgeMailCardId": id])
         case .motivationSend(let lineId):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "motivation-send:\(lineId)",
                                 object: "motivation", userInfo: ["motivationLineId": lineId, "motivationSend": true])

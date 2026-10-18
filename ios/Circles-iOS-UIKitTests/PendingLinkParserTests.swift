@@ -18,6 +18,7 @@ struct PendingLinkParserTests {
         #expect(PendingLinkParser.parse("run-id:r1") == .runOpen(id: "r1"))
         #expect(PendingLinkParser.parse("run-token:t1") == .runJoin(token: "t1"))
         #expect(PendingLinkParser.parse("care-ask:a1") == .careAnswer(askId: "a1"))
+        #expect(PendingLinkParser.parse("fridgemail-card:fm_abc") == .fridgeMailCard(id: "fm_abc"))
         #expect(PendingLinkParser.parse("tab:widgets") == .homeTab(.widgets))
         #expect(PendingLinkParser.parse("me") == .openPath("me"))
         #expect(PendingLinkParser.parse("check-in") == .quickCheckIn)
