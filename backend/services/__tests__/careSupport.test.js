@@ -89,3 +89,43 @@ describe('comments and a question\'s history', () => {
     await expect(svc.commentOnAsk({ userId: 'wes', askId: 'open', text: 'hi' })).rejects.toMatchObject({ status: 400 });
   });
 });
+
+describe('reaction words follow the answer (Wes, 2026-10-18)', () => {
+  const pain = (n) => ({ kind: 'scale', answerScore: n, answerText: `Pain ${n}/10`, alertRule: { min: 7 } });
+  const sleep = (n) => ({ kind: 'scale', answerScore: n, alertRule: { max: 3 } });
+  const title = (kind, ask) => support.reactionPush('Wesley', kind, ask).title;
+
+  test('pain: low is good, high is hard', () => {
+    expect(support.answerTone(pain(1))).toBe('good');
+    expect(support.answerTone(pain(3))).toBe('mixed');
+    expect(support.answerTone(pain(8))).toBe('hard');
+    expect(title('glad', pain(1))).toBe('🙏 Wesley: Glad to hear it');
+    expect(title('glad', pain(8))).toBe('🙏 Wesley: Hoping it gets better soon');
+    expect(title('proud', pain(3))).toBe('💪 Wesley: You\u2019ve got this');
+  });
+
+  test('sleep and energy: low is hard', () => {
+    expect(support.answerTone(sleep(2))).toBe('hard');
+    expect(support.answerTone(sleep(5))).toBe('mixed');
+    expect(support.answerTone(sleep(9))).toBe('good');
+  });
+
+  test('mood, done and yes/no answers', () => {
+    expect(support.answerTone({ kind: 'mood', answer: 'great' })).toBe('good');
+    expect(support.answerTone({ answer: 'not_great' })).toBe('hard');
+    expect(support.answerTone({ kind: 'done', answer: 'no', alertRule: { value: 'no' } })).toBe('hard');
+    expect(support.answerTone({ kind: 'done', answer: 'yes', alertRule: { value: 'no' } })).toBe('good');
+    expect(support.answerTone({ kind: 'yesno', answer: 'yes', alertRule: { value: 'yes' } })).toBe('hard');
+    expect(support.answerTone({ kind: 'done', answer: 'not_yet' })).toBe('mixed');
+    expect(support.answerTone({ kind: 'yesno', answer: 'yes' })).toBe('neutral');
+    expect(support.answerTone({ kind: 'text', answerText: 'Went to the store' })).toBe('neutral');
+    expect(support.answerTone({ kind: 'mood', answer: 'great', alert: true })).toBe('hard');
+  });
+
+  test('every reaction has words for every tone', () => {
+    for (const kind of Object.keys(support.REACTIONS)) {
+      for (const ask of [pain(1), pain(4), pain(9), { kind: 'text' }]) expect(support.reactionWords(kind, ask)).toBeTruthy();
+    }
+    expect(title('glad', { kind: 'text', answerText: 'Busy day' })).toBe('🙏 Wesley: Thanks for letting me know');
+  });
+});

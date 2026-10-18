@@ -59,8 +59,42 @@ const commentPush = (name, text, ask, toParent) => ({
 });
 
 /** Pure: the push wording. */
+/**
+ * How the answer went, so a reaction's words fit it (Wes, 2026-10-18: 🙏
+ * "Glad to hear it" read wrong on a pain day). 'good' | 'mixed' | 'hard',
+ * or 'neutral' when we can't tell (typed answers, custom questions).
+ */
+function answerTone(ask) {
+  if (ask.alert) return 'hard';                 // it already raised a heads-up
+  const kind = ask.kind || 'mood';
+  const rule = ask.alertRule || {};
+  if (kind === 'mood') return { great: 'good', okay: 'mixed', not_great: 'hard' }[ask.answer] || 'neutral';
+  if (kind === 'scale') {
+    const n = Number(ask.answerScore);
+    if (!Number.isFinite(n)) return 'neutral';
+    if (rule.min !== undefined) return n >= rule.min ? 'hard' : n <= 2 ? 'good' : 'mixed';   // pain: high is bad
+    if (rule.max !== undefined) return n <= rule.max ? 'hard' : n >= 7 ? 'good' : 'mixed';   // sleep, energy: low is bad
+    return 'neutral';
+  }
+  if (kind === 'done' || kind === 'yesno') {
+    if (rule.value !== undefined) return ask.answer === rule.value ? 'hard' : 'good';
+    if (kind === 'done') return ask.answer === 'yes' ? 'good' : 'mixed';
+  }
+  return 'neutral';
+}
+
+/** Each reaction's words for each kind of answer. */
+const REACTION_WORDS = {
+  love: { good: 'Love you', mixed: 'Love you', hard: 'Love you, I\u2019m here for you', neutral: 'Love you' },
+  glad: { good: 'Glad to hear it', mixed: 'Thanks for telling me', hard: 'Hoping it gets better soon', neutral: 'Thanks for letting me know' },
+  proud: { good: 'Proud of you', mixed: 'You\u2019ve got this', hard: 'Hang in there, you\u2019ve got this', neutral: 'Proud of you' },
+  thinking: { good: 'Thinking of you', mixed: 'Thinking of you', hard: 'Thinking of you, sending a hug', neutral: 'Thinking of you' }
+};
+
+const reactionWords = (kind, ask) => (REACTION_WORDS[kind] || {})[answerTone(ask)] || REACTIONS[kind].label;
+
 const reactionPush = (name, kind, ask) => ({
-  title: `${REACTIONS[kind].emoji} ${name}: ${REACTIONS[kind].label}`,
+  title: `${REACTIONS[kind].emoji} ${name}: ${reactionWords(kind, ask)}`,
   body: `About your answer “${ask.answerText || ''}”${ask.short ? ` (${ask.short})` : ''}`.replace(' “”', '')
 });
 
@@ -72,7 +106,7 @@ function memberName(plan, userId) {
 
 module.exports = {
   REACTIONS, RESPONSES, PUSH_REACTION, PUSH_RESPONSE, PUSH_HANDLED, PUSH_COMMENT, COMMENT_MAX,
-  presentSupport, reactionPush, commentPush, sameQuestion,
+  presentSupport, reactionPush, reactionWords, answerTone, commentPush, sameQuestion,
 
   mixin: {
     /** One reaction per person per answer; `kind: null` takes it back. */
