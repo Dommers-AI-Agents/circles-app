@@ -69,6 +69,19 @@ describe('overlayVenueFields', () => {
     expect(out.privateNotes).toBe('mine');     // per-user fields untouched
     expect(place.name).toBe('Old');            // input not mutated
   });
+  it('reads description, phone, website and hours only from the venue (Flower Child, 2026-10-18)', () => {
+    // A July save carried Design Within Reach's details; the venue had none
+    const save = { name: 'Flower Child', description: 'Retail shopping location\nPhone: +1 (704) 365-6514\nWebsite: https://www.dwr.com',
+      phone: '7043656514', website: 'https://www.dwr.com', openingHours: [{ day: 1, hours: 'x' }], privateNotes: 'mine' };
+    const out = svc.overlayVenueFields(save, { name: 'Flower Child', description: '', googleData: { rating: 4.6 } });
+    expect(out.description).toBeNull();
+    expect(out.phone).toBeNull();
+    expect(out.website).toBeNull();
+    expect(out.openingHours).toBeNull();
+    expect(out.privateNotes).toBe('mine');
+    const filled = svc.overlayVenueFields(save, { description: 'Bowls and salads', googleData: { phone: '(980) 294-0500', website: 'https://iamaflowerchild.com' } });
+    expect(filled).toMatchObject({ description: 'Bowls and salads', phone: '(980) 294-0500', website: 'https://iamaflowerchild.com' });
+  });
 });
 
 describe('isPlaceVisibleToViewer', () => {

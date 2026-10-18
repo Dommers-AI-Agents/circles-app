@@ -62,6 +62,15 @@ const VENUE_TOP_FIELDS = ['name', 'address', 'location', 'category', 'subcategor
 const VENUE_GOOGLE_FIELDS = ['rating', 'userRatingsTotal', 'priceLevel', 'openingHours', 'website', 'phone',
                              'delivery', 'dineIn', 'reservable', 'takeout', 'curbsidePickup'];
 
+// The shared details people read and act on (Call, Website, hours, the
+// description) come ONLY from the canonical venue. A save's own copy is a
+// leftover from before normalization and can belong to another venue
+// entirely: Flower Child's July save carried Design Within Reach's phone,
+// website and blurb, and they showed because the venue had none (Wes,
+// 2026-10-18). An empty canonical value now means empty.
+const AUTHORITATIVE_TOP_FIELDS = ['description'];
+const AUTHORITATIVE_GOOGLE_FIELDS = ['website', 'phone', 'openingHours'];
+
 // Merge canonical venue fields over a save doc's (possibly stale) copies.
 // Per-user fields (notes, tags, privacy, photos, ...) are untouched.
 const overlayVenueFields = (place, globalData) => {
@@ -70,6 +79,8 @@ const overlayVenueFields = (place, globalData) => {
     const value = globalData[field];
     if (value !== undefined && value !== null && value !== '') {
       merged[field] = value;
+    } else if (AUTHORITATIVE_TOP_FIELDS.includes(field)) {
+      merged[field] = null;
     }
   });
   const googleData = globalData.googleData || {};
@@ -77,6 +88,8 @@ const overlayVenueFields = (place, globalData) => {
     const value = googleData[field];
     if (value !== undefined && value !== null && value !== '') {
       merged[field] = value;
+    } else if (AUTHORITATIVE_GOOGLE_FIELDS.includes(field)) {
+      merged[field] = null;
     }
   });
   return merged;

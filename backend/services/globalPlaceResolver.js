@@ -490,6 +490,9 @@ async function ensureGlobalPlaceLink(placeDoc) {
     // flagged inline above, so this is a no-op for them, and it's a no-op again
     // for every later saver once the flag is set.
     await flagForCategoryReview(globalPlaceId, resolvedData);
+    // A Google-matched venue with no website / phone / hours yet gets them
+    // from Google once, in the background (Wes, 2026-10-18)
+    require('./venueGoogleDetails').fillVenueInBackground(globalPlaceId, resolvedData);
 
     return globalPlaceId;
   } catch (error) {
