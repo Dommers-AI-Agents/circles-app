@@ -4,6 +4,8 @@
 // backend/controllers/videoController.js
 const { getFirestore, FieldValue } = require('../../config/firebase');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../../models/FirestoreModels');
+// Disappearing moments that ran out never show (the sweep deletes them soon after)
+const { isExpired, withoutExpired, GONE_CODE, GONE_MESSAGE } = require('../../services/momentExpiry');
 const { queryInChunks } = require('../../utils/firestoreChunks');
 const { canViewMoment, MOMENT_PRIVACY_LEVELS } = require('../../services/visibility');
 const { normalizeUserId } = require('../../services/idService');
@@ -108,7 +110,7 @@ exports.getUserVideos = async (req, res) => {
       .offset(parseInt(offset))
       .get();
 
-    let videos = serializeQuerySnapshot(videosQuery);
+    let videos = withoutExpired(serializeQuerySnapshot(videosQuery));
     // Reported-and-hidden moments stay visible ONLY to their owner
     if (normalizeUserId(viewerId) !== normalizeUserId(userId)) {
       videos = videos.filter(v => !isModerationHidden(v));
@@ -220,7 +222,7 @@ exports.getVideoFeed = async (req, res) => {
     });
     videoDocs.sort((a, b) => String(b.data().createdAt).localeCompare(String(a.data().createdAt)));
 
-    const videos = videoDocs.slice(pageOffset, pageOffset + pageLimit)
+    const videos = withoutExpired(videoDocs).slice(pageOffset, pageOffset + pageLimit)
       .map(doc => serializeDoc(doc))
       .filter(doc => doc !== null);
     
@@ -324,11 +326,15 @@ exports.getVideoDetails = async (req, res) => {
     if (!videoDoc.exists) {
       return res.status(404).json({
         success: false,
-        message: 'Video not found'
+        code: 'moment_missing',
+        message: 'This moment is no longer available.'
       });
     }
     
     const videoData = videoDoc.data();
+    if (isExpired(videoData)) {
+      return res.status(410).json({ success: false, code: GONE_CODE, message: GONE_MESSAGE });
+    }
 
     // Visibility check based on the viewer's relationship to the owner.
     // (Previously only 'private' was blocked, so network/followers moments were
@@ -532,6 +538,7 @@ exports.getReelsFeed = async (req, res) => {
     snaps.flatMap(s => s.docs).forEach(doc => {
       if (seenVideoIds.has(doc.id)) return;
       const v = serializeDoc(doc);
+      if (isExpired(v)) return;
       if (excluded.has(v.userId)) return;
       if (v.moderationStatus === 'under_review' || v.moderationStatus === 'removed') return;
       if (!canView(v)) return;
@@ -630,7 +637,7 @@ exports.getUserReels = async (req, res) => {
       .offset(parseInt(offset))
       .get();
 
-    let videos = serializeQuerySnapshot(videosQuery);
+    let videos = withoutExpired(serializeQuerySnapshot(videosQuery));
     // Reported-and-hidden moments stay visible ONLY to their owner
     if (currentUserId !== userId) {
       videos = videos.filter(v => v.moderationStatus !== 'under_review' && v.moderationStatus !== 'removed');
@@ -759,7 +766,7 @@ const readyMomentsAt = async (placeIds) => {
   );
   const byId = new Map();
   snaps.forEach(doc => byId.set(doc.id, { id: doc.id, ...doc.data() }));
-  return [...byId.values()].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  return withoutExpired([...byId.values()]).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
 };
 
 const page = (items, req) => {
@@ -823,7 +830,7 @@ exports.getPublicVideoDetails = async (req, res) => {
     // described at all — this used to return the place name and address of
     // private moments to anyone holding the id (security audit 2026-10-01).
     // Same 404 as a missing moment, so the id confirms nothing.
-    if (!isPubliclyViewableMoment(video)) {
+    if (!isPubliclyViewableMoment(video) || isExpired(video)) {
       return res.status(404).json({
         success: false,
         message: 'Video not found'

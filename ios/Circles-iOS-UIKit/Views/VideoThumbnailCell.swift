@@ -52,6 +52,20 @@ class VideoThumbnailCell: UICollectionViewCell {
         return label
     }()
     
+    /// "⏱ 5h left" on a disappearing moment
+    private let expiryLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 11, weight: .semibold)
+        label.textColor = .white
+        label.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        label.layer.cornerRadius = 4
+        label.clipsToBounds = true
+        label.textAlignment = .center
+        label.isHidden = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
     private let processingIndicator: UIActivityIndicatorView = {
         let indicator = UIActivityIndicatorView(style: .medium)
         indicator.color = .white
@@ -97,6 +111,7 @@ class VideoThumbnailCell: UICollectionViewCell {
         contentView.addSubview(playIconView)
         contentView.addSubview(durationLabel)
         contentView.addSubview(viewCountLabel)
+        contentView.addSubview(expiryLabel)
         contentView.addSubview(processingIndicator)
         contentView.addSubview(processingLabel)
         
@@ -125,6 +140,9 @@ class VideoThumbnailCell: UICollectionViewCell {
             viewCountLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
             viewCountLabel.heightAnchor.constraint(equalToConstant: 20),
             viewCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 40),
+            expiryLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
+            expiryLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
+            expiryLabel.heightAnchor.constraint(equalToConstant: 20),
             
             // Processing indicator centered
             processingIndicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
@@ -185,6 +203,9 @@ class VideoThumbnailCell: UICollectionViewCell {
         // Set view count (for both photos and videos)
         let viewCountText = video.viewCount == 1 ? "1 view" : "\(video.viewCount) views"
         viewCountLabel.text = " \(viewCountText) "
+        let expiry = MomentExpiry.badge(video.expiresAt)
+        expiryLabel.text = expiry.map { " \($0) " }
+        expiryLabel.isHidden = expiry == nil
         
         // Load thumbnail with tracking to prevent race conditions
         if let thumbnailUrl = video.thumbnailUrl {

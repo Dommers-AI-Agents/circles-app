@@ -30,6 +30,8 @@ struct PlaceVideo: Codable {
     let createdAt: Date
     let updatedAt: Date
     let deletedAt: Date?
+    /// Set on a disappearing moment: deleted for good at this time (MomentExpiry)
+    var expiresAt: Date? = nil
     
     // Content type and embed fields
     let contentType: String? // "photo" or "video"
@@ -80,6 +82,7 @@ struct PlaceVideo: Codable {
         case createdAt
         case updatedAt
         case deletedAt
+        case expiresAt
         case user
         case contentType
         case videoType

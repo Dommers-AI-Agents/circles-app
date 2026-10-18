@@ -2177,13 +2177,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     
                 case .failure(let error):
                     Logger.debug("Failed to load video: \(error)")
-                    let alert = UIAlertController(
-                        title: "Video Not Found",
-                        message: "Unable to load the requested video",
-                        preferredStyle: .alert
-                    )
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                    navController.present(alert, animated: true)
+                    // The server says why: "This moment has disappeared." for a
+                    // disappearing moment that ran out, not connected, etc.
+                    AlertPresenter.showError(
+                        title: "Moment Unavailable",
+                        message: error.serverMessage ?? "This moment is no longer available.",
+                        from: navController)
                 }
             }
         }

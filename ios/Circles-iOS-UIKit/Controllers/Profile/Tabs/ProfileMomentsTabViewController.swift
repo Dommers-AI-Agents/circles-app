@@ -80,7 +80,7 @@ final class ProfileMomentsTabViewController: ProfileGridTabViewController {
                     // Filter out failed uploads and videos without URLs
                     self.videos = response.data.filter { video in
                         let hasValidUrl = video.contentType == "photo" ? video.thumbnailUrl != nil : video.videoUrl != nil
-                        return video.uploadStatus == .ready && hasValidUrl
+                        return video.uploadStatus == .ready && hasValidUrl && !MomentExpiry.isExpired(video.expiresAt)
                     }
                     Logger.debug("📹 ProfileMoments: Fetched \(response.data.count) videos, showing \(self.videos.count) valid ones")
 

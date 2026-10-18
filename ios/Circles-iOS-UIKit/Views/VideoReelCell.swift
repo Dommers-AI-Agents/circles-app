@@ -675,7 +675,9 @@ class VideoReelCell: UICollectionViewCell {
         }
         placeNameLabel.text = "📍 \(reel.placeName)"
         descriptionLabel.text = reel.description.isEmpty ? reel.title : reel.description
-        timestampLabel.text = MomentTimestampFormatter.string(for: reel.createdAt)
+        // A disappearing moment says how long it has left: "2h ago · ⏱ 22h left"
+        timestampLabel.text = [MomentTimestampFormatter.string(for: reel.createdAt), MomentExpiry.badge(reel.expiresAt)]
+            .compactMap { $0 }.joined(separator: " \u{00B7} ")
         likeCountLabel.text = formatCount(reel.likeCount)
         commentCountLabel.text = formatCount(reel.commentCount)
         

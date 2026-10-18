@@ -149,6 +149,7 @@ const trackVideoLiked = async (videoId, placeId, placeName, likedByUserId, video
     const videoDoc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
     const videoThumbnail = videoDoc.exists ? (videoDoc.data().thumbnailUrl || null) : null;
     const momentVisibility = videoDoc.exists ? (videoDoc.data().visibility || 'public') : 'public';
+    const momentExpiresAt = videoDoc.exists ? (videoDoc.data().expiresAt || null) : null;
     await createActivity(
       'video_liked',
       likedByUserId,
@@ -162,7 +163,8 @@ const trackVideoLiked = async (videoId, placeId, placeName, likedByUserId, video
         videoThumbnail: videoThumbnail,
         likedByUserId: likedByUserId,
         momentVisibility: momentVisibility,
-        momentOwnerId: videoOwnerId
+        momentOwnerId: videoOwnerId,
+        expiresAt: momentExpiresAt
       }
     );
 

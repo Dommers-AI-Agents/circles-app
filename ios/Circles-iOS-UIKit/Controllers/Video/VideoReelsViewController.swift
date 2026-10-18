@@ -40,8 +40,12 @@ class VideoReelsViewController: UIViewController {
     
     // MARK: - Initialization
     init(reels: [PlaceVideo], startIndex: Int = 0) {
-        self.reels = reels
-        self.currentIndex = startIndex
+        // Disappearing moments that ran out since the list loaded are gone;
+        // the start index follows the same moment
+        let now = Date()
+        self.reels = MomentExpiry.visible(reels, now: now)
+        let skippedBefore = reels.prefix(max(0, startIndex)).filter { MomentExpiry.isExpired($0.expiresAt, now: now) }.count
+        self.currentIndex = min(max(0, startIndex - skippedBefore), max(0, self.reels.count - 1))
         super.init(nibName: nil, bundle: nil)
     }
     

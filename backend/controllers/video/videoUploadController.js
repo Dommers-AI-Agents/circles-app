@@ -15,6 +15,8 @@ const {
   deleteObjects
 } = require('../../services/uploadSizeGuard');
 const axios = require('axios');
+const { removeMoment } = require('../../services/momentDeletion');
+const momentExpiry = require('../../services/momentExpiry');
 const db = getFirestore();
 const bucket = getStorage().bucket();
 // Initiate video upload
@@ -522,6 +524,8 @@ exports.initiateVideoUpload = async (req, res) => {
     // point that at someone else's file (security audit 2026-10-01).
     await videoRef.set({
       ...videoData,
+      // "Disappears after 24 hours": the clock starts when it goes live
+      disappearing: momentExpiry.wantsDisappearing(req.body),
       storagePaths: { video: videoPath, preview: previewPath, thumbnail: thumbnailPath }
     });
 
@@ -709,12 +713,14 @@ exports.completeVideoUpload = async (req, res) => {
       isVideoReady = true;
     }
     
-    // Final update to ready status
+    // Final update to ready status. A disappearing moment's 24 hours start now.
+    const expiresAt = isVideoReady && videoData.disappearing ? momentExpiry.expiresAtFor(new Date()) : null;
     await videoRef.update({
       uploadStatus: isVideoReady ? 'ready' : 'error',
       uploadProgress: isVideoReady ? 100 : 0,
       updatedAt: new Date().toISOString(),
-      processingCompleted: isVideoReady ? new Date().toISOString() : null
+      processingCompleted: isVideoReady ? new Date().toISOString() : null,
+      ...(expiresAt ? { expiresAt } : {})
     });
 
     // Piggy bank: 2 FavCoins per Moment that finishes uploading (per-video
@@ -755,6 +761,8 @@ exports.completeVideoUpload = async (req, res) => {
           placeId: videoData.placeId,
           momentVisibility: videoData.visibility || 'public',
           momentOwnerId: userId,
+          // The feed hides the row once a disappearing moment runs out
+          expiresAt,
           // Photo moments ride the video pipeline; the feed row wording
           // ("shared a photo" vs "uploaded a video") keys off this
           contentType: videoData.contentType || 'video'
@@ -830,111 +838,9 @@ exports.deleteVideo = async (req, res) => {
       });
     }
     
-    // Delete files from storage to save space
-    try {
-      const bucketName = process.env.FIREBASE_STORAGE_BUCKET || 'circles-app-83b67.firebasestorage.app';
-      
-      // Extract file paths from URLs
-      const extractPath = (url) => {
-        if (!url) return null;
-        // Handle both firebasestorage.googleapis.com and firebasestorage.app URLs
-        const patterns = [
-          `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/`,
-          `https://${bucketName}/`
-        ];
-        
-        for (const pattern of patterns) {
-          if (url.includes(pattern)) {
-            const path = url.split(pattern)[1];
-            // Remove query parameters and decode
-            return decodeURIComponent(path.split('?')[0]);
-          }
-        }
-        return null;
-      };
-      
-      // Delete all associated files from storage
-      const filesToDelete = [];
-      
-      if (videoData.videoUrl) {
-        const videoPath = extractPath(videoData.videoUrl);
-        if (videoPath) filesToDelete.push(bucket.file(videoPath).delete().catch(err => {
-          console.log(`Failed to delete video file: ${err.message}`);
-        }));
-      }
-      
-      if (videoData.previewUrl) {
-        const previewPath = extractPath(videoData.previewUrl);
-        if (previewPath) filesToDelete.push(bucket.file(previewPath).delete().catch(err => {
-          console.log(`Failed to delete preview file: ${err.message}`);
-        }));
-      }
-      
-      if (videoData.thumbnailUrl) {
-        const thumbnailPath = extractPath(videoData.thumbnailUrl);
-        if (thumbnailPath) filesToDelete.push(bucket.file(thumbnailPath).delete().catch(err => {
-          console.log(`Failed to delete thumbnail file: ${err.message}`);
-        }));
-      }
-      
-      // Delete all files from storage
-      if (filesToDelete.length > 0) {
-        await Promise.all(filesToDelete);
-        console.log(`✅ Deleted ${filesToDelete.length} files from storage for video ${videoId}`);
-      }
-    } catch (storageError) {
-      console.error('Error deleting files from storage:', storageError);
-      // Continue with database deletion even if storage deletion fails
-    }
-    
-    // Delete associated activity and its reactions/comments if exists
-    if (videoData.activityId) {
-      try {
-        // Delete activity reactions
-        const activityReactionsQuery = db.collection(COLLECTIONS.ACTIVITY_REACTIONS)
-          .where('activityId', '==', videoData.activityId);
-        const activityReactionsSnapshot = await activityReactionsQuery.get();
-        
-        const reactionsDeletePromises = activityReactionsSnapshot.docs.map(doc => doc.ref.delete());
-        await Promise.all(reactionsDeletePromises);
-        
-        if (activityReactionsSnapshot.size > 0) {
-          console.log(`✅ Deleted ${activityReactionsSnapshot.size} activity reactions for video ${videoId}`);
-        }
-        
-        // Delete activity comments
-        const activityCommentsQuery = db.collection(COLLECTIONS.ACTIVITY_COMMENTS)
-          .where('activityId', '==', videoData.activityId);
-        const activityCommentsSnapshot = await activityCommentsQuery.get();
-        
-        const commentsDeletePromises = activityCommentsSnapshot.docs.map(doc => doc.ref.delete());
-        await Promise.all(commentsDeletePromises);
-        
-        if (activityCommentsSnapshot.size > 0) {
-          console.log(`✅ Deleted ${activityCommentsSnapshot.size} activity comments for video ${videoId}`);
-        }
-        
-        // Delete the activity itself
-        await db.collection(COLLECTIONS.ACTIVITIES).doc(videoData.activityId).delete();
-        console.log(`✅ Deleted associated activity ${videoData.activityId} for video ${videoId}`);
-      } catch (activityError) {
-        console.error(`Error deleting associated activity for video ${videoId}:`, activityError);
-        // Continue with video deletion even if activity deletion fails
-      }
-    }
+    // Files, the moment, its activity rows, likes, comments and views
+    await removeMoment(videoId, videoData, { db, bucket, reason: 'deleted by owner' });
 
-    // Hard delete from database (completely remove the document)
-    await videoRef.delete();
-    console.log(`✅ Permanently deleted video ${videoId} from database`);
-    
-    // Update user quota
-    const quotaRef = db.collection(COLLECTIONS.USER_VIDEO_QUOTAS).doc(userId);
-    await quotaRef.update({
-      videosUploaded: FieldValue.increment(-1),
-      totalSize: FieldValue.increment(-(videoData.fileSize || 0)),
-      updatedAt: new Date().toISOString()
-    });
-    
     res.json({
       success: true,
       message: 'Video deleted successfully'
@@ -1183,6 +1089,12 @@ exports.addEmbeddedVideo = async (req, res) => {
       };
     }
     
+    // "Disappears after 24 hours": a link is live as soon as it's added
+    if (momentExpiry.wantsDisappearing(req.body)) {
+      videoData.disappearing = true;
+      videoData.expiresAt = momentExpiry.expiresAtFor(new Date());
+    }
+
     // Tags (accepted connections only; none on private moments)
     const resolvedTags = visibility === 'private'
       ? { taggedUserIds: [], taggedUsers: [] }
@@ -1210,6 +1122,7 @@ exports.addEmbeddedVideo = async (req, res) => {
           placeId: placeId,
           momentVisibility: videoData.visibility || 'public',
           momentOwnerId: userId,
+          expiresAt: videoData.expiresAt || null,
           contentType: videoData.contentType || 'video'
         }
       );

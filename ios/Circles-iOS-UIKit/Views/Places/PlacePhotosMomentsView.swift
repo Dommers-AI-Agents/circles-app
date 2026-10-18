@@ -81,7 +81,7 @@ final class PlacePhotosMomentsView: UIView {
     }
 
     func setMoments(_ moments: [PlaceVideo]) {
-        self.moments = moments
+        self.moments = MomentExpiry.visible(moments)
         momentsRow.reloadData()
         render()
     }
@@ -130,7 +130,9 @@ extension PlacePhotosMomentsView: UICollectionViewDataSource, UICollectionViewDe
         } else {
             let moment = moments[indexPath.item]
             let isVideo = (moment.duration ?? 0) > 0
-            cell.configure(imageUrl: moment.thumbnailUrl ?? moment.previewUrl, isVideo: isVideo)
+            // A disappearing moment says how long it has left
+            cell.configure(imageUrl: moment.thumbnailUrl ?? moment.previewUrl, isVideo: isVideo,
+                           tag: MomentExpiry.badge(moment.expiresAt))
         }
         return cell
     }

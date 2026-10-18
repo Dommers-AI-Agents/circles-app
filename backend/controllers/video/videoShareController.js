@@ -23,6 +23,8 @@ const loadPublicMoment = async (videoId) => {
   const doc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
   if (!doc.exists) return null;
   const video = doc.data();
+  // A disappearing moment that ran out reads as gone ("no longer available")
+  if (require('../../services/momentExpiry').isExpired(video)) return null;
   return isPubliclyViewableMoment(video) ? video : null;
 };
 

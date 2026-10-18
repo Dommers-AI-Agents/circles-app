@@ -8,7 +8,8 @@ protocol MomentPlacePickerDelegate: AnyObject {
                            didSelect place: Place,
                            visibility: VideoVisibility,
                            audienceListId: String?,
-                           taggedUsers: [TaggedMomentUser])
+                           taggedUsers: [TaggedMomentUser],
+                           disappearing: Bool)
 }
 
 /// Place picker for posting a Moment — same shape as the check-in place
@@ -23,6 +24,8 @@ class MomentPlacePickerViewController: BaseViewController {
     /// The named Inner Circle list, when the person chose one.
     private var audienceListId: String?
     private var taggedUsers: [TaggedMomentUser] = []
+    /// "Disappears after 24 hours" (Wes, 2026-10-18): off every time
+    private let disappearRow = DisappearingMomentToggle()
 
     private var currentLocation: CLLocation?
     private var myPlaces: [Place] = []      // full distance-sorted list
@@ -111,7 +114,7 @@ class MomentPlacePickerViewController: BaseViewController {
         tableView.dataSource = self
         nearbySearch.delegate = self
 
-        [privacyLabel, privacyControl, tagPeopleButton, sourceControl, searchBar, tableView, loadingIndicator].forEach { view.addSubview($0) }
+        [privacyLabel, privacyControl, tagPeopleButton, disappearRow, sourceControl, searchBar, tableView, loadingIndicator].forEach { view.addSubview($0) }
         refreshTagButton()
         setupConstraints()
         // The lists must be in hand before the menu is opened
@@ -153,7 +156,11 @@ class MomentPlacePickerViewController: BaseViewController {
             tagPeopleButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             tagPeopleButton.heightAnchor.constraint(equalToConstant: 30),
 
-            sourceControl.topAnchor.constraint(equalTo: tagPeopleButton.bottomAnchor, constant: 8),
+            disappearRow.topAnchor.constraint(equalTo: tagPeopleButton.bottomAnchor, constant: 8),
+            disappearRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            disappearRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+
+            sourceControl.topAnchor.constraint(equalTo: disappearRow.bottomAnchor, constant: 10),
             sourceControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             sourceControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
 
@@ -371,7 +378,8 @@ extension MomentPlacePickerViewController: UITableViewDataSource, UITableViewDel
             return
         }
         let place = isSearching ? savedMatches[indexPath.row] : rows[indexPath.row]
-        delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility, audienceListId: audienceListId, taggedUsers: taggedUsers)
+        delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility, audienceListId: audienceListId, taggedUsers: taggedUsers,
+                                    disappearing: disappearRow.isOn)
     }
 }
 
@@ -412,7 +420,8 @@ extension MomentPlacePickerViewController: NearbyPlaceSearchDelegate {
 
     func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didResolve place: Place) {
         setLoading(false)
-        delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility, audienceListId: audienceListId, taggedUsers: taggedUsers)
+        delegate?.momentPlacePicker(self, didSelect: place, visibility: visibility, audienceListId: audienceListId, taggedUsers: taggedUsers,
+                                    disappearing: disappearRow.isOn)
     }
 
     func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didFailWith error: Error) {

@@ -15,6 +15,8 @@ class VideoLinkInputViewController: UIViewController {
     /// Who can see the link moment, chosen on the screen before this one.
     var visibility: VideoVisibility = .followers
     var audienceListId: String?
+    /// "Disappears after 24 hours" (Wes, 2026-10-18): off every time
+    private let disappearRow = DisappearingMomentToggle()
     private var videoMetadata: VideoMetadata?
     
     // MARK: - UI Elements
@@ -190,6 +192,7 @@ class VideoLinkInputViewController: UIViewController {
         contentView.addSubview(pasteButton)
         contentView.addSubview(previewContainer)
         contentView.addSubview(placeSelectionButton)
+        contentView.addSubview(disappearRow)
         contentView.addSubview(addButton)
         contentView.addSubview(loadingIndicator)
         
@@ -263,7 +266,11 @@ class VideoLinkInputViewController: UIViewController {
             placeSelectionButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             placeSelectionButton.heightAnchor.constraint(equalToConstant: 48),
             
-            addButton.topAnchor.constraint(equalTo: placeSelectionButton.bottomAnchor, constant: 20),
+            disappearRow.topAnchor.constraint(equalTo: placeSelectionButton.bottomAnchor, constant: 16),
+            disappearRow.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            disappearRow.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+
+            addButton.topAnchor.constraint(equalTo: disappearRow.bottomAnchor, constant: 20),
             addButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             addButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             addButton.heightAnchor.constraint(equalToConstant: 50),
@@ -425,7 +432,8 @@ class VideoLinkInputViewController: UIViewController {
             "description": "",
             "visibility": visibility.rawValue,
             "audienceListId": (visibility == .innerCircle ? audienceListId : nil) ?? NSNull(),
-            "tags": []
+            "tags": [],
+            "disappearing": disappearRow.isOn
         ]
         
         APIService.shared.request(

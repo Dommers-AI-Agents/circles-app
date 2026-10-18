@@ -7,6 +7,7 @@ const care = require('../controllers/widgets/careCheckinController');
 const quotes = require('../controllers/widgets/quotesController');
 const tasks = require('../controllers/tasks/scheduledTasksController');
 const orphanUploads = require('../controllers/tasks/orphanUploadsController');
+const momentExpiryTask = require('../controllers/tasks/momentExpiryController');
 const emailHealthTask = require('../controllers/tasks/emailHealthController');
 const farmersMarketsTask = require('../controllers/tasks/farmersMarketsController');
 const localCoverageTask = require('../controllers/tasks/localCoverageController');
@@ -70,6 +71,8 @@ router.post('/piggy-bank-resolve-claim', verifyCloudScheduler, tasks.piggyBankRe
 // Hourly: moment uploads still unfinished 2 h after initiate are marked
 // 'abandoned' and their Storage objects deleted (≤200 per run, resumable).
 router.post('/orphan-uploads', verifyCloudScheduler, orphanUploads.sweep);
+// Every 15 min: disappearing moments past their 24 hours are deleted for good
+router.post('/moments-expire', verifyCloudScheduler, momentExpiryTask.sweep);
 router.post('/email-health', verifyCloudScheduler, emailHealthTask.check);
 // Monthly: copy the USDA farmers market directory (Locals tab markets)
 router.post('/farmers-markets-sync', verifyCloudScheduler, farmersMarketsTask.sync);

@@ -170,8 +170,17 @@ const canViewActivity = (activity, viewerId, viewerCtx, settingsByActor) => {
  * `circlesById` may be null when the caller fetched no circles; a row that
  * references a circle is then withheld rather than guessed at.
  */
+// A disappearing moment that ran out is gone for everyone, its owner too
+// (the sweep deletes the rows within 15 minutes; this covers the gap, cached
+// rows included)
+const isExpiredMomentRow = (activity) => {
+  const meta = (activity && activity.metadata) || {};
+  return !!meta.expiresAt && require('./momentExpiry').isExpired(meta);
+};
+
 const passesItemGates = (activity, viewerId, viewerCtx, circlesById) => {
   const meta = activity.metadata || {};
+  if (isExpiredMomentRow(activity)) return false;
   if (isSameUser(activity.actorId, viewerId)) return true;
   if (meta.ownerOnly === true) return false;
 
@@ -223,6 +232,7 @@ const passesItemGates = (activity, viewerId, viewerCtx, circlesById) => {
 const filterActivitiesForViewer = ({ activities, viewerId, viewerCtx, circlesById, settingsByActor, skipItemGates = false }) =>
   (activities || []).filter((activity) => {
     try {
+      if (isExpiredMomentRow(activity)) return false;
       // `skipItemGates` is for rows a cache already item-gated when it was
       // built; only the grid is re-judged.
       return (skipItemGates || passesItemGates(activity, viewerId, viewerCtx, circlesById))
@@ -299,6 +309,7 @@ module.exports = {
   categoryOf,
   canViewActivity,
   passesItemGates,
+  isExpiredMomentRow,
   filterActivitiesForViewer,
   activityPrivacyFromUserDocs,
   loadActivityPrivacyByActor,

@@ -19,6 +19,8 @@ class ContentUploadViewController: UIViewController {
     /// The named Inner Circle list behind an Inner Circle moment, if one was picked.
     private var selectedAudienceListId: String?
     private var selectedTaggedUsers: [TaggedMomentUser] = []
+    /// "Disappears after 24 hours" from the place picker
+    private var selectedDisappearing = false
     private var shouldNavigateToMomentsOnSuccess = false // Flag to control navigation behavior
     
     // Background image processing
@@ -636,11 +638,13 @@ extension ContentUploadViewController: VideoLinkInputDelegate {
 
 // MARK: - MomentPlacePickerDelegate
 extension ContentUploadViewController: MomentPlacePickerDelegate {
-    func momentPlacePicker(_ picker: MomentPlacePickerViewController, didSelect place: Place, visibility: VideoVisibility, audienceListId: String?, taggedUsers: [TaggedMomentUser]) {
+    func momentPlacePicker(_ picker: MomentPlacePickerViewController, didSelect place: Place, visibility: VideoVisibility, audienceListId: String?, taggedUsers: [TaggedMomentUser],
+                           disappearing: Bool) {
         guard let content = pendingContent else { return }
         selectedVisibility = visibility
         selectedAudienceListId = visibility == .innerCircle ? audienceListId : nil
         selectedTaggedUsers = taggedUsers
+        selectedDisappearing = disappearing
         selectedPlace = place
         pendingContent = nil
         if let presentedVC = presentedViewController {
@@ -868,6 +872,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             "audienceListId": selectedAudienceListId ?? NSNull(),
             "tags": [],
             "taggedUserIds": selectedTaggedUsers.map { $0.id },
+            "disappearing": selectedDisappearing,
             "contentType": "photo",
             "fileSize": imageData.count,
             "duration": 0,
@@ -991,6 +996,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             "audienceListId": selectedAudienceListId ?? NSNull(),
             "tags": [],
             "taggedUserIds": selectedTaggedUsers.map { $0.id },
+            "disappearing": selectedDisappearing,
             "contentType": "video",
             "fileSize": fileSize,
             "duration": duration,

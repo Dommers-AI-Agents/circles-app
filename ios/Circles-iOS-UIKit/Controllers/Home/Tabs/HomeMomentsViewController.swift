@@ -212,7 +212,7 @@ final class HomeMomentsViewController: BaseViewController, HomeContentTab {
     private static func playable(_ videos: [PlaceVideo]) -> [PlaceVideo] {
         videos.filter { video in
             let hasValidUrl = video.contentType == "photo" ? video.thumbnailUrl != nil : video.videoUrl != nil
-            return video.uploadStatus == .ready && hasValidUrl
+            return video.uploadStatus == .ready && hasValidUrl && !MomentExpiry.isExpired(video.expiresAt)
         }
     }
 
