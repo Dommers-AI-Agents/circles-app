@@ -1010,3 +1010,16 @@ exports.getUserUsageStats = async (req, res) => {
         });
     }
 };
+
+// @route GET /api/subscription/all — every subscription in one list
+// (Settings → Subscriptions). Billing lives with each product; this only reads.
+exports.listAllSubscriptions = async (req, res) => {
+    try {
+        const userId = req.user?.uid || req.userId;
+        const subscriptions = await require('../services/subscriptionsOverview').listSubscriptions(userId);
+        res.json({ success: true, subscriptions });
+    } catch (error) {
+        console.error('❌ listAllSubscriptions failed:', error.message);
+        res.status(500).json({ success: false, message: "Couldn't load your subscriptions." });
+    }
+};

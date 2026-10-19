@@ -21,7 +21,7 @@ class SettingsViewController: BaseTableViewController {
         var title: String {
             switch self {
             case .admin: return "Admin"
-            case .subscription: return "Subscription"
+            case .subscription: return "Subscriptions"
             case .data: return "Data"
             case .account: return "Account"
             case .privacy: return "Privacy"
@@ -40,7 +40,7 @@ class SettingsViewController: BaseTableViewController {
         var title: String {
             switch self {
             case .status: return "Premium Status"
-            case .manage: return "Manage Subscription"
+            case .manage: return "Manage Subscriptions"
             }
         }
     }
@@ -631,6 +631,8 @@ extension SettingsViewController {
                     }
                 case .manage:
                     cell.textLabel?.text = row.title
+                    cell.detailTextLabel?.text = "Premium, Fridge Mail…"
+                    cell.detailTextLabel?.textColor = Constants.Colors.secondaryLabel
                     cell.accessoryType = .disclosureIndicator
                 }
             }
@@ -879,7 +881,9 @@ extension SettingsViewController {
                 case .status:
                     showSubscriptionDetails()
                 case .manage:
-                    openAppStoreSubscriptionManagement()
+                    // Every subscription in one place: Premium, Business,
+                    // Fridge Mail (Wes, 2026-10-19)
+                    navigationController?.pushViewController(SubscriptionsViewController(), animated: true)
                 }
             }
             
@@ -970,12 +974,6 @@ extension SettingsViewController {
     private func showSubscriptionDetails() {
         let subscriptionVC = SubscriptionViewController()
         navigationController?.pushViewController(subscriptionVC, animated: true)
-    }
-    
-    private func openAppStoreSubscriptionManagement() {
-        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-            UIApplication.shared.open(url)
-        }
     }
 }
 

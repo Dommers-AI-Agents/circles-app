@@ -6,12 +6,14 @@ const {
     getSubscriptionStatus,
     handleSubscriptionWebhook,
     startFreeTrial,
-    getUserUsageStats
+    getUserUsageStats,
+    listAllSubscriptions
 } = require('../controllers/subscriptionController');
 
 // Protected routes (require authentication)
 router.post('/verify', protect, verifySubscription);
 router.get('/status', protect, getSubscriptionStatus);
+router.get('/all', protect, listAllSubscriptions);
 router.get('/usage', protect, getUserUsageStats);
 
 // Development/testing route
