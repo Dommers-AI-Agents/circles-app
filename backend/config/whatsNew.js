@@ -9,6 +9,11 @@
  */
 module.exports = [
   {
+    date: '2026-10-19', emoji: '💬', title: 'How Are You?: comment any time',
+    body: 'Answered already? Your recent answers are listed under the question. Tap one to add a comment, and your family gets a notification.',
+    minVersion: '1.4.1', link: '/app/widget/howareyou'
+  },
+  {
     date: '2026-10-19', emoji: '💳', title: 'All your subscriptions in one place',
     body: 'Settings → Subscriptions shows everything you pay for (Premium, Fridge Mail), what it costs, when it renews, and how to cancel.',
     minVersion: '1.4.1'
