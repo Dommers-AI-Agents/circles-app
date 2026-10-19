@@ -4,6 +4,8 @@ const notificationService = require('./notificationService');
 const emailService = require('./emailService');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { forEachPage } = require('../utils/firestorePaging');
+const { NETWORK_PLACES, gatherExtras } = require('./weeklyEmail/content');
+const { renderWeeklyEmail, subjectFor } = require('./weeklyEmail/html');
 
 const db = getFirestore();
 
@@ -246,10 +248,14 @@ class DailySummaryService {
 
         const placeSnapshots = await Promise.all(placePromises);
         const contributorCounts = {};
+        // The email lists the actual places (privacy-checked there); a Symbol
+        // key keeps them out of the summary JSON the app fetches
+        stats[NETWORK_PLACES] = [];
 
         placeSnapshots.forEach(snapshot => {
           snapshot.forEach(doc => {
             const place = doc.data();
+            stats[NETWORK_PLACES].push({ id: doc.id, data: place });
             stats.newPlaces++;
             
             // Count by category
@@ -590,11 +596,17 @@ class DailySummaryService {
         return true;
       }
 
-      const emailHtml = this.buildSummaryEmailHtml(user, stats, notification);
+      // The long, scrollable letter: places, nearby, what's new, widgets, a
+      // tip (services/weeklyEmail). A section that can't load is left out.
+      const extras = await gatherExtras(user, stats).catch((e) => {
+        console.warn(`[weekly-email] extras failed for ${user.id}: ${e.message}`);
+        return {};
+      });
+      const emailHtml = this.buildSummaryEmailHtml(user, stats, notification, extras);
 
       await emailService.sendEmail({
         to: user.email,
-        subject: notification.title,
+        subject: subjectFor(stats, (n) => this.formatCoins(n)),
         html: emailHtml
       });
 
@@ -607,151 +619,9 @@ class DailySummaryService {
     }
   }
 
-  // Build HTML email for daily summary
-  buildSummaryEmailHtml(user, stats, notification) {
-    const today = new Date().toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    });
-
-    const statsHtml = [];
-    
-    if (stats.newPlaces > 0) {
-      const categoryList = Object.entries(stats.newPlacesByCategory)
-        .sort((a, b) => b[1] - a[1])
-        .map(([cat, count]) => `${count} ${cat}${count > 1 ? 's' : ''}`)
-        .join(', ');
-      
-      statsHtml.push(`
-        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-          <h3 style="margin: 0 0 10px 0; color: #4CAF50;">🆕 ${stats.newPlaces} New Places</h3>
-          <p style="margin: 0; color: #666;">${categoryList}</p>
-          ${stats.topContributors.length > 0 ? `
-            <p style="margin: 10px 0 0 0; color: #666;">
-              Top contributors: ${stats.topContributors.slice(0, 3)
-                .map(c => `${c.name} (${c.count})`)
-                .join(', ')}
-            </p>
-          ` : ''}
-        </div>
-      `);
-    }
-
-    if (stats.newConnections > 0) {
-      statsHtml.push(`
-        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-          <h3 style="margin: 0 0 10px 0; color: #2196F3;">👥 ${stats.newConnections} New Connection${stats.newConnections > 1 ? 's' : ''}</h3>
-          <p style="margin: 0; color: #666;">Your network is growing!</p>
-        </div>
-      `);
-    }
-
-    if (stats.unreadMessages > 0) {
-      statsHtml.push(`
-        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-          <h3 style="margin: 0 0 10px 0; color: #FF9800;">💬 ${stats.unreadMessages} Unread Message${stats.unreadMessages > 1 ? 's' : ''}</h3>
-          <p style="margin: 0; color: #666;">Check your messages to stay connected</p>
-        </div>
-      `);
-    }
-
-    // FavCoins card — always present when the user has a piggy bank so the
-    // email doubles as the weekly balance statement
-    if (stats.favCoins && (stats.favCoins.lifetimeCoins > 0 || stats.favCoins.earnedThisWeek > 0)) {
-      const c = stats.favCoins;
-      const growth = c.earnedThisWeek > 0
-        ? `<p style="margin: 0 0 6px 0; color: #2e7d32; font-weight: 600;">+${this.formatCoins(c.earnedThisWeek)} earned this week (${c.earnEventsThisWeek} reward${c.earnEventsThisWeek === 1 ? '' : 's'})</p>`
-        : `<p style="margin: 0 0 6px 0; color: #666;">No new FavCoins this week — add a place, check in, or share a circle to earn more.</p>`;
-      const pending = c.pendingCoins > 0
-        ? ` <span style="color: #999;">(+${this.formatCoins(c.pendingCoins)} clearing)</span>`
-        : '';
-      const walletLine = c.hasWallet
-        ? `${c.settledOnChain > 0 ? `${this.formatCoins(c.settledOnChain)} already sent to your wallet. ` : ''}Claim your balance to your Cactus wallet 🌵 anytime from the Piggy Bank.`
-        : 'Create your wallet in the app and you can claim them to the Cactus blockchain 🌵.';
-      statsHtml.push(`
-        <div style="background: #f1f8e9; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #c5e1a5;">
-          <h3 style="margin: 0 0 10px 0; color: #558b2f;">🌵 Your FavCoins</h3>
-          <p style="margin: 0 0 6px 0; color: #333; font-size: 18px; font-weight: 700;">${this.formatCoins(c.confirmedCoins)} available${pending}</p>
-          ${growth}
-          <p style="margin: 0 0 6px 0; color: #666;">Lifetime earned: ${this.formatCoins(c.lifetimeCoins)}</p>
-          <p style="margin: 10px 0 0 0; color: #666; font-size: 13px; line-height: 1.5;">
-            FavCoins are real crypto coins on the Cactus blockchain 🌵 that you earn for sharing the places you love.
-            ${walletLine}<br>
-            See them in FavCircles: <strong>Rewards → Piggy Bank</strong>.
-          </p>
-        </div>
-      `);
-    }
-
-    if (stats.placeComments > 0 || stats.placeLikes > 0) {
-      const activities = [];
-      if (stats.placeComments > 0) activities.push(`${stats.placeComments} comment${stats.placeComments > 1 ? 's' : ''}`);
-      if (stats.placeLikes > 0) activities.push(`${stats.placeLikes} like${stats.placeLikes > 1 ? 's' : ''}`);
-      
-      statsHtml.push(`
-        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-          <h3 style="margin: 0 0 10px 0; color: #E91E63;">❤️ Activity on Your Places</h3>
-          <p style="margin: 0; color: #666;">${activities.join(' and ')}</p>
-        </div>
-      `);
-    }
-
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${notification.title}</title>
-      </head>
-      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
-          <!-- Header -->
-          <div style="background-color: #4CAF50; padding: 30px 20px; text-align: center;">
-            <h1 style="margin: 0; color: #ffffff; font-size: 24px;">Circles</h1>
-            <p style="margin: 10px 0 0 0; color: #ffffff; font-size: 16px;">Your Weekly Summary</p>
-          </div>
-          
-          <!-- Content -->
-          <div style="padding: 30px 20px;">
-            <h2 style="margin: 0 0 20px 0; color: #333; font-size: 20px;">
-              Hi ${user.displayName || 'there'} 👋
-            </h2>
-            
-            <p style="color: #666; line-height: 1.6; margin: 0 0 20px 0;">
-              Here's what happened in your Circles network this week:
-            </p>
-            
-            ${statsHtml.join('')}
-            
-            <!-- CTA Buttons -->
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="https://api.favcircles.com/app/daily-summary" style="display: inline-block; background-color: #4CAF50; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 25px; font-weight: 600;">
-                View in App
-              </a>
-              ${stats.favCoins ? `
-              <a href="https://api.favcircles.com/app/open?path=create-wallet" style="display: inline-block; background-color: #558b2f; color: #ffffff; text-decoration: none; padding: 12px 30px; border-radius: 25px; font-weight: 600; margin: 8px 0 0 0;">
-                🌵 See my FavCoins
-              </a>` : ''}
-            </div>
-            
-            <!-- Footer -->
-            <div style="border-top: 1px solid #eee; margin-top: 40px; padding-top: 20px; text-align: center;">
-              <p style="color: #999; font-size: 14px; margin: 0;">
-                ${today}
-              </p>
-              <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
-                You're receiving this because you have the weekly summary enabled.<br>
-                <a href="https://api.favcircles.com/app/open?path=settings/notifications" style="color: #4CAF50;">Manage notification preferences</a>
-              </p>
-            </div>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
+  // The weekly email's HTML — services/weeklyEmail/html.js
+  buildSummaryEmailHtml(user, stats, notification, extras = {}) {
+    return renderWeeklyEmail({ user, stats, extras, fmtCoins: (n) => this.formatCoins(n) });
   }
 
   // Acquire distributed lock for daily summary execution
