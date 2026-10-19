@@ -1,6 +1,6 @@
 {
   "_readme": "Source for favcircles.com/widgets.html. Edit here, then run: node website/tools/build-widgets-page.js — and upload widgets.html (see the website SFTP notes). Keep in step with the favcircles-widgets registry: every widget in FavWidgetRegistry.all appears here, new features get a line.",
-  "updated": "2026-10-15",
+  "updated": "2026-10-19",
   "groups": [
     {
       "title": "Family & friends",
@@ -56,7 +56,7 @@
       "title": "Every day",
       "widgets": [
         { "id": "weather", "emoji": "🌤️", "name": "Weather", "tagline": "Right now, the next hours and 10 days.",
-          "features": ["The weather where you are, hour by hour and 10 days out", "Or pick a place and keep it", "The temperature sits on the app's home screen too", "Live rain radar around US places, like the Weather app"] },
+          "features": ["The weather where you are, hour by hour and 10 days out", "Save the cities you care about and swipe between them, like the Weather app", "The temperature sits on the app's home screen too", "Live rain radar around US places, like the Weather app"] },
         { "id": "stocks", "emoji": "📈", "name": "Stocks", "tagline": "Indexes, rates, crypto and the stocks you follow.",
           "features": ["The Nasdaq, Dow and S&P at a glance, plus your own watchlist", "Named lists you can reorder, with a chart for each day", "The 10-year yield and Bitcoin right on the card"] },
         { "id": "quotes", "emoji": "💭", "name": "Quotes", "tagline": "Good lines at the times you pick.",
