@@ -511,8 +511,9 @@ app.get('/app/quote/:id', async (req, res) => {
   const ogDescription = author
     ? `— ${esc(author)} · More quotes on FavCircles`
     : 'A good line a few times a day, on the topics you pick.';
-  // The card shows the whole quote, so the line under it names who said it
-  const cardTitle = author ? `A quote from ${esc(author)}` : ogTitle;
+  // The card picture already shows the quote and who said it, so the line
+  // under it invites the person it was sent to (Wes, 2026-10-19)
+  const cardTitle = 'Sign up to get your own daily quotes';
   const cardUrl = `https://api.favcircles.com/share/quote/${id}/card.png`;
 
   res.send(`<!DOCTYPE html>
