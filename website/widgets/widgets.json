@@ -62,7 +62,7 @@
         { "id": "quotes", "emoji": "💭", "name": "Quotes", "tagline": "Good lines at the times you pick.",
           "features": ["Pick your topics and how many times a day", "Share a quote with a friend"] },
         { "id": "sleepsounds", "emoji": "🌙", "name": "Sleep Sounds", "tagline": "Rain, ocean, fire: mix and drift off.",
-          "features": ["Mix sounds into your own blend", "A timer that fades out gently, with controls on the Lock Screen"] },
+          "features": ["Real recordings of rain, thunder, ocean waves, a stream, wind, crickets, a campfire and a heartbeat, plus white, pink and brown noise and a fan", "Mix sounds into your own blend", "A timer that fades out gently, with controls on the Lock Screen", "Works offline: the sounds are in the app"] },
         { "id": "parking", "emoji": "🅿️", "name": "Parking", "tagline": "Remember where you parked.",
           "features": ["Save your spot in one tap, with an optional photo and note (level, row, landmark)", "Walking directions back to your car", "A meter reminder before time runs out, and another when it expires", "Private: the photo stays on your phone"] },
         { "id": "packages", "emoji": "📦", "name": "Packages", "tagline": "Every tracking number in one place.",
