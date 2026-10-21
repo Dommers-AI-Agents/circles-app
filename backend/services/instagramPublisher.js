@@ -19,6 +19,8 @@ const POSTS = 'instagramPosts';
 const CONFIG = ['integrations', 'instagram'];
 const TIME_ZONE = 'America/New_York';
 const REFRESH_EVERY_MS = 7 * 86400000;
+const PUBLISH_TRIES = 4;            // waits 5, 10, 15, 20 s between tries
+const PUBLISH_RETRY_MS = 5000;
 
 const nowIso = (now) => new Date(now()).toISOString();
 
@@ -82,6 +84,30 @@ function createPublisher(deps = {}) {
    * Publishes the next approved post. Once per New York calendar day unless
    * `force` (the dashboard's "Post next now").
    */
+  /**
+   * media_publish, retried. Instagram sometimes answers "Media ID is not
+   * available" right after the container reports FINISHED (2026-10-21), and
+   * sometimes a failed publish went out anyway. So between tries, look for
+   * the post on the account first, and never publish it twice.
+   */
+  async function publishContainer(c, containerId, caption, startedAt) {
+    let lastError;
+    for (let attempt = 0; attempt < PUBLISH_TRIES; attempt++) {
+      try {
+        return await call(fetchFn, 'POST', `${c.igUserId}/media_publish`, { creation_id: containerId, access_token: c.accessToken });
+      } catch (e) {
+        lastError = e;
+      }
+      await sleep(PUBLISH_RETRY_MS * (attempt + 1));
+      const recent = await call(fetchFn, 'GET', `${c.igUserId}/media`, { fields: 'id,timestamp,caption', limit: '5', access_token: c.accessToken })
+        .catch(() => ({ data: [] }));
+      const went = (recent.data || []).find((m) => (m.caption || '').trim() === String(caption || '').trim()
+        && Date.parse(m.timestamp) >= startedAt - 60000);
+      if (went) return { id: went.id };
+    }
+    throw lastError;
+  }
+
   async function publishNext({ force = false } = {}) {
     const c = await config();
     const posts = await list();
@@ -106,6 +132,7 @@ function createPublisher(deps = {}) {
     });
     if (!claimed) return { posted: false, reason: 'taken by another run' };
 
+    const startedAt = now();
     try {
       const container = await call(fetchFn, 'POST', `${c.igUserId}/media`,
         { image_url: next.imageUrl, caption: next.caption, access_token: c.accessToken });
@@ -117,8 +144,7 @@ function createPublisher(deps = {}) {
         if (status !== 'FINISHED') await sleep(3000);
       }
       if (status !== 'FINISHED') throw new Error('Instagram was still processing the image after a minute');
-      const published = await call(fetchFn, 'POST', `${c.igUserId}/media_publish`,
-        { creation_id: container.id, access_token: c.accessToken });
+      const published = await publishContainer(c, container.id, next.caption, startedAt);
       const media = await call(fetchFn, 'GET', published.id, { fields: 'permalink', access_token: c.accessToken }).catch(() => ({}));
       await ref.update({ status: 'posted', postedAt: nowIso(now), mediaId: published.id, permalink: media.permalink || null, error: null, updatedAt: nowIso(now) });
       return { posted: true, id: next.id, mediaId: published.id, permalink: media.permalink || null };
