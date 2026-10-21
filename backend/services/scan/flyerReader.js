@@ -1,7 +1,15 @@
 // backend/services/scan/flyerReader.js — a specials board or event flyer →
-// a draft announcement (Clairic): title, message, and the event's date and
-// times when it is one. Checked and posted by the owner in the form.
+// a draft announcement: title, message, and the event's date and times when
+// it is one. Checked and posted by the owner in the form.
+// Clairic reads the date and times (near-certain on real flyers); Claude
+// Haiku writes the title and message, because Clairic mangles free wording
+// ("HAPP HOUR", "lattes & &ries", 2026-10-21 live test). Either one alone
+// still gives a draft.
 const clairic = require('./clairic');
+
+const API_URL = 'https://api.anthropic.com/v1/messages';
+const WORDING_MODEL = process.env.SCAN_FLYER_MODEL || 'claude-haiku-4-5';
+const WORDING_TIMEOUT_MS = 30000;
 
 const TITLE_MAX = 80;
 const MESSAGE_MAX = 500;
@@ -49,9 +57,82 @@ function toDraft(answers) {
   };
 }
 
-async function read(images, { referenceDate } = {}) {
-  const { answers, usage } = await clairic.extract({ fields: fields(), images, referenceDate });
-  return { draft: toDraft(answers), usage: { engine: 'clairic', inputTokens: usage.input_tokens || 0 } };
+const WORDING_TOOL = {
+  name: 'flyer',
+  description: 'The flyer or specials board, as an announcement',
+  input_schema: {
+    type: 'object',
+    properties: {
+      title: { type: 'string', description: `The headline, as printed (the special or event's name), at most ${TITLE_MAX} characters` },
+      details: { type: 'string', description: `What it is, in the flyer's own words: the deal, prices, what's on, conditions. Leave out the date and times. At most ${MESSAGE_MAX} characters` }
+    },
+    required: ['title', 'details']
+  }
+};
+
+/** Claude reads the wording: { title, details } | null when it can't. */
+async function readWording(images) {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), WORDING_TIMEOUT_MS);
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: WORDING_MODEL, max_tokens: 600, temperature: 0,
+        system: 'You copy a business\u2019s flyer or specials board into the flyer tool. Use its own words, fix only obvious line breaks, and invent nothing.',
+        tools: [WORDING_TOOL], tool_choice: { type: 'tool', name: 'flyer' },
+        messages: [{ role: 'user', content: [
+          ...images.map((img) => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } })),
+          { type: 'text', text: 'Copy this flyer into the flyer tool.' }
+        ] }]
+      }),
+      signal: controller.signal
+    });
+    if (!res.ok) { console.error('Flyer wording failed:', res.status); return null; }
+    const data = await res.json();
+    const tool = (data.content || []).find((c) => c.type === 'tool_use');
+    if (!tool || !tool.input) return null;
+    return { title: tool.input.title || '', details: tool.input.details || '', usage: data.usage || {} };
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-module.exports = { TITLE_MAX, MESSAGE_MAX, fields, toDraft, read };
+/**
+ * Clairic's draft (or null) + Claude's wording (or null) → one draft. The
+ * wording wins for title and message; dates and times come from Clairic. Pure.
+ */
+function mergeWording(draft, wording) {
+  const base = draft || { title: '', message: '', event: null, expiresOn: null, unsure: [] };
+  if (!wording || (!wording.title && !wording.details)) return base;
+  return {
+    ...base,
+    title: wording.title ? clip(wording.title, TITLE_MAX) : base.title,
+    message: wording.details ? clip(wording.details, MESSAGE_MAX) : base.message,
+    unsure: base.unsure.filter((f) => f !== 'title' && f !== 'details')
+  };
+}
+
+async function read(images, { referenceDate } = {}) {
+  const [fieldsResult, wording] = await Promise.all([
+    clairic.extract({ fields: fields(), images, referenceDate }).then((r) => ({ ok: r }), (e) => ({ error: e })),
+    readWording(images)
+  ]);
+  if (fieldsResult.error && !wording) throw fieldsResult.error;
+  if (fieldsResult.error) console.warn('Flyer dates unavailable (Clairic):', fieldsResult.error.message);
+  const draft = mergeWording(fieldsResult.ok ? toDraft(fieldsResult.ok.answers) : null, wording);
+  return {
+    draft,
+    usage: {
+      engine: wording ? 'clairic+claude' : 'clairic',
+      inputTokens: ((fieldsResult.ok && fieldsResult.ok.usage.input_tokens) || 0) + ((wording && wording.usage.input_tokens) || 0),
+      outputTokens: (wording && wording.usage.output_tokens) || 0
+    }
+  };
+}
+
+module.exports = { TITLE_MAX, MESSAGE_MAX, fields, toDraft, mergeWording, read };

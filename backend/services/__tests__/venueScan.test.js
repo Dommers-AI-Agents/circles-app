@@ -127,6 +127,21 @@ describe('flyer reader', () => {
     expect(d.event).toBeNull();
     expect(d.expiresOn).toBe('2026-11-30');
   });
+
+  test('Claude\u2019s wording replaces Clairic\u2019s mangled text; the dates and times stay Clairic\u2019s', () => {
+    const clairicDraft = flyerReader.toDraft({
+      title: { value: 'HAPP HOUR', confidence: 0.56 }, details: { value: 'Half-price lattes & &ries', confidence: 0.61 },
+      event_date: { value: '2026-10-23', confidence: 0.99 }, start_time: { value: '15:00:00', confidence: 0.99 },
+      end_time: { value: '18:00:00', confidence: 0.99 }, is_free: { value: null }, ends_on: { value: null }
+    });
+    expect(clairicDraft.unsure).toEqual(['title', 'details']);
+    const d = flyerReader.mergeWording(clairicDraft, { title: 'HAPPY HOUR', details: 'Half-price lattes & pastries every Friday' });
+    expect(d).toMatchObject({ title: 'HAPPY HOUR', message: 'Half-price lattes & pastries every Friday', event: { localDate: '2026-10-23', localTime: '15:00', endTime: '18:00' }, unsure: [] });
+    // Claude unavailable: Clairic's draft as it was, flags kept
+    expect(flyerReader.mergeWording(clairicDraft, null)).toBe(clairicDraft);
+    // Clairic unavailable: the wording alone, no event
+    expect(flyerReader.mergeWording(null, { title: 'Trivia', details: 'Tuesdays' })).toMatchObject({ title: 'Trivia', message: 'Tuesdays', event: null, unsure: [] });
+  });
 });
 
 describe('images', () => {
@@ -158,6 +173,11 @@ describe('the scan service', () => {
     delete process.env.CLOUDFLARE_ACCOUNT_ID; delete process.env.CLOUDFLARE_AI_TOKEN;
     await expect(scanService.scan({ kind: 'hours', images: [await pngBase64(50, 50)], venue, userId: 'u', db: mockDb }))
       .rejects.toMatchObject({ status: 503, code: 'scan_unavailable' });
+    // A flyer with neither Cloudflare nor Claude set up says so too
+    const key = process.env.ANTHROPIC_API_KEY; delete process.env.ANTHROPIC_API_KEY;
+    await expect(scanService.scan({ kind: 'flyer', images: [await pngBase64(50, 50)], venue, userId: 'u', db: mockDb }))
+      .rejects.toMatchObject({ status: 503, code: 'scan_unavailable' });
+    if (key) process.env.ANTHROPIC_API_KEY = key;
     Object.assign(process.env, saved.a ? { CLOUDFLARE_ACCOUNT_ID: saved.a } : {}, saved.t ? { CLOUDFLARE_AI_TOKEN: saved.t } : {});
   });
 
