@@ -224,7 +224,6 @@ class PlaceDetailViewController: BaseViewController {
     private let directionsRowButton = UIButton.rowButton(title: "Directions", systemName: "location.north.line")
     // Check In leads the row: it's the engagement action, the rest are utilities.
     // Same icon as every check-in surface (UIImage.checkInIcon).
-    private let checkInRowButton: UIButton = PlaceDetailViewFactory.checkInRowButton()
 
     // Directly under the photo: your own history here ("Checked in 7 times ·
     // last Sep 5"), or — if you never have — the invitation to start one.
@@ -271,6 +270,8 @@ class PlaceDetailViewController: BaseViewController {
         button.accessibilityLabel = "Alerts from this place"
         return button
     }()
+    /// What Follow and the bell do (Wes, 2026-10-21: put an ⓘ next to it)
+    private let followInfoButton: UIButton = PlaceDetailViewFactory.checkInInfoButton()
     private var alertsBellWidth: NSLayoutConstraint?
     private var alertsBellGap: NSLayoutConstraint?
     private var placeFollowersCount = 0
@@ -660,13 +661,14 @@ class PlaceDetailViewController: BaseViewController {
         contentView.addSubview(checkInStripView)
         checkInStripView.addArrangedSubview(checkInHistoryLabel)
         checkInStripView.addArrangedSubview(checkInHereButton)
+        // The ⓘ sits right beside what it explains (Wes, 2026-10-21)
+        checkInStripView.addArrangedSubview(checkInInfoButton)
         checkInStripView.addArrangedSubview(getRewardsButton)
         // A long history line gives way before either button does.
         checkInHistoryLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let checkInSpacer = UIView()
         checkInSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         checkInStripView.addArrangedSubview(checkInSpacer)
-        checkInStripView.addArrangedSubview(checkInInfoButton)
         checkInHereButton.addTarget(self, action: #selector(checkInRowButtonTapped), for: .touchUpInside)
         checkInInfoButton.addTarget(self, action: #selector(checkInInfoTapped), for: .touchUpInside)
         getRewardsButton.addTarget(self, action: #selector(getRewardsTapped), for: .touchUpInside)
@@ -731,11 +733,10 @@ class PlaceDetailViewController: BaseViewController {
             infoContainerView.addSubview(tagsStackView)
         }
         
-        // Quick actions row: Check In / Directions / Call / Website. Edit and
-        // Report live in the ••• menu; titles scale slightly to keep four
-        // chips untruncated.
-        practicalButtonsStackView.addArrangedSubview(checkInRowButton)
-        checkInRowButton.addTarget(self, action: #selector(checkInRowButtonTapped), for: .touchUpInside)
+        // Quick actions row: Directions / Call / Website. Checking in is
+        // "Check in here" under the photo and the icon in the nav bar; the
+        // third copy here was dropped (Wes, 2026-10-21). Edit and Report
+        // live in the ••• menu.
         practicalButtonsStackView.addArrangedSubview(directionsRowButton)
         directionsRowButton.addTarget(self, action: #selector(directionsButtonTapped), for: .touchUpInside)
 
@@ -759,6 +760,7 @@ class PlaceDetailViewController: BaseViewController {
         actionButtonsContainer.addSubview(addToCircleButton)
         actionButtonsContainer.addSubview(followButton)
         actionButtonsContainer.addSubview(alertsBellButton)
+        actionButtonsContainer.addSubview(followInfoButton)
 
         // Add comments section
         infoContainerView.addSubview(commentsSection)
@@ -769,7 +771,11 @@ class PlaceDetailViewController: BaseViewController {
         // Add targets for action buttons
         likeButton.addTarget(self, action: #selector(likeButtonTapped), for: .touchUpInside)
         followButton.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
+        // "Following" always fits; the Add to Circle button gives way first
+        followButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        followButton.setContentHuggingPriority(.required, for: .horizontal)
         alertsBellButton.addTarget(self, action: #selector(alertsBellTapped), for: .touchUpInside)
+        followInfoButton.addTarget(self, action: #selector(followInfoTapped), for: .touchUpInside)
         commentButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
         viewAllCommentsButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
         
@@ -953,8 +959,12 @@ class PlaceDetailViewController: BaseViewController {
             alertsBellButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
             alertsBellButton.heightAnchor.constraint(equalToConstant: 30),
 
-            // Add to Circle sits left of Follow (and the bell), same size (sibling actions)
-            addToCircleButton.trailingAnchor.constraint(equalTo: alertsBellButton.leadingAnchor, constant: -Constants.Spacing.small),
+            // The ⓘ explains Follow and the bell, just left of them
+            followInfoButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
+            followInfoButton.trailingAnchor.constraint(equalTo: alertsBellButton.leadingAnchor, constant: -Constants.Spacing.small),
+
+            // Add to Circle sits left of all of them, same size (sibling actions)
+            addToCircleButton.trailingAnchor.constraint(equalTo: followInfoButton.leadingAnchor, constant: -Constants.Spacing.small),
             addToCircleButton.centerYAnchor.constraint(equalTo: actionButtonsContainer.centerYAnchor),
             addToCircleButton.leadingAnchor.constraint(greaterThanOrEqualTo: commentCountLabel.trailingAnchor, constant: Constants.Spacing.small),
 
@@ -3149,8 +3159,8 @@ extension PlaceDetailViewController {
         updateAlertsBell()
     }
 
-    /// Shown only while following; filled when alerts are on. Collapses to
-    /// nothing otherwise so Add to Circle sits right against Follow.
+    /// Always shown: it's how you subscribe to a store's posts. Filled when
+    /// alerts are on (Wes, 2026-10-21: subscribing should be right there).
     private func updateAlertsBell() {
         guard alertsBellButton.superview != nil, followButton.superview != nil else { return }
         if alertsBellWidth == nil {
@@ -3158,7 +3168,7 @@ extension PlaceDetailViewController {
             alertsBellGap = alertsBellButton.trailingAnchor.constraint(equalTo: followButton.leadingAnchor, constant: -Constants.Spacing.small)
             NSLayoutConstraint.activate([alertsBellWidth!, alertsBellGap!])
         }
-        let shown = isFollowingPlace
+        let shown = true
         alertsBellButton.isHidden = !shown
         alertsBellWidth?.constant = shown ? 30 : 0
         alertsBellGap?.constant = shown ? -Constants.Spacing.small : 0
@@ -3169,7 +3179,48 @@ extension PlaceDetailViewController {
     }
 
     @objc private func alertsBellTapped() {
+        // Alerts ride on following: not following yet, the bell does both
+        guard isFollowingPlace else { return followThenAlerts() }
         setAlerts(!followAlertsOn)
+    }
+
+    /// The bell tapped before following: follow, then turn alerts on.
+    private func followThenAlerts() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        isFollowingPlace = true
+        placeFollowersCount += 1
+        updateFollowButton()
+        PlaceService.shared.followPlace(id: place.id) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let response):
+                    self.isFollowingPlace = response.following
+                    self.placeFollowersCount = response.followersCount
+                    self.updateFollowButton()
+                    if response.following { self.setAlerts(true) }
+                case .failure(let error):
+                    self.isFollowingPlace = false
+                    self.placeFollowersCount -= 1
+                    self.updateFollowButton()
+                    self.showError(error)
+                }
+            }
+        }
+    }
+
+    @objc private func followInfoTapped() {
+        AlertPresenter.showInfo(
+            title: "Follow and alerts",
+            message: """
+            Follow: \(place.name) goes into your Places I Follow circle, and its specials, events and news show in your feed and on the Locals tab.
+
+            🔔 Alerts: tap the bell to also get them as notifications, at most one a day. Tap it again to stop. Tapping the bell follows the place too.
+
+            You can turn off alerts from every store at once with Stores You Follow in Settings → Notifications.
+            """,
+            from: self
+        )
     }
 
     /// Turn the store's alerts on or off (optimistic; reverts on failure).

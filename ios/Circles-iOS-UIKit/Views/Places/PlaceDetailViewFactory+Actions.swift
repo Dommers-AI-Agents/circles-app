@@ -12,12 +12,6 @@ extension PlaceDetailViewFactory {
         return stackView
     }
 
-    static func checkInRowButton() -> UIButton {
-        let button = UIButton.rowButton(title: "Check In", systemName: "checkmark.circle")
-        button.setImage(.checkInIcon, for: .normal)
-        return button
-    }
-
     // MARK: - Check-in strip (directly under the photo)
 
     /// The row that sits between the photo and the info card: either your
