@@ -258,7 +258,7 @@ class OwnerPaywallViewController: BaseViewController {
                         if backendSynced {
                             AlertPresenter.showSuccess(
                                 title: "Welcome to Business",
-                                message: "Your store tools are unlocked — dashboard, announcements, offers, and loyalty.",
+                                message: "Your store tools are unlocked: online ordering, your full menu, announcements, offers, loyalty and the dashboard.",
                                 from: self
                             ) { [weak self] in
                                 self?.onSubscribed?()

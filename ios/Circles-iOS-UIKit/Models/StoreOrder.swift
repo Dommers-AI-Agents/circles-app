@@ -17,6 +17,8 @@ struct StoreOrder: Codable, Equatable {
     }
 
     let orderId: String
+    /// The store's own team trying it ("Try it as a customer")
+    let test: Bool?
     let venueId: String
     let venueName: String
     let globalPlaceId: String?

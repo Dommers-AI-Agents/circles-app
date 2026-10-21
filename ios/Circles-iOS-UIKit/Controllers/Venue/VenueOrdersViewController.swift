@@ -185,7 +185,7 @@ extension VenueOrdersViewController: UITableViewDataSource, UITableViewDelegate 
         let o = list[indexPath.row]
         let pickup = o.pickup.asap ? "ASAP" : "pickup \(OrderStatusViewController.timeText(o.pickup.at) ?? "")"
         let ready = o.status == "accepted" ? OrderStatusViewController.timeText(o.readyAt).map { " \u{00B7} ready by \($0)" } ?? "" : ""
-        config.text = "\(o.customerName) \u{00B7} \(pickup)\(ready)"
+        config.text = "\(o.test == true ? "TEST \u{00B7} " : "")\(o.customerName) \u{00B7} \(pickup)\(ready)"
         config.textProperties.font = .systemFont(ofSize: 17, weight: .semibold)
         var detail = o.lines.map { line in "\(line.qty)\u{00D7} \(line.name)\(line.note.map { " (\($0))" } ?? "")" }.joined(separator: "\n")
         if let note = o.note { detail += "\nNote: \(note)" }
@@ -218,16 +218,23 @@ final class VenueOrderingSettingsViewController: BaseViewController {
     private let venueId: String
     private var ordering: StoreOrdering
     private let hasMenu: Bool
+    private let menu: StorefrontMenu?
+    private let label: String
+    private let venueName: String
+    private lazy var tryButton = UIButton.secondaryButton(title: "Try it as a customer")
     private let enabledSwitch = UISwitch()
     private let leadStepper = UIStepper()
     private let leadLabel = UILabel()
     private lazy var noteField = VenueFormLayout.textField(placeholder: "Call if you\u{2019}re running late", text: ordering.note ?? "")
     private lazy var saveButton = UIButton.primaryButton(title: "Save")
 
-    init(venueId: String, ordering: StoreOrdering?, hasMenu: Bool) {
+    init(venueId: String, venueName: String, storefront: VenueStorefront?) {
         self.venueId = venueId
-        self.ordering = ordering ?? StoreOrdering()
-        self.hasMenu = hasMenu
+        self.venueName = venueName
+        self.ordering = storefront?.ordering ?? StoreOrdering()
+        self.menu = storefront?.menu
+        self.label = storefront?.offeringsLabel ?? "Menu"
+        self.hasMenu = !(storefront?.menu?.isEmpty ?? true)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -259,7 +266,25 @@ final class VenueOrderingSettingsViewController: BaseViewController {
         stack.addArrangedSubview(VenueFormLayout.field("A line for customers (optional)", noteField))
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
         stack.addArrangedSubview(saveButton)
+        if hasMenu {
+            stack.addArrangedSubview(VenueFormLayout.hintLabel(
+                "See it the way customers do: order from your menu, then accept it in Orders. Test orders are marked TEST and nobody is charged."))
+            tryButton.setImage(UIImage(systemName: "bag"), for: .normal)
+            tryButton.addTarget(self, action: #selector(tryTapped), for: .touchUpInside)
+            stack.addArrangedSubview(tryButton)
+        }
         leadChanged()
+    }
+
+    /// The owner orders from their own menu (marked TEST), then sees it in Orders
+    @objc private func tryTapped() {
+        guard let menu, !menu.isEmpty else { return }
+        let settings = StoreOrdering(enabled: true, leadMinutes: Int(leadStepper.value), note: ordering.note)
+        let menuVC = PlaceMenuViewController(menu: menu, label: label, placeName: venueName,
+                                             ordering: settings, venueId: venueId, testOrder: true)
+        let nav = UINavigationController(rootViewController: menuVC)
+        nav.modalPresentationStyle = .pageSheet
+        present(nav, animated: true)
     }
 
     @objc private func leadChanged() {

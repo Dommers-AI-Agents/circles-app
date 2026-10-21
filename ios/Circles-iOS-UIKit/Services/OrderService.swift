@@ -9,10 +9,12 @@ final class OrderService {
     private struct Envelope<T: Decodable>: Decodable { let data: T }
 
     /// `pickupAt` nil = as soon as possible
-    func place(venueId: String, cart: OrderCart, note: String?, pickupAt: Date?,
+    /// `test`: the store's own team trying it as a customer (marked TEST)
+    func place(venueId: String, cart: OrderCart, note: String?, pickupAt: Date?, test: Bool = false,
                completion: @escaping (Result<StoreOrder, APIError>) -> Void) {
         var body: [String: Any] = ["venueId": venueId, "items": cart.requestItems,
                                    "pickup": pickupAt.map { ISO8601DateFormatter().string(from: $0) } ?? "asap"]
+        if test { body["test"] = true }
         if let note, !note.isEmpty { body["note"] = note }
         api.request(endpoint: "orders", method: .post, body: body, requiresAuth: true) { (r: Result<Envelope<StoreOrder>, APIError>) in
             completion(r.map(\.data))

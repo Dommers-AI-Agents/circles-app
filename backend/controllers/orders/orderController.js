@@ -8,8 +8,8 @@ const fail = (res, error) => sendServiceError(res, error, { log: 'Order failed',
 // @route POST /api/orders   body: { venueId, items: [{ itemId, qty, note? }], note?, pickup: 'asap' | ISO }
 exports.place = async (req, res) => {
   try {
-    const { venueId, items, note, pickup } = req.body || {};
-    res.json({ success: true, data: await orders.place({ customerId: req.user.uid, venueId, items, note, pickup }) });
+    const { venueId, items, note, pickup, test } = req.body || {};
+    res.json({ success: true, data: await orders.place({ customerId: req.user.uid, venueId, items, note, pickup, test: test === true }) });
   } catch (error) { fail(res, error); }
 };
 

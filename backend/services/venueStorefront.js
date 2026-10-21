@@ -157,7 +157,7 @@ const normalizeGallery = (input = []) => {
  * has Business for this venue, or it's comped). Actions always show; the
  * label rides along so the client never has to know the category rule.
  */
-const publicStorefront = (venue, { live }) => {
+const publicStorefront = (venue, { live, orderingLive = live }) => {
   const s = (venue && venue.storefront) || {};
   const actions = {};
   ACTION_KEYS.forEach((k) => { actions[k] = (s.actions && s.actions[k]) || null; });
@@ -172,7 +172,9 @@ const publicStorefront = (venue, { live }) => {
     offerings: hasOfferings ? offerings : null,
     menu,
     // Order ahead from the menu, pay at pickup (services/orders)
-    ordering: require('./orders/orderRules').orderingFor(venue, { live }),
+    // Order ahead (services/orders): only while the owner pays for Business
+    // (no comps), so the caller passes that separately
+    ordering: require('./orders/orderRules').orderingFor(venue, { live: orderingLive }),
     actions: hasAnyAction ? actions : null,
     gallery
   };

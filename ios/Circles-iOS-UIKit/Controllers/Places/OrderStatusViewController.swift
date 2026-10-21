@@ -153,7 +153,7 @@ final class OrderStatusViewController: BaseViewController {
         }()
         iconView.image = UIImage(systemName: symbol)
         iconView.tintColor = ["declined", "expired", "cancelled"].contains(order.status) ? .systemGray : Constants.Colors.primary
-        statusLabel.text = headline
+        statusLabel.text = order.test == true ? "Test \u{00B7} \(headline)" : headline
         detailLabel.text = detail
         var lines = order.lines.map { line -> String in
             var row = "\(line.qty)\u{00D7} \(line.name)"

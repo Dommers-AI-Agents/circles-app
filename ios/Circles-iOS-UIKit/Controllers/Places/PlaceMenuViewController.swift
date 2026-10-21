@@ -17,6 +17,8 @@ final class PlaceMenuViewController: BaseViewController {
     /// Set when the store takes orders in the app
     private let ordering: StoreOrdering?
     private let venueId: String?
+    /// The owner trying it as a customer: orders go in marked TEST
+    private let testOrder: Bool
     private var cart = OrderCart()
     private lazy var orderBar = UIButton.primaryButton(title: "View order")
 
@@ -63,7 +65,9 @@ final class PlaceMenuViewController: BaseViewController {
         return label
     }()
 
-    init(menu: StorefrontMenu, label: String, placeName: String, ordering: StoreOrdering? = nil, venueId: String? = nil) {
+    init(menu: StorefrontMenu, label: String, placeName: String, ordering: StoreOrdering? = nil, venueId: String? = nil,
+         testOrder: Bool = false) {
+        self.testOrder = testOrder
         self.menu = menu
         self.label = label
         self.placeName = placeName
@@ -77,7 +81,7 @@ final class PlaceMenuViewController: BaseViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "\(placeName) \u{00B7} \(label)"
+        title = testOrder ? "Try it as a customer" : "\(placeName) \u{00B7} \(label)"
         navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in
             self?.dismiss(animated: true)
         })
@@ -145,7 +149,7 @@ final class PlaceMenuViewController: BaseViewController {
 
     @objc private func orderBarTapped() {
         guard let ordering, let venueId else { return }
-        let review = OrderReviewViewController(venueId: venueId, placeName: placeName, ordering: ordering, cart: cart)
+        let review = OrderReviewViewController(venueId: venueId, placeName: placeName, ordering: ordering, cart: cart, testOrder: testOrder)
         review.onCartChanged = { [weak self] cart in
             self?.cart = cart
             self?.renderOrderBar()

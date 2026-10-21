@@ -3,7 +3,7 @@ const { FakeFirestore } = require('../../__fixtures__/fakeFirestore');
 const mockDb = new FakeFirestore({ namespaced: true });
 jest.mock('../../config/firebase', () => ({ getFirestore: () => mockDb, FieldValue: require('../../__fixtures__/fakeFirestore').FakeFieldValue }));
 const mockLive = { value: true };
-jest.mock('../ownerSubscriptionService', () => ({ isVenueLoyaltyActive: async () => mockLive.value }));
+jest.mock('../ownerSubscriptionService', () => ({ isVenueBusinessLive: async () => mockLive.value }));
 const mockPushes = [];
 jest.mock('../notifyQuiet', () => ({ sendInBackground: (uid, n) => mockPushes.push({ uid, ...n }) }));
 jest.mock('../emailService', () => ({ sendEmail: async () => ({}) }));
@@ -119,6 +119,7 @@ describe('the order flow', () => {
     await expect(orders.place({ customerId: 'cust', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }] })).rejects.toMatchObject({ code: 'ordering_off' });
     mockLive.value = true;
     await expect(orders.place({ customerId: 'mgr', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }] })).rejects.toMatchObject({ code: 'own_store' });
+    await expect(orders.place({ customerId: 'cust', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }], test: true })).rejects.toMatchObject({ code: 'not_your_store' });
     for (let i = 0; i < 3; i += 1) await orders.place({ customerId: 'cust', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }] });
     await expect(orders.place({ customerId: 'cust', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }] })).rejects.toMatchObject({ code: 'too_many_open' });
   });
@@ -136,5 +137,18 @@ describe('the order flow', () => {
     await expect(orders.saveSettings({ venueId: 'v1', storefront: {} }, { enabled: true })).rejects.toMatchObject({ code: 'no_menu' });
     const saved = await orders.saveSettings({ venueId: 'v1', ...VENUE }, { enabled: true, leadMinutes: 500 });
     expect(saved).toMatchObject({ enabled: true, leadMinutes: 120 });
+  });
+
+  test('the store\u2019s team can place a TEST order, even before switching ordering on; no email, no allowance spent', async () => {
+    await mockDb.collection('stickerVenues').doc('v1').set({ ...VENUE, ordering: { enabled: false } });
+    const t = await orders.place({ customerId: 'owner', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }], test: true });
+    expect(t).toMatchObject({ test: true, status: 'placed' });
+    expect(mockPushes.find((p) => p.type === 'order_new').title).toMatch(/^Test order/);
+    expect(mockDb.rows('dailyBudgets').size).toBe(0);
+    // ...but not without Business, and customers still can't order while it's off
+    mockLive.value = false;
+    await expect(orders.place({ customerId: 'owner', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }], test: true })).rejects.toMatchObject({ code: 'business_required' });
+    mockLive.value = true;
+    await expect(orders.place({ customerId: 'cust', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }] })).rejects.toMatchObject({ code: 'ordering_off' });
   });
 });

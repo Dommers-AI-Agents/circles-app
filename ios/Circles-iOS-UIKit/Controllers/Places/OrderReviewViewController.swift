@@ -17,6 +17,7 @@ final class OrderReviewViewController: BaseViewController {
     private var cart: OrderCart { didSet { onCartChanged?(cart); render() } }
     private var orderNote: String?
     private var pickupLater = false
+    private let testOrder: Bool
 
     private let tableView: UITableView = {
         let table = UITableView(frame: .zero, style: .insetGrouped)
@@ -35,7 +36,8 @@ final class OrderReviewViewController: BaseViewController {
     }()
     private lazy var placeButton = UIButton.primaryButton(title: "Place order \u{00B7} pay at pickup")
 
-    init(venueId: String, placeName: String, ordering: StoreOrdering, cart: OrderCart) {
+    init(venueId: String, placeName: String, ordering: StoreOrdering, cart: OrderCart, testOrder: Bool = false) {
+        self.testOrder = testOrder
         self.venueId = venueId
         self.placeName = placeName
         self.ordering = ordering
@@ -47,11 +49,12 @@ final class OrderReviewViewController: BaseViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Your order"
+        title = testOrder ? "Test order" : "Your order"
         tableView.dataSource = self
         tableView.delegate = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
         view.addSubview(tableView)
+        if testOrder { placeButton.setTitle("Place test order", for: .normal) }
         placeButton.translatesAutoresizingMaskIntoConstraints = false
         placeButton.addTarget(self, action: #selector(placeTapped), for: .touchUpInside)
         view.addSubview(placeButton)
@@ -96,7 +99,7 @@ final class OrderReviewViewController: BaseViewController {
         guard !cart.isEmpty else { return }
         let pickupAt: Date? = pickupLater ? max(timePicker.date, earliestPickup) : nil
         let loading = AlertPresenter.showLoading(message: "Sending your order\u{2026}", from: self)
-        OrderService.shared.place(venueId: venueId, cart: cart, note: orderNote, pickupAt: pickupAt) { [weak self] result in
+        OrderService.shared.place(venueId: venueId, cart: cart, note: orderNote, pickupAt: pickupAt, test: testOrder) { [weak self] result in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) {
                     guard let self else { return }
@@ -139,7 +142,9 @@ extension OrderReviewViewController: UITableViewDataSource, UITableViewDelegate 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
         switch section {
         case 1: return "Usually ready in about \(ordering.leadMinutes) minutes. The store confirms your order and gives you a time.\(ordering.note.map { " \($0)" } ?? "")"
-        case 3: return "You pay at the counter when you pick it up. The store\u{2019}s prices apply."
+        case 3: return testOrder
+            ? "A test order to your own store: it shows in Orders marked TEST, so you can accept it and see what customers see."
+            : "You pay at the counter when you pick it up. The store\u{2019}s prices apply."
         default: return nil
         }
     }

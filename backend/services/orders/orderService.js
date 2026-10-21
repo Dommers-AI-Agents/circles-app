@@ -11,7 +11,7 @@ const { ServiceError } = require('../../utils/serviceError');
 const { STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const { isSameUser } = require('../idService');
 const { isVenueTeamMember, venueManagerIds } = require('../venueHelpers');
-const { isVenueLoyaltyActive } = require('../ownerSubscriptionService');
+const { isVenueBusinessLive } = require('../ownerSubscriptionService');
 const dailyBudget = require('../dailyBudget');
 const { sendInBackground } = require('../notifyQuiet');
 const { escapeHtml } = require('../../utils/text');
@@ -32,6 +32,7 @@ async function loadVenue(db, venueId) {
 /** What the customer and the store both see. */
 const view = (id, o) => ({
   orderId: id,
+  test: o.test === true,
   venueId: o.venueId,
   venueName: o.venueName,
   globalPlaceId: o.globalPlaceId || null,
@@ -59,12 +60,26 @@ const timeText = (iso, timeZone) => {
 
 // ---------------------------------------------------------------- customer
 
-async function place({ customerId, venueId, items, note, pickup }, { db = getFirestore(), now = new Date() } = {}) {
+/**
+ * `test`: the store's own team trying it as a customer ("Try it as a
+ * customer"): allowed before ordering is switched on, marked TEST, no
+ * email and no daily allowance spent. App Review uses it (2026-10-21).
+ * Only stores whose owner pays for Business take orders: no comps.
+ */
+async function place({ customerId, venueId, items, note, pickup, test = false }, { db = getFirestore(), now = new Date() } = {}) {
   const venue = await loadVenue(db, venueId);
-  const live = await isVenueLoyaltyActive(venue);
-  const ordering = rules.orderingFor(venue, { live });
-  if (!ordering) throw new ServiceError(409, 'ordering_off', 'This store isn’t taking orders in the app right now.');
-  if (isVenueTeamMember(venue, customerId)) throw new ServiceError(400, 'own_store', 'You can’t order from your own store. Try it from another account.');
+  const live = await isVenueBusinessLive(venue);
+  const onTeam = isVenueTeamMember(venue, customerId);
+  if (test && !onTeam) throw new ServiceError(403, 'not_your_store', 'Test orders are for the store’s own team.');
+  if (test && !live) throw new ServiceError(403, 'business_required', 'Online ordering is part of FavCircles Business.');
+  const ordering = test
+    ? rules.orderingFor({ ...venue, ordering: { ...(venue.ordering || {}), enabled: true } }, { live })
+    : rules.orderingFor(venue, { live });
+  if (!ordering) {
+    throw new ServiceError(409, test ? 'no_menu' : 'ordering_off',
+      test ? 'Add your full menu first; customers order from it.' : 'This store isn’t taking orders in the app right now.');
+  }
+  if (!test && onTeam) throw new ServiceError(400, 'own_store', 'To try your own store, use “Try it as a customer” in Online ordering.');
 
   const priced = rules.priceCart(venue.storefront.menu, items);
   const when = rules.pickupFor(pickup, { leadMinutes: ordering.leadMinutes, now });
@@ -73,8 +88,10 @@ async function place({ customerId, venueId, items, note, pickup }, { db = getFir
   if (open.size >= LIMITS.openPerCustomer) {
     throw new ServiceError(429, 'too_many_open', 'You have a few orders in progress. Pick those up first.');
   }
-  const budget = await dailyBudget.consume('orderPlace', customerId);
-  if (!budget.allowed) throw new ServiceError(429, 'order_limit', 'That’s a lot of orders for one day. Try again tomorrow.');
+  if (!test) {
+    const budget = await dailyBudget.consume('orderPlace', customerId);
+    if (!budget.allowed) throw new ServiceError(429, 'order_limit', 'That’s a lot of orders for one day. Try again tomorrow.');
+  }
 
   const userDoc = await db.collection('users').doc(customerId).get();
   const customerName = (userDoc.exists && (userDoc.data().displayName || '').trim()) || 'A customer';
@@ -93,6 +110,7 @@ async function place({ customerId, venueId, items, note, pickup }, { db = getFir
     estimate: priced.estimate,
     estimateIsPartial: priced.estimateIsPartial,
     status: STATUS.PLACED,
+    test: test === true,
     history: [{ status: STATUS.PLACED, at: now.toISOString(), by: customerId }],
     createdAt: now.toISOString(),
     updatedAt: now.toISOString()
@@ -191,12 +209,14 @@ async function saveSettings(venue, input, { db = getFirestore() } = {}) {
 
 async function notifyTeamOfNewOrder(db, orderId, o) {
   const when = o.pickup.asap ? 'as soon as possible' : `at ${timeText(o.pickup.at, o.timeZone)}`;
-  const title = `New order: ${o.customerName}`;
+  const title = `${o.test ? 'Test order' : 'New order'}: ${o.customerName}`;
   const body = `${summary(o.lines)}. Pickup ${when}. Tap to accept.`;
   for (const uid of o.team) {
     sendInBackground(uid, { type: 'order_new', title, body, data: { orderId, venueId: o.venueId } }, 'order_new');
   }
-  // Email too: a counter may not have the app open (Wes: push + email)
+  // Email too: a counter may not have the app open (Wes: push + email).
+  // Not for a test order the owner just placed themselves.
+  if (o.test) return;
   const emailService = require('../emailService');
   const docs = await Promise.all(o.team.map((uid) => db.collection('users').doc(uid).get()));
   const rows = o.lines.map((l) => `<tr><td style="padding:4px 12px 4px 0">${l.qty}×</td><td style="padding:4px 12px 4px 0"><b>${escapeHtml(l.name)}</b>${l.note ? `<br><i>${escapeHtml(l.note)}</i>` : ''}</td><td style="padding:4px 0;text-align:right">${escapeHtml(l.price || '')}</td></tr>`).join('');

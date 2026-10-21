@@ -98,8 +98,7 @@ class VenueManageViewController: BaseViewController {
         case .orders where storefront?.ordering?.enabled == true:
             navigationController?.pushViewController(VenueOrdersViewController(venueId: venueId), animated: true)
         case .orders, .onlineOrdering:
-            let vc = VenueOrderingSettingsViewController(venueId: venueId, ordering: storefront?.ordering,
-                                                         hasMenu: !(storefront?.menu?.isEmpty ?? true))
+            let vc = VenueOrderingSettingsViewController(venueId: venueId, venueName: venueName, storefront: storefront)
             vc.onSaved = { [weak self] _ in
                 // Re-read the storefront so the rows show the new setting
                 guard let self else { return }

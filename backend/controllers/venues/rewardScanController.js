@@ -9,7 +9,7 @@ const rewardService = require('../../services/rewardService');
 const nearbyEventsService = require('../../services/nearbyEventsService');
 const { listLiveVenues } = require('../../services/liveVenues');
 const rewardConfig = require('../../config/rewardConfig');
-const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, venueLoyaltyStatus } = require('../../services/ownerSubscriptionService');
+const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, venueLoyaltyStatus, isVenueBusinessLive } = require('../../services/ownerSubscriptionService');
 const db = getFirestore();
 const { isVenueTeamMember, publicVenueInfo, activeOffers } = require('../../services/venueHelpers.js');
 
@@ -447,7 +447,11 @@ exports.getVenueByPlace = async (req, res) => {
         announcements: venueLoyaltyLive ? rewardService.activeAnnouncements(venue) : [],
         // Menu / buttons / gallery. Buttons always; the paid blocks only while
         // the store's subscription is live, same as announcements.
-        storefront: require('../../services/venueStorefront').publicStorefront(venue, { live: venueLoyaltyLive }),
+        storefront: require('../../services/venueStorefront').publicStorefront(venue, {
+          live: venueLoyaltyLive,
+          // Order ahead takes a paid Business subscription; a comp doesn't count
+          orderingLive: venue.ordering && venue.ordering.enabled === true ? await isVenueBusinessLive(venue) : false
+        }),
         balance,
         venueBalance,
         isOwner,

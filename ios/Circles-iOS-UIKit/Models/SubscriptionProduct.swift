@@ -211,6 +211,16 @@ struct PremiumFeatures {
 struct BusinessFeatures {
     static let features: [PremiumFeatures.Feature] = [
         PremiumFeatures.Feature(
+            title: "Online Ordering",
+            description: "Customers order ahead from your menu and pay you at pickup. No fees, no cut",
+            iconName: "bag.fill"
+        ),
+        PremiumFeatures.Feature(
+            title: "Scan Your Menu",
+            description: "Photograph your printed menu and every item is on your page; scan your hours and flyers too",
+            iconName: "camera.viewfinder"
+        ),
+        PremiumFeatures.Feature(
             title: "Full Stats Dashboard",
             description: "Monthly trends for saves, followers, visits, and redemptions",
             iconName: "chart.bar.xaxis"

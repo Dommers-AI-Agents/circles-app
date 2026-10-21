@@ -111,6 +111,16 @@ const venueLoyaltyStatus = async (venue) => {
 
 const isVenueLoyaltyActive = async (venue) => (await venueLoyaltyStatus(venue)).active;
 
+/**
+ * The store's owner pays for Business (the 3 free months count; a comp does
+ * not). Gates order ahead: only Business stores take orders (Wes,
+ * 2026-10-21: "There should be no comped stores").
+ */
+const isVenueBusinessLive = async (venue) => {
+  if (!venue || !venue.ownerUserId) return false;
+  return isOwnerPremiumById(venue.ownerUserId, venue.venueId || venue.id, venue);
+};
+
 module.exports = {
   BUSINESS_PRODUCT_IDS,
   isBusinessProduct,
@@ -119,5 +129,6 @@ module.exports = {
   isOwnerPremiumById,
   isCompActive,
   venueLoyaltyStatus,
-  isVenueLoyaltyActive
+  isVenueLoyaltyActive,
+  isVenueBusinessLive
 };
