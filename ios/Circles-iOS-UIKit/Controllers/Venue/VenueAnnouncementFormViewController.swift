@@ -59,6 +59,10 @@ final class VenueAnnouncementFormViewController: BaseViewController {
         return calendar.date(byAdding: .hour, value: 1, to: hour) ?? hour
     }
     private let problemLabel = VenueFormLayout.problemLabel()
+    /// "Scan a flyer" (2026-10-20): the form is Business already
+    private lazy var scanButton = UIButton.secondaryButton(title: "Scan a flyer or specials board")
+    private let scanCheckLabel = VenueFormLayout.hintLabel()
+    private var scanner: VenueScanController?
     private lazy var saveButton = UIButton.primaryButton(title: existing == nil ? "Post announcement" : "Save changes")
     private lazy var deleteButton = UIButton.dangerButton(title: "Delete announcement")
 
@@ -81,6 +85,14 @@ final class VenueAnnouncementFormViewController: BaseViewController {
 
         stack.addArrangedSubview(VenueFormLayout.hintLabel(
             "Shown on your place page and in your followers' feeds — deals, happy hours, events."))
+        if existing == nil {
+            scanButton.setImage(UIImage(systemName: "camera.viewfinder"), for: .normal)
+            scanButton.addTarget(self, action: #selector(scanTapped), for: .touchUpInside)
+            stack.addArrangedSubview(scanButton)
+            scanCheckLabel.textColor = .systemOrange
+            scanCheckLabel.isHidden = true
+            stack.addArrangedSubview(scanCheckLabel)
+        }
 
         titleField.autocapitalizationType = .words
         titleField.delegate = self
@@ -192,6 +204,45 @@ final class VenueAnnouncementFormViewController: BaseViewController {
         } else {
             endsHint.text = "Stays up until you delete it."
         }
+    }
+
+    @objc private func scanTapped() {
+        view.endEditing(true)
+        let scanner = VenueScanController(venueId: venueId, kind: .flyer, presenter: self)
+        self.scanner = scanner
+        scanner.start(FlyerScanDraft.self, sourceView: scanButton) { [weak self] result in
+            guard let self else { return }
+            self.scanner = nil
+            switch result {
+            case .success(let response):
+                let flyer = response.draft
+                guard !flyer.title.isEmpty || !flyer.message.isEmpty || flyer.event != nil else {
+                    return self.showError("Nothing could be read from that photo. Try a closer, straight-on photo.")
+                }
+                self.draft = VenueScanApply.announcement(flyer, into: self.draft)
+                self.showDraftInFields()
+                let check = VenueScanApply.flyerCheckLine(flyer)
+                self.scanCheckLabel.text = check ?? "Filled in from your photo. Check it over, then post."
+                self.scanCheckLabel.isHidden = false
+                AnalyticsService.shared.logEvent("venue_scan_done", parameters: ["kind": "flyer", "event": flyer.event == nil ? "no" : "yes"])
+            case .failure(let error):
+                self.showError(VenueScanController.message(for: error))
+            }
+        }
+    }
+
+    /// The form's controls from `draft` (after a scan filled it)
+    private func showDraftInFields() {
+        titleField.text = draft.title
+        messageView.text = draft.message
+        eventSwitch.isOn = draft.isEvent
+        if let start = draft.eventStart { eventStartPicker.date = start }
+        eventEndSwitch.isOn = draft.eventEnd != nil
+        if let end = draft.eventEnd { eventEndPicker.date = end }
+        freeSwitch.isOn = draft.eventIsFree
+        endsSwitch.isOn = draft.endsOn != nil
+        if let ends = draft.endsOn { endsPicker.date = max(ends, Date()) }
+        fieldsChanged()
     }
 
     @objc private func fieldsChanged() {

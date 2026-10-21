@@ -30,6 +30,8 @@ enum VenueManageLayout {
         case photos
         case storefrontButtons
         case menu
+        /// The whole menu, sections of items; scan the printed one (2026-10-20)
+        case fullMenu
         case gallery
         // Loyalty program
         case earnRate
@@ -76,7 +78,7 @@ enum VenueManageLayout {
         var placePage: [Row] = []
         if facts.hasPlace { placePage += [.viewPage, .photos] }
         if facts.hasPlace && physical { placePage.append(.hours) }
-        placePage += [.storefrontButtons, .menu]
+        placePage += [.storefrontButtons, .fullMenu, .menu]
         // No place page (online-only store): its own storefront gallery
         if !facts.hasPlace { placePage.append(.gallery) }
 
@@ -109,7 +111,7 @@ enum VenueManageLayout {
     static func isBusiness(_ row: Row) -> Bool {
         switch row {
         case .savers, .followers, .activity,
-             .menu, .gallery,
+             .menu, .fullMenu, .gallery,
              .earnRate, .offer, .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes,
              .announcement, .addAnnouncement:
             return true

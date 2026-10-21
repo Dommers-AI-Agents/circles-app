@@ -91,6 +91,10 @@ class VenueManageViewController: BaseViewController {
             let vc = VenueStorefrontOfferingsViewController(venueId: venueId, label: storefront?.offeringsLabel ?? "Menu", offerings: storefront?.offerings)
             vc.onSaved = onSaved
             navigationController?.pushViewController(vc, animated: true)
+        case .fullMenu:
+            let vc = VenueMenuEditorViewController(venueId: venueId, label: storefront?.offeringsLabel ?? "Menu", menu: storefront?.menu)
+            vc.onSaved = onSaved
+            navigationController?.pushViewController(vc, animated: true)
         case .gallery:
             let vc = VenueStorefrontGalleryViewController(venueId: venueId, photos: storefront?.gallery ?? [])
             vc.onSaved = onSaved
@@ -552,6 +556,8 @@ class VenueManageViewController: BaseViewController {
     private func openHours() {
         guard let placeId = venuePlaceId else { return }
         let hoursVC = VenueHoursViewController(venueId: venueId, placeId: placeId)
+        // Scanning the hours sign is a Business tool
+        hoursVC.scanVenueId = ownerPremium ? venueId : nil
         hoursVC.onSaved = { [weak self] hours in
             self?.applyHoursSummary(hours)
             self?.showSuccess("Hours updated on your place page")
@@ -794,6 +800,16 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             set("Reserve · Order · Catering · Book",
                 count > 0 ? "\(count) button\(count == 1 ? "" : "s") on your page" : "Add the links customers tap to spend money",
                 "hand.tap")
+        case .fullMenu:
+            let label = storefront?.offeringsLabel ?? "Menu"
+            let menu = storefront?.menu
+            if let menu, !menu.isEmpty {
+                set("Full \(label.lowercased())",
+                    "\(menu.itemCount) item\(menu.itemCount == 1 ? "" : "s") in \(menu.sections.count) section\(menu.sections.count == 1 ? "" : "s") \u{00B7} customers can search it",
+                    "list.bullet.rectangle.portrait")
+            } else {
+                set("Full \(label.lowercased())", "Photograph your printed \(label.lowercased()) and it\u{2019}s on your page, every item", "camera.viewfinder")
+            }
         case .menu:
             let label = storefront?.offeringsLabel ?? "Menu"
             let o = storefront?.offerings
@@ -902,7 +918,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             openHours()
         case .photos:
             openPhotoLibrary()
-        case .storefrontButtons, .menu, .gallery:
+        case .storefrontButtons, .menu, .fullMenu, .gallery:
             openStorefrontRow(row)
 
         case .earnRate:

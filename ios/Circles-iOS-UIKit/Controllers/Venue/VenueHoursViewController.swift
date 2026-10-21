@@ -12,6 +12,12 @@ final class VenueHoursViewController: BaseViewController {
     private var draft = VenueHoursDraft(existing: [])
     /// Called with the saved hours so the store page can refresh its summary
     var onSaved: (([OpeningHour]) -> Void)?
+    /// Set (to the store id) when the store is on Business: offers "Scan the
+    /// hours sign" (2026-10-20)
+    var scanVenueId: String?
+    private var scanner: VenueScanController?
+    /// Days the scan wasn't sure of, orange until touched
+    private var unsureDays: Set<Int> = []
 
     private let tableView: UITableView = {
         let table = UITableView(frame: .zero, style: .insetGrouped)
@@ -44,6 +50,7 @@ final class VenueHoursViewController: BaseViewController {
 
         tableView.dataSource = self
         tableView.register(DayHoursCell.self, forCellReuseIdentifier: DayHoursCell.reuseId)
+        if scanVenueId != nil { installScanHeader() }
         view.addSubview(tableView)
         view.sendSubviewToBack(tableView)
         NSLayoutConstraint.activate([
@@ -93,6 +100,51 @@ final class VenueHoursViewController: BaseViewController {
     }
 }
 
+// MARK: - Scan the hours sign
+
+extension VenueHoursViewController {
+    private func installScanHeader() {
+        let button = UIButton.secondaryButton(title: "Scan the hours sign")
+        button.setImage(UIImage(systemName: "camera.viewfinder"), for: .normal)
+        button.addTarget(self, action: #selector(scanTapped(_:)), for: .touchUpInside)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        let header = UIView(frame: CGRect(x: 0, y: 0, width: view.bounds.width, height: 74))
+        header.addSubview(button)
+        NSLayoutConstraint.activate([
+            button.topAnchor.constraint(equalTo: header.topAnchor, constant: 12),
+            button.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 20),
+            button.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -20)
+        ])
+        tableView.tableHeaderView = header
+    }
+
+    @objc private func scanTapped(_ sender: UIButton) {
+        guard let venueId = scanVenueId else { return }
+        let scanner = VenueScanController(venueId: venueId, kind: .hours, presenter: self)
+        self.scanner = scanner
+        scanner.start(HoursScanDraft.self, sourceView: sender) { [weak self] result in
+            guard let self else { return }
+            self.scanner = nil
+            switch result {
+            case .success(let response):
+                let applied = VenueScanApply.hours(self.draft, scan: response.draft)
+                guard applied.filled > 0 else {
+                    return self.showError("No hours were found in that photo. Try a closer, straight-on photo of the sign.")
+                }
+                self.draft = applied.draft
+                self.unsureDays = applied.unsureDays
+                self.navigationItem.rightBarButtonItem?.isEnabled = true
+                self.tableView.reloadData()
+                let check = applied.unsureDays.isEmpty ? "" : " Check the days in orange."
+                self.showSuccess("Read \(applied.filled) day\(applied.filled == 1 ? "" : "s") from the sign.\(check) Tap Save when they look right.")
+                AnalyticsService.shared.logEvent("venue_scan_done", parameters: ["kind": "hours", "days": String(applied.filled)])
+            case .failure(let error):
+                self.showError(VenueScanController.message(for: error))
+            }
+        }
+    }
+}
+
 extension VenueHoursViewController: UITableViewDataSource {
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -106,9 +158,13 @@ extension VenueHoursViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: DayHoursCell.reuseId, for: indexPath) as! DayHoursCell
         let index = indexPath.row
-        cell.configure(draft.days[index])
+        cell.configure(draft.days[index], unsure: unsureDays.contains(draft.days[index].day))
         cell.onChange = { [weak self] day in
             guard let self = self else { return }
+            // Touched: the owner has checked it
+            if self.unsureDays.remove(day.day) != nil {
+                (self.tableView.cellForRow(at: IndexPath(row: index, section: 0)) as? DayHoursCell)?.setUnsure(false)
+            }
             let wasClosed = self.draft.days[index].isClosed
             self.draft.days[index] = day
             // Showing or hiding the time pickers changes the row height
@@ -190,8 +246,9 @@ private final class DayHoursCell: UITableViewCell {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func configure(_ day: VenueHoursDraft.Day) {
+    func configure(_ day: VenueHoursDraft.Day, unsure: Bool = false) {
         self.day = day
+        setUnsure(unsure)
         nameLabel.text = VenueHoursDraft.dayName(day.day)
         openSwitch.isOn = !day.isClosed
         openPicker.date = VenueHoursDraft.date(from: day.open)
@@ -199,9 +256,18 @@ private final class DayHoursCell: UITableViewCell {
         render()
     }
 
+    private var isUnsure = false
+
+    /// From a scan the owner hasn't checked yet: orange, "check this"
+    func setUnsure(_ unsure: Bool) {
+        isUnsure = unsure
+        nameLabel.textColor = unsure ? .systemOrange : Constants.Colors.label
+        render()
+    }
+
     private func render() {
         let isOpen = openSwitch.isOn
-        stateLabel.text = isOpen ? "Open" : "Closed"
+        stateLabel.text = (isOpen ? "Open" : "Closed") + (isUnsure ? " \u{00B7} check this against the sign" : "")
         timesRow.isHidden = !isOpen
         openSwitch.accessibilityLabel = "\(nameLabel.text ?? "") open"
     }

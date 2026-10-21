@@ -571,6 +571,10 @@ class APIService {
         if endpoint == "circles/advisor" {
             request.timeoutInterval = 120
         }
+        // A menu scan is one model call over several photos: 5–30 s
+        if endpoint.hasPrefix("rewards/venues/"), endpoint.hasSuffix("/scan") {
+            request.timeoutInterval = 120
+        }
         
         // GETs use protocol caching: the server's Cache-Control: no-cache +
         // ETag mean every request revalidates (fresh data guaranteed) but an

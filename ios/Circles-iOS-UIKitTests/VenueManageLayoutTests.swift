@@ -32,7 +32,7 @@ struct VenueManageLayoutTests {
 
     @Test func noPlaceRecordHidesPlaceRows() {
         let page = rows(L.Facts(hasPlace: false), .placePage) ?? []
-        #expect(page == [.storefrontButtons, .menu, .gallery])
+        #expect(page == [.storefrontButtons, .fullMenu, .menu, .gallery])
     }
 
     @Test func offersAndAnnouncementsListThenAdd() {
@@ -54,7 +54,7 @@ struct VenueManageLayoutTests {
     }
 
     @Test func businessToolsAreLocked() {
-        let paid: [L.Row] = [.savers, .followers, .activity, .menu, .gallery, .earnRate, .offer(0), .addOffer,
+        let paid: [L.Row] = [.savers, .followers, .activity, .menu, .fullMenu, .gallery, .earnRate, .offer(0), .addOffer,
                              .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .announcement(0), .addAnnouncement]
         paid.forEach { #expect(L.isBusiness($0), "\($0) should need Business") }
     }

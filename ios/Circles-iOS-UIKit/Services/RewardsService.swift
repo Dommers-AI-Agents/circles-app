@@ -578,6 +578,21 @@ class RewardsService {
         putStorefront(venueId: venueId, block: "offerings", body: offerings.asBody, completion: completion)
     }
 
+    func updateStorefrontMenu(venueId: String, menu: StorefrontMenu, completion: @escaping (Result<VenueStorefront, Error>) -> Void) {
+        putStorefront(venueId: venueId, block: "menu", body: menu.asBody, completion: completion)
+    }
+
+    /// A photo (or menu pages) → a draft for the editor; nothing is saved.
+    /// `images` are JPEG data, already downsized (VenueScanController).
+    func scanVenue<Draft: Decodable>(venueId: String, kind: VenueScanKind, images: [Data],
+                                     completion: @escaping (Result<VenueScanResponse<Draft>, APIError>) -> Void) {
+        let body: [String: Any] = ["kind": kind.rawValue, "images": images.map { $0.base64EncodedString() }]
+        apiService.request(endpoint: "rewards/venues/\(venueId)/scan", method: .post, body: body, requiresAuth: true) {
+            (result: Result<VenueScanEnvelope<Draft>, APIError>) in
+            completion(result.map { $0.data })
+        }
+    }
+
     func updateStorefrontGallery(venueId: String, photos: [StorefrontGalleryPhoto], completion: @escaping (Result<VenueStorefront, Error>) -> Void) {
         let body: [String: Any] = ["photos": photos.map { photo -> [String: Any] in ["photoId": photo.photoId, "url": photo.url, "caption": photo.caption ?? NSNull()] }]
         putStorefront(venueId: venueId, block: "gallery", body: body, completion: completion)
@@ -1099,17 +1114,20 @@ struct VenueStorefront: Codable {
     /// the venue's category so the client never learns that rule.
     let offeringsLabel: String
     let offerings: StorefrontOfferings?
+    /// The full menu (sections of items); nil or empty when there's none
+    let menu: StorefrontMenu?
     let actions: StorefrontActions?
     let gallery: [StorefrontGalleryPhoto]
 
-    enum CodingKeys: String, CodingKey { case offeringsLabel, offerings, actions, gallery }
-    init(offeringsLabel: String, offerings: StorefrontOfferings?, actions: StorefrontActions?, gallery: [StorefrontGalleryPhoto]) {
-        self.offeringsLabel = offeringsLabel; self.offerings = offerings; self.actions = actions; self.gallery = gallery
+    enum CodingKeys: String, CodingKey { case offeringsLabel, offerings, menu, actions, gallery }
+    init(offeringsLabel: String, offerings: StorefrontOfferings?, menu: StorefrontMenu? = nil, actions: StorefrontActions?, gallery: [StorefrontGalleryPhoto]) {
+        self.offeringsLabel = offeringsLabel; self.offerings = offerings; self.menu = menu; self.actions = actions; self.gallery = gallery
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         offeringsLabel = (try? c.decode(String.self, forKey: .offeringsLabel)) ?? "Menu"
         offerings = try? c.decodeIfPresent(StorefrontOfferings.self, forKey: .offerings)
+        menu = try? c.decodeIfPresent(StorefrontMenu.self, forKey: .menu)
         actions = try? c.decodeIfPresent(StorefrontActions.self, forKey: .actions)
         gallery = (try? c.decode([StorefrontGalleryPhoto].self, forKey: .gallery)) ?? []
     }

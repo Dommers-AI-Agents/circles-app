@@ -3448,6 +3448,13 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         present(safari, animated: true)
     }
 
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapFullMenu menu: StorefrontMenu, label: String) {
+        let menuVC = PlaceMenuViewController(menu: menu, label: label, placeName: place.name)
+        let nav = UINavigationController(rootViewController: menuVC)
+        nav.modalPresentationStyle = .pageSheet
+        present(nav, animated: true)
+    }
+
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapStorefrontPhotos urls: [String], startingAt index: Int) {
         guard !urls.isEmpty else { return }
         AnalyticsService.shared.logEvent("storefront_photos_opened", parameters: ["place_id": place.id, "count": urls.count])

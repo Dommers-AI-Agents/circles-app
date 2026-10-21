@@ -10,6 +10,8 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
     // Storefront: the owner's buttons, menu, featured items and photos
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapStorefrontLink url: String, title: String)
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapStorefrontPhotos urls: [String], startingAt index: Int)
+    /// The store's full menu (sections of items)
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapFullMenu menu: StorefrontMenu, label: String)
 }
 
 /// The rewards section of a place page: the venue's announcements and offers,
@@ -139,8 +141,14 @@ class PlaceVenueRewardsView: UIView {
 
         if let storefront = data.storefront {
             let hasLoyaltyRows = !announcements.isEmpty || !offers.isEmpty
+            let fullMenu = storefront.menu.flatMap { $0.isEmpty ? nil : $0 }
+            if hasLoyaltyRows, fullMenu != nil || !(storefront.offerings?.isEmpty ?? true) {
+                containerStack.addArrangedSubview(makeSeparator())
+            }
+            if let fullMenu {
+                containerStack.addArrangedSubview(makeFullMenuButton(fullMenu, label: storefront.offeringsLabel))
+            }
             if let offerings = storefront.offerings, !offerings.isEmpty {
-                if hasLoyaltyRows { containerStack.addArrangedSubview(makeSeparator()) }
                 if !offerings.featured.isEmpty {
                     containerStack.addArrangedSubview(makeFeaturedStrip(offerings.featured, label: storefront.offeringsLabel))
                 }
@@ -690,6 +698,19 @@ class PlaceVenueRewardsView: UIView {
     }
 
     /// "See the full menu" — a link, or the owner's photos of the printed one.
+    /// "See the menu · 42 items": the full, searchable menu
+    private func makeFullMenuButton(_ menu: StorefrontMenu, label: String) -> UIView {
+        let button = UIButton.primaryButton(title: "See the \(label.lowercased()) \u{00B7} \(menu.itemCount) item\(menu.itemCount == 1 ? "" : "s")")
+        button.setImage(UIImage(systemName: "menucard"), for: .normal)
+        button.tintColor = .white
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -6, bottom: 0, right: 6)
+        button.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.delegate?.placeVenueView(self, didTapFullMenu: menu, label: label)
+        }, for: .touchUpInside)
+        return button
+    }
+
     private func makeMenuRow(_ offerings: StorefrontOfferings, label: String) -> UIView? {
         let hasLink = !(offerings.link ?? "").isEmpty
         let photos = offerings.files.filter { $0.kind == "image" }.map(\.url)
