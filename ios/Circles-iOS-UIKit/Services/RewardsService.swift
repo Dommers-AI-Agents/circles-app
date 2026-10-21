@@ -1116,18 +1116,24 @@ struct VenueStorefront: Codable {
     let offerings: StorefrontOfferings?
     /// The full menu (sections of items); nil or empty when there's none
     let menu: StorefrontMenu?
+    /// Order ahead from the menu (pay at pickup): for customers, present only
+    /// while it's on; for the owner, the setting
+    let ordering: StoreOrdering?
     let actions: StorefrontActions?
     let gallery: [StorefrontGalleryPhoto]
 
-    enum CodingKeys: String, CodingKey { case offeringsLabel, offerings, menu, actions, gallery }
-    init(offeringsLabel: String, offerings: StorefrontOfferings?, menu: StorefrontMenu? = nil, actions: StorefrontActions?, gallery: [StorefrontGalleryPhoto]) {
-        self.offeringsLabel = offeringsLabel; self.offerings = offerings; self.menu = menu; self.actions = actions; self.gallery = gallery
+    enum CodingKeys: String, CodingKey { case offeringsLabel, offerings, menu, ordering, actions, gallery }
+    init(offeringsLabel: String, offerings: StorefrontOfferings?, menu: StorefrontMenu? = nil, ordering: StoreOrdering? = nil,
+         actions: StorefrontActions?, gallery: [StorefrontGalleryPhoto]) {
+        self.offeringsLabel = offeringsLabel; self.offerings = offerings; self.menu = menu; self.ordering = ordering
+        self.actions = actions; self.gallery = gallery
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         offeringsLabel = (try? c.decode(String.self, forKey: .offeringsLabel)) ?? "Menu"
         offerings = try? c.decodeIfPresent(StorefrontOfferings.self, forKey: .offerings)
         menu = try? c.decodeIfPresent(StorefrontMenu.self, forKey: .menu)
+        ordering = try? c.decodeIfPresent(StoreOrdering.self, forKey: .ordering)
         actions = try? c.decodeIfPresent(StorefrontActions.self, forKey: .actions)
         gallery = (try? c.decode([StorefrontGalleryPhoto].self, forKey: .gallery)) ?? []
     }

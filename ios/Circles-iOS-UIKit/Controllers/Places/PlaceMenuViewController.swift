@@ -2,8 +2,9 @@ import UIKit
 
 /// A store's full menu as customers see it (2026-10-20): its sections with
 /// a chip row to jump between them, every item with its price as printed,
-/// and a search box ("vegan", "pizza", "$10"). Read-only; the owner edits
-/// it in VenueMenuEditorViewController.
+/// and a search box ("vegan", "pizza", "$10"). The owner edits it in
+/// VenueMenuEditorViewController. When the store takes orders (Business,
+/// pay at pickup), each item has Add and the bottom bar opens the order.
 final class PlaceMenuViewController: BaseViewController {
 
     override var showsLoadingIndicator: Bool { false }
@@ -13,6 +14,11 @@ final class PlaceMenuViewController: BaseViewController {
     private let label: String
     private let placeName: String
     private var shown: [StorefrontMenuSection]
+    /// Set when the store takes orders in the app
+    private let ordering: StoreOrdering?
+    private let venueId: String?
+    private var cart = OrderCart()
+    private lazy var orderBar = UIButton.primaryButton(title: "View order")
 
     private let searchBar: UISearchBar = {
         let bar = UISearchBar()
@@ -57,11 +63,13 @@ final class PlaceMenuViewController: BaseViewController {
         return label
     }()
 
-    init(menu: StorefrontMenu, label: String, placeName: String) {
+    init(menu: StorefrontMenu, label: String, placeName: String, ordering: StoreOrdering? = nil, venueId: String? = nil) {
         self.menu = menu
         self.label = label
         self.placeName = placeName
         self.shown = menu.sections
+        self.ordering = ordering
+        self.venueId = venueId
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -101,7 +109,49 @@ final class PlaceMenuViewController: BaseViewController {
             emptyLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32)
         ])
         buildChips()
-        AnalyticsService.shared.logEvent("place_menu_opened", parameters: ["items": String(menu.itemCount)])
+        if ordering != nil { installOrderBar() }
+        AnalyticsService.shared.logEvent("place_menu_opened", parameters: ["items": String(menu.itemCount), "ordering": ordering == nil ? "no" : "yes"])
+    }
+
+    // MARK: - Ordering
+
+    private func installOrderBar() {
+        orderBar.translatesAutoresizingMaskIntoConstraints = false
+        orderBar.addTarget(self, action: #selector(orderBarTapped), for: .touchUpInside)
+        view.addSubview(orderBar)
+        NSLayoutConstraint.activate([
+            orderBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            orderBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            orderBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -10)
+        ])
+        tableView.contentInset.bottom = 80
+        renderOrderBar()
+    }
+
+    private func renderOrderBar() {
+        guard ordering != nil else { return }
+        orderBar.isHidden = cart.isEmpty
+        let est = cart.estimate
+        let money = OrderCart.estimateText(total: est.total, partial: est.partial).map { " \u{00B7} \($0)" } ?? ""
+        orderBar.setTitle("View order \u{00B7} \(cart.itemCount) item\(cart.itemCount == 1 ? "" : "s")\(money)", for: .normal)
+    }
+
+    private func add(_ item: StorefrontMenuItem) {
+        cart.add(item)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        renderOrderBar()
+        tableView.reloadData()
+    }
+
+    @objc private func orderBarTapped() {
+        guard let ordering, let venueId else { return }
+        let review = OrderReviewViewController(venueId: venueId, placeName: placeName, ordering: ordering, cart: cart)
+        review.onCartChanged = { [weak self] cart in
+            self?.cart = cart
+            self?.renderOrderBar()
+            self?.tableView.reloadData()
+        }
+        navigationController?.pushViewController(review, animated: true)
     }
 
     private func buildChips() {
@@ -161,11 +211,22 @@ extension PlaceMenuViewController: UITableViewDataSource {
         config.secondaryTextProperties.color = Constants.Colors.secondaryLabel
         config.secondaryTextProperties.numberOfLines = 0
         cell.contentConfiguration = config
-        if let price = item.price {
-            let priceLabel = UILabel()
-            priceLabel.text = price
-            priceLabel.font = .systemFont(ofSize: 16, weight: .semibold)
-            priceLabel.textColor = Constants.Colors.label
+        let priceLabel = UILabel()
+        priceLabel.text = item.price
+        priceLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        priceLabel.textColor = Constants.Colors.label
+        if ordering != nil {
+            // Price, then Add (or how many are in the order)
+            let qty = cart.quantity(of: item.id)
+            let add = UIButton.smallActionButton(title: qty > 0 ? "\(qty) \u{2713}" : "Add", style: qty > 0 ? .primary : .secondary)
+            add.addAction(UIAction { [weak self] _ in self?.add(item) }, for: .touchUpInside)
+            add.accessibilityLabel = qty > 0 ? "Add another \(item.name), \(qty) in your order" : "Add \(item.name) to your order"
+            let row = UIStackView(arrangedSubviews: [priceLabel, add])
+            row.spacing = 10
+            row.alignment = .center
+            row.frame.size = row.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
+            cell.accessoryView = row
+        } else if item.price != nil {
             priceLabel.sizeToFit()
             cell.accessoryView = priceLabel
         } else {

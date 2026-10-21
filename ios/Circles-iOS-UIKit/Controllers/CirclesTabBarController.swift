@@ -288,6 +288,9 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             name: .navigateToHomeWidget,
             object: nil
         )
+        // Order ahead pushes: the customer's order, the store's Orders screen
+        NotificationCenter.default.addObserver(self, selector: #selector(navigateToStoreOrder(_:)), name: .navigateToStoreOrder, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(navigateToVenueOrders(_:)), name: .navigateToVenueOrders, object: nil)
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(refreshHomeWidget(_:)),
@@ -571,6 +574,40 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         while let presented = top.presentedViewController, !presented.isBeingDismissed { top = presented }
         top.present(reel, animated: true)
         return true
+    }
+
+    /// The topmost screen, to present over
+    private var topPresenter: UIViewController {
+        var top: UIViewController = self
+        while let presented = top.presentedViewController, !presented.isBeingDismissed { top = presented }
+        return top
+    }
+
+    @objc private func navigateToStoreOrder(_ note: Notification) {
+        guard let orderId = note.object as? String else { return }
+        // Already looking at it: just refresh
+        if let nav = topPresenter as? UINavigationController, nav.viewControllers.contains(where: { $0 is OrderStatusViewController }) {
+            NotificationCenter.default.post(name: VenueOrdersViewController.ordersChanged, object: nil)
+            return
+        }
+        let nav = UINavigationController(rootViewController: OrderStatusViewController(orderId: orderId))
+        nav.modalPresentationStyle = .pageSheet
+        topPresenter.present(nav, animated: true)
+    }
+
+    @objc private func navigateToVenueOrders(_ note: Notification) {
+        guard let venueId = note.object as? String else { return }
+        if let nav = topPresenter as? UINavigationController, nav.viewControllers.contains(where: { $0 is VenueOrdersViewController }) {
+            NotificationCenter.default.post(name: VenueOrdersViewController.ordersChanged, object: nil)
+            return
+        }
+        if let nav = selectedViewController as? UINavigationController, nav.topViewController is VenueOrdersViewController, presentedViewController == nil {
+            NotificationCenter.default.post(name: VenueOrdersViewController.ordersChanged, object: nil)
+            return
+        }
+        let nav = UINavigationController(rootViewController: VenueOrdersViewController(venueId: venueId))
+        nav.modalPresentationStyle = .pageSheet
+        topPresenter.present(nav, animated: true)
     }
 
     @objc private func navigateToHomeWidget(_ note: Notification) {

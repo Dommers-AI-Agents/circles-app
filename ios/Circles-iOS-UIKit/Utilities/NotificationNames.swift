@@ -46,6 +46,10 @@ extension Notification.Name {
     static let navigateToCreateWallet = Notification.Name("NavigateToCreateWallet")
     /// object = widget id (e.g. "nextbar"); opens the home Widgets segment on that widget
     static let navigateToHomeWidget = Notification.Name("NavigateToHomeWidget")
+    /// object = order id: the customer's order-ahead order (its status)
+    static let navigateToStoreOrder = Notification.Name("NavigateToStoreOrder")
+    /// object = venue id: the store's Orders screen (a new order came in)
+    static let navigateToVenueOrders = Notification.Name("NavigateToVenueOrders")
     /// object = widget id; a push for that widget arrived while the app was
     /// open, so its data should be refetched rather than shown stale.
     static let refreshHomeWidget = Notification.Name("RefreshHomeWidget")

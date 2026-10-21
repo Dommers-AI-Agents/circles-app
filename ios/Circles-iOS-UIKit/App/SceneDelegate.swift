@@ -1422,6 +1422,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case .runJoin(let token): self.navigateToWidget(id: "run", runToken: token)
             case .careAnswer(let askId): self.navigateToWidget(id: "howareyou", careAskId: askId)
             case .fridgeMailCard(let id): self.navigateToWidget(id: "fridgemail", fridgeMailCardId: id)
+            case .storeOrder(let id): NotificationCenter.default.post(name: .navigateToStoreOrder, object: id)
+            case .venueOrders(let venueId): NotificationCenter.default.post(name: .navigateToVenueOrders, object: venueId)
             case .homeTab(let segment): self.navigateToHomeTab(segment)
             case .openPath(let path):
                 if let destination = DeepLinkRouter().openPathDestination(path) { self.route(destination) }

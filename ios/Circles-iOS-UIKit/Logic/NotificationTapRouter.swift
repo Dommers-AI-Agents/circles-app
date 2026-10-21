@@ -27,6 +27,10 @@ enum NotificationDestination: Equatable {
     /// A mailed Fridge Mail card ("printing / out for delivery / delivered"):
     /// that card, as printed, with its status.
     case fridgeMailCard(id: String)
+    /// Order ahead: the customer's order (accepted / ready / declined …)
+    case storeOrder(id: String)
+    /// Order ahead: a new or cancelled order, for the store's team
+    case venueOrders(venueId: String)
     case suggestions(placeId: String?, suggestionId: String?)
     /// `showComments` nil = post without userInfo (as `new_place` always did).
     case circle(id: String, showComments: Bool?)
@@ -83,6 +87,12 @@ enum NotificationTapRouter {
             return conversationId.map { .conversation(id: $0) } ?? .messages
 
         case "nextbar_round", "nextbar_result": return .homeWidget(id: "nextbar")
+        case "order_update":
+            if let orderId = string("orderId", in: userInfo) { return .storeOrder(id: orderId) }
+            return nil
+        case "order_new":
+            if let venueId = string("venueId", in: userInfo) { return .venueOrders(venueId: venueId) }
+            return nil
         case "fridgemail":
             if let cardId = string("cardId", in: userInfo) { return .fridgeMailCard(id: cardId) }
             return .homeWidget(id: "fridgemail")

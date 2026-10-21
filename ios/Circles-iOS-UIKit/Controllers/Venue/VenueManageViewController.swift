@@ -95,6 +95,22 @@ class VenueManageViewController: BaseViewController {
             let vc = VenueMenuEditorViewController(venueId: venueId, label: storefront?.offeringsLabel ?? "Menu", menu: storefront?.menu)
             vc.onSaved = onSaved
             navigationController?.pushViewController(vc, animated: true)
+        case .orders where storefront?.ordering?.enabled == true:
+            navigationController?.pushViewController(VenueOrdersViewController(venueId: venueId), animated: true)
+        case .orders, .onlineOrdering:
+            let vc = VenueOrderingSettingsViewController(venueId: venueId, ordering: storefront?.ordering,
+                                                         hasMenu: !(storefront?.menu?.isEmpty ?? true))
+            vc.onSaved = { [weak self] _ in
+                // Re-read the storefront so the rows show the new setting
+                guard let self else { return }
+                RewardsService.shared.fetchStorefront(venueId: self.venueId) { result in
+                    DispatchQueue.main.async {
+                        if case .success(let fresh) = result { self.storefront = fresh }
+                        self.reload()
+                    }
+                }
+            }
+            navigationController?.pushViewController(vc, animated: true)
         case .gallery:
             let vc = VenueStorefrontGalleryViewController(venueId: venueId, photos: storefront?.gallery ?? [])
             vc.onSaved = onSaved
@@ -810,6 +826,15 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             } else {
                 set("Full \(label.lowercased())", "Photograph your printed \(label.lowercased()) and it\u{2019}s on your page, every item", "camera.viewfinder")
             }
+        case .orders:
+            if storefront?.ordering?.enabled == true {
+                set("Orders", "New orders to accept, and what\u{2019}s ready for pickup", "bag")
+            } else {
+                set("Orders", "Let customers order ahead from your menu and pay at pickup", "bag")
+            }
+        case .onlineOrdering:
+            let o = storefront?.ordering
+            set("Online ordering", o?.enabled == true ? "On \u{00B7} usually ready in \(o?.leadMinutes ?? 15) min" : "Off", "switch.2")
         case .menu:
             let label = storefront?.offeringsLabel ?? "Menu"
             let o = storefront?.offerings
@@ -918,7 +943,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             openHours()
         case .photos:
             openPhotoLibrary()
-        case .storefrontButtons, .menu, .fullMenu, .gallery:
+        case .storefrontButtons, .menu, .fullMenu, .orders, .onlineOrdering, .gallery:
             openStorefrontRow(row)
 
         case .earnRate:

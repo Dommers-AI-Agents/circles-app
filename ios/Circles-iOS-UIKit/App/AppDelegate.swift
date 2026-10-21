@@ -382,6 +382,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         if case .homeWidget(let widgetId)? = NotificationTapRouter.destination(for: userInfo) {
             NotificationCenter.default.post(name: .refreshHomeWidget, object: widgetId)
         }
+        // An order push with the app open: any order screen on show refreshes
+        switch NotificationTapRouter.destination(for: userInfo) {
+        case .storeOrder?, .venueOrders?: NotificationCenter.default.post(name: VenueOrdersViewController.ordersChanged, object: nil)
+        default: break
+        }
 
         // The proximity banner is for a closed app; in the foreground the
         // home chip covers it. Swallow it here (the request is consumed and
@@ -660,6 +665,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case .fridgeMailCard(let id):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "fridgemail-card:\(id)",
                                 object: "fridgemail", userInfo: ["fridgeMailCardId": id])
+        case .storeOrder(let id):
+            postOrStashDeepLink(navName: Notification.Name.navigateToStoreOrder.rawValue, pending: "order:\(id)", object: id)
+        case .venueOrders(let venueId):
+            postOrStashDeepLink(navName: Notification.Name.navigateToVenueOrders.rawValue, pending: "venue-orders:\(venueId)", object: venueId)
         case .motivationSend(let lineId):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "motivation-send:\(lineId)",
                                 object: "motivation", userInfo: ["motivationLineId": lineId, "motivationSend": true])

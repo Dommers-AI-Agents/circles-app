@@ -11,7 +11,8 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapStorefrontLink url: String, title: String)
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapStorefrontPhotos urls: [String], startingAt index: Int)
     /// The store's full menu (sections of items)
-    func placeVenueView(_ view: PlaceVenueRewardsView, didTapFullMenu menu: StorefrontMenu, label: String)
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapFullMenu menu: StorefrontMenu, label: String,
+                        ordering: StoreOrdering?, venue: PlaceVenue)
 }
 
 /// The rewards section of a place page: the venue's announcements and offers,
@@ -146,7 +147,8 @@ class PlaceVenueRewardsView: UIView {
                 containerStack.addArrangedSubview(makeSeparator())
             }
             if let fullMenu {
-                containerStack.addArrangedSubview(makeFullMenuButton(fullMenu, label: storefront.offeringsLabel))
+                containerStack.addArrangedSubview(makeFullMenuButton(fullMenu, label: storefront.offeringsLabel,
+                                                                     ordering: storefront.ordering, venue: venue))
             }
             if let offerings = storefront.offerings, !offerings.isEmpty {
                 if !offerings.featured.isEmpty {
@@ -699,14 +701,18 @@ class PlaceVenueRewardsView: UIView {
 
     /// "See the full menu" — a link, or the owner's photos of the printed one.
     /// "See the menu · 42 items": the full, searchable menu
-    private func makeFullMenuButton(_ menu: StorefrontMenu, label: String) -> UIView {
-        let button = UIButton.primaryButton(title: "See the \(label.lowercased()) \u{00B7} \(menu.itemCount) item\(menu.itemCount == 1 ? "" : "s")")
-        button.setImage(UIImage(systemName: "menucard"), for: .normal)
+    private func makeFullMenuButton(_ menu: StorefrontMenu, label: String, ordering: StoreOrdering?, venue: PlaceVenue) -> UIView {
+        let orders = ordering?.enabled == true
+        let title = orders
+            ? "Order ahead \u{00B7} see the \(label.lowercased())"
+            : "See the \(label.lowercased()) \u{00B7} \(menu.itemCount) item\(menu.itemCount == 1 ? "" : "s")"
+        let button = UIButton.primaryButton(title: title)
+        button.setImage(UIImage(systemName: orders ? "bag" : "menucard"), for: .normal)
         button.tintColor = .white
         button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -6, bottom: 0, right: 6)
         button.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            self.delegate?.placeVenueView(self, didTapFullMenu: menu, label: label)
+            self.delegate?.placeVenueView(self, didTapFullMenu: menu, label: label, ordering: ordering, venue: venue)
         }, for: .touchUpInside)
         return button
     }

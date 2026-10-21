@@ -3448,8 +3448,10 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         present(safari, animated: true)
     }
 
-    func placeVenueView(_ view: PlaceVenueRewardsView, didTapFullMenu menu: StorefrontMenu, label: String) {
-        let menuVC = PlaceMenuViewController(menu: menu, label: label, placeName: place.name)
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapFullMenu menu: StorefrontMenu, label: String,
+                        ordering: StoreOrdering?, venue: PlaceVenue) {
+        let menuVC = PlaceMenuViewController(menu: menu, label: label, placeName: place.name,
+                                             ordering: ordering?.enabled == true ? ordering : nil, venueId: venue.venueId)
         let nav = UINavigationController(rootViewController: menuVC)
         nav.modalPresentationStyle = .pageSheet
         present(nav, animated: true)
