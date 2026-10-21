@@ -21,6 +21,7 @@
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { forEachPage } = require('../utils/firestorePaging');
+const { isHiddenAccount, HIDDEN_ACCOUNT_FIELDS } = require('./hiddenAccounts');
 
 const db = getFirestore();
 
@@ -102,7 +103,7 @@ const cosine = (a, b) => {
 // documents held in memory at once; they now stream a page at a time and
 // read just these fields, so only the compact indexes stay resident.
 const INDEX_FIELDS = {
-  users: ['displayName', 'profilePicture', 'isVerified', 'following', 'followers', 'dismissedSuggestions', 'geohash', 'zipcode', 'location'],
+  users: ['displayName', 'profilePicture', 'isVerified', 'following', 'followers', 'dismissedSuggestions', 'geohash', 'zipcode', 'location', ...HIDDEN_ACCOUNT_FIELDS],
   circles: ['privacy', 'owner', 'placesCount'],
   places: ['deletedAt', 'addedBy', 'globalPlaceId', 'privacy', 'circleId', 'name', 'category', 'geohash', 'neighborhood'],
   connections: ['status', 'userId', 'connectedUserId']
@@ -126,6 +127,8 @@ const buildIndexes = async ({ usersSnap: preloadedUsers = null } = {}) => {
     users.set(doc.id, {
       id: doc.id,
       displayName: u.displayName || 'Someone',
+      // App Review and test accounts are never suggested (services/hiddenAccounts.js)
+      hidden: isHiddenAccount(u),
       profilePicture: u.profilePicture || null,
       isVerified: u.isVerified || false,
       following: new Set(u.following || []),
@@ -396,7 +399,8 @@ const suggestFor = (userId, idx) => {
     && !me.following.has(id)
     && !me.dismissed.has(id)
     && !alreadyConnected.has(id)
-    && idx.users.has(id);
+    && idx.users.has(id)
+    && !idx.users.get(id).hidden;
 
   // candidateId -> { score, signal, detail }
   const scores = new Map();

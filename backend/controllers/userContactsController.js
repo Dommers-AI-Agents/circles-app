@@ -7,6 +7,7 @@ const { recordEmailInvite } = require('../services/connectionRequestPolicy');
 const { isValidEmailAddress, normalizeEmail } = require('../utils/emailAddress');
 const { clean } = require('../utils/text');
 const { viewerCenter, localSaverCounts, rankSuggestedUsers } = require('../services/localPeople');
+const { isHiddenAccount } = require('../services/hiddenAccounts');
 
 const db = getFirestore();
 
@@ -114,7 +115,7 @@ const syncContacts = async (req, res) => {
         .get();
       
       emailQuery.forEach(doc => {
-        if (doc.id !== userId && !processedUserIds.has(doc.id)) {
+        if (doc.id !== userId && !processedUserIds.has(doc.id) && !isHiddenAccount(doc.data())) {
           processedUserIds.add(doc.id);
           matchedUsers.push(matchedCard(doc, submittedEmails, submittedPhones));
         }
@@ -133,7 +134,7 @@ const syncContacts = async (req, res) => {
         .get();
       
       phoneQuery.forEach(doc => {
-        if (doc.id !== userId && !processedUserIds.has(doc.id)) {
+        if (doc.id !== userId && !processedUserIds.has(doc.id) && !isHiddenAccount(doc.data())) {
           processedUserIds.add(doc.id);
           matchedUsers.push(matchedCard(doc, submittedEmails, submittedPhones));
         }
@@ -260,11 +261,12 @@ const getSuggestedUsers = async (req, res) => {
 
     // People who save places near them (or near Charlotte, the default)
     // first, and the scan above can miss them: add the busiest locals
+    const viewerSnap = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    const viewerData = viewerSnap.exists ? viewerSnap.data() : {};
     let localCounts = new Map();
     let center = null;
     try {
-      const viewerDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-      center = await viewerCenter(userId, viewerDoc.exists ? viewerDoc.data() : null);
+      center = await viewerCenter(userId, viewerData);
       localCounts = await localSaverCounts(center);
       const have = new Set(candidateDocs.map(doc => doc.id));
       const missing = [...localCounts.entries()]
@@ -280,6 +282,12 @@ const getSuggestedUsers = async (req, res) => {
       console.warn('⚠️ Local people lookup failed:', e.message);
     }
     const localReason = center && center.isDefault ? 'Favorites in Charlotte' : 'Favorites near you';
+    // Blocked either way, App Review and test accounts never appear
+    const { excludedUserIds } = require('../services/moderationService');
+    const blocked = excludedUserIds(viewerData);
+    const shown = candidateDocs.filter(doc => !blocked.has(doc.id) && !isHiddenAccount(doc.data()));
+    candidateDocs.length = 0;
+    candidateDocs.push(...shown);
 
     console.log(`📊 Found ${usersQuery.size} total users in database (+${coreSnap.size} core)`);
     
@@ -349,7 +357,6 @@ const getSuggestedUsers = async (req, res) => {
         console.log(`✅ Found user: ${userData.displayName} (${totalPlaces} places across ${circlesCount} circles)`);
         userCandidates.push({
           id: doc.id,
-          email: userData.email,
           displayName: userData.displayName,
           profilePicture: userData.profilePicture,
           bio: userData.bio,

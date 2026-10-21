@@ -5,6 +5,7 @@ const { FieldValue } = require('firebase-admin/firestore');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const geofire = require('geofire-common');
 const { getPlaceCountMap } = require('../services/userStatsCache');
+const { isHiddenAccount, HIDDEN_ACCOUNT_FIELDS } = require('../services/hiddenAccounts');
 const { getSuggestionsFor } = require('../services/suggestionEngine');
 const { coarseDistanceKm } = require('../services/publicProjection');
 const { clampPagination } = require('../utils/pagination');
@@ -102,7 +103,8 @@ const getDiscoverUsers = async (req, res) => {
     const fetchDocsByIds = async (ids) => {
       if (ids.length === 0) return [];
       const docs = await db.getAll(...ids.map((id) => db.collection(COLLECTIONS.USERS).doc(id)));
-      return docs.filter((d) => d.exists);
+      // App Review and test accounts never surface (services/hiddenAccounts.js)
+      return docs.filter((d) => d.exists && !isHiddenAccount(d.data()));
     };
 
     let users = [];
@@ -236,7 +238,7 @@ const getDiscoverUsers = async (req, res) => {
       const pending = [...myFollowers].filter((id) => isSuggestable(id)).slice(0, offsetNum + limitNum + 1);
       if (pending.length > 0) {
         const docs = await db.getAll(...pending.map((id) => db.collection(COLLECTIONS.USERS).doc(id)));
-        users = docs.filter((d) => d.exists).map((d) => shape(d, 'followsYou'));
+        users = docs.filter((d) => d.exists && !isHiddenAccount(d.data())).map((d) => shape(d, 'followsYou'));
       }
     } else if (type === 'friendsOfFriends') {
       // People you may know, served from the precomputed suggestion doc.
@@ -249,7 +251,18 @@ const getDiscoverUsers = async (req, res) => {
       const precomputed = await getSuggestionsFor(userId);
 
       if (precomputed && precomputed.length > 0) {
-        const fresh = precomputed.filter((s) => isSuggestable(s.userId) && !hasActiveConnection(s.userId));
+        let fresh = precomputed.filter((s) => isSuggestable(s.userId) && !hasActiveConnection(s.userId));
+        // Stored suggestions may predate an account being marked as a test
+        // account: check the ones this page could show
+        const pageCandidates = fresh.slice(0, offsetNum + limitNum + 11);
+        if (pageCandidates.length > 0) {
+          const docs = await db.getAll(
+            ...pageCandidates.map((x) => db.collection(COLLECTIONS.USERS).doc(x.userId)),
+            { fieldMask: HIDDEN_ACCOUNT_FIELDS }
+          );
+          const hidden = new Set(docs.filter((d) => !d.exists || isHiddenAccount(d.data())).map((d) => d.id));
+          fresh = fresh.filter((x) => !hidden.has(x.userId));
+        }
         users = fresh.slice(0, offsetNum + limitNum + 1).map((s) => ({
           id: s.userId,
           _id: s.userId,
@@ -292,7 +305,7 @@ const getDiscoverUsers = async (req, res) => {
         const sorted = [...viaMap.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, offsetNum + limitNum + 1);
         if (sorted.length > 0) {
           const docs = await db.getAll(...sorted.map(([id]) => db.collection(COLLECTIONS.USERS).doc(id)));
-          const byId = new Map(docs.filter((d) => d.exists).map((d) => [d.id, d]));
+          const byId = new Map(docs.filter((d) => d.exists && !isHiddenAccount(d.data())).map((d) => [d.id, d]));
           users = sorted
             .filter(([id]) => byId.has(id))
             .map(([id, via]) => shape(byId.get(id), 'friendsOfFriends', {
@@ -318,14 +331,9 @@ const getDiscoverUsers = async (req, res) => {
       const orderedIds = candidateIds
         .sort((a, b) => (mutual(b) - mutual(a)) || (placesOf(b) - placesOf(a)))
         .slice(0, pageWindow);
-      // `following` is raw ids, so merged/deactivated/test accounts aren't
-      // pre-filtered the way the place-count map does for the ranked lists
+      // Merged, deactivated and test accounts drop out in fetchDocsByIds
       const order = new Map(orderedIds.map((id, i) => [id, i]));
       users = (await fetchDocsByIds(orderedIds))
-        .filter((d) => {
-          const u = d.data();
-          return !u.mergedInto && u.active !== false && u.isFakeProfile !== true;
-        })
         .map((d) => shape(d, 'following', {
           suggestionReason: myFollowers.has(d.id) ? '👋 You follow each other' : 'You follow them'
         }))
@@ -339,7 +347,7 @@ const getDiscoverUsers = async (req, res) => {
       // each, biggest collections then newest sign-ups. Each row's button
       // says where you stand. Blocked, merged and test accounts stay out.
       const everyoneSnap = await db.collection(COLLECTIONS.USERS)
-        .select('createdAt', 'mergedInto', 'active', 'isFakeProfile').get();
+        .select('createdAt', ...HIDDEN_ACCOUNT_FIELDS).get();
       const placesOf = (id) => ((placeCounts.get(id) || {}).placesCount || 0);
       // createdAt is an ISO string on most accounts, a Firestore Timestamp on old ones
       const joined = (d) => {
@@ -351,8 +359,7 @@ const getDiscoverUsers = async (req, res) => {
       const pageIds = everyoneSnap.docs
         .filter((d) => {
           const u = d.data();
-          return d.id !== userId && !blockedSet.has(d.id)
-            && !u.mergedInto && u.active !== false && u.isFakeProfile !== true;
+          return d.id !== userId && !blockedSet.has(d.id) && !isHiddenAccount(u);
         })
         .sort((a, b) => (group(a.id) - group(b.id)) || (placesOf(b.id) - placesOf(a.id)) || (joined(b) - joined(a)))
         .map((d) => d.id)
@@ -480,6 +487,7 @@ const searchUsersAdvanced = async (req, res) => {
     const enrichedResults = [];
     for (const user of searchResults) {
       if (blockedForSearch.has(user.id)) continue;
+      if (isHiddenAccount(user)) continue; // App Review and test accounts
       const { placesCount, circlesCount } = placeCounts.get(user.id) || { placesCount: 0, circlesCount: 0 };
 
       enrichedResults.push({

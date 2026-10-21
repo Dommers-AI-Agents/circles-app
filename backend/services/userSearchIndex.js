@@ -2,10 +2,12 @@
 // minutes. User search used to read the whole users collection on EVERY
 // search: fine at a few hundred accounts, a slow and costly read per keystroke
 // at tens of thousands (viral-growth review, 2026-10-01). A new account
-// becomes searchable within SEARCH_INDEX_TTL_MS. Public fields only — email
-// and phone are never read (select()).
+// becomes searchable within SEARCH_INDEX_TTL_MS. Public fields only: email is
+// read just to drop test accounts (services/hiddenAccounts.js) and never kept;
+// phone is never read (select()).
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
+const { isHiddenAccount, HIDDEN_ACCOUNT_FIELDS } = require('./hiddenAccounts');
 
 const TTL_MS = Number(process.env.SEARCH_INDEX_TTL_MS) || 5 * 60 * 1000;
 let cache = null;      // { at, docs: [{ id, data }] }
@@ -13,9 +15,15 @@ let inFlight = null;
 
 async function load(db) {
   const snap = await db.collection(COLLECTIONS.USERS)
-    .select('displayName', 'firstName', 'lastName', 'profilePicture', 'bio', 'location', 'preferences')
+    .select('displayName', 'firstName', 'lastName', 'profilePicture', 'bio', 'location', 'preferences', ...HIDDEN_ACCOUNT_FIELDS)
     .get();
-  return { at: Date.now(), docs: snap.docs.map((d) => { const data = d.data(); return { id: d.id, exists: true, data: () => data }; }) };
+  const docs = snap.docs
+    .filter((d) => !isHiddenAccount(d.data()))
+    .map((d) => {
+      const { email, ...data } = d.data(); // eslint-disable-line no-unused-vars
+      return { id: d.id, exists: true, data: () => data };
+    });
+  return { at: Date.now(), docs };
 }
 
 /** Docs shaped like Firestore snapshots ({ id, data() }) so callers loop as before. */

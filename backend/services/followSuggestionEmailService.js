@@ -25,7 +25,7 @@ const SUGGESTIONS_PER_EMAIL = 5;
 const MIN_DAYS_BETWEEN_EMAILS = 6;   // weekly job + a little slack
 const DEFAULT_MAX_ACCOUNT_AGE_DAYS = 60;
 const PREFERENCE_KEY = 'followSuggestions';
-const APP_REVIEW_EMAIL = 'appreview@favcircles.com';
+const { isHiddenAccount } = require('./hiddenAccounts');
 const SEND_GAP_MS = 3000;            // between messages — the SMTP host dislikes bursts
 const RETRY_DELAY_MS = 8000;         // one retry per address after a failure
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -66,8 +66,8 @@ const selectCandidates = (users, { now = new Date(), maxAgeDays = maxAccountAgeD
     if (followingCount >= FOLLOW_THRESHOLD) { skipped.following_enough++; continue; }
     const email = (user.email || '').trim();
     if (!email || email.endsWith('@privaterelay.appleid.com')) { skipped.no_usable_email++; continue; }
-    // The App Review demo account gets no growth email (Wes, 2026-09-16)
-    if (email.toLowerCase() === APP_REVIEW_EMAIL) { skipped.internal++; continue; }
+    // App Review and test accounts get no growth email (Wes, 2026-09-16)
+    if (isHiddenAccount(user)) { skipped.internal++; continue; }
     const createdAt = toDate(user.createdAt);
     if (!createdAt || daysBetween(now, createdAt) > maxAgeDays) { skipped.too_old++; continue; }
     if (user.emailPreferences && user.emailPreferences[PREFERENCE_KEY] === false) { skipped.opted_out++; continue; }

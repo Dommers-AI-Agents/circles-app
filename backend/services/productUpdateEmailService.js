@@ -17,7 +17,7 @@ const emailService = require('./emailService');
 const { forEachPage } = require('../utils/firestorePaging');
 
 const PREFERENCE_KEY = 'productUpdates';
-const EXCLUDED_EMAILS = new Set(['appreview@favcircles.com', 'review@favcircles.com', 'test@favcircles.com']);
+const { TEST_ACCOUNT_EMAILS: EXCLUDED_EMAILS } = require('./hiddenAccounts');
 const SEND_GAP_MS = 3000;
 const RETRY_DELAY_MS = 8000;
 const APP_OPEN_URL = 'https://api.favcircles.com/app/open';
