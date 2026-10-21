@@ -139,6 +139,17 @@ async function deleteAccount(uid, { db = getFirestore(), auth = getAuth(), stora
   await updateAll('eventInvites', events.where('pendingInviteIds', 'array-contains', uid), () => ({
     pendingInviteIds: FieldValue.arrayRemove(uid)
   }));
+  // 3c. Clubs: clubs they own end; they leave the rest (organizer seats and
+  // the member map rewritten without them); their posts and replies go
+  const clubs = db.collection(COLLECTIONS.CLUBS);
+  await updateAll('clubsEnded', clubs.where('ownerId', '==', uid), () => ({ deletedAt: now, joinOpen: false }));
+  await updateAll('clubSeats', clubs.where('memberIds', 'array-contains', uid), (d) => {
+    const members = { ...(d.data().members || {}) };
+    delete members[uid];
+    return { memberIds: FieldValue.arrayRemove(uid), organizerIds: FieldValue.arrayRemove(uid), members };
+  });
+  await deleteAll('clubPosts', db.collection(COLLECTIONS.CLUB_POSTS).where('authorId', '==', uid));
+  await deleteAll('clubReplies', db.collection(COLLECTIONS.CLUB_REPLIES).where('authorId', '==', uid));
   await deleteAll('eventPhotos', db.collection(COLLECTIONS.EVENT_PHOTOS).where('uploaderId', '==', uid));
   await deleteAll('eventPlaces', db.collection(COLLECTIONS.EVENT_PLACES).where('taggedById', '==', uid));
 

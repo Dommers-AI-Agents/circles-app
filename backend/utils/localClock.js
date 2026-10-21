@@ -51,4 +51,32 @@ const localDateKey = (timeZone, now = new Date()) => {
   try { return read(timeZone || FALLBACK_ZONE); } catch (error) { return read(FALLBACK_ZONE); }
 };
 
-module.exports = { localClock, localDateKey, FALLBACK_ZONE };
+/** Minutes the zone is ahead of UTC at `date` (−240 for New York in summer). */
+const zoneOffsetMinutes = (timeZone, date) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  }).formatToParts(date);
+  const get = (type) => parseInt(parts.find((p) => p.type === type).value, 10);
+  const asUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour') % 24, get('minute'), get('second'));
+  return Math.round((asUtc - date.getTime()) / 60000);
+};
+
+/**
+ * The instant a wall-clock time happens in a zone: "2026-11-07" + "07:00" in
+ * America/New_York → 12:00Z (after the clocks go back), "2026-10-31" → 11:00Z.
+ * Never adds days in milliseconds, so weekly times stay put across DST.
+ * A time that doesn't exist (the spring-forward hour) resolves to a nearby real instant.
+ */
+const zonedTimeToUtc = (dateKey, hhmm, timeZone) => {
+  const [y, m, d] = String(dateKey).split('-').map((n) => parseInt(n, 10));
+  const [h, mi] = String(hhmm).split(':').map((n) => parseInt(n, 10));
+  const wall = Date.UTC(y, m - 1, d, h, mi);
+  const zone = (() => { try { zoneOffsetMinutes(timeZone, new Date()); return timeZone; } catch (e) { return FALLBACK_ZONE; } })();
+  let utc = wall - zoneOffsetMinutes(zone, new Date(wall)) * 60000;
+  const again = wall - zoneOffsetMinutes(zone, new Date(utc)) * 60000;
+  if (again !== utc) utc = again;
+  return new Date(utc);
+};
+
+module.exports = { localClock, localDateKey, zonedTimeToUtc, zoneOffsetMinutes, FALLBACK_ZONE };

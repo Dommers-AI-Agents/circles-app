@@ -417,6 +417,14 @@ class PiggyBankService {
           const members = doc.data().memberIds || [];
           return members.includes(entry.userId) ? { valid: true } : { valid: false, reason: 'left_event' };
         }
+        case 'club_joined': {
+          // Still in the club, and it still exists (leaving or being removed
+          // inside the window reverses the coin).
+          if (!ref.clubId) return { valid: false, reason: 'missing_club_ref' };
+          const doc = await this.db.collection(COLLECTIONS.CLUBS).doc(ref.clubId).get();
+          if (!doc.exists || doc.data().deletedAt) return { valid: false, reason: 'club_ended' };
+          return (doc.data().memberIds || []).includes(entry.userId) ? { valid: true } : { valid: false, reason: 'left_club' };
+        }
         case 'postcard_sent': {
           if (!ref.messageId) return { valid: false, reason: 'missing_message_ref' };
           const doc = await this.db.collection(COLLECTIONS.MESSAGES).doc(ref.messageId).get();

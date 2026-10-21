@@ -67,6 +67,13 @@ const TYPES = {
   nextbar_result:          { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   // Events widget (Party Bus): invited, someone joined (to the coordinator),
   // new photos (≤1 per uploader per 15 min per event)
+  // Clubs widget (2026-10-21): joins tell organizers; invites, new events,
+  // bulletins and replies to your post tell members (muted clubs: nothing)
+  club_joined:             { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  club_invite:             { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  club_event:              { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  club_bulletin:           { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  club_reply:              { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   event_invite:            { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   event_joined:            { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   event_photos:            { category: null,                      pref: 'socialActivity',         badge: false },

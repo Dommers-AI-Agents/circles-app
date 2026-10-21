@@ -9,6 +9,11 @@
  */
 module.exports = [
   {
+    date: '2026-10-21', emoji: '👟', title: 'Clubs: run clubs, walk groups, book clubs',
+    body: 'Start a club or join one from a link: weekly meetups everyone can say they\'re going to, events, an organizers\' bulletin and a message board for the whole club.',
+    minVersion: '1.4.1', link: '/app/widget/clubs'
+  },
+  {
     date: '2026-10-19', emoji: '💬', title: 'How Are You?: comment any time',
     body: 'Answered already? Your recent answers are listed under the question. Tap one to add a comment, and your family gets a notification.',
     minVersion: '1.4.1', link: '/app/widget/howareyou'

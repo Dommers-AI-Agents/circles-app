@@ -50,7 +50,9 @@ const PIGGY_EVENT_TYPES = [
   // 2026.10-c: a photo for one of an event's challenges
   'event_challenge',
   // 2026.10-d: Build my map from my photos (once per user)
-  'photo_map_built'
+  'photo_map_built',
+  // 2026.10-e: joined a club (Clubs widget)
+  'club_joined'
 ];
 
 // Earn statuses and claim statuses are disjoint vocabularies on the same
@@ -232,6 +234,10 @@ function derivePiggyDedupKey(eventType, parts = {}) {
       // Once per event per person: leaving and re-joining pays nothing more.
       if (!parts.userId || !parts.eventId) return null;
       return `event_joined:${s(parts.userId)}:${s(parts.eventId)}`;
+    case 'club_joined':
+      // Once per club per person: leaving and re-joining pays nothing more.
+      if (!parts.userId || !parts.clubId) return null;
+      return `club_joined:${s(parts.userId)}:${s(parts.clubId)}`;
     case 'event_challenge':
       // Once per challenge per person: more photos for it pay nothing more.
       if (!parts.userId || !parts.eventId || !parts.challengeId) return null;

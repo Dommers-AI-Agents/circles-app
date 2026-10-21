@@ -562,6 +562,21 @@ app.get('/app/event/:token', async (req, res) => {
   res.status(preview ? 200 : 404).send(renderEventInvite(token, preview));
 });
 
+// Club invite link (Clubs widget). The app installed: the Universal Link opens
+// the join screen. Otherwise this page says what the club is and when it
+// meets. No member names here.
+app.get('/app/club/:token', async (req, res) => {
+  const token = String(req.params.token).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  const { renderClubInvite } = require('./views/clubPage');
+  let preview = null;
+  try {
+    preview = await require('./services/clubService').publicPreview(token);
+  } catch (e) {
+    if (e.status !== 404) console.warn('Club invite page:', e.message);
+  }
+  res.status(preview ? 200 : 404).send(renderClubInvite(token, preview));
+});
+
 // Watch-a-run link (FavRun). The app installed: the Universal Link opens
 // the run in FavRun. Otherwise: who's running and how to get the app — no
 // route, no position.

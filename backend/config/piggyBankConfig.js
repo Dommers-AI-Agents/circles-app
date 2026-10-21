@@ -87,7 +87,8 @@ module.exports = {
     DRINK_RECEIVED: 1,          // a connection sent you a drink recipe (paid to the recipient)
     EVENT_JOINED: 1,            // joined an event (Events widget), once per event
     EVENT_CHALLENGE: 1,         // a photo for an event's challenge, once per challenge per person
-    PHOTO_MAP_BUILT: 3          // Build my map from my photos: once per user, the whole import
+    PHOTO_MAP_BUILT: 3,         // Build my map from my photos: once per user, the whole import
+    CLUB_JOINED: 1              // joined a club (Clubs widget), once per club
   },
   DAILY_CAPS: {              // earns past the cap: action still succeeds, pays 0
     ADD_PLACE: 20,
@@ -122,7 +123,8 @@ module.exports = {
     POSTCARD_SENT: 2,
     DRINK_RECEIVED: 3,          // per recipient per day; also once ever per sender (dedup key)
     EVENT_JOINED: 3,            // per person per day; once per event (dedup key)
-    EVENT_CHALLENGE: 5          // per person per day; once per challenge (dedup key)
+    EVENT_CHALLENGE: 5,         // per person per day; once per challenge (dedup key)
+    CLUB_JOINED: 3              // per person per day; once per club (dedup key)
   },
   CREATE_CIRCLE_MIN_PLACES: 3,   // enforced at CLEARING time, not earn time
   CLAIM: {

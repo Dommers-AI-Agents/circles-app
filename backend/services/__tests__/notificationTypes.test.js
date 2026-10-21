@@ -30,6 +30,7 @@ const OLD_TYPE_MAP = {
   care_watcher_request: 'careCheckins', care_watcher_invite: 'careCheckins', care_watcher_accepted: 'careCheckins',
   care_watcher_declined: 'careCheckins', care_watcher_joined: 'careCheckins', care_watcher_removed: 'careCheckins',
   daily_quote: 'dailyQuote',
+  club_joined: 'socialActivity', club_invite: 'socialActivity', club_event: 'socialActivity', club_bulletin: 'socialActivity', club_reply: 'socialActivity',
   store_alert: 'storeAlerts',
   check_in_response: 'checkIns', reengagement: 'reengagement', activity_notification: 'socialActivity'
 };
@@ -68,7 +69,7 @@ test('the rows a person can catch up on in Notifications (Wes, 2026-10-01)', () 
   expect(recorded).toEqual([
     'care_accepted', 'care_alert_response', 'care_comment', 'care_invite', 'care_silence', 'care_watcher_accepted', 'care_watcher_declined',
     'care_watcher_invite', 'care_watcher_joined', 'care_watcher_removed', 'care_watcher_request',
-    'check_in_response', 'event_invite', 'event_joined', 'favcoin_claim_settled', 'fridgemail', 'milestone', 'nextbar_result',
+    'check_in_response', 'club_bulletin', 'club_event', 'club_invite', 'club_joined', 'club_reply', 'event_invite', 'event_joined', 'favcoin_claim_settled', 'fridgemail', 'milestone', 'nextbar_result',
     'nextbar_round', 'order_new', 'order_update', 'postcard_order', 'run_live_finished', 'run_live_invite', 'store_alert'
   ]);
   // Reminders, digests and the questions themselves stay push-only

@@ -13,6 +13,7 @@ const postcard = require('../controllers/widgets/postcardController');
 const drink = require('../controllers/widgets/drinkController');
 const motivation = require('../controllers/widgets/motivationController');
 const events = require('../controllers/widgets/eventController');
+const clubs = require('../controllers/widgets/clubController');
 const runShare = require('../controllers/widgets/runShareController');
 const { sendConnectionRequest } = require('../controllers/connectionController');
 const nextBarRounds = require('../controllers/widgets/nextBarRoundController');
@@ -85,6 +86,36 @@ router.post('/events/:id/rollcall/here', events.answerRollCall);
 router.post('/events/:id/rollcall/ping', perUserLimit({ bucket: 'event-ping', windowMs: 3600000, max: 30 }), events.pingRollCall);
 router.delete('/events/:id/rollcall', events.closeRollCall);
 router.get('/events/:id/recap', events.recap);
+
+// Clubs (run clubs, book clubs…, 2026-10-21): members, weekly meetups with
+// RSVPs, one-off events, the organizers' bulletin and the members' board.
+// Static paths before /:id.
+router.get('/clubs', clubs.list);
+router.post('/clubs', perUserLimit({ bucket: 'club-create', windowMs: 86400000, max: 10 }), clubs.create);
+router.get('/clubs/invite/:token', clubs.previewInvite);
+router.post('/clubs/join', perUserLimit({ bucket: 'club-join', windowMs: 3600000, max: 30 }), clubs.join);
+router.get('/clubs/:id', clubs.get);
+router.put('/clubs/:id', clubs.update);
+router.delete('/clubs/:id', clubs.end);
+router.post('/clubs/:id/leave', clubs.leave);
+router.post('/clubs/:id/mute', clubs.mute);
+router.delete('/clubs/:id/members/:memberId', clubs.removeMember);
+router.post('/clubs/:id/members/:memberId/role', clubs.setRole);
+router.post('/clubs/:id/link/reset', clubs.resetLink);
+router.post('/clubs/:id/invite', messageLimiter, clubs.invite);
+router.post('/clubs/:id/schedule', clubs.addMeetup);
+router.put('/clubs/:id/schedule/:meetupId', clubs.updateMeetup);
+router.delete('/clubs/:id/schedule/:meetupId', clubs.deleteMeetup);
+router.post('/clubs/:id/events', perUserLimit({ bucket: 'club-event', windowMs: 86400000, max: 30 }), clubs.addEvent);
+router.delete('/clubs/:id/events/:eventId', clubs.deleteEvent);
+router.post('/clubs/:id/rsvp', perUserLimit({ bucket: 'club-rsvp', windowMs: 3600000, max: 300 }), clubs.rsvp);
+router.get('/clubs/:id/posts', clubs.listPosts);
+router.post('/clubs/:id/posts', perUserLimit({ bucket: 'club-post', windowMs: 3600000, max: 60 }), clubs.createPost);
+router.delete('/clubs/:id/posts/:postId', clubs.deletePost);
+router.post('/clubs/:id/posts/:postId/react', clubs.react);
+router.get('/clubs/:id/posts/:postId/replies', clubs.listReplies);
+router.post('/clubs/:id/posts/:postId/replies', perUserLimit({ bucket: 'club-reply', windowMs: 3600000, max: 120 }), clubs.addReply);
+router.delete('/clubs/:id/posts/:postId/replies/:replyId', clubs.deleteReply);
 
 // FavRun, shared (2026-10-06): watch a run live, cheers, post to activity.
 // Static paths before /:id.

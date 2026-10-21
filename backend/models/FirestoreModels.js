@@ -67,7 +67,12 @@ const COLLECTIONS = {
   // member photos and tagged places keyed by eventId
   EVENTS: 'events',
   EVENT_PHOTOS: 'eventPhotos',
-  EVENT_PLACES: 'eventPlaces'
+  EVENT_PLACES: 'eventPlaces',
+  // Clubs widget (run clubs, book clubs…), 2026-10-21
+  CLUBS: 'clubs',
+  CLUB_RSVPS: 'clubRsvps',
+  CLUB_POSTS: 'clubPosts',
+  CLUB_REPLIES: 'clubReplies'
 };
 
 // User model structure
