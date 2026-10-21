@@ -13,6 +13,20 @@
    "A FavCoin 🌵 for joining"
   ]
  },
+ "clubs": {
+  "name": "Clubs",
+  "tagline": "Run clubs, walk groups, book clubs: who's in, when you meet, and what's new.",
+  "features": [
+   "Start a club (run, walk, ride, hike, swim, yoga, books or anything) and share one link to bring people in",
+   "Weekly meetups like \"Saturdays 7 AM at the park\", plus one-off events",
+   "Tap Going or Can't make it, see who's coming, and get a reminder an hour before",
+   "A bulletin for organizers' announcements, sent to every member as a notification",
+   "A message board where anyone can post, react and reply",
+   "Organizers and members: add co-organizers, remove people, close joining or reset the link",
+   "Mute a club anytime",
+   "A FavCoin 🌵 for joining"
+  ]
+ },
  "howareyou": {
   "name": "How Are You?",
   "tagline": "Check on Mom or Dad a few times a day.",
@@ -167,7 +181,7 @@
   "tagline": "Right now, the next hours and 10 days.",
   "features": [
    "The weather where you are, hour by hour and 10 days out",
-   "Or pick a place and keep it",
+   "Save the cities you care about and swipe between them, like the Weather app",
    "The temperature sits on the app's home screen too",
    "Live rain radar around US places, like the Weather app"
   ]
@@ -193,8 +207,10 @@
   "name": "Sleep Sounds",
   "tagline": "Rain, ocean, fire: mix and drift off.",
   "features": [
+   "Real recordings of rain, thunder, ocean waves, a stream, wind, crickets, a campfire and a heartbeat, plus white, pink and brown noise and a fan",
    "Mix sounds into your own blend",
-   "A timer that fades out gently, with controls on the Lock Screen"
+   "A timer that fades out gently, with controls on the Lock Screen",
+   "Works offline: the sounds are in the app"
   ]
  },
  "parking": {

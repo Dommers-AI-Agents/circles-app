@@ -656,6 +656,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case .eventOpen(let id):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "event-id:\(id)",
                                 object: "events", userInfo: ["eventId": id])
+        case .clubJoin(let token):
+            postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "club-token:\(token)",
+                                object: "clubs", userInfo: ["clubToken": token])
+        case .clubOpen(let id, let postId):
+            var info: [String: Any] = ["clubId": id]
+            if let postId { info["clubPostId"] = postId }
+            postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue,
+                                pending: postId.map { "club-id:\(id)/\($0)" } ?? "club-id:\(id)",
+                                object: "clubs", userInfo: info)
         case .runOpen(let id):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "run-id:\(id)",
                                 object: "run", userInfo: ["runId": id])

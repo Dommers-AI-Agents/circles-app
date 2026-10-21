@@ -872,6 +872,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             navigateToHomeTab(segment)
         case .eventOpen(let id):
             navigateToWidget(id: "events", eventId: id)
+        case .clubJoin(let token):
+            navigateToWidget(id: "clubs", clubToken: token)
+        case .clubOpen(let id):
+            navigateToWidget(id: "clubs", clubId: id)
         case .runJoin(let token):
             navigateToWidget(id: "run", runToken: token)
         case .referral(let code):
@@ -1418,6 +1422,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case .postcardShare(let token): self.navigateToWidget(id: "postcard", postcardShareToken: token)
             case .eventInvite(let token): self.navigateToWidget(id: "events", eventToken: token)
             case .eventOpen(let id): self.navigateToWidget(id: "events", eventId: id)
+            case .clubJoin(let token): self.navigateToWidget(id: "clubs", clubToken: token)
+            case .clubOpen(let id, let postId): self.navigateToWidget(id: "clubs", clubId: id, clubPostId: postId)
             case .runOpen(let id): self.navigateToWidget(id: "run", runId: id)
             case .runJoin(let token): self.navigateToWidget(id: "run", runToken: token)
             case .careAnswer(let askId): self.navigateToWidget(id: "howareyou", careAskId: askId)
@@ -2250,15 +2256,23 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                                   motivationSend: Bool = false, postcardShareToken: String? = nil,
                                   eventToken: String? = nil, eventId: String? = nil,
                                   runId: String? = nil, runToken: String? = nil, careAskId: String? = nil,
-                                  fridgeMailCardId: String? = nil) {
+                                  fridgeMailCardId: String? = nil, clubToken: String? = nil,
+                                  clubId: String? = nil, clubPostId: String? = nil) {
         guard AuthService.shared.isLoggedIn,
               let tabBar = window?.rootViewController as? CirclesTabBarController else {
             let motivation: String? = motivationSend ? motivationLineId.map { "motivation-send:\($0)" } : nil
             let share: String? = postcardShareToken.map { "postcard-share:\($0)" }
+            // Split up: one long ?? chain is too much for the type checker
+            var club: String? = clubToken.map { "club-token:\($0)" }
+            if club == nil, let clubId {
+                club = clubPostId.map { "club-id:\(clubId)/\($0)" } ?? "club-id:\(clubId)"
+            }
+            let widgetTarget: String? = careAskId.map { "care-ask:\($0)" }
+                ?? fridgeMailCardId.map { "fridgemail-card:\($0)" }
+                ?? club
             let event: String? = eventToken.map { "event:\($0)" } ?? eventId.map { "event-id:\($0)" }
                 ?? runId.map { "run-id:\($0)" } ?? runToken.map { "run-token:\($0)" }
-                ?? careAskId.map { "care-ask:\($0)" }
-                ?? fridgeMailCardId.map { "fridgemail-card:\($0)" }
+                ?? widgetTarget
             let pending: String = postcardOrderId.map { "postcard-order:\($0)" }
                 ?? quoteId.map { "quote:\($0)" }
                 ?? workoutPostId.map { "workout:\($0)" }
@@ -2279,7 +2293,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         home.showWidgetsTab(openingWidget: id, postcardOrderId: postcardOrderId, quoteId: quoteId, workoutPostId: workoutPostId,
                             motivationLineId: motivationLineId, motivationSend: motivationSend,
                             postcardShareToken: postcardShareToken, eventToken: eventToken, eventId: eventId,
-                            runId: runId, runToken: runToken, careAskId: careAskId, fridgeMailCardId: fridgeMailCardId)
+                            runId: runId, runToken: runToken, careAskId: careAskId, fridgeMailCardId: fridgeMailCardId,
+                            clubToken: clubToken, clubId: clubId, clubPostId: clubPostId)
     }
 
     /// A shared tab link: Home → that segment. Stashed like a widget link

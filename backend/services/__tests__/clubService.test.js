@@ -173,3 +173,18 @@ describe('the invite page', () => {
     expect(renderClubInvite('tok', null)).toContain("isn't valid");
   });
 });
+
+describe('upcoming list keeps one-off events (2026-10-21)', () => {
+  const { upcomingOccurrences } = require('../clubs/shared');
+  it('a twice-weekly club never pushes a far-off race off the list', () => {
+    const club = {
+      timezone: 'America/New_York',
+      schedule: [{ id: 'sat', weekday: 6, time: '07:00', title: 'Sat' }, { id: 'wed', weekday: 3, time: '18:30', title: 'Wed' }],
+      events: [{ id: 'race', title: 'Turkey Trot', startsAt: '2026-12-20T13:00:00Z' }]
+    };
+    const list = upcomingOccurrences(club, new Date('2026-10-21T12:00:00Z'));
+    expect(list.filter((o) => o.kind === 'meetup')).toHaveLength(12);
+    expect(list.map((o) => o.key)).toContain('e_race');
+    expect(list[list.length - 1].key).toBe('e_race');
+  });
+});

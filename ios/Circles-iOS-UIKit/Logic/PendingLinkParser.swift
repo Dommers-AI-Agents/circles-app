@@ -30,6 +30,10 @@ enum PendingLink: Equatable {
     case eventInvite(token: String)
     /// "event-id:<id>": an event push (joined / new photos) on a cold start.
     case eventOpen(id: String)
+    /// "club-token:<token>": a club invite link opened before the app was ready.
+    case clubJoin(token: String)
+    /// "club-id:<id>" or "club-id:<id>/<postId>": a club push on a cold start.
+    case clubOpen(id: String, postId: String?)
     /// "run-id:<id>": a run to watch (push or feed row) on a cold start.
     case runOpen(id: String)
     /// "run-token:<token>": a "watch my run" link opened before the app was ready.
@@ -104,6 +108,10 @@ enum PendingLinkParser {
         case "postcard-share": return .postcardShare(token: payload)
         case "event": return .eventInvite(token: payload)
         case "event-id": return .eventOpen(id: payload)
+        case "club-token": return .clubJoin(token: payload)
+        case "club-id":
+            let bits = payload.split(separator: "/", maxSplits: 1).map(String.init)
+            return bits.first.map { .clubOpen(id: $0, postId: bits.count > 1 ? bits[1] : nil) }
         case "run-id": return .runOpen(id: payload)
         case "run-token": return .runJoin(token: payload)
         case "care-ask": return .careAnswer(askId: payload)

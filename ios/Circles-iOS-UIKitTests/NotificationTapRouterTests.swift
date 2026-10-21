@@ -60,6 +60,16 @@ struct NotificationTapRouterTests {
         }
     }
 
+    @Test func clubPushesOpenTheClub() {
+        #expect(route(["type": "club_invite", "clubToken": "t1", "clubId": "c1"]) == .clubJoin(token: "t1"))
+        #expect(route(["type": "club_invite", "clubId": "c1"]) == .clubOpen(id: "c1", postId: nil))
+        for t in ["club_joined", "club_event", "club_bulletin"] {
+            #expect(route(["type": t, "clubId": "c1"]) == .clubOpen(id: "c1", postId: nil))
+        }
+        #expect(route(["type": "club_reply", "clubId": "c1", "postId": "p1"]) == .clubOpen(id: "c1", postId: "p1"))
+        #expect(route(["type": "club_bulletin"]) == .homeWidget(id: "clubs"))
+    }
+
     @Test func fridgeMailCardsOpenTheirCard() {
         // Pushes from 2026-10-18 on
         #expect(route(["type": "fridgemail", "cardId": "fm_abc"]) == .fridgeMailCard(id: "fm_abc"))

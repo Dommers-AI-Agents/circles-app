@@ -29,6 +29,7 @@ const POSTS_PAGE = 20;
 const REPLIES_MAX = 200;
 const UPCOMING_WEEKS = 6;
 const UPCOMING_LIMIT = 12;
+const MAX_LISTED_EVENTS = 20;
 // A meetup that started up to an hour ago is still "on" (people are running)
 const STILL_ON_MS = 60 * 60 * 1000;
 const LINK_BASE = `${process.env.API_PUBLIC_BASE_URL || 'https://api.favcircles.com'}/app/club/`;
@@ -195,7 +196,13 @@ function upcomingOccurrences(club, now = new Date(), { weeks = UPCOMING_WEEKS, l
       startsAt: event.startsAt, spot: event.spot || club.homeSpot || null, notes: event.notes || ''
     });
   }
-  return out.sort((a, b) => a.startsAt.localeCompare(b.startsAt)).slice(0, limit);
+  // The cap trims weekly meetups only: a one-off event (a race in five
+  // weeks) is the thing people most need to see and RSVP to, so a club that
+  // meets twice a week must never push it off the list
+  const byTime = (a, b) => a.startsAt.localeCompare(b.startsAt);
+  const meetups = out.filter((o) => o.kind === 'meetup').sort(byTime).slice(0, limit);
+  const events = out.filter((o) => o.kind === 'event').sort(byTime).slice(0, MAX_LISTED_EVENTS);
+  return [...meetups, ...events].sort(byTime);
 }
 
 /** "Thu, Nov 27 · 8 AM" on the club's calendar. */

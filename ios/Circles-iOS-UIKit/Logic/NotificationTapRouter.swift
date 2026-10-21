@@ -24,6 +24,11 @@ enum NotificationDestination: Equatable {
     /// How Are You?: one answer (its push, a reaction or a comment on it) —
     /// the answer, reactions, comments and that question's history.
     case careAnswer(askId: String)
+    /// A club invite push: the Clubs join screen.
+    case clubJoin(token: String)
+    /// A club push (bulletin, new event, reply, someone joined): that club,
+    /// and the post's thread when it's about one.
+    case clubOpen(id: String, postId: String?)
     /// A mailed Fridge Mail card ("printing / out for delivery / delivered"):
     /// that card, as printed, with its status.
     case fridgeMailCard(id: String)
@@ -104,6 +109,13 @@ enum NotificationTapRouter {
             return .homeWidget(id: "postcard")
         case "water_reminder": return .homeWidget(id: "water")
         case "motivation_reminder": return .homeWidget(id: "motivation")
+        case "club_invite":
+            if let token = string("clubToken", in: userInfo) { return .clubJoin(token: token) }
+            if let id = string("clubId", in: userInfo) { return .clubOpen(id: id, postId: nil) }
+            return .homeWidget(id: "clubs")
+        case "club_joined", "club_event", "club_bulletin", "club_reply":
+            if let id = string("clubId", in: userInfo) { return .clubOpen(id: id, postId: string("postId", in: userInfo)) }
+            return .homeWidget(id: "clubs")
         case "event_invite":
             if let token = string("eventToken", in: userInfo) { return .eventInvite(token: token) }
             return .homeWidget(id: "events")

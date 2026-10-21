@@ -223,6 +223,12 @@ struct EventInviteLinkTests {
         #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/event/abcdefghijklmnopqrst")!) == .eventInvite(token: "abcdefghijklmnopqrst"))
         #expect(router.destination(for: URL(string: "circles://event/abcdefghijklmnopqrst")!) == .eventInvite(token: "abcdefghijklmnopqrst"))
         #expect(router.destination(for: URL(string: "circles:///event/abcdefghijklmnopqrst")!) == .eventInvite(token: "abcdefghijklmnopqrst"))
+        // Clubs (2026-10-21): the shared link, the page's button, a club pin
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/club/abcdefghijklmnopqrst")!) == .clubJoin(token: "abcdefghijklmnopqrst"))
+        #expect(router.destination(for: URL(string: "circles://club/abcdefghijklmnopqrst")!) == .clubJoin(token: "abcdefghijklmnopqrst"))
+        #expect(router.destination(for: URL(string: "circles:///club/abcdefghijklmnopqrst")!) == .clubJoin(token: "abcdefghijklmnopqrst"))
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/widget/clubs?club=c1")!) == .clubOpen(id: "c1"))
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/widget/clubs")!) == .widget(id: "clubs"))
         #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/event")!) == nil)
     }
 }

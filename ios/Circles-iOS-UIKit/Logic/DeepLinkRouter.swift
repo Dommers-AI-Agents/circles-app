@@ -56,6 +56,11 @@ enum DeepLinkDestination: Equatable {
     /// One event, opened in the Events widget — `/app/widget/events?event=<id>`
     /// (the event's lock-screen display).
     case eventOpen(id: String)
+    /// A club invite — `/app/club/<token>` (the link a club shares) or
+    /// `circles://club/<token>` (the page's button). Opens Clubs on the join screen.
+    case clubJoin(token: String)
+    /// One club, opened in the Clubs widget — `/app/widget/clubs?club=<id>`.
+    case clubOpen(id: String)
     /// A "watch my run" link — `/app/run/<token>`. Opens FavRun on it.
     case runJoin(token: String)
     /// A shared home tab — `/app/tab/<local|widgets>` or `circles://tab/<slug>`
@@ -104,6 +109,9 @@ struct DeepLinkRouter {
                 if parts.count >= 3, parts[2] == "events", let eventId = query(url, "event"), !eventId.isEmpty {
                     return .eventOpen(id: eventId)
                 }
+                if parts.count >= 3, parts[2] == "clubs", let clubId = query(url, "club"), !clubId.isEmpty {
+                    return .clubOpen(id: clubId)
+                }
                 return parts.count >= 3 ? .widget(id: parts[2]) : nil
             case "quote":
                 return parts.count >= 3 ? .quote(id: parts[2]) : nil
@@ -113,6 +121,8 @@ struct DeepLinkRouter {
                 return parts.count >= 3 ? .postcardShare(token: parts[2]) : nil
             case "event":
                 return parts.count >= 3 ? .eventInvite(token: parts[2]) : nil
+            case "club":
+                return parts.count >= 3 ? .clubJoin(token: parts[2]) : nil
             case "run":
                 return parts.count >= 3 ? .runJoin(token: parts[2]) : nil
             case "tab":
@@ -199,6 +209,8 @@ struct DeepLinkRouter {
             return .postcardShare(token: hostPathId)
         case "event" where !hostPathId.isEmpty:
             return .eventInvite(token: hostPathId)
+        case "club" where !hostPathId.isEmpty:
+            return .clubJoin(token: hostPathId)
         case "tab" where !hostPathId.isEmpty:
             return HomeContentSegment(shareSlug: hostPathId).map(DeepLinkDestination.homeTab)
         case "network":
@@ -233,6 +245,8 @@ struct DeepLinkRouter {
             return .postcardShare(token: parts[2])
         case "event" where parts.count >= 3:
             return .eventInvite(token: parts[2])
+        case "club" where parts.count >= 3:
+            return .clubJoin(token: parts[2])
         case "tab" where parts.count >= 3:
             return HomeContentSegment(shareSlug: parts[2]).map(DeepLinkDestination.homeTab)
         case "connect" where parts.count >= 3:

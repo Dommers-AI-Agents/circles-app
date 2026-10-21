@@ -170,7 +170,8 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
               drinkId: String? = nil, motivationLineId: String? = nil, motivationSend: Bool = false,
               postcardShareToken: String? = nil, eventToken: String? = nil, eventId: String? = nil,
               runId: String? = nil, runToken: String? = nil, careAskId: String? = nil,
-              fridgeMailCardId: String? = nil) {
+              fridgeMailCardId: String? = nil, clubToken: String? = nil,
+              clubId: String? = nil, clubPostId: String? = nil) {
         guard ensureModel(), let model,
               let descriptor = model.descriptors.first(where: { $0.id == widgetId }),
               let widget = model.widget(for: descriptor) else { return }
@@ -198,6 +199,12 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         if widgetId == "howareyou", let careAskId { context.launchCareAskId = careAskId }
         // Fridge Mail: a card's push or bell row opens that card
         if widgetId == "fridgemail", let fridgeMailCardId { context.launchFridgeMailCardId = fridgeMailCardId }
+        // Clubs: an invite link opens the join screen; a club push opens the club (and the post)
+        if widgetId == "clubs" {
+            if let clubToken { context.launchClubToken = clubToken }
+            if let clubId { context.launchClubId = clubId }
+            if let clubPostId { context.launchClubPostId = clubPostId }
+        }
         // A shared workout tapped in the activity feed opens over the page
         if widgetId == "workouts", let workoutPostId { context.launchWorkoutPostId = workoutPostId }
         // A drink a friend sent, tapped in chat, opens on that recipe

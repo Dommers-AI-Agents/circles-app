@@ -1,6 +1,6 @@
 {
   "_readme": "Source for favcircles.com/widgets.html. Edit here, then run: node website/tools/build-widgets-page.js — and upload widgets.html (see the website SFTP notes). Keep in step with the favcircles-widgets registry: every widget in FavWidgetRegistry.all appears here, new features get a line.",
-  "updated": "2026-10-19",
+  "updated": "2026-10-21",
   "groups": [
     {
       "title": "Family & friends",
@@ -8,6 +8,8 @@
         { "id": "events", "emoji": "🎉", "name": "Events", "tagline": "Party bus, trip or night out: photos and videos only your group sees.",
           "features": ["Start an event and drop one link in the group text, or invite friends in the app", "A shared album of photos and videos only the people who joined can see, from the camera or your photo library",
     "Video clips up to 15 seconds free (5 per event), or up to a minute with Premium", "Download every photo and video of the night to your Photos in one tap, zoom in on any photo, and save or share a single clip", "Tap anyone in the event to see their profile", "Tag the places you went and save them to a circle named after the event", "Roll call (\"everyone here?\") and photo challenges to keep the night fun", "A FavCoin 🌵 for joining"] },
+        { "id": "clubs", "emoji": "👟", "name": "Clubs", "tagline": "Run clubs, walk groups, book clubs: who's in, when you meet, and what's new.",
+          "features": ["Start a club (run, walk, ride, hike, swim, yoga, books or anything) and share one link to bring people in", "Weekly meetups like \"Saturdays 7 AM at the park\", plus one-off events", "Tap Going or Can't make it, see who's coming, and get a reminder an hour before", "A bulletin for organizers' announcements, sent to every member as a notification", "A message board where anyone can post, react and reply", "Organizers and members: add co-organizers, remove people, close joining or reset the link", "Mute a club anytime", "A FavCoin 🌵 for joining"] },
         { "id": "howareyou", "emoji": "💬", "name": "How Are You?", "tagline": "Check on Mom or Dad a few times a day.",
           "features": ["Questions at the times you pick; they answer with one tap from the Lock Screen", "Questions fit their life: pain from 0 to 10, meds, sleep, PT days, rides", "A heads-up when an answer needs attention, or when they go quiet", "Brothers and sisters can join the same check-in", "Send love on any answer, and say \"I'll call\" so the family knows it's handled", "Your parent sees their own week, trends and streaks too"] },
         { "id": "postcard", "emoji": "📮", "name": "Postcard", "tagline": "A real postcard from your trip photo.",
