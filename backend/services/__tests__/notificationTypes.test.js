@@ -35,7 +35,9 @@ const OLD_TYPE_MAP = {
 };
 const OLD_BADGE_WORTHY = ['new_message', 'connection_request', 'connection_accepted', 'place_like', 'place_comment', 'new_follower',
   'activity_reaction', 'activity_comment', 'check_in', 'new_suggestion', 'moment_tag', 'circle_invite', 'store_claim',
-  'store_claim_approved', 'premium_signup', 'did_you_know', 'check_in_response'];
+  'store_claim_approved', 'premium_signup', 'did_you_know', 'check_in_response',
+  // Order ahead (2026-10-20)
+  'order_new', 'order_update'];
 
 test('categories match the old switch', () => {
   const derived = Object.fromEntries(Object.keys(TYPES).map((t) => [t, categoryFor(t)]).filter(([, c]) => c));
@@ -67,7 +69,7 @@ test('the rows a person can catch up on in Notifications (Wes, 2026-10-01)', () 
     'care_accepted', 'care_alert_response', 'care_comment', 'care_invite', 'care_silence', 'care_watcher_accepted', 'care_watcher_declined',
     'care_watcher_invite', 'care_watcher_joined', 'care_watcher_removed', 'care_watcher_request',
     'check_in_response', 'event_invite', 'event_joined', 'favcoin_claim_settled', 'fridgemail', 'milestone', 'nextbar_result',
-    'nextbar_round', 'postcard_order', 'run_live_finished', 'run_live_invite', 'store_alert'
+    'nextbar_round', 'order_new', 'order_update', 'postcard_order', 'run_live_finished', 'run_live_invite', 'store_alert'
   ]);
   // Reminders, digests and the questions themselves stay push-only
   ['engagement_reminder', 'reengagement', 'daily_summary', 'weekly_summary', 'daily_quote', 'care_ask', 'care_answer',
@@ -79,9 +81,12 @@ test('the rows a person can catch up on in Notifications (Wes, 2026-10-01)', () 
 });
 
 
-test('only the How Are You? questions and the unanswered alert go out Time Sensitive (Wes, 2026-10-02)', () => {
+// Someone waiting on it right now: the How Are You? questions and the
+// unanswered alert (Wes, 2026-10-02), and order-ahead orders: a customer is
+// waiting at the counter or for "ready" (2026-10-20)
+test('only what someone is waiting on right now goes out Time Sensitive', () => {
   expect(Object.keys(TYPES).filter(isUrgent).sort()).toEqual([
-    'care_ask', 'care_ask_done', 'care_ask_scale', 'care_ask_text', 'care_ask_yesno', 'care_silence'
+    'care_ask', 'care_ask_done', 'care_ask_scale', 'care_ask_text', 'care_ask_yesno', 'care_silence', 'order_new', 'order_update'
   ]);
   expect(isUrgent('new_message')).toBe(false);
   expect(isUrgent('unknown')).toBe(false);

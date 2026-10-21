@@ -98,6 +98,7 @@ describe('what the customer sees', () => {
       offeringsLabel: 'Products',
       offerings: { link: null, files: [], featured: [] },
       menu: { sections: [], source: 'manual', updatedAt: null },
+      ordering: { enabled: false, leadMinutes: 15, note: null },
       actions: { reserve: null, order: null, catering: null, book: null },
       gallery: []
     });

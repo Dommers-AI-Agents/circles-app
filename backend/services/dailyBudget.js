@@ -31,7 +31,10 @@ const BUCKETS = {
   connectionRequest: { env: 'CONNECTION_REQUEST_DAILY_BUDGET', limit: 200, failOpen: true },
   // Store-owner scans (menu/hours/flyer), counted per VENUE: paid model
   // calls, so fail closed
-  venueScan: { env: 'VENUE_SCAN_DAILY_BUDGET', limit: 20, failOpen: false }
+  venueScan: { env: 'VENUE_SCAN_DAILY_BUDGET', limit: 20, failOpen: false },
+  // Order-ahead orders a customer places in a day (a script can't flood a
+  // store's counter); fail open so a Firestore blip never blocks lunch
+  orderPlace: { env: 'ORDER_PLACE_DAILY_BUDGET', limit: 20, failOpen: true }
 };
 
 const dayKey = (now = new Date()) => now.toISOString().slice(0, 10);

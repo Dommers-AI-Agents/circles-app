@@ -47,6 +47,11 @@ const TYPES = {
   // on its bell (services/placeAlerts.js). Muted by 'Stores you follow'.
   store_alert:             { category: null,                      pref: 'storeAlerts',            badge: false, record: true },
   store_claim_approved:    { category: null,                      pref: null,                     badge: true },
+  // Order ahead (services/orders): a new or cancelled order to the store's
+  // team, and each step (accepted, ready, declined, not answered) to the
+  // customer. Someone is waiting on both, so Time Sensitive.
+  order_new:               { category: null,                      pref: null,                     badge: true, record: true, urgent: true },
+  order_update:            { category: null,                      pref: null,                     badge: true, record: true, urgent: true },
   premium_signup:          { category: null,                      pref: null,                     badge: true },
   // Operational alerts to the admin account (services/adminAlerts.js)
   admin_alert:             { category: null,                      pref: null,                     badge: false },

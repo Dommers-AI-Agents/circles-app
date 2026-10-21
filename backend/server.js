@@ -707,6 +707,8 @@ app.use('/api/clip', require('./routes/clipRoutes')); // iOS App Clip (public ve
 app.use('/api/leads', require('./routes/leadRoutes')); // favcircles.com email capture (public)
 app.use('/api/piggy-bank', require('./routes/piggyBankRoutes')); // FavCoin piggy bank (separate from store-loyalty rewards)
 app.use('/api/home', require('./routes/dashboardRoutes'));
+// Order ahead from a store's menu, pay at pickup (services/orders)
+app.use('/api/orders', require('./routes/orderRoutes'));
 app.use('/api/widgets', require('./routes/widgetRoutes')); // Home Widgets tab: per-widget JSON docs + postcard send
 
 // Notification test routes (development only)

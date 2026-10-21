@@ -164,5 +164,10 @@ router.put('/venues/:venueId/storefront/gallery', requireVenueOwner, requireOwne
 // The full menu, and scans (menu photo / hours sign / flyer → a draft), Business
 router.put('/venues/:venueId/storefront/menu', requireVenueOwner, requireOwnerPremium, storefront.updateMenu);
 router.post('/venues/:venueId/scan', requireVenueOwner, requireOwnerPremium, storefront.scan);
+// Order ahead (pay at pickup): the store's orders and its on/off setting, Business
+const venueOrders = require('../controllers/venues/venueOrdersController');
+router.get('/venues/:venueId/orders', requireVenueOwner, requireOwnerPremium, venueOrders.list);
+router.post('/venues/:venueId/orders/:orderId/:action', requireVenueOwner, requireOwnerPremium, venueOrders.act);
+router.put('/venues/:venueId/ordering', requireVenueOwner, requireOwnerPremium, venueOrders.saveSettings);
 
 module.exports = router;

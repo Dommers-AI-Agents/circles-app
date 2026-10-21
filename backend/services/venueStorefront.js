@@ -171,6 +171,8 @@ const publicStorefront = (venue, { live }) => {
     offeringsLabel: offeringsLabel(venue.category),
     offerings: hasOfferings ? offerings : null,
     menu,
+    // Order ahead from the menu, pay at pickup (services/orders)
+    ordering: require('./orders/orderRules').orderingFor(venue, { live }),
     actions: hasAnyAction ? actions : null,
     gallery
   };
@@ -183,6 +185,7 @@ const ownerStorefront = (venue) => {
     offeringsLabel: offeringsLabel(venue.category),
     offerings: s.offerings || { link: null, files: [], featured: [] },
     menu: s.menu || { sections: [], source: 'manual', updatedAt: null },
+    ordering: venue.ordering || { enabled: false, leadMinutes: 15, note: null },
     actions: Object.fromEntries(ACTION_KEYS.map((k) => [k, (s.actions && s.actions[k]) || null])),
     gallery: Array.isArray(s.gallery) ? s.gallery : []
   };
