@@ -38,7 +38,8 @@ const parseMotivationSend = (body, senderId) => {
 };
 
 /** What the friend's chat, push and conversation list show. */
-const chatText = (line) => `📣 Coach Mane says: ${line}`;
+const GYM_VIDEO_URL = 'https://www.tiktok.com/t/ZTfBJR7gQ/'; // Wes, 2026-10-21
+const chatText = (line) => `📣 Coach Mane says: ${line}\n▶ Go to the gym: ${GYM_VIDEO_URL}`;
 
 // @desc    Send a Coach Mane line to a connection's chat
 // @route   POST /api/widgets/motivation/send

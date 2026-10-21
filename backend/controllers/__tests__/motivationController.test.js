@@ -31,6 +31,6 @@ describe('parseMotivationSend', () => {
     expect(codeOf(() => parseMotivationSend(null, 'wes'))).toBe('invalid_recipient');
   });
   test('the chat text matches the app (MotivationShareText.chatText)', () => {
-    expect(chatText('Get up.')).toBe('📣 Coach Mane says: Get up.');
+    expect(chatText('Get up.')).toBe('📣 Coach Mane says: Get up.\n▶ Go to the gym: https://www.tiktok.com/t/ZTfBJR7gQ/');
   });
 });
