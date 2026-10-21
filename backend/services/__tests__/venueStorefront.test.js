@@ -97,6 +97,7 @@ describe('what the customer sees', () => {
     expect(own).toEqual({
       offeringsLabel: 'Products',
       offerings: { link: null, files: [], featured: [] },
+      menu: { sections: [], source: 'manual', updatedAt: null },
       actions: { reserve: null, order: null, catering: null, book: null },
       gallery: []
     });

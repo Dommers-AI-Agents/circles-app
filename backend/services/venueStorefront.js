@@ -15,6 +15,10 @@ const MAX_FEATURED_ITEMS = 8;
 const MAX_MENU_FILES = 6;
 const MAX_GALLERY_PHOTOS = 12;
 const MAX_TAGS_PER_ITEM = 3;
+// The full menu (2026-10-20): sections of items, usually filled by scanning
+// the printed menu (services/scan). Featured items stay the highlights.
+const MAX_MENU_SECTIONS = 30;
+const MAX_MENU_ITEMS = 400;
 
 const ACTION_KEYS = ['reserve', 'order', 'catering', 'book'];
 const ACTION_LABELS = { reserve: 'Reserve', order: 'Order', catering: 'Catering', book: 'Book' };
@@ -85,6 +89,40 @@ const normalizeOfferings = (input = {}) => {
   return { value: out, errors };
 };
 
+/**
+ * The full menu: { sections: [{ id, name, items: [{ id, name, price,
+ * description, tags }] }] }. Empty sections and nameless items are dropped;
+ * over the limits is an error so the editor can say so.
+ */
+const normalizeMenu = (input = {}) => {
+  const errors = [];
+  const sections = Array.isArray(input.sections) ? input.sections : [];
+  if (sections.length > MAX_MENU_SECTIONS) errors.push(`at most ${MAX_MENU_SECTIONS} sections`);
+  const total = sections.reduce((n, s) => n + (Array.isArray(s && s.items) ? s.items.length : 0), 0);
+  if (total > MAX_MENU_ITEMS) errors.push(`at most ${MAX_MENU_ITEMS} items`);
+  const out = [];
+  sections.slice(0, MAX_MENU_SECTIONS).forEach((s, si) => {
+    const items = [];
+    (Array.isArray(s && s.items) ? s.items : []).forEach((it, ii) => {
+      const name = cleanText(it && it.name, 80);
+      if (!name) return;
+      items.push({
+        id: cleanText(it.id, 40) || `i_${Date.now().toString(36)}_${si}_${ii}`,
+        name,
+        price: cleanText(it.price, 20) || null,
+        description: cleanText(it.description, 300) || null,
+        tags: (Array.isArray(it.tags) ? it.tags : []).map((t) => cleanText(t, 24)).filter(Boolean).slice(0, MAX_TAGS_PER_ITEM)
+      });
+    });
+    if (!items.length) return;
+    out.push({ id: cleanText(s.id, 40) || `s_${Date.now().toString(36)}_${si}`, name: cleanText(s.name, 60) || 'Menu', items });
+  });
+  const source = input.source === 'scan' ? 'scan' : 'manual';
+  return { value: { sections: out, source, updatedAt: new Date().toISOString() }, errors };
+};
+
+const hasMenu = (menu) => !!(menu && Array.isArray(menu.sections) && menu.sections.some((s) => (s.items || []).length));
+
 /** Each action is a URL or absent. Unknown keys are dropped, not errors. */
 const normalizeActions = (input = {}) => {
   const errors = [];
@@ -126,11 +164,13 @@ const publicStorefront = (venue, { live }) => {
   const hasAnyAction = ACTION_KEYS.some((k) => actions[k]);
   const offerings = live && s.offerings ? s.offerings : null;
   const gallery = live && Array.isArray(s.gallery) ? s.gallery : [];
+  const menu = live && hasMenu(s.menu) ? { sections: s.menu.sections, updatedAt: s.menu.updatedAt || null } : null;
   const hasOfferings = !!(offerings && (offerings.link || (offerings.files || []).length || (offerings.featured || []).length));
-  if (!hasAnyAction && !hasOfferings && !gallery.length) return null;
+  if (!hasAnyAction && !hasOfferings && !gallery.length && !menu) return null;
   return {
     offeringsLabel: offeringsLabel(venue.category),
     offerings: hasOfferings ? offerings : null,
+    menu,
     actions: hasAnyAction ? actions : null,
     gallery
   };
@@ -142,6 +182,7 @@ const ownerStorefront = (venue) => {
   return {
     offeringsLabel: offeringsLabel(venue.category),
     offerings: s.offerings || { link: null, files: [], featured: [] },
+    menu: s.menu || { sections: [], source: 'manual', updatedAt: null },
     actions: Object.fromEntries(ACTION_KEYS.map((k) => [k, (s.actions && s.actions[k]) || null])),
     gallery: Array.isArray(s.gallery) ? s.gallery : []
   };
@@ -149,7 +190,8 @@ const ownerStorefront = (venue) => {
 
 module.exports = {
   MAX_FEATURED_ITEMS, MAX_MENU_FILES, MAX_GALLERY_PHOTOS, MAX_TAGS_PER_ITEM,
+  MAX_MENU_SECTIONS, MAX_MENU_ITEMS,
   ACTION_KEYS, ACTION_LABELS,
-  offeringsLabel, normalizeOfferings, normalizeActions, normalizeGallery,
+  offeringsLabel, normalizeOfferings, normalizeActions, normalizeGallery, normalizeMenu, hasMenu,
   publicStorefront, ownerStorefront
 };

@@ -45,6 +45,7 @@
     "pdfkit": "^0.19.1",
     "qrcode": "^1.5.4",
     "rss-parser": "^3.13.0",
+    "sharp": "^0.33.2",
     "staticmaps": "^1.13.1",
     "stripe": "^22.6.2",
     "uuid": "^11.1.0",

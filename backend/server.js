@@ -172,6 +172,8 @@ app.use('/api/widgets/postcard/mail/upload', express.json({ limit: '8mb' }));
 app.use('/api/widgets/workouts/history', express.json({ limit: '3mb' }));
 app.use('/api/import', express.json({ limit: '5mb' }));
 app.use('/api/users/contacts', express.json({ limit: '5mb' }));
+// Store-owner scans: up to 4 photos as base64 (≤ 8 MB decoded, services/scan/images)
+app.use(/^\/api\/rewards\/venues\/[^/]+\/scan$/, express.json({ limit: '12mb' }));
 app.use(express.json({ limit: '1mb' }));
 // Mirror message<->error keys on all error responses (see middleware file)
 app.use(require('./middleware/responseNormalizer'));

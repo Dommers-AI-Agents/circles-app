@@ -5,6 +5,7 @@
 const { getFirestore } = require('../../config/firebase');
 const { STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const storefront = require('../../services/venueStorefront');
+const { sendServiceError } = require('../../utils/serviceError');
 const db = getFirestore();
 
 const save = async (venueId, key, value) => {
@@ -33,6 +34,34 @@ exports.updateOfferings = async (req, res) => {
   } catch (error) {
     console.error('❌ Failed to update offerings:', error);
     res.status(500).json({ success: false, error: 'Failed to save' });
+  }
+};
+
+// @route PUT /api/rewards/venues/:venueId/storefront/menu   (Business)
+//        body: { sections: [{ id?, name, items: [{ id?, name, price?, description?, tags? }] }], source? }
+exports.updateMenu = async (req, res) => {
+  try {
+    const { value, errors } = storefront.normalizeMenu(req.body || {});
+    if (errors.length) return res.status(400).json({ success: false, error: errors.join('. ') });
+    await save(req.venue.venueId, 'menu', value);
+    reply(res, req.venue, 'menu', value);
+  } catch (error) {
+    console.error('❌ Failed to update menu:', error);
+    res.status(500).json({ success: false, error: 'Failed to save' });
+  }
+};
+
+// @route POST /api/rewards/venues/:venueId/scan   (Business)
+//        body: { kind: 'menu' | 'hours' | 'flyer', images: [base64] }
+// A draft for the matching editor; nothing is saved (services/scan).
+exports.scan = async (req, res) => {
+  try {
+    const result = await require('../../services/scan').scan({
+      kind: (req.body || {}).kind, images: (req.body || {}).images, venue: req.venue, userId: req.user.uid
+    });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Venue scan failed', fallbackCode: 'scan_failed', fallbackMessage: 'Couldn\u2019t read that photo. Try again or fill it in by hand.' });
   }
 };
 

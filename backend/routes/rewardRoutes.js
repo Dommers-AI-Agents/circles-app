@@ -161,5 +161,8 @@ router.get('/venues/:venueId/storefront', requireVenueOwner, storefront.getStore
 router.put('/venues/:venueId/storefront/actions', requireVenueOwner, storefront.updateActions);
 router.put('/venues/:venueId/storefront/offerings', requireVenueOwner, requireOwnerPremium, storefront.updateOfferings);
 router.put('/venues/:venueId/storefront/gallery', requireVenueOwner, requireOwnerPremium, storefront.updateGallery);
+// The full menu, and scans (menu photo / hours sign / flyer → a draft), Business
+router.put('/venues/:venueId/storefront/menu', requireVenueOwner, requireOwnerPremium, storefront.updateMenu);
+router.post('/venues/:venueId/scan', requireVenueOwner, requireOwnerPremium, storefront.scan);
 
 module.exports = router;

@@ -28,7 +28,10 @@ const BUCKETS = {
   // Sized so an enthusiastic real person never hits them (viral invites), only scripts
   email: { env: 'EMAIL_DAILY_BUDGET', limit: 100, failOpen: true },
   placesLookup: { env: 'PLACES_LOOKUP_DAILY_BUDGET', limit: 30, failOpen: false },
-  connectionRequest: { env: 'CONNECTION_REQUEST_DAILY_BUDGET', limit: 200, failOpen: true }
+  connectionRequest: { env: 'CONNECTION_REQUEST_DAILY_BUDGET', limit: 200, failOpen: true },
+  // Store-owner scans (menu/hours/flyer), counted per VENUE: paid model
+  // calls, so fail closed
+  venueScan: { env: 'VENUE_SCAN_DAILY_BUDGET', limit: 20, failOpen: false }
 };
 
 const dayKey = (now = new Date()) => now.toISOString().slice(0, 10);
