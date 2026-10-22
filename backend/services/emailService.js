@@ -43,11 +43,12 @@ class EmailService {
         // Create a dummy transporter that logs instead of sending
         this.createMockTransporter();
       } else {
-        // Pooled: the host (mail.favcircles.com) caps concurrent SMTP
-        // connections per IP and answered "421 Too many concurrent SMTP
-        // connections" to most of a 30-recipient fan-out (every summary email
-        // to Wes, Brittany, Sal… bounced this way from 2026-09-05 on). A pool
-        // of 2 connections queues sends instead of opening one socket each.
+        // Pooled: GoDaddy's mail.favcircles.com (the main route until
+        // 2026-10-21) caps concurrent SMTP connections per IP and answered
+        // "421 Too many concurrent SMTP connections" to most of a 30-recipient
+        // fan-out. A pool queues sends instead of opening one socket each;
+        // SES (main since 2026-10-21) takes SMTP_MAX_CONNECTIONS=5 and
+        // SMTP_RATE_LIMIT=10 (its default allows 14/s).
         this.transporter = nodemailer.createTransport({
           host: process.env.SMTP_HOST,
           port: parseInt(process.env.SMTP_PORT || '587'),
@@ -119,11 +120,12 @@ class EmailService {
   // public half lives in Cloudflare DNS at <selector>._domainkey.favcircles.com;
   // the private key rides in as one base64 line (DKIM_PRIVATE_KEY_B64).
   /**
-   * A second SMTP route (Amazon SES), used only when the primary server
-   * refuses or can't be reached — its connection cap was the one thing a
-   * signup surge would break (viral-growth review, 2026-10-01). Off unless
-   * SMTP_FALLBACK_HOST/USER/PASS are set. SES signs with its own Easy DKIM
-   * for favcircles.com, so our DKIM key isn't added here.
+   * A second SMTP route, used only when the main one refuses or can't be
+   * reached. Off unless SMTP_FALLBACK_HOST/USER/PASS are set. Since
+   * 2026-10-21 Amazon SES is the main route and GoDaddy's mail.favcircles.com
+   * the backup (it timed out and capped concurrent connections; SES never
+   * failed), so the pool defaults suit GoDaddy's cap and our DKIM key signs
+   * here too (GoDaddy won't sign; SES adds its own Easy DKIM on top).
    */
   setupFallbackTransport() {
     const { SMTP_FALLBACK_HOST: host, SMTP_FALLBACK_USER: user, SMTP_FALLBACK_PASS: pass } = process.env;
@@ -133,10 +135,11 @@ class EmailService {
       host, port, secure: port === 465,
       auth: { user, pass },
       pool: true,
-      maxConnections: parseInt(process.env.SMTP_FALLBACK_MAX_CONNECTIONS || '5', 10),
+      maxConnections: parseInt(process.env.SMTP_FALLBACK_MAX_CONNECTIONS || '2', 10),
       rateDelta: 1000,
-      rateLimit: parseInt(process.env.SMTP_FALLBACK_RATE_LIMIT || '10', 10), // SES default: 14/s
-      tls: { rejectUnauthorized: true, servername: host }
+      rateLimit: parseInt(process.env.SMTP_FALLBACK_RATE_LIMIT || '3', 10),
+      tls: { rejectUnauthorized: true, servername: host },
+      ...EmailService.dkimOptions()
     });
     this.fallbackTransporter.use('compile', require('./emailSuppression').transportPlugin);
     console.log(`📧 SMTP fallback configured: ${host}:${port}`);

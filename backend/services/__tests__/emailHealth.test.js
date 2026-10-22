@@ -36,10 +36,49 @@ test('dashboard shows live route checks and a zero-filled day series', async () 
   expect(out.today.primarySent).toBe(1);
 });
 
-test('hourly check alerts when a route cannot log in', async () => {
+const withHosts = async (main, backup, fn) => {
+  const saved = { main: process.env.SMTP_HOST, backup: process.env.SMTP_FALLBACK_HOST };
+  process.env.SMTP_HOST = main;
+  process.env.SMTP_FALLBACK_HOST = backup;
+  try { await fn(); } finally {
+    if (saved.main === undefined) delete process.env.SMTP_HOST; else process.env.SMTP_HOST = saved.main;
+    if (saved.backup === undefined) delete process.env.SMTP_FALLBACK_HOST; else process.env.SMTP_FALLBACK_HOST = saved.backup;
+  }
+};
+const SES = 'email-smtp.us-east-2.amazonaws.com';
+const GODADDY = 'mail.favcircles.com';
+
+test('hourly check alerts when the main route cannot log in, naming each route by host', () => withHosts(SES, GODADDY, async () => {
   const { alerts, deps } = setup();
   const emailService = { transporter: { verify: async () => { throw new Error('ECONNREFUSED'); } }, fallbackTransporter: { verify: async () => true } };
   await health.healthCheck({ ...deps, emailService });
   expect(alerts.map((a) => a.key)).toEqual(['email_check_primary']);
-  expect(alerts[0].body).toContain('SES backup is working');
-});
+  expect(alerts[0].body).toContain('Amazon SES');
+  expect(alerts[0].body).toContain('mail.favcircles.com backup is working');
+}));
+
+test('a backup that misses one hourly check is a blip; three in a row alert, and an answer resets the count', () => withHosts(SES, GODADDY, async () => {
+  const { alerts, deps } = setup();
+  let backupUp = false;
+  const emailService = {
+    transporter: { verify: async () => true },
+    fallbackTransporter: { verify: async () => { if (!backupUp) throw new Error('Connection timeout'); return true; } }
+  };
+  const check = () => health.healthCheck({ ...deps, emailService });
+  await check(); await check();
+  expect(alerts).toEqual([]);
+  backupUp = true; await check();
+  backupUp = false; await check(); await check();
+  expect(alerts).toEqual([]);
+  await check();
+  expect(alerts.map((a) => a.key)).toEqual(['email_check_fallback']);
+  expect(alerts[0].body).toContain('mail.favcircles.com');
+  expect(alerts[0].body).toContain('Failed 3 hourly checks in a row');
+}));
+
+test('the fallback alert names the routes from their hosts', () => withHosts(SES, GODADDY, async () => {
+  const { alerts, deps } = setup();
+  await health.record('fallback', { to: 'a@b.com', primaryError: 'Connection timeout' }, deps);
+  expect(alerts[0].title).toBe('Main mail route is refusing — mail.favcircles.com backup is sending');
+  expect(alerts[0].body).toContain('Amazon SES refused');
+}));

@@ -339,19 +339,21 @@
         ${r.error ? `<div class="sub" style="color:#B83232;white-space:normal">${esc(r.error)}</div>` : ''}</div>`;
     };
     $('#ehChecked').textContent = `checked ${new Date(d.status.checkedAt).toLocaleTimeString()}`;
-    $('#ehRoutes').innerHTML = route('Main mail server', d.status.primary, 'sends every email') +
-      route('Amazon SES backup', d.status.fallback, 'takes over when the main server refuses or is down');
+    const main = d.status.primary.name || 'Main mail route';
+    const backup = d.status.fallback.name || 'Backup';
+    $('#ehRoutes').innerHTML = route(`Main: ${main}`, d.status.primary, 'sends every email') +
+      route(`Backup: ${backup}`, d.status.fallback, 'takes over when the main route refuses or is down');
     const t = d.today || {};
     const week = d.byDay.slice(-7).reduce((a, r) => ({ sent: a.sent + r.primarySent + r.fallbackSent, failed: a.failed + r.failed }), { sent: 0, failed: 0 });
     $('#ehKpis').innerHTML = [
       kpi('Sent today', fmt((t.primarySent || 0) + (t.fallbackSent || 0)), `${fmt(week.sent)} in the last 7 days`),
-      kpi('Via SES backup', fmt(t.fallbackSent || 0), (t.fallbackSent ? 'main server refused these' : 'main server handled everything')),
+      kpi(`Via ${backup} backup`, fmt(t.fallbackSent || 0), (t.fallbackSent ? 'main route refused these' : 'main route handled everything')),
       kpi('Failed today', fmt(t.failed || 0), `${fmt(week.failed)} in the last 7 days`),
       kpi('Skipped', fmt(t.suppressed || 0), 'bounced addresses, on purpose')
     ].join('');
     lineChart('chartEmail', d.byDay.map((r) => short(r.day)), [
-      { label: 'Main server', data: d.byDay.map((r) => r.primarySent), backgroundColor: '#3478F6', stack: 's' },
-      { label: 'SES backup', data: d.byDay.map((r) => r.fallbackSent), backgroundColor: '#F2A93B', stack: 's' },
+      { label: 'Main route', data: d.byDay.map((r) => r.primarySent), backgroundColor: '#3478F6', stack: 's' },
+      { label: 'Backup', data: d.byDay.map((r) => r.fallbackSent), backgroundColor: '#F2A93B', stack: 's' },
       { label: 'Failed', data: d.byDay.map((r) => r.failed), backgroundColor: '#D64545', stack: 's' }
     ], 'bar');
     const problems = [...d.recentFailures.map((p) => ({ ...p, kind: 'Failed' })), ...d.recentFallbacks.map((p) => ({ ...p, kind: 'Sent by backup' }))]

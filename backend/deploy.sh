@@ -175,13 +175,18 @@ if [ ! -z "$SMTP_HOST" ]; then
     ENV_VARS="$ENV_VARS,SMTP_PASS=$SMTP_PASS"
     ENV_VARS="$ENV_VARS,EMAIL_FROM_ADDRESS=$EMAIL_FROM_ADDRESS"
     ENV_VARS="$ENV_VARS,EMAIL_FROM_NAME=$EMAIL_FROM_NAME"
+    # Pool size and messages/second for the main route (SES since 2026-10-21)
+    for var in SMTP_MAX_CONNECTIONS SMTP_RATE_LIMIT SMTP_FALLBACK_MAX_CONNECTIONS SMTP_FALLBACK_RATE_LIMIT; do
+        if [ ! -z "${!var}" ]; then ENV_VARS="$ENV_VARS,$var=${!var}"; fi
+    done
     # DKIM: the backend signs its own mail (GoDaddy won't). Base64 has no commas.
     if [ ! -z "$DKIM_PRIVATE_KEY_B64" ]; then
         ENV_VARS="$ENV_VARS,DKIM_PRIVATE_KEY_B64=$DKIM_PRIVATE_KEY_B64"
         ENV_VARS="$ENV_VARS,DKIM_SELECTOR=${DKIM_SELECTOR:-fc1}"
     fi
-    # Fallback route (Amazon SES), used only when the primary server refuses or
-    # is unreachable (services/emailService.setupFallbackTransport)
+    # Backup route (GoDaddy mail.favcircles.com since 2026-10-21; SES is main),
+    # used only when the main route refuses or is unreachable
+    # (services/emailService.setupFallbackTransport)
     if [ ! -z "$SMTP_FALLBACK_HOST" ]; then
         ENV_VARS="$ENV_VARS,SMTP_FALLBACK_HOST=$SMTP_FALLBACK_HOST"
         ENV_VARS="$ENV_VARS,SMTP_FALLBACK_PORT=${SMTP_FALLBACK_PORT:-587}"

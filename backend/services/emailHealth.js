@@ -2,8 +2,8 @@
 // (Wes, 2026-10-02: "status of email smtp and alert me if emails are failing").
 //
 // Every send outcome lands in a per-day counter doc, emailStats/{YYYY-MM-DD}:
-//   primarySent  — delivered by the main server (mail.favcircles.com)
-//   fallbackSent — the main server refused/was down; Amazon SES delivered it
+//   primarySent  — delivered by the main route (SMTP_HOST: Amazon SES since 2026-10-21)
+//   fallbackSent — the main route refused/was down; the backup (SMTP_FALLBACK_HOST) delivered it
 //   failed       — neither route delivered it
 //   suppressed   — skipped on purpose (bounced address on the do-not-email list)
 // with the last few failures kept on the doc for the dashboard table.
@@ -14,6 +14,15 @@ const { maskEmail } = require('../utils/text');
 const COLLECTION = 'emailStats';
 const RECENT_FAILURES = 20;
 const dayKey = (d = new Date()) => d.toISOString().slice(0, 10);
+
+// Routes are named from their host, so swapping which server is main and
+// which is backup is an env change only (Wes, 2026-10-21: GoDaddy's
+// mail.favcircles.com timed out and capped connections; SES never failed).
+const routeName = (host) => (/amazonaws\.com$/i.test(host || '') ? 'Amazon SES' : (host || 'unknown server'));
+const mainName = () => routeName(process.env.SMTP_HOST);
+const backupName = () => routeName(process.env.SMTP_FALLBACK_HOST);
+// A backup that misses one hourly check is a blip; tell Wes after this many in a row
+const BACKUP_FAILS_BEFORE_ALERT = 3;
 
 const firstAddress = (to) => (Array.isArray(to) ? to[0] : String(to || '').split(',')[0]).trim();
 
@@ -48,11 +57,11 @@ async function record(outcome, { to, subject, error, primaryError } = {}, deps =
     const { alertAdmin } = deps.adminAlerts || require('./adminAlerts');
     if (outcome === 'failed') {
       alertAdmin({ key: 'email_failing', title: 'Emails are failing to send',
-        body: `Neither the main mail server nor the SES backup delivered an email.\nLast error: ${(error && error.message) || 'unknown'}\nSee the admin dashboard → Messaging → Email delivery.`,
+        body: `Neither the main mail route (${mainName()}) nor the backup (${backupName()}) delivered an email.\nLast error: ${(error && error.message) || 'unknown'}\nSee the admin dashboard → Messaging → Email delivery.`,
         email: false }); // email may be what's broken — the push and bell row still arrive
     } else if (outcome === 'fallback') {
-      alertAdmin({ key: 'email_primary_down', minIntervalMs: 6 * 3600000, title: 'Main mail server is refusing — SES backup is sending',
-        body: `mail.favcircles.com refused or didn't answer; Amazon SES delivered the email instead. Nothing is lost.\nMain server error: ${primaryError || 'unknown'}` });
+      alertAdmin({ key: 'email_primary_down', minIntervalMs: 6 * 3600000, title: `Main mail route is refusing — ${backupName()} backup is sending`,
+        body: `${mainName()} refused or didn't answer; ${backupName()} delivered the email instead. Nothing is lost.\nMain route error: ${primaryError || 'unknown'}` });
     }
   } catch (e) {
     console.error(`[email-health] record ${outcome} failed: ${e.message}`);
@@ -80,6 +89,8 @@ async function liveStatus(deps = {}) {
     checkRoute(emailService.transporter, process.env.SMTP_HOST),
     checkRoute(emailService.fallbackTransporter, process.env.SMTP_FALLBACK_HOST)
   ]);
+  primary.name = mainName();
+  fallback.name = backupName();
   return { primary, fallback, checkedAt: new Date().toISOString() };
 }
 
@@ -107,15 +118,33 @@ async function healthCheck(deps = {}) {
   const { alertAdmin } = deps.adminAlerts || require('./adminAlerts');
   const status = await liveStatus(deps);
   if (status.primary.configured && !status.primary.ok) {
-    alertAdmin({ key: 'email_check_primary', minIntervalMs: 6 * 3600000, title: 'Main mail server check failed',
-      body: `${status.primary.host}: ${status.primary.error}\n${status.fallback.ok ? 'The SES backup is working and will carry email.' : 'The SES backup is NOT working either — emails will fail.'}`,
+    alertAdmin({ key: 'email_check_primary', minIntervalMs: 6 * 3600000, title: 'Main mail route check failed',
+      body: `${mainName()} (${status.primary.host}): ${status.primary.error}\n${status.fallback.ok ? `The ${backupName()} backup is working and will carry email.` : `The ${backupName()} backup is NOT working either — emails will fail.`}`,
       email: !!status.fallback.ok });
   }
-  if (status.fallback.configured && !status.fallback.ok) {
-    alertAdmin({ key: 'email_check_fallback', minIntervalMs: 6 * 3600000, title: 'SES backup mail check failed',
-      body: `${status.fallback.host}: ${status.fallback.error}\nThe main server still sends; the backup just won't catch failures until this is fixed.` });
+  if (status.fallback.configured) {
+    const backupFails = await backupFailStreak(status.fallback.ok, deps);
+    if (backupFails >= BACKUP_FAILS_BEFORE_ALERT) {
+      alertAdmin({ key: 'email_check_fallback', minIntervalMs: 6 * 3600000, title: 'Backup mail route check failed',
+        body: `${backupName()} (${status.fallback.host}): ${status.fallback.error}\nFailed ${backupFails} hourly checks in a row. The main route (${mainName()}) still sends; the backup just won't catch failures until this is fixed.` });
+    }
   }
   return status;
 }
 
-module.exports = { record, liveStatus, dashboard, healthCheck, dayKey };
+/** Consecutive failed hourly checks of the backup route (0 once it answers). */
+async function backupFailStreak(ok, deps = {}) {
+  try {
+    const db = deps.db || getFirestore();
+    const ref = db.collection(COLLECTION).doc('_backupCheck');
+    const prev = (await ref.get()).data() || {};
+    const fails = ok ? 0 : (prev.fails || 0) + 1;
+    await ref.set({ fails, checkedAt: new Date().toISOString() }, { merge: true });
+    return fails;
+  } catch (e) {
+    console.error(`[email-health] backup streak failed: ${e.message}`);
+    return ok ? 0 : BACKUP_FAILS_BEFORE_ALERT; // can't count: alert rather than stay silent
+  }
+}
+
+module.exports = { record, liveStatus, dashboard, healthCheck, dayKey, routeName };
