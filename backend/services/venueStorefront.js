@@ -30,7 +30,10 @@ const offeringsLabel = (category) => {
     case 'hotel': return 'Rooms';
     case 'retail': return 'Products';
     case 'service': case 'healthcare': case 'fitness': case 'education': case 'finance': return 'Services';
-    default: return 'What we offer';
+    // Everything else is a menu: the app composes this word into "Full menu",
+    // "Scan your menu", "Search the menu" — a phrase like "What we offer"
+    // read as "Full what we offer" (Wes, 2026-10-21).
+    default: return 'Menu';
   }
 };
 

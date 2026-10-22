@@ -9,7 +9,11 @@ describe('offerings', () => {
     expect(sf.offeringsLabel('hotel')).toBe('Rooms');
     expect(sf.offeringsLabel('retail')).toBe('Products');
     expect(sf.offeringsLabel('service')).toBe('Services');
-    expect(sf.offeringsLabel('attraction')).toBe('What we offer');
+    // Any other category is a menu — the word has to read as a noun inside "Full …" / "Scan your …"
+    expect(sf.offeringsLabel('other')).toBe('Menu');
+    expect(sf.offeringsLabel('entertainment')).toBe('Menu');
+    expect(sf.offeringsLabel(undefined)).toBe('Menu');
+    expect(sf.offeringsLabel('attraction')).toBe('Menu');
   });
 
   it('keeps a link, files and featured items, trimmed and capped', () => {

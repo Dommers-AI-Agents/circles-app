@@ -823,7 +823,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
                     "\(menu.itemCount) item\(menu.itemCount == 1 ? "" : "s") in \(menu.sections.count) section\(menu.sections.count == 1 ? "" : "s") \u{00B7} customers can search it",
                     "list.bullet.rectangle.portrait")
             } else {
-                set("Full \(label.lowercased())", "Photograph your printed \(label.lowercased()) and it\u{2019}s on your page, every item", "camera.viewfinder")
+                // No menu yet: the row IS the scan button's name (Wes, 2026-10-21)
+                set("Scan your \(label.lowercased())", "Photograph the printed one and every item goes on your page", "camera.viewfinder")
             }
         case .orders:
             if storefront?.ordering?.enabled == true {
