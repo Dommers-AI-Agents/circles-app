@@ -61,6 +61,10 @@ enum DeepLinkDestination: Equatable {
     case clubJoin(token: String)
     /// One club, opened in the Clubs widget — `/app/widget/clubs?club=<id>`.
     case clubOpen(id: String)
+    /// Can I Pet Dat Dog — `/app/widget/dogs?post=<id>` (a shared post) or
+    /// `?daily=<id>` (a shared daily dog).
+    case dogPost(id: String)
+    case dailyDog(id: String)
     /// A "watch my run" link — `/app/run/<token>`. Opens FavRun on it.
     case runJoin(token: String)
     /// A shared home tab — `/app/tab/<local|widgets>` or `circles://tab/<slug>`
@@ -106,13 +110,7 @@ struct DeepLinkRouter {
             case "video":
                 return parts.count >= 3 ? .video(id: parts[2], promptsLogin: false) : nil
             case "widget":
-                if parts.count >= 3, parts[2] == "events", let eventId = query(url, "event"), !eventId.isEmpty {
-                    return .eventOpen(id: eventId)
-                }
-                if parts.count >= 3, parts[2] == "clubs", let clubId = query(url, "club"), !clubId.isEmpty {
-                    return .clubOpen(id: clubId)
-                }
-                return parts.count >= 3 ? .widget(id: parts[2]) : nil
+                return parts.count >= 3 ? widgetDestination(id: parts[2], url: url) : nil
             case "quote":
                 return parts.count >= 3 ? .quote(id: parts[2]) : nil
             case "workout":
@@ -200,7 +198,7 @@ struct DeepLinkRouter {
         case "upgrade":
             return .upgradePaywall
         case "widget" where !hostPathId.isEmpty:
-            return .widget(id: hostPathId)
+            return widgetDestination(id: hostPathId, url: url)
         case "quote" where !hostPathId.isEmpty:
             return .quote(id: hostPathId)
         case "workout" where !hostPathId.isEmpty:
@@ -236,7 +234,7 @@ struct DeepLinkRouter {
         case "user" where parts.count >= 3:
             return .userProfile(id: parts[2])
         case "widget" where parts.count >= 3:
-            return .widget(id: parts[2])
+            return widgetDestination(id: parts[2], url: url)
         case "quote" where parts.count >= 3:
             return .quote(id: parts[2])
         case "workout" where parts.count >= 3:
@@ -254,6 +252,21 @@ struct DeepLinkRouter {
         default:
             return nil
         }
+    }
+
+    /// A widget link in any form (https `/app/widget/<id>`, `circles://widget/<id>`,
+    /// `circles:///widget/<id>`): the item its query names, else the widget.
+    private func widgetDestination(id: String, url: URL) -> DeepLinkDestination {
+        let named = { (key: String) -> String? in self.query(url, key).flatMap { $0.isEmpty ? nil : $0 } }
+        switch id {
+        case "events": if let eventId = named("event") { return .eventOpen(id: eventId) }
+        case "clubs": if let clubId = named("club") { return .clubOpen(id: clubId) }
+        case "dogs":
+            if let postId = named("post") { return .dogPost(id: postId) }
+            if let dailyId = named("daily") { return .dailyDog(id: dailyId) }
+        default: break
+        }
+        return .widget(id: id)
     }
 
     private func query(_ url: URL, _ name: String) -> String? {

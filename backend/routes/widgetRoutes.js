@@ -14,6 +14,7 @@ const drink = require('../controllers/widgets/drinkController');
 const motivation = require('../controllers/widgets/motivationController');
 const events = require('../controllers/widgets/eventController');
 const clubs = require('../controllers/widgets/clubController');
+const dogs = require('../controllers/widgets/dogParkController');
 const runShare = require('../controllers/widgets/runShareController');
 const { sendConnectionRequest } = require('../controllers/connectionController');
 const nextBarRounds = require('../controllers/widgets/nextBarRoundController');
@@ -116,6 +117,34 @@ router.post('/clubs/:id/posts/:postId/react', clubs.react);
 router.get('/clubs/:id/posts/:postId/replies', clubs.listReplies);
 router.post('/clubs/:id/posts/:postId/replies', perUserLimit({ bucket: 'club-reply', windowMs: 3600000, max: 120 }), clubs.addReply);
 router.delete('/clubs/:id/posts/:postId/replies/:replyId', clubs.deleteReply);
+
+// Can I Pet Dat Dog (2026-10-22): the Dog Park (posts, pets, comments),
+// Daily Dog, public dog cards, favorite dog places and vet-record scans.
+// Static paths before /:id.
+router.get('/dogs/me', dogs.me);
+router.post('/dogs/join', dogs.join);
+router.post('/dogs/leave', dogs.leave);
+router.post('/dogs/profiles', perUserLimit({ bucket: 'dog-profile', windowMs: 86400000, max: 30 }), dogs.createDog);
+router.get('/dogs/profiles/:dogId', dogs.getDog);
+router.put('/dogs/profiles/:dogId', dogs.updateDog);
+router.delete('/dogs/profiles/:dogId', dogs.deleteDog);
+router.get('/dogs/feed', dogs.feed);
+router.post('/dogs/posts', perUserLimit({ bucket: 'dog-post', windowMs: 3600000, max: 30 }), dogs.createPost);
+router.get('/dogs/posts/:postId', dogs.getPost);
+router.delete('/dogs/posts/:postId', dogs.deletePost);
+router.post('/dogs/videos', perUserLimit({ bucket: 'dog-video', windowMs: 3600000, max: 20 }), dogs.startVideo);
+router.post('/dogs/videos/:videoId/finish', perUserLimit({ bucket: 'dog-video-finish', windowMs: 3600000, max: 40 }), dogs.finishVideo);
+router.post('/dogs/posts/:postId/pet', perUserLimit({ bucket: 'dog-pet', windowMs: 3600000, max: 600 }), dogs.pet);
+router.get('/dogs/posts/:postId/comments', dogs.listComments);
+router.post('/dogs/posts/:postId/comments', perUserLimit({ bucket: 'dog-comment', windowMs: 3600000, max: 120 }), dogs.addComment);
+router.delete('/dogs/posts/:postId/comments/:commentId', dogs.deleteComment);
+router.post('/dogs/posts/:postId/report', perUserLimit({ bucket: 'dog-report', windowMs: 86400000, max: 50 }), dogs.report);
+router.post('/dogs/block/:userId', dogs.block);
+router.get('/dogs/daily', dogs.listDaily);
+router.get('/dogs/daily/:dailyId', dogs.getDaily);
+router.put('/dogs/settings', dogs.updateSettings);
+router.post('/dogs/records/scan', perUserLimit({ bucket: 'dog-records-scan', windowMs: 3600000, max: 20 }), dogs.scanRecords);
+router.post('/dogs/places/save', perUserLimit({ bucket: 'dog-place-save', windowMs: 3600000, max: 60 }), dogs.savePlace);
 
 // FavRun, shared (2026-10-06): watch a run live, cheers, post to activity.
 // Static paths before /:id.

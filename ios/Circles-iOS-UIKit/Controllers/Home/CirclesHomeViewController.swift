@@ -2194,7 +2194,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                         postcardShareToken: String? = nil, eventToken: String? = nil, eventId: String? = nil,
                         runId: String? = nil, runToken: String? = nil, careAskId: String? = nil,
                         fridgeMailCardId: String? = nil, clubToken: String? = nil,
-                        clubId: String? = nil, clubPostId: String? = nil) {
+                        clubId: String? = nil, clubPostId: String? = nil,
+                        dogPostId: String? = nil, dailyDogId: String? = nil) {
         contentSegmentedControl.selectedSegmentIndex = HomeContentSegment.widgets.rawValue
         showContentTab(.widgets)
         if let widgetId {
@@ -2202,7 +2203,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                             drinkId: drinkId, motivationLineId: motivationLineId, motivationSend: motivationSend,
                             postcardShareToken: postcardShareToken, eventToken: eventToken, eventId: eventId,
                             runId: runId, runToken: runToken, careAskId: careAskId, fridgeMailCardId: fridgeMailCardId,
-                            clubToken: clubToken, clubId: clubId, clubPostId: clubPostId)
+                            clubToken: clubToken, clubId: clubId, clubPostId: clubPostId,
+                            dogPostId: dogPostId, dailyDogId: dailyDogId)
         }
     }
 

@@ -5,6 +5,7 @@ const postcardMail = require('../controllers/widgets/postcardMailController');
 const fridgeMail = require('../controllers/widgets/fridgeMailController');
 const care = require('../controllers/widgets/careCheckinController');
 const quotes = require('../controllers/widgets/quotesController');
+const dogPark = require('../controllers/widgets/dogParkController');
 const tasks = require('../controllers/tasks/scheduledTasksController');
 const orphanUploads = require('../controllers/tasks/orphanUploadsController');
 const momentExpiryTask = require('../controllers/tasks/momentExpiryController');
@@ -43,6 +44,8 @@ router.post('/care-checkins', verifyCloudScheduler, care.runDue);
 // Daily quote — hourly tick, each user delivered at the hour they chose in
 // their own timezone. A per-day document id makes a retried run a no-op.
 router.post('/daily-quotes', verifyCloudScheduler, quotes.runDue);
+// Daily Dog (Can I Pet Dat Dog), every 15 minutes; each person on their own clock
+router.post('/daily-dogs', verifyCloudScheduler, dogPark.runDailyDue);
 
 // Notification and maintenance jobs. Handlers live in
 // controllers/tasks/scheduledTasksController.js, one per line here.

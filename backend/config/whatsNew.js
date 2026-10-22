@@ -9,6 +9,11 @@
  */
 module.exports = [
   {
+    date: '2026-10-22', emoji: '🐶', title: 'Can I Pet Dat Dog',
+    body: 'For dog people: post your pup in the Dog Park and tap Pet on everyone else\'s, get a funny dog thing every day, and keep your dog\'s vaccines, vet and insurance in one place. Snap the vet\'s paperwork and the records fill in.',
+    minVersion: '1.4.1', link: '/app/widget/dogs'
+  },
+  {
     date: '2026-10-21', emoji: '👟', title: 'Clubs: run clubs, walk groups, book clubs',
     body: 'Start a club or join one from a link: weekly meetups everyone can say they\'re going to, events, an organizers\' bulletin and a message board for the whole club.',
     minVersion: '1.4.1', link: '/app/widget/clubs'

@@ -659,6 +659,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case .clubJoin(let token):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "club-token:\(token)",
                                 object: "clubs", userInfo: ["clubToken": token])
+        case .dogPost(let id):
+            postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "dog-post:\(id)",
+                                object: "dogs", userInfo: ["dogPostId": id])
+        case .dailyDog(let id):
+            postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "daily-dog:\(id)",
+                                object: "dogs", userInfo: ["dailyDogId": id])
         case .clubOpen(let id, let postId):
             var info: [String: Any] = ["clubId": id]
             if let postId { info["clubPostId"] = postId }

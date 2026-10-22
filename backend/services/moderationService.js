@@ -75,6 +75,8 @@ function contentRef(contentType, contentId) {
       return db.collection(COLLECTIONS.PLACE_COMMENTS).doc(contentId);
     case 'video_comment':
       return db.collection('videoComments').doc(contentId);
+    case 'dog_post':
+      return db.collection(COLLECTIONS.DOG_POSTS).doc(contentId);
     default:
       return null; // place/photo/profile reports are admin-adjudicated only
   }
@@ -97,12 +99,13 @@ async function reporterCounts(contentType, contentId, now = Date.now()) {
 }
 
 // Auto-hide once enough distinct trusted people have reported: the community
-// quarantines, the admin adjudicates. Idempotent.
-async function applyAutoHideIfNeeded(contentType, contentId) {
+// quarantines, the admin adjudicates. Idempotent. `threshold` lets a surface
+// ask for more reporters (the Dog Park hides at 3).
+async function applyAutoHideIfNeeded(contentType, contentId, { threshold = AUTO_HIDE_THRESHOLD } = {}) {
   const ref = contentRef(contentType, contentId);
   if (!ref) return { hidden: false, reason: 'type_not_auto_hidable' };
   const { count, trustedCount } = await reporterCounts(contentType, contentId);
-  if (trustedCount < AUTO_HIDE_THRESHOLD) return { hidden: false, count, trustedCount };
+  if (trustedCount < threshold) return { hidden: false, count, trustedCount };
   const doc = await ref.get();
   if (!doc.exists) return { hidden: false, reason: 'content_missing', count, trustedCount };
   if (doc.data().moderationStatus === 'removed') return { hidden: true, count, trustedCount }; // already actioned

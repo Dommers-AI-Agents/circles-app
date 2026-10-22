@@ -29,6 +29,10 @@ enum NotificationDestination: Equatable {
     /// A club push (bulletin, new event, reply, someone joined): that club,
     /// and the post's thread when it's about one.
     case clubOpen(id: String, postId: String?)
+    /// Can I Pet Dat Dog: a pet milestone or comment push opens that post;
+    /// the daily dog push opens that day's card.
+    case dogPost(id: String)
+    case dailyDog(id: String)
     /// A mailed Fridge Mail card ("printing / out for delivery / delivered"):
     /// that card, as printed, with its status.
     case fridgeMailCard(id: String)
@@ -116,6 +120,13 @@ enum NotificationTapRouter {
         case "club_joined", "club_event", "club_bulletin", "club_reply":
             if let id = string("clubId", in: userInfo) { return .clubOpen(id: id, postId: string("postId", in: userInfo)) }
             return .homeWidget(id: "clubs")
+        case "dog_pet", "dog_comment":
+            if let id = string("postId", in: userInfo) { return .dogPost(id: id) }
+            return .homeWidget(id: "dogs")
+        case "dog_reminder": return .homeWidget(id: "dogs")   // local: vaccine due, birthday
+        case "daily_dog":
+            if let id = string("dailyId", in: userInfo) { return .dailyDog(id: id) }
+            return .homeWidget(id: "dogs")
         case "event_invite":
             if let token = string("eventToken", in: userInfo) { return .eventInvite(token: token) }
             return .homeWidget(id: "events")

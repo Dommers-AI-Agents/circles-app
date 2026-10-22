@@ -229,6 +229,13 @@ struct EventInviteLinkTests {
         #expect(router.destination(for: URL(string: "circles:///club/abcdefghijklmnopqrst")!) == .clubJoin(token: "abcdefghijklmnopqrst"))
         #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/widget/clubs?club=c1")!) == .clubOpen(id: "c1"))
         #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/widget/clubs")!) == .widget(id: "clubs"))
+        // Can I Pet Dat Dog (2026-10-22): a shared post or daily dog
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/widget/dogs?post=p1")!) == .dogPost(id: "p1"))
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/widget/dogs?daily=d1")!) == .dailyDog(id: "d1"))
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/widget/dogs")!) == .widget(id: "dogs"))
+        // The landing page's button opens the app scheme with the same query
+        #expect(router.destination(for: URL(string: "circles://widget/dogs?post=p1")!) == .dogPost(id: "p1"))
+        #expect(router.destination(for: URL(string: "circles:///widget/dogs?daily=dotd_2026-10-22")!) == .dailyDog(id: "dotd_2026-10-22"))
         #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/event")!) == nil)
     }
 }

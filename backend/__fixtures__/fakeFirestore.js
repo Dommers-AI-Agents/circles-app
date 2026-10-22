@@ -125,6 +125,13 @@ class FakeFirestore {
       store,
       async get() { return store.snapshot(id, store.docs.get(id)); },
       async delete() { store.docs.delete(id); },
+      // A subcollection: its own empty store per (doc, name)
+      collection(name) {
+        store.subcollections = store.subcollections || new Map();
+        const key = `${id}/${name}`;
+        if (!store.subcollections.has(key)) store.subcollections.set(key, new FakeFirestore().collection(name));
+        return store.subcollections.get(key);
+      },
       // merge applies increment sentinels like the real SDK does
       async set(data, options = {}) { store.docs.set(id, options.merge ? applyPatch(store.docs.get(id) || {}, data) : { ...data }); },
       async create(data) {
@@ -173,12 +180,14 @@ class FakeFirestore {
       // A query reads like the query itself; a ref reads its doc
       async get(ref) { return ref.id === undefined && ref.get ? ref.get() : storeOf(ref).snapshot(ref.id, storeOf(ref).docs.get(ref.id)); },
       update(ref, patch) { writes.push([ref, patch]); },
-      set(ref, data) { writes.push([ref, data]); }
+      set(ref, data) { writes.push([ref, data]); },
+      delete(ref) { writes.push([ref, null]); }
     };
     const result = await body(tx);
     for (const [ref, patch] of writes) {
       const store = storeOf(ref);
-      store.docs.set(ref.id, applyPatch(store.docs.get(ref.id) || {}, patch));
+      if (patch === null) store.docs.delete(ref.id);
+      else store.docs.set(ref.id, applyPatch(store.docs.get(ref.id) || {}, patch));
     }
     return result;
   }

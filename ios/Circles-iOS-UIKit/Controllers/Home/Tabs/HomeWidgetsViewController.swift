@@ -171,7 +171,8 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
               postcardShareToken: String? = nil, eventToken: String? = nil, eventId: String? = nil,
               runId: String? = nil, runToken: String? = nil, careAskId: String? = nil,
               fridgeMailCardId: String? = nil, clubToken: String? = nil,
-              clubId: String? = nil, clubPostId: String? = nil) {
+              clubId: String? = nil, clubPostId: String? = nil,
+              dogPostId: String? = nil, dailyDogId: String? = nil) {
         guard ensureModel(), let model,
               let descriptor = model.descriptors.first(where: { $0.id == widgetId }),
               let widget = model.widget(for: descriptor) else { return }
@@ -204,6 +205,11 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
             if let clubToken { context.launchClubToken = clubToken }
             if let clubId { context.launchClubId = clubId }
             if let clubPostId { context.launchClubPostId = clubPostId }
+        }
+        // Can I Pet Dat Dog: a post's push or link opens the post; the daily push opens that card
+        if widgetId == "dogs" {
+            if let dogPostId { context.launchDogPostId = dogPostId }
+            if let dailyDogId { context.launchDailyDogId = dailyDogId }
         }
         // A shared workout tapped in the activity feed opens over the page
         if widgetId == "workouts", let workoutPostId { context.launchWorkoutPostId = workoutPostId }

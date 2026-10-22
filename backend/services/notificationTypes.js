@@ -74,6 +74,12 @@ const TYPES = {
   club_event:              { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   club_bulletin:           { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   club_reply:              { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  // Can I Pet Dat Dog (2026-10-22): pet milestones and comments on your Dog
+  // Park post land in the bell; Daily Dog is a reminder (no row), muted with
+  // its own key like daily_quote
+  dog_pet:                 { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  dog_comment:             { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  daily_dog:               { category: null,                      pref: 'dailyDog',               badge: false },
   event_invite:            { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   event_joined:            { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   event_photos:            { category: null,                      pref: 'socialActivity',         badge: false },

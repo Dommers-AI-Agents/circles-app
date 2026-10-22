@@ -10,115 +10,22 @@ const db = getFirestore();
 const blockUser = async (req, res) => {
   try {
     const blockerId = req.user.firebaseDocId || req.user.uid;
-    const blockedUserId = req.params.userId;
-
-    if (blockerId === blockedUserId) {
-      return res.status(400).json({
-        success: false,
-        message: 'You cannot block yourself'
-      });
-    }
-
-    // Check if user exists
-    const userDoc = await db.collection(COLLECTIONS.USERS).doc(blockedUserId).get();
-    if (!userDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Check if block already exists
-    const existingBlockQuery = await db.collection(COLLECTIONS.BLOCKS)
-      .where('blockerId', '==', blockerId)
-      .where('blockedUserId', '==', blockedUserId)
-      .get();
-
-    if (!existingBlockQuery.empty) {
+    const { alreadyBlocked, block } = await require('../services/blockService').block(blockerId, req.params.userId, { db });
+    if (alreadyBlocked) {
       return res.status(400).json({
         success: false,
         message: 'User is already blocked'
       });
     }
-
-    // Create block document
-    const blockData = {
-      blockerId,
-      blockedUserId,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    const blockRef = await db.collection(COLLECTIONS.BLOCKS).add(blockData);
-    const createdBlock = serializeDoc(await blockRef.get());
-
-    // Also check if there's an existing connection and update its status
-    const connectionQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', blockerId)
-      .where('connectedUserId', '==', blockedUserId)
-      .get();
-
-    const connectionQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', blockedUserId)
-      .where('connectedUserId', '==', blockerId)
-      .get();
-
-    const batch = db.batch();
-
-    // Update any existing connections to blocked status
-    [...connectionQuery1.docs, ...connectionQuery2.docs].forEach(doc => {
-      batch.update(doc.ref, {
-        status: 'blocked',
-        blockedBy: blockerId,
-        updatedAt: new Date().toISOString()
-      });
-    });
-
-    // Denormalize block state onto both user docs — this is what every feed
-    // filters on (blockedUsers on the blocker, blockedBy on the blocked) —
-    // and sever the follow relationship in BOTH directions: a block means
-    // "we never see each other again", not "we stay followers".
-    // innerCircle goes with them: a block means "we never see each other
-    // again", and an Inner Circle grant is the most permissive thing either
-    // person could still be holding.
-    batch.update(db.collection(COLLECTIONS.USERS).doc(blockerId), {
-      blockedUsers: admin.firestore.FieldValue.arrayUnion(blockedUserId),
-      following: admin.firestore.FieldValue.arrayRemove(blockedUserId),
-      followers: admin.firestore.FieldValue.arrayRemove(blockedUserId),
-      innerCircle: admin.firestore.FieldValue.arrayRemove(blockedUserId),
-      updatedAt: new Date().toISOString()
-    });
-    batch.update(db.collection(COLLECTIONS.USERS).doc(blockedUserId), {
-      blockedBy: admin.firestore.FieldValue.arrayUnion(blockerId),
-      following: admin.firestore.FieldValue.arrayRemove(blockerId),
-      followers: admin.firestore.FieldValue.arrayRemove(blockerId),
-      innerCircle: admin.firestore.FieldValue.arrayRemove(blockerId),
-      updatedAt: new Date().toISOString()
-    });
-
-    await batch.commit();
-
-    // Follower counts drift if left to increments — recompute both from the
-    // arrays we just rewrote (array length is the source of truth).
-    try {
-      const [a, b] = await Promise.all([
-        db.collection(COLLECTIONS.USERS).doc(blockerId).get(),
-        db.collection(COLLECTIONS.USERS).doc(blockedUserId).get()
-      ]);
-      await Promise.all([a, b].map(doc => doc.ref.update({
-        followersCount: (doc.data().followers || []).length,
-        followingCount: (doc.data().following || []).length
-      })));
-    } catch (countError) {
-      console.warn('Block follower-count resync failed:', countError.message);
-    }
-
     res.status(201).json({
       success: true,
       message: 'User blocked successfully',
-      block: createdBlock
+      block
     });
   } catch (error) {
+    if (error && error.status && error.status < 500) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
     console.error('Error blocking user:', error);
     res.status(500).json({
       success: false,

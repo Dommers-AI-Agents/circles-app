@@ -876,6 +876,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             navigateToWidget(id: "clubs", clubToken: token)
         case .clubOpen(let id):
             navigateToWidget(id: "clubs", clubId: id)
+        case .dogPost(let id):
+            navigateToWidget(id: "dogs", dogPostId: id)
+        case .dailyDog(let id):
+            navigateToWidget(id: "dogs", dailyDogId: id)
         case .runJoin(let token):
             navigateToWidget(id: "run", runToken: token)
         case .referral(let code):
@@ -1424,6 +1428,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             case .eventOpen(let id): self.navigateToWidget(id: "events", eventId: id)
             case .clubJoin(let token): self.navigateToWidget(id: "clubs", clubToken: token)
             case .clubOpen(let id, let postId): self.navigateToWidget(id: "clubs", clubId: id, clubPostId: postId)
+            case .dogPost(let id): self.navigateToWidget(id: "dogs", dogPostId: id)
+            case .dailyDog(let id): self.navigateToWidget(id: "dogs", dailyDogId: id)
             case .runOpen(let id): self.navigateToWidget(id: "run", runId: id)
             case .runJoin(let token): self.navigateToWidget(id: "run", runToken: token)
             case .careAnswer(let askId): self.navigateToWidget(id: "howareyou", careAskId: askId)
@@ -2257,7 +2263,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                                   eventToken: String? = nil, eventId: String? = nil,
                                   runId: String? = nil, runToken: String? = nil, careAskId: String? = nil,
                                   fridgeMailCardId: String? = nil, clubToken: String? = nil,
-                                  clubId: String? = nil, clubPostId: String? = nil) {
+                                  clubId: String? = nil, clubPostId: String? = nil,
+                                  dogPostId: String? = nil, dailyDogId: String? = nil) {
         guard AuthService.shared.isLoggedIn,
               let tabBar = window?.rootViewController as? CirclesTabBarController else {
             let motivation: String? = motivationSend ? motivationLineId.map { "motivation-send:\($0)" } : nil
@@ -2266,6 +2273,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             var club: String? = clubToken.map { "club-token:\($0)" }
             if club == nil, let clubId {
                 club = clubPostId.map { "club-id:\(clubId)/\($0)" } ?? "club-id:\(clubId)"
+            }
+            if club == nil {
+                club = dogPostId.map { "dog-post:\($0)" } ?? dailyDogId.map { "daily-dog:\($0)" }
             }
             let widgetTarget: String? = careAskId.map { "care-ask:\($0)" }
                 ?? fridgeMailCardId.map { "fridgemail-card:\($0)" }
@@ -2294,7 +2304,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                             motivationLineId: motivationLineId, motivationSend: motivationSend,
                             postcardShareToken: postcardShareToken, eventToken: eventToken, eventId: eventId,
                             runId: runId, runToken: runToken, careAskId: careAskId, fridgeMailCardId: fridgeMailCardId,
-                            clubToken: clubToken, clubId: clubId, clubPostId: clubPostId)
+                            clubToken: clubToken, clubId: clubId, clubPostId: clubPostId,
+                            dogPostId: dogPostId, dailyDogId: dailyDogId)
     }
 
     /// A shared tab link: Home → that segment. Stashed like a widget link

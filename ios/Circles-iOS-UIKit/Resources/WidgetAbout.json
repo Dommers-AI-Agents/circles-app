@@ -27,6 +27,21 @@
    "A FavCoin 🌵 for joining"
   ]
  },
+ "dogs": {
+  "name": "Can I Pet Dat Dog",
+  "tagline": "For dog people: show off your pup, a funny dog thing every day, and a park full of good dogs.",
+  "features": [
+   "The Dog Park: join and post photos or 15-second videos of your dog, and see everyone else's",
+   "Tap Pet instead of like, comment, and see Today, Top this week, or people you follow",
+   "Daily Dog: a funny dog line or the Dog of the Day at the times you pick",
+   "My Dogs: a profile for each dog with photos, breed, birthday and gotcha day",
+   "Health records: vaccines with due-date reminders, vet visits, medications and weight",
+   "Import from your vet: snap the paperwork or pick the PDF and the records fill in for you",
+   "Insurance and vet info in one place, tap to call",
+   "Save favorite dog spots to a Dog spots circle",
+   "Health and insurance stay private to you"
+  ]
+ },
  "howareyou": {
   "name": "How Are You?",
   "tagline": "Check on Mom or Dad a few times a day.",

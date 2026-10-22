@@ -34,6 +34,9 @@ enum PendingLink: Equatable {
     case clubJoin(token: String)
     /// "club-id:<id>" or "club-id:<id>/<postId>": a club push on a cold start.
     case clubOpen(id: String, postId: String?)
+    /// "dog-post:<id>" / "daily-dog:<id>": a dog post or daily dog (link or push) on a cold start.
+    case dogPost(id: String)
+    case dailyDog(id: String)
     /// "run-id:<id>": a run to watch (push or feed row) on a cold start.
     case runOpen(id: String)
     /// "run-token:<token>": a "watch my run" link opened before the app was ready.
@@ -112,6 +115,8 @@ enum PendingLinkParser {
         case "club-id":
             let bits = payload.split(separator: "/", maxSplits: 1).map(String.init)
             return bits.first.map { .clubOpen(id: $0, postId: bits.count > 1 ? bits[1] : nil) }
+        case "dog-post": return .dogPost(id: payload)
+        case "daily-dog": return .dailyDog(id: payload)
         case "run-id": return .runOpen(id: payload)
         case "run-token": return .runJoin(token: payload)
         case "care-ask": return .careAnswer(askId: payload)

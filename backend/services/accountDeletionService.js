@@ -153,6 +153,32 @@ async function deleteAccount(uid, { db = getFirestore(), auth = getAuth(), stora
   await deleteAll('eventPhotos', db.collection(COLLECTIONS.EVENT_PHOTOS).where('uploaderId', '==', uid));
   await deleteAll('eventPlaces', db.collection(COLLECTIONS.EVENT_PLACES).where('taggedById', '==', uid));
 
+  // 3d. Can I Pet Dat Dog: their dog cards, Dog Park posts (with the pets and
+  // comments on them) and daily sends go; their pets and comments on other
+  // people's posts go too, taking the counts down with them
+  await deleteAll('dogProfiles', db.collection(COLLECTIONS.DOG_PROFILES).where('ownerId', '==', uid));
+  // A pet or comment on someone else's post takes that post's count down
+  // (on their own posts the post itself goes below)
+  const dogTraces = [
+    { key: 'dogPets', col: COLLECTIONS.DOG_PETS, by: 'userId', postOwner: 'authorId', count: 'petCount' },
+    { key: 'dogComments', col: COLLECTIONS.DOG_COMMENTS, by: 'authorId', postOwner: 'postAuthorId', count: 'commentCount' }
+  ];
+  for (const t of dogTraces) {
+    const mine = await db.collection(t.col).where(t.by, '==', uid).get();
+    for (const d of mine.docs) {
+      if (d.data()[t.postOwner] !== uid && d.data().postId) {
+        await db.collection(COLLECTIONS.DOG_POSTS).doc(String(d.data().postId))
+          .update({ [t.count]: FieldValue.increment(-1) }).catch(() => {});
+      }
+      await d.ref.delete();
+      counts[t.key] = (counts[t.key] || 0) + 1;
+    }
+  }
+  await deleteAll('dogPetsOnTheirPosts', db.collection(COLLECTIONS.DOG_PETS).where('authorId', '==', uid));
+  await deleteAll('dogCommentsOnTheirPosts', db.collection(COLLECTIONS.DOG_COMMENTS).where('postAuthorId', '==', uid));
+  await deleteAll('dogPosts', db.collection(COLLECTIONS.DOG_POSTS).where('authorId', '==', uid));
+  await deleteAll('dogDailySends', db.collection(COLLECTIONS.DOG_DAILY_SENDS).where('userId', '==', uid));
+
   // 4. Files: their photos on shared venue records, video files, profile picture
   const contributed = await db.collection('globalPlaces').where('userContributions.contributors', 'array-contains', uid).get();
   for (const venue of contributed.docs) {
@@ -168,6 +194,7 @@ async function deleteAccount(uid, { db = getFirestore(), auth = getAuth(), stora
   try {
     const bucketName = process.env.FIREBASE_STORAGE_BUCKET || `${process.env.FIREBASE_PROJECT_ID}.appspot.com`;
     await storage.bucket(bucketName).deleteFiles({ prefix: `videos/${uid}/` });
+    await storage.bucket(bucketName).deleteFiles({ prefix: `dogs/${uid}/` });
   } catch (e) {
     console.warn(`[account-delete] video files for ${uid}: ${e.message}`);
   }

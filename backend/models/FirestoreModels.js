@@ -72,7 +72,16 @@ const COLLECTIONS = {
   CLUBS: 'clubs',
   CLUB_RSVPS: 'clubRsvps',
   CLUB_POSTS: 'clubPosts',
-  CLUB_REPLIES: 'clubReplies'
+  CLUB_REPLIES: 'clubReplies',
+  // Can I Pet Dat Dog widget (2026-10-22): public dog cards, Dog Park posts,
+  // pets (doc id = postId_userId), comments, Dog of the Day (doc id = date)
+  // and each person's daily sends (doc id = userId_YYYY-MM-DD_HHMM)
+  DOG_PROFILES: 'dogProfiles',
+  DOG_POSTS: 'dogPosts',
+  DOG_PETS: 'dogPets',
+  DOG_COMMENTS: 'dogComments',
+  DOG_OF_THE_DAY: 'dogOfTheDay',
+  DOG_DAILY_SENDS: 'dogDailySends'
 };
 
 // User model structure

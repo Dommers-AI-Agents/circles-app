@@ -70,6 +70,15 @@ struct NotificationTapRouterTests {
         #expect(route(["type": "club_bulletin"]) == .homeWidget(id: "clubs"))
     }
 
+    @Test func dogPushesOpenThePostOrDailyCard() {
+        #expect(route(["type": "dog_pet", "postId": "p1"]) == .dogPost(id: "p1"))
+        #expect(route(["type": "dog_comment", "postId": "p1"]) == .dogPost(id: "p1"))
+        #expect(route(["type": "daily_dog", "dailyId": "d1"]) == .dailyDog(id: "d1"))
+        #expect(route(["type": "daily_dog"]) == .homeWidget(id: "dogs"))
+        #expect(route(["type": "dog_pet"]) == .homeWidget(id: "dogs"))
+        #expect(route(["type": "dog_reminder"]) == .homeWidget(id: "dogs"))
+    }
+
     @Test func fridgeMailCardsOpenTheirCard() {
         // Pushes from 2026-10-18 on
         #expect(route(["type": "fridgemail", "cardId": "fm_abc"]) == .fridgeMailCard(id: "fm_abc"))
