@@ -34,6 +34,9 @@ class StorefrontCardView: UIView {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 17, weight: .bold)
         label.textColor = Constants.Colors.label
+        // The link pills share this row: a long name gives way (truncates)
+        // rather than pushing the pills off the card.
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return label
     }()
 
@@ -58,25 +61,21 @@ class StorefrontCardView: UIView {
     private lazy var websiteButton = makeLinkButton(title: "Website", icon: "globe", action: #selector(websiteTapped))
     private lazy var catalogButton = makeLinkButton(title: "Catalog", icon: "book", action: #selector(catalogTapped))
 
-    private lazy var findUsAtButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        button.contentHorizontalAlignment = .leading
-        button.setTitleColor(Constants.Colors.label, for: .normal)
-        button.addTarget(self, action: #selector(findUsAtTapped), for: .touchUpInside)
-        button.isHidden = true
-        return button
-    }()
+    private lazy var findUsAtButton = makeLineButton(color: Constants.Colors.label, action: #selector(findUsAtTapped))
+    private lazy var offersLabel = makeLineButton(color: Constants.Colors.primary, action: #selector(offersTapped))
 
-    private lazy var offersLabel: UIButton = {
+    /// A one-line tappable fact ("📍 Find us at Charlotte · 6 stops ›"). Two of
+    /// them share a row, so each truncates instead of growing the card.
+    private func makeLineButton(color: UIColor, action: Selector) -> UIButton {
         let button = UIButton(type: .system)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        button.titleLabel?.lineBreakMode = .byTruncatingTail
         button.contentHorizontalAlignment = .leading
-        button.setTitleColor(Constants.Colors.primary, for: .normal)
-        button.addTarget(self, action: #selector(offersTapped), for: .touchUpInside)
+        button.setTitleColor(color, for: .normal)
+        button.addTarget(self, action: action, for: .touchUpInside)
         button.isHidden = true
         return button
-    }()
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -93,16 +92,21 @@ class StorefrontCardView: UIView {
         clipsToBounds = true
         addSubview(card)
 
-        let headerRow = UIStackView(arrangedSubviews: [iconView, nameLabel, UIView(), editButton])
+        // One row: name, then the link pills in the space beside it, then edit.
+        // Links used to take a row of their own under the name (Wes, 2026-10-21:
+        // the card wasted its space).
+        let headerRow = UIStackView(arrangedSubviews: [iconView, nameLabel, UIView(), websiteButton, catalogButton, editButton])
         headerRow.axis = .horizontal
         headerRow.spacing = 8
         headerRow.alignment = .center
 
-        let linksRow = UIStackView(arrangedSubviews: [websiteButton, catalogButton, UIView()])
-        linksRow.axis = .horizontal
-        linksRow.spacing = 10
+        // "Find us at" and the offers line share a row too
+        let factsRow = UIStackView(arrangedSubviews: [findUsAtButton, offersLabel, UIView()])
+        factsRow.axis = .horizontal
+        factsRow.spacing = 14
+        factsRow.alignment = .center
 
-        let stack = UIStackView(arrangedSubviews: [headerRow, aboutLabel, linksRow, findUsAtButton, offersLabel])
+        let stack = UIStackView(arrangedSubviews: [headerRow, aboutLabel, factsRow])
         stack.axis = .vertical
         stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -161,7 +165,7 @@ class StorefrontCardView: UIView {
         if let circle = findUsAtCircle {
             let count = circle.placesCount ?? 0
             let suffix = count > 0 ? " · \(count) \(count == 1 ? "stop" : "stops")" : ""
-            findUsAtButton.setTitle("📍 Find us at: \(circle.name)\(suffix)  ›", for: .normal)
+            findUsAtButton.setTitle("📍 Find us at \(circle.name)\(suffix) ›", for: .normal)
             findUsAtButton.isHidden = false
         } else {
             findUsAtButton.isHidden = true
@@ -173,7 +177,7 @@ class StorefrontCardView: UIView {
             var parts: [String] = []
             if offerCount > 0 { parts.append("\(offerCount) \(offerCount == 1 ? "offer" : "offers")") }
             if announcementCount > 0 { parts.append("\(announcementCount) \(announcementCount == 1 ? "announcement" : "announcements")") }
-            offersLabel.setTitle("🎁 \(parts.joined(separator: " · "))  ›", for: .normal)
+            offersLabel.setTitle("🎁 \(parts.joined(separator: " · ")) ›", for: .normal)
             offersLabel.isHidden = false
         } else {
             offersLabel.isHidden = true
