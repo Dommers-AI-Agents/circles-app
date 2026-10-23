@@ -141,6 +141,24 @@ async function cancel(orderId, customerId, { db = getFirestore() } = {}) {
 
 // ------------------------------------------------------------------- store
 
+/**
+ * Orders waiting for the store to accept them: the owner bar on the place
+ * page and the profile's store icon show it (2026-10-23). 0 when ordering is
+ * off or the count can't be read: it's a nudge, never a blocker.
+ */
+async function newCount(venue, { db = getFirestore() } = {}) {
+  if (!venue || !venue.ordering || venue.ordering.enabled !== true) return 0;
+  try {
+    const snap = await db.collection(ORDERS)
+      .where('venueId', '==', venue.venueId || venue.id)
+      .where('status', '==', STATUS.PLACED).get();
+    return snap.size;
+  } catch (e) {
+    console.warn('New-order count failed:', e.message);
+    return 0;
+  }
+}
+
 async function forVenue(venueId, { db = getFirestore(), open = true } = {}) {
   let q = db.collection(ORDERS).where('venueId', '==', venueId);
   q = open ? q.where('status', 'in', [...OPEN]) : q.orderBy('createdAt', 'desc').limit(50);
@@ -282,4 +300,4 @@ async function sweep({ db = getFirestore(), now = new Date() } = {}) {
   return { expired, closed };
 }
 
-module.exports = { ORDERS, view, place, mine, get, cancel, forVenue, storeAction, normalizeSettings, saveSettings, sweep };
+module.exports = { ORDERS, view, place, mine, get, cancel, newCount, forVenue, storeAction, normalizeSettings, saveSettings, sweep };

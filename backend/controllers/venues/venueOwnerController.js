@@ -88,6 +88,12 @@ exports.getMyVenues = async (req, res) => {
         ? isOwnerPremiumForVenue(req.user, venue.venueId, venue)
         : await isOwnerPremiumById(venue.ownerUserId, venue.venueId, venue);
     }));
+    // Orders waiting to be accepted: the profile's store icon shows the total
+    const orders = require('../../services/orders/orderService');
+    await Promise.all(venueInfos.map(async (info, i) => {
+      info.orderingEnabled = !!(venues[i].ordering && venues[i].ordering.enabled === true);
+      info.newOrders = await orders.newCount(venues[i]);
+    }));
     await Promise.all(venueInfos.map(async (info, i) => {
       const globalPlaceId = await venueGlobalPlaceId(venues[i]);
       if (!globalPlaceId) return;

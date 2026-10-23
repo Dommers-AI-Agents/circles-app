@@ -151,4 +151,13 @@ describe('the order flow', () => {
     mockLive.value = true;
     await expect(orders.place({ customerId: 'cust', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }] })).rejects.toMatchObject({ code: 'ordering_off' });
   });
+
+  test('newCount: orders waiting to be accepted, only while ordering is on', async () => {
+    await orders.place({ customerId: 'cust', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }] });
+    const venue = (await mockDb.collection('stickerVenues').doc('v1').get()).data();
+    const n = await orders.newCount({ ...venue, venueId: 'v1' }, { db: mockDb });
+    expect(n).toBeGreaterThanOrEqual(1);
+    expect(await orders.newCount({ ...venue, venueId: 'v1', ordering: { enabled: false } }, { db: mockDb })).toBe(0);
+    expect(await orders.newCount(null, { db: mockDb })).toBe(0);
+  });
 });

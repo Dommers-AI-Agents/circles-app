@@ -463,7 +463,10 @@ exports.getVenueByPlace = async (req, res) => {
           saves: (venue.stats || {}).saves || 0,
           visits: (venue.stats || {}).visits || 0,
           scans: (venue.stats || {}).scans || 0,
-          redemptions: (venue.stats || {}).redemptions || 0
+          redemptions: (venue.stats || {}).redemptions || 0,
+          // Orders waiting to be accepted (the owner bar's first words)
+          orderingEnabled: !!(venue.ordering && venue.ordering.enabled === true),
+          newOrders: await require('../../services/orders/orderService').newCount({ ...venue, venueId: venue.venueId })
         } : undefined,
         claim
       }
