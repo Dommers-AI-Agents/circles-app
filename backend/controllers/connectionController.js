@@ -1,6 +1,6 @@
 // backend/controllers/connectionController.js
 const { getFirestore } = require('../config/firebase');
-const { isLiveConnection } = require('../services/connectionMap');
+const { isLiveConnection, onePerPerson } = require('../services/connectionMap');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { serializeDates } = require('../utils/wireDates');
 const { peopleRowStats } = require('../services/peopleRowStats');
@@ -129,10 +129,10 @@ const getConnections = async (req, res) => {
 
     // Combine results and remove duplicates
     const allConnections = [...snapshot1.docs, ...snapshot2.docs];
-    const uniqueConnections = allConnections.filter((doc, index, self) =>
+    const uniqueConnections = onePerPerson(allConnections.filter((doc, index, self) =>
       index === self.findIndex(d => d.id === doc.id)
     // Merge tombstones (status 'merged', deletedAt set) never reach a client.
-    ).filter((doc) => isLiveConnection(doc.data()));
+    ).filter((doc) => isLiveConnection(doc.data())), userId);
 
     // The caller's own followers array tells us, for free, which of these
     // people follow the caller back. That distinction ("I follow them" vs "we
@@ -1069,8 +1069,15 @@ const removeConnection = async (req, res) => {
         updatedAt: new Date().toISOString()
       });
       
-      // Delete the connection document
-      batch.delete(connectionDoc.ref);
+      // Delete the connection document, and any second doc for the same pair
+      // (a few old pairs have one each way) so the person doesn't stay connected
+      const [sameWay, otherWay] = await Promise.all([
+        db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', connection.userId).where('connectedUserId', '==', connection.connectedUserId).get(),
+        db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', connection.connectedUserId).where('connectedUserId', '==', connection.userId).get()
+      ]);
+      const pairRefs = new Map([[connectionDoc.id, connectionDoc.ref]]);
+      [...sameWay.docs, ...otherWay.docs].forEach((doc) => pairRefs.set(doc.id, doc.ref));
+      pairRefs.forEach((ref) => batch.delete(ref));
       
       await batch.commit();
 

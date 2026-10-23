@@ -51,4 +51,40 @@ const buildConnectionMap = async (currentUserId) => {
   return map;
 };
 
-module.exports = { buildConnectionMap, isLiveConnection, LIVE_STATUSES };
+// One row per person. A pair should have one connection doc, but a few old
+// pairs have two (one each way, both accepted: left by a July 2025 merge
+// script), and a list built from both directions showed that person twice.
+// Keep the row that says the most: blocked, then accepted, then pending, then
+// following; on a tie the caller's own row (their bell and view counts live
+// there), then the older one. `docs` are Firestore snapshots, already live.
+const STATUS_RANK = { blocked: 0, accepted: 1, pending: 2, following: 3 };
+const createdMillis = (value) => {
+  if (!value) return Infinity;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (typeof value._seconds === 'number') return value._seconds * 1000;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? Infinity : ms;
+};
+const onePerPerson = (docs, callerId) => {
+  const best = new Map();
+  const beats = (a, b) => {
+    const da = a.data(), db_ = b.data();
+    const rank = (STATUS_RANK[da.status] ?? 9) - (STATUS_RANK[db_.status] ?? 9);
+    if (rank !== 0) return rank < 0;
+    const mineA = da.userId === callerId, mineB = db_.userId === callerId;
+    if (mineA !== mineB) return mineA;
+    return createdMillis(da.createdAt) < createdMillis(db_.createdAt);
+  };
+  for (const doc of docs) {
+    const d = doc.data();
+    const other = normalizeUserId(d.userId === callerId ? d.connectedUserId : d.userId);
+    if (!other) continue;
+    const kept = best.get(other);
+    if (!kept || beats(doc, kept)) best.set(other, doc);
+  }
+  // Keep the incoming order for the rows that survive.
+  const keep = new Set(best.values());
+  return docs.filter((doc) => keep.has(doc));
+};
+
+module.exports = { buildConnectionMap, isLiveConnection, onePerPerson, LIVE_STATUSES };

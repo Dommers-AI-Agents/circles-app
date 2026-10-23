@@ -7,7 +7,7 @@ jest.mock('../../config/firebase', () => ({
   getFirestore: () => mockDb,
   FieldValue: require('../../__fixtures__/fakeFirestore').FakeFieldValue
 }));
-const { buildConnectionMap, isLiveConnection } = require('../connectionMap');
+const { buildConnectionMap, isLiveConnection, onePerPerson } = require('../connectionMap');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 
 const ME = 'me';
@@ -41,5 +41,30 @@ describe('buildConnectionMap', () => {
     const map = await buildConnectionMap(ME);
     expect([...map.keys()]).toEqual(['friend']);
     expect(map.get('friend').status).toBe('accepted');
+  });
+});
+
+// Wes saw Dan Wickner twice in his connections: their pair has two accepted
+// docs, one each way, left by a 2025 merge script.
+describe('onePerPerson', () => {
+  const snap = (id, data) => ({ id, data: () => data });
+
+  it('keeps one row for a pair stored both ways, preferring the caller\'s own', () => {
+    const mine = snap('mine', { userId: ME, connectedUserId: 'dan', status: 'accepted', createdAt: '2025-07-31T01:18:52Z' });
+    const theirs = snap('theirs', { userId: 'dan', connectedUserId: ME, status: 'accepted', createdAt: { _seconds: 1753958324 } });
+    const other = snap('other', { userId: ME, connectedUserId: 'amy', status: 'accepted' });
+    expect(onePerPerson([theirs, other, mine], ME).map((d) => d.id)).toEqual(['other', 'mine']);
+  });
+
+  it('prefers an accepted row over a pending one, whoever owns it', () => {
+    const pending = snap('p', { userId: ME, connectedUserId: 'dan', status: 'pending' });
+    const accepted = snap('a', { userId: 'dan', connectedUserId: ME, status: 'accepted' });
+    expect(onePerPerson([pending, accepted], ME).map((d) => d.id)).toEqual(['a']);
+  });
+
+  it('on a full tie keeps the older row', () => {
+    const newer = snap('new', { userId: ME, connectedUserId: 'dan', status: 'accepted', createdAt: '2025-08-01T00:00:00Z' });
+    const older = snap('old', { userId: ME, connectedUserId: 'dan', status: 'accepted', createdAt: '2025-06-01T00:00:00Z' });
+    expect(onePerPerson([newer, older], ME).map((d) => d.id)).toEqual(['old']);
   });
 });
