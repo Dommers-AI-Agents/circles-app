@@ -35,9 +35,11 @@ const BUCKETS = {
   // Order-ahead orders a customer places in a day (a script can't flood a
   // store's counter); fail open so a Firestore blip never blocks lunch
   orderPlace: { env: 'ORDER_PLACE_DAILY_BUDGET', limit: 20, failOpen: true },
-  // "Import from your vet" record scans per person (paid model calls, so
-  // fail closed)
-  vetScan: { env: 'VET_SCAN_DAILY_BUDGET', limit: 10, failOpen: false }
+  // Every paid scan one PERSON starts in a day, whatever it's for and
+  // whichever store (Wes, 2026-10-23: "a limit on how many scans anyone can
+  // do from any place in the app"). Sits on top of venueScan, so a person
+  // with several stores can't multiply it. Fail closed: it's paid.
+  aiScan: { env: 'AI_SCAN_DAILY_BUDGET', limit: 25, failOpen: false }
 };
 
 const dayKey = (now = new Date()) => now.toISOString().slice(0, 10);

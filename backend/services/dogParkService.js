@@ -8,7 +8,6 @@ const profiles = require('./dogPark/profiles');
 const posts = require('./dogPark/posts');
 const daily = require('./dogPark/daily');
 const places = require('./dogPark/places');
-const records = require('./dogPark/records');
 const { nowIso } = require('../utils/ids');
 const { atLeast } = require('../utils/appVersion');
 
@@ -96,6 +95,6 @@ module.exports = {
   // Daily Dog
   getSettings: daily.getSettings, updateSettings: daily.updateSettings, listDaily: daily.listDaily,
   getDaily: daily.getDaily, runDailyDue: daily.runDue,
-  // favorite places, vet records
-  savePlace: places.savePlace, scanRecords: records.scan
+  // favorite places
+  savePlace: places.savePlace
 };

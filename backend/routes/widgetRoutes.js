@@ -119,7 +119,8 @@ router.post('/clubs/:id/posts/:postId/replies', perUserLimit({ bucket: 'club-rep
 router.delete('/clubs/:id/posts/:postId/replies/:replyId', clubs.deleteReply);
 
 // Can I Pet Dat Dog (2026-10-22): the Dog Park (posts, pets, comments),
-// Daily Dog, public dog cards, favorite dog places and vet-record scans.
+// Daily Dog, public dog cards, favorite dog places. (Vet paperwork stays on
+// the phone as photos/PDFs; no paid reading — Wes, 2026-10-23.)
 // Static paths before /:id.
 router.get('/dogs/me', dogs.me);
 router.post('/dogs/join', dogs.join);
@@ -143,7 +144,6 @@ router.post('/dogs/block/:userId', dogs.block);
 router.get('/dogs/daily', dogs.listDaily);
 router.get('/dogs/daily/:dailyId', dogs.getDaily);
 router.put('/dogs/settings', dogs.updateSettings);
-router.post('/dogs/records/scan', perUserLimit({ bucket: 'dog-records-scan', windowMs: 3600000, max: 20 }), dogs.scanRecords);
 router.post('/dogs/places/save', perUserLimit({ bucket: 'dog-place-save', windowMs: 3600000, max: 60 }), dogs.savePlace);
 
 // FavRun, shared (2026-10-06): watch a run live, cheers, post to activity.

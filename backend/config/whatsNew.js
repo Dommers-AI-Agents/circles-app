@@ -10,7 +10,7 @@
 module.exports = [
   {
     date: '2026-10-22', emoji: '🐶', title: 'Can I Pet Dat Dog',
-    body: 'For dog people: post your pup in the Dog Park and tap Pet on everyone else\'s, get a funny dog thing every day, and keep your dog\'s vaccines, vet and insurance in one place. Snap the vet\'s paperwork and the records fill in.',
+    body: 'For dog people: post your pup in the Dog Park and tap Pet on everyone else\'s, get a funny dog thing every day, and keep your dog\'s vaccines, vet, insurance and the vet\'s paperwork in one place.',
     minVersion: '1.4.1', link: '/app/widget/dogs'
   },
   {

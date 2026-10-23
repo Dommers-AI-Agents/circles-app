@@ -41,7 +41,6 @@ exports.listDaily = handle('listDaily', async (req) => dogs.listDaily(uid(req), 
 exports.getDaily = handle('getDaily', async (req) => dogs.getDaily(uid(req), req.params.dailyId));
 exports.updateSettings = handle('updateSettings', async (req) => dogs.updateSettings(uid(req), { enabled: body(req).enabled, times: body(req).times }));
 
-exports.scanRecords = handle('scanRecords', async (req) => dogs.scanRecords(uid(req), body(req)));
 exports.savePlace = handle('savePlace', async (req) => dogs.savePlace(uid(req), body(req)));
 
 // Cloud Scheduler, every 15 minutes. Each person is gated on their own clock.

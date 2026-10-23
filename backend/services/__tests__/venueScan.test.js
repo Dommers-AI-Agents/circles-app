@@ -191,6 +191,19 @@ describe('the scan service', () => {
     spy.mockRestore();
   });
 
+  test('25 scans a day per PERSON across all their stores, so more stores can\u2019t multiply it', async () => {
+    const spy = jest.spyOn(hoursReader, 'read').mockResolvedValue({ draft: { hours: [], found: 0 }, usage: { engine: 'clairic', inputTokens: 1 } });
+    const img = await pngBase64(50, 50);
+    for (let i = 0; i < 25; i += 1) {
+      await scanService.scan({ kind: 'hours', images: [img], venue: { venueId: `store${i % 3}` }, userId: 'owner', db: mockDb });
+    }
+    await expect(scanService.scan({ kind: 'hours', images: [img], venue: { venueId: 'store9' }, userId: 'owner', db: mockDb }))
+      .rejects.toMatchObject({ status: 429, code: 'scan_limit' });
+    // Someone else is unaffected
+    await expect(scanService.scan({ kind: 'hours', images: [img], venue: { venueId: 'store9' }, userId: 'manager', db: mockDb })).resolves.toMatchObject({ kind: 'hours' });
+    spy.mockRestore();
+  });
+
   test('clairic.read keeps a confident value, flags an unsure one, leaves a missing one empty', () => {
     expect(clairic.read({ value: '07:00', confidence: 0.9 })).toEqual({ value: '07:00', unsure: false });
     expect(clairic.read({ value: '07:00', confidence: 0.4 })).toEqual({ value: '07:00', unsure: true });

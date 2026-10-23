@@ -2,7 +2,9 @@
 // a photo of the menu, the hours on the door, or a specials/event flyer
 // becomes a DRAFT for the matching editor. Nothing is saved here; the owner
 // checks it (unsure fields are flagged) and saves through the usual paths.
-// Business tier, 20 scans per venue per day, every scan's spend logged.
+// Business tier, 20 scans per venue per day AND 25 per person per day across
+// every store (dailyBudget 'aiScan' — any new paid scan must consume it too),
+// every scan's spend logged.
 const { getFirestore } = require('../../config/firebase');
 const { ServiceError } = require('../../utils/serviceError');
 const dailyBudget = require('../dailyBudget');
@@ -26,6 +28,8 @@ async function scan({ kind, images: raw, venue, userId, db = getFirestore() }) {
   const prepared = await images.prepare(kind === 'menu' ? raw : (raw || []).slice(0, 1));
   const budget = await dailyBudget.consume('venueScan', venue.venueId);
   if (!budget.allowed) throw new ServiceError(429, 'scan_limit', `That’s ${budget.limit} scans today. Try again tomorrow.`);
+  const personal = await dailyBudget.consume('aiScan', userId);
+  if (!personal.allowed) throw new ServiceError(429, 'scan_limit', `That’s ${personal.limit} scans for you today. Try again tomorrow.`);
   const started = Date.now();
   const { draft, usage } = await reader().read(prepared, { referenceDate: localToday(venue.timeZone) });
   db.collection('scanUsage').add({
