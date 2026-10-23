@@ -73,8 +73,11 @@ extension AppWidgetHost {
             guard let name = item.name else { return nil }
             let coordinate = item.placemark.coordinate
             let mapping = AppleMapItemFormFill.categoryMapping(poiCategory: item.pointOfInterestCategory, name: name)
-            let address = [item.placemark.subThoroughfare, item.placemark.thoroughfare, item.placemark.locality]
-                .compactMap { $0 }.joined(separator: " ")
+            // Street, city, state and ZIP, like Add Place: the server matches
+            // the venue to Google by it
+            let street = [item.placemark.subThoroughfare, item.placemark.thoroughfare].compactMap { $0 }.joined(separator: " ")
+            let address = [street, item.placemark.locality, item.placemark.administrativeArea, item.placemark.postalCode]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
             return WidgetPlaceCandidate(
                 id: "apple:\(coordinate.latitude),\(coordinate.longitude)",
                 name: name,
