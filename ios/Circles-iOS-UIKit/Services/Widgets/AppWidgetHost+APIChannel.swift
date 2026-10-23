@@ -28,6 +28,8 @@ extension AppWidgetHost {
         urlRequest.httpMethod = request.method.rawValue
         urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
+        // The server gates widgets on this build (Dog Park needs 1.4.1)
+        APIService.addAppVersionHeaders(to: &urlRequest)
         if let body = request.body {
             urlRequest.httpBody = body
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")

@@ -648,18 +648,7 @@ class APIService {
         // Home cards may send this build to the App Store ("update to get it")
         request.addValue("1", forHTTPHeaderField: "X-FC-App-Store")
 
-        // This build's marketing version, so a backend-scheduled home card
-        // about a new feature can be held back from builds that don't have it.
-        // Absent on older clients, and the server never excludes on absence.
-        if let build = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
-            request.addValue(build, forHTTPHeaderField: "X-App-Version")
-        }
-        // The build number too: a push whose Lock Screen buttons only exist in
-        // newer builds (the care check-in kinds) is held back from older ones
-        // by the build the device token was registered from.
-        if let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
-            request.addValue(build, forHTTPHeaderField: "X-App-Build")
-        }
+        Self.addAppVersionHeaders(to: &request)
         
         // Add cache control headers to prevent 304 responses
         if method == .get {
@@ -1473,4 +1462,20 @@ struct DailySummaryData: Decodable {
 struct DailySummaryContributor: Decodable {
     let name: String
     let count: Int
+}
+
+extension APIService {
+    /// This build's marketing version (`X-App-Version`) and build number
+    /// (`X-App-Build`). The server gates features on them: a home card about a
+    /// new feature, a widget that needs this build (Can I Pet Dat Dog), push
+    /// buttons that only exist in newer builds. Every channel that talks to
+    /// the backend sends them — the widget channel included.
+    static func addAppVersionHeaders(to request: inout URLRequest) {
+        if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+            request.setValue(version, forHTTPHeaderField: "X-App-Version")
+        }
+        if let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
+            request.setValue(build, forHTTPHeaderField: "X-App-Build")
+        }
+    }
 }
