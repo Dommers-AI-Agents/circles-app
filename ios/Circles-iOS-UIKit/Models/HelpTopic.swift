@@ -990,8 +990,12 @@ class HelpContentProvider {
                 If nobody has saved it yet, add it yourself: on your profile, tap the storefront icon → My Venues → the + button, search for your business, and submit your claim in one step. No need to save it to a circle first.
 
                 **Where everything lives:**
-                • On your profile, tap the storefront icon → My Venues
-                • Each store opens its own control panel: dashboard, business info, QR codes, offers, announcements, earn rate, loyalty codes
+                Manage Store is your store's one control panel, and there are two ways in:
+                • On your store's place page, tap Manage Store in the bar at the top of your store's card
+                • On your profile, tap the storefront icon (a red number there means orders are waiting)
+                In Manage Store: orders, store details (name, description, phone, website, address), hours, photos, your menu, buttons, offers, announcements, the window sticker, your team and your plan.
+
+                **Your place page** shows your store exactly as customers see it, with a bar on top only you can see: new orders, how many people saved and visited, and View as customer to hide even that.
 
                 **Free for every store:**
                 • Stats dashboard headline (saves, followers, visits, scans)
@@ -1004,6 +1008,7 @@ class HelpContentProvider {
                 • Your own points-per-purchase earn rate
                 • The register QR card and single-use loyalty codes
                 • Full monthly stats history
+                • Online ordering: customers order ahead from your menu and pay you at pickup, with no fees
                 • Scan instead of typing: photograph your printed menu and every item goes on your page as a full menu customers can search; photograph the hours on your door; photograph a flyer or specials board to fill in an announcement. You check everything before it's posted, and anything hard to read is marked in orange
 
                 One Business subscription covers your physical store and your online store together.

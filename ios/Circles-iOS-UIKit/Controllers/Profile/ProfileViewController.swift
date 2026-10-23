@@ -861,6 +861,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Check if we need to clear profile picture cache due to corruption
         let isCurrentUser = AuthService.shared.isMe(user?.id)
         if isCurrentUser {
+            // New orders at my stores: the store icon's badge
+            storefrontController.refreshBadge()
             // Clear profile picture cache if there's an issue
             if let profilePictureUrl = user?.profilePicture {
                 // Check if the cached image might be incorrect

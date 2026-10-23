@@ -36,6 +36,9 @@ class VenueManageViewController: BaseViewController {
     // avoid flashing locks; the server enforces regardless.
     private var ownerPremium: Bool
     private var managerCount: Int = 0
+    /// Orders waiting to be accepted (the Orders row leads with it)
+    private var newOrders: Int
+    private var ordersObserver: NSObjectProtocol?
     private let stats: AdminVenueStats?
     /// Online-only brand store: no window sticker, register card, hours or cover
     private let isVirtual: Bool
@@ -53,7 +56,8 @@ class VenueManageViewController: BaseViewController {
             hasPlace: venuePlaceId != nil,
             hasStats: stats != nil,
             offerCount: offers.count,
-            announcementCount: announcements.count
+            announcementCount: announcements.count,
+            orderingOn: storefront?.ordering?.enabled == true
         ))
     }
 
@@ -73,6 +77,7 @@ class VenueManageViewController: BaseViewController {
                 guard let self, case .success(let storefront) = result else { return }
                 self.storefront = storefront
                 self.reload()
+                self.refreshNewOrders()
             }
         }
     }
@@ -134,6 +139,7 @@ class VenueManageViewController: BaseViewController {
     init(venue: AdminVenue) {
         self.venueId = venue.venueId
         self.venueName = venue.venueName
+        self.newOrders = venue.newOrders ?? 0
         self.offers = venue.offers ?? []
         self.announcements = venue.announcements ?? []
         self.earnRate = venue.earnRate ?? 25
@@ -163,6 +169,7 @@ class VenueManageViewController: BaseViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        refreshNewOrders()
         if let action = pendingQuickAction {
             pendingQuickAction = nil
             switch action {
@@ -206,6 +213,27 @@ class VenueManageViewController: BaseViewController {
         refreshOwnerPremium()
         loadStorefront()
         loadHoursSummary()
+        ordersObserver = NotificationCenter.default.addObserver(
+            forName: VenueOrdersViewController.ordersChanged, object: nil, queue: .main
+        ) { [weak self] _ in self?.refreshNewOrders() }
+    }
+
+    deinit {
+        if let ordersObserver { NotificationCenter.default.removeObserver(ordersObserver) }
+    }
+
+    /// How many orders are waiting, while the store takes orders
+    private func refreshNewOrders() {
+        guard storefront?.ordering?.enabled == true || newOrders > 0 else { return }
+        OrderService.shared.storeOrders(venueId: venueId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, case .success(let orders) = result else { return }
+                let waiting = orders.filter { $0.status == "placed" }.count
+                guard waiting != self.newOrders else { return }
+                self.newOrders = waiting
+                self.reload()
+            }
+        }
     }
 
     // MARK: - Business gate
@@ -568,6 +596,12 @@ class VenueManageViewController: BaseViewController {
         reload()
     }
 
+    /// Name, category, description, phone, website, address
+    private func openDetails() {
+        guard let placeId = venuePlaceId else { return }
+        navigationController?.pushViewController(VenueDetailsViewController(placeId: placeId), animated: true)
+    }
+
     private func openHours() {
         guard let placeId = venuePlaceId else { return }
         let hoursVC = VenueHoursViewController(venueId: venueId, placeId: placeId)
@@ -806,6 +840,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
 
         case .viewPage:
             set("View your place page", "Exactly what customers see", "eye")
+        case .details:
+            set("Store details", "Name, category, description, phone, website and address", "pencil.and.list.clipboard")
         case .hours:
             set("Opening hours", hoursSummary ?? "Set the hours shown on your page", "clock")
         case .photos:
@@ -828,7 +864,9 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             }
         case .orders:
             if storefront?.ordering?.enabled == true {
-                set("Orders", "New orders to accept, and what\u{2019}s ready for pickup", "bag")
+                let waiting = newOrders
+                set(waiting > 0 ? "\(waiting) new order\(waiting == 1 ? "" : "s")" : "Orders",
+                    waiting > 0 ? "Waiting for you to accept" : "New orders to accept, and what\u{2019}s ready for pickup", "bag")
             } else {
                 set("Orders", "Let customers order ahead from your menu and pay at pickup", "bag")
             }
@@ -939,6 +977,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
 
         case .viewPage:
             viewPublicPageTapped()
+        case .details:
+            openDetails()
         case .hours:
             openHours()
         case .photos:

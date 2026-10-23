@@ -206,16 +206,9 @@ class PlaceDetailViewController: BaseViewController {
         loader.delegate = self
         return loader
     }()
-    /// Verified-owner state and the tap-to-edit flows (see
-    /// PlaceOwnerEditController); this page keeps the views and re-renders
-    /// through PlaceOwnerEditControllerDelegate.
-    private lazy var ownerEdit = PlaceOwnerEditController(
-        fields: PlaceOwnerEditableFields(
-            nameLabel: nameLabel, addressLabel: addressLabel,
-            categoryLabel: categoryLabel, categoryEditButton: categoryEditButton,
-            descriptionLabel: descriptionLabel, aboutTitleLabel: aboutTitleLabel,
-            aboutStackView: aboutStackView),
-        host: self)
+    /// Verified-owner state and the customer preview (see PlaceOwnerPreview).
+    /// Owners edit in Manage Store, not on this page.
+    private lazy var ownerEdit = PlaceOwnerPreview(host: self)
 
     // Practical actions row: Directions / Website / Call / Edit
     private let practicalButtonsStackView: UIStackView = PlaceDetailViewFactory.practicalButtonsStackView()
@@ -413,8 +406,27 @@ class PlaceDetailViewController: BaseViewController {
         present(StorefrontPhotoViewerViewController(urls: urls, startingAt: index ?? 0), animated: true)
     }
 
+    @objc private func handleStoreDetailsChanged(_ note: Notification) {
+        let changedId = note.userInfo?["globalPlaceId"] as? String
+        guard changedId == nil || changedId == (place.globalPlaceId ?? place.id) else { return }
+        PlaceService.shared.fetchPlaceById(id: place.id) { [weak self] result in
+            guard case .success(let updated) = result else { return }
+            DispatchQueue.main.async {
+                self?.place = updated
+                self?.configureUI()
+            }
+        }
+    }
+
+    @objc private func handleStoreOrdersChanged() {
+        guard placeVenueData?.isOwner == true else { return }
+        venueLoader.loadVenueRewards()
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        // Back from Manage Store or Orders: the owner bar's counts may have moved
+        if hasAppeared, placeVenueData?.isOwner == true { venueLoader.loadVenueRewards() }
         hasAppeared = true
         openPendingPhotoIfReady()
         if showCommentsOnAppear {
@@ -431,6 +443,10 @@ class PlaceDetailViewController: BaseViewController {
         super.viewDidLoad()
         NotificationCenter.default.addObserver(self, selector: #selector(handleCheckInCreated(_:)), name: .checkInCreated, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handlePlaceRatingChanged(_:)), name: .placeRatingChanged, object: nil)
+        // The owner bar counts new orders: refresh it when they change
+        NotificationCenter.default.addObserver(self, selector: #selector(handleStoreOrdersChanged), name: VenueOrdersViewController.ordersChanged, object: nil)
+        // The owner edited the store's details in Manage Store: show them here
+        NotificationCenter.default.addObserver(self, selector: #selector(handleStoreDetailsChanged(_:)), name: .storeDetailsChanged, object: nil)
         // "★ Your rating" / "Been here? Rate it" opens the rating sheet
         userRatingLabel.numberOfLines = 2
         userRatingLabel.isUserInteractionEnabled = true
@@ -1913,7 +1929,8 @@ class PlaceDetailViewController: BaseViewController {
                 self?.moveToCircleButtonTapped()
             }))
         }
-        if canEditDetails && place.location?.clLocation != nil {
+        // Owners change the address in Manage Store → Store details
+        if canEditDetails && !ownerEdit.isVenueOwner && place.location?.clLocation != nil {
             actions.append((title: "Update Address", style: .default, handler: { [weak self] in
                 self?.updateAddressButtonTapped()
             }))
@@ -1950,9 +1967,12 @@ class PlaceDetailViewController: BaseViewController {
             }))
         }
         if ownerEdit.isVenueOwner {
-            actions.append((title: "Arrange Photos", style: .default, handler: { [weak self] in
-                self?.openPhotoGallery(arranging: true)
-            }))
+            // Every edit lives in Manage Store (photos, details, hours…)
+            if let venue = placeVenueData?.venue {
+                actions.append((title: "Manage Store", style: .default, handler: { [weak self] in
+                    self?.openVenueManagement(venue)
+                }))
+            }
             actions.append((title: ownerEdit.viewingAsCustomer ? "Back to Owner View" : "View as Customer", style: .default, handler: { [weak self] in
                 self?.ownerEdit.toggleViewAsCustomer()
             }))
@@ -3514,15 +3534,14 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         present(StorefrontPhotoViewerViewController(urls: urls, startingAt: index), animated: true)
     }
 
-    func placeVenueView(_ view: PlaceVenueRewardsView, didTapQuickAction action: PlaceVenueRewardsView.QuickAction, venue: PlaceVenue) {
-        switch action {
-        case .announcement:
-            // The compose flows live on the manage screen; deep-link and fire
-            // the composer as soon as it appears
-            openVenueManagement(venue, quickAction: .addAnnouncement)
-        case .offer:
-            openVenueManagement(venue, quickAction: .addOffer)
-        }
+    /// Owner bar → the store's Orders (the same screen Manage Store opens)
+    func placeVenueViewDidTapOrders(_ view: PlaceVenueRewardsView, venue: PlaceVenue) {
+        let orders = VenueOrdersViewController(venueId: venue.venueId)
+        navigationController?.pushViewController(orders, animated: true)
+    }
+
+    func placeVenueViewDidToggleCustomerView(_ view: PlaceVenueRewardsView) {
+        ownerEdit.toggleViewAsCustomer()
     }
 
     func placeVenueViewDidTapUpgrade(_ view: PlaceVenueRewardsView) {
@@ -3653,37 +3672,21 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
     }
 }
 
-// MARK: - Owner tap-to-edit (PlaceOwnerEditController)
-extension PlaceDetailViewController: PlaceOwnerEditControllerDelegate {
-    var placeForOwnerEdit: Place { place }
-
-    func ownerEditRequestsAddressUpdate() {
-        updateAddressButtonTapped()
-    }
-
-    func ownerEditDidUpdatePlace(_ updated: Place) {
-        place = updated
-        configureUI()
-    }
-
-    func ownerEditDidChangeAboutContent() {
-        updateAboutCardVisibility()
-    }
-
+// MARK: - Owner customer preview (PlaceOwnerPreview)
+extension PlaceDetailViewController: PlaceOwnerPreviewDelegate {
     /// The eye button itself flips (eye ⇄ eye.slash) so the way back is
     /// always visible; the store card re-renders for the chosen audience.
-    func ownerEditDidToggleCustomerView(_ viewingAsCustomer: Bool) {
+    func ownerPreviewDidToggle(_ viewingAsCustomer: Bool) {
         venueRewardsView.viewAsCustomer = viewingAsCustomer
         venueRewardsView.configure(with: placeVenueData)
         ownerPreviewNavButton?.image = UIImage(systemName: viewingAsCustomer ? "eye.slash" : "eye")
     }
 
-    /// About card collapses entirely when none of description, hours, the
-    /// saver's rating, or the owner's edit rows have content (hidden
-    /// arranged subviews already collapse in-stack).
+    /// About card collapses entirely when none of description, hours or the
+    /// saver's rating have content (hidden arranged subviews already
+    /// collapse in-stack).
     func updateAboutCardVisibility() {
         let aboutIsEmpty = descriptionLabel.isHidden && hoursLabel.isHidden && userRatingLabel.isHidden
-            && !ownerEdit.hasVisibleOwnerRows
         aboutTitleLabel.isHidden = aboutIsEmpty
         aboutCardView.isHidden = aboutIsEmpty
         aboutTopConstraint?.constant = aboutIsEmpty ? 0 : Constants.Spacing.medium
@@ -3720,16 +3723,12 @@ extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
         venueRewardsTopConstraint?.constant = showCard ? Constants.Spacing.small : 0
         view.layoutIfNeeded()
 
-        // Owners get ONE nav affordance: the eye that previews the
-        // page as customers see it. Managing and editing live on
-        // the Your Store card itself — the page IS the owner's
-        // surface, so a toolbar of duplicate entry points just
-        // read as clutter.
+        // Owners get the eye that previews the page as customers see it
+        // (the owner bar on the store card has the same toggle). Editing
+        // lives in Manage Store, reached from that bar.
         ownerEdit.isVenueOwner = data.isOwner == true
         if hasVenue && data.isOwner == true {
             addOwnerPreviewNavButtonIfNeeded()
-            // The page IS the owner's editor: arm the fields
-            ownerEdit.decorateIfNeeded()
         }
     }
 

@@ -7,6 +7,8 @@ import Foundation
 enum VenueManageLayout {
 
     enum Section: Equatable {
+        /// Orders waiting, first, while the store takes orders (2026-10-23)
+        case ordersNow
         case glance
         case placePage
         case loyalty
@@ -25,6 +27,9 @@ enum VenueManageLayout {
         case activity
         // Your place page
         case viewPage
+        /// Name, category, description, phone, website, address (free; the
+        /// place page's tap-to-edit moved here 2026-10-23)
+        case details
         case hours
         /// The place's one photo library: arrange, cover, remove (free)
         case photos
@@ -69,6 +74,9 @@ enum VenueManageLayout {
         var hasStats = true
         var offerCount = 0
         var announcementCount = 0
+        /// Order ahead is on: Orders leads the screen instead of sitting in
+        /// "Your place page"
+        var orderingOn = false
     }
 
     static func sections(_ facts: Facts) -> [(section: Section, rows: [Row])] {
@@ -79,9 +87,11 @@ enum VenueManageLayout {
         glance += [.fullStats, .savers, .followers, .activity]
 
         var placePage: [Row] = []
-        if facts.hasPlace { placePage += [.viewPage, .photos] }
+        if facts.hasPlace { placePage += [.viewPage, .details, .photos] }
         if facts.hasPlace && physical { placePage.append(.hours) }
-        placePage += [.storefrontButtons, .fullMenu, .orders, .onlineOrdering, .menu]
+        placePage += [.storefrontButtons, .fullMenu]
+        if !facts.orderingOn { placePage.append(.orders) }
+        placePage += [.onlineOrdering, .menu]
         // No place page (online-only store): its own storefront gallery
         if !facts.hasPlace { placePage.append(.gallery) }
 
@@ -94,7 +104,9 @@ enum VenueManageLayout {
         var announcements = (0..<facts.announcementCount).map { Row.announcement($0) }
         announcements.append(.addAnnouncement)
 
-        var result: [(Section, [Row])] = [
+        var result: [(Section, [Row])] = []
+        if facts.orderingOn { result.append((.ordersNow, [.orders])) }
+        result += [
             (.glance, glance),
             (.placePage, placePage),
             (.loyalty, loyalty),

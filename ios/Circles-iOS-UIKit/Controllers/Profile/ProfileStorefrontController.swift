@@ -22,7 +22,17 @@ final class ProfileStorefrontController: NSObject {
 
     private var storefrontOpensVenueAdmin = false
     private weak var storefrontClaimsDot: UIView?
+    /// "3" on the icon: orders waiting at the stores I own (2026-10-23)
+    private weak var storefrontOrdersBadge: UILabel?
     private var loadedStorefrontUserId: String?
+    private var pendingClaims = false
+    private var waitingOrders = 0
+
+    override init() {
+        super.init()
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshBadge),
+                                               name: VenueOrdersViewController.ordersChanged, object: nil)
+    }
 
     // MARK: Owner button
 
@@ -63,25 +73,64 @@ final class ProfileStorefrontController: NSObject {
                     ])
                     self.storefrontClaimsDot = dot
 
+                    let badge = UILabel()
+                    badge.backgroundColor = .systemRed
+                    badge.textColor = .white
+                    badge.font = UIFont.systemFont(ofSize: 11, weight: .bold)
+                    badge.textAlignment = .center
+                    badge.layer.cornerRadius = 8
+                    badge.clipsToBounds = true
+                    badge.isHidden = true
+                    badge.isUserInteractionEnabled = false
+                    badge.translatesAutoresizingMaskIntoConstraints = false
+                    button.addSubview(badge)
+                    NSLayoutConstraint.activate([
+                        badge.heightAnchor.constraint(equalToConstant: 16),
+                        badge.widthAnchor.constraint(greaterThanOrEqualToConstant: 16),
+                        badge.topAnchor.constraint(equalTo: button.topAnchor, constant: -3),
+                        badge.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: 5)
+                    ])
+                    self.storefrontOrdersBadge = badge
+
                     let storefrontButton = UIBarButtonItem(customView: button)
                     storefrontButton.accessibilityLabel = "My Storefront"
                     delegate.navigationItem.rightBarButtonItems = existing + [storefrontButton]
                 }
-                self.refreshStorefrontClaimsDot()
+                self.refreshBadge()
             }
         }
     }
 
-    /// Red dot on the storefront icon while ownership claims await review —
-    /// super-users only; it mirrors the claims tray in venue admin.
-    private func refreshStorefrontClaimsDot() {
+    /// The icon's badge: the number of orders waiting at the stores I own
+    /// (or manage); otherwise, for super-users, a dot while ownership claims
+    /// await review (it mirrors the claims tray in venue admin). Called when
+    /// the profile appears and whenever an order push lands.
+    @objc func refreshBadge() {
+        guard storefrontClaimsDot != nil else { return }
+        RewardsService.shared.getMyVenues { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, case .success(let venues) = result else { return }
+                self.waitingOrders = venues.reduce(0) { $0 + ($1.newOrders ?? 0) }
+                self.renderBadge()
+            }
+        }
         guard storefrontOpensVenueAdmin else { return }
         RewardsService.shared.listClaims(status: "pending") { [weak self] result in
             DispatchQueue.main.async {
-                guard case .success(let claims) = result else { return }
-                self?.storefrontClaimsDot?.isHidden = claims.isEmpty
+                guard let self, case .success(let claims) = result else { return }
+                self.pendingClaims = !claims.isEmpty
+                self.renderBadge()
             }
         }
+    }
+
+    private func renderBadge() {
+        let orders = waitingOrders
+        storefrontOrdersBadge?.text = orders > 9 ? " 9+ " : " \(orders) "
+        storefrontOrdersBadge?.isHidden = orders == 0
+        storefrontClaimsDot?.isHidden = orders > 0 || !pendingClaims
+        storefrontOrdersBadge?.superview?.accessibilityLabel = orders > 0
+            ? "My Storefront, \(orders) new order\(orders == 1 ? "" : "s")" : "My Storefront"
     }
 
     @objc private func storefrontButtonTapped() {

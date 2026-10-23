@@ -8,6 +8,9 @@ extension Notification.Name {
     /// A check-in was created (userInfo: "placeId", "globalPlaceId" when known).
     /// Place pages refresh their check-in history line on it.
     static let checkInCreated = Notification.Name("CheckInCreated")
+    /// A store's shared details changed in Manage Store → Store details
+    /// (userInfo "globalPlaceId"); its place page re-reads them
+    static let storeDetailsChanged = Notification.Name("StoreDetailsChanged")
     /// The viewer changed their rating of a place (userInfo: "placeId", "place").
     static let placeRatingChanged = Notification.Name("PlaceRatingChanged")
     /// Asks the Network tab to switch to its Discover segment. Posted by child

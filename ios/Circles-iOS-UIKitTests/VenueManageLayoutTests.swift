@@ -35,6 +35,24 @@ struct VenueManageLayoutTests {
         #expect(page == [.storefrontButtons, .fullMenu, .orders, .onlineOrdering, .menu, .gallery])
     }
 
+    @Test func storeDetailsSitUnderViewYourPage() {
+        let page = rows(L.Facts(), .placePage) ?? []
+        #expect(Array(page.prefix(3)) == [.viewPage, .details, .photos])
+        #expect(!(rows(L.Facts(hasPlace: false), .placePage) ?? []).contains(.details))
+    }
+
+    @Test func ordersLeadTheScreenWhileTheStoreTakesOrders() {
+        let on = L.sections(L.Facts(orderingOn: true))
+        #expect(on.first?.section == .ordersNow)
+        #expect(on.first?.rows == [.orders])
+        // ...and aren't listed twice
+        #expect(!(rows(L.Facts(orderingOn: true), .placePage) ?? []).contains(.orders))
+        #expect((rows(L.Facts(orderingOn: true), .placePage) ?? []).contains(.onlineOrdering))
+        // Off: Orders waits in "Your place page", where it explains itself
+        #expect(L.sections(L.Facts()).first?.section == .glance)
+        #expect((rows(L.Facts(), .placePage) ?? []).contains(.orders))
+    }
+
     @Test func offersAndAnnouncementsListThenAdd() {
         let facts = L.Facts(offerCount: 2, announcementCount: 1)
         #expect(rows(facts, .loyalty) == [.earnRate, .offer(0), .offer(1), .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes])
@@ -47,7 +65,7 @@ struct VenueManageLayoutTests {
     }
 
     @Test func freePlanKeepsTheBasics() {
-        let free: [L.Row] = [.statTiles, .fullStats, .viewPage, .hours, .photos, .storefrontButtons,
+        let free: [L.Row] = [.statTiles, .fullStats, .viewPage, .details, .hours, .photos, .storefrontButtons,
                              .showWindowSticker, .emailStickers, .contactName, .contactEmail, .managers,
                              .plan, .ownerGuide, .brandStorefront, .addBusiness]
         free.forEach { #expect(!L.isBusiness($0), "\($0) should be free") }

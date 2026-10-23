@@ -6,7 +6,10 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
     func placeVenueViewDidTapManage(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
     func placeVenueViewDidTapUpgrade(_ view: PlaceVenueRewardsView)
     func placeVenueViewDidTapStats(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
-    func placeVenueView(_ view: PlaceVenueRewardsView, didTapQuickAction action: PlaceVenueRewardsView.QuickAction, venue: PlaceVenue)
+    /// Owner bar: the store's Orders screen
+    func placeVenueViewDidTapOrders(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
+    /// Owner bar: flip between the owner's view and the customer's
+    func placeVenueViewDidToggleCustomerView(_ view: PlaceVenueRewardsView)
     // Storefront: the owner's buttons, menu, featured items and photos
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapStorefrontLink url: String, title: String)
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapStorefrontPhotos urls: [String], startingAt index: Int)
@@ -19,11 +22,6 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
 /// plus an ownership footer (claim / pending / manage). Collapses to zero
 /// height when the place has no enrolled venue.
 class PlaceVenueRewardsView: UIView {
-
-    enum QuickAction {
-        case announcement
-        case offer
-    }
 
     weak var delegate: PlaceVenueRewardsViewDelegate?
 
@@ -104,14 +102,13 @@ class PlaceVenueRewardsView: UIView {
         if let actions = data.storefront?.actions, let row = makeActionButtonsRow(actions) {
             containerStack.addArrangedSubview(row)
         }
+        // The owner's one strip: what needs them, how the store is doing,
+        // and the way into Manage Store (the same screen the profile's store
+        // icon opens). Editing happens there, not on the page (2026-10-23).
         if isOwner {
-            if let stats = data.ownerStats {
-                containerStack.addArrangedSubview(makeOwnerStatsStrip(stats, venue: venue))
-            }
-            containerStack.addArrangedSubview(makeManageStoreButton(venue))
-            if let quickActions = makeQuickActionsRow(venue, premium: data.ownerPremium == true) {
-                containerStack.addArrangedSubview(quickActions)
-            }
+            containerStack.addArrangedSubview(makeOwnerBar(data, venue: venue))
+        } else if data.isOwner == true && viewAsCustomer {
+            containerStack.addArrangedSubview(makeCustomerPreviewBar())
         }
 
         // Server filters expired announcements; re-filter as a stale-cache defense
@@ -120,12 +117,6 @@ class PlaceVenueRewardsView: UIView {
             let row = makeAnnouncementRow(announcement)
             if isOwner { attachManageTap(to: row, venue: venue) }
             containerStack.addArrangedSubview(row)
-        }
-
-        // Free-tier owner on their own page: show where announcements would
-        // appear and what unlocks them. Only the claimed owner ever sees this.
-        if isOwner && data.ownerPremium == false {
-            containerStack.addArrangedSubview(makeUpgradeTeaserRow())
         }
 
         let offers = data.offers ?? []
@@ -286,144 +277,111 @@ class PlaceVenueRewardsView: UIView {
         return row
     }
 
-    /// Inline headline counters on the owner's own page, tapping through to
-    /// the full Stats & Insights dashboard
-    private func makeOwnerStatsStrip(_ stats: VenueOwnerStats, venue: PlaceVenue) -> UIView {
-        let row = UIView()
-        row.translatesAutoresizingMaskIntoConstraints = false
+    /// The owner bar (2026-10-23):
+    ///   2 new orders                       Manage Store ›
+    ///   14 saves · 3 visits · Free plan
+    ///   [See orders] [View as customer] [Get Business]
+    private func makeOwnerBar(_ data: PlaceVenueData, venue: PlaceVenue) -> UIView {
+        let stats = data.ownerStats
+        let input = OwnerBarSummary.Input(
+            orderingEnabled: stats?.orderingEnabled == true,
+            newOrders: stats?.newOrders ?? 0,
+            saves: stats?.saves ?? 0,
+            visits: stats?.visits ?? 0,
+            premium: data.ownerPremium != false
+        )
 
+        let headline = UILabel()
+        headline.text = OwnerBarSummary.headline(input)
+        headline.font = UIFont.systemFont(ofSize: 17, weight: .bold)
+        headline.textColor = OwnerBarSummary.needsAttention(input) ? Constants.Colors.primary : .label
+        headline.adjustsFontSizeToFitWidth = true
+        headline.minimumScaleFactor = 0.8
+
+        let manage = UIButton.smallActionButton(title: "Manage Store \u{203A}", style: .primary)
+        manage.setContentHuggingPriority(.required, for: .horizontal)
+        manage.setContentCompressionResistancePriority(.required, for: .horizontal)
+        manage.accessibilityLabel = "Manage Store"
+        manage.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.delegate?.placeVenueViewDidTapManage(self, venue: venue)
+        }, for: .touchUpInside)
+
+        let top = UIStackView(arrangedSubviews: [headline, manage])
+        top.axis = .horizontal
+        top.alignment = .center
+        top.spacing = 8
+
+        // How the store is doing; tapping it opens the full stats
+        let detail = UILabel()
+        detail.text = OwnerBarSummary.detail(input) + "  \u{203A}"
+        detail.font = UIFont.systemFont(ofSize: 13, weight: .medium)
+        detail.textColor = .secondaryLabel
+        detail.isUserInteractionEnabled = true
+        detail.accessibilityTraits = .button
+        detail.accessibilityHint = "Opens your store\u{2019}s stats"
+        detail.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(statsTapped)))
+
+        var buttons: [UIView] = []
+        if input.orderingEnabled {
+            let orders = UIButton.smallActionButton(title: input.newOrders > 0 ? "See orders" : "Orders",
+                                                    style: input.newOrders > 0 ? .primary : .secondary)
+            orders.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                self.delegate?.placeVenueViewDidTapOrders(self, venue: venue)
+            }, for: .touchUpInside)
+            buttons.append(orders)
+        }
+        let preview = UIButton.smallActionButton(title: "View as customer", style: .secondary)
+        preview.setImage(UIImage(systemName: "eye"), for: .normal)
+        preview.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.delegate?.placeVenueViewDidToggleCustomerView(self)
+        }, for: .touchUpInside)
+        buttons.append(preview)
+        if !input.premium {
+            let upgrade = UIButton.smallActionButton(title: "Get Business", style: .secondary)
+            upgrade.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                self.delegate?.placeVenueViewDidTapUpgrade(self)
+            }, for: .touchUpInside)
+            buttons.append(upgrade)
+        }
+        let actions = UIStackView(arrangedSubviews: buttons)
+        actions.axis = .horizontal
+        actions.spacing = 8
+        actions.distribution = .fillProportionally
+
+        let bar = UIStackView(arrangedSubviews: [top, detail, actions])
+        bar.axis = .vertical
+        bar.spacing = 6
+        bar.setCustomSpacing(10, after: detail)
+        return bar
+    }
+
+    /// The owner previewing their page as customers see it: one quiet line
+    /// with the way back
+    private func makeCustomerPreviewBar() -> UIView {
         let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "\(stats.saves) saves · \(stats.visits) visits · \(stats.scans) scans"
+        label.text = "Viewing as a customer"
         label.font = UIFont.systemFont(ofSize: 13, weight: .medium)
         label.textColor = .secondaryLabel
-        label.adjustsFontSizeToFitWidth = true
-
-        let statsLink = UILabel()
-        statsLink.translatesAutoresizingMaskIntoConstraints = false
-        statsLink.text = "View stats ›"
-        statsLink.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
-        statsLink.textColor = Constants.Colors.primary
-        statsLink.setContentHuggingPriority(.required, for: .horizontal)
-        statsLink.setContentCompressionResistancePriority(.required, for: .horizontal)
-
-        row.addSubview(label)
-        row.addSubview(statsLink)
-        NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: row.topAnchor),
-            label.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-            label.bottomAnchor.constraint(equalTo: row.bottomAnchor),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: statsLink.leadingAnchor, constant: -8),
-            statsLink.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            statsLink.trailingAnchor.constraint(equalTo: row.trailingAnchor)
-        ])
-
-        row.isUserInteractionEnabled = true
-        row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(statsStripTapped)))
-        return row
-    }
-
-    @objc private func statsStripTapped() {
-        guard let venue = data?.venue else { return }
-        delegate?.placeVenueViewDidTapStats(self, venue: venue)
-    }
-
-    /// One-tap compose from the page itself — fields on the page are already
-    /// tap-to-edit for owners, so the row is just the paid broadcast actions
-    /// (free owners get the upgrade teaser row instead).
-    private func makeQuickActionsRow(_ venue: PlaceVenue, premium: Bool) -> UIView? {
-        guard premium else { return nil }
-
-        let announceButton = UIButton.smallActionButton(title: "📣 Announcement", style: .secondary)
-        announceButton.addAction(UIAction { [weak self] _ in
-            guard let self = self else { return }
-            self.delegate?.placeVenueView(self, didTapQuickAction: .announcement, venue: venue)
+        let back = UIButton.smallActionButton(title: "Back to owner view", style: .secondary)
+        back.setContentHuggingPriority(.required, for: .horizontal)
+        back.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.delegate?.placeVenueViewDidToggleCustomerView(self)
         }, for: .touchUpInside)
-
-        let offerButton = UIButton.smallActionButton(title: "🎁 New Offer", style: .secondary)
-        offerButton.addAction(UIAction { [weak self] _ in
-            guard let self = self else { return }
-            self.delegate?.placeVenueView(self, didTapQuickAction: .offer, venue: venue)
-        }, for: .touchUpInside)
-
-        let row = UIStackView(arrangedSubviews: [announceButton, offerButton])
+        let row = UIStackView(arrangedSubviews: [label, back])
         row.axis = .horizontal
-        row.distribution = .fillEqually
+        row.alignment = .center
         row.spacing = 8
         return row
     }
 
-    /// Full-width owner CTA shown directly under the header
-    private func makeManageStoreButton(_ venue: PlaceVenue) -> UIView {
-        let button = UIButton.smallActionButton(title: "Manage Store", style: .primary)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
-        button.heightAnchor.constraint(equalToConstant: 40).isActive = true
-        button.addAction(UIAction { [weak self] _ in
-            guard let self = self else { return }
-            self.delegate?.placeVenueViewDidTapManage(self, venue: venue)
-        }, for: .touchUpInside)
-        return button
-    }
-
-    /// Free-tier owner teaser: where announcements would appear, show what
-    /// unlocks them. Tapping opens the Business paywall.
-    private func makeUpgradeTeaserRow() -> UIView {
-        let row = UIView()
-        row.translatesAutoresizingMaskIntoConstraints = false
-
-        let icon = UIImageView(image: UIImage(systemName: "megaphone"))
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.tintColor = .systemGray2
-        icon.contentMode = .scaleAspectFit
-
-        let titleLabel = UILabel()
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.text = "Post announcements & offers here"
-        titleLabel.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-        titleLabel.textColor = .label
-
-        let subtitleLabel = UILabel()
-        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
-        subtitleLabel.text = "Upgrade to Business to reach your savers and followers"
-        subtitleLabel.font = UIFont.systemFont(ofSize: 12)
-        subtitleLabel.textColor = Constants.Colors.primary
-        subtitleLabel.numberOfLines = 0
-
-        let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
-        chevron.translatesAutoresizingMaskIntoConstraints = false
-        chevron.tintColor = .tertiaryLabel
-
-        row.addSubview(icon)
-        row.addSubview(titleLabel)
-        row.addSubview(subtitleLabel)
-        row.addSubview(chevron)
-
-        NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-            icon.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 18),
-            icon.heightAnchor.constraint(equalToConstant: 18),
-
-            titleLabel.topAnchor.constraint(equalTo: row.topAnchor),
-            titleLabel.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
-            titleLabel.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -8),
-
-            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
-            subtitleLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-            subtitleLabel.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -8),
-            subtitleLabel.bottomAnchor.constraint(equalTo: row.bottomAnchor),
-
-            chevron.trailingAnchor.constraint(equalTo: row.trailingAnchor),
-            chevron.centerYAnchor.constraint(equalTo: row.centerYAnchor)
-        ])
-
-        row.isUserInteractionEnabled = true
-        row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(upgradeTeaserTapped)))
-        return row
-    }
-
-    @objc private func upgradeTeaserTapped() {
-        delegate?.placeVenueViewDidTapUpgrade(self)
+    @objc private func statsTapped() {
+        guard let venue = data?.venue else { return }
+        delegate?.placeVenueViewDidTapStats(self, venue: venue)
     }
 
     /// Owner shortcut: tapping a content row jumps straight into management

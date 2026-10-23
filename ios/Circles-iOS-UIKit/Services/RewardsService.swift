@@ -1232,6 +1232,10 @@ struct VenueOwnerStats: Codable {
     let visits: Int
     let scans: Int
     let redemptions: Int
+    /// Order ahead is on for this store (the owner bar leads with orders)
+    var orderingEnabled: Bool? = nil
+    /// Orders waiting to be accepted
+    var newOrders: Int? = nil
 }
 
 struct PlaceVenue: Codable {
@@ -1435,6 +1439,10 @@ struct AdminVenue: Codable {
     let ownerUserId: String?
     let managerUserIds: [String]?
     let isPrimaryOwner: Bool?
+    /// Order ahead: on for this store, and orders waiting to be accepted
+    /// (the profile's store icon badge and Manage Store's Orders row)
+    var orderingEnabled: Bool? = nil
+    var newOrders: Int? = nil
 }
 
 // MARK: - Super-user store page
