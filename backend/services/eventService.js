@@ -16,7 +16,7 @@
 
 const { FieldValue, FieldPath } = require('firebase-admin/firestore');
 const { getFirestore } = require('../config/firebase');
-const { COLLECTIONS, createCircle, createPlace } = require('../models/FirestoreModels');
+const { COLLECTIONS, createCircle } = require('../models/FirestoreModels');
 const { normalizeUserId } = require('./idService');
 const { isBlockedEitherWay } = require('./moderationService');
 const { getConnectedUserIds } = require('../utils/networkAccess');
@@ -833,7 +833,17 @@ async function findOrCreateEventCircle(ref, data, uid) {
   return circleId;
 }
 
-async function savePlaceToMyCircle(eventId, uid, eventPlaceId) {
+/**
+ * Saves an event's place to the member's event circle through the core save
+ * (services/placeSaveService), the same path as Add Place: Google details
+ * for a venue new to FavCircles (photo, hours, rating, website), the venue
+ * link, the duplicate check across all their circles, FavCoins and activity.
+ * It used to write a bare save with no Google step, so Matti's Condado Tacos
+ * came out with no photo or details (2026-10-23).
+ * `user` is req.user. Returns { place, circleId, alreadySaved, afterResponse? }.
+ */
+async function savePlaceToMyCircle(eventId, user, eventPlaceId) {
+  const uid = typeof user === 'string' ? user : user.uid;
   const { ref, data } = await loadAsMember(eventId, uid);
   const placeRef = placesCol().doc(String(eventPlaceId));
   const doc = await placeRef.get();
@@ -841,30 +851,32 @@ async function savePlaceToMyCircle(eventId, uid, eventPlaceId) {
   const p = doc.data();
   const circleId = await findOrCreateEventCircle(ref, data, uid);
 
-  // Already in the circle (same name at the same spot): nothing to add
-  const inCircle = await db().collection(COLLECTIONS.PLACES).where('circleId', '==', circleId).where('name', '==', p.name).limit(5).get();
-  const already = inCircle.docs.find(d => !d.data().deletedAt);
-  if (!already) {
-    const placeData = createPlace({
-      name: p.name,
-      address: p.address || '',
-      location: { type: 'Point', coordinates: [p.lng, p.lat] },
-      category: p.category || 'other'
-    }, circleId, uid);
-    const savedRef = await db().collection(COLLECTIONS.PLACES).add(placeData);
-    // Every save path links the canonical venue record (CLAUDE.md)
-    await require('./globalPlaceResolver').ensureGlobalPlaceLink(await savedRef.get()).catch(err =>
-      console.error('🚌 global link failed:', err.message));
-    await db().collection(COLLECTIONS.CIRCLES).doc(circleId).update({
-      placesCount: FieldValue.increment(1),
-      updatedAt: nowIso()
-    }).catch(() => {});
+  const result = await require('./placeSaveService').savePlace(typeof user === 'string' ? { uid } : user, {
+    circleId,
+    name: p.name,
+    // The core save needs an address; Google fills the real one in
+    address: p.address || `${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}`,
+    location: { type: 'Point', coordinates: [p.lng, p.lat] },
+    category: p.category || 'other',
+    // Picked from Apple Maps on the phone: resolve it to Google here, like
+    // the share extension and dog spots (canonical venue first, Google only
+    // for venues new to FavCircles)
+    enrichFromGoogle: true
+  });
+  const payload = result.payload || {};
+  const saved = result.status === 201 && payload.place;
+  // Already saved in any of their circles: that save stands, nothing new
+  const alreadySaved = !saved && payload.code === 'DUPLICATE_PLACE';
+  if (!saved && !alreadySaved) {
+    throw new ServiceError(result.status || 500, payload.code || (payload.upgradeRequired ? 'upgrade_required' : 'save_failed'),
+      payload.message || 'Couldn’t save that place');
   }
   await placeRef.update({ savedBy: FieldValue.arrayUnion(uid) });
   return {
     place: toClientPlace({ id: doc.id, data: () => ({ ...p, savedBy: [...new Set([...(p.savedBy || []), uid])] }) }, uid),
-    circleId,
-    alreadySaved: !!already
+    circleId: alreadySaved ? (payload.existingCircleId || circleId) : circleId,
+    alreadySaved,
+    afterResponse: saved ? result.afterResponse : undefined
   };
 }
 

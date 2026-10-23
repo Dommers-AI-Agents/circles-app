@@ -38,7 +38,16 @@ exports.startVideo = handle('startVideo', async (req) => require('../../services
 exports.finishVideo = handle('finishVideo', async (req) => ({ photo: await require('../../services/eventVideoService').finishVideo(req.params.id, uid(req), req.params.videoId) }));
 exports.likePhoto = handle('likePhoto', async (req) => ({ photo: await eventService.togglePhotoLike(req.params.id, uid(req), req.params.photoId) }));
 exports.tagPlace = handle('tagPlace', async (req) => ({ place: await eventService.tagPlace(req.params.id, uid(req), req.body || {}) }));
-exports.savePlace = handle('savePlace', async (req) => eventService.savePlaceToMyCircle(req.params.id, uid(req), req.params.placeId));
+// Through the core place save: reply first, then its activity/notifications
+exports.savePlace = async (req, res) => {
+  try {
+    const { afterResponse, ...saved } = await eventService.savePlaceToMyCircle(req.params.id, req.user, req.params.placeId);
+    res.json({ success: true, ...saved });
+    if (afterResponse) await afterResponse().catch((err) => console.error('🚌 event place follow-up failed:', err.message));
+  } catch (error) {
+    sendServiceError(res, error, { log: '🚌 savePlace failed', fallbackMessage: 'Something went wrong with the event' });
+  }
+};
 
 // Shout-out wall, song requests, photo challenges, roll call, recap
 exports.listWall = handle('listWall', async (req) => extras.listWall(req.params.id, uid(req)));
