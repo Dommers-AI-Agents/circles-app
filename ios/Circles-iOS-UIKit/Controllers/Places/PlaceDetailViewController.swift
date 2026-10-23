@@ -186,6 +186,11 @@ class PlaceDetailViewController: BaseViewController {
         addToCircleButton.isHidden = !visible
     }
 
+    /// configureUI runs again whenever the place reloads; only the newest
+    /// add-to-circle check may show the button (an older one finishing last
+    /// showed it on the person's own save)
+    private var addToCircleCheck = 0
+
     // Venue rewards section (offers + owner announcements); collapsed until
     // the by-place lookup finds an enrolled venue
     private let venueRewardsView = PlaceVenueRewardsView()
@@ -1534,6 +1539,14 @@ class PlaceDetailViewController: BaseViewController {
     private func configureAddToCircleButton() {
         // Check if the current user already has this place in any of their circles
         let currentUserId = AuthService.shared.getUserId() ?? ""
+        addToCircleCheck += 1
+        let check = addToCircleCheck
+        // Still the newest check, for the place on screen now
+        let isCurrent = { [weak self] () -> Bool in
+            guard let self else { return false }
+            return check == self.addToCircleCheck && !AddToCircleGate.isOwnSave(self.place, currentUserId: currentUserId)
+        }
+        addToCircleButton.removeTarget(self, action: #selector(addToCircleButtonTapped), for: .touchUpInside)
         
         // Hide button if:
         // 1. User created this place themselves
@@ -1552,7 +1565,7 @@ class PlaceDetailViewController: BaseViewController {
         // may also have saved — compare by venue identity instead.
         CircleService.shared.fetchUserCircles { [weak self] result in
             DispatchQueue.main.async {
-                guard let self = self else { return }
+                guard let self = self, isCurrent() else { return }
 
                 switch result {
                 case .success(let userCircles):
@@ -1564,7 +1577,7 @@ class PlaceDetailViewController: BaseViewController {
 
                     PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: circleIds) { [weak self] placesResult in
                         DispatchQueue.main.async {
-                            guard let self = self else { return }
+                            guard let self = self, isCurrent() else { return }
                             switch placesResult {
                             case .success(let myPlaces):
                                 if AddToCircleGate.verdictAfterVenueCheck(for: self.place, myPlaces: myPlaces) == .hide {
