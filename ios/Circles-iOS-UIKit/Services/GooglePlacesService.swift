@@ -132,19 +132,16 @@ class GooglePlacesService {
                     Logger.debug("  \(index + 1). \(prediction.attributedPrimaryText.string) - \(prediction.attributedSecondaryText?.string ?? "")")
                 }
                 
-                // First try to find exact name match
-                bestMatch = predictions.first { prediction in
-                    let predictionName = prediction.attributedPrimaryText.string.lowercased()
-                    let searchName = name.lowercased()
-                    return predictionName == searchName || predictionName.contains(searchName)
+                // The business itself, never a street address Google
+                // offers when it can't match the name (GooglePredictionPicker)
+                let candidates = predictions.map {
+                    GooglePredictionPicker.Candidate(name: $0.attributedPrimaryText.string, types: $0.types)
                 }
-                
-                // If no exact match, use the first result (closest based on location bias)
-                if bestMatch == nil {
-                    bestMatch = predictions.first
-                    Logger.debug("⚠️ No exact name match found, using closest result based on location")
+                if let index = GooglePredictionPicker.pick(name: name, from: candidates) {
+                    bestMatch = predictions[index]
+                    Logger.debug("✅ Google match: \(predictions[index].attributedPrimaryText.string)")
                 } else {
-                    Logger.debug("✅ Found exact match: \(bestMatch!.attributedPrimaryText.string)")
+                    Logger.debug("⚠️ No Google suggestion is this business; not linking one")
                 }
             }
             

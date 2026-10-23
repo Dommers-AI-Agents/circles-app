@@ -18,6 +18,7 @@ const requestDeduplicator = require('../../services/requestDeduplicator');
 const db = getFirestore();
 const googleMapsClient = new Client({});
 const { propagateVenueUpdates } = require('../../services/placeVenueSync.js');
+const { isAddressOnly } = require('../../services/googleAddressGuard');
 
 // The newer of the last successful Google refresh and the last attempt, or
 // null when neither is recorded.
@@ -118,21 +119,23 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
           params: {
             input: place.name,
             inputtype: 'textquery',
-            fields: ['place_id', 'name', 'geometry'],
+            fields: ['place_id', 'name', 'geometry', 'types'],
             locationbias: place.location ? `point:${place.location.coordinates[1]},${place.location.coordinates[0]}` : undefined,
             key: googleMapsApiKey
           }
         });
         
-        if (searchResponse.data.candidates && searchResponse.data.candidates.length > 0) {
+        // An address entry is never this venue (services/googleAddressGuard)
+        const candidates = (searchResponse.data.candidates || []).filter((c) => !isAddressOnly(c.types));
+        if (candidates.length > 0) {
           // Find the best match based on distance
-          let bestMatch = searchResponse.data.candidates[0];
+          let bestMatch = candidates[0];
           
-          if (place.location && searchResponse.data.candidates.length > 1) {
+          if (place.location && candidates.length > 1) {
             const placeCoords = place.location.coordinates;
             let minDistance = Infinity;
             
-            for (const candidate of searchResponse.data.candidates) {
+            for (const candidate of candidates) {
               if (candidate.geometry && candidate.geometry.location) {
                 const distance = Math.sqrt(
                   Math.pow(candidate.geometry.location.lat - placeCoords[1], 2) +

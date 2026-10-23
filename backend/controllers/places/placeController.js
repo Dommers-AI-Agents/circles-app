@@ -57,6 +57,8 @@ const isVerifiedVenueOwner = async (uid, placeId, googlePlaceId) => {
 // (which will seed that record) is verified against Google Places directly.
 // Mutates placeData. Category stays client-supplied on the Google path — the
 // Google-types → app-category mapping lives client-side.
+const { isAddressOnly, isStreetLineName } = require('../../services/googleAddressGuard');
+
 const anchorVenueFieldsToSource = async (placeData) => {
   const googlePlaceId = placeData.googlePlaceId;
 
@@ -74,6 +76,14 @@ const anchorVenueFieldsToSource = async (placeData) => {
     .get();
   if (!canonicalHit.empty) {
     const canonical = canonicalHit.docs[0].data();
+    // A venue named only by its street address isn't the business being
+    // saved: keep the client's name and drop the address's Google id
+    if (isStreetLineName(canonical.name, canonical.address) && placeData.name
+        && !isStreetLineName(placeData.name, placeData.address || canonical.address)) {
+      console.log(`🏠 ${googlePlaceId} is an address venue ("${canonical.name}"); keeping "${placeData.name}" unlinked`);
+      placeData.googlePlaceId = null;
+      return;
+    }
     ['name', 'address', 'category', 'subcategory'].forEach((field) => {
       if (canonical[field] !== undefined && canonical[field] !== null && canonical[field] !== '') {
         // A canonical still at 'other' has nothing to anchor: keep the
@@ -108,7 +118,8 @@ const anchorVenueFieldsToSource = async (placeData) => {
             place_id: googlePlaceId,
             // editorial_summary rides the Atmosphere SKU this call already
             // bills for rating/price_level — no incremental API cost
-            fields: ['name', 'formatted_address', 'geometry', 'website',
+            // types: tells an address entry from a business (Basic, no extra cost)
+            fields: ['name', 'types', 'formatted_address', 'geometry', 'website',
                      'formatted_phone_number', 'rating', 'user_ratings_total', 'price_level',
                      'editorial_summary',
                      // Atmosphere SKU already billed above — no incremental cost
@@ -121,6 +132,15 @@ const anchorVenueFieldsToSource = async (placeData) => {
       });
     }
     if (!details) return;
+
+    // Google matched an ADDRESS, not the business (2026-10-23: "Uptown Yolk
+    // Cafe" saved as "116 W Catherine St"). Keep what the user picked and
+    // don't link the venue to the address's id.
+    if (isAddressOnly(details.types)) {
+      console.log(`🏠 ${googlePlaceId} is an address ("${details.name}"), not "${placeData.name}"; not linking it`);
+      placeData.googlePlaceId = null;
+      return;
+    }
 
     if (details.name) placeData.name = details.name;
     if (details.formatted_address) placeData.address = details.formatted_address;
