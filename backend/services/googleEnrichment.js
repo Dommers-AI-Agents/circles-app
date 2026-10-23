@@ -152,7 +152,8 @@ async function enrichSaveFromGoogle(placeData) {
       // No canonical, or a BARE one (seeded by an earlier bare save of
       // this venue — a bare match must not satisfy canonical-first, or
       // the venue stays bare forever).
-      const { enrichPlaceWithGoogleData } = require('../checkInController');
+      // (Same file. This was require('../checkInController') — a path that
+      // doesn't exist from services/, so every enrichment failed bare.)
       const googleData = await enrichPlaceWithGoogleData(placeData.name, {
         latitude: coords[1],
         longitude: coords[0]
@@ -236,4 +237,27 @@ async function enrichSaveFromGoogle(placeData) {
   }
 }
 
-module.exports = { enrichPlaceWithGoogleData, enrichSaveFromGoogle };
+/**
+ * Which Find Place candidate is the save's venue. Google's first pick (its
+ * ranking weighs prominence) when it's within `nearMeters` of the save; only
+ * when it's farther does the nearest listing win. Pure.
+ * coordinates: [lng, lat] of the save, or null.
+ */
+function pickGoogleCandidate(candidates, coordinates, nearMeters = 500) {
+  if (!Array.isArray(candidates) || candidates.length === 0) return null;
+  if (!Array.isArray(coordinates) || coordinates.length !== 2) return candidates[0];
+  const [lng, lat] = coordinates;
+  const meters = (c) => {
+    const loc = c && c.geometry && c.geometry.location;
+    if (!loc) return Infinity;
+    const toRad = (d) => d * Math.PI / 180;
+    const dLat = toRad(loc.lat - lat);
+    const dLng = toRad(loc.lng - lng);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat)) * Math.cos(toRad(loc.lat)) * Math.sin(dLng / 2) ** 2;
+    return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+  if (meters(candidates[0]) <= nearMeters) return candidates[0];
+  return candidates.reduce((best, c) => (meters(c) < meters(best) ? c : best), candidates[0]);
+}
+
+module.exports = { enrichPlaceWithGoogleData, enrichSaveFromGoogle, pickGoogleCandidate };

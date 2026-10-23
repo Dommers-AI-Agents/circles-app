@@ -33,6 +33,8 @@ exports.latestRefreshTouch = latestRefreshTouch;
 // @desc    Refresh place data from Google Places API
 // @route   POST /api/places/:id/refresh-google
 // @access  Private (owner or circle member)
+const { pickGoogleCandidate } = require('../../services/googleEnrichment');
+
 exports.refreshPlaceFromGoogle = async (req, res, next) => {
   try {
     const placeRef = db.collection(COLLECTIONS.PLACES).doc(req.params.id);
@@ -128,28 +130,11 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
         // An address entry is never this venue (services/googleAddressGuard)
         const candidates = (searchResponse.data.candidates || []).filter((c) => !isAddressOnly(c.types));
         if (candidates.length > 0) {
-          // Find the best match based on distance
-          let bestMatch = candidates[0];
-          
-          if (place.location && candidates.length > 1) {
-            const placeCoords = place.location.coordinates;
-            let minDistance = Infinity;
-            
-            for (const candidate of candidates) {
-              if (candidate.geometry && candidate.geometry.location) {
-                const distance = Math.sqrt(
-                  Math.pow(candidate.geometry.location.lat - placeCoords[1], 2) +
-                  Math.pow(candidate.geometry.location.lng - placeCoords[0], 2)
-                );
-                
-                if (distance < minDistance) {
-                  minDistance = distance;
-                  bestMatch = candidate;
-                }
-              }
-            }
-          }
-          
+          // Google's own ranking, unless its pick is far from the save: the
+          // nearest listing can be an empty stub beside the real one (Skiptown
+          // South End, no reviews, next to Skiptown Charlotte's 1,101)
+          const bestMatch = pickGoogleCandidate(candidates, place.location && place.location.coordinates);
+
           googlePlaceId = bestMatch.place_id;
           console.log(`✅ Found matching Google Place: ${bestMatch.name} (ID: ${googlePlaceId})`);
           
