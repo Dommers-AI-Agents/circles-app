@@ -41,7 +41,16 @@ exports.listDaily = handle('listDaily', async (req) => dogs.listDaily(uid(req), 
 exports.getDaily = handle('getDaily', async (req) => dogs.getDaily(uid(req), req.params.dailyId));
 exports.updateSettings = handle('updateSettings', async (req) => dogs.updateSettings(uid(req), { enabled: body(req).enabled, times: body(req).times }));
 
-exports.savePlace = handle('savePlace', async (req) => dogs.savePlace(uid(req), body(req)));
+// The core save's activity and pushes run after the reply, like Add Place's
+exports.savePlace = async (req, res) => {
+  try {
+    const { afterResponse, ...saved } = await dogs.savePlace(req.user, body(req));
+    res.json({ success: true, ...saved });
+    if (afterResponse) await afterResponse().catch((err) => console.error('🐶 dog spot follow-up failed:', err.message));
+  } catch (error) {
+    sendServiceError(res, error, { log: '🐶 savePlace failed', fallbackMessage: 'Something went wrong in the Dog Park' });
+  }
+};
 
 // Cloud Scheduler, every 15 minutes. Each person is gated on their own clock.
 exports.runDailyDue = async (req, res) => {

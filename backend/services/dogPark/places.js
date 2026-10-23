@@ -1,13 +1,13 @@
 // backend/services/dogPark/places.js
 //
-// Favorite dog places: a place picked in My Dogs is saved like any save, into
-// the person's "Dog spots" circle (found or made on first use), so it shows on
-// their map and profile like every other favorite.
+// Favorite dog places: a place picked in My Dogs goes through the core save
+// (the same one as Add Place) into the person's "Dog spots" circle (found or
+// made on first use), so it shows on their map and profile like every other
+// favorite, with Google's details.
 const s = require('./shared');
 const { ServiceError } = require('../../utils/serviceError');
 const { clean } = require('../../utils/text');
-const { nowIso } = require('../../utils/ids');
-const { COLLECTIONS, createCircle, createPlace } = require('../../models/FirestoreModels');
+const { COLLECTIONS, createCircle } = require('../../models/FirestoreModels');
 
 const CIRCLE_NAME = 'Dog spots';
 const CIRCLE_EMOJI = '🐶';
@@ -41,33 +41,44 @@ async function findOrCreateCircle(uid) {
   return ref.id;
 }
 
-async function savePlace(uid, body) {
+/**
+ * Saves the picked place through the core save (services/placeSaveService),
+ * the same path as Add Place: duplicate check across ALL your circles, Google
+ * details for a venue new to FavCircles, the venue link, photos, FavCoins,
+ * activity. Already saved anywhere → that save comes back, nothing new.
+ * Returns { placeId, circleId, circleName, alreadySaved, afterResponse? }.
+ */
+async function savePlace(user, body) {
+  const uid = user && user.uid;
   await s.loadUser(uid);
   const place = parsePlace(body);
   const circleId = await findOrCreateCircle(uid);
-  const places = s.db().collection(COLLECTIONS.PLACES);
-  // Already in the circle (same name at the same spot): nothing to add
-  const same = await places.where('circleId', '==', circleId).where('name', '==', place.name).limit(5).get();
-  const already = same.docs.find((d) => {
-    const c = d.data().location && d.data().location.coordinates;
-    return !d.data().deletedAt && Array.isArray(c) && Math.abs(c[1] - place.lat) < 0.0005 && Math.abs(c[0] - place.lng) < 0.0005;
-  });
-  if (already) return { placeId: already.id, circleId, alreadySaved: true };
-  const placeData = createPlace({
+  const result = await require('../placeSaveService').savePlace(user, {
+    circleId,
     name: place.name,
-    address: place.address,
+    // The core save needs an address; Google fills the real one in
+    address: place.address || `${place.lat.toFixed(5)}, ${place.lng.toFixed(5)}`,
     location: { type: 'Point', coordinates: [place.lng, place.lat] },
-    category: place.category
-  }, circleId, uid);
-  const ref = await places.add(placeData);
-  // Every save path links the canonical venue record (CLAUDE.md)
-  await require('../globalPlaceResolver').ensureGlobalPlaceLink(await ref.get()).catch((err) =>
-    console.error('🐶 global link failed:', err.message));
-  await s.db().collection(COLLECTIONS.CIRCLES).doc(circleId).update({
-    placesCount: s.fieldValue().increment(1),
-    updatedAt: nowIso()
-  }).catch(() => {});
-  return { placeId: ref.id, circleId, alreadySaved: false };
+    category: place.category,
+    // Picked from Apple Maps on the phone: resolve it to Google here, like a
+    // share-extension save (canonical venue first, Google only for new ones)
+    enrichFromGoogle: true
+  });
+  const payload = result.payload || {};
+  if (result.status === 201 && payload.place) {
+    return { placeId: payload.place.id, circleId, circleName: CIRCLE_NAME, alreadySaved: false, afterResponse: result.afterResponse };
+  }
+  if (payload.code === 'DUPLICATE_PLACE' && payload.existingPlaceId) {
+    const inDogSpots = !payload.existingCircleId || payload.existingCircleId === circleId;
+    return {
+      placeId: payload.existingPlaceId,
+      circleId: payload.existingCircleId || circleId,
+      circleName: inDogSpots ? CIRCLE_NAME : (payload.existingCircleName || null),
+      alreadySaved: true
+    };
+  }
+  throw new ServiceError(result.status || 500, payload.code || (payload.upgradeRequired ? 'upgrade_required' : 'save_failed'),
+    payload.message || 'Couldn’t save that place');
 }
 
 module.exports = { savePlace, parsePlace, findOrCreateCircle, CIRCLE_NAME };
