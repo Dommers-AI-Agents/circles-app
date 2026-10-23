@@ -1,4 +1,6 @@
-// Fills a venue's shared contact details and hours from Google (Wes,
+// Fills a venue's shared contact details, hours and Google star rating
+// (rating, review count, price level; added 2026-10-23 after Uptown Yolk,
+// re-linked to its right Google listing, had no stars) from Google (Wes,
 // 2026-10-18: "I don't want to have to refresh, I want the global place
 // details to be accurate"). Google is the truth for a Google-matched venue;
 // only EMPTY fields are filled, so a store owner's or admin's correction is
@@ -50,7 +52,7 @@ async function fetchDetails(googlePlaceId, key = process.env.GOOGLE_MAPS_API_KEY
   const timer = setTimeout(() => controller.abort(), 8000);
   try {
     const res = await fetch(`${DETAILS_URL}?${new URLSearchParams({
-      place_id: googlePlaceId, fields: 'formatted_phone_number,website,opening_hours,business_status', language: 'en', key
+      place_id: googlePlaceId, fields: 'formatted_phone_number,website,opening_hours,business_status,rating,user_ratings_total,price_level', language: 'en', key
     })}`, { signal: controller.signal });
     if (!res.ok) return null;
     const body = await res.json();
@@ -67,7 +69,8 @@ function missingFields(venue) {
   return {
     website: !g.website,
     phone: !g.phone,
-    openingHours: !(Array.isArray(g.openingHours) && g.openingHours.length > 0)
+    openingHours: !(Array.isArray(g.openingHours) && g.openingHours.length > 0),
+    rating: g.rating === undefined || g.rating === null
   };
 }
 
@@ -86,7 +89,7 @@ async function fillVenue(globalPlaceId, { force = false, fetcher = fetchDetails 
     if (venue.deletedAt || venue.mergedInto || !venue.googlePlaceId) return { skipped: 'not_google' };
     if (!force && venue.googleData && venue.googleData.detailsCheckedAt) return { skipped: 'checked' };
     const missing = missingFields(venue);
-    if (!missing.website && !missing.phone && !missing.openingHours) return { skipped: 'complete' };
+    if (!missing.website && !missing.phone && !missing.openingHours && !missing.rating) return { skipped: 'complete' };
 
     const result = await fetcher(venue.googlePlaceId);
     if (!result) return { skipped: 'google_error' };   // try again another time
@@ -98,6 +101,13 @@ async function fillVenue(globalPlaceId, { force = false, fetcher = fetchDetails 
       if (missing.phone && result.formatted_phone_number) { update['googleData.phone'] = result.formatted_phone_number; filled.push('phone'); }
       const hours = missing.openingHours ? hoursFromGoogle(result.opening_hours && result.opening_hours.periods) : null;
       if (hours) { update['googleData.openingHours'] = hours; filled.push('openingHours'); }
+      // Google's own stars (not an owner field): count and price come with them
+      if (missing.rating && typeof result.rating === 'number') {
+        update['googleData.rating'] = result.rating;
+        update['googleData.userRatingsTotal'] = result.user_ratings_total ?? null;
+        if (result.price_level !== undefined) update['googleData.priceLevel'] = result.price_level;
+        filled.push('rating');
+      }
     }
     await ref.update(update);
     return { filled };
@@ -112,7 +122,7 @@ function fillVenueInBackground(globalPlaceId, venueData) {
   if (!globalPlaceId || !venueData || !venueData.googlePlaceId) return;
   if (venueData.googleData && venueData.googleData.detailsCheckedAt) return;
   const m = missingFields(venueData);
-  if (!m.website && !m.phone && !m.openingHours) return;
+  if (!m.website && !m.phone && !m.openingHours && !m.rating) return;
   fillVenue(globalPlaceId).catch(() => {});
 }
 
