@@ -1,5 +1,4 @@
 import UIKit
-import Photos
 
 protocol CreateCircleDelegate: AnyObject {
     func didCreateCircle(_ circle: Circle)
@@ -203,16 +202,6 @@ class CreateCircleViewController: UIViewController {
         return picker
     }()
     
-    private let createButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Create Circle", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 8
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
     
     // MARK: - Properties
     private var selectedImage: UIImage? {
@@ -327,7 +316,6 @@ class CreateCircleViewController: UIViewController {
         contentView.addSubview(tagsTextField)
         contentView.addSubview(inviteLabel)
         contentView.addSubview(connectionPickerView)
-        contentView.addSubview(createButton)
         
         // Layout constraints
         NSLayoutConstraint.activate([
@@ -362,14 +350,8 @@ class CreateCircleViewController: UIViewController {
             useDefaultImageButton.widthAnchor.constraint(equalToConstant: 150),
             useDefaultImageButton.heightAnchor.constraint(equalToConstant: 40),
             
-            // Create button - positioned right below the cover image
-            createButton.topAnchor.constraint(equalTo: coverImageView.bottomAnchor, constant: Constants.Spacing.medium),
-            createButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            createButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
-            createButton.heightAnchor.constraint(equalToConstant: 50),
-            
             // Name label
-            nameLabel.topAnchor.constraint(equalTo: createButton.bottomAnchor, constant: Constants.Spacing.large),
+            nameLabel.topAnchor.constraint(equalTo: coverImageView.bottomAnchor, constant: Constants.Spacing.large),
             nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             
             // Name text field
@@ -449,7 +431,6 @@ class CreateCircleViewController: UIViewController {
     private func setupActions() {
         addCoverPhotoButton.addTarget(self, action: #selector(addCoverPhotoButtonTapped), for: .touchUpInside)
         useDefaultImageButton.addTarget(self, action: #selector(useDefaultImageButtonTapped), for: .touchUpInside)
-        createButton.addTarget(self, action: #selector(createButtonTapped), for: .touchUpInside)
         categoryButton.addTarget(self, action: #selector(categoryButtonTapped), for: .touchUpInside)
         
         // Add gesture recognizer to dismiss keyboard when tapping on the view
@@ -480,7 +461,7 @@ class CreateCircleViewController: UIViewController {
             )
         }
         
-        // Optionally add a done/save button on the right
+        // The one Create button (like Edit Circle's Save)
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             title: "Create",
             style: .done,
@@ -535,7 +516,8 @@ class CreateCircleViewController: UIViewController {
     // MARK: - Actions
     @objc private func addCoverPhotoButtonTapped() {
         // Check photo library permissions
-        checkPhotoLibraryPermissions()
+        // The system picker needs no Photos permission
+        presentImagePicker()
     }
     
     @objc private func useDefaultImageButtonTapped() {
@@ -604,9 +586,8 @@ class CreateCircleViewController: UIViewController {
             defaultImageUrl = getDefaultImageUrl(for: location)
         }
         
-        // Disable the create button and show loading
-        createButton.isEnabled = false
-        createButton.setTitle("Creating...", for: .normal)
+        // One tap, one circle
+        navigationItem.rightBarButtonItem?.isEnabled = false
         
         // If we have a default image URL and no custom image, pass it directly
         if defaultImageUrl != nil && coverImageData == nil {
@@ -643,8 +624,7 @@ class CreateCircleViewController: UIViewController {
             ) { [weak self] (result: Result<CircleResponse, APIError>) in
                 guard let self = self else { return }
                 DispatchQueue.main.async {
-                    self.createButton.isEnabled = true
-                    self.createButton.setTitle("Create Circle", for: .normal)
+                    self.navigationItem.rightBarButtonItem?.isEnabled = true
                     
                     switch result {
                     case .success(let response):
@@ -686,8 +666,7 @@ class CreateCircleViewController: UIViewController {
             ) { [weak self] result in
                 guard let self = self else { return }
                 DispatchQueue.main.async {
-                    self.createButton.isEnabled = true
-                    self.createButton.setTitle("Create Circle", for: .normal)
+                    self.navigationItem.rightBarButtonItem?.isEnabled = true
                     
                     switch result {
                     case .success(let circle):
@@ -808,28 +787,6 @@ class CreateCircleViewController: UIViewController {
     }
     
     // MARK: - Helper Methods
-    private func checkPhotoLibraryPermissions() {
-        let status = PHPhotoLibrary.authorizationStatus()
-        
-        switch status {
-        case .authorized, .limited:
-            presentImagePicker()
-        case .notDetermined:
-            PHPhotoLibrary.requestAuthorization { [weak self] status in
-                guard let self = self else { return }
-                DispatchQueue.main.async {
-                    if status == .authorized || status == .limited {
-                        self.presentImagePicker()
-                    }
-                }
-            }
-        case .denied, .restricted:
-            presentPhotoLibraryPermissionAlert()
-        @unknown default:
-            break
-        }
-    }
-    
     private func presentImagePicker() {
         let imagePicker = UIImagePickerController()
         imagePicker.sourceType = .photoLibrary
@@ -867,23 +824,6 @@ class CreateCircleViewController: UIViewController {
         containerVC.view.addGestureRecognizer(tapGesture)
         
         present(containerVC, animated: true)
-    }
-    
-    private func presentPhotoLibraryPermissionAlert() {
-        let alert = UIAlertController(
-            title: "Photo Library Access",
-            message: "Please allow access to your photo library in Settings to add a cover photo.",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Settings", style: .default) { _ in
-            if let url = URL(string: UIApplication.openSettingsURLString) {
-                UIApplication.shared.open(url)
-            }
-        })
-        
-        present(alert, animated: true)
     }
     
     private func presentAlert(title: String, message: String, completion: ((UIAlertAction) -> Void)? = nil) {

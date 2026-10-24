@@ -1,5 +1,4 @@
 import UIKit
-import Photos
 
 class EditProfileViewController: BaseViewController {
     
@@ -477,7 +476,10 @@ class EditProfileViewController: BaseViewController {
     
     // MARK: - Actions
     @objc private func changePhotoButtonTapped() {
-        checkPhotoLibraryPermissions()
+        // The system picker runs outside the app and needs no Photos
+        // permission. Asking first cost new users a tap: the picker didn't
+        // open after they allowed access.
+        presentImagePicker()
     }
     
     @objc private func useAvatarButtonTapped() {
@@ -621,27 +623,6 @@ class EditProfileViewController: BaseViewController {
     }
     
     // MARK: - Helper Methods
-    private func checkPhotoLibraryPermissions() {
-        let status = PHPhotoLibrary.authorizationStatus()
-        
-        switch status {
-        case .authorized, .limited:
-            presentImagePicker()
-        case .notDetermined:
-            PHPhotoLibrary.requestAuthorization { [weak self] status in
-                DispatchQueue.main.async {
-                    if status == .authorized || status == .limited {
-                        self?.presentImagePicker()
-                    }
-                }
-            }
-        case .denied, .restricted:
-            presentPhotoLibraryPermissionAlert()
-        @unknown default:
-            break
-        }
-    }
-    
     private func presentImagePicker() {
         let imagePicker = UIImagePickerController()
         imagePicker.sourceType = .photoLibrary
@@ -726,21 +707,6 @@ class EditProfileViewController: BaseViewController {
             profileImageView.backgroundColor = Constants.Colors.lightGray
             profileImageView.tintColor = Constants.Colors.primary
         }
-    }
-    
-    private func presentPhotoLibraryPermissionAlert() {
-        AlertPresenter.showActionSheet(
-            title: "Photo Library Access",
-            message: "Please allow access to your photo library in Settings to change your profile photo.",
-            actions: [
-                (title: "Settings", style: .default, handler: {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                })
-            ],
-            from: self
-        )
     }
     
     private func presentAlert(title: String, message: String, completion: (() -> Void)? = nil) {

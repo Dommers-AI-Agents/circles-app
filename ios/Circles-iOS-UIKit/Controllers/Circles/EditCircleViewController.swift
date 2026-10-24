@@ -1,5 +1,4 @@
 import UIKit
-import Photos
 
 protocol EditCircleDelegate: AnyObject {
     func didUpdateCircle(_ circle: Circle)
@@ -737,7 +736,8 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
     }
     
     @objc private func addCoverPhotoButtonTapped() {
-        checkPhotoLibraryPermissions()
+        // The system picker needs no Photos permission
+        presentImagePicker()
     }
     
     @objc private func useDefaultImageButtonTapped() {
@@ -825,27 +825,6 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
     }
     
     // MARK: - Photo Methods
-    private func checkPhotoLibraryPermissions() {
-        let status = PHPhotoLibrary.authorizationStatus()
-        
-        switch status {
-        case .authorized, .limited:
-            presentImagePicker()
-        case .notDetermined:
-            PHPhotoLibrary.requestAuthorization { [weak self] status in
-                DispatchQueue.main.async {
-                    if status == .authorized || status == .limited {
-                        self?.presentImagePicker()
-                    }
-                }
-            }
-        case .denied, .restricted:
-            presentPhotoLibraryPermissionAlert()
-        @unknown default:
-            break
-        }
-    }
-    
     private func presentImagePicker() {
         let imagePicker = UIImagePickerController()
         imagePicker.sourceType = .photoLibrary
@@ -883,23 +862,6 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
         containerVC.view.addGestureRecognizer(tapGesture)
         
         present(containerVC, animated: true)
-    }
-    
-    private func presentPhotoLibraryPermissionAlert() {
-        let alert = UIAlertController(
-            title: "Photo Library Access",
-            message: "Please allow access to your photo library in Settings to change the cover photo.",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Settings", style: .default) { _ in
-            if let url = URL(string: UIApplication.openSettingsURLString) {
-                UIApplication.shared.open(url)
-            }
-        })
-        
-        present(alert, animated: true)
     }
     
     private func presentAlert(title: String, message: String, completion: ((UIAlertAction) -> Void)? = nil) {
