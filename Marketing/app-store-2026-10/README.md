@@ -23,6 +23,11 @@ captions, and the unfolded footage in a landscape frame.
 
 ## Status
 
+**2026-10-27: nothing here is upload-ready.** The app does not yet keep its controls inside the Duo's
+safe area (iOS 27.1 lays the status bar, navigation buttons and tab bar out as a vertical rail on the
+right edge, and the app's Add button, filter chips, Add to My Circle and Add Photo sit under it). The
+`DRAFT …` folders show the problem on the actual slides; re-capture after the layout fix.
+
 - [x] Capture harness, slide canvases and preview framing built and smoke-tested (2026-10-27).
 - [ ] Captures on Wes's account (the sim must be signed in first, see below).
 - [ ] Slides rendered and checked.

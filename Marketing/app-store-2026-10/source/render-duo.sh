@@ -5,6 +5,7 @@ set -eu
 cd "$(dirname "$0")/.."
 KIND=$1
 case $KIND in outer) W=1398; H=2034; OUT="iPhone Duo outer 1398x2034";; inner) W=2853; H=2007; OUT="iPhone Duo inner 2853x2007";; *) exit 2;; esac
+[[ ${DRAFT:-0} == 1 ]] && OUT="DRAFT $OUT"   # DRAFT=1 keeps a not-for-upload set out of the slot folders
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 node ../app-store-2026-09/source/compose.js "source/duo-$KIND.json" "source/out-duo-$KIND"
 mkdir -p "$OUT"

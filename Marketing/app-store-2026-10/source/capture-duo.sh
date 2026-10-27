@@ -43,14 +43,13 @@ go()   { xcrun simctl openurl $UD "$1" >/dev/null 2>&1; sleep ${2:-5}; }
 
 # App Store status bar, same as the September set
 xcrun simctl status_bar $UD override --time 9:41 --batteryState charged --batteryLevel 100 --cellularMode active --cellularBars 4 --wifiBars 3 >/dev/null 2>&1
-sleep 6;                                   shot home 1
-cmd expand-map;                            shot fullmap 3
-cmd close-map
+sleep 6; cmd dismiss;                      shot home 1
+go "$API/app/map" 6;                       shot fullmap 3
 go "$API/app/widget/postcard" 6;           shot postcard
 go "$API/app/open?path=me" 5;              shot profile
 go "$API/place/$PLACE" 6;                  shot place
 go "$API/app/open?path=rewards/piggy-bank" 4; cmd store-points; shot storepoints
-go "$API/app/tab/widgets" 5;               shot widgets
+go "$API/app/tab/widgets" 5; cmd dismiss;  shot widgets
 go "$API/app/open?path=me" 3; cmd privacy; shot privacy
 go "$API/app/open?path=add-place" 4;       shot addplace
 echo end > "$HS/cmd"
