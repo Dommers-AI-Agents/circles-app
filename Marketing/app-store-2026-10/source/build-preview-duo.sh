@@ -3,6 +3,7 @@
 # Frames a simctl recording of the Duo (outer: --display=1 while Closed, inner: --display=3 while Open)
 # into an App Store preview: outer → 886x1920 portrait, inner → 1920x886 landscape; H.264 High 4.0,
 # 30 fps, silent stereo AAC 256k (Apple rejects mono/no audio). Captions: [{"text":"…","start":0,"end":4},…]
+# NO_RING=1 leaves out the device bezel ring (footage on the brand background only).
 set -eu
 KIND=$1; SRC=$2; CAPS=$3; OUT=$4
 HERE="$(cd "$(dirname "$0")" && pwd)"; WORK="$HERE/preview-work-$KIND"; mkdir -p "$WORK"
@@ -14,7 +15,7 @@ FX=$(echo $G | python3 -I -c 'import json,sys;print(json.load(sys.stdin)["fx"])'
 "$CHROME" --headless=new --hide-scrollbars --force-device-scale-factor=1 --default-background-color=00000000 --window-size=$W,$H --screenshot="$WORK/ring.png" "file://$WORK/ring-$KIND.html" >/dev/null 2>&1
 
 # captions → transparent PNGs (same look as the Sept previews)
-i=0; INPUTS=(-loop 1 -i "$WORK/bg.png" -i "$SRC" -loop 1 -i "$WORK/ring.png"); CHAIN="[1:v]fps=30,scale=${FW}:-2[f];[0:v][f]overlay=${FX}:${FY}[a];[a][2:v]overlay=0:0[v0]"; LAST="v0"
+i=0; INPUTS=(-loop 1 -i "$WORK/bg.png" -i "$SRC" -loop 1 -i "$WORK/ring.png"); if [[ ${NO_RING:-0} == 1 ]]; then CHAIN="[1:v]fps=30,scale=${FW}:-2[f];[0:v][f]overlay=${FX}:${FY}[v0]"; else CHAIN="[1:v]fps=30,scale=${FW}:-2[f];[0:v][f]overlay=${FX}:${FY}[a];[a][2:v]overlay=0:0[v0]"; fi; LAST="v0"
 if [[ $KIND == outer ]]; then CW=886; else CW=800; fi
 python3 -I - "$CAPS" "$WORK" "$CW" <<'PY'
 import json,sys

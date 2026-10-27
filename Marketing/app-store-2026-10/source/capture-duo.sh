@@ -41,6 +41,8 @@ shot() { sleep ${2:-2}; xcrun simctl io $UD screenshot --display=$DISP "$OUT/$1.
 cmd()  { echo "$1" > "$HS/cmd"; for i in {1..600}; do [[ -e "$HS/$1.done" ]] && { rm -f "$HS/$1.done"; return 0; }; sleep 0.5; done; echo "WARN: $1 timed out"; }
 go()   { xcrun simctl openurl $UD "$1" >/dev/null 2>&1; sleep ${2:-5}; }
 
+# App Store status bar, same as the September set
+xcrun simctl status_bar $UD override --time 9:41 --batteryState charged --batteryLevel 100 --cellularMode active --cellularBars 4 --wifiBars 3 >/dev/null 2>&1
 sleep 6;                                   shot home 1
 cmd expand-map;                            shot fullmap 3
 cmd close-map
@@ -52,4 +54,5 @@ go "$API/app/tab/widgets" 5;               shot widgets
 go "$API/app/open?path=me" 3; cmd privacy; shot privacy
 go "$API/app/open?path=add-place" 4;       shot addplace
 echo end > "$HS/cmd"
+xcrun simctl status_bar $UD clear >/dev/null 2>&1
 wait $TEST; echo "servant exit $?"
