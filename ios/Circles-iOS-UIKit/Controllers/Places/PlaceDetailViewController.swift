@@ -423,6 +423,16 @@ class PlaceDetailViewController: BaseViewController {
         }
     }
 
+    /// A scan or code changed the viewer's points: the store card's balance refetches
+    @objc private func handleRewardPointsChanged() {
+        guard placeVenueData?.venue != nil else { return }
+        venueLoader.loadVenueRewards()
+    }
+
+    /// The venue this page shows, so a store-QR scan can tell whether the
+    /// store's page is already open
+    var shownGlobalPlaceId: String { place.globalPlaceId ?? place.id }
+
     @objc private func handleStoreOrdersChanged() {
         guard placeVenueData?.isOwner == true else { return }
         venueLoader.loadVenueRewards()
@@ -450,6 +460,7 @@ class PlaceDetailViewController: BaseViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(handlePlaceRatingChanged(_:)), name: .placeRatingChanged, object: nil)
         // The owner bar counts new orders: refresh it when they change
         NotificationCenter.default.addObserver(self, selector: #selector(handleStoreOrdersChanged), name: VenueOrdersViewController.ordersChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleRewardPointsChanged), name: .rewardPointsDidChange, object: nil)
         // The owner edited the store's details in Manage Store: show them here
         NotificationCenter.default.addObserver(self, selector: #selector(handleStoreDetailsChanged(_:)), name: .storeDetailsChanged, object: nil)
         // "★ Your rating" / "Been here? Rate it" opens the rating sheet

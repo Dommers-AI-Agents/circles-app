@@ -5,6 +5,8 @@ import CoreLocation
 /// - window sticker → signup points + "save this place" flow (+ save points)
 /// - register card  → visit points + offer redemption sheet → voucher screen
 ///
+/// Every scan first opens the store's place page, so the result (and the
+/// points balance on the store card) reads over the store itself.
 /// SceneDelegate calls `handleScannedCode` and this coordinator owns the rest,
 /// including the CircleSelection delegate round-trip.
 extension Notification.Name {
@@ -38,7 +40,12 @@ final class StickerRewardCoordinator: NSObject {
     // MARK: - Entry point
 
     func handleScannedCode(_ code: String) {
-        guard let presenter = presenter else { return }
+        guard let presenter = presenter else {
+            // No window yet (a cold launch from the QR): keep the code so the
+            // launch redeems it, instead of dropping the scan
+            RewardsService.shared.savePendingStickerCode(code)
+            return
+        }
         let loading = AlertPresenter.showLoading(message: "Checking sticker...", from: presenter)
 
         RewardsService.shared.scan(code: code) { [weak self] result in
@@ -47,10 +54,12 @@ final class StickerRewardCoordinator: NSObject {
                     switch result {
                     case .success(let scan):
                         NotificationCenter.default.post(name: .rewardPointsDidChange, object: nil)
-                        if scan.kind == "register" {
-                            self?.handleRegisterScan(scan)
-                        } else {
-                            self?.handleWindowScan(scan, code: code)
+                        self?.showStorePage(for: scan.venue) {
+                            if scan.kind == "register" {
+                                self?.handleRegisterScan(scan)
+                            } else {
+                                self?.handleWindowScan(scan, code: code)
+                            }
                         }
                     case .failure(let error):
                         if let presenter = self?.presenter {
@@ -59,6 +68,44 @@ final class StickerRewardCoordinator: NSObject {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Store page
+
+    /// Opens the store's place page on the current tab (unless it's already
+    /// the page on screen), then runs `then` over it. Falls back to `then`
+    /// alone when the store has no place or the page can't load.
+    private func showStorePage(for venue: RewardVenue, then: @escaping () -> Void) {
+        guard let placeId = venue.globalPlaceId,
+              let tabBar = UIApplication.shared.connectedScenes
+                .compactMap({ ($0 as? UIWindowScene)?.keyWindow?.rootViewController as? CirclesTabBarController })
+                .first,
+              let nav = tabBar.selectedViewController as? UINavigationController else {
+            then()
+            return
+        }
+        let push = {
+            if let showing = nav.topViewController as? PlaceDetailViewController,
+               showing.shownGlobalPlaceId == placeId {
+                then()
+                return
+            }
+            PlaceService.shared.fetchPlaceById(id: placeId) { result in
+                DispatchQueue.main.async {
+                    guard case .success(let place) = result else { then(); return }
+                    CATransaction.begin()
+                    CATransaction.setCompletionBlock(then)
+                    nav.pushViewController(PlaceDetailViewController(place: place), animated: true)
+                    CATransaction.commit()
+                }
+            }
+        }
+        // A sheet left open over the tab bar would hide the page
+        if tabBar.presentedViewController != nil {
+            tabBar.dismiss(animated: true, completion: push)
+        } else {
+            push()
         }
     }
 
@@ -115,7 +162,7 @@ final class StickerRewardCoordinator: NSObject {
 
         var message = ""
         if let awarded = scan.awarded {
-            message += "You earned \(awarded.points) store points for joining! 🎉\n\n"
+            message += "You earned \(awarded.points) store points for joining! 🎉 You have \(scan.venueBalance ?? scan.balance) points here.\n\n"
         }
 
         if scan.alreadySaved == true {

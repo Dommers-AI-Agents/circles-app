@@ -96,7 +96,9 @@ class PlaceVenueRewardsView: UIView {
         layer.borderWidth = isOwner ? 1.5 : 0
         layer.borderColor = isOwner ? Constants.Colors.primary.withAlphaComponent(0.35).cgColor : nil
 
-        containerStack.addArrangedSubview(makeHeader(venue, isOwner: isOwner))
+        // Customers see their points at this store right in the header
+        let balanceHere = (!isOwner && data.rewardsLive != false) ? data.venueBalance : nil
+        containerStack.addArrangedSubview(makeHeader(venue, isOwner: isOwner, balanceHere: balanceHere))
         // The money buttons sit right under the name — Reserve / Order are
         // the reason most people open a store's page at all.
         if let actions = data.storefront?.actions, let row = makeActionButtonsRow(actions) {
@@ -162,7 +164,7 @@ class PlaceVenueRewardsView: UIView {
 
     // MARK: - Rows
 
-    private func makeHeader(_ venue: PlaceVenue, isOwner: Bool = false) -> UIView {
+    private func makeHeader(_ venue: PlaceVenue, isOwner: Bool = false, balanceHere: Int? = nil) -> UIView {
         let row = UIView()
         row.translatesAutoresizingMaskIntoConstraints = false
 
@@ -180,11 +182,25 @@ class PlaceVenueRewardsView: UIView {
 
         let earnLabel = UILabel()
         earnLabel.translatesAutoresizingMaskIntoConstraints = false
-        if let earnRate = venue.earnRate {
-            earnLabel.text = "Earn \(earnRate) pts per purchase"
+        let earnText = venue.earnRate.map { "Earn \($0) pts per purchase" }
+        if let balanceHere {
+            let balanceText = "You have \(balanceHere) pts here"
+            let line = NSMutableAttributedString(string: balanceText, attributes: [
+                .font: UIFont.systemFont(ofSize: 13, weight: .semibold),
+                .foregroundColor: Constants.Colors.primary
+            ])
+            if let earnText {
+                line.append(NSAttributedString(string: " · \(earnText)", attributes: [
+                    .font: UIFont.systemFont(ofSize: 13),
+                    .foregroundColor: UIColor.secondaryLabel
+                ]))
+            }
+            earnLabel.attributedText = line
+        } else {
+            earnLabel.text = earnText
+            earnLabel.font = UIFont.systemFont(ofSize: 13)
+            earnLabel.textColor = .secondaryLabel
         }
-        earnLabel.font = UIFont.systemFont(ofSize: 13)
-        earnLabel.textColor = .secondaryLabel
         earnLabel.numberOfLines = 1
 
         row.addSubview(icon)

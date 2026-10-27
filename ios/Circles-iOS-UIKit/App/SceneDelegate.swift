@@ -1224,6 +1224,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneDidBecomeActive(_ scene: UIScene) {
         // Called when the scene has moved from an inactive state to an active state.
         captureStickerCodeFromPasteboardIfFirstLaunch()
+        // A store QR opened from the background or a cold launch
+        redeemPendingStickerCodeIfNeeded()
         // A run's lock-screen display left over from a run the app lost (killed mid-run)
         if #available(iOS 16.2, *) {
             RunLiveActivityController.shared.endStaleActivities()
@@ -2064,6 +2066,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             return
         }
 
+        // A cold launch from the QR card's Open button delivers the link
+        // before the window is showing; the scan was silently dropped and
+        // the user had to scan again. Keep it pending until the tab bar is
+        // up and the app is active (sceneDidBecomeActive / post-launch).
+        guard UIApplication.shared.applicationState == .active,
+              window?.rootViewController is CirclesTabBarController else {
+            RewardsService.shared.savePendingStickerCode(code)
+            return
+        }
         StickerRewardCoordinator.shared.handleScannedCode(code)
     }
 
@@ -2105,7 +2116,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// Runs for every auth route (email + social), unlike the referral replay
     /// which only covers email signup.
     private func redeemPendingStickerCodeIfNeeded() {
+        // Splash or onboarding still up: the post-launch pass picks it up
         guard AuthService.shared.isLoggedIn,
+              window?.rootViewController is CirclesTabBarController,
               let code = RewardsService.shared.getPendingStickerCode() else { return }
 
         RewardsService.shared.clearPendingStickerCode()
