@@ -10,7 +10,7 @@
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
-const { findCanonicalByNameAndLocation, haversineMeters } = require('./globalPlaceResolver');
+const { findCanonicalByNameAndLocation, haversineMeters, resolveGlobalPlace } = require('./globalPlaceResolver');
 
 const db = getFirestore();
 
@@ -92,4 +92,55 @@ async function findOwnSaveForNewPlace({ userId, googlePlaceId, name, location })
   return null;
 }
 
-module.exports = { findExistingSaveOfVenue, findOwnSaveForNewPlace, pickByDistance, coordsOf, SAME_VENUE_RADIUS_METERS };
+/**
+ * A store's record (stickerVenues) → the user's live save of its place, or
+ * null. Rewards ask this before offering "Save & Earn" and before paying the
+ * save points, so it follows the SAME rules as Add Place's duplicate answer:
+ * the canonical venue id, the Google id, then the store's name near its spot
+ * (a store enrolled by hand carries no Google id at all — matching on the
+ * Google id alone offered a save that Add Place then refused, Wes 2026-10-27).
+ * Never throws.
+ */
+async function findOwnSaveOfStore({ userId, venue }) {
+  if (!userId || !venue) return null;
+  try {
+    const here = venue.location && typeof venue.location.lat === 'number' && typeof venue.location.lng === 'number'
+      ? { latitude: venue.location.lat, longitude: venue.location.lng }
+      : null;
+    // A name only identifies a store together with its spot: an online-only
+    // brand or an unlocated venue is matched by its ids alone (a same-named
+    // save across the country is not this store)
+    const names = here && venue.isVirtual !== true
+      ? [...new Set([venue.placeName, venue.venueName].filter(Boolean))]
+      : [];
+
+    let globalPlaceId = venue.globalPlaceId || null;
+    if (!globalPlaceId && venue.googlePlaceId) {
+      // Pure lookup for a Google id (no legacy doc, so nothing is backfilled)
+      const { globalPlaceDoc } = await resolveGlobalPlace(venue.googlePlaceId);
+      if (globalPlaceDoc) globalPlaceId = globalPlaceDoc.id;
+    }
+    if (!globalPlaceId && names[0] && here) {
+      const canonical = await findCanonicalByNameAndLocation(
+        names[0], { coordinates: [here.longitude, here.latitude] }, null, { googlePlaceId: venue.googlePlaceId || null }
+      );
+      if (canonical) globalPlaceId = canonical.id;
+    }
+
+    const direct = await findExistingSaveOfVenue({
+      userId, globalPlaceId, googlePlaceId: venue.googlePlaceId || null, placeName: names[0] || null, location: here
+    });
+    if (direct) return direct;
+    // The store's display name and its place's name can differ ("Sal's" vs
+    // "Sal's Pizzeria"); a save under either is this store
+    for (const placeName of names.slice(1)) {
+      const byName = await findExistingSaveOfVenue({ userId, placeName, location: here });
+      if (byName) return byName;
+    }
+  } catch (error) {
+    console.error('⚠️ [own-save] store lookup failed:', error.message);
+  }
+  return null;
+}
+
+module.exports = { findExistingSaveOfVenue, findOwnSaveForNewPlace, findOwnSaveOfStore, pickByDistance, coordsOf, SAME_VENUE_RADIUS_METERS };

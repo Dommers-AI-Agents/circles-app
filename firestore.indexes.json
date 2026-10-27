@@ -779,6 +779,24 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "addedBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "globalPlaceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "deletedAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "places",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "circleId",
           "order": "ASCENDING"
         },

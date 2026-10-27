@@ -12,24 +12,12 @@ const rewardConfig = require('../../config/rewardConfig');
 const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, venueLoyaltyStatus, isVenueBusinessLive } = require('../../services/ownerSubscriptionService');
 const db = getFirestore();
 const { isVenueTeamMember, publicVenueInfo, activeOffers } = require('../../services/venueHelpers.js');
+const { findOwnSaveOfStore } = require('../../services/ownSaveOfVenue');
 
-// Did this user already save the venue's place? Checks the legacy `places`
-// collection (what the iOS app writes today) by googlePlaceId + addedBy.
-const userHasSavedVenuePlace = async (userId, venue) => {
-  if (!venue.googlePlaceId) return false;
-  try {
-    const snapshot = await db.collection(COLLECTIONS.PLACES)
-      .where('addedBy', '==', userId)
-      .where('googlePlaceId', '==', venue.googlePlaceId)
-      .where('deletedAt', '==', null)
-      .limit(1)
-      .get();
-    return !snapshot.empty;
-  } catch (error) {
-    console.error('⚠️ Saved-place lookup failed:', error.message);
-    return false;
-  }
-};
+// Did this user already save the store's place? One rule, shared with Add
+// Place's duplicate check (services/ownSaveOfVenue), so a scan never offers a
+// save that the save would then refuse.
+const userHasSavedVenuePlace = async (userId, venue) => !!(await findOwnSaveOfStore({ userId, venue }));
 
 // Batch-read the venues' canonical globalPlaces docs and map venueId → first
 // photo URL (photos are stored as {url} objects or bare strings). Venues
@@ -287,17 +275,14 @@ exports.getOffers = async (req, res) => {
     const liveVenues = (await listLiveVenues())
       .filter((venue) => activeOffers(venue).length > 0 || announcementsFor(venue).length > 0);
 
-    const savedPlaceIds = await rewardService.getSavedVenuePlaceIds(
-      userId,
-      liveVenues.map((venue) => venue.googlePlaceId)
-    );
+    const savedVenueIds = await rewardService.getSavedVenueIds(userId, liveVenues);
 
     const photoUrls = await fetchVenuePhotoUrls(liveVenues);
 
     const venues = liveVenues.map((venue) => ({
       ...publicVenueInfo(venue),
       earnRate: rewardService.effectiveEarnRate(venue),
-      savedByUser: !!(venue.googlePlaceId && savedPlaceIds.has(venue.googlePlaceId)),
+      savedByUser: savedVenueIds.has(venue.venueId),
       photoUrl: photoUrls.get(venue.venueId) || null,
       distanceMeters: hasCoords && venue.location
         ? geofire.distanceBetween([lat, lng], [venue.location.lat, venue.location.lng]) * 1000

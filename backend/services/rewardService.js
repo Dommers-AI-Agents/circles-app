@@ -298,28 +298,38 @@ class RewardService {
     return (bucket && bucket.points) || 0;
   }
 
-  // Which of these googlePlaceIds has the user saved? Same semantics as the
-  // controller's userHasSavedVenuePlace (legacy `places` collection), batched
-  // with `in` queries (Firestore limit: 30 values per query).
-  async getSavedVenuePlaceIds(userId, googlePlaceIds) {
+  // Which of these stores has the user saved? Same rule as the scan's
+  // userHasSavedVenuePlace, batched: a save matching the store's canonical
+  // venue id or Google id (chunked `in` queries); a store carrying
+  // neither id (enrolled by hand) is looked up by name near its spot.
+  async getSavedVenueIds(userId, venues) {
     const saved = new Set();
-    const distinct = [...new Set((googlePlaceIds || []).filter(Boolean))];
-    const chunks = [];
-    for (let i = 0; i < distinct.length; i += 30) {
-      chunks.push(distinct.slice(i, i + 30));
-    }
-    await Promise.all(chunks.map(async (chunk) => {
-      try {
-        const snapshot = await this.db.collection(COLLECTIONS.PLACES)
-          .where('addedBy', '==', userId)
-          .where('deletedAt', '==', null)
-          .where('googlePlaceId', 'in', chunk)
-          .get();
-        snapshot.docs.forEach((doc) => saved.add(doc.data().googlePlaceId));
-      } catch (error) {
-        console.error('⚠️ Saved-place batch lookup failed:', error.message);
-      }
-    }));
+    const list = (venues || []).filter((v) => v && v.venueId);
+    const byGlobal = new Map();
+    const byGoogle = new Map();
+    const unkeyed = [];
+    list.forEach((v) => {
+      if (v.globalPlaceId) byGlobal.set(v.globalPlaceId, [...(byGlobal.get(v.globalPlaceId) || []), v.venueId]);
+      if (v.googlePlaceId) byGoogle.set(v.googlePlaceId, [...(byGoogle.get(v.googlePlaceId) || []), v.venueId]);
+      if (!v.globalPlaceId && !v.googlePlaceId) unkeyed.push(v);
+    });
+    const { queryInChunks } = require('../utils/firestoreChunks');
+    const own = this.db.collection(COLLECTIONS.PLACES)
+      .where('addedBy', '==', userId)
+      .where('deletedAt', '==', null);
+    const lookups = [
+      queryInChunks([...byGlobal.keys()], (chunk) => own.where('globalPlaceId', 'in', chunk).get())
+        .then((docs) => docs.forEach((doc) => (byGlobal.get(doc.data().globalPlaceId) || []).forEach((id) => saved.add(id)))),
+      queryInChunks([...byGoogle.keys()], (chunk) => own.where('googlePlaceId', 'in', chunk).get())
+        .then((docs) => docs.forEach((doc) => (byGoogle.get(doc.data().googlePlaceId) || []).forEach((id) => saved.add(id)))),
+      ...unkeyed.map(async (venue) => {
+        const { findOwnSaveOfStore } = require('./ownSaveOfVenue');
+        if (await findOwnSaveOfStore({ userId, venue })) saved.add(venue.venueId);
+      })
+    ];
+    await Promise.all(lookups.map((p) => p.catch((error) => {
+      console.error('⚠️ Saved-store batch lookup failed:', error.message);
+    })));
     return saved;
   }
 
