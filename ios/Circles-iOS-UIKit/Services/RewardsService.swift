@@ -868,6 +868,8 @@ struct RewardScanData: Codable {
     let awarded: RewardAward?
     let alreadySaved: Bool?
     let alreadyEarnedToday: Bool?
+    /// Register scans while the store's Business plan has lapsed earn nothing
+    let loyaltyPaused: Bool?
     let balance: Int
     /// Points held at the scanned venue — the spendable balance there
     let venueBalance: Int?

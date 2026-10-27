@@ -56,7 +56,7 @@ final class StickerRewardCoordinator: NSObject {
                         NotificationCenter.default.post(name: .rewardPointsDidChange, object: nil)
                         self?.showStorePage(for: scan.venue) {
                             if scan.kind == "register" {
-                                self?.handleRegisterScan(scan)
+                                self?.handleRegisterScan(scan, code: code)
                             } else {
                                 self?.handleWindowScan(scan, code: code)
                             }
@@ -94,10 +94,15 @@ final class StickerRewardCoordinator: NSObject {
             PlaceService.shared.fetchPlaceById(id: placeId) { result in
                 DispatchQueue.main.async {
                     guard case .success(let place) = result else { then(); return }
-                    CATransaction.begin()
-                    CATransaction.setCompletionBlock(then)
                     nav.pushViewController(PlaceDetailViewController(place: place), animated: true)
-                    CATransaction.commit()
+                    // Present only once the page has finished sliding in: an
+                    // alert presented mid-push is silently dropped, which hid
+                    // the points result
+                    if let transition = nav.transitionCoordinator {
+                        transition.animate(alongsideTransition: nil) { _ in then() }
+                    } else {
+                        then()
+                    }
                 }
             }
         }
@@ -184,6 +189,20 @@ final class StickerRewardCoordinator: NSObject {
         }
     }
 
+    /// "Save this store?" after a register scan, into the circle they pick
+    private func offerSave(venue: RewardVenue, code: String) {
+        guard let presenter = presenter else { return }
+        AlertPresenter.showConfirmation(
+            title: "Save \(venue.venueName)?",
+            message: "Add it to one of your circles so you can find it again and share it with friends, and earn 50 more points here.",
+            confirmTitle: "Save & Earn",
+            cancelTitle: "Not Now",
+            from: presenter
+        ) { [weak self] in
+            self?.startSaveFlow(venue: venue, code: code)
+        }
+    }
+
     private func startSaveFlow(venue: RewardVenue, code: String) {
         guard let presenter = presenter else { return }
         pendingVenue = venue
@@ -258,8 +277,13 @@ final class StickerRewardCoordinator: NSObject {
 
     // MARK: - Register card (visit + redemption)
 
-    private func handleRegisterScan(_ scan: RewardScanData) {
+    private func handleRegisterScan(_ scan: RewardScanData, code: String) {
         guard let presenter = presenter else { return }
+        // After the points, offer to save the store if it isn't saved yet
+        let offerSave: () -> Void = { [weak self] in
+            guard scan.alreadySaved == false else { return }
+            self?.offerSave(venue: scan.venue, code: code)
+        }
 
         var title = scan.venue.venueName
         var message = ""
@@ -274,6 +298,10 @@ final class StickerRewardCoordinator: NSObject {
         } else if scan.alreadyEarnedToday == true {
             title = "Already earned today"
             message = "You've collected today's visit points at \(scan.venue.venueName). You have \(balanceHere) points here."
+        } else if scan.loyaltyPaused == true {
+            message = "Points are paused at this store right now. You have \(balanceHere) points here."
+        } else {
+            message = "You have \(balanceHere) points here."
         }
 
         let affordableOffers = (scan.offers ?? []).filter { $0.pointsCost <= balanceHere }
@@ -282,7 +310,7 @@ final class StickerRewardCoordinator: NSObject {
             if let cheapest = (scan.offers ?? []).map({ $0.pointsCost }).min() {
                 message += "\n\nEarn \(cheapest - balanceHere > 0 ? "\(cheapest - balanceHere) more points here" : "more points") to unlock a reward."
             }
-            AlertPresenter.showSuccess(title: title, message: message, from: presenter)
+            AlertPresenter.showSuccess(title: title, message: message, from: presenter, completion: offerSave)
             return
         }
 
@@ -293,7 +321,7 @@ final class StickerRewardCoordinator: NSObject {
                 self?.redeemOffer(offer, venue: scan.venue)
             })
         }
-        actions.append((title: "Not now", style: .default, handler: {}))
+        actions.append((title: "Not now", style: .default, handler: offerSave))
 
         AlertPresenter.showActionSheet(
             title: title,

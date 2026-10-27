@@ -122,6 +122,8 @@ exports.scan = async (req, res) => {
     // Loyalty pauses gracefully when the owner's business subscription lapses —
     // never a scary error at the register.
     const loyalty = await venueLoyaltyStatus(venue);
+    // The app offers to save the store after a register scan when it isn't saved yet
+    const alreadySaved = await userHasSavedVenuePlace(userId, venue);
     if (!loyalty.active) {
       console.warn(`[loyalty-integrity] register scan paused venue=${venue.venueId} reason=${loyalty.reason}`);
       const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
@@ -132,6 +134,7 @@ exports.scan = async (req, res) => {
           venue: publicVenueInfo(venue),
           awarded: null,
           loyaltyPaused: true,
+          alreadySaved,
           balance: rewardPoints,
           venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0,
           offers: []
@@ -156,6 +159,7 @@ exports.scan = async (req, res) => {
           ? { type: 'venue_visit', points: visitResult.points }
           : null,
         alreadyEarnedToday: visitResult.reason === 'already_today',
+        alreadySaved,
         balance: rewardPoints,
         venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0,
         offers: activeOffers(venue)
