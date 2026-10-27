@@ -123,8 +123,8 @@ class CircleGroupViewController: BaseViewController {
         NSLayoutConstraint.activate([
             // Header view
             headerView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            headerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            headerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            headerView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             headerView.heightAnchor.constraint(equalToConstant: 120),
             
             // Group name text field
@@ -150,8 +150,8 @@ class CircleGroupViewController: BaseViewController {
             collectionView.bottomAnchor.constraint(equalTo: deleteGroupButton.topAnchor, constant: -16),
             
             // Delete button
-            deleteGroupButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            deleteGroupButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            deleteGroupButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            deleteGroupButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             deleteGroupButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
             deleteGroupButton.heightAnchor.constraint(equalToConstant: 50)
         ])

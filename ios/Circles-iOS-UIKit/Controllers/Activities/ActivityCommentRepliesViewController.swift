@@ -155,8 +155,8 @@ class ActivityCommentRepliesViewController: BaseViewController {
         NSLayoutConstraint.activate([
             // Parent comment view
             parentCommentView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            parentCommentView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            parentCommentView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            parentCommentView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            parentCommentView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             
             // Parent avatar
             parentAvatarImageView.topAnchor.constraint(equalTo: parentCommentView.topAnchor, constant: 12),
@@ -182,8 +182,8 @@ class ActivityCommentRepliesViewController: BaseViewController {
             tableView.bottomAnchor.constraint(equalTo: replyInputContainer.topAnchor),
             
             // Reply input container
-            replyInputContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            replyInputContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            replyInputContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            replyInputContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             replyInputContainer.heightAnchor.constraint(equalToConstant: 60),
             replyInputBottomConstraint!,
             

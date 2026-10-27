@@ -216,20 +216,20 @@ class VideoLinkInputViewController: UIViewController {
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
             
             titleLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 24),
-            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            titleLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             
             instructionLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            instructionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            instructionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            instructionLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            instructionLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             
             platformIconsStackView.topAnchor.constraint(equalTo: instructionLabel.bottomAnchor, constant: 20),
             platformIconsStackView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             platformIconsStackView.heightAnchor.constraint(equalToConstant: 40),
             
             urlTextField.topAnchor.constraint(equalTo: platformIconsStackView.bottomAnchor, constant: 24),
-            urlTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            urlTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            urlTextField.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            urlTextField.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             urlTextField.heightAnchor.constraint(equalToConstant: 44),
             
             pasteButton.topAnchor.constraint(equalTo: urlTextField.bottomAnchor, constant: 8),
@@ -239,8 +239,8 @@ class VideoLinkInputViewController: UIViewController {
             loadingIndicator.topAnchor.constraint(equalTo: pasteButton.bottomAnchor, constant: 20),
             
             previewContainer.topAnchor.constraint(equalTo: pasteButton.bottomAnchor, constant: 24),
-            previewContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            previewContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            previewContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            previewContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             previewContainer.heightAnchor.constraint(equalToConstant: 280),
             
             previewImageView.topAnchor.constraint(equalTo: previewContainer.topAnchor),
@@ -262,17 +262,17 @@ class VideoLinkInputViewController: UIViewController {
             previewPlatformBadge.heightAnchor.constraint(equalToConstant: 24),
             
             placeSelectionButton.topAnchor.constraint(equalTo: previewContainer.bottomAnchor, constant: 20),
-            placeSelectionButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            placeSelectionButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            placeSelectionButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            placeSelectionButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             placeSelectionButton.heightAnchor.constraint(equalToConstant: 48),
             
             disappearRow.topAnchor.constraint(equalTo: placeSelectionButton.bottomAnchor, constant: 16),
-            disappearRow.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            disappearRow.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            disappearRow.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            disappearRow.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             addButton.topAnchor.constraint(equalTo: disappearRow.bottomAnchor, constant: 20),
-            addButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            addButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            addButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            addButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             addButton.heightAnchor.constraint(equalToConstant: 50),
             addButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20)
         ])

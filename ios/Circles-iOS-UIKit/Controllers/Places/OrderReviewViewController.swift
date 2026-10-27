@@ -63,8 +63,8 @@ final class OrderReviewViewController: BaseViewController {
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: placeButton.topAnchor, constant: -8),
-            placeButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            placeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            placeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            placeButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             placeButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -10)
         ])
         whenControl.selectedSegmentIndex = 0

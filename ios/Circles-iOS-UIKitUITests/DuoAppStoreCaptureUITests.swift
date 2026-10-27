@@ -49,12 +49,24 @@ final class DuoAppStoreCaptureUITests: XCTestCase {
             let b = app.buttons["Store Points"].firstMatch
             if b.waitForExistence(timeout: 5) { b.tap() }
         case "privacy":
-            let gear = app.navigationBars.buttons.matching(NSPredicate(format: "label == 'gear' OR label == 'Settings'")).firstMatch
+            let me = app.buttons["Me"].firstMatch
+            if me.waitForExistence(timeout: 4) { me.tap(); sleep(2); me.tap(); sleep(3) }   // second tap pops to the profile root
+            run("dump", app)
+            let gear = app.buttons.matching(NSPredicate(format: "label == 'gear' OR label == 'Settings' OR label CONTAINS[c] 'settings'")).firstMatch
             if gear.waitForExistence(timeout: 5) { gear.tap(); sleep(2) }
             tapRow(app, "Privacy")
             tapRow(app, "Who can see my activity")
         case "dismiss":
             dismissPrompts(app)
+        case "locate":
+            let b = app.buttons.matching(NSPredicate(format: "label == 'Tracking' OR label CONTAINS[c] 'location' OR label CONTAINS[c] 'near me'")).firstMatch
+            if b.waitForExistence(timeout: 4) { b.tap() }
+        case "dump":
+            var lines: [String] = []
+            for b in app.buttons.allElementsBoundByIndex.prefix(80) { lines.append("button|\(b.label)|\(b.identifier)|\(b.frame)") }
+            for b in app.navigationBars.buttons.allElementsBoundByIndex { lines.append("navbutton|\(b.label)|\(b.identifier)|\(b.frame)") }
+            for c in app.cells.allElementsBoundByIndex.prefix(40) { lines.append("cell|\(c.label)|\(c.identifier)") }
+            try? lines.joined(separator: "\n").write(toFile: dir.appendingPathComponent("dump-\(Int(Date().timeIntervalSince1970)).txt").path, atomically: true, encoding: .utf8)
         default:
             break
         }

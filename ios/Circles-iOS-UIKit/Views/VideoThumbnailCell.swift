@@ -119,8 +119,8 @@ class VideoThumbnailCell: UICollectionViewCell {
         NSLayoutConstraint.activate([
             // Thumbnail image fills the cell
             thumbnailImageView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            thumbnailImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            thumbnailImageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            thumbnailImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            thumbnailImageView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             thumbnailImageView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             
             // Play icon centered
@@ -131,17 +131,17 @@ class VideoThumbnailCell: UICollectionViewCell {
             
             // Duration label at bottom right
             durationLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
-            durationLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            durationLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -4),
             durationLabel.heightAnchor.constraint(equalToConstant: 20),
             durationLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 35),
             
             // View count at bottom left
             viewCountLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
-            viewCountLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
+            viewCountLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 4),
             viewCountLabel.heightAnchor.constraint(equalToConstant: 20),
             viewCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 40),
             expiryLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            expiryLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
+            expiryLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 4),
             expiryLabel.heightAnchor.constraint(equalToConstant: 20),
             
             // Processing indicator centered

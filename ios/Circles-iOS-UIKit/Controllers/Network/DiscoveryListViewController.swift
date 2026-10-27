@@ -230,12 +230,12 @@ class DiscoveryListViewController: BaseViewController {
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
             inviteEmptyView.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -40),
-            inviteEmptyView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            inviteEmptyView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+            inviteEmptyView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            inviteEmptyView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32),
 
             locationPermissionView.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
-            locationPermissionView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            locationPermissionView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            locationPermissionView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            locationPermissionView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             locationPermissionView.heightAnchor.constraint(equalToConstant: 80),
 
             locationPermissionLabel.topAnchor.constraint(equalTo: locationPermissionView.topAnchor, constant: 16),

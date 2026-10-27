@@ -225,16 +225,16 @@ class QuickStartAddPlacesViewController: BaseViewController {
 
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            header.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            header.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             resultsTableView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 4),
-            resultsTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            resultsTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            resultsTableView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            resultsTableView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             resultsTableView.bottomAnchor.constraint(equalTo: doneButton.topAnchor, constant: -10),
 
-            doneButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            doneButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            doneButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            doneButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             // Above the keyboard while it's up, at the safe area when it's not
             doneButton.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -12)
         ])
@@ -470,7 +470,7 @@ final class QuickStartResultCell: UITableViewCell {
 
         for v in [iconView, text, addButton, spinner, addedLabel] { contentView.addSubview(v) }
         NSLayoutConstraint.activate([
-            iconView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            iconView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
             iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 36),
             iconView.heightAnchor.constraint(equalToConstant: 36),
@@ -479,11 +479,11 @@ final class QuickStartResultCell: UITableViewCell {
             text.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             text.trailingAnchor.constraint(lessThanOrEqualTo: addButton.leadingAnchor, constant: -10),
 
-            addButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            addButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             addButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             spinner.centerXAnchor.constraint(equalTo: addButton.centerXAnchor),
             spinner.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            addedLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            addedLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             addedLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor)
         ])
         addButton.setContentCompressionResistancePriority(.required, for: .horizontal)

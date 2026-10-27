@@ -93,8 +93,8 @@ class VenueQRViewController: BaseViewController {
 
         NSLayoutConstraint.activate([
             nameLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 32),
-            nameLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            nameLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            nameLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            nameLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
 
             qrContainer.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 24),
             qrContainer.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -107,12 +107,12 @@ class VenueQRViewController: BaseViewController {
             qrImageView.bottomAnchor.constraint(equalTo: qrContainer.bottomAnchor, constant: -20),
 
             captionLabel.topAnchor.constraint(equalTo: qrContainer.bottomAnchor, constant: 24),
-            captionLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            captionLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+            captionLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            captionLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32),
 
             shareButton.topAnchor.constraint(equalTo: captionLabel.bottomAnchor, constant: 32),
-            shareButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            shareButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32)
+            shareButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            shareButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32)
         ])
     }
 

@@ -113,8 +113,8 @@ class UploadThumbnailCell: UICollectionViewCell {
             
             // Place tag positioned at bottom with padding
             placeTagView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
-            placeTagView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
-            placeTagView.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -8),
+            placeTagView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 8),
+            placeTagView.trailingAnchor.constraint(lessThanOrEqualTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -8),
             placeTagView.heightAnchor.constraint(equalToConstant: 22),
             
             // Place tag label with padding
@@ -129,7 +129,7 @@ class UploadThumbnailCell: UICollectionViewCell {
 
             // Count badge, top-right
             countBadgeView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
-            countBadgeView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
+            countBadgeView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -8),
             countBadgeView.heightAnchor.constraint(equalToConstant: 22),
 
             countBadgeIcon.leadingAnchor.constraint(equalTo: countBadgeView.leadingAnchor, constant: 6),

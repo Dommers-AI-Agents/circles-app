@@ -95,7 +95,7 @@ extension CirclesHomeViewController {
         NSLayoutConstraint.activate([
             chip.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
             chip.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            chip.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 20),
+            chip.leadingAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
             chip.heightAnchor.constraint(equalToConstant: 44),
 
             icon.leadingAnchor.constraint(equalTo: chip.leadingAnchor, constant: 14),

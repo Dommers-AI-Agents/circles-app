@@ -269,21 +269,21 @@ class CheckInViewController: BaseViewController {
         NSLayoutConstraint.activate([
             // Why check in
             heroView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            heroView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            heroView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            heroView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            heroView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
 
             // Place selection
             placeSelectionSegmentedControl.topAnchor.constraint(equalTo: heroView.bottomAnchor, constant: 16),
-            placeSelectionSegmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            placeSelectionSegmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            placeSelectionSegmentedControl.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            placeSelectionSegmentedControl.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             searchBar.topAnchor.constraint(equalTo: placeSelectionSegmentedControl.bottomAnchor, constant: 12),
-            searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
-            searchBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+            searchBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 8),
+            searchBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -8),
             
             placesTableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
-            placesTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            placesTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            placesTableView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            placesTableView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             placesTableView.bottomAnchor.constraint(equalTo: nextButton.topAnchor, constant: -16),
             
             loadingMessageLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -292,8 +292,8 @@ class CheckInViewController: BaseViewController {
             loadingMessageLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
 
             // Next button
-            nextButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            nextButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            nextButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            nextButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             nextButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
             nextButton.heightAnchor.constraint(equalToConstant: 50)
         ])

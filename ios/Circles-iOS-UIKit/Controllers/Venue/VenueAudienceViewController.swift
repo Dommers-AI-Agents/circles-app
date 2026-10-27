@@ -202,13 +202,13 @@ class VenueAudienceCell: UITableViewCell {
         contentView.addSubview(nameLabel)
         contentView.addSubview(subtitleLabel)
         NSLayoutConstraint.activate([
-            avatarView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            avatarView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             avatarView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             avatarView.widthAnchor.constraint(equalToConstant: 40),
             avatarView.heightAnchor.constraint(equalToConstant: 40),
 
             nameLabel.leadingAnchor.constraint(equalTo: avatarView.trailingAnchor, constant: 12),
-            nameLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            nameLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
 
             subtitleLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),

@@ -267,8 +267,8 @@ class MyNetworkViewController: BaseViewController {
 
         NSLayoutConstraint.activate([
             incomingRequestBanner.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 10),
-            incomingRequestBanner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            incomingRequestBanner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            incomingRequestBanner.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            incomingRequestBanner.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             bannerHeight,
 
             incomingRequestLabel.leadingAnchor.constraint(equalTo: incomingRequestBanner.leadingAnchor, constant: 14),
@@ -281,13 +281,13 @@ class MyNetworkViewController: BaseViewController {
 
         NSLayoutConstraint.activate([
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            searchBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            searchBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            searchBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             searchBar.heightAnchor.constraint(equalToConstant: 44),
 
             segmentedControl.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 12),
-            segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            segmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            segmentedControl.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            segmentedControl.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
 
             // Straddles the top-right corner of the last segment (Requests).
             requestsBadgeLabel.centerYAnchor.constraint(equalTo: segmentedControl.topAnchor),
@@ -296,8 +296,8 @@ class MyNetworkViewController: BaseViewController {
             requestsBadgeLabel.widthAnchor.constraint(greaterThanOrEqualTo: requestsBadgeLabel.heightAnchor),
 
             containerTop,
-            containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            containerView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            containerView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
@@ -732,8 +732,8 @@ extension MyNetworkViewController: SSEServiceDelegate {
         
         NSLayoutConstraint.activate([
             banner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            banner.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            banner.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             banner.heightAnchor.constraint(equalToConstant: 44),
             
             label.centerXAnchor.constraint(equalTo: banner.centerXAnchor),

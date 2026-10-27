@@ -167,17 +167,17 @@ class ChangePasswordViewController: BaseViewController {
             
             // Instruction label
             instructionLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.large),
-            instructionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            instructionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            instructionLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            instructionLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             
             // Current password label
             currentPasswordLabel.topAnchor.constraint(equalTo: instructionLabel.bottomAnchor, constant: Constants.Spacing.xlarge),
-            currentPasswordLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            currentPasswordLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
 
             // Current password text field
             currentPasswordTextField.topAnchor.constraint(equalTo: currentPasswordLabel.bottomAnchor, constant: Constants.Spacing.small),
-            currentPasswordTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            currentPasswordTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            currentPasswordTextField.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            currentPasswordTextField.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
 
             // Toggle buttons
             toggleCurrentPasswordButton.widthAnchor.constraint(equalToConstant: 44),
@@ -186,33 +186,33 @@ class ChangePasswordViewController: BaseViewController {
 
             // New password label
             newPasswordLabel.topAnchor.constraint(equalTo: currentPasswordTextField.bottomAnchor, constant: Constants.Spacing.large),
-            newPasswordLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            newPasswordLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
             
             // New password text field
             newPasswordTextField.topAnchor.constraint(equalTo: newPasswordLabel.bottomAnchor, constant: Constants.Spacing.small),
-            newPasswordTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            newPasswordTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            newPasswordTextField.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            newPasswordTextField.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             newPasswordTextField.heightAnchor.constraint(equalToConstant: 44),
             
             // Confirm password label
             confirmPasswordLabel.topAnchor.constraint(equalTo: newPasswordTextField.bottomAnchor, constant: Constants.Spacing.large),
-            confirmPasswordLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            confirmPasswordLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
             
             // Confirm password text field
             confirmPasswordTextField.topAnchor.constraint(equalTo: confirmPasswordLabel.bottomAnchor, constant: Constants.Spacing.small),
-            confirmPasswordTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            confirmPasswordTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            confirmPasswordTextField.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            confirmPasswordTextField.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             confirmPasswordTextField.heightAnchor.constraint(equalToConstant: 44),
             
             // Password requirements label
             passwordRequirementsLabel.topAnchor.constraint(equalTo: confirmPasswordTextField.bottomAnchor, constant: Constants.Spacing.small),
-            passwordRequirementsLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            passwordRequirementsLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            passwordRequirementsLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            passwordRequirementsLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             
             // Change password button
             changePasswordButton.topAnchor.constraint(equalTo: passwordRequirementsLabel.bottomAnchor, constant: Constants.Spacing.xlarge),
-            changePasswordButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            changePasswordButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            changePasswordButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            changePasswordButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             changePasswordButton.heightAnchor.constraint(equalToConstant: 50),
             changePasswordButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])

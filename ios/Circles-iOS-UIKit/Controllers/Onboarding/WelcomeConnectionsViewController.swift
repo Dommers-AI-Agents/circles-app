@@ -152,8 +152,8 @@ final class WelcomeConnectionsViewController: BaseViewController {
             contentStack.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -16),
 
             continueButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
-            continueButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            continueButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24)
+            continueButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            continueButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24)
         ])
 
         loadRecommendations()

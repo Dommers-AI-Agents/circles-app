@@ -202,8 +202,8 @@ final class PostcardOfferViewController: BaseViewController {
             dimming.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
             sheet.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            sheet.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            sheet.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            sheet.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            sheet.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             sheet.topAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
 
             stack.topAnchor.constraint(equalTo: sheet.topAnchor, constant: 24),

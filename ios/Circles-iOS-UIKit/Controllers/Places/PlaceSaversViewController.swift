@@ -212,12 +212,12 @@ class PlaceSaverUserCell: UITableViewCell {
         contentView.addSubview(connectButton)
 
         NSLayoutConstraint.activate([
-            profileImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            profileImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             profileImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             profileImageView.widthAnchor.constraint(equalToConstant: 50),
             profileImageView.heightAnchor.constraint(equalToConstant: 50),
 
-            connectButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            connectButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             connectButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
             nameLabel.topAnchor.constraint(equalTo: profileImageView.topAnchor, constant: 5),

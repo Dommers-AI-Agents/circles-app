@@ -119,8 +119,8 @@ class DiscoverUsersViewController: BaseViewController {
         
         NSLayoutConstraint.activate([
             segmentedControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            segmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            segmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            segmentedControl.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            segmentedControl.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             tableView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -128,8 +128,8 @@ class DiscoverUsersViewController: BaseViewController {
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             
             locationPermissionView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
-            locationPermissionView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            locationPermissionView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            locationPermissionView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            locationPermissionView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             locationPermissionView.heightAnchor.constraint(equalToConstant: 80),
             
             locationPermissionLabel.topAnchor.constraint(equalTo: locationPermissionView.topAnchor, constant: 16),

@@ -140,8 +140,8 @@ final class ProfileActivityTabViewController: BaseViewController {
         [summaryWrap, chipsScroll, tableView, moreWrap, statusWrap].forEach { stack.addArrangedSubview($0) }
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: view.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor)
         ])
         moreButton.superview?.tag = 1

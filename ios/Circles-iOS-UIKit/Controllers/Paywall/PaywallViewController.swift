@@ -172,7 +172,7 @@ class PaywallViewController: BaseViewController {
             
             // Close button
             closeButton.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
-            closeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            closeButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             closeButton.widthAnchor.constraint(equalToConstant: 32),
             closeButton.heightAnchor.constraint(equalToConstant: 32),
             
@@ -184,38 +184,38 @@ class PaywallViewController: BaseViewController {
             
             // Title
             titleLabel.topAnchor.constraint(equalTo: iconImageView.bottomAnchor, constant: 16),
-            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
-            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            titleLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -32),
             
             // Subtitle
             subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            subtitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
-            subtitleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
+            subtitleLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            subtitleLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -32),
             
             // Features
             featuresStackView.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 32),
-            featuresStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
-            featuresStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
+            featuresStackView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            featuresStackView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -32),
             
             // Options
             optionsStackView.topAnchor.constraint(equalTo: featuresStackView.bottomAnchor, constant: 32),
-            optionsStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            optionsStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            optionsStackView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            optionsStackView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             
             // Purchase button
             purchaseButton.topAnchor.constraint(equalTo: optionsStackView.bottomAnchor, constant: 24),
-            purchaseButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            purchaseButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            purchaseButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            purchaseButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             
             // Restore button
             restoreButton.topAnchor.constraint(equalTo: purchaseButton.bottomAnchor, constant: 12),
-            restoreButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            restoreButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            restoreButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            restoreButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             
             // Terms
             termsLabel.topAnchor.constraint(equalTo: restoreButton.bottomAnchor, constant: 16),
-            termsLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
-            termsLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
+            termsLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            termsLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -32),
             termsLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
         ])
     }

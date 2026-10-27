@@ -93,11 +93,11 @@ final class PlaceMenuViewController: BaseViewController {
         [searchBar, chipScroll, tableView, emptyLabel].forEach(view.addSubview)
         NSLayoutConstraint.activate([
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
-            searchBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+            searchBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 8),
+            searchBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -8),
             chipScroll.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
-            chipScroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            chipScroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            chipScroll.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            chipScroll.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             chipScroll.heightAnchor.constraint(equalToConstant: 44),
             chips.topAnchor.constraint(equalTo: chipScroll.contentLayoutGuide.topAnchor, constant: 4),
             chips.bottomAnchor.constraint(equalTo: chipScroll.contentLayoutGuide.bottomAnchor, constant: -4),
@@ -109,8 +109,8 @@ final class PlaceMenuViewController: BaseViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             emptyLabel.topAnchor.constraint(equalTo: chipScroll.bottomAnchor, constant: 40),
-            emptyLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            emptyLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32)
+            emptyLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            emptyLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32)
         ])
         buildChips()
         if ordering != nil { installOrderBar() }
@@ -124,8 +124,8 @@ final class PlaceMenuViewController: BaseViewController {
         orderBar.addTarget(self, action: #selector(orderBarTapped), for: .touchUpInside)
         view.addSubview(orderBar)
         NSLayoutConstraint.activate([
-            orderBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            orderBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            orderBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            orderBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             orderBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -10)
         ])
         tableView.contentInset.bottom = 80

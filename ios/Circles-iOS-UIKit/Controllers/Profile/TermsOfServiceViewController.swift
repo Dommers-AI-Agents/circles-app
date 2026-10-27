@@ -64,8 +64,8 @@ class TermsOfServiceViewController: BaseViewController {
             
             // Terms text view
             termsTextView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.medium),
-            termsTextView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            termsTextView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            termsTextView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            termsTextView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             termsTextView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.medium)
         ])
     }

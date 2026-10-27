@@ -65,8 +65,8 @@ final class PlaceGalleryViewController: BaseViewController {
         view.sendSubviewToBack(collectionView)
         NSLayoutConstraint.activate([
             hintLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            hintLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            hintLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            hintLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            hintLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             collectionView.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: 4),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),

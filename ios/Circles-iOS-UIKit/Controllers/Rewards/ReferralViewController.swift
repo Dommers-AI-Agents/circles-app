@@ -207,8 +207,8 @@ class ReferralViewController: BaseViewController {
             
             // Header
             headerView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            headerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            headerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            headerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             headerView.heightAnchor.constraint(equalToConstant: 200),
             
             giftImageView.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
@@ -226,8 +226,8 @@ class ReferralViewController: BaseViewController {
             
             // Referral Code
             referralCodeContainer.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 20),
-            referralCodeContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            referralCodeContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            referralCodeContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            referralCodeContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             referralCodeContainer.heightAnchor.constraint(equalToConstant: 120),
             
             referralCodeLabel.centerXAnchor.constraint(equalTo: referralCodeContainer.centerXAnchor),
@@ -239,13 +239,13 @@ class ReferralViewController: BaseViewController {
             
             // Share Button
             shareButton.topAnchor.constraint(equalTo: referralCodeContainer.bottomAnchor, constant: 15),
-            shareButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            shareButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            shareButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            shareButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             
             // Stats
             statsContainer.topAnchor.constraint(equalTo: shareButton.bottomAnchor, constant: 30),
-            statsContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            statsContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            statsContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            statsContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             statsContainer.heightAnchor.constraint(equalToConstant: 100),
             
             friendsInvitedLabel.leadingAnchor.constraint(equalTo: statsContainer.leadingAnchor, constant: 15),
@@ -259,17 +259,17 @@ class ReferralViewController: BaseViewController {
             
             // Claim Rewards Button
             claimRewardsButton.topAnchor.constraint(equalTo: statsContainer.bottomAnchor, constant: 15),
-            claimRewardsButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            claimRewardsButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            claimRewardsButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            claimRewardsButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             
             // How it works
             howItWorksLabel.topAnchor.constraint(equalTo: claimRewardsButton.bottomAnchor, constant: 30),
-            howItWorksLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            howItWorksLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            howItWorksLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            howItWorksLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             
             stepsLabel.topAnchor.constraint(equalTo: howItWorksLabel.bottomAnchor, constant: 10),
-            stepsLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            stepsLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            stepsLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            stepsLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             stepsLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -30)
         ])
         

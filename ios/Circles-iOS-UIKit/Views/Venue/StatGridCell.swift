@@ -19,8 +19,8 @@ final class StatGridCell: UITableViewCell {
         contentView.addSubview(grid)
         NSLayoutConstraint.activate([
             grid.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
-            grid.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 12),
-            grid.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
+            grid.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+            grid.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -12),
             grid.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12)
         ])
         accessoryType = .none

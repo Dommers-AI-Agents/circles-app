@@ -205,8 +205,8 @@ final class CheckInComposeViewController: BaseViewController {
             contentStack.leadingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.leadingAnchor, constant: 16),
             contentStack.trailingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.trailingAnchor, constant: -16),
 
-            footer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            footer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            footer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            footer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             footer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12)
         ])
     }

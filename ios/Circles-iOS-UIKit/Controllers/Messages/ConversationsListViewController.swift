@@ -216,8 +216,8 @@ class ConversationsListViewController: UIViewController {
         NSLayoutConstraint.activate([
             // Header container
             headerContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            headerContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            headerContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            headerContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            headerContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             headerContainer.heightAnchor.constraint(equalToConstant: 60),
             
             // Suggestions button
@@ -817,8 +817,8 @@ extension ConversationsListViewController: SSEServiceDelegate {
         
         NSLayoutConstraint.activate([
             banner.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            banner.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            banner.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            banner.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            banner.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             banner.heightAnchor.constraint(equalToConstant: 44),
             
             label.centerXAnchor.constraint(equalTo: banner.centerXAnchor),

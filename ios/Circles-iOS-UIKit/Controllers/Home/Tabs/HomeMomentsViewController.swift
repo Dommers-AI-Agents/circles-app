@@ -90,8 +90,8 @@ final class HomeMomentsViewController: BaseViewController, HomeContentTab {
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             statusView.topAnchor.constraint(equalTo: view.topAnchor),
-            statusView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            statusView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            statusView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            statusView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             statusView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         collectionView.delegate = self

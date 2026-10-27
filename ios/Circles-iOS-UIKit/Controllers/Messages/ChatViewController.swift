@@ -293,8 +293,8 @@ class ChatViewController: BaseViewController {
         messageInputBottomConstraint = messageInputContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         
         NSLayoutConstraint.activate([
-            messageInputContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            messageInputContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            messageInputContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            messageInputContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             messageInputBottomConstraint,
             messageInputContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 60),
             
@@ -964,17 +964,17 @@ class MessageCell: UITableViewCell {
         mediaWidthConstraint = mediaImageView.widthAnchor.constraint(equalToConstant: 240)
         mediaTopConstraint = mediaImageView.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 0)
         
-        leadingConstraint = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
-        trailingConstraint = bubbleView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
+        leadingConstraint = bubbleView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16)
+        trailingConstraint = bubbleView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16)
         
         // Constraints for bubble with avatar on left (received messages)
         bubbleLeadingToAvatarConstraint = bubbleView.leadingAnchor.constraint(equalTo: avatarImageView.trailingAnchor, constant: 8)
-        bubbleLeadingToContentConstraint = bubbleView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16)
+        bubbleLeadingToContentConstraint = bubbleView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16)
         
         // Constraints for bubble with avatar on right (sent messages in direct conversations)
         bubbleTrailingToAvatarConstraint = bubbleView.trailingAnchor.constraint(equalTo: avatarImageView.leadingAnchor, constant: -8)
-        avatarTrailingConstraint = avatarImageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8)
-        avatarLeadingConstraint = avatarImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8)
+        avatarTrailingConstraint = avatarImageView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -8)
+        avatarLeadingConstraint = avatarImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 8)
         
         NSLayoutConstraint.activate([
             // Avatar constraints (position will be controlled dynamically)

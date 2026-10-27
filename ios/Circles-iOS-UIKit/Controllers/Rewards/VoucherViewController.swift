@@ -162,7 +162,7 @@ class VoucherViewController: BaseViewController {
 
         NSLayoutConstraint.activate([
             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            closeButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             closeButton.widthAnchor.constraint(equalToConstant: 40),
             closeButton.heightAnchor.constraint(equalToConstant: 40),
 
@@ -170,8 +170,8 @@ class VoucherViewController: BaseViewController {
             countdownLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
 
             cardView.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -20),
-            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            cardView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            cardView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
 
             checkmarkImageView.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 28),
             checkmarkImageView.centerXAnchor.constraint(equalTo: cardView.centerXAnchor),
@@ -195,8 +195,8 @@ class VoucherViewController: BaseViewController {
             staffInstructionLabel.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -28),
 
             doneButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            doneButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            doneButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40)
+            doneButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            doneButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40)
         ])
     }
 

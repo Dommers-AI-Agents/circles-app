@@ -107,7 +107,7 @@ class VideoReelsViewController: UIViewController {
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             
             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            closeButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             closeButton.widthAnchor.constraint(equalToConstant: 40),
             closeButton.heightAnchor.constraint(equalToConstant: 40)
         ])
@@ -635,8 +635,8 @@ extension VideoReelsViewController: VideoReelCellDelegate {
         reactionPicker.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             reactionPicker.topAnchor.constraint(equalTo: view.topAnchor),
-            reactionPicker.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            reactionPicker.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            reactionPicker.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            reactionPicker.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             reactionPicker.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         

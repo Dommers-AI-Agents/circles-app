@@ -129,24 +129,24 @@ class EmailLoginViewController: BaseViewController {
         // Layout constraints
         NSLayoutConstraint.activate([
             titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 40),
-            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            titleLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            titleLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
             
             emailTextField.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 40),
-            emailTextField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            emailTextField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            emailTextField.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            emailTextField.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
             emailTextField.heightAnchor.constraint(equalToConstant: 50),
             
             passwordTextField.topAnchor.constraint(equalTo: emailTextField.bottomAnchor, constant: 16),
-            passwordTextField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            passwordTextField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            passwordTextField.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            passwordTextField.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
             passwordTextField.heightAnchor.constraint(equalToConstant: 50),
             
             togglePasswordButton.widthAnchor.constraint(equalToConstant: 44),
             
             rememberMeContainer.topAnchor.constraint(equalTo: passwordTextField.bottomAnchor, constant: 16),
-            rememberMeContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            rememberMeContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            rememberMeContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            rememberMeContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
             rememberMeContainer.heightAnchor.constraint(equalToConstant: 30),
             
             rememberMeCheckbox.leadingAnchor.constraint(equalTo: rememberMeContainer.leadingAnchor),
@@ -159,12 +159,12 @@ class EmailLoginViewController: BaseViewController {
             rememberMeLabel.trailingAnchor.constraint(equalTo: rememberMeContainer.trailingAnchor),
             
             loginButton.topAnchor.constraint(equalTo: rememberMeContainer.bottomAnchor, constant: 24),
-            loginButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            loginButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            loginButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            loginButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
             
             forgotPasswordButton.topAnchor.constraint(equalTo: loginButton.bottomAnchor, constant: 16),
-            forgotPasswordButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            forgotPasswordButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40)
+            forgotPasswordButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            forgotPasswordButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40)
         ])
         
         // Setup text field delegates

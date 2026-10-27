@@ -106,14 +106,14 @@ final class LovedPlaceCell: UICollectionViewCell {
         contentView.addSubview(youToo)
         NSLayoutConstraint.activate([
             photo.topAnchor.constraint(equalTo: contentView.topAnchor),
-            photo.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            photo.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            photo.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            photo.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             photo.heightAnchor.constraint(equalToConstant: 128),
             text.topAnchor.constraint(equalTo: photo.bottomAnchor, constant: 10),
-            text.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 12),
-            text.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
+            text.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+            text.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -12),
             youToo.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
-            youToo.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
+            youToo.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -8),
             youToo.heightAnchor.constraint(equalToConstant: 20)
         ])
     }
@@ -346,11 +346,11 @@ final class PersonSuggestionCell: UICollectionViewCell {
             face.widthAnchor.constraint(equalToConstant: 60),
             face.heightAnchor.constraint(equalToConstant: 60),
             column.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 14),
-            column.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
-            column.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
+            column.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 8),
+            column.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -8),
             follow.widthAnchor.constraint(equalTo: column.widthAnchor, constant: -8),
             close.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            close.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            close.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -4),
             close.widthAnchor.constraint(equalToConstant: 28),
             close.heightAnchor.constraint(equalToConstant: 28)
         ])

@@ -264,16 +264,16 @@ final class TapToConnectViewController: BaseViewController {
             pulseLayerContainer.heightAnchor.constraint(equalToConstant: 108),
 
             headlineLabel.topAnchor.constraint(equalTo: avatarImageView.bottomAnchor, constant: 28),
-            headlineLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            headlineLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+            headlineLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            headlineLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32),
 
             subtitleLabel.topAnchor.constraint(equalTo: headlineLabel.bottomAnchor, constant: 8),
-            subtitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            subtitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+            subtitleLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            subtitleLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32),
 
             cardsStack.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 24),
-            cardsStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            cardsStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            cardsStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            cardsStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             qrFallbackButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18),
             qrFallbackButton.centerXAnchor.constraint(equalTo: view.centerXAnchor)

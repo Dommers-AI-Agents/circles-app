@@ -144,29 +144,29 @@ class MomentPlacePickerViewController: BaseViewController {
         let g = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
             privacyLabel.topAnchor.constraint(equalTo: g.topAnchor, constant: 12),
-            privacyLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            privacyLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            privacyLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            privacyLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
 
             privacyControl.topAnchor.constraint(equalTo: privacyLabel.bottomAnchor, constant: 8),
-            privacyControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            privacyControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            privacyControl.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            privacyControl.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
 
             tagPeopleButton.topAnchor.constraint(equalTo: privacyControl.bottomAnchor, constant: 8),
-            tagPeopleButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            tagPeopleButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            tagPeopleButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            tagPeopleButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             tagPeopleButton.heightAnchor.constraint(equalToConstant: 30),
 
             disappearRow.topAnchor.constraint(equalTo: tagPeopleButton.bottomAnchor, constant: 8),
-            disappearRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            disappearRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            disappearRow.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            disappearRow.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
 
             sourceControl.topAnchor.constraint(equalTo: disappearRow.bottomAnchor, constant: 10),
-            sourceControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            sourceControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            sourceControl.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            sourceControl.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
 
             searchBar.topAnchor.constraint(equalTo: sourceControl.bottomAnchor, constant: 8),
-            searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
-            searchBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+            searchBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 8),
+            searchBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -8),
 
             tableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 4),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),

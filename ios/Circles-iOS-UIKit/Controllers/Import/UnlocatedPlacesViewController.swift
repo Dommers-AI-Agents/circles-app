@@ -79,8 +79,8 @@ class UnlocatedPlacesViewController: BaseViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: footerContainer.topAnchor),
 
-            footerContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            footerContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            footerContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            footerContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             footerContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
             deleteButton.topAnchor.constraint(equalTo: footerContainer.topAnchor, constant: 12),
@@ -286,14 +286,14 @@ private class UnlocatedPlaceCell: UITableViewCell {
         contentView.addSubview(subtitleLabel)
 
         NSLayoutConstraint.activate([
-            checkboxButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 12),
+            checkboxButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 12),
             checkboxButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             checkboxButton.widthAnchor.constraint(equalToConstant: 44),
             checkboxButton.heightAnchor.constraint(equalToConstant: 44),
 
             nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 10),
             nameLabel.leadingAnchor.constraint(equalTo: checkboxButton.trailingAnchor, constant: 8),
-            nameLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
+            nameLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -12),
 
             subtitleLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
             subtitleLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),

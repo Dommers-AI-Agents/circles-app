@@ -585,8 +585,8 @@ class EditPlaceViewController: BaseViewController {
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
 
             formStack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.large),
-            formStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            formStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            formStack.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            formStack.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             formStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.xlarge),
 
             nameTextField.heightAnchor.constraint(equalToConstant: 40),

@@ -339,8 +339,8 @@ class RewardsViewController: BaseViewController {
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
 
             headerView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            headerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            headerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            headerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             headerView.heightAnchor.constraint(equalToConstant: 190),
 
             starImageView.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
@@ -358,8 +358,8 @@ class RewardsViewController: BaseViewController {
             balanceCaptionLabel.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
 
             activeVoucherBanner.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 16),
-            activeVoucherBanner.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            activeVoucherBanner.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            activeVoucherBanner.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            activeVoucherBanner.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             voucherBannerTitleLabel.leadingAnchor.constraint(equalTo: activeVoucherBanner.leadingAnchor, constant: 14),
             voucherBannerTitleLabel.centerYAnchor.constraint(equalTo: activeVoucherBanner.centerYAnchor),
@@ -369,45 +369,45 @@ class RewardsViewController: BaseViewController {
             voucherBannerTimeLabel.centerYAnchor.constraint(equalTo: activeVoucherBanner.centerYAnchor),
 
             redeemCodeButton.topAnchor.constraint(equalTo: activeVoucherBanner.bottomAnchor, constant: 12),
-            redeemCodeButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            redeemCodeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            redeemCodeButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            redeemCodeButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             redeemCodeButton.heightAnchor.constraint(equalToConstant: 44),
 
             storeBalancesStack.topAnchor.constraint(equalTo: redeemCodeButton.bottomAnchor, constant: 16),
-            storeBalancesStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            storeBalancesStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            storeBalancesStack.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            storeBalancesStack.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             savedOffersLabel.topAnchor.constraint(equalTo: storeBalancesStack.bottomAnchor, constant: 16),
-            savedOffersLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            savedOffersLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            savedOffersLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            savedOffersLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             savedOffersStack.topAnchor.constraint(equalTo: savedOffersLabel.bottomAnchor, constant: 10),
-            savedOffersStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            savedOffersStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            savedOffersStack.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            savedOffersStack.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             nearbyOffersLabel.topAnchor.constraint(equalTo: savedOffersStack.bottomAnchor, constant: 28),
-            nearbyOffersLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            nearbyOffersLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            nearbyOffersLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            nearbyOffersLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             nearbyOffersStack.topAnchor.constraint(equalTo: nearbyOffersLabel.bottomAnchor, constant: 10),
-            nearbyOffersStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            nearbyOffersStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            nearbyOffersStack.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            nearbyOffersStack.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             howItWorksLabel.topAnchor.constraint(equalTo: nearbyOffersStack.bottomAnchor, constant: 28),
-            howItWorksLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            howItWorksLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            howItWorksLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            howItWorksLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             stepsLabel.topAnchor.constraint(equalTo: howItWorksLabel.bottomAnchor, constant: 10),
-            stepsLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            stepsLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            stepsLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            stepsLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             activityLabel.topAnchor.constraint(equalTo: stepsLabel.bottomAnchor, constant: 28),
-            activityLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            activityLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            activityLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            activityLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             activityStack.topAnchor.constraint(equalTo: activityLabel.bottomAnchor, constant: 10),
-            activityStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            activityStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            activityStack.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            activityStack.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             activityStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -30)
         ])
 

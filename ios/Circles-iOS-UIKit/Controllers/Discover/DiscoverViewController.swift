@@ -147,34 +147,34 @@ class DiscoverViewController: BaseViewController {
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
             
             searchBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.small),
-            searchBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.small),
-            searchBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.small),
+            searchBar.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.small),
+            searchBar.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.small),
             
             featuredLabel.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: Constants.Spacing.medium),
-            featuredLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            featuredLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            featuredLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            featuredLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             
             featuredCollectionView.topAnchor.constraint(equalTo: featuredLabel.bottomAnchor, constant: Constants.Spacing.small),
-            featuredCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            featuredCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            featuredCollectionView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            featuredCollectionView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             featuredCollectionView.heightAnchor.constraint(equalToConstant: 240),
             
             usersLabel.topAnchor.constraint(equalTo: featuredCollectionView.bottomAnchor, constant: Constants.Spacing.medium),
-            usersLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            usersLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            usersLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            usersLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             
             usersCollectionView.topAnchor.constraint(equalTo: usersLabel.bottomAnchor, constant: Constants.Spacing.small),
-            usersCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            usersCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            usersCollectionView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            usersCollectionView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             usersCollectionView.heightAnchor.constraint(equalToConstant: 100),
             
             categoriesLabel.topAnchor.constraint(equalTo: usersCollectionView.bottomAnchor, constant: Constants.Spacing.medium),
-            categoriesLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            categoriesLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            categoriesLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            categoriesLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             
             categoriesCollectionView.topAnchor.constraint(equalTo: categoriesLabel.bottomAnchor, constant: Constants.Spacing.small),
-            categoriesCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            categoriesCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            categoriesCollectionView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            categoriesCollectionView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             categoriesCollectionView.heightAnchor.constraint(equalToConstant: 120),
             categoriesCollectionView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
@@ -583,8 +583,8 @@ class FeaturedCircleCell: UICollectionViewCell {
         
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            containerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            containerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             
             coverImageView.topAnchor.constraint(equalTo: containerView.topAnchor),
@@ -730,8 +730,8 @@ class UserCell: UICollectionViewCell {
             profileImageView.heightAnchor.constraint(equalToConstant: 60),
             
             nameLabel.topAnchor.constraint(equalTo: profileImageView.bottomAnchor, constant: Constants.Spacing.tiny),
-            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            nameLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            nameLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             nameLabel.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor)
         ])
     }
@@ -806,8 +806,8 @@ class CategoryCell: UICollectionViewCell {
         
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            containerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            containerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             
             iconImageView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.medium),

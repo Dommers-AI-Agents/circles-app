@@ -207,13 +207,13 @@ class VisitTrackingPermissionView: UIView {
         view.addSubview(label)
         
         NSLayoutConstraint.activate([
-            iconImageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            iconImageView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             iconImageView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             iconImageView.widthAnchor.constraint(equalToConstant: 24),
             iconImageView.heightAnchor.constraint(equalToConstant: 24),
             
             label.leadingAnchor.constraint(equalTo: iconImageView.trailingAnchor, constant: 16),
-            label.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            label.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             label.topAnchor.constraint(equalTo: view.topAnchor),
             label.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])

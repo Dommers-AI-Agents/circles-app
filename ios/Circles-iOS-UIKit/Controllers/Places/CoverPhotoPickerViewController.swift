@@ -118,7 +118,7 @@ private class CoverPhotoCell: UICollectionViewCell {
             imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             imageView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             coverBadge.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            coverBadge.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4)
+            coverBadge.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 4)
         ])
     }
 

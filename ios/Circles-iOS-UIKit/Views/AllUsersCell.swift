@@ -98,12 +98,12 @@ class AllUsersCell: UITableViewCell {
         view.addSubview(tierChipIcon)
         view.addSubview(tierChipLabel)
         NSLayoutConstraint.activate([
-            tierChipIcon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 5),
+            tierChipIcon.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 5),
             tierChipIcon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             tierChipIcon.widthAnchor.constraint(equalToConstant: 10),
             tierChipIcon.heightAnchor.constraint(equalToConstant: 10),
             tierChipLabel.leadingAnchor.constraint(equalTo: tierChipIcon.trailingAnchor, constant: 3),
-            tierChipLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+            tierChipLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -6),
             tierChipLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             view.heightAnchor.constraint(equalToConstant: 18)
         ])
@@ -180,15 +180,15 @@ class AllUsersCell: UITableViewCell {
         // Buttons read left-to-right as primary then secondary, so the
         // secondary is the one pinned to the trailing edge.
         actionButtonTrailingConstraint = actionButton.trailingAnchor.constraint(equalTo: followButton.leadingAnchor, constant: -6)
-        followButtonTrailingConstraint = followButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12)
+        followButtonTrailingConstraint = followButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -12)
 
         NSLayoutConstraint.activate([
             highlightView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            highlightView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
-            highlightView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
+            highlightView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 8),
+            highlightView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -8),
             highlightView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
             
-            profileImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            profileImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             profileImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             profileImageView.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: 10),
             profileImageView.widthAnchor.constraint(equalToConstant: 50),

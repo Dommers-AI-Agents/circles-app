@@ -73,8 +73,8 @@ class SuggestionsViewController: BaseViewController {
 
         NSLayoutConstraint.activate([
             feedSegmentedControl.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            feedSegmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            feedSegmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            feedSegmentedControl.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            feedSegmentedControl.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
 
             tableView.topAnchor.constraint(equalTo: feedSegmentedControl.bottomAnchor, constant: 8),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),

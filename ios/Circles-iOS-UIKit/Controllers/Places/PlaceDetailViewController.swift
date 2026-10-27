@@ -874,7 +874,7 @@ class PlaceDetailViewController: BaseViewController {
             
             // Name label — leads the page, above the photo
             nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.medium),
-            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
             nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: categoryLabel.leadingAnchor, constant: -Constants.Spacing.small),
 
             // Category label
@@ -884,14 +884,14 @@ class PlaceDetailViewController: BaseViewController {
 
             // Category edit button
             categoryEditButton.topAnchor.constraint(equalTo: nameLabel.topAnchor),
-            categoryEditButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            categoryEditButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             categoryEditButton.widthAnchor.constraint(equalToConstant: 24),
             categoryEditButton.heightAnchor.constraint(equalToConstant: 24),
 
             // Image view — hangs below the name row
             mediaCarouselView.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.medium),
-            mediaCarouselView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            mediaCarouselView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            mediaCarouselView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            mediaCarouselView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             mediaCarouselView.heightAnchor.constraint(equalToConstant: 300),
             
             // Edit Image button - positioned within imageView
@@ -909,13 +909,13 @@ class PlaceDetailViewController: BaseViewController {
             
             // Check-in strip — directly under the photo
             checkInStripView.topAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: Constants.Spacing.small),
-            checkInStripView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            checkInStripView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            checkInStripView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            checkInStripView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
 
             // Info container view - positioned below the strip with padding
             infoContainerView.topAnchor.constraint(equalTo: checkInStripView.bottomAnchor, constant: Constants.Spacing.small),
-            infoContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            infoContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            infoContainerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            infoContainerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             infoContainerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             
             // Rating view - under the social action row, hidden if no rating

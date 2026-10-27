@@ -117,16 +117,16 @@ class PasswordResetViewController: BaseViewController {
         // Layout constraints
         NSLayoutConstraint.activate([
             titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 40),
-            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            titleLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            titleLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
             
             descriptionLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 16),
-            descriptionLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            descriptionLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            descriptionLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            descriptionLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
             
             successMessageView.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: 24),
-            successMessageView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            successMessageView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            successMessageView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            successMessageView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
             successMessageView.heightAnchor.constraint(equalToConstant: 60),
             
             successIconLabel.leadingAnchor.constraint(equalTo: successMessageView.leadingAnchor, constant: 16),
@@ -138,17 +138,17 @@ class PasswordResetViewController: BaseViewController {
             successTextLabel.centerYAnchor.constraint(equalTo: successMessageView.centerYAnchor),
             
             emailTextField.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: 40),
-            emailTextField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            emailTextField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            emailTextField.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            emailTextField.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
             emailTextField.heightAnchor.constraint(equalToConstant: 50),
             
             sendResetButton.topAnchor.constraint(equalTo: emailTextField.bottomAnchor, constant: 24),
-            sendResetButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            sendResetButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            sendResetButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            sendResetButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
             
             backToLoginButton.topAnchor.constraint(equalTo: sendResetButton.bottomAnchor, constant: 16),
-            backToLoginButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            backToLoginButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40)
+            backToLoginButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            backToLoginButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40)
         ])
         
         // Setup text field delegate

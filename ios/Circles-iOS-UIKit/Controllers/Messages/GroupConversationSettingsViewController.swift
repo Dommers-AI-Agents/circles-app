@@ -168,24 +168,24 @@ class GroupConversationSettingsViewController: BaseViewController {
             
             // Name text field
             nameTextField.topAnchor.constraint(equalTo: changeAvatarLabel.bottomAnchor, constant: 32),
-            nameTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            nameTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            nameTextField.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            nameTextField.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             nameTextField.heightAnchor.constraint(equalToConstant: 44),
             
             // Participants label
             participantsLabel.topAnchor.constraint(equalTo: nameTextField.bottomAnchor, constant: 32),
-            participantsLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            participantsLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            participantsLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            participantsLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             
             // Participants table view
             participantsTableView.topAnchor.constraint(equalTo: participantsLabel.bottomAnchor, constant: 16),
-            participantsTableView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            participantsTableView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            participantsTableView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            participantsTableView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             
             // Delete group button
             deleteGroupButton.topAnchor.constraint(equalTo: participantsTableView.bottomAnchor, constant: 32),
-            deleteGroupButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            deleteGroupButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            deleteGroupButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            deleteGroupButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             deleteGroupButton.heightAnchor.constraint(equalToConstant: 50),
             deleteGroupButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
         ])
@@ -627,7 +627,7 @@ class ParticipantCell: UITableViewCell {
         removeButton.addTarget(self, action: #selector(removeButtonTapped), for: .touchUpInside)
         
         NSLayoutConstraint.activate([
-            avatarImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            avatarImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             avatarImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             avatarImageView.widthAnchor.constraint(equalToConstant: 40),
             avatarImageView.heightAnchor.constraint(equalToConstant: 40),
@@ -641,7 +641,7 @@ class ParticipantCell: UITableViewCell {
             emailLabel.trailingAnchor.constraint(lessThanOrEqualTo: removeButton.leadingAnchor, constant: -12),
             emailLabel.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -12),
             
-            removeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            removeButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             removeButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             removeButton.widthAnchor.constraint(equalToConstant: 24),
             removeButton.heightAnchor.constraint(equalToConstant: 24)

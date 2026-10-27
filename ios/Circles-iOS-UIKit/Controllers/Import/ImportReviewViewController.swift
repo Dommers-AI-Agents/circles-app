@@ -81,8 +81,8 @@ class ImportReviewViewController: BaseViewController {
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: footerContainer.topAnchor),
 
-            footerContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            footerContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            footerContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            footerContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             footerContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
             importButton.topAnchor.constraint(equalTo: footerContainer.topAnchor, constant: 12),

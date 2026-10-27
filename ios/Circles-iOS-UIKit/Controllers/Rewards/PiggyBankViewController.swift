@@ -271,8 +271,8 @@ final class PiggyBankViewController: BaseViewController {
             contentView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
 
             headerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
-            headerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            headerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            headerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            headerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
 
             piggyArtLabel.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 18),
             piggyArtLabel.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
@@ -304,18 +304,18 @@ final class PiggyBankViewController: BaseViewController {
             walletButton.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -12),
 
             activityTitleLabel.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: 24),
-            activityTitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            activityTitleLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
 
             activityStack.topAnchor.constraint(equalTo: activityTitleLabel.bottomAnchor, constant: 8),
-            activityStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            activityStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            activityStack.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            activityStack.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
 
             earnTitleLabel.topAnchor.constraint(equalTo: activityStack.bottomAnchor, constant: 28),
-            earnTitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            earnTitleLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
 
             earnStack.topAnchor.constraint(equalTo: earnTitleLabel.bottomAnchor, constant: 8),
-            earnStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            earnStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            earnStack.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            earnStack.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             earnStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
         ])
     }
@@ -929,8 +929,8 @@ final class OnChainCoinsViewController: BaseViewController, UITableViewDataSourc
 
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
-            header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            header.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            header.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             tableView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),

@@ -112,8 +112,8 @@ class MilestoneCelebrationViewController: BaseViewController {
 
         NSLayoutConstraint.activate([
             cardView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+            cardView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            cardView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32),
 
             iconContainer.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 32),
             iconContainer.centerXAnchor.constraint(equalTo: cardView.centerXAnchor),

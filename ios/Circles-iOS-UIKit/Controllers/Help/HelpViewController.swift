@@ -90,20 +90,20 @@ class HelpViewController: BaseViewController {
         NSLayoutConstraint.activate([
             // Tutorial button at top
             tutorialButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            tutorialButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            tutorialButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            tutorialButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            tutorialButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             tutorialButton.heightAnchor.constraint(equalToConstant: 50),
             
             // Relaunch onboarding button below tutorial button
             relaunchOnboardingButton.topAnchor.constraint(equalTo: tutorialButton.bottomAnchor, constant: 12),
-            relaunchOnboardingButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            relaunchOnboardingButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            relaunchOnboardingButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            relaunchOnboardingButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             relaunchOnboardingButton.heightAnchor.constraint(equalToConstant: 50),
             
             // Daily summary button below relaunch button
             dailySummaryButton.topAnchor.constraint(equalTo: relaunchOnboardingButton.bottomAnchor, constant: 12),
-            dailySummaryButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            dailySummaryButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            dailySummaryButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            dailySummaryButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             dailySummaryButton.heightAnchor.constraint(equalToConstant: 50),
             
             // Table view below daily summary button

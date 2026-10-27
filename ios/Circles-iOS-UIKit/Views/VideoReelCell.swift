@@ -321,8 +321,8 @@ class VideoReelCell: UICollectionViewCell {
         NSLayoutConstraint.activate([
             // Video container
             videoContainerView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            videoContainerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            videoContainerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            videoContainerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            videoContainerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             videoContainerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             
             

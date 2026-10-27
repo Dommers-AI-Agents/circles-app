@@ -120,8 +120,8 @@ class PlaceCommentRepliesViewController: BaseViewController {
             tableView.bottomAnchor.constraint(equalTo: commentInputContainer.topAnchor),
             
             // Comment input container
-            commentInputContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            commentInputContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            commentInputContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            commentInputContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             commentInputContainer.heightAnchor.constraint(equalToConstant: 60),
             commentInputBottomConstraint!,
             

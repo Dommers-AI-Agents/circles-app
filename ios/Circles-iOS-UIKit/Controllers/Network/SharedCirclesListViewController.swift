@@ -86,8 +86,8 @@ class SharedCirclesListViewController: BaseViewController {
         NSLayoutConstraint.activate([
             // Create Shared Circle Bar
             createSharedCircleBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            createSharedCircleBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            createSharedCircleBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            createSharedCircleBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            createSharedCircleBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             createSharedCircleBar.heightAnchor.constraint(equalToConstant: 56),
             
             // Create Shared Circle Bar internal layout

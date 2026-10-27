@@ -1638,7 +1638,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // Search bar (fixed at top). Unified search removed the scope
             // dropdown button, so the bar now runs to the quick-add button.
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
+            searchBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
             searchBar.trailingAnchor.constraint(equalTo: quickAddPlaceButton.leadingAnchor, constant: -Constants.Spacing.small),
             searchBar.heightAnchor.constraint(equalToConstant: 44),
 
@@ -1664,21 +1664,21 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
 
             // Quick Add Place button
-            quickAddPlaceButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.large),
+            quickAddPlaceButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             quickAddPlaceButton.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
             quickAddPlaceButton.heightAnchor.constraint(equalToConstant: 40),
             quickAddPlaceButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
 
             // User list view (now the first content section; quick-access bar removed)
             userListView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.small),
-            userListView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            userListView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            userListView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            userListView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             userListView.heightAnchor.constraint(equalToConstant: 118),
             
             // Filter container - positioned to overlay the map
             // Below the dropdown header row (8 + 40 + 8)
             filterContainer.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: 56),
-            filterContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            filterContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
             filterContainer.trailingAnchor.constraint(lessThanOrEqualTo: mapExpandButton.leadingAnchor, constant: -Constants.Spacing.small),
             filterContainer.heightAnchor.constraint(equalToConstant: 36),
             
@@ -1785,8 +1785,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             
             // Activity feed section
             activityFeedSection.topAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: Constants.Spacing.xsmall),
-            activityFeedSection.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            activityFeedSection.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            activityFeedSection.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            activityFeedSection.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             activityFeedSection.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
             
             // Activity header
@@ -1848,8 +1848,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         searchModeControl.addTarget(self, action: #selector(searchModeControlChanged), for: .valueChanged)
         NSLayoutConstraint.activate([
             searchModeControl.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 6),
-            searchModeControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
-            searchModeControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium)
+            searchModeControl.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            searchModeControl.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium)
         ])
         view.bringSubviewToFront(searchModeControl)
 

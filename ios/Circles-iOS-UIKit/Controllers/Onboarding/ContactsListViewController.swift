@@ -100,8 +100,8 @@ class ContactsListViewController: BaseViewController {
             tableView.bottomAnchor.constraint(equalTo: bottomContainerView.topAnchor),
             
             // Bottom container
-            bottomContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            bottomContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bottomContainerView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            bottomContainerView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             bottomContainerView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             
             // Selection label
@@ -427,8 +427,8 @@ class ContactUserCell: UITableViewCell {
         // Constraints
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            containerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            containerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
             
             profileImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
@@ -550,8 +550,8 @@ class InviteContactCell: UITableViewCell {
         // Constraints
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            containerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            containerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
             
             initialsContainer.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),

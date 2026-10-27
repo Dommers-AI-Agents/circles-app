@@ -115,8 +115,8 @@ class PlaceCommentsViewController: BaseViewController {
             tableView.bottomAnchor.constraint(equalTo: commentInputContainer.topAnchor),
             
             // Comment input container
-            commentInputContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            commentInputContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            commentInputContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            commentInputContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             commentInputContainer.heightAnchor.constraint(equalToConstant: 60),
             commentInputBottomConstraint!,
             
@@ -439,8 +439,8 @@ class CommentCell: UITableViewCell {
         
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            containerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            containerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
             
             avatarImageView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),

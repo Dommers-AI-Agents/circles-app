@@ -109,8 +109,8 @@ class TutorialViewController: UIViewController {
         // Constraints
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            containerView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            containerView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             
             loadingIndicator.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
@@ -125,7 +125,7 @@ class TutorialViewController: UIViewController {
             retryButton.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
             
             chaptersButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
-            chaptersButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16)
+            chaptersButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16)
         ])
         
         loadingIndicator.startAnimating()
@@ -319,8 +319,8 @@ class TutorialTextViewController: BaseViewController {
         
         NSLayoutConstraint.activate([
             textView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            textView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            textView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            textView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            textView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             textView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }

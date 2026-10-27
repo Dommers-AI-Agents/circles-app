@@ -175,17 +175,17 @@ class VideoRecordingViewController: UIViewController {
         // Setup constraints
         NSLayoutConstraint.activate([
             previewView.topAnchor.constraint(equalTo: view.topAnchor),
-            previewView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            previewView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            previewView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            previewView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             previewView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             
             progressView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            progressView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            progressView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            progressView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            progressView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             progressView.heightAnchor.constraint(equalToConstant: 4),
             
             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            closeButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             closeButton.widthAnchor.constraint(equalToConstant: 40),
             closeButton.heightAnchor.constraint(equalToConstant: 40),
             
@@ -195,7 +195,7 @@ class VideoRecordingViewController: UIViewController {
             timerLabel.heightAnchor.constraint(equalToConstant: 32),
             
             flipCameraButton.topAnchor.constraint(equalTo: closeButton.topAnchor),
-            flipCameraButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            flipCameraButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             flipCameraButton.widthAnchor.constraint(equalToConstant: 40),
             flipCameraButton.heightAnchor.constraint(equalToConstant: 40),
             
@@ -216,7 +216,7 @@ class VideoRecordingViewController: UIViewController {
             instructionLabel.topAnchor.constraint(equalTo: recordButton.bottomAnchor, constant: 16),
             instructionLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             
-            uploadButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            uploadButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
             uploadButton.centerYAnchor.constraint(equalTo: recordButton.centerYAnchor),
             uploadButton.heightAnchor.constraint(equalToConstant: 32)
         ])

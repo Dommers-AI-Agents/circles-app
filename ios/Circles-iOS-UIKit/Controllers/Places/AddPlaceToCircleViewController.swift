@@ -100,24 +100,24 @@ class AddPlaceToCircleViewController: BaseViewController {
         
         NSLayoutConstraint.activate([
             headerLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: Constants.Spacing.medium),
-            headerLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
-            headerLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium),
+            headerLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            headerLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             
             placeNameLabel.topAnchor.constraint(equalTo: headerLabel.bottomAnchor, constant: Constants.Spacing.small),
-            placeNameLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
-            placeNameLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium),
+            placeNameLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            placeNameLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             
             tableView.topAnchor.constraint(equalTo: placeNameLabel.bottomAnchor, constant: Constants.Spacing.medium),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: createCircleButton.topAnchor, constant: -Constants.Spacing.medium),
             
-            createCircleButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
-            createCircleButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium),
+            createCircleButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            createCircleButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             createCircleButton.bottomAnchor.constraint(equalTo: saveButton.topAnchor, constant: -Constants.Spacing.small),
             
-            saveButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
-            saveButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium),
+            saveButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            saveButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             saveButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Constants.Spacing.medium)
         ])
     }

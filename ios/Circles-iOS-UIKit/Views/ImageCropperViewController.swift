@@ -130,8 +130,8 @@ class ImageCropperViewController: UIViewController {
         NSLayoutConstraint.activate([
             // Top toolbar
             topToolbar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            topToolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            topToolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            topToolbar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            topToolbar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             topToolbar.heightAnchor.constraint(equalToConstant: 60),
             
             // Cancel button

@@ -65,8 +65,8 @@ final class ProfileActivityRowCell: UITableViewCell {
         NSLayoutConstraint.activate([
             card.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
             card.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
-            card.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            card.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            card.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            card.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
 
             tile.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
             tile.centerYAnchor.constraint(equalTo: card.centerYAnchor),

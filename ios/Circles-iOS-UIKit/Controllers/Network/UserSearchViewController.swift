@@ -417,7 +417,7 @@ class UserSearchCell: UITableViewCell {
         contentView.addSubview(connectionStatusLabel)
         
         NSLayoutConstraint.activate([
-            profileImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            profileImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             profileImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             profileImageView.widthAnchor.constraint(equalToConstant: 48),
             profileImageView.heightAnchor.constraint(equalToConstant: 48),
@@ -428,10 +428,10 @@ class UserSearchCell: UITableViewCell {
             
             userInfoLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
             userInfoLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            userInfoLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            userInfoLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             connectionStatusLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            connectionStatusLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16)
+            connectionStatusLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16)
         ])
     }
     

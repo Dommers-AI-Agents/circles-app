@@ -171,8 +171,8 @@ extension VenueStorefrontGalleryViewController: UICollectionViewDataSource, UICo
             plus.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(plus)
             NSLayoutConstraint.activate([
-                captionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-                captionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+                captionLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+                captionLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
                 captionLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
                 captionLabel.heightAnchor.constraint(equalToConstant: 20),
                 plus.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),

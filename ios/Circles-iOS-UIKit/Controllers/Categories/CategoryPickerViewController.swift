@@ -78,8 +78,8 @@ class CategoryPickerViewController: BaseViewController {
         
         NSLayoutConstraint.activate([
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            searchBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            searchBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            searchBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             
             tableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -257,14 +257,14 @@ private class CategoryPickerCell: UITableViewCell {
         typeLabel.translatesAutoresizingMaskIntoConstraints = false
         
         NSLayoutConstraint.activate([
-            iconImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            iconImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             iconImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             iconImageView.widthAnchor.constraint(equalToConstant: 30),
             iconImageView.heightAnchor.constraint(equalToConstant: 30),
             
             nameLabel.leadingAnchor.constraint(equalTo: iconImageView.trailingAnchor, constant: 12),
             nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
-            nameLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            nameLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             typeLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
             typeLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),

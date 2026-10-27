@@ -117,8 +117,8 @@ final class HomeCardOverlayViewController: UIViewController {
             dimming.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
             sheet.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            sheet.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            sheet.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24)
+            sheet.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            sheet.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24)
         ]
 
         if let urlString = card.imageUrl, !urlString.isEmpty {

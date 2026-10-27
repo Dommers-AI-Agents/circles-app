@@ -376,18 +376,18 @@ class LoginViewController: BaseViewController {
             // Tagline
             taglineLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             taglineLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            taglineLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 40),
-            taglineLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -40),
+            taglineLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            taglineLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -40),
 
             // Buttons stack view
-            buttonsStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 40),
-            buttonsStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -40),
+            buttonsStackView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            buttonsStackView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -40),
             buttonsStackView.topAnchor.constraint(equalTo: taglineLabel.bottomAnchor, constant: 32),
 
             // Privacy label
             privacyLabel.topAnchor.constraint(equalTo: buttonsStackView.bottomAnchor, constant: 24),
-            privacyLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 40),
-            privacyLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -40),
+            privacyLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            privacyLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -40),
             privacyLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20),
 
             // Apple sign-in container constraints

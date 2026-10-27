@@ -132,12 +132,12 @@ class DiscoverUserCell: UITableViewCell {
         view.addSubview(tierChipIcon)
         view.addSubview(tierChipLabel)
         NSLayoutConstraint.activate([
-            tierChipIcon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 5),
+            tierChipIcon.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 5),
             tierChipIcon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             tierChipIcon.widthAnchor.constraint(equalToConstant: 10),
             tierChipIcon.heightAnchor.constraint(equalToConstant: 10),
             tierChipLabel.leadingAnchor.constraint(equalTo: tierChipIcon.trailingAnchor, constant: 3),
-            tierChipLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+            tierChipLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -6),
             tierChipLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             view.heightAnchor.constraint(equalToConstant: 18)
         ])
@@ -234,8 +234,8 @@ class DiscoverUserCell: UITableViewCell {
 
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            containerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            containerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
 
             profileImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),

@@ -146,8 +146,8 @@ class CheckInRecipientSelectionViewController: BaseViewController {
         NSLayoutConstraint.activate([
             // Step indicator
             stepIndicatorView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            stepIndicatorView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            stepIndicatorView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            stepIndicatorView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            stepIndicatorView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             stepIndicatorHeightConstraint,
             
             stepLabel.topAnchor.constraint(equalTo: stepIndicatorView.topAnchor, constant: 16),
@@ -160,28 +160,28 @@ class CheckInRecipientSelectionViewController: BaseViewController {
             
             // Content
             instructionLabel.topAnchor.constraint(equalTo: stepIndicatorView.bottomAnchor, constant: 16),
-            instructionLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            instructionLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+            instructionLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            instructionLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32),
             
             recipientTabBar.topAnchor.constraint(equalTo: instructionLabel.bottomAnchor, constant: 20),
-            recipientTabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            recipientTabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            recipientTabBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            recipientTabBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             recipientTableView.topAnchor.constraint(equalTo: recipientTabBar.bottomAnchor, constant: 16),
-            recipientTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            recipientTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            recipientTableView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            recipientTableView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             recipientTableView.bottomAnchor.constraint(equalTo: selectedCountLabel.topAnchor, constant: -8),
             
-            selectedCountLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            selectedCountLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            selectedCountLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            selectedCountLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             selectedCountLabel.bottomAnchor.constraint(equalTo: privateCheckInButton.topAnchor, constant: -12),
             
-            privateCheckInButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            privateCheckInButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            privateCheckInButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            privateCheckInButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             privateCheckInButton.bottomAnchor.constraint(equalTo: checkInButton.topAnchor, constant: -12),
             
-            checkInButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            checkInButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            checkInButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            checkInButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             checkInButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
             checkInButton.heightAnchor.constraint(equalToConstant: 50)
         ])
@@ -527,7 +527,7 @@ class RecipientCell: UITableViewCell {
         contentView.addSubview(checkmarkImageView)
         
         NSLayoutConstraint.activate([
-            profileImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            profileImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             profileImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             profileImageView.widthAnchor.constraint(equalToConstant: 50),
             profileImageView.heightAnchor.constraint(equalToConstant: 50),
@@ -540,7 +540,7 @@ class RecipientCell: UITableViewCell {
             subtitleLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
             subtitleLabel.trailingAnchor.constraint(equalTo: nameLabel.trailingAnchor),
             
-            checkmarkImageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            checkmarkImageView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             checkmarkImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             checkmarkImageView.widthAnchor.constraint(equalToConstant: 24),
             checkmarkImageView.heightAnchor.constraint(equalToConstant: 24)

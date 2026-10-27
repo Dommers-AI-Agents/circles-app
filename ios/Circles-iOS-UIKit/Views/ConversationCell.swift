@@ -128,7 +128,7 @@ class ConversationCell: UITableViewCell {
         let marker = ConversationCell.groupMarkerSide
 
         NSLayoutConstraint.activate([
-            avatarImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            avatarImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             avatarImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             avatarImageView.widthAnchor.constraint(equalToConstant: side),
             avatarImageView.heightAnchor.constraint(equalToConstant: side),
@@ -147,10 +147,10 @@ class ConversationCell: UITableViewCell {
             messageLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
             messageLabel.trailingAnchor.constraint(lessThanOrEqualTo: unreadBadge.leadingAnchor, constant: -8),
 
-            timeLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            timeLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             timeLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
 
-            unreadBadge.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            unreadBadge.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             unreadBadge.centerYAnchor.constraint(equalTo: messageLabel.centerYAnchor),
             unreadBadge.widthAnchor.constraint(greaterThanOrEqualToConstant: 20),
             unreadBadge.heightAnchor.constraint(equalToConstant: 20)

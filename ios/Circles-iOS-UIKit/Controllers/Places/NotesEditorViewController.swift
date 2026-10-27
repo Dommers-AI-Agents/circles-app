@@ -102,19 +102,19 @@ class NotesEditorViewController: BaseViewController {
 
         NSLayoutConstraint.activate([
             privateLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
-            privateLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            privateLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            privateLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            privateLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
             privateHintLabel.topAnchor.constraint(equalTo: privateLabel.bottomAnchor, constant: 4),
-            privateHintLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            privateHintLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20)
+            privateHintLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            privateHintLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20)
         ])
 
         let editor = isPrivateNotesEnabled ? privateTextView : privateNotesDisabledLabel
         NSLayoutConstraint.activate([
             editor.topAnchor.constraint(equalTo: privateHintLabel.bottomAnchor, constant: 12),
-            editor.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            editor.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            editor.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            editor.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             editor.heightAnchor.constraint(equalToConstant: isPrivateNotesEnabled ? 160 : 60)
         ])
     }

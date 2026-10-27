@@ -82,8 +82,8 @@ final class FavCoinsIntroViewController: BaseViewController {
             pageControl.centerXAnchor.constraint(equalTo: view.centerXAnchor),
 
             nextButton.topAnchor.constraint(equalTo: pageControl.bottomAnchor, constant: Constants.Spacing.medium),
-            nextButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.large),
-            nextButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.large),
+            nextButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            nextButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
 
             skipButton.topAnchor.constraint(equalTo: nextButton.bottomAnchor, constant: Constants.Spacing.xsmall),
             skipButton.leadingAnchor.constraint(equalTo: nextButton.leadingAnchor),

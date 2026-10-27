@@ -111,8 +111,8 @@ class GroupConnectionSelectionViewController: BaseViewController {
         NSLayoutConstraint.activate([
             // Group name container
             groupNameContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            groupNameContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            groupNameContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            groupNameContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            groupNameContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             
             // Group name label
             groupNameLabel.topAnchor.constraint(equalTo: groupNameContainer.topAnchor, constant: 12),
@@ -131,8 +131,8 @@ class GroupConnectionSelectionViewController: BaseViewController {
             tableView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor),
             
             // Bottom toolbar
-            bottomToolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            bottomToolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bottomToolbar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            bottomToolbar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             bottomToolbar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             bottomToolbar.heightAnchor.constraint(equalToConstant: 80),
             

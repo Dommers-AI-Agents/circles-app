@@ -178,28 +178,28 @@ class DataExportViewController: BaseViewController {
             
             // Title
             titleLabel.topAnchor.constraint(equalTo: iconImageView.bottomAnchor, constant: 20),
-            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
-            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            titleLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -32),
             
             // Description
             descriptionLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 12),
-            descriptionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 32),
-            descriptionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -32),
+            descriptionLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            descriptionLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -32),
             
             // Export type label
             exportTypeLabel.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: 32),
-            exportTypeLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            exportTypeLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            exportTypeLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            exportTypeLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             
             // Export type options
             exportTypeStackView.topAnchor.constraint(equalTo: exportTypeLabel.bottomAnchor, constant: 12),
-            exportTypeStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            exportTypeStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            exportTypeStackView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            exportTypeStackView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             
             // Info container
             infoContainer.topAnchor.constraint(equalTo: exportTypeStackView.bottomAnchor, constant: 24),
-            infoContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            infoContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            infoContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            infoContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             
             // Info label
             infoLabel.topAnchor.constraint(equalTo: infoContainer.topAnchor, constant: 16),
@@ -209,13 +209,13 @@ class DataExportViewController: BaseViewController {
             
             // Export button
             exportButton.topAnchor.constraint(equalTo: infoContainer.bottomAnchor, constant: 32),
-            exportButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            exportButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            exportButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            exportButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             
             // Progress container
             progressContainer.topAnchor.constraint(equalTo: exportButton.bottomAnchor, constant: 24),
-            progressContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            progressContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            progressContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            progressContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             progressContainer.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32),
             
             // Progress indicator

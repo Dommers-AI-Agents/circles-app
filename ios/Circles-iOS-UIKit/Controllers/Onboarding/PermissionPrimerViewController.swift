@@ -93,11 +93,11 @@ class PermissionPrimerViewController: BaseViewController {
             stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
             stack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
             stack.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor, constant: -40),
-            allowButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            allowButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            allowButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            allowButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             allowButton.bottomAnchor.constraint(equalTo: skipButton.topAnchor, constant: -10),
-            skipButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            skipButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            skipButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            skipButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             skipButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
         ])
     }

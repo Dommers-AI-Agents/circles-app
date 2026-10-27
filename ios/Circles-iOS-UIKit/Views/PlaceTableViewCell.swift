@@ -273,8 +273,8 @@ class PlaceTableViewCell: UITableViewCell {
         NSLayoutConstraint.activate([
             // Container view
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.small),
-            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            containerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            containerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.small),
             
             // Place image view

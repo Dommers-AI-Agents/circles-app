@@ -51,8 +51,8 @@ class VisitHistoryViewController: BaseViewController {
         
         NSLayoutConstraint.activate([
             stackView.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
-            stackView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            stackView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            stackView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+            stackView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
             stackView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8)
         ])
         
@@ -182,12 +182,12 @@ class VisitHistoryViewController: BaseViewController {
         
         NSLayoutConstraint.activate([
             statusView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            statusView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            statusView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            statusView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            statusView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             filterSegmentedControl.topAnchor.constraint(equalTo: statusView.bottomAnchor, constant: 12),
-            filterSegmentedControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            filterSegmentedControl.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            filterSegmentedControl.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            filterSegmentedControl.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             tableView.topAnchor.constraint(equalTo: filterSegmentedControl.bottomAnchor, constant: 8),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -199,8 +199,8 @@ class VisitHistoryViewController: BaseViewController {
             mapView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             mapView.bottomAnchor.constraint(equalTo: selectionToolbar.topAnchor),
             
-            selectionToolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            selectionToolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            selectionToolbar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            selectionToolbar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             selectionToolbar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             selectionToolbar.heightAnchor.constraint(equalToConstant: 49)
         ])

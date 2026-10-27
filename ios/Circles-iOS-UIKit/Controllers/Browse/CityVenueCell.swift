@@ -48,8 +48,8 @@ final class CityVenueCell: UITableViewCell {
             iconView.widthAnchor.constraint(equalToConstant: 24),
             iconView.heightAnchor.constraint(equalToConstant: 24),
             row.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
-            row.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            row.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            row.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            row.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             row.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -12)
         ])
         accessoryType = .disclosureIndicator

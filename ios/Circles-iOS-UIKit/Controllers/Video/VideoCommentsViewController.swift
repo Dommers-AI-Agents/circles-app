@@ -193,8 +193,8 @@ class VideoCommentsViewController: BaseViewController {
             tableView.bottomAnchor.constraint(equalTo: commentInputContainer.topAnchor),
             
             // Comment input container
-            commentInputContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            commentInputContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            commentInputContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            commentInputContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             inputBottomConstraint,
             commentInputContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 60),
             
@@ -755,7 +755,7 @@ class VideoCommentCell: UITableViewCell {
         contentView.addSubview(replyCountLabel)
         
         NSLayoutConstraint.activate([
-            profileImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            profileImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             profileImageView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
             profileImageView.widthAnchor.constraint(equalToConstant: 40),
             profileImageView.heightAnchor.constraint(equalToConstant: 40),
@@ -767,14 +767,14 @@ class VideoCommentCell: UITableViewCell {
             timeLabel.trailingAnchor.constraint(equalTo: moreButton.leadingAnchor, constant: -8),
             timeLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
             
-            moreButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            moreButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             moreButton.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
             moreButton.widthAnchor.constraint(equalToConstant: 44),
             moreButton.heightAnchor.constraint(equalToConstant: 44),
             
             commentLabel.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),
             commentLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
-            commentLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            commentLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             // Like button and count at bottom left (after avatar)
             likeButton.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),

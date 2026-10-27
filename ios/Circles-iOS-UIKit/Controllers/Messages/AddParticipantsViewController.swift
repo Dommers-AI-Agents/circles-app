@@ -71,8 +71,8 @@ class AddParticipantsViewController: BaseViewController {
         
         NSLayoutConstraint.activate([
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            searchBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            searchBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            searchBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             
             tableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -273,7 +273,7 @@ private class UserSelectionCell: UITableViewCell {
         contentView.addSubview(checkmarkImageView)
         
         NSLayoutConstraint.activate([
-            profileImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            profileImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             profileImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             profileImageView.widthAnchor.constraint(equalToConstant: 40),
             profileImageView.heightAnchor.constraint(equalToConstant: 40),
@@ -286,7 +286,7 @@ private class UserSelectionCell: UITableViewCell {
             emailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
             emailLabel.trailingAnchor.constraint(equalTo: nameLabel.trailingAnchor),
             
-            checkmarkImageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            checkmarkImageView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             checkmarkImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             checkmarkImageView.widthAnchor.constraint(equalToConstant: 24),
             checkmarkImageView.heightAnchor.constraint(equalToConstant: 24)

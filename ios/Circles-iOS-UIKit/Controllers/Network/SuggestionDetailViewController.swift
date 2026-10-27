@@ -163,8 +163,8 @@ class SuggestionDetailViewController: BaseViewController {
             
             // Suggestion view
             suggestionView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
-            suggestionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            suggestionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            suggestionView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            suggestionView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             profileImageView.topAnchor.constraint(equalTo: suggestionView.topAnchor, constant: 12),
             profileImageView.leadingAnchor.constraint(equalTo: suggestionView.leadingAnchor, constant: 12),
@@ -185,13 +185,13 @@ class SuggestionDetailViewController: BaseViewController {
             
             // Comments table
             commentsTableView.topAnchor.constraint(equalTo: suggestionView.bottomAnchor, constant: 16),
-            commentsTableView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            commentsTableView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            commentsTableView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            commentsTableView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             commentsTableView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16),
             
             // Comment input
-            commentInputContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            commentInputContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            commentInputContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            commentInputContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             commentInputContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             commentInputContainer.heightAnchor.constraint(equalToConstant: 60),
             
@@ -443,7 +443,7 @@ class CommentTableViewCell: UITableViewCell {
         
         NSLayoutConstraint.activate([
             profileImageView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
-            profileImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            profileImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             profileImageView.widthAnchor.constraint(equalToConstant: 30),
             profileImageView.heightAnchor.constraint(equalToConstant: 30),
             
@@ -452,11 +452,11 @@ class CommentTableViewCell: UITableViewCell {
             
             timeLabel.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
             timeLabel.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 8),
-            timeLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -16),
+            timeLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             messageLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
             messageLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            messageLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            messageLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             messageLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8)
         ])
     }

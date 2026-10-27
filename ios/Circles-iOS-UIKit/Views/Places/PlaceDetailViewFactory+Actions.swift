@@ -67,6 +67,11 @@ extension PlaceDetailViewFactory {
     static func addToCircleButton() -> UIButton {
         let button = UIButton.smallActionButton(title: "Add to My Circle", style: .primary)
         button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
+        // The action row is tight inside the iPhone Duo's folded safe area (~366 pt):
+        // shrink the title a little rather than truncating it to "Add t…Circle".
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.8
+        button.titleLabel?.lineBreakMode = .byClipping
         button.isHidden = true // Hidden until eligibility is known
         return button
     }

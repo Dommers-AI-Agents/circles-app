@@ -30,8 +30,8 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         view.addSubview(statusView)
         NSLayoutConstraint.activate([
             statusView.topAnchor.constraint(equalTo: view.topAnchor),
-            statusView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            statusView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            statusView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            statusView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             statusView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }

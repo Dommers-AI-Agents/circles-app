@@ -174,8 +174,8 @@ class SplashScreenViewController: BaseViewController {
             
             // Tagline
             taglineLabel.topAnchor.constraint(equalTo: appNameLabel.bottomAnchor, constant: 12),
-            taglineLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            taglineLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+            taglineLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            taglineLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
             
             // Loading dots
             loadingDotsContainer.topAnchor.constraint(equalTo: taglineLabel.bottomAnchor, constant: 30),
@@ -183,8 +183,8 @@ class SplashScreenViewController: BaseViewController {
             
             // Status label
             statusLabel.topAnchor.constraint(equalTo: loadingDotsContainer.bottomAnchor, constant: 20),
-            statusLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            statusLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40)
+            statusLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            statusLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40)
         ])
     }
     

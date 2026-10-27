@@ -228,8 +228,8 @@ class VisitDetailViewController: UIViewController {
             zoomToMeButton.heightAnchor.constraint(equalToConstant: 30),
             
             placeNameLabel.topAnchor.constraint(equalTo: mapView.bottomAnchor, constant: 20),
-            placeNameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            placeNameLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            placeNameLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            placeNameLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             addressLabel.topAnchor.constraint(equalTo: placeNameLabel.bottomAnchor, constant: 8),
             addressLabel.leadingAnchor.constraint(equalTo: placeNameLabel.leadingAnchor),
@@ -244,13 +244,13 @@ class VisitDetailViewController: UIViewController {
             visitDetailsLabel.trailingAnchor.constraint(equalTo: placeNameLabel.trailingAnchor),
             
             notesTextView.topAnchor.constraint(equalTo: visitDetailsLabel.bottomAnchor, constant: 20),
-            notesTextView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            notesTextView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            notesTextView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            notesTextView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             notesTextView.heightAnchor.constraint(equalToConstant: 120),
             
             addToCircleButton.topAnchor.constraint(equalTo: notesTextView.bottomAnchor, constant: 24),
-            addToCircleButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            addToCircleButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            addToCircleButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            addToCircleButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             addToCircleButton.heightAnchor.constraint(equalToConstant: 50),
             
             dismissButton.topAnchor.constraint(equalTo: addToCircleButton.bottomAnchor, constant: 12),

@@ -37,6 +37,7 @@ for ((k=0;k<n;k++)); do
   CHAIN="${CHAIN};[${LAST}][${idx}:v]overlay=${POS}:enable='between(t,${st},${en})'[v$((k+1))]"; LAST="v$((k+1))"
 done
 DUR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$SRC")
+DUR=$(python3 -I -c "print(min(float('$DUR'), 29.8))")   # App Store previews: 15–30 s
 ffmpeg -y -v error "${INPUTS[@]}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=48000 \
   -filter_complex "${CHAIN};[${LAST}]format=yuv420p[out]" -map "[out]" -map "$((3+n)):a" -t "$DUR" \
   -c:v libx264 -profile:v high -level 4.0 -pix_fmt yuv420p -r 30 -b:v 8M -c:a aac -b:a 256k -ar 48000 -ac 2 "$OUT"

@@ -264,7 +264,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
         let row = UIStackView(arrangedSubviews: [connectionFilterButton, categoryFilterButton, placeFilterButton])
         row.axis = .horizontal
-        row.distribution = .fillEqually
+        // Proportional, not equal: inside the iPhone Duo's folded safe area the row is
+        // ~330 pt and an equal third wraps "All Categories" onto two lines.
+        row.distribution = .fillProportionally
         row.spacing = 8
         row.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(row)
@@ -357,6 +359,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         config.imagePlacement = .trailing
         config.imagePadding = 3
         config.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6)
+        config.titleLineBreakMode = .byTruncatingTail   // one line, never a wrapped chip
         config.baseForegroundColor = .white
         let button = UIButton(configuration: config)
         button.showsMenuAsPrimaryAction = true
@@ -960,8 +963,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             view.addSubview(filterChipsContainer)
             NSLayoutConstraint.activate([
                 filterChipsContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: embeddedChipsTopInset),
-                filterChipsContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-                filterChipsContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12)
+                filterChipsContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+                filterChipsContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12)
             ])
         }
 
@@ -975,7 +978,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             
             // Places count label - above zoom buttons on right side
             placesCountLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -70),
-            placesCountLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            placesCountLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             placesCountLabel.heightAnchor.constraint(equalToConstant: 40),
             placesCountLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 40),
 
@@ -983,8 +986,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             // (top anchor added per-mode below — the modal header mode has a
             // search-bar row the banner must clear)
             coverageBanner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            coverageBanner.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 12),
-            coverageBanner.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -12)
+            coverageBanner.leadingAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+            coverageBanner.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12)
         ]
 
         if isPresentedModally && showFilters && showsFilterChips {
@@ -1003,7 +1006,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 constraints.append(closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16))
             }
             constraints.append(contentsOf: [
-                closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+                closeButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
                 closeButton.widthAnchor.constraint(equalToConstant: 44),
                 closeButton.heightAnchor.constraint(equalToConstant: 44)
             ])
@@ -1019,8 +1022,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 // over the map's top half).
                 placesListTableView.heightAnchor.constraint(
                     equalTo: view.safeAreaLayoutGuide.heightAnchor, multiplier: 0.55),
-                placesListTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                placesListTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                placesListTableView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+                placesListTableView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
                 placesListTableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
             ])
 
@@ -1030,12 +1033,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 // the right. Same shape as the embedded home map.
                 NSLayoutConstraint.activate([
                     filterChipsContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-                    filterChipsContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-                    filterChipsContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+                    filterChipsContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+                    filterChipsContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
 
                     // Search shares the second row with the close button
                     mapSearchBar.topAnchor.constraint(equalTo: filterChipsContainer.bottomAnchor, constant: 8),
-                    mapSearchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+                    mapSearchBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
                     mapSearchBar.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -8),
                     mapSearchBar.heightAnchor.constraint(equalToConstant: 44),
 
@@ -1045,12 +1048,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                     searchEmptyLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 160),
 
                     listChipButton.topAnchor.constraint(equalTo: closeButton.bottomAnchor, constant: 8),
-                    listChipButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+                    listChipButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
                     listChipButton.widthAnchor.constraint(equalToConstant: 36),
                     listChipButton.heightAnchor.constraint(equalToConstant: 36),
 
                     addPlaceChipButton.topAnchor.constraint(equalTo: listChipButton.bottomAnchor, constant: 8),
-                    addPlaceChipButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+                    addPlaceChipButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
                     addPlaceChipButton.widthAnchor.constraint(equalToConstant: 36),
                     addPlaceChipButton.heightAnchor.constraint(equalToConstant: 36)
                 ])
@@ -1074,8 +1077,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             if let row = userListView {
                 NSLayoutConstraint.activate([
                     row.topAnchor.constraint(equalTo: overlayChipStack.bottomAnchor, constant: 8),
-                    row.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
-                    row.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+                    row.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 8),
+                    row.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -8),
                     row.heightAnchor.constraint(equalToConstant: 118)
                 ])
             }
@@ -1094,7 +1097,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         
         NSLayoutConstraint.activate([
             userLocationButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            userLocationButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16)
+            userLocationButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16)
         ])
     }
     

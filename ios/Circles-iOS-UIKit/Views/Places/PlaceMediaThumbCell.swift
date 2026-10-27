@@ -52,7 +52,7 @@ final class PlaceMediaThumbCell: UICollectionViewCell {
             playBadge.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             playBadge.widthAnchor.constraint(equalToConstant: 28),
             playBadge.heightAnchor.constraint(equalToConstant: 28),
-            tagLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
+            tagLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 4),
             tagLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
             tagLabel.heightAnchor.constraint(equalToConstant: 16),
             tagLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 40)

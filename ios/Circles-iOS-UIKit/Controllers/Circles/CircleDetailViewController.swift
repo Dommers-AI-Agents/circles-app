@@ -446,8 +446,8 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             
             // Header view
             headerView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            headerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            headerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            headerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             
             // Cover image view
             coverImageView.topAnchor.constraint(equalTo: headerView.topAnchor),
@@ -518,20 +518,20 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             
             // Places label
             placesLabel.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: Constants.Spacing.large),
-            placesLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
+            placesLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
             
             // Category filter button
             categoryFilterButton.centerYAnchor.constraint(equalTo: placesLabel.centerYAnchor),
-            categoryFilterButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            categoryFilterButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             categoryFilterButton.heightAnchor.constraint(equalToConstant: 32),
             
             // Unlocated-imports banner (zero height + zero top spacing when hidden)
-            unlocatedBanner.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            unlocatedBanner.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            unlocatedBanner.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            unlocatedBanner.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
 
             // Tag chip bar (zero height + zero top spacing when hidden)
-            tagChipBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            tagChipBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            tagChipBar.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            tagChipBar.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
 
             // Map view
             mapView.topAnchor.constraint(equalTo: tagChipBar.bottomAnchor, constant: Constants.Spacing.medium),
@@ -598,7 +598,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         // Add constraints for add place button if it exists
         if circle.canAddPlaces {
             NSLayoutConstraint.activate([
-                addPlaceButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.large),
+                addPlaceButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
                 addPlaceButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Constants.Spacing.medium),
                 addPlaceButton.widthAnchor.constraint(equalToConstant: 120),
                 addPlaceButton.heightAnchor.constraint(equalToConstant: 50)

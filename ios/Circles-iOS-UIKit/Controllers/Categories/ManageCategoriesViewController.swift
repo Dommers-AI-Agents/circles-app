@@ -227,14 +227,14 @@ private class CustomCategoryCell: UITableViewCell {
         typeLabel.translatesAutoresizingMaskIntoConstraints = false
         
         NSLayoutConstraint.activate([
-            iconImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            iconImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             iconImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             iconImageView.widthAnchor.constraint(equalToConstant: 30),
             iconImageView.heightAnchor.constraint(equalToConstant: 30),
             
             nameLabel.leadingAnchor.constraint(equalTo: iconImageView.trailingAnchor, constant: 12),
             nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
-            nameLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            nameLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             typeLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
             typeLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),

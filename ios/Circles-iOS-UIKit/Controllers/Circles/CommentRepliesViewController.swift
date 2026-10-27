@@ -152,8 +152,8 @@ class CommentRepliesViewController: BaseViewController {
         NSLayoutConstraint.activate([
             // Header view
             headerView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            headerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            headerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            headerView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             
             // Table view
             tableView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
@@ -162,8 +162,8 @@ class CommentRepliesViewController: BaseViewController {
             tableView.bottomAnchor.constraint(equalTo: commentInputContainer.topAnchor),
             
             // Comment input container
-            commentInputContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            commentInputContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            commentInputContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            commentInputContainer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             commentInputContainer.heightAnchor.constraint(equalToConstant: 60),
             commentInputBottomConstraint!,
             

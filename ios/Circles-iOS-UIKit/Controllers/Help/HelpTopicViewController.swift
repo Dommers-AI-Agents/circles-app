@@ -204,42 +204,42 @@ class HelpTopicViewController: BaseViewController {
             
             // Category label
             categoryLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
-            categoryLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            categoryLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            categoryLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            categoryLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             
             // Title
             titleLabel.topAnchor.constraint(equalTo: categoryLabel.bottomAnchor, constant: 8),
-            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            titleLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            titleLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             
             // Subtitle
             subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            subtitleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            subtitleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            subtitleLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            subtitleLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             
             // Content
             watchButton.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 16),
-            watchButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            watchButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            watchButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            watchButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
-            contentTextView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            contentTextView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            contentTextView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            contentTextView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             
             // Video button
             videoButton.topAnchor.constraint(equalTo: contentTextView.bottomAnchor, constant: 20),
-            videoButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            videoButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            videoButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            videoButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             videoButton.heightAnchor.constraint(equalToConstant: 44),
             
             // Related topics label
             relatedTopicsLabel.topAnchor.constraint(equalTo: videoButton.bottomAnchor, constant: 32),
-            relatedTopicsLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            relatedTopicsLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            relatedTopicsLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            relatedTopicsLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             
             // Related topics stack
             relatedTopicsStackView.topAnchor.constraint(equalTo: relatedTopicsLabel.bottomAnchor, constant: 12),
-            relatedTopicsStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            relatedTopicsStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            relatedTopicsStackView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            relatedTopicsStackView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             relatedTopicsStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
         ])
     }

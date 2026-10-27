@@ -345,14 +345,14 @@ private class ConnectionPickerCell: UITableViewCell {
         contentView.addSubview(userInfoLabel)
         
         NSLayoutConstraint.activate([
-            profileImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 12),
+            profileImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 12),
             profileImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             profileImageView.widthAnchor.constraint(equalToConstant: 40),
             profileImageView.heightAnchor.constraint(equalToConstant: 40),
             
             nameLabel.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),
             nameLabel.topAnchor.constraint(equalTo: profileImageView.topAnchor, constant: 2),
-            nameLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
+            nameLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -12),
             
             userInfoLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
             userInfoLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),

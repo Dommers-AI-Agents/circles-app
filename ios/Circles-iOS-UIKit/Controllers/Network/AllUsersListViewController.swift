@@ -228,11 +228,11 @@ class AllUsersListViewController: UIViewController {
             scopeInfoButton.isHidden = false
             NSLayoutConstraint.activate([
                 scopeControl.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
-                scopeControl.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+                scopeControl.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
                 scopeControl.trailingAnchor.constraint(equalTo: scopeInfoButton.leadingAnchor, constant: -8),
 
                 scopeInfoButton.centerYAnchor.constraint(equalTo: scopeControl.centerYAnchor),
-                scopeInfoButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+                scopeInfoButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
                 scopeInfoButton.widthAnchor.constraint(equalToConstant: 28),
                 scopeInfoButton.heightAnchor.constraint(equalToConstant: 28)
             ])

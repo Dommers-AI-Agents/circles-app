@@ -883,13 +883,13 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             
             // Hint label
             hintLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.small),
-            hintLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            hintLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            hintLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            hintLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             
             // Search container at top
             searchContainer.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: Constants.Spacing.small),
-            searchContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            searchContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            searchContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            searchContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             searchContainer.heightAnchor.constraint(equalToConstant: 56),
             
             // Search bar inside container
@@ -904,8 +904,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             
             // Map container
             mapContainer.topAnchor.constraint(equalTo: searchContainer.bottomAnchor, constant: Constants.Spacing.small),
-            mapContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            mapContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            mapContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            mapContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             mapContainer.heightAnchor.constraint(equalToConstant: 300),
             
             // Map view inside container
@@ -922,12 +922,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             
             // Manual entry button
             manualEntryButton.topAnchor.constraint(equalTo: mapContainer.bottomAnchor, constant: Constants.Spacing.small),
-            manualEntryButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            manualEntryButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             
             // Form container
             formContainer.topAnchor.constraint(equalTo: manualEntryButton.bottomAnchor, constant: Constants.Spacing.medium),
-            formContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            formContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            formContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            formContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             
             // Form fields
             nameLabel.topAnchor.constraint(equalTo: formContainer.topAnchor),
@@ -1021,8 +1021,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             formContainer.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
 
             // Sticky save footer
-            saveFooterBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            saveFooterBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            saveFooterBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            saveFooterBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             saveFooterBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
             addPlaceButton.topAnchor.constraint(equalTo: saveFooterBar.topAnchor, constant: Constants.Spacing.small),

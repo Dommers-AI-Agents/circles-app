@@ -97,12 +97,12 @@ class PlaceAddressSearchViewController: BaseViewController {
         
         NSLayoutConstraint.activate([
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            searchBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            searchBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            searchBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             
             instructionLabel.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 8),
-            instructionLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            instructionLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            instructionLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            instructionLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             tableView.topAnchor.constraint(equalTo: instructionLabel.bottomAnchor, constant: 8),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),

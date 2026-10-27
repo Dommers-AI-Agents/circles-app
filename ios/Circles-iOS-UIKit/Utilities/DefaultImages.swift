@@ -324,8 +324,8 @@ class DefaultImageCell: UICollectionViewCell {
             imageView.heightAnchor.constraint(equalTo: imageView.widthAnchor),
             
             nameLabel.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 4),
-            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
-            nameLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 4),
+            nameLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -4),
             nameLabel.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -4)
         ])
     }

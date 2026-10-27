@@ -129,13 +129,13 @@ class TempPlaceDetailViewController: BaseViewController {
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
             
             placeImageView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            placeImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            placeImageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            placeImageView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            placeImageView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             placeImageView.heightAnchor.constraint(equalToConstant: 200),
             
             nameLabel.topAnchor.constraint(equalTo: placeImageView.bottomAnchor, constant: Constants.Spacing.medium),
-            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            nameLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            nameLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             
             addressLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.small),
             addressLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
@@ -147,12 +147,12 @@ class TempPlaceDetailViewController: BaseViewController {
             mapView.heightAnchor.constraint(equalToConstant: 200),
             
             noticeLabel.topAnchor.constraint(equalTo: mapView.bottomAnchor, constant: Constants.Spacing.large),
-            noticeLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            noticeLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            noticeLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            noticeLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             
             addToCircleButton.topAnchor.constraint(equalTo: noticeLabel.bottomAnchor, constant: Constants.Spacing.medium),
-            addToCircleButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            addToCircleButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            addToCircleButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            addToCircleButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             addToCircleButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large)
         ])
     }

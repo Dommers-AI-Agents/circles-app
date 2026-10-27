@@ -120,8 +120,8 @@ class CreateSuggestionViewController: BaseViewController {
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
             
             messageTextView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
-            messageTextView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            messageTextView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            messageTextView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            messageTextView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             messageTextView.heightAnchor.constraint(greaterThanOrEqualToConstant: 120),
             
             placeholderLabel.topAnchor.constraint(equalTo: messageTextView.topAnchor, constant: 12),
@@ -132,8 +132,8 @@ class CreateSuggestionViewController: BaseViewController {
             characterCountLabel.trailingAnchor.constraint(equalTo: messageTextView.trailingAnchor),
             
             addPlaceButton.topAnchor.constraint(equalTo: characterCountLabel.bottomAnchor, constant: 16),
-            addPlaceButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            addPlaceButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            addPlaceButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            addPlaceButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             addPlaceButton.heightAnchor.constraint(equalToConstant: 50),
             addPlaceButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16),
         ])

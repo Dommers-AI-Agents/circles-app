@@ -103,15 +103,15 @@ final class NameOnboardingViewController: BaseViewController, UITextFieldDelegat
         view.addSubview(skipButton)
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 32),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             photoView.widthAnchor.constraint(equalToConstant: 96),
             photoView.heightAnchor.constraint(equalToConstant: 96),
-            continueButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            continueButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            continueButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            continueButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             continueButton.bottomAnchor.constraint(equalTo: skipButton.topAnchor, constant: -10),
-            skipButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            skipButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            skipButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            skipButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             skipButton.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -12)
         ])
         // The photo is a fixed 96 pt circle in the middle of a fill stack

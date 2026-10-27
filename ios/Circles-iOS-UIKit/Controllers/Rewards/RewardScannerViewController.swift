@@ -85,8 +85,8 @@ final class RewardScannerViewController: BaseViewController {
         view.addSubview(unavailableStack)
         NSLayoutConstraint.activate([
             unavailableStack.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerYAnchor),
-            unavailableStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.large),
-            unavailableStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.large)
+            unavailableStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            unavailableStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large)
         ])
 
         startIfPossible()
@@ -151,8 +151,8 @@ final class RewardScannerViewController: BaseViewController {
         hintBackground.addSubview(hintLabel)
         NSLayoutConstraint.activate([
             hintBackground.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Constants.Spacing.large),
-            hintBackground.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
-            hintBackground.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium),
+            hintBackground.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            hintBackground.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             hintLabel.topAnchor.constraint(equalTo: hintBackground.topAnchor, constant: Constants.Spacing.small),
             hintLabel.bottomAnchor.constraint(equalTo: hintBackground.bottomAnchor, constant: -Constants.Spacing.small),
             hintLabel.leadingAnchor.constraint(equalTo: hintBackground.leadingAnchor, constant: Constants.Spacing.small),

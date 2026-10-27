@@ -12,11 +12,17 @@ PLACE=${CAPTURE_PLACE_ID:-JyJDDivPtjm1XZBUteSp}
 PANE='group 3 of splitter group 1 of group 1 of splitter group 1 of group 1 of front window'
 case $POSTURE in Closed) DISP=1;; Open) DISP=3;; *) echo "posture?"; exit 2;; esac
 
+lit() { xcrun simctl io $UD screenshot --display=$DISP /tmp/duo-lit.png >/dev/null 2>&1; [[ $(ffmpeg -v error -i /tmp/duo-lit.png -vf scale=1:1,format=gray -f rawvideo - 2>/dev/null | od -An -tu1 | tr -d ' ') -gt 8 ]]; }
 if [[ $FOLD == fold ]]; then
-  osascript -e "tell application \"System Events\" to tell process \"DeviceHub\"
+  for try in 1 2 3; do
+    osascript -e "tell application \"System Events\" to tell process \"DeviceHub\"
 click (first button of $PANE whose help is \"$POSTURE\")
-end tell" >/dev/null 2>&1 || echo "WARN: could not click the $POSTURE button in DeviceHub"
-  sleep 5
+end tell" >/dev/null 2>&1 || echo "WARN: could not click $POSTURE in DeviceHub"
+    sleep 6
+    lit && break
+    echo "display $DISP not lit after $POSTURE click (try $try)"
+  done
+  lit || { echo "ABORT: $POSTURE display never lit"; exit 1; }
 fi
 
 # fresh servant: clear any previous handshake folder
@@ -41,16 +47,18 @@ shot() { sleep ${2:-2}; xcrun simctl io $UD screenshot --display=$DISP "$OUT/$1.
 cmd()  { echo "$1" > "$HS/cmd"; for i in {1..600}; do [[ -e "$HS/$1.done" ]] && { rm -f "$HS/$1.done"; return 0; }; sleep 0.5; done; echo "WARN: $1 timed out"; }
 go()   { xcrun simctl openurl $UD "$1" >/dev/null 2>&1; sleep ${2:-5}; }
 
+xcrun simctl location $UD set 35.2271,-80.8431   # uptown Charlotte, as in the September set
 # App Store status bar, same as the September set
 xcrun simctl status_bar $UD override --time 9:41 --batteryState charged --batteryLevel 100 --cellularMode active --cellularBars 4 --wifiBars 3 >/dev/null 2>&1
-sleep 6; cmd dismiss;                      shot home 1
-go "$API/app/map" 6;                       shot fullmap 3
+sleep 7; cmd locate;                       shot home 2
+cmd dismiss
+go "$API/app/map" 6; cmd locate;           shot fullmap 4
 go "$API/app/widget/postcard" 6;           shot postcard
 go "$API/app/open?path=me" 5;              shot profile
 go "$API/place/$PLACE" 6;                  shot place
-go "$API/app/open?path=rewards/piggy-bank" 4; cmd store-points; shot storepoints
+go "$API/app/open?path=rewards/piggy-bank" 4; cmd store-points; shot storepoints 8
 go "$API/app/tab/widgets" 5; cmd dismiss;  shot widgets
-go "$API/app/open?path=me" 3; cmd privacy; shot privacy
+cmd privacy;                               shot privacy
 go "$API/app/open?path=add-place" 4;       shot addplace
 echo end > "$HS/cmd"
 xcrun simctl status_bar $UD clear >/dev/null 2>&1

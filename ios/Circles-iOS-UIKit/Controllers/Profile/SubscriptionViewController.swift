@@ -149,8 +149,8 @@ class SubscriptionViewController: BaseViewController {
             
             // Status card
             statusCard.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
-            statusCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            statusCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            statusCard.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            statusCard.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             // Status badge
             statusBadge.topAnchor.constraint(equalTo: statusCard.topAnchor, constant: 16),
@@ -176,28 +176,28 @@ class SubscriptionViewController: BaseViewController {
             
             // Features header
             featuresHeaderLabel.topAnchor.constraint(equalTo: statusCard.bottomAnchor, constant: 32),
-            featuresHeaderLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            featuresHeaderLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            featuresHeaderLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            featuresHeaderLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             // Features stack
             featuresStackView.topAnchor.constraint(equalTo: featuresHeaderLabel.bottomAnchor, constant: 16),
-            featuresStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            featuresStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            featuresStackView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            featuresStackView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             // Upgrade button
             upgradeButton.topAnchor.constraint(equalTo: featuresStackView.bottomAnchor, constant: 32),
-            upgradeButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            upgradeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            upgradeButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            upgradeButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             // Manage button
             manageButton.topAnchor.constraint(equalTo: upgradeButton.bottomAnchor, constant: 12),
-            manageButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            manageButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            manageButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            manageButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             
             // Restore button
             restoreButton.topAnchor.constraint(equalTo: manageButton.bottomAnchor, constant: 12),
-            restoreButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            restoreButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            restoreButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            restoreButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             restoreButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -32)
         ])
     }

@@ -75,8 +75,8 @@ class OwnerVenuesViewController: BaseViewController {
         NSLayoutConstraint.activate([
             emptyClaimButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             emptyClaimButton.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: 90),
-            emptyClaimButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
-            emptyClaimButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40)
+            emptyClaimButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            emptyClaimButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40)
         ])
     }
 

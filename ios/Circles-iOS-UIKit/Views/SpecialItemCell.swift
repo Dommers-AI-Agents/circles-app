@@ -116,8 +116,8 @@ class SpecialItemCell: UITableViewCell {
 
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 12),
-            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
+            containerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+            containerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -12),
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
 
             thumbnailImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),

@@ -383,8 +383,8 @@ final class ActivityPrivacyRowCell: UITableViewCell {
         NSLayoutConstraint.activate([
             mainStack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 10),
             mainStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -10),
-            mainStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: ActivityPrivacyLayout.horizontalInset),
-            mainStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -ActivityPrivacyLayout.horizontalInset)
+            mainStack.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: ActivityPrivacyLayout.horizontalInset),
+            mainStack.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -ActivityPrivacyLayout.horizontalInset)
         ])
         applyLayout()
     }

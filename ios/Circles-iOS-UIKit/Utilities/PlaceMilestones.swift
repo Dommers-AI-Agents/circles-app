@@ -157,8 +157,8 @@ final class BadgeInfoViewController: UIViewController {
 
             contentStack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
             contentStack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -24),
-            contentStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            contentStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24)
+            contentStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            contentStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24)
         ])
     }
 

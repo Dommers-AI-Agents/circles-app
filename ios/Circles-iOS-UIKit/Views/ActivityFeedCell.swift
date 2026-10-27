@@ -218,11 +218,11 @@ class ActivityFeedCell: UITableViewCell {
             // Container view
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 3),
             containerLeadingConstraint,
-            containerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            containerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -3),
 
             // Thread line: full cell height so consecutive children connect
-            threadLineView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium + 10),
+            threadLineView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium + 10),
             threadLineView.widthAnchor.constraint(equalToConstant: 3),
             threadLineView.topAnchor.constraint(equalTo: contentView.topAnchor),
             threadLineView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),

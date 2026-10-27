@@ -223,7 +223,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         view.isUserInteractionEnabled = true
 
         NSLayoutConstraint.activate([
-            crownIcon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
+            crownIcon.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 6),
             crownIcon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             crownIcon.widthAnchor.constraint(equalToConstant: 12),
             crownIcon.heightAnchor.constraint(equalToConstant: 12),
@@ -235,7 +235,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             infoIcon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             infoIcon.widthAnchor.constraint(equalToConstant: 11),
             infoIcon.heightAnchor.constraint(equalToConstant: 11),
-            infoIcon.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+            infoIcon.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -6),
 
             view.heightAnchor.constraint(equalToConstant: 24)
         ])
@@ -280,7 +280,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         view.isUserInteractionEnabled = true
 
         NSLayoutConstraint.activate([
-            milestoneBadgeIcon.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
+            milestoneBadgeIcon.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 6),
             milestoneBadgeIcon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             milestoneBadgeIcon.widthAnchor.constraint(equalToConstant: 12),
             milestoneBadgeIcon.heightAnchor.constraint(equalToConstant: 12),
@@ -292,7 +292,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             infoIcon.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             infoIcon.widthAnchor.constraint(equalToConstant: 11),
             infoIcon.heightAnchor.constraint(equalToConstant: 11),
-            infoIcon.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+            infoIcon.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -6),
 
             view.heightAnchor.constraint(equalToConstant: 24)
         ])
@@ -1073,8 +1073,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             
             // Profile header view
             profileHeaderView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.medium),
-            profileHeaderView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            profileHeaderView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            profileHeaderView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            profileHeaderView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             
             // Username at top
             usernameLabel.topAnchor.constraint(equalTo: profileHeaderView.topAnchor, constant: Constants.Spacing.medium),
@@ -1191,13 +1191,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             
             // Storefront card: zero-height until a business profile loads
             storefrontCard.topAnchor.constraint(equalTo: profileHeaderView.bottomAnchor),
-            storefrontCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            storefrontCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            storefrontCard.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            storefrontCard.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
 
             // Notification settings section
             notificationsSectionContainer.topAnchor.constraint(equalTo: storefrontCard.bottomAnchor, constant: Constants.Spacing.medium),
-            notificationsSectionContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
-            notificationsSectionContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
+            notificationsSectionContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            notificationsSectionContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             
             notificationsSectionLabel.topAnchor.constraint(equalTo: notificationsSectionContainer.topAnchor),
             notificationsSectionLabel.leadingAnchor.constraint(equalTo: notificationsSectionContainer.leadingAnchor),
@@ -1230,12 +1230,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             // (it scrolls when the tabs are wider than the row)
             contentTypeTabHost.topAnchor.constraint(equalTo: separatorLine.bottomAnchor, constant: Constants.Spacing.medium),
             contentTypeTabHost.leadingAnchor.constraint(equalTo: floatingAddButton.trailingAnchor, constant: 8),
-            contentTypeTabHost.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            contentTypeTabHost.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             contentTypeTabHost.heightAnchor.constraint(equalToConstant: 32),
             
             // Search bar container (top constraint will be set dynamically)
-            searchBarContainer.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            searchBarContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            searchBarContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            searchBarContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             searchBarContainer.heightAnchor.constraint(equalToConstant: 44),
             
             // Search bar
@@ -1253,19 +1253,19 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             // cannot share the search row with the field and the scope button
             // without truncating; the old 2-state button was 60pt wide.
             mapToggleButton.topAnchor.constraint(equalTo: searchBarContainer.bottomAnchor, constant: 8),
-            mapToggleButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            mapToggleButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
             mapToggleButton.trailingAnchor.constraint(equalTo: organizeCirclesButton.leadingAnchor, constant: -8),
             mapToggleButton.heightAnchor.constraint(equalToConstant: 32),
 
             organizeCirclesButton.centerYAnchor.constraint(equalTo: mapToggleButton.centerYAnchor),
-            organizeCirclesButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            organizeCirclesButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             organizeCirclesButton.widthAnchor.constraint(equalToConstant: 32),
             organizeCirclesButton.heightAnchor.constraint(equalToConstant: 32),
             
             // Circles header
             circlesHeaderView.topAnchor.constraint(equalTo: mapToggleButton.bottomAnchor, constant: Constants.Spacing.small),
-            circlesHeaderView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            circlesHeaderView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            circlesHeaderView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            circlesHeaderView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             circlesHeaderView.heightAnchor.constraint(equalToConstant: 0), // Hide header for Instagram style
             
             circlesHeaderLabel.centerYAnchor.constraint(equalTo: circlesHeaderView.centerYAnchor),
@@ -1274,8 +1274,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             
             // Circles collection view
             circlesCollectionView.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
-            circlesCollectionView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            circlesCollectionView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            circlesCollectionView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
+            circlesCollectionView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             
             // Moments / Uploads tabs (same slot as the circles collection)
             momentsTab.view.topAnchor.constraint(equalTo: circlesHeaderView.bottomAnchor),
@@ -1339,14 +1339,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             // Version label
             versionLabel.topAnchor.constraint(equalTo: logoutButton.bottomAnchor, constant: Constants.Spacing.medium),
             versionLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            versionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
-            versionLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.medium),
+            versionLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            versionLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
             versionLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.large),
             
             // Add-circle button: compact, just left of the tab control. Its
             // slot stays reserved on the other tabs so the tabs don't shift.
             floatingAddButton.centerYAnchor.constraint(equalTo: contentTypeTabHost.centerYAnchor),
-            floatingAddButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
+            floatingAddButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
             floatingAddButton.widthAnchor.constraint(equalToConstant: 38),
             floatingAddButton.heightAnchor.constraint(equalToConstant: 38)
         ])
@@ -1440,8 +1440,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // Search results table view constraints
         NSLayoutConstraint.activate([
             searchResultsTableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 8),
-            searchResultsTableView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Constants.Spacing.medium),
-            searchResultsTableView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -Constants.Spacing.medium)
+            searchResultsTableView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            searchResultsTableView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium)
         ])
         
         searchResultsHeightConstraint = searchResultsTableView.heightAnchor.constraint(equalToConstant: 0)
@@ -2916,8 +2916,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
 
         NSLayoutConstraint.activate([
             stickyTabBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            stickyTabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            stickyTabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+            stickyTabBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            stickyTabBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor)
         ])
 
         view.bringSubviewToFront(stickyTabBar)
