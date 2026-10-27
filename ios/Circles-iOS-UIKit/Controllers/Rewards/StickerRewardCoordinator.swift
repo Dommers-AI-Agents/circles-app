@@ -238,8 +238,15 @@ final class StickerRewardCoordinator: NSObject {
             DispatchQueue.main.async {
                 switch result {
                 case .success:
-                    self?.confirmSaveReward(code: code, loading: loading)
+                    self?.confirmSaveReward(code: code, venue: venue, loading: loading)
                 case .failure(let error):
+                    if let duplicate = PlaceDuplicate.from(error) {
+                        // Already in one of their circles (the scan's own check
+                        // missed it): not an error — say so, and still claim
+                        // the save points if they were never paid
+                        self?.confirmSaveReward(code: code, venue: venue, loading: loading, alreadySaved: duplicate)
+                        return
+                    }
                     loading.dismiss(animated: true) {
                         if let presenter = self?.presenter {
                             AlertPresenter.showError(error, from: presenter)
@@ -250,25 +257,45 @@ final class StickerRewardCoordinator: NSObject {
         }
     }
 
-    private func confirmSaveReward(code: String, loading: UIAlertController) {
+    /// Claims the one-time save points, then tells the user. `alreadySaved`
+    /// is the server's "you already have it" answer to the save: the place
+    /// was in a circle all along, so the wording is "already saved", never
+    /// an error.
+    private func confirmSaveReward(code: String, venue: RewardVenue, loading: UIAlertController,
+                                   alreadySaved: PlaceDuplicate? = nil) {
         RewardsService.shared.confirmStickerSave(code: code) { [weak self] result in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) {
                     guard let presenter = self?.presenter else { return }
+                    let savedWhere: String = {
+                        guard let duplicate = alreadySaved else { return "Place saved to your circle!" }
+                        if let circle = duplicate.circleName {
+                            return "\(venue.venueName) is already in your \"\(circle)\" circle."
+                        }
+                        return "\(venue.venueName) is already in your circles."
+                    }()
                     switch result {
                     case .success(let save):
                         if let awarded = save.awarded {
                             AlertPresenter.showSuccess(
-                                title: "Place saved! +\(awarded.points) store points",
+                                title: alreadySaved == nil
+                                    ? "Place saved! +\(awarded.points) store points"
+                                    : "Already saved! +\(awarded.points) store points",
                                 message: "You now have \(save.venueBalance ?? save.balance) points at this shop. Scan the register card with a purchase next time you visit to earn more.",
                                 from: presenter
                             )
+                        } else if alreadySaved != nil {
+                            AlertPresenter.showSuccess(
+                                title: "Already saved",
+                                message: savedWhere + " Scan the register card with a purchase to keep earning.",
+                                from: presenter
+                            )
                         } else {
-                            AlertPresenter.showSuccess("Place saved to your circle!", from: presenter)
+                            AlertPresenter.showSuccess(savedWhere, from: presenter)
                         }
                     case .failure:
-                        // The place still saved — don't surface a reward hiccup as an error
-                        AlertPresenter.showSuccess("Place saved to your circle!", from: presenter)
+                        // The place is saved either way — don't surface a reward hiccup as an error
+                        AlertPresenter.showSuccess(savedWhere, from: presenter)
                     }
                 }
             }
