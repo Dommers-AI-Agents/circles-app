@@ -339,6 +339,7 @@ extension CirclesHomeViewController {
                 let lastUsedId = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey)
                 let target = circles.first(where: { $0.id == lastUsedId }) ?? circles[0]
                 let addPlaceVC = AddPlaceViewController(circleId: target.id, circles: circles)
+                addPlaceVC.circleWasRemembered = target.id == lastUsedId && circles.count > 1
                 addPlaceVC.prefillSearchWithPlace(name: venue.name, coordinate: coordinate)
                 self.navigationController?.pushViewController(addPlaceVC, animated: true)
             }

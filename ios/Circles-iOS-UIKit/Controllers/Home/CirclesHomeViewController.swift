@@ -3167,6 +3167,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             // Skip the picker: default to the circle the user last added a place to.
             // The add screen's circle dropdown still lets them switch.
             let addPlaceVC = AddPlaceViewController(circleId: lastUsedId, circles: circles)
+            addPlaceVC.circleWasRemembered = true
             navigationController?.pushViewController(addPlaceVC, animated: true)
         } else {
             // Show circle picker

@@ -1665,7 +1665,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                         self.presentAddPlace(circleId: circles[0].id, circles: circles)
                     } else if let lastUsedId = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey),
                               circles.contains(where: { $0.id == lastUsedId }) {
-                        self.presentAddPlace(circleId: lastUsedId, circles: circles)
+                        self.presentAddPlace(circleId: lastUsedId, circles: circles) { $0.circleWasRemembered = true }
                     } else {
                         self.presentCirclePickerForAddPlace(circles: circles)
                     }

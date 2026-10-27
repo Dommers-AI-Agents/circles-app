@@ -530,6 +530,20 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// Where to start the map when there's no business to fill in
     var prefillCenter: CLLocationCoordinate2D?
     var returnsToCallerAfterSave = false
+    /// The circle was pre-chosen by the "last circle you saved into" rule, not
+    /// by the user. The row says so until they pick one: Sal saved a week of
+    /// places into a circle he'd used once and read it as the app moving
+    /// them (2026-10-24).
+    var circleWasRemembered = false {
+        didSet { if isViewLoaded { showRememberedCircleCue() } }
+    }
+
+    func showRememberedCircleCue() {
+        circleLabel.text = circleWasRemembered ? "Circle \u{00B7} the one you used last, tap to change" : "Circle"
+        circleLabel.textColor = circleWasRemembered ? Constants.Colors.primary : .darkGray
+        circleButton.layer.borderWidth = circleWasRemembered ? 2 : 1
+        circleButton.layer.borderColor = (circleWasRemembered ? Constants.Colors.primary : UIColor.systemBlue.withAlphaComponent(0.3)).cgColor
+    }
     var photoFillPicker: PhotoFillPicker?
     
     let addPlaceButton: UIButton = {
@@ -1094,6 +1108,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         addPhotoButton.addTarget(self, action: #selector(addPhotoButtonTapped), for: .touchUpInside)
         removePhotoButton.addTarget(self, action: #selector(removePhotoButtonTapped), for: .touchUpInside)
         circleButton.addTarget(self, action: #selector(circleButtonTapped), for: .touchUpInside)
+        showRememberedCircleCue()
         categoryButton.addTarget(self, action: #selector(categoryButtonTapped), for: .touchUpInside)
         zoomToMeButton.addTarget(self, action: #selector(zoomToCurrentLocation), for: .touchUpInside)
     }
@@ -1398,6 +1413,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     @objc func circleButtonTapped() {
         isCategoryDropdownVisible = false
         updateCategoryButtonTitle()
+        // Once they've looked at the choice, the cue has done its job
+        if circleWasRemembered { circleWasRemembered = false }
         
         isCircleDropdownVisible.toggle()
         updateCircleDropdown()

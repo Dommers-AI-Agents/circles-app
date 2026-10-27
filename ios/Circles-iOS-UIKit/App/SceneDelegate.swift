@@ -1774,6 +1774,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 let lastUsedId = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey)
                 let target = circles.first(where: { $0.id == lastUsedId }) ?? circles[0]
                 let addPlaceVC = AddPlaceViewController(circleId: target.id, circles: circles)
+                addPlaceVC.circleWasRemembered = target.id == lastUsedId && circles.count > 1
                 addPlaceVC.prefillSearchWithPlace(name: searchSeed, coordinate: coordinate)
                 if let navController = tabBarController.selectedViewController as? UINavigationController {
                     navController.pushViewController(addPlaceVC, animated: true)
