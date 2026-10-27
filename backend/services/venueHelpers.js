@@ -19,6 +19,11 @@ const isVenueTeamMember = (venue, uid) => {
   return venueManagerIds(venue).some((id) => isSameUser(id, uid));
 };
 
+// Browse lists (Store Points offers, the Locals tab's store events) hide a
+// store flagged isTestStore from everyone but its own team, so a demo store
+// never shows up as a real "nearby offer" for customers (Wes, 2026-10-27).
+const isBrowsableBy = (venue, uid) => !venue?.isTestStore || isVenueTeamMember(venue, uid);
+
 const publicVenueInfo = (venue) => ({
   venueId: venue.venueId,
   venueName: venue.venueName,
@@ -79,6 +84,7 @@ const venueGlobalPlaceId = async (venue) => {
 module.exports = {
   venueManagerIds,
   isVenueTeamMember,
+  isBrowsableBy,
   publicVenueInfo,
   ownerVenueInfo,
   activeOffers,

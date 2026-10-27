@@ -11,7 +11,7 @@ const { listLiveVenues } = require('../../services/liveVenues');
 const rewardConfig = require('../../config/rewardConfig');
 const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, venueLoyaltyStatus, isVenueBusinessLive } = require('../../services/ownerSubscriptionService');
 const db = getFirestore();
-const { isVenueTeamMember, publicVenueInfo, activeOffers } = require('../../services/venueHelpers.js');
+const { isVenueTeamMember, isBrowsableBy, publicVenueInfo, activeOffers } = require('../../services/venueHelpers.js');
 const { findOwnSaveOfStore } = require('../../services/ownSaveOfVenue');
 
 // Did this user already save the store's place? One rule, shared with Add
@@ -273,6 +273,7 @@ exports.getOffers = async (req, res) => {
     // (listLiveVenues) and it has something to show — a redeemable offer or
     // an announcement.
     const liveVenues = (await listLiveVenues())
+      .filter((venue) => isBrowsableBy(venue, userId))
       .filter((venue) => activeOffers(venue).length > 0 || announcementsFor(venue).length > 0);
 
     const savedVenueIds = await rewardService.getSavedVenueIds(userId, liveVenues);

@@ -54,8 +54,10 @@ function storeEventsFrom(venues, lat, lng, now = new Date()) {
   return events;
 }
 
+// The Locals feed is public and cached per location, so a store flagged
+// isTestStore (a demo store) is left out for everyone here.
 async function eventsNear(lat, lng, { now = new Date() } = {}) {
-  return storeEventsFrom(await listLiveVenues(), lat, lng, now);
+  return storeEventsFrom((await listLiveVenues()).filter((venue) => !venue.isTestStore), lat, lng, now);
 }
 
 module.exports = { eventsNear, storeEventsFrom };
