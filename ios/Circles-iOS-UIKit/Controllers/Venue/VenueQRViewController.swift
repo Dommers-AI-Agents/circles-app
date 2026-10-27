@@ -69,7 +69,7 @@ class VenueQRViewController: BaseViewController {
         return label
     }()
 
-    private lazy var shareButton = UIButton.primaryButton(title: "Share QR")
+    private lazy var shareButton = UIButton.primaryButton(title: "Share or Print")
 
     // MARK: - Lifecycle
 
@@ -118,6 +118,8 @@ class VenueQRViewController: BaseViewController {
 
     // MARK: - QR generation
 
+    /// A bitmap-backed QR. A CIImage-backed UIImage shows on screen but draws
+    /// as nothing into a renderer, which made shared and printed QRs blank.
     private func generateQRCode(from string: String) -> UIImage? {
         guard let filter = CIFilter(name: "CIQRCodeGenerator"),
               let data = string.data(using: .utf8) else { return nil }
@@ -126,7 +128,8 @@ class VenueQRViewController: BaseViewController {
         guard let output = filter.outputImage else { return nil }
         // Scale up so the modules render crisp instead of blurry
         let scaled = output.transformed(by: CGAffineTransform(scaleX: 12, y: 12))
-        return UIImage(ciImage: scaled)
+        guard let cgImage = CIContext().createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 
     // MARK: - Actions
@@ -142,16 +145,37 @@ class VenueQRViewController: BaseViewController {
         present(activityVC, animated: true)
     }
 
-    /// CIImage-backed UIImages don't share reliably — render to a bitmap with
-    /// a white margin (quiet zone) first
+    /// A printable sign: the store name over the QR with a white quiet zone,
+    /// so Print and Save Image give something ready to put up
     private func renderShareImage(_ image: UIImage) -> UIImage? {
-        let side: CGFloat = 1024
-        let inset: CGFloat = 64
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side))
+        let width: CGFloat = 1200
+        let height: CGFloat = 1500
+        let qrSide: CGFloat = 900
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height))
         return renderer.image { context in
             UIColor.white.setFill()
-            context.fill(CGRect(x: 0, y: 0, width: side, height: side))
-            image.draw(in: CGRect(x: inset, y: inset, width: side - 2 * inset, height: side - 2 * inset))
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+
+            let centered = NSMutableParagraphStyle()
+            centered.alignment = .center
+            let name = NSAttributedString(string: venueName, attributes: [
+                .font: UIFont.systemFont(ofSize: 64, weight: .bold),
+                .foregroundColor: UIColor.black,
+                .paragraphStyle: centered
+            ])
+            name.draw(with: CGRect(x: 80, y: 90, width: width - 160, height: 180),
+                      options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
+
+            context.cgContext.interpolationQuality = .none
+            image.draw(in: CGRect(x: (width - qrSide) / 2, y: 300, width: qrSide, height: qrSide))
+
+            let hint = NSAttributedString(string: "Scan with your phone camera", attributes: [
+                .font: UIFont.systemFont(ofSize: 44, weight: .semibold),
+                .foregroundColor: UIColor.darkGray,
+                .paragraphStyle: centered
+            ])
+            hint.draw(with: CGRect(x: 80, y: 1260, width: width - 160, height: 70),
+                      options: .usesLineFragmentOrigin, context: nil)
         }
     }
 }

@@ -985,8 +985,12 @@ FavCircles · Save the places you love`;
     const html = `
       <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto">
         <h2 style="color:#3182CE">QR codes for ${escapeHtml(venue.venueName)}</h2>
-        <p><strong>Print either attachment on plain paper — that's it:</strong></p>
+        <p><strong>Print the attachments on plain paper — that's it:</strong></p>
         <table style="border-collapse:collapse;width:100%;background:#fafafa;border-radius:8px">
+          <tr>
+            <td style="padding:10px 16px;border-bottom:1px solid #eee"><strong>Window sign (letter)</strong><br>
+            Tape it in your front window. People scan it to save your store and share it with friends.</td>
+          </tr>
           <tr>
             <td style="padding:10px 16px;border-bottom:1px solid #eee"><strong>Register card (4×6)</strong><br>
             Fits a standard photo frame or acrylic stand by the register.</td>
@@ -996,23 +1000,25 @@ FavCircles · Save the places you love`;
             Print, fold in half along the dashed line — it stands on its own.</td>
           </tr>
         </table>
-        <p style="margin-top:16px">Customers scan it to earn points on every visit
+        <p style="margin-top:16px">At the register, customers scan to earn points on every visit
         (code: <code>${escapeHtml(venue.registerCode)}</code>).</p>
         <p style="color:#888;font-size:13px">Verify before you're done: scan the printed QR from a
         logged-in FavCircles account and check the points land. Reply to this email if you'd like
         the raw QR image for custom artwork.</p>
       </div>`;
 
-    // Ready-to-print register assets — best-effort so a PDF glitch never
-    // blocks the raw QR delivery
+    // Ready-to-print window + register assets — best-effort so a PDF glitch
+    // never blocks the raw QR delivery
     const printAttachments = [];
     try {
       const printAssetService = require('./printAssetService');
-      const [card, tent] = await Promise.all([
+      const [sign, card, tent] = await Promise.all([
+        printAssetService.windowSignPDF(venue),
         printAssetService.registerCardPDF(venue),
         printAssetService.tableTentPDF(venue)
       ]);
       printAttachments.push(
+        { filename: `${venue.venueName.replace(/[^\w -]/g, '')} - window sign.pdf`, content: sign },
         { filename: `${venue.venueName.replace(/[^\w -]/g, '')} - register card 4x6.pdf`, content: card },
         { filename: `${venue.venueName.replace(/[^\w -]/g, '')} - table tent.pdf`, content: tent }
       );
@@ -1025,15 +1031,18 @@ FavCircles · Save the places you love`;
       to: toEmail,
       subject,
       html,
-      text: `Rewards QR for ${venue.venueName} (register code: ${venue.registerCode}). Ready-to-print register card + table tent PDFs attached — print either on plain paper and put it by the register.`,
+      text: `QR codes for ${venue.venueName}. Attached and ready to print on plain paper: a window sign (scan to save your store), and a register card + table tent (scan to earn points, register code: ${venue.registerCode}).`,
       // The raw QR PNGs used to ride along too, but mail apps render them
       // inline as two giant bare QR codes (confusing next to the finished
-      // PDFs). The PDFs carry the register QR; raw assets on request. If PDF
-      // generation failed, fall back to the raw register PNG so the owner is
-      // never left with nothing.
+      // PDFs). The PDFs carry both QRs; raw assets on request. If PDF
+      // generation failed, fall back to the raw PNGs so the owner is never
+      // left with nothing.
       attachments: printAttachments.length > 0
         ? printAttachments
-        : [{ filename: `register-${venue.registerCode}.png`, content: registerQRBuffer }]
+        : [
+          { filename: `window-${venue.windowCode}.png`, content: windowQRBuffer },
+          { filename: `register-${venue.registerCode}.png`, content: registerQRBuffer }
+        ]
     };
 
     const result = await this.sendWithRetry(mailOptions);

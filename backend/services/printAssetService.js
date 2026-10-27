@@ -1,8 +1,7 @@
-// Print-ready PDFs for a venue's register QR: a 4x6 counter card and a
-// letter-size fold-in-half table tent. The physical model (Wes, 2026-08-13):
-// the WINDOW sticker is generic mass-printed artwork that routes to the App
-// Store; the REGISTER piece is this — unique per store, printed at home on
-// plain paper, where customers scan to earn points each visit.
+// Print-ready PDFs for a venue's QR codes: a letter-size window sign (the
+// store's own scan-to-save code), and for the register a 4x6 counter card and
+// a letter-size fold-in-half table tent where customers scan to earn points
+// each visit. All print at home on plain paper.
 
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
@@ -20,10 +19,11 @@ const pdfToBuffer = (doc) => new Promise((resolve, reject) => {
   doc.end();
 });
 
-const registerQRBuffer = (venue, sizePx) => QRCode.toBuffer(
-  rewardService.stickerUrl(venue.registerCode),
+const codeQRBuffer = (code, sizePx) => QRCode.toBuffer(
+  rewardService.stickerUrl(code),
   { width: sizePx, margin: 1, errorCorrectionLevel: 'M' }
 );
+const registerQRBuffer = (venue, sizePx) => codeQRBuffer(venue.registerCode, sizePx);
 
 // Draw one card face into a width x height box whose top-left is at (0,0)
 // of the current transform. Shared by the counter card and each tent panel.
@@ -98,4 +98,36 @@ async function tableTentPDF(venue) {
   return pdfToBuffer(doc);
 }
 
-module.exports = { registerCardPDF, tableTentPDF };
+// Letter portrait sign for the front window: the same scan-to-save code the
+// app's Window QR screen shows. No points promise — the sign works the same
+// on the free plan and on Business.
+async function windowSignPDF(venue) {
+  const W = 612; // 8.5in
+  const H = 792; // 11in
+  const qr = await codeQRBuffer(venue.windowCode, 1200);
+  const doc = new PDFDocument({ size: [W, H], margin: 0 });
+
+  doc.rect(0, 0, W, 14).fill(BRAND);
+  doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(26)
+    .text('FavCircles', 0, 56, { width: W, align: 'center' });
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(40)
+    .text(venue.venueName, 48, 100, { width: W - 96, align: 'center' });
+  doc.fillColor(INK_SOFT).font('Helvetica').fontSize(22)
+    .text('Love it here? Save us.', 0, doc.y + 10, { width: W, align: 'center' });
+
+  const qrSize = 340;
+  const qrY = doc.y + 36;
+  doc.image(qr, (W - qrSize) / 2, qrY, { width: qrSize, height: qrSize });
+
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(20)
+    .text('Scan with your phone camera', 0, qrY + qrSize + 26, { width: W, align: 'center' });
+  doc.fillColor(INK_SOFT).font('Helvetica').fontSize(15)
+    .text('Save us to your map and share us with friends', 0, doc.y + 6, { width: W, align: 'center' });
+
+  doc.fillColor(INK_SOFT).font('Helvetica').fontSize(11)
+    .text('Free app at favcircles.com', 0, H - 44, { width: W, align: 'center' });
+  doc.rect(0, H - 14, W, 14).fill(BRAND);
+  return pdfToBuffer(doc);
+}
+
+module.exports = { windowSignPDF, registerCardPDF, tableTentPDF };
