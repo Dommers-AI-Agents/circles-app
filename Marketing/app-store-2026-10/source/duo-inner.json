@@ -1,0 +1,10 @@
+{"device":"duoInner","slides":[
+ {"slug": "map", "image": "source/raw-duo-inner/fullmap.png", "headline": "All your favorite places, <em>on one map</em>", "sub": "Save them once. Never forget a great spot."},
+ {"slug": "friends", "image": "source/raw-duo-inner/home.png", "headline": "See where your <em>friends</em> love to go", "sub": "Real picks from people you trust."},
+ {"slug": "postcards", "image": "source/raw-duo-inner/postcard.png", "headline": "Send a <em>real postcard</em> from your trip", "sub": "Share it free, or we print and mail it for $3.99."},
+ {"slug": "circles", "image": "source/raw-duo-inner/profile.png", "headline": "Organize favorites into <em>Circles</em>", "sub": "Coffee spots, date nights, road trips. Share any list."},
+ {"slug": "place", "image": "source/raw-duo-inner/place.png", "headline": "Every place, <em>one tap</em> away", "sub": "Directions, reservations, delivery and what friends said."},
+ {"slug": "rewards", "image": "source/raw-duo-inner/storepoints.png", "headline": "Earn <em>rewards</em> at local shops", "sub": "Check in, collect points, redeem offers."},
+ {"slug": "widgets", "image": "source/raw-duo-inner/widgets.png", "headline": "Handy <em>widgets</em>, built in", "sub": "Workouts, water, habits, sleep sounds and more."},
+ {"slug": "privacy", "image": "source/raw-duo-inner/privacy.png", "headline": "You choose <em>who sees what</em>", "sub": "Everyone, connections, or just your Inner Circle."}
+]}
