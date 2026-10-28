@@ -27,6 +27,7 @@ exports.sync = scheduledTask({
         const result = await appClipExperiences.syncVenue(venue, { kinds });
         if (result.changed && result.changed.length) published += 1; else skipped += 1;
       } catch (error) {
+        console.error('⚠️ App Clip card sync failed for', venue.venueId, venue.venueName, '-', error.message);
         failed.push({ venueId: venue.venueId, error: error.message });
       }
     }
