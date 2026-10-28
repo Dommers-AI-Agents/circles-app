@@ -25,7 +25,8 @@ test('the page escapes the store and its items, and never carries inline code', 
   const data = html.match(/<script type="application\/json" id="menu-data">([\s\S]*?)<\/script>/)[1];
   expect(data).not.toContain('<');
   expect(JSON.parse(data).sections[0].items[0].name).toContain('</script>');
-  expect(html).toContain('https://api.favcircles.com/place/gp1');
+  expect(html).toContain('href="https://apps.apple.com/us/app/favcircles/id6746807095" rel="noopener">Get the app');
+  expect(html).toContain('href="https://api.favcircles.com/place/gp1">Have the app? Open this store');
   expect(html).toContain('Place order');
   expect(html).toContain('class="chip on" href="#s-s1"');
 });
@@ -39,15 +40,16 @@ test('ordering off keeps the menu and drops the cart; a test store is noindex', 
   expect(html).toContain('Croissant');
 });
 
-test('bare numbers get a dollar sign; typed prices stay as typed', () => {
-  expect(pages.priceText('9')).toBe('$9');
+test('numeric prices print as $X.XX; words stay as typed', () => {
+  expect(pages.priceText('9')).toBe('$9.00');
   expect(pages.priceText('4.50')).toBe('$4.50');
-  expect(pages.priceText('$12')).toBe('$12');
+  expect(pages.priceText('$12')).toBe('$12.00');
+  expect(pages.priceText(' $ 4.5 ')).toBe('$4.50');
   expect(pages.priceText('MP')).toBe('MP');
   expect(pages.priceText('8 / 14')).toBe('8 / 14');
   expect(pages.priceText(null)).toBe('');
   const html = pages.renderOrderPage({ ...P, menu: { sections: [{ id: 's', name: 'S', items: [{ id: 'a', name: 'Loaf', price: '9', tags: [] }] }] } }, { base: '', canonicalUrl: 'x' });
-  expect(html).toContain('<span class="p">$9</span>');
+  expect(html).toContain('<span class="p">$9.00</span>');
 });
 
 test('the status shell and the not-found page', () => {

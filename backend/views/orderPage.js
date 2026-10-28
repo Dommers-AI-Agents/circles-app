@@ -50,7 +50,7 @@ input,textarea,select{width:100%;border:1px solid var(--line);border-radius:10px
 .status{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-top:18px}
 .status .big{font-size:22px;font-weight:800;margin:0 0 6px}.status .sub{color:var(--muted);margin:0}
 .status ul{list-style:none;padding:0;margin:14px 0 0}.status li{display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)}
-footer{margin-top:40px;text-align:center;color:var(--muted);font-size:14px}footer a.get{display:inline-block;margin-top:8px;background:var(--brand);color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none;font-weight:700}
+footer{margin-top:40px;text-align:center;color:var(--muted);font-size:14px}footer a.inapp{display:inline-block;margin-top:12px;font-weight:600}footer a.get{display:inline-block;margin-top:8px;background:var(--brand);color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none;font-weight:700}
 @media (prefers-color-scheme:dark){:root{--ink:#F7FAFC;--muted:#A0AEC0;--line:#2D3748;--bg:#111827;--card:#1A202C}.banner{background:#1A365D;border-color:#2C5282}.chips{background:var(--bg)}}
 `;
 
@@ -69,8 +69,11 @@ ${extraMeta}
 <style>${STYLE}</style>
 </head>`;
 
+// Get the app → the App Store. People who already have it get a universal
+// link to this store's place page, where the app's own ordering and order
+// status live.
 const footer = (p) => `<footer>Powered by <b>FavCircles</b> · save ${esc(p.name)} to your map and earn rewards there<br>
-<a class="get" href="${APP_STORE_URL}" rel="noopener">Get the app</a></footer>`;
+<a class="get" href="${APP_STORE_URL}" rel="noopener">Get the app</a>${p.globalPlaceId ? `<br><a class="inapp" href="${API_BASE}/place/${esc(p.globalPlaceId)}">Have the app? Open this store</a>` : ''}</footer>`;
 
 const hoursHtml = (hours) => {
   if (!hours) return '';

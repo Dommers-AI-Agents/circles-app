@@ -34,7 +34,7 @@
     return { total: total, partial: partial };
   }
   function money(n) { return '$' + n.toFixed(2); }
-  function priceText(p) { return /^\s*\d+(?:\.\d{1,2})?\s*$/.test(String(p || '')) ? '$' + String(p).trim() : (p || ''); }
+  function priceText(p) { var m = /^\s*\$?\s*(\d+(?:\.\d{1,2})?)\s*$/.exec(String(p || '')); return m ? '$' + Number(m[1]).toFixed(2) : (p || ''); }
   function estimateText() {
     var e = estimate();
     if (!cart.length) return '';
