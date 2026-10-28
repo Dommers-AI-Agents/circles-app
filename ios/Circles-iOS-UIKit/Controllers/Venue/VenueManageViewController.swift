@@ -505,7 +505,7 @@ class VenueManageViewController: BaseViewController {
         // Fall back to the documented sticker link shape when an older
         // my-venues payload has no explicit URL
         let url = windowStickerUrl ?? "\(ShareLinks.base)/s/\(windowCode)"
-        let qrVC = VenueQRViewController(venueName: venueName, stickerUrl: url)
+        let qrVC = VenueQRViewController(venueName: venueName, stickerUrl: url, kind: .window, venueId: venueId)
         navigationController?.pushViewController(qrVC, animated: true)
     }
 
@@ -670,7 +670,9 @@ class VenueManageViewController: BaseViewController {
             venueName: venueName,
             stickerUrl: "\(ShareLinks.base)/s/\(registerCode)",
             screenTitle: "Register Card QR",
-            caption: VenueAdminCopy.registerCardExplanation(earnRate: earnRate, loyaltyActive: ownerPremium)
+            caption: VenueAdminCopy.registerCardExplanation(earnRate: earnRate, loyaltyActive: ownerPremium),
+            kind: .register,
+            venueId: venueId
         )
         navigationController?.pushViewController(qrVC, animated: true)
     }

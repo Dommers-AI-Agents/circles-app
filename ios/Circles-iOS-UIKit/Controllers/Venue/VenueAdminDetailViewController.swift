@@ -312,12 +312,16 @@ class VenueAdminDetailViewController: BaseViewController {
                 venueName: venueName,
                 stickerUrl: registerCardUrl,
                 screenTitle: "Register Card QR",
-                caption: VenueAdminCopy.registerCardExplanation(earnRate: earnRate, loyaltyActive: detail?.loyalty.active ?? true))
+                caption: VenueAdminCopy.registerCardExplanation(earnRate: earnRate, loyaltyActive: detail?.loyalty.active ?? true),
+                kind: .register,
+                venueId: listVenue.venueId)
             : VenueQRViewController(
                 venueName: venueName,
                 stickerUrl: windowStickerUrl,
                 screenTitle: "Window Sticker QR",
-                caption: VenueAdminCopy.windowStickerExplanation())
+                caption: VenueAdminCopy.windowStickerExplanation(),
+                kind: .window,
+                venueId: listVenue.venueId)
         navigationController?.pushViewController(qrVC, animated: true)
     }
 

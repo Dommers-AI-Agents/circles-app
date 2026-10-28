@@ -34,7 +34,8 @@ const {
   updateVenuePlace,
   updateVenueInfo,
   updateVenueSettings,
-  rotateRegisterCode
+  rotateRegisterCode,
+  getPrintAsset
 } = require('../controllers/venues/venueOwnerController');
 const {
   addOffer,
@@ -137,6 +138,9 @@ router.put('/venues/:venueId/cover-photo', requireVenueOwner, setVenueCoverPhoto
 // free owner tier, same as the in-app tap-to-edit surface
 router.patch('/venues/:venueId/place', requireVenueOwner, updateVenuePlace);
 router.post('/venues/:venueId/email-qr', requireVenueOwner, emailVenueQR);
+// Print-ready PDFs (sign / table tent / counter card, QR at 2-4 in). The
+// handler gates kind=register to Business.
+router.get('/venues/:venueId/print', requireVenueOwner, getPrintAsset);
 // Managers: the owner invites other accounts to run the store with them —
 // free owner tier (team admin isn't a Business-tier tool). Mutations are
 // gated to the primary owner inside the handlers.

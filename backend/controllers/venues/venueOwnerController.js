@@ -12,6 +12,8 @@ const { isOwnerPremiumUser, isOwnerPremiumForVenue, isOwnerPremiumById } = requi
 const { normalizeUserId, isSameUser } = require('../../services/idService');
 const db = getFirestore();
 const { isVenueTeamMember, venueGlobalPlaceId, ownerVenueInfo } = require('../../services/venueHelpers.js');
+const { ServiceError, sendServiceError } = require('../../utils/serviceError');
+const printAssetService = require('../../services/printAssetService');
 const { canViewCircle } = require('../../services/visibility');
 const { alertAudience } = require('../../services/placeAlerts');
 const { makeViewerContext } = require('../../services/viewerContext');
@@ -618,5 +620,31 @@ exports.rotateRegisterCode = async (req, res) => {
   } catch (error) {
     console.error('❌ Register code rotation failed:', error);
     res.status(500).json({ success: false, error: 'Failed to rotate register code' });
+  }
+};
+
+// @desc    A print-ready PDF of one of the store's QR codes. kind=window
+//          (scan-to-save, free tier) or register (earn points, Business tier);
+//          format=sign (letter), tent (letter folded in half), smallTent
+//          (4 x 5.5 in cut-out), card (4 x 6 in); qr=small|medium|large puts
+//          the code at 2 / 3 / 4 in so it never has to fill the whole page.
+// @route   GET /api/rewards/venues/:venueId/print?kind=&format=&qr=
+// @access  Private (owner or manager)
+exports.getPrintAsset = async (req, res) => {
+  try {
+    const venue = req.venue;
+    const options = printAssetService.printOptions(req.query);
+    if (options.kind === 'register' && req.user.isSuperUser !== true) {
+      const premium = (!venue.ownerUserId || isSameUser(venue.ownerUserId, req.user.uid))
+        ? isOwnerPremiumForVenue(req.user, venue.venueId, venue)
+        : await isOwnerPremiumById(venue.ownerUserId, venue.venueId, venue);
+      if (!premium) throw new ServiceError(403, 'BUSINESS_REQUIRED', 'Register prints come with FavCircles Business');
+    }
+    const pdf = await printAssetService.renderPDF(venue, options);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${printAssetService.fileName(venue, options)}"`);
+    res.send(pdf);
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Print asset', fallbackCode: 'PRINT_FAILED', fallbackMessage: 'Could not build the print' });
   }
 };

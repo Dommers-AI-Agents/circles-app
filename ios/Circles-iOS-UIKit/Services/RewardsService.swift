@@ -17,6 +17,15 @@ class RewardsService {
 
     private init() {}
 
+    // MARK: - Print-ready PDFs (sign / table tent / counter card)
+
+    /// The server draws the PDF at real size; see VenuePrintOptions.
+    func downloadPrint(venueId: String, options: VenuePrintOptions, completion: @escaping (Result<Data, Error>) -> Void) {
+        apiService.requestData(endpoint: "rewards/venues/\(venueId)/print", queryParams: options.queryParams) { result in
+            completion(result.mapError { $0 as Error })
+        }
+    }
+
     // MARK: - Scan (window sticker or register card)
 
     func scan(code: String, completion: @escaping (Result<RewardScanData, Error>) -> Void) {

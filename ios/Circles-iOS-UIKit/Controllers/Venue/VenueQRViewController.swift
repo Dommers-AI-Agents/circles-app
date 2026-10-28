@@ -13,6 +13,11 @@ class VenueQRViewController: BaseViewController {
     private let stickerUrl: String
     private let screenTitle: String
     private let caption: String
+    /// Which code this is, and the store it belongs to: together they unlock
+    /// the print-ready PDFs (sign, table tent, counter card). Without a venue
+    /// id the screen can still share its image.
+    private let kind: VenuePrintKind
+    private let venueId: String?
 
     /// Defaults describe the window sticker; the super-user store page reuses
     /// this screen for the register card with its own title and caption.
@@ -20,12 +25,16 @@ class VenueQRViewController: BaseViewController {
         venueName: String,
         stickerUrl: String,
         screenTitle: String = "Scan-to-Save QR",
-        caption: String = "Customers scan this to save your place and start earning points. Display it in your window or share it anywhere."
+        caption: String = "Customers scan this to save your place and start earning points. Display it in your window or share it anywhere.",
+        kind: VenuePrintKind = .window,
+        venueId: String? = nil
     ) {
         self.venueName = venueName
         self.stickerUrl = stickerUrl
         self.screenTitle = screenTitle
         self.caption = caption
+        self.kind = kind
+        self.venueId = venueId
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -135,6 +144,30 @@ class VenueQRViewController: BaseViewController {
     // MARK: - Actions
 
     @objc private func shareTapped() {
+        guard let venueId else { shareImage(); return }
+        AlertPresenter.showActionSheet(
+            title: nil,
+            message: "A sign, a table tent or a counter card prints at real size, with the code 2, 3 or 4 inches wide. The image is for texts and social posts.",
+            actions: [
+                ("Print a sign or tent…", .default, { [weak self] in self?.showPrintOptions(venueId: venueId) }),
+                ("Share image", .default, { [weak self] in self?.shareImage() }),
+                ("Cancel", .cancel, {})
+            ],
+            from: self,
+            sourceView: shareButton
+        )
+    }
+
+    private func showPrintOptions(venueId: String) {
+        let sheet = VenuePrintOptionsViewController(venueId: venueId, venueName: venueName, kind: kind)
+        if let presentation = sheet.sheetPresentationController {
+            presentation.detents = [.medium(), .large()]
+            presentation.prefersGrabberVisible = true
+        }
+        present(sheet, animated: true)
+    }
+
+    private func shareImage() {
         guard let image = qrImageView.image,
               let cgRendered = renderShareImage(image) else { return }
         let activityVC = UIActivityViewController(

@@ -482,6 +482,44 @@ class APIService {
         )
     }
     
+    /// A raw GET for binary responses (a print-ready PDF), with the same
+    /// base URL and bearer token as `request`. Non-2xx answers come back as
+    /// `.httpError` so `serverMessage` still reads the server's reason.
+    func requestData(
+        endpoint: String,
+        queryParams: [String: String]? = nil,
+        completion: @escaping (Result<Data, APIError>) -> Void
+    ) {
+        guard var components = URLComponents(string: "\(environment.baseURL)/\(endpoint)") else {
+            completion(.failure(.invalidURL)); return
+        }
+        if let queryParams, !queryParams.isEmpty {
+            components.queryItems = queryParams.map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+        guard let url = components.url else { completion(.failure(.invalidURL)); return }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 60
+        if authToken == nil { authToken = keychainService.getAuthToken() }
+        guard let token = authToken else { completion(.failure(.unauthorized)); return }
+        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        session.dataTask(with: request) { data, response, error in
+            if let error {
+                if let urlError = error as? URLError, NetworkErrorClassifier.isConnectivityFailure(urlError.code) {
+                    completion(.failure(.noInternet))
+                } else {
+                    completion(.failure(.requestFailed(error)))
+                }
+                return
+            }
+            guard let http = response as? HTTPURLResponse else { completion(.failure(.invalidResponse)); return }
+            switch http.statusCode {
+            case 200...299: completion(.success(data ?? Data()))
+            case 401: completion(.failure(.unauthorized))
+            default: completion(.failure(.httpError(http.statusCode, data)))
+            }
+        }.resume()
+    }
+
     private func performRequest<T: Decodable>(
         endpoint: String,
         method: RequestMethod,
