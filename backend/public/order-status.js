@@ -20,6 +20,7 @@
   var OPEN = { placed: 1, accepted: 1, ready: 1 };
 
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function priceText(p) { return /^\s*\d+(?:\.\d{1,2})?\s*$/.test(String(p || '')) ? '$' + String(p).trim() : (p || ''); }
   function time(iso) { try { return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; } }
 
   function render(o) {
@@ -40,7 +41,7 @@
     statusEl.appendChild(big); statusEl.appendChild(el('p', 'sub', sub || ''));
     var ul = el('ul');
     o.lines.forEach(function (l) {
-      var li = el('li'); li.appendChild(el('span', null, l.qty + '× ' + l.name + (l.note ? ' · ' + l.note : ''))); li.appendChild(el('span', null, l.price || ''));
+      var li = el('li'); li.appendChild(el('span', null, l.qty + '× ' + l.name + (l.note ? ' · ' + l.note : ''))); li.appendChild(el('span', null, priceText(l.price)));
       ul.appendChild(li);
     });
     var tot = el('li'); tot.appendChild(el('b', null, 'Estimate'));

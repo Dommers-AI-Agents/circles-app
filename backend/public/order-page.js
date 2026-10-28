@@ -34,6 +34,7 @@
     return { total: total, partial: partial };
   }
   function money(n) { return '$' + n.toFixed(2); }
+  function priceText(p) { return /^\s*\d+(?:\.\d{1,2})?\s*$/.test(String(p || '')) ? '$' + String(p).trim() : (p || ''); }
   function estimateText() {
     var e = estimate();
     if (!cart.length) return '';
@@ -65,7 +66,7 @@
     var l = line(id);
     document.getElementById('itemName').textContent = it.name;
     document.getElementById('itemDesc').textContent = it.description || '';
-    document.getElementById('itemPrice').textContent = it.price || '';
+    document.getElementById('itemPrice').textContent = priceText(it.price);
     qtyOut.value = l ? l.qty : 1;
     noteIn.value = l ? (l.note || '') : '';
     document.getElementById('itemAdd').textContent = l ? 'Update' : 'Add to order';
@@ -107,7 +108,7 @@
       var row = document.createElement('div'); row.className = 'row';
       var t = document.createElement('span');
       t.textContent = l.qty + '× ' + it.name + (l.note ? ' · ' + l.note : '');
-      var p = document.createElement('span'); p.textContent = it.price || '';
+      var p = document.createElement('span'); p.textContent = priceText(it.price);
       var edit = document.createElement('button'); edit.type = 'button'; edit.className = 'ghost'; edit.textContent = 'Edit';
       edit.addEventListener('click', function () { cartDialog.hidden = true; openItem(l.itemId); });
       row.appendChild(t); row.appendChild(p); row.appendChild(edit);

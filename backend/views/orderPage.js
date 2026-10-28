@@ -79,9 +79,13 @@ const hoursHtml = (hours) => {
     `<tr${h.day === today ? ' class="today"' : ''}><td>${esc(h.label)}</td><td>${esc(h.text)}</td></tr>`).join('')}</table></details>`;
 };
 
+// Menu prices are free text ("9", "4.50", "$12", "MP"): a bare number gets a
+// dollar sign on the page; anything else prints as the owner typed it
+const priceText = (price) => (/^\s*\d+(?:\.\d{1,2})?\s*$/.test(String(price || '')) ? `$${String(price).trim()}` : (price || ''));
+
 const itemHtml = (item, canOrder) => `<button class="item" type="button" data-item-id="${esc(item.id)}"${canOrder ? '' : ' disabled'}>
 <span class="t"><span class="n">${esc(item.name)}<span class="q" data-qty></span></span>${item.description ? `<span class="d">${esc(item.description)}</span>` : ''}${item.tags && item.tags.length ? `<span class="tags">${esc(item.tags.join(' · '))}</span>` : ''}</span>
-<span class="p">${esc(item.price || '')}</span></button>`;
+<span class="p">${esc(priceText(item.price))}</span></button>`;
 
 /**
  * The store page. `base` is '' on the ordering host and '/order' on the
@@ -168,4 +172,4 @@ function renderNotFound({ base = '' } = {}) {
 <footer>Powered by <b>FavCircles</b> · <a class="get" href="${APP_STORE_URL}">Get the app</a></footer></div></body></html>`;
 }
 
-module.exports = { renderOrderPage, renderOrderStatusPage, renderNotFound };
+module.exports = { renderOrderPage, renderOrderStatusPage, renderNotFound, priceText };
