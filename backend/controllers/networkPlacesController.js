@@ -225,13 +225,17 @@ async function enrichNetworkPlaces(places) {
 
 const SEARCH_DEFAULT_RADIUS_KM = 80;
 const SEARCH_MAX_RADIUS_KM = 200;
-const SEARCH_VENUE_LIMIT = 100;
+// Quality cut per channel BEFORE the radius filter. The catalog holds ~1.6k
+// venues and the busiest name word matches under 100 (2026-10-28), so 300
+// is headroom, not a ceiling anyone hits.
+const SEARCH_VENUE_LIMIT = 300;
 const SEARCH_DEFAULT_LIMIT = 50;
 const SEARCH_MAX_LIMIT = 100;
 
-// @desc    Places saved by people in my network whose venue name matches the
-//          text — the home search's second source. One indexed catalog read
-//          (searchTokens) plus one chunked lookup of their saves, instead of
+// @desc    Places saved by people in my network whose venue matches the text —
+//          by name words, or by what it is ("coffee" lists their cafés, as the
+//          app's own list does) — the home search's second source. Indexed
+//          catalog reads plus one chunked lookup of their saves, instead of
 //          the client fetching every network circle's places (239 requests
 //          for a large network; the search waited on the last one).
 // @route   GET /api/network/places/search?query=&lat=&lng=&radiusKm=&limit=
@@ -254,7 +258,7 @@ const searchNetworkPlaces = async (req, res) => {
     let limit = parseInt(req.query.limit, 10);
     limit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), SEARCH_MAX_LIMIT) : SEARCH_DEFAULT_LIMIT;
 
-    const venues = await globalPlaceSearch.searchGlobalPlaces({
+    const venues = await globalPlaceSearch.searchGlobalPlacesForText({
       query,
       lat: hasOrigin ? lat : undefined,
       lng: hasOrigin ? lng : undefined,

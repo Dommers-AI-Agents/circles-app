@@ -81,4 +81,73 @@ async function searchGlobalPlaces({ query, category, lat, lng, radiusKm = 50, li
   return places;
 }
 
-module.exports = { searchGlobalPlaces, tokenize };
+// The words a person uses for WHAT a place is, mirrored from the app's
+// category display names and group titles (ios Models/Place.swift,
+// PlaceCategoryGroup.swift) — the home search matches saved places on these
+// too, so "coffee" lists the cafés. Keys are folded (accents off, singular).
+const CATEGORY_WORDS = {
+  restaurant: ['restaurant'], food: ['restaurant'],
+  cafe: ['cafe'], coffee: ['cafe'],
+  bar: ['bar'], drink: ['bar'],
+  hotel: ['hotel'],
+  retail: ['retail'], shopping: ['retail'],
+  service: ['service'],
+  attraction: ['attraction'],
+  entertainment: ['entertainment'], fun: ['entertainment'],
+  healthcare: ['healthcare'], health: ['healthcare'],
+  fitness: ['fitness'],
+  education: ['education'], learning: ['education'],
+  outdoor: ['outdoor'],
+  transport: ['transport'], transit: ['transport'],
+  finance: ['finance'],
+  home: ['home'], work: ['work'], other: ['other']
+};
+const singular = (word) => (word.length > 3 && word.endsWith('s') ? word.slice(0, -1) : word);
+const fold = (word) => word.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+/**
+ * The category ids a query names, when EVERY word of it is a category word
+ * ("coffee", "bars", "food"). Mixed queries ("coffee shop") are name searches.
+ */
+function categoriesNamedBy(query) {
+  const words = tokenize(fold(String(query || '')));
+  if (words.length === 0) return [];
+  const sets = words.map(word => CATEGORY_WORDS[singular(word)] || CATEGORY_WORDS[word]);
+  if (sets.some(set => !set)) return [];
+  return [...new Set(sets.flat())];
+}
+
+/** Catalog venues in the given categories, same radius/sort rules as the text search. */
+async function searchGlobalPlacesByCategories({ categories, lat, lng, radiusKm = 50, limit }) {
+  const perCategory = await Promise.all(
+    categories.map(category => searchGlobalPlaces({ category, lat, lng, radiusKm, limit }))
+  );
+  return perCategory.flat();
+}
+
+/**
+ * Text search the way the app's own list matches: by name words AND by what
+ * the place is. One sorted, de-duplicated list, nearest first with an origin.
+ */
+async function searchGlobalPlacesForText({ query, lat, lng, radiusKm = 50, limit }) {
+  const categories = categoriesNamedBy(query);
+  const [byName, byCategory] = await Promise.all([
+    searchGlobalPlaces({ query, lat, lng, radiusKm, limit }),
+    categories.length > 0
+      ? searchGlobalPlacesByCategories({ categories, lat, lng, radiusKm, limit })
+      : Promise.resolve([])
+  ]);
+  const seen = new Set();
+  const merged = [];
+  for (const place of [...byName, ...byCategory]) {
+    if (seen.has(place.id)) continue;
+    seen.add(place.id);
+    merged.push(place);
+  }
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    merged.sort((a, b) => distanceKm(a, lat, lng) - distanceKm(b, lat, lng));
+  }
+  return merged;
+}
+
+module.exports = { searchGlobalPlaces, searchGlobalPlacesForText, categoriesNamedBy, tokenize };

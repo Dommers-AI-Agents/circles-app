@@ -29,7 +29,7 @@ jest.mock('../../services/placeReadService', () => ({
 }));
 
 const { searchNetworkPlaces } = require('../networkPlacesController');
-const { searchGlobalPlaces } = require('../../services/globalPlaceSearch');
+const { searchGlobalPlaces, categoriesNamedBy } = require('../../services/globalPlaceSearch');
 
 const res = () => {
   const r = {};
@@ -45,8 +45,8 @@ const tokens = (name) => {
   }
   return [...out];
 };
-const venue = (id, name, lng, lat, qualityScore) =>
-  put('globalPlaces', id, { name, searchTokens: tokens(name), nameLower: name.toLowerCase(), qualityScore,
+const venue = (id, name, lng, lat, qualityScore, category = 'restaurant') =>
+  put('globalPlaces', id, { name, searchTokens: tokens(name), nameLower: name.toLowerCase(), qualityScore, category,
     location: { type: 'Point', coordinates: [lng, lat] } });
 // Charlotte: the viewer stands at South End
 const ME = { lat: 35.2171, lng: -80.8572 };
@@ -57,7 +57,8 @@ beforeEach(async () => {
   await venue('g-test', 'Test Bakery (Demo)', -80.8592, 35.2169, 0.41);     // 190 m away
   await venue('g-amelie', "Amélie's French Bakery", -80.8079, 35.2517, 0.52); // ~6 km
   await venue('g-colvitto', "Colvitto's Pizza & Bakery", -71.4837, 41.4283, 0.62); // Rhode Island
-  await venue('g-donut', 'The Salty Donut', -80.8560, 35.2190, 0.70);        // no "bakery" in the name
+  await venue('g-donut', 'The Salty Donut', -80.8560, 35.2190, 0.70, 'cafe'); // no "bakery" in the name
+  await put('places', 'save-donut-friend', { globalPlaceId: 'g-donut', addedBy: 'friend', circleId: 'friends-circle', name: 'The Salty Donut', category: 'cafe' });
   // Saves: a friend's followCircle save of Test Bakery, my own save of
   // Amélie's, a stranger's save in a circle I can't see, a deleted save
   await put('places', 'save-test', { globalPlaceId: 'g-test', addedBy: 'friend', circleId: 'friends-circle',
@@ -88,6 +89,17 @@ test('network search returns only visible network saves of matching venues, near
   expect(body.places[0].privateNotes).toBeUndefined();
   expect(body.places[0].addedByUser).toEqual(expect.objectContaining({ displayName: 'Friend' }));
   expect(body.places[0].addedByUser.email).toBeUndefined();
+});
+
+test('category words find the network\'s saves by what the place is, like the app\'s own list', async () => {
+  expect(categoriesNamedBy('Coffee')).toEqual(['cafe']);
+  expect(categoriesNamedBy('bars')).toEqual(['bar']);
+  expect(categoriesNamedBy('Café')).toEqual(['cafe']);
+  expect(categoriesNamedBy('coffee shop')).toEqual([]);   // mixed → a name search
+  expect(categoriesNamedBy('Bakery')).toEqual([]);
+  const r = res();
+  await searchNetworkPlaces({ user: { uid: 'me' }, query: { query: 'Coffee', lat: String(ME.lat), lng: String(ME.lng) } }, r);
+  expect(r.json.mock.calls[0][0].places.map(p => p.id)).toEqual(['save-donut-friend']);
 });
 
 test('network search without text is refused; no venue match means an empty list', async () => {
