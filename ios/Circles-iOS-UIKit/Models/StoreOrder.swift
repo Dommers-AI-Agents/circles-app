@@ -38,6 +38,13 @@ struct StoreOrder: Codable, Equatable {
     let updatedAt: String?
 
     var isOpen: Bool { ["placed", "accepted", "ready"].contains(status) }
+
+    /// One line for a list row or the place page: the status, with the ready
+    /// time once the store has given one ("Accepted · ready by 12:40").
+    func statusLine(readyTime: String?) -> String {
+        if status == "accepted", let readyTime { return "\(statusLabel) \u{00B7} ready by \(readyTime)" }
+        return statusLabel
+    }
     var itemCount: Int { lines.reduce(0) { $0 + $1.qty } }
     var summary: String { lines.map { "\($0.qty)\u{00D7} \($0.name)" }.joined(separator: ", ") }
 }

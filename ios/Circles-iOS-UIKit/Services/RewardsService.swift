@@ -1126,6 +1126,10 @@ struct PlaceVenueData: Codable {
     let balance: Int?
     /// Points held at THIS venue — what offers here are actually paid with
     let venueBalance: Int?
+    /// The caller's open order-ahead order at this store, if any: the page
+    /// shows a "Your order" row that opens its status (2026-10-28). Lenient:
+    /// a shape this build doesn't know leaves the row out, not the card.
+    @LenientlyDecoded var myOrder: StoreOrder?
     let isOwner: Bool?
     // Present only when isOwner: whether the owner has the Business tier
     // (false drives the in-place "Upgrade to Business" teaser)

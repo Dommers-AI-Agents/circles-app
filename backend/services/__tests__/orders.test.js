@@ -35,6 +35,19 @@ describe('rules', () => {
     expect(p.lines[2].note).toBe('extra garlic');
   });
 
+  test('the place page finds the customer\'s open order at that store, newest first, and nothing once it is closed', async () => {
+    expect(await orders.openAtVenue('cust', 'v1')).toBeNull();
+    const first = await orders.place({ customerId: 'cust', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }], pickup: 'asap' });
+    const second = await orders.place({ customerId: 'cust', venueId: 'v1', items: [{ itemId: 'd', qty: 1 }], pickup: 'asap' }, { now: new Date(Date.now() + 1000) });
+    expect((await orders.openAtVenue('cust', 'v1')).orderId).toBe(second.orderId);
+    expect(await orders.openAtVenue('cust', 'other-venue')).toBeNull();
+    expect(await orders.openAtVenue('someone-else', 'v1')).toBeNull();
+    await orders.cancel(second.orderId, 'cust');
+    expect((await orders.openAtVenue('cust', 'v1')).orderId).toBe(first.orderId);
+    await orders.cancel(first.orderId, 'cust');
+    expect(await orders.openAtVenue('cust', 'v1')).toBeNull();
+  });
+
   test('a removed item, a silly quantity or an empty cart is refused', () => {
     expect(() => rules.priceCart(MENU, [{ itemId: 'gone', qty: 1 }])).toThrow(expect.objectContaining({ code: 'menu_changed' }));
     expect(() => rules.priceCart(MENU, [{ itemId: 'm', qty: 0 }])).toThrow(expect.objectContaining({ code: 'bad_quantity' }));

@@ -125,6 +125,24 @@ async function mine(customerId, { db = getFirestore() } = {}) {
   return snap.docs.map((d) => view(d.id, d.data()));
 }
 
+/**
+ * The customer's open order at one store (newest), for the store's place
+ * page: a "Your order" row so the status is one tap away after the first
+ * screen is gone (Wes, 2026-10-28). Open orders are capped at 3 per
+ * customer, so the status filter keeps this to a handful of docs.
+ */
+async function openAtVenue(customerId, venueId, { db = getFirestore() } = {}) {
+  const snap = await db.collection(ORDERS)
+    .where('customerId', '==', customerId)
+    .where('status', 'in', [...OPEN])
+    .get();
+  const mine = snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((o) => o.venueId === venueId)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  return mine.length ? view(mine[0].id, mine[0]) : null;
+}
+
 /** One order, for its customer or the store's team. */
 async function get(orderId, viewerId, { db = getFirestore() } = {}) {
   const doc = await db.collection(ORDERS).doc(String(orderId || '')).get();
@@ -300,4 +318,4 @@ async function sweep({ db = getFirestore(), now = new Date() } = {}) {
   return { expired, closed };
 }
 
-module.exports = { ORDERS, view, place, mine, get, cancel, newCount, forVenue, storeAction, normalizeSettings, saveSettings, sweep };
+module.exports = { ORDERS, view, place, mine, openAtVenue, get, cancel, newCount, forVenue, storeAction, normalizeSettings, saveSettings, sweep };

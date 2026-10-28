@@ -434,14 +434,16 @@ class PlaceDetailViewController: BaseViewController {
     var shownGlobalPlaceId: String { place.globalPlaceId ?? place.id }
 
     @objc private func handleStoreOrdersChanged() {
-        guard placeVenueData?.isOwner == true else { return }
+        // The owner's counts, or the customer's own order row, moved
+        guard placeVenueData?.isOwner == true || placeVenueData?.myOrder != nil else { return }
         venueLoader.loadVenueRewards()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // Back from Manage Store or Orders: the owner bar's counts may have moved
-        if hasAppeared, placeVenueData?.isOwner == true { venueLoader.loadVenueRewards() }
+        // Back from Manage Store, Orders or an order's status: the owner
+        // bar's counts or the customer's order row may have moved
+        if hasAppeared, placeVenueData?.isOwner == true || placeVenueData?.myOrder != nil { venueLoader.loadVenueRewards() }
         hasAppeared = true
         openPendingPhotoIfReady()
         if showCommentsOnAppear {
@@ -3567,6 +3569,10 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
     }
 
     /// Owner bar → the store's Orders (the same screen Manage Store opens)
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapMyOrder order: StoreOrder) {
+        navigationController?.pushViewController(OrderStatusViewController(order: order), animated: true)
+    }
+
     func placeVenueViewDidTapOrders(_ view: PlaceVenueRewardsView, venue: PlaceVenue) {
         let orders = VenueOrdersViewController(venueId: venue.venueId)
         navigationController?.pushViewController(orders, animated: true)

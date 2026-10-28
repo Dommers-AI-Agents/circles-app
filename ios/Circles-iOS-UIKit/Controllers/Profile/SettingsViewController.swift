@@ -46,12 +46,14 @@ class SettingsViewController: BaseTableViewController {
     }
     
     private enum DataRow: Int, CaseIterable {
+        case myOrders
         case importPlaces
         case exportData
         case homeShortcuts
 
         var title: String {
             switch self {
+            case .myOrders: return "My Orders"
             case .importPlaces: return "Import Places"
             case .exportData: return "Export My Data"
             case .homeShortcuts: return "Home Screen Shortcuts"
@@ -640,6 +642,15 @@ extension SettingsViewController {
         case .data:
             if let row = DataRow(rawValue: indexPath.row) {
                 switch row {
+                case .myOrders:
+                    var config = cell.defaultContentConfiguration()
+                    config.text = row.title
+                    config.secondaryText = "Order-ahead orders and their status"
+                    config.secondaryTextProperties.color = .secondaryLabel
+                    config.image = UIImage(systemName: "bag")
+                    config.imageProperties.tintColor = Constants.Colors.primary
+                    cell.contentConfiguration = config
+                    cell.accessoryType = .disclosureIndicator
                 case .homeShortcuts:
                     var config = cell.defaultContentConfiguration()
                     config.text = row.title
@@ -890,6 +901,8 @@ extension SettingsViewController {
         case .data:
             if let row = DataRow(rawValue: indexPath.row) {
                 switch row {
+                case .myOrders:
+                    navigationController?.pushViewController(MyOrdersViewController(), animated: true)
                 case .importPlaces:
                     showPlaceImport()
                 case .exportData:
