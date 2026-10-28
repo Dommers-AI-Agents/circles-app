@@ -6,6 +6,7 @@ const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { createVenueClaimRequest, sanitizeKeyPart, STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const rewardService = require('../../services/rewardService');
 const emailService = require('../../services/emailService');
+const { placeVenueFields } = require('../../services/venueEnrollmentService');
 const { escapeHtml: esc } = require('../../utils/text');
 const db = getFirestore();
 
@@ -348,35 +349,14 @@ exports.approveClaim = async (req, res) => {
     // auto-enrolls the venue from the claim's place data, assigns the
     // claimant as owner, and emails the QR codes to the approving admin.
     if (!claim.venueId) {
-      // Resolve location/category from the canonical place (or legacy save)
-      let location = null;
-      let category = null;
-      let placeFound = false;
-      if (claim.globalPlaceId) {
-        const globalDoc = await db.collection('globalPlaces').doc(claim.globalPlaceId).get();
-        if (globalDoc.exists) {
-          placeFound = true;
-          const coords = globalDoc.data().location?.coordinates; // GeoJSON [lng, lat]
-          if (Array.isArray(coords) && coords.length === 2) {
-            location = { lat: coords[1], lng: coords[0] };
-          }
-          category = globalDoc.data().category || null;
-        }
-      }
-      if (!placeFound && claim.placeId) {
-        const placeDoc = await db.collection(COLLECTIONS.PLACES).doc(claim.placeId).get();
-        if (placeDoc.exists) {
-          placeFound = true;
-          const coords = placeDoc.data().location?.coordinates;
-          if (Array.isArray(coords) && coords.length === 2) {
-            location = { lat: coords[1], lng: coords[0] };
-          }
-          category = placeDoc.data().category || null;
-        }
-      }
-      if (!placeFound) {
+      // Location/category come from the canonical place (or legacy save)
+      const placeFields = (claim.globalPlaceId && await placeVenueFields(claim.globalPlaceId))
+        || (claim.placeId && await placeVenueFields(claim.placeId))
+        || null;
+      if (!placeFields) {
         return res.status(404).json({ success: false, error: 'The claimed place no longer exists' });
       }
+      const { location, category } = placeFields;
 
       const ownerEmail = claim.contactEmail || claim.userEmail || null;
       const venue = await rewardService.createVenue({

@@ -215,6 +215,27 @@ class RewardsService {
         }
     }
 
+    /// Super-user: the store's codes for a place, minting its venue record
+    /// when nobody has enrolled it yet. Idempotent, and the venue stays
+    /// unowned so the business can still claim it.
+    func enrollPlaceVenue(placeId: String, googlePlaceId: String? = nil, completion: @escaping (Result<EnrolledVenue, Error>) -> Void) {
+        let encodedId = placeId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? placeId
+        apiService.request(
+            endpoint: "rewards/venues/from-place/\(encodedId)",
+            method: .post,
+            queryParams: googlePlaceId.map { ["googlePlaceId": $0] },
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<EnrolledVenue>, APIError>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.data))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+    }
+
     /// Claim a business from its place page. Works whether or not the place
     /// is enrolled in the sticker program — the contact info is emailed to
     /// the admin, who verifies and approves.
@@ -1112,6 +1133,9 @@ struct PlaceVenueData: Codable {
     /// Present only when isOwner: headline counters for the inline stat strip
     let ownerStats: VenueOwnerStats?
     let claim: PlaceVenueClaim?
+    /// Super-users only, and only while the place has no venue: they can
+    /// enroll the store from its page to print its QR codes (2026-10-28)
+    let canEnroll: Bool?
     /// Menu / money buttons / gallery. nil when the owner has set nothing;
     /// the paid blocks are already stripped server-side when the store's
     /// subscription isn't live, so the view renders whatever arrives.
@@ -1408,6 +1432,12 @@ struct CreatedVenue: Codable {
     let registerCardUrl: String
     let emailSent: Bool
     let emailedTo: String?
+}
+
+/// POST rewards/venues/from-place: the store's venue, and whether this call made it
+struct EnrolledVenue: Codable {
+    let created: Bool
+    let venue: AdminVenue
 }
 
 struct AdminVenueList: Codable {

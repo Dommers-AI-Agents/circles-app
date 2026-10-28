@@ -11,6 +11,8 @@ const { venueManagerIds, venueGlobalPlaceId, ownerVenueInfo } = require('../../s
 const { venueLoyaltyStatus } = require('../../services/ownerSubscriptionService');
 const { GLOBAL_COLLECTIONS } = require('../../models/GlobalPlace');
 const { serializeDates } = require('../../utils/wireDates');
+const { enrollPlace } = require('../../services/venueEnrollmentService');
+const { sendServiceError } = require('../../utils/serviceError');
 
 // @desc    Create a venue from the app; QR codes are emailed to the requester
 // @route   POST /api/rewards/venues
@@ -69,6 +71,33 @@ exports.createVenueFromApp = async (req, res) => {
   } catch (error) {
     console.error('❌ In-app venue creation failed:', error);
     res.status(500).json({ success: false, error: 'Failed to create venue' });
+  }
+};
+
+// @desc    The store's codes for a place on the map, enrolling the place when
+//          nobody has: a super-user prints QR codes for any store, claimed or
+//          not. Idempotent — an already-enrolled place returns its venue. A
+//          new venue has no owner, so the business can still claim it.
+// @route   POST /api/rewards/venues/from-place/:placeId?googlePlaceId=
+// @access  Super user
+exports.enrollPlaceVenue = async (req, res) => {
+  try {
+    const { venue, created } = await enrollPlace(req.params.placeId, {
+      googlePlaceId: req.query.googlePlaceId || null
+    });
+    res.status(created ? 201 : 200).json({
+      success: true,
+      data: {
+        created,
+        venue: {
+          ...ownerVenueInfo(venue),
+          registerCardUrl: rewardService.stickerUrl(venue.registerCode),
+          active: venue.active !== false
+        }
+      }
+    });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Enroll place venue', fallbackCode: 'ENROLL_FAILED', fallbackMessage: 'Could not set up this store' });
   }
 };
 

@@ -1990,6 +1990,14 @@ class PlaceDetailViewController: BaseViewController {
                 self?.openPhotoGallery(arranging: true)
             }))
         }
+        // Super-user on a store nobody has enrolled: set it up from here and
+        // print its codes (window sign, table tent, counter card). An enrolled
+        // store, claimed or not, already shows them Manage Store below.
+        if placeVenueData?.venue == nil, placeVenueData?.canEnroll == true {
+            actions.append((title: "Print Store QR Codes", style: .default, handler: { [weak self] in
+                self?.enrollStoreForPrinting()
+            }))
+        }
         if ownerEdit.isVenueOwner {
             // Every edit lives in Manage Store (photos, details, hours…)
             if let venue = placeVenueData?.venue {
@@ -3631,6 +3639,30 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
                             // Super-users manage venues they don't own — fall back to the full list
                             self.pushVenueManageFromAllVenues(venueId: venue.venueId)
                         }
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Super-user: give this place its venue record (codes, no owner) and
+    /// open the store page, where both QR codes print and email.
+    private func enrollStoreForPrinting() {
+        let placeId = place.globalPlaceId ?? place.id
+        let loading = AlertPresenter.showLoading(message: "Setting up the store's codes...", from: self)
+        RewardsService.shared.enrollPlaceVenue(placeId: placeId, googlePlaceId: place.googlePlaceId) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self = self else { return }
+                    switch result {
+                    case .success(let enrolled):
+                        // The page now has a store: the owner bar and Manage Store appear
+                        self.venueLoader.loadVenueRewards()
+                        let storeVC = VenueAdminDetailViewController(venue: enrolled.venue)
+                        storeVC.onVenueChanged = { [weak self] in self?.venueLoader.loadVenueRewards() }
+                        self.navigationController?.pushViewController(storeVC, animated: true)
                     case .failure(let error):
                         self.showError(error)
                     }

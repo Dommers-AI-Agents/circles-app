@@ -391,7 +391,10 @@ exports.getVenueByPlace = async (req, res) => {
           console.error('⚠️ Claim status lookup failed:', claimError.message);
         }
       }
-      return res.json({ success: true, data: { venue: null, claim } });
+      // Super-users can enroll the store right here (print its codes); the
+      // place page shows that door only when this says so
+      const canEnroll = req.user.isSuperUser === true && claim.canClaim;
+      return res.json({ success: true, data: { venue: null, claim, canEnroll } });
     }
 
     const isOwner = isVenueTeamMember(venue, userId)

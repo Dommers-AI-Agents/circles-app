@@ -18,6 +18,7 @@ const {
   emailVenueQR,
   setSuperUser,
   setVenueOwner,
+  enrollPlaceVenue,
   createVenue,
   listVenues,
   getVenueAdminDetail
@@ -114,6 +115,8 @@ router.post('/venues', requireSuperUser, createVenueFromApp);
 router.get('/venues', requireSuperUser, listVenues);
 router.post('/superusers', requireSuperUser, setSuperUser);
 router.post('/venues/:venueId/owner', requireSuperUser, setVenueOwner);
+// Literal segment, like by-place: a super-user gets (or mints) the codes for any place
+router.post('/venues/from-place/:placeId', requireSuperUser, enrollPlaceVenue);
 // One store's full admin picture (requireVenueOwner just loads req.venue here)
 router.get('/venues/:venueId/admin', requireSuperUser, requireVenueOwner, getVenueAdminDetail);
 router.get('/claims', requireSuperUser, listClaims);
