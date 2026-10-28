@@ -28,7 +28,7 @@ posts = []
 # Marketing/widget-clips/raw and app-store-2026-09/source/raw-iphone). A post
 # without one isn't ready: seed-queue.js loads it paused.
 SHOTS = {'app-friends-map': 'home-zoomed', 'app-widgets-intro': 'widgets', 'app-place': 'place', 'app-rewards': 'storepoints',
-         'app-privacy': 'privacy', 'app-profile': 'profile',
+         'app-privacy': 'privacy', 'app-profile': 'profile', 'app-web-ordering': 'webordering',
          'widget-events': 'events', 'widget-howareyou': 'howareyou', 'widget-postcard': 'postcard', 'widget-fridgemail': 'fridgemail',
          'widget-nextbar': 'nextbar', 'widget-whattoeat': 'whattoeat', 'widget-drink': 'drink', 'widget-workouts': 'workouts',
          'widget-heartbeat': 'heartbeat', 'widget-sleepsounds': 'sleepsounds', 'widget-habits': 'habits'}
@@ -52,6 +52,9 @@ APP_POSTS = [
     dict(id='app-profile', emoji='🗺️', accent='#2B6CB0', kicker='Your profile',
          headline='All your favorite places in one profile',
          caption="Your circles, the places in them, your moments and your check-ins, all on one profile. A map of you, shared with the people you choose."),
+    dict(id='app-web-ordering', emoji='🛍️', accent='#3182CE', kicker='For store owners',
+         headline='Your menu, now taking orders on the web',
+         caption="New for local shops and cafés on FavCircles Business: photograph your printed menu once, and customers can order ahead and pay at pickup — in the app, and now on your own web page too 🛍️\n\nLink order.favcircles.com/your-store from your website, Instagram or Google profile. No account needed to order, no fees, no cut, and web orders land in the same Orders list as app orders.\n\nRun a store? Claim it in the app and set it up in an afternoon."),
 ]
 for p in APP_POSTS:
     p['caption'] += f"\n\n{EMAIL_ASK}\n\n{BASE_TAGS} #friends #travel"

@@ -1009,6 +1009,7 @@ class HelpContentProvider {
                 • The register QR card and single-use loyalty codes
                 • Full monthly stats history
                 • Online ordering: customers order ahead from your menu and pay you at pickup, with no fees
+                • Your own ordering page on the web (order.favcircles.com/your-store): the same menu for customers without the app. Link it from your website, Instagram or Google profile; web orders land in the same Orders list
                 • Scan instead of typing: photograph your printed menu and every item goes on your page as a full menu customers can search; photograph the hours on your door; photograph a flyer or specials board to fill in an announcement. You check everything before it's posted, and anything hard to read is marked in orange
 
                 One Business subscription covers your physical store and your online store together.

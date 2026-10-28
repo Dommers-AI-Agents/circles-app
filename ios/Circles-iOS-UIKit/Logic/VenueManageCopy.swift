@@ -24,7 +24,7 @@ enum VenueManageCopy {
                 title: "Your place page",
                 explanation: isVirtual
                     ? "What customers see when they open your store: buttons that make money (Reserve, Order, Catering, Book — free), and with FavCircles Business your menu, featured items and your own photos."
-                    : "What customers see when they open your place: your hours and cover photo, buttons that make money (Reserve, Order, Catering, Book — free), and with FavCircles Business your menu, featured items and your own photos.")
+                    : "What customers see when they open your place: your hours and cover photo, buttons that make money (Reserve, Order, Catering, Book — free), and with FavCircles Business your menu, featured items, your own photos, online ordering, and your own ordering page on the web (order.favcircles.com/your-store) to link from your website.")
         case .loyalty:
             return Header(
                 title: "Loyalty program",
