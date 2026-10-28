@@ -103,7 +103,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     // Search scope properties
     var currentSearchScope: SearchScope { get { state.currentSearchScope } set { state.currentSearchScope = newValue } }
     var networkPlaces: [Place] { get { state.networkPlaces } set { state.networkPlaces = newValue } } // Cache for network places
-    var isLoadingNetworkPlaces = false
 
     // Unified search: places (local, instant) + people (server, debounced).
     // People results are the PEOPLE section of the search overlay; tapping one

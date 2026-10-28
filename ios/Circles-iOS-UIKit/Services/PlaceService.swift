@@ -145,6 +145,40 @@ class PlaceService {
         )
     }
 
+    /// The network's saves whose venue name matches `query` (word prefixes),
+    /// nearest venue first when a reference point is given. One request for the
+    /// whole network — the home search's second source.
+    /// The query string is embedded in the endpoint so APIService's
+    /// duplicate-request suppression keys on the text too.
+    func searchNetworkPlaces(query: String, near reference: CLLocation?, limit: Int = 50,
+                             completion: @escaping (Result<[Place], Error>) -> Void) {
+        var endpoint = "network/places/search?limit=\(limit)"
+        if let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)?
+            .replacingOccurrences(of: "&", with: "%26") {
+            endpoint += "&query=\(encoded)"
+        }
+        if let reference {
+            endpoint += "&lat=\(String(format: "%.5f", reference.coordinate.latitude))"
+            endpoint += "&lng=\(String(format: "%.5f", reference.coordinate.longitude))"
+        }
+
+        let apiCompletion = createAPICompletion { (result: Result<PlacesResponse, Error>) in
+            switch result {
+            case .success(let response):
+                completion(.success(response.places))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
+
+        APIService.shared.request(
+            endpoint: endpoint,
+            method: .get,
+            requiresAuth: true,
+            completion: apiCompletion
+        )
+    }
+
     func fetchPlacesByMultipleCircles(circleIds: [String], completion: @escaping (Result<[Place], Error>) -> Void) {
         let body: [String: Any] = [
             "circleIds": circleIds

@@ -7,7 +7,7 @@ const {
   getUsersWithCircles,
   getUserCircles
 } = require('../controllers/circleSharingController');
-const { getNetworkPlacesInViewport } = require('../controllers/networkPlacesController');
+const { getNetworkPlacesInViewport, searchNetworkPlaces } = require('../controllers/networkPlacesController');
 const lovedPlaces = require('../controllers/network/lovedPlacesController');
 const { protect } = require('../middleware/firebaseAuth');
 
@@ -19,6 +19,10 @@ router.use(protect);
 // Get network places within a map viewport (center + radius)
 router.route('/places/viewport')
   .get(getNetworkPlacesInViewport);
+
+// Network saves whose venue name matches the typed text (home search)
+router.route('/places/search')
+  .get(searchNetworkPlaces);
 
 // Network overview routes
 router.route('/shared-circles')

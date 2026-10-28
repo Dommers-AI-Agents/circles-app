@@ -30,6 +30,7 @@ const { normalizePrivacy, PRIVACY } = require('../services/visibility');
 const { isSameUser } = require('../services/idService');
 const placePhotos = require('../services/placePhotoService');
 const { sendServiceError } = require('../utils/serviceError');
+const globalPlaceSearch = require('../services/globalPlaceSearch');
 
 
 // Mirror an uploaded media URL into the legacy places docs so legacy readers
@@ -334,70 +335,20 @@ exports.searchGlobalPlaces = async (req, res, next) => {
     // collection (security audit 2026-10-01)
     const { limit, offset } = clampPagination(req.query, { defaultLimit: 20, maxLimit: 100 });
     
-    let placesQuery = db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES);
-    
-    // Filter by category if provided
-    if (category && category !== 'all') {
-      placesQuery = placesQuery.where('category', '==', category);
-    }
-    
-    // Text search via word-prefix tokens (searchTokens on each doc): matches
-    // any word in the name ("pizza" finds "Colvitto's Pizza & Bakery").
-    // Firestore allows one array-contains per query, so anchor on the most
-    // selective (longest) token and filter the remaining tokens in memory.
-    let queryTokens = [];
-    if (query && query.trim()) {
-      queryTokens = query.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map(t => t.slice(0, 20));
-      if (queryTokens.length > 0) {
-        const anchor = queryTokens.reduce((a, b) => (b.length > a.length ? b : a));
-        placesQuery = placesQuery.where('searchTokens', 'array-contains', anchor);
-      }
-    }
-    
-    // Order by quality score for best results first
-    placesQuery = placesQuery
-      .orderBy('qualityScore', 'desc')
-      .limit(limit)
-      .offset(offset);
-    
-    const placesSnapshot = await placesQuery.get();
-    let places = serializeQuerySnapshot(placesSnapshot);
+    // Token search + quality cut + radius cut live in services/globalPlaceSearch
+    // (shared with the network search). The quality limit applies BEFORE the
+    // radius filter, as it always has.
+    const hasOrigin = Boolean(lat && lng);
+    const places = await globalPlaceSearch.searchGlobalPlaces({
+      query,
+      category,
+      lat: hasOrigin ? parseFloat(lat) : undefined,
+      lng: hasOrigin ? parseFloat(lng) : undefined,
+      radiusKm: parseFloat(radius),
+      limit,
+      offset
+    });
 
-    // Every query token must match, not just the anchored one
-    if (queryTokens.length > 1) {
-      places = places.filter(place =>
-        queryTokens.every(token => (place.searchTokens || []).includes(token))
-      );
-    }
-
-    // Internal search fields don't belong in the response payload
-    places = places.map(({ searchTokens, nameLower, ...rest }) => rest);
-
-    // Apply geolocation filtering if provided
-    if (lat && lng) {
-      const centerLat = parseFloat(lat);
-      const centerLng = parseFloat(lng);
-      const maxRadius = parseFloat(radius);
-      
-      places = places.filter(place => {
-        if (!place.location || !place.location.coordinates) return false;
-        
-        const [placeLng, placeLat] = place.location.coordinates;
-        const distance = calculateDistance(centerLat, centerLng, placeLat, placeLng);
-        
-        return distance <= maxRadius;
-      });
-      
-      // Sort by distance if geo-filtering
-      places = places.sort((a, b) => {
-        const distanceA = calculateDistance(centerLat, centerLng, 
-          a.location.coordinates[1], a.location.coordinates[0]);
-        const distanceB = calculateDistance(centerLat, centerLng, 
-          b.location.coordinates[1], b.location.coordinates[0]);
-        return distanceA - distanceB;
-      });
-    }
-    
     res.status(200).json({
       success: true,
       data: places,
@@ -1085,18 +1036,6 @@ exports.setPlaceCoverPhoto = async (req, res) => {
   }
 };
 
-// Helper function to calculate distance between two points
-function calculateDistance(lat1, lng1, lat2, lng2) {
-  const R = 6371; // Earth's radius in km
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng/2) * Math.sin(dLng/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
-}
 
 // Import activity tracking
 const { trackGlobalPlaceLiked, trackPhotoUploaded } = require('../services/activityService');

@@ -271,9 +271,10 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 filterPlaces(searchText: searchBar.text ?? "", refetchSuggestions: false)
             }
             
-            // Load network places if switching to network search and not already loaded
-            if selectedScope == .networkPlaces && networkPlaces.isEmpty && !isLoadingNetworkPlaces {
-                loadNetworkPlaces()
+            // Switching to network search asks the server for the network's
+            // saves matching the current text
+            if selectedScope == .networkPlaces {
+                loadNetworkPlaces(matching: searchBar.text ?? "", reference: searchReferenceLocation())
             }
             
             // Update UI and hide dropdown

@@ -1,77 +1,42 @@
 import UIKit
+import CoreLocation
 
-// Loading the network's places for search (every connection's visible saves),
-// moved out of +Search so that file stays about the search bar.
+// The network's places for search, moved out of +Search so that file stays
+// about the search bar.
+//
+// This used to fetch EVERY network circle's places (one request per circle —
+// 239 for a large network) and fold them in only when the last one answered,
+// so a place a connection saved joined the results 15–30 s after typing and
+// the burst slowed every other call. Now one request per query: the server
+// matches the text against the venue catalog and returns the network's saves
+// of those venues (GET /network/places/search; Wes, 2026-10-28).
 extension CirclesHomeViewController {
-    // Load network places for search
-    func loadNetworkPlaces() {
-        guard !isLoadingNetworkPlaces else { return }
-        
-        isLoadingNetworkPlaces = true
-        Logger.debug("🔍 Loading network places for search...")
-        
-        let group = DispatchGroup()
-        var allNetworkPlaces: [Place] = []
-        
-        // If we don't have network circles, fetch them first
-        if networkCircles.isEmpty {
-            group.enter()
-            APIService.shared.request(
-                endpoint: "network/my-network-circles",
-                method: .get,
-                requiresAuth: true
-            ) { [weak self] (result: Result<CirclesDataResponse, APIError>) in
-                switch result {
-                case .success(let response):
-                    self?.networkCircles = response.data
-                    // Now fetch places from network circles
-                    for circle in response.data {
-                        group.enter()
-                        PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
-                            switch result {
-                            case .success(let places):
-                                allNetworkPlaces.append(contentsOf: places)
-                            case .failure(let error):
-                                Logger.debug("Failed to fetch places for network circle \(circle.id): \(error)")
-                            }
-                            group.leave()
-                        }
-                    }
-                case .failure(let error):
-                    Logger.debug("Failed to fetch network circles: \(error)")
+    /// Fetches the network's saves whose venue matches `query` and folds them
+    /// into `networkPlaces`, then re-matches the current search. Debounced by
+    /// the caller; stale answers (the text moved on) are dropped.
+    func loadNetworkPlaces(matching query: String, reference: CLLocation?) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        Logger.debug("🔍 Searching network places for \"\(trimmed)\"")
+
+        PlaceService.shared.searchNetworkPlaces(query: trimmed, near: reference) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard case .success(let places) = result else {
+                    Logger.debug("Network place search failed: \(result)")
+                    return
                 }
-                group.leave()
-            }
-        } else {
-            // Use existing network circles
-            for circle in networkCircles {
-                group.enter()
-                PlaceService.shared.fetchPlacesByCircleId(circleId: circle.id) { result in
-                    switch result {
-                    case .success(let places):
-                        allNetworkPlaces.append(contentsOf: places)
-                    case .failure(let error):
-                        Logger.debug("Failed to fetch places for network circle \(circle.id): \(error)")
-                    }
-                    group.leave()
-                }
-            }
-        }
-        
-        group.notify(queue: .main) { [weak self] in
-            guard let self = self else { return }
-            self.isLoadingNetworkPlaces = false
-            
-            // Deduplicate network places before storing
-            let deduplicatedNetworkPlaces = self.removeDuplicatePlaces(allNetworkPlaces)
-            self.networkPlaces = deduplicatedNetworkPlaces
-            Logger.debug("🔍 Loaded \(allNetworkPlaces.count) raw network places, deduplicated to \(deduplicatedNetworkPlaces.count) unique places for search")
-            
-            // If a search is active, fold the newly-loaded network places into
-            // the current results
-            if self.isSearching, let text = self.searchBar.text, !text.isEmpty {
+                // Results accumulate across queries (dedupe by id), so backing
+                // up the text still matches what an earlier query brought in
+                self.networkPlaces = self.removeDuplicatePlaces(self.networkPlaces + places)
+                Logger.debug("🔍 Network search \"\(trimmed)\": \(places.count) places, \(self.networkPlaces.count) cached")
+
+                guard self.isSearching,
+                      self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
                 // Same query, same origin: re-match, don't re-fetch suggestions
-                self.filterPlaces(searchText: text, refetchSuggestions: false)
+                self.filterPlaces(searchText: trimmed, refetchSuggestions: false)
+                self.mapViewController?.setSearchFilter(self.searchMode.filtersMap(trimmed),
+                                                        matchedPlaceIds: self.searchMode == .places ? self.appleMatchedPlaceIds : [])
                 self.refreshSearchOverlay()
                 self.updateEmptyState()
             }

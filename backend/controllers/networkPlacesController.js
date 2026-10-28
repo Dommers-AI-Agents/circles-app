@@ -9,6 +9,9 @@ const { isPlaceVisibleToViewer } = require('../services/visibility');
 const { buildViewerContext } = require('../services/viewerContext');
 const { normalizeUserId } = require('../services/idService');
 const { publicUserSummary } = require('../services/publicProjection');
+const { isSameUser } = require('../services/idService');
+const { queryInChunks } = require('../utils/firestoreChunks');
+const globalPlaceSearch = require('../services/globalPlaceSearch');
 const geofire = require('geofire-common');
 
 const db = getFirestore();
@@ -157,44 +160,7 @@ const getNetworkPlacesInViewport = async (req, res) => {
       });
     }
 
-    // Enrich with the adder's user info (same shape as circles/:id/places) so
-    // the app can show "Added by <name>" instead of "Unknown"
-    const adderIds = [...new Set(places.map(p => p.addedBy).filter(Boolean))];
-    const adderDocs = await Promise.all(
-      adderIds.map(id => db.collection(COLLECTIONS.USERS).doc(normalizeUserId(id) || String(id)).get())
-    );
-    const userMap = new Map();
-    adderDocs.forEach((doc, index) => {
-      if (doc.exists) {
-        const userData = serializeDoc(doc);
-        // Name and photo only — never another user's email (security audit
-        // 2026-10-01).
-        const summary = publicUserSummary(userData);
-        userMap.set(userData.id, summary);
-        // Also map the original (possibly complex-format) id from the place doc
-        if (adderIds[index] !== userData.id) {
-          userMap.set(adderIds[index], summary);
-        }
-      }
-    });
-    places.forEach(place => {
-      place.addedByUser = userMap.get(place.addedBy) || null;
-    });
-
-    // Overlay social + venue data from the canonical venue records so map
-    // pins/cards match the detail page
-    const { fetchGlobalSocialMap, overlayVenueFields } = require('../services/placeReadService');
-    const socialByGlobalId = await fetchGlobalSocialMap(places);
-    const placesWithSocial = places.map(place => {
-      const social = socialByGlobalId.get(place.globalPlaceId);
-      if (!social) return place;
-      return {
-        ...overlayVenueFields(place, social.venueData),
-        likes: social.likes,
-        likesCount: social.likes.length,
-        commentsCount: social.commentsCount
-      };
-    });
+    const placesWithSocial = await enrichNetworkPlaces(places);
 
     console.log(`🗺️ Viewport query for ${userId}: center=(${centerLat},${centerLng}) r=${radiusM}m circles=${circleIds.length} → ${placesWithSocial.length} places${hasMore ? ' (truncated)' : ''}`);
 
@@ -215,4 +181,130 @@ const getNetworkPlacesInViewport = async (req, res) => {
   }
 };
 
-module.exports = { getNetworkPlacesInViewport };
+// Enrich save records the way every network list expects them: the adder's
+// public summary ("Added by <name>") and the venue's social/venue overlay so
+// cards match the detail page. Shared by the viewport and the search.
+async function enrichNetworkPlaces(places) {
+  const adderIds = [...new Set(places.map(p => p.addedBy).filter(Boolean))];
+  const adderDocs = await Promise.all(
+    adderIds.map(id => db.collection(COLLECTIONS.USERS).doc(normalizeUserId(id) || String(id)).get())
+  );
+  const userMap = new Map();
+  adderDocs.forEach((doc, index) => {
+    if (doc.exists) {
+      const userData = serializeDoc(doc);
+      // Name and photo only — never another user's email (security audit
+      // 2026-10-01).
+      const summary = publicUserSummary(userData);
+      userMap.set(userData.id, summary);
+      // Also map the original (possibly complex-format) id from the place doc
+      if (adderIds[index] !== userData.id) {
+        userMap.set(adderIds[index], summary);
+      }
+    }
+  });
+  places.forEach(place => {
+    place.addedByUser = userMap.get(place.addedBy) || null;
+  });
+
+  // Required lazily: placeReadService and this controller's dependency chain
+  // meet at module load time.
+  const { fetchGlobalSocialMap, overlayVenueFields } = require('../services/placeReadService');
+  const socialByGlobalId = await fetchGlobalSocialMap(places);
+  return places.map(place => {
+    const social = socialByGlobalId.get(place.globalPlaceId);
+    if (!social) return place;
+    return {
+      ...overlayVenueFields(place, social.venueData),
+      likes: social.likes,
+      likesCount: social.likes.length,
+      commentsCount: social.commentsCount
+    };
+  });
+}
+
+const SEARCH_DEFAULT_RADIUS_KM = 80;
+const SEARCH_MAX_RADIUS_KM = 200;
+const SEARCH_VENUE_LIMIT = 100;
+const SEARCH_DEFAULT_LIMIT = 50;
+const SEARCH_MAX_LIMIT = 100;
+
+// @desc    Places saved by people in my network whose venue name matches the
+//          text — the home search's second source. One indexed catalog read
+//          (searchTokens) plus one chunked lookup of their saves, instead of
+//          the client fetching every network circle's places (239 requests
+//          for a large network; the search waited on the last one).
+// @route   GET /api/network/places/search?query=&lat=&lng=&radiusKm=&limit=
+// @access  Private
+const searchNetworkPlaces = async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const query = String(req.query.query || '').trim();
+    if (!query) {
+      return res.status(400).json({ success: false, message: 'query is required' });
+    }
+    const lat = parseFloat(req.query.lat);
+    const lng = parseFloat(req.query.lng);
+    const hasOrigin = Number.isFinite(lat) && Number.isFinite(lng)
+      && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+    let radiusKm = parseFloat(req.query.radiusKm);
+    radiusKm = Number.isFinite(radiusKm)
+      ? Math.min(Math.max(radiusKm, 1), SEARCH_MAX_RADIUS_KM)
+      : SEARCH_DEFAULT_RADIUS_KM;
+    let limit = parseInt(req.query.limit, 10);
+    limit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), SEARCH_MAX_LIMIT) : SEARCH_DEFAULT_LIMIT;
+
+    const venues = await globalPlaceSearch.searchGlobalPlaces({
+      query,
+      lat: hasOrigin ? lat : undefined,
+      lng: hasOrigin ? lng : undefined,
+      radiusKm,
+      limit: SEARCH_VENUE_LIMIT
+    });
+    if (venues.length === 0) {
+      return res.status(200).json({ success: true, places: [], total: 0, hasMore: false });
+    }
+
+    // List surface, not the map: a circle owner's showOnMap opt-out does not
+    // hide their saves from a text search.
+    const [{ circleIds }, viewerCtx] = await Promise.all([
+      getAllowedCircleIds(userId),
+      buildViewerContext(userId)
+    ]);
+    const allowedCircles = new Set(circleIds);
+    if (allowedCircles.size === 0) {
+      return res.status(200).json({ success: true, places: [], total: 0, hasMore: false });
+    }
+
+    const venueRank = new Map(venues.map((venue, index) => [venue.id, index]));
+    const saveDocs = await queryInChunks(venues.map(v => v.id), chunk =>
+      db.collection(COLLECTIONS.PLACES).where('globalPlaceId', 'in', chunk).get()
+    );
+
+    const matches = [];
+    for (const doc of saveDocs) {
+      const data = doc.data();
+      if (data.deletedAt) continue;
+      // The viewer's own saves are already on their phone; this is the network
+      if (isSameUser(data.addedBy, userId)) continue;
+      if (!allowedCircles.has(data.circleId)) continue;
+      if (!isPlaceVisibleToViewer(data, userId, viewerCtx)) continue;
+      const place = serializeDoc(doc);
+      delete place.privateNotes;
+      matches.push(place);
+    }
+    // Nearest venue first (the catalog already sorted by distance when an
+    // origin was given, by quality otherwise); several saves of one venue
+    // stay together.
+    matches.sort((a, b) => (venueRank.get(a.globalPlaceId) ?? Infinity) - (venueRank.get(b.globalPlaceId) ?? Infinity));
+    const hasMore = matches.length > limit;
+    const places = await enrichNetworkPlaces(matches.slice(0, limit));
+
+    res.status(200).json({ success: true, places, total: places.length, hasMore });
+  } catch (error) {
+    console.error('❌ Error in network place search:', error);
+    res.status(500).json({ success: false, message: 'Error searching network places', error: error.message });
+  }
+};
+
+module.exports = { getNetworkPlacesInViewport, searchNetworkPlaces };

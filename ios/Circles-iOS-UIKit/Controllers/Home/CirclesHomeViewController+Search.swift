@@ -211,12 +211,6 @@ extension CirclesHomeViewController {
         } else {
             rebuildSuggestedRows()
         }
-
-        // Network places power the search superset — load them once in the
-        // background (previously only loaded when the user picked the scope).
-        if networkPlaces.isEmpty && !isLoadingNetworkPlaces {
-            loadNetworkPlaces()
-        }
     }
 
     /// The search text currently filtering the home surface, or nil — the
@@ -291,19 +285,23 @@ extension CirclesHomeViewController {
         Array(filteredPlaces.prefix(searchPlan.placeRows))
     }
 
-    /// Debounced nearby lookup, two channels: the shared catalog (name-word
-    /// prefixes) and Apple Maps (plain language — "deli" finds delis, whatever
-    /// they were filed under). Runs whether or not your own places matched;
+    /// Debounced lookups, three channels: the network's saves of matching
+    /// venues (they join PLACES), the shared catalog (name-word prefixes) and
+    /// Apple Maps (plain language — "deli" finds delis, whatever they were
+    /// filed under). Runs whether or not your own places matched;
     /// HomeSearchPlan decides how many rows the answer gets.
     func updateSuggestedPlaces(for query: String) {
         suggestedSearchWorkItem?.cancel()
-        // No reference point → skip: quality-ranked global hits with no
-        // geo filter would confidently suggest pizza on another continent.
-        guard let reference = searchReferenceLocation() else { return }
+        // No reference point → skip the nearby channels: quality-ranked global
+        // hits with no geo filter would confidently suggest pizza on another
+        // continent. The network's saves still match by name.
+        let reference = searchReferenceLocation()
         rebuildSuggestedRows()
 
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
+            self.loadNetworkPlaces(matching: query, reference: reference)
+            guard let reference else { return }
             self.fetchSuggestedPlaces(serverQuery: query, typedQuery: query,
                                       reference: reference, allowFallback: true)
             self.fetchAppleVenues(typedQuery: query, reference: reference)
