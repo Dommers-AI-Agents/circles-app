@@ -96,12 +96,33 @@ class PlaceVenueRewardsView: UIView {
         layer.borderWidth = isOwner ? 1.5 : 0
         layer.borderColor = isOwner ? Constants.Colors.primary.withAlphaComponent(0.35).cgColor : nil
 
+        // Rewards exist only once the store is claimed and its owner is on
+        // Business. An enrolled store without that (no owner yet, lapsed) is
+        // not a rewards program: no "Rewards at" header, no earn line. With
+        // nothing of the owner's to show either, the card is the same slim
+        // "Is this your store?" an unenrolled place gets.
+        let rewardsLive = data.rewardsLive != false
+        let storefront = data.storefront
+        let hasStorefrontContent = (storefront?.actions).map { makeActionButtonsRow($0) != nil } ?? false
+            || !(storefront?.menu?.isEmpty ?? true)
+            || !(storefront?.offerings?.isEmpty ?? true)
+            || !(storefront?.gallery.isEmpty ?? true)
+        if !isOwner, data.isOwner != true, !rewardsLive, !hasStorefrontContent {
+            if let footer = makeClaimOnlyFooter(data.claim) {
+                containerStack.addArrangedSubview(footer)
+            } else {
+                isHidden = true
+            }
+            return
+        }
+
         // Customers see their points at this store right in the header
-        let balanceHere = (!isOwner && data.rewardsLive != false) ? data.venueBalance : nil
-        containerStack.addArrangedSubview(makeHeader(venue, isOwner: isOwner, balanceHere: balanceHere))
+        let balanceHere = (!isOwner && rewardsLive) ? data.venueBalance : nil
+        let header = RewardsAvailability.storeCardHeader(venueName: venue.venueName, isOwner: isOwner, rewardsLive: rewardsLive)
+        containerStack.addArrangedSubview(makeHeader(venue, header: header, isOwner: isOwner, balanceHere: balanceHere))
         // The money buttons sit right under the name — Reserve / Order are
         // the reason most people open a store's page at all.
-        if let actions = data.storefront?.actions, let row = makeActionButtonsRow(actions) {
+        if let actions = storefront?.actions, let row = makeActionButtonsRow(actions) {
             containerStack.addArrangedSubview(row)
         }
         // The owner's one strip: what needs them, how the store is doing,
@@ -164,7 +185,7 @@ class PlaceVenueRewardsView: UIView {
 
     // MARK: - Rows
 
-    private func makeHeader(_ venue: PlaceVenue, isOwner: Bool = false, balanceHere: Int? = nil) -> UIView {
+    private func makeHeader(_ venue: PlaceVenue, header: RewardsAvailability.StoreCardHeader, isOwner: Bool = false, balanceHere: Int? = nil) -> UIView {
         let row = UIView()
         row.translatesAutoresizingMaskIntoConstraints = false
 
@@ -175,14 +196,14 @@ class PlaceVenueRewardsView: UIView {
 
         let titleLabel = UILabel()
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.text = isOwner ? "Your Store · \(venue.venueName)" : "Rewards at \(venue.venueName)"
+        titleLabel.text = header.title
         titleLabel.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
         titleLabel.textColor = isOwner ? Constants.Colors.primary : .label
         titleLabel.numberOfLines = 1
 
         let earnLabel = UILabel()
         earnLabel.translatesAutoresizingMaskIntoConstraints = false
-        let earnText = venue.earnRate.map { "Earn \($0) pts per purchase" }
+        let earnText = header.showsEarnLine ? venue.earnRate.map { "Earn \($0) pts per purchase" } : nil
         if let balanceHere {
             let balanceText = "You have \(balanceHere) pts here"
             let line = NSMutableAttributedString(string: balanceText, attributes: [

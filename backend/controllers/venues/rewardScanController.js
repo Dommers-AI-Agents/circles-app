@@ -431,7 +431,11 @@ exports.getVenueByPlace = async (req, res) => {
       data: {
         venue: {
           ...publicVenueInfo(venue),
-          earnRate: rewardService.effectiveEarnRate(venue)
+          // Rewards exist only once the store is claimed and its owner is on
+          // Business (or comped). Until then nothing on the page says "earn":
+          // an enrolled-but-unowned store carried its default rate here and
+          // the page read it as a rewards program (Wes, 2026-10-28).
+          earnRate: venueLoyaltyLive ? rewardService.effectiveEarnRate(venue) : null
         },
         // Whether a register scan here earns right now (the same check the
         // scan makes) — the place page's "Get Rewards" hides when it wouldn't.

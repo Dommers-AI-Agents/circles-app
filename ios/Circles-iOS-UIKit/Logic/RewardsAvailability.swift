@@ -43,6 +43,19 @@ enum RewardsAvailability: Equatable {
         ))
     }
 
+    /// The store card's header line for a venue. Rewards copy ("Rewards at",
+    /// the earn line) appears only while scans award points; an enrolled
+    /// store with no owner yet, or a lapsed one, is just the store by name.
+    struct StoreCardHeader: Equatable {
+        let title: String
+        let showsEarnLine: Bool
+    }
+
+    static func storeCardHeader(venueName: String, isOwner: Bool, rewardsLive: Bool) -> StoreCardHeader {
+        if isOwner { return StoreCardHeader(title: "Your Store · \(venueName)", showsEarnLine: rewardsLive) }
+        return StoreCardHeader(title: rewardsLive ? "Rewards at \(venueName)" : venueName, showsEarnLine: rewardsLive)
+    }
+
     var details: Details? {
         if case .earn(let details) = self { return details }
         return nil

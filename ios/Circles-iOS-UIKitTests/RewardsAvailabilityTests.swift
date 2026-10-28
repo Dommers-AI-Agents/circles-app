@@ -51,6 +51,17 @@ struct RewardsAvailabilityTests {
                 == "Pasta & Provisions gives 10 points per visit. Scan the QR code at the register to collect them.")
     }
 
+    @Test func storeCardSaysRewardsOnlyWhileTheyAreLive() {
+        // Enrolled, no owner yet (or Business lapsed): the store by name, no earn line
+        let unowned = RewardsAvailability.storeCardHeader(venueName: "Pasta & Provisions", isOwner: false, rewardsLive: false)
+        #expect(unowned == .init(title: "Pasta & Provisions", showsEarnLine: false))
+        let live = RewardsAvailability.storeCardHeader(venueName: "Pasta & Provisions", isOwner: false, rewardsLive: true)
+        #expect(live == .init(title: "Rewards at Pasta & Provisions", showsEarnLine: true))
+        // The owner's own store is always theirs; the earn line still waits for Business
+        let owner = RewardsAvailability.storeCardHeader(venueName: "Pasta & Provisions", isOwner: true, rewardsLive: false)
+        #expect(owner == .init(title: "Your Store · Pasta & Provisions", showsEarnLine: false))
+    }
+
     @Test func balanceCopyCoversNoneAndOne() {
         func details(_ balance: Int) -> RewardsAvailability.Details {
             .init(venueName: "Shop", earnRate: nil, venueBalance: balance, offers: [])
