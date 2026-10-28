@@ -29,14 +29,6 @@ const REWARD_EVENT_TYPES = [
 
 // Venue with a window sticker (discovery) and a register card (purchase proof).
 // Offers are venue-honored discounts users redeem with points.
-// Default comp expiry for an unclaimed enrollment: open-ended (null) unless a
-// bounded runway is configured via rewardConfig.UNCLAIMED_COMP_DAYS.
-const compDefaultUntil = (nowIso) => {
-  const days = rewardConfig.UNCLAIMED_COMP_DAYS;
-  if (!Number.isInteger(days) || days <= 0) return null;
-  return new Date(new Date(nowIso).getTime() + days * 24 * 60 * 60 * 1000).toISOString();
-};
-
 const createStickerVenue = (data, windowCode, registerCode) => {
   const now = new Date().toISOString();
   const emptyStats = {
@@ -82,19 +74,15 @@ const createStickerVenue = (data, windowCode, registerCode) => {
       active: offer.active !== false
     })),
     announcements: [],
-    // Loyalty comp: keeps the program live for a venue with no paying owner,
-    // replacing the old implicit "unowned => live forever" rule with an
-    // explicit, auditable, sunsettable flag. Venues enrolled without an owner
-    // are comped by default; owner-created venues are not (they subscribe).
-    // `loyaltyCompedUntil` is an ISO string or null (null = open-ended).
-    loyaltyComped: data.loyaltyComped !== undefined
-      ? data.loyaltyComped === true
-      : !data.ownerUserId,
-    loyaltyCompedUntil: data.loyaltyCompedUntil !== undefined
-      ? data.loyaltyCompedUntil
-      : (!data.ownerUserId ? compDefaultUntil(now) : null),
-    loyaltyCompReason: data.loyaltyCompReason
-      || (!data.ownerUserId ? 'unclaimed_enrollment' : null),
+    // Loyalty comp: an explicit, auditable, sunsettable grant that keeps the
+    // program live without a paying owner. Never implied: rewards exist only
+    // once a store is claimed and its owner is on Business (Wes, 2026-10-21
+    // "no comped stores"; 2026-10-28 an unowned enrollment showed "Earn 25
+    // pts" to everyone). `loyaltyCompedUntil` is an ISO string or null
+    // (null = open-ended).
+    loyaltyComped: data.loyaltyComped === true,
+    loyaltyCompedUntil: data.loyaltyComped === true ? (data.loyaltyCompedUntil || null) : null,
+    loyaltyCompReason: data.loyaltyComped === true ? (data.loyaltyCompReason || null) : null,
     stats: { ...emptyStats },
     // { "2026-07": { scans: 3, ... } } — fed into the monthly venue report email
     statsMonthly: {},
