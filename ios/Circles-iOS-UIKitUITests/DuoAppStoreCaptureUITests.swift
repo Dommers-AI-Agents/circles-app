@@ -66,6 +66,8 @@ final class DuoAppStoreCaptureUITests: XCTestCase {
             for b in app.buttons.allElementsBoundByIndex.prefix(80) { lines.append("button|\(b.label)|\(b.identifier)|\(b.frame)") }
             for b in app.navigationBars.buttons.allElementsBoundByIndex { lines.append("navbutton|\(b.label)|\(b.identifier)|\(b.frame)") }
             for c in app.cells.allElementsBoundByIndex.prefix(40) { lines.append("cell|\(c.label)|\(c.identifier)") }
+            for t in app.staticTexts.allElementsBoundByIndex.prefix(60) { lines.append("text|\(t.label)|\(t.frame)") }
+            for o in app.otherElements.matching(NSPredicate(format: "identifier != ''")).allElementsBoundByIndex.prefix(40) { lines.append("other|\(o.identifier)|\(o.frame)") }
             try? lines.joined(separator: "\n").write(toFile: dir.appendingPathComponent("dump-\(Int(Date().timeIntervalSince1970)).txt").path, atomically: true, encoding: .utf8)
         default:
             break

@@ -740,7 +740,8 @@ class PlaceDetailViewController: BaseViewController {
         savedByView.addGestureRecognizer(savedByTapGesture)
 
         infoContainerView.addSubview(practicalButtonsStackView)
-        infoContainerView.addSubview(checkInHistoryLabel)
+        // (checkInHistoryLabel lives in the check-in strip above; adding it here
+        // too pulled it out of the row and left it unconstrained)
         infoContainerView.addSubview(addressLabel)
         infoContainerView.addSubview(hoursLabel)
         infoContainerView.addSubview(mapView)
@@ -1778,11 +1779,13 @@ class PlaceDetailViewController: BaseViewController {
     /// Under the photo you see one of two things: how often you've been
     /// here, or an invitation to say you're here now. Never both, never
     /// neither — an empty gap under the picture teaches nobody anything.
+    /// The ⓘ explains the button, so it goes with it (Wes, 2026-10-28).
     private func updateCheckInHistory() {
         let line = CheckInHistoryFormatter.line(for: place.myCheckInStats)
         checkInHistoryLabel.text = line
         checkInHistoryLabel.isHidden = line == nil
         checkInHereButton.isHidden = line != nil
+        checkInInfoButton.isHidden = line != nil
     }
 
     @objc private func checkInInfoTapped() {
