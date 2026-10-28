@@ -118,11 +118,13 @@ class LoginViewController: BaseViewController {
         return button
     }()
 
-    // Quiet sibling to Log In: passkey sign-in for accounts created with
-    // Face ID (outline style so the white-filled Log In stays primary)
+    // Quiet sibling to Log In on the password step: shown only when the typed
+    // account has a passkey, so a dismissed or missed Face ID sheet can be
+    // retried without re-typing the email (Wes, 2026-10-28). Outline style so
+    // the white-filled Log In stays primary.
     private lazy var passkeyLoginButton: UIButton = {
         let button = UIButton(type: .system)
-        button.setTitle("Sign in with a passkey", for: .normal)
+        button.setTitle("Use \(BiometricAuthService.shared.biometricType().displayName) instead", for: .normal)
         button.setTitleColor(.white, for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
         button.setImage(UIImage(systemName: "faceid", withConfiguration:
@@ -241,6 +243,11 @@ class LoginViewController: BaseViewController {
     // no passkey (or the passkey ceremony was dismissed).
     private enum Step { case email, password }
     private var step: Step = .email { didSet { applyStep() } }
+    // The email the server (or the register screen) confirmed has a passkey.
+    // While set, the password step also offers the passkey again. Cleared when
+    // the email is edited; left nil when the check failed (offline), since the
+    // ceremony needs a server challenge anyway.
+    private var passkeyConfirmedEmail: String? { didSet { applyStep() } }
 
     // MARK: - BaseViewController Configuration
     override var showsLoadingIndicator: Bool { false } // Custom loading state
@@ -306,9 +313,10 @@ class LoginViewController: BaseViewController {
         buttonsStackView.addArrangedSubview(continueButton)   // .email step
         buttonsStackView.addArrangedSubview(passwordTextField) // .password step
         buttonsStackView.addArrangedSubview(loginButton)       // .password step
+        buttonsStackView.addArrangedSubview(passkeyLoginButton) // .password step, passkey accounts only
         buttonsStackView.addArrangedSubview(forgotPasswordButton) // .password step
-        // The standalone "Sign in with a passkey" button is gone — passkey now
-        // happens automatically after Continue when the account has one.
+        // Passkey runs automatically after Continue when the account has one;
+        // passkeyLoginButton is the retry for a dismissed or missed sheet.
         applyStep()
 
         // Spacer before "or" divider
@@ -409,6 +417,7 @@ class LoginViewController: BaseViewController {
         // Continue re-runs the passkey/password decision for the new address.
         emailTextField.addTarget(self, action: #selector(emailEditingChanged), for: .editingChanged)
         forgotPasswordButton.addTarget(self, action: #selector(forgotPasswordTapped), for: .touchUpInside)
+        passkeyLoginButton.addTarget(self, action: #selector(passkeyRetryTapped), for: .touchUpInside)
         createAccountButton.addTarget(self, action: #selector(registerButtonTapped), for: .touchUpInside)
         togglePasswordButton.addTarget(self, action: #selector(togglePasswordVisibility), for: .touchUpInside)
 
@@ -429,7 +438,7 @@ class LoginViewController: BaseViewController {
     private func updateButtonStates() {
         let controls: [UIControl] = [
             loginButton, continueButton, emailTextField, passwordTextField, forgotPasswordButton,
-            createAccountButton, appleSignInButton, googleSignInButton, facebookSignInButton
+            passkeyLoginButton, createAccountButton, appleSignInButton, googleSignInButton, facebookSignInButton
         ]
         controls.forEach { $0.isEnabled = !isLoggingIn }
 
@@ -451,10 +460,21 @@ class LoginViewController: BaseViewController {
         passwordTextField.isHidden = isEmail
         loginButton.isHidden = isEmail
         forgotPasswordButton.isHidden = isEmail
+        passkeyLoginButton.isHidden = isEmail || passkeyConfirmedEmail == nil
     }
 
     @objc private func emailEditingChanged() {
+        passkeyConfirmedEmail = nil
         if step == .password { step = .email }
+    }
+
+    /// Password-step retry of the passkey ceremony for the confirmed account.
+    /// We're already on the password step, so a dismissed sheet just stays put;
+    /// a real failure is shown.
+    @objc private func passkeyRetryTapped() {
+        guard let email = passkeyConfirmedEmail else { return }
+        dismissKeyboard()
+        performPasskeySignIn(email: email, preferImmediate: true, fallbackToPassword: false)
     }
 
     @objc private func continueTapped() {
@@ -473,7 +493,9 @@ class LoginViewController: BaseViewController {
                 switch result {
                 case .success(let check):
                     if check.exists && check.hasPasskey {
-                        // Scoped Face ID for exactly this account (no picker)
+                        // Scoped Face ID for exactly this account (no picker);
+                        // remembered so the password step can offer it again
+                        self.passkeyConfirmedEmail = email
                         self.performPasskeySignIn(email: email, preferImmediate: true, fallbackToPassword: true)
                     } else if check.exists {
                         self.step = .password
@@ -603,7 +625,8 @@ class LoginViewController: BaseViewController {
             // Scope to the prefilled email (set via prefill() before the handoff)
             // so the register-side "this email has a passkey" lands on the right
             // account; on cancel, drop to the password field.
-            let email = (emailTextField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let email = (emailTextField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            passkeyConfirmedEmail = email.isEmpty ? nil : email
             performPasskeySignIn(email: email.isEmpty ? nil : email, preferImmediate: true, fallbackToPassword: true)
         }
     }
