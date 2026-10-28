@@ -21,7 +21,8 @@ const {
   enrollPlaceVenue,
   createVenue,
   listVenues,
-  getVenueAdminDetail
+  getVenueAdminDetail,
+  syncAppClipExperiences
 } = require('../controllers/venues/venueAdminController');
 const {
   requireVenueOwner,
@@ -144,6 +145,8 @@ router.post('/venues/:venueId/email-qr', requireVenueOwner, emailVenueQR);
 // Print-ready PDFs (sign / table tent / counter card, QR at 2-4 in). The
 // handler gates kind=register to Business.
 router.get('/venues/:venueId/print', requireVenueOwner, getPrintAsset);
+// Super-users publish a store's own App Clip cards (per code URL) to App Store Connect
+router.post('/venues/:venueId/app-clip-sync', requireSuperUser, requireVenueOwner, syncAppClipExperiences);
 // Managers: the owner invites other accounts to run the store with them —
 // free owner tier (team admin isn't a Business-tier tool). Mutations are
 // gated to the primary owner inside the handlers.

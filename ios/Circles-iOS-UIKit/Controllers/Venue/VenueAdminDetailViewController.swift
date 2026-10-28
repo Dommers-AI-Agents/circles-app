@@ -32,6 +32,7 @@ class VenueAdminDetailViewController: BaseViewController {
         case windowCode
         case registerCode
         case replaceRegisterCode
+        case appClipCard
         case emailCodes
         case manageTools
         case singleUseCodes
@@ -241,7 +242,7 @@ class VenueAdminDetailViewController: BaseViewController {
             if d.venue.contactName != nil || d.venue.contactEmail != nil { rows.append(.contact) }
             return rows
         case .codes:
-            return [.windowCode, .registerCode, .replaceRegisterCode, .emailCodes]
+            return [.windowCode, .registerCode, .replaceRegisterCode, .appClipCard, .emailCodes]
         case .manage:
             return [.manageTools, .singleUseCodes]
         }
@@ -333,6 +334,30 @@ class VenueAdminDetailViewController: BaseViewController {
             isDestructive: true
         ) { [weak self] in
             self?.performRotation()
+        }
+    }
+
+    /// One card per code URL in App Store Connect; iOS shows the most specific
+    /// match, so a scan of this store's code gets this card, not the generic one.
+    private func publishAppClipCard() {
+        let loading = AlertPresenter.showLoading(message: "Publishing to App Store Connect…", from: self)
+        RewardsService.shared.syncAppClipExperiences(venueId: listVenue.venueId, force: true) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self else { return }
+                    switch result {
+                    case .failure(let error):
+                        self.showError(error)
+                    case .success(let sync):
+                        if let why = sync.skipped {
+                            self.showError("Not published: \(why)")
+                        } else {
+                            let kinds = (sync.changed ?? []).joined(separator: " and ")
+                            self.showSuccess(kinds.isEmpty ? "Already up to date" : "Published the \(kinds) card. Apple reviews new cards before they show; phones that scanned before may keep the old card for a day.")
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -550,6 +575,12 @@ extension VenueAdminDetailViewController: UITableViewDataSource, UITableViewDele
             config.image = UIImage(systemName: "arrow.triangle.2.circlepath")
             config.imageProperties.tintColor = Constants.Colors.danger
 
+        case .appClipCard:
+            config = UIListContentConfiguration.cell()
+            config.text = "Publish this store's App Clip card"
+            config.secondaryText = "What a scan shows: the store's name, points and cover photo"
+            config.image = UIImage(systemName: "appclip")
+
         case .emailCodes:
             config = UIListContentConfiguration.cell()
             config.text = "Email printable QR codes to me"
@@ -602,6 +633,8 @@ extension VenueAdminDetailViewController: UITableViewDataSource, UITableViewDele
             showQR(register: true)
         case .replaceRegisterCode:
             replaceRegisterCode()
+        case .appClipCard:
+            publishAppClipCard()
         case .emailCodes:
             emailQR()
         case .manageTools:

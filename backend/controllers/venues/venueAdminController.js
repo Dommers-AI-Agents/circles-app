@@ -1,6 +1,7 @@
 // controllers/venues/venueAdminController.js
 // Superuser/admin: create/list venues, set owner, superusers, email QR
 // Split out of rewardController.js (handlers unchanged).
+const appClipExperiences = require('../../services/appClipExperienceService');
 const { getFirestore } = require('../../config/firebase');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { validateStickerVenue, STICKER_COLLECTIONS } = require('../../models/StickerModels');
@@ -38,6 +39,7 @@ exports.createVenueFromApp = async (req, res) => {
     }
 
     const venue = await rewardService.createVenue(payload);
+    appClipExperiences.syncVenueQuiet(venue);   // a new store gets its own App Clip card
 
     let emailSent = false;
     const toEmail = req.user.email;
@@ -217,6 +219,7 @@ exports.createVenue = async (req, res) => {
     }
 
     const venue = await rewardService.createVenue(req.body);
+    appClipExperiences.syncVenueQuiet(venue);
     const baseUrl = process.env.STICKER_LINK_BASE_URL
       || 'https://api.favcircles.com';
 
@@ -374,5 +377,20 @@ exports.getVenueAdminDetail = async (req, res) => {
   } catch (error) {
     console.error('❌ Venue admin detail failed:', error);
     res.status(500).json({ success: false, error: 'Failed to load store' });
+  }
+};
+
+// @desc    Publish (or refresh) the store's own App Clip cards in App Store
+//          Connect: one per code URL, with the store's name, points and cover.
+//          force=1 republishes even when nothing changed.
+// @route   POST /api/rewards/venues/:venueId/app-clip-sync
+// @access  Super-user
+exports.syncAppClipExperiences = async (req, res) => {
+  try {
+    const result = await appClipExperiences.syncVenue(req.venue, { force: req.body?.force === true || req.query.force === '1' });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    const { sendServiceError } = require('../../utils/serviceError');
+    sendServiceError(res, error, { log: 'App Clip sync', fallbackCode: 'APP_CLIP_SYNC_FAILED', fallbackMessage: 'Could not publish the App Clip card' });
   }
 };

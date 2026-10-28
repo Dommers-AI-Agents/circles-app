@@ -14,6 +14,7 @@ const db = getFirestore();
 const { isVenueTeamMember, venueGlobalPlaceId, ownerVenueInfo } = require('../../services/venueHelpers.js');
 const { ServiceError, sendServiceError } = require('../../utils/serviceError');
 const printAssetService = require('../../services/printAssetService');
+const appClipExperiences = require('../../services/appClipExperienceService');
 const { canViewCircle } = require('../../services/visibility');
 const { alertAudience } = require('../../services/placeAlerts');
 const { makeViewerContext } = require('../../services/viewerContext');
@@ -422,6 +423,7 @@ exports.setVenueCoverPhoto = async (req, res) => {
       const gpDoc = await gpRef.get();
       const cover = placePhotos.coverUrl((gpDoc.exists && gpDoc.data().photos) || []);
       await gpRef.set({ coverPhotoUrl: cover, updatedAt: new Date().toISOString() }, { merge: true });
+      appClipExperiences.syncVenueQuiet(venue);   // the card carries the cover
       return res.json({ success: true, data: { coverPhotoUrl: cover } });
     }
     // The cover IS the first photo (one library, one order): move it there
@@ -432,6 +434,7 @@ exports.setVenueCoverPhoto = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Cover photo must be one of the place\'s photos' });
     }
     const result = await placePhotos.setCover(globalPlaceId, photo.id, { canManage: true });
+    appClipExperiences.syncVenueQuiet(venue);
     res.json({ success: true, data: { coverPhotoUrl: result.coverPhotoUrl } });
   } catch (error) {
     console.error('❌ Failed to set venue cover photo:', error);
@@ -561,6 +564,7 @@ exports.updateVenueInfo = async (req, res) => {
       .doc(req.venue.venueId)
       .update(update);
 
+    appClipExperiences.syncVenueQuiet({ ...req.venue, ...update });   // the card carries the name
     res.json({ success: true, data: { venue: ownerVenueInfo({ ...req.venue, ...update }) } });
   } catch (error) {
     console.error('❌ Failed to update venue info:', error);
@@ -582,6 +586,7 @@ exports.updateVenueSettings = async (req, res) => {
     await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
       .doc(req.venue.venueId)
       .update({ earnRate, updatedAt: new Date().toISOString() });
+    appClipExperiences.syncVenueQuiet({ ...req.venue, earnRate }, { kinds: ['register'] });   // the card quotes the points
 
     res.json({ success: true, data: { venueId: req.venue.venueId, earnRate } });
   } catch (error) {
@@ -605,6 +610,7 @@ exports.rotateRegisterCode = async (req, res) => {
     }
 
     const registerCode = await rewardService.rotateRegisterCode(req.venue, earnRate);
+    appClipExperiences.syncVenueQuiet({ ...req.venue, registerCode }, { kinds: ['register'] });
 
     res.json({
       success: true,

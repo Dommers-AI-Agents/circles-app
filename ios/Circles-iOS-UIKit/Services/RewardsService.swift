@@ -723,6 +723,22 @@ class RewardsService {
         }
     }
 
+    /// Super-user: publish (or refresh) the store's own App Clip cards in
+    /// App Store Connect — one per code URL, with its name, points and cover.
+    func syncAppClipExperiences(venueId: String, force: Bool = false, completion: @escaping (Result<AppClipSyncResult, Error>) -> Void) {
+        apiService.request(
+            endpoint: "rewards/venues/\(venueId)/app-clip-sync",
+            method: .post,
+            body: ["force": force],
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<AppClipSyncResult>, APIError>) in
+            switch result {
+            case .success(let response): completion(.success(response.data))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
+
     /// Super-user: link a venue to its owner's account by email
     func assignVenueOwner(venueId: String, email: String, completion: @escaping (Result<String, Error>) -> Void) {
         apiService.request(
@@ -1409,6 +1425,19 @@ struct VenueOffersData: Codable {
 struct VenueSettingsData: Codable {
     let venueId: String
     let earnRate: Int
+}
+
+/// What the App Clip card sync did: which code URLs were (re)published, or why it skipped.
+struct AppClipSyncResult: Codable {
+    struct Experience: Codable {
+        let id: String?
+        let link: String?
+        let status: String?
+        let syncedAt: String?
+    }
+    let changed: [String]?
+    let skipped: String?
+    let experiences: [String: Experience]?
 }
 
 struct RotatedRegisterCode: Codable {

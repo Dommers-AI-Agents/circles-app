@@ -11,6 +11,7 @@ const orphanUploads = require('../controllers/tasks/orphanUploadsController');
 const momentExpiryTask = require('../controllers/tasks/momentExpiryController');
 const ordersSweepTask = require('../controllers/tasks/ordersSweepController');
 const emailHealthTask = require('../controllers/tasks/emailHealthController');
+const appClipSyncTask = require('../controllers/tasks/appClipSyncController');
 const farmersMarketsTask = require('../controllers/tasks/farmersMarketsController');
 const localCoverageTask = require('../controllers/tasks/localCoverageController');
 const instagramTask = require('../controllers/tasks/instagramController');
@@ -80,6 +81,7 @@ router.post('/moments-expire', verifyCloudScheduler, momentExpiryTask.sweep);
 // Every 5 min: unanswered order-ahead orders expire, stale ready ones close
 router.post('/orders-sweep', verifyCloudScheduler, ordersSweepTask.sweep);
 router.post('/email-health', verifyCloudScheduler, emailHealthTask.check);
+router.post('/app-clip-sync', verifyCloudScheduler, appClipSyncTask.sync);
 // Monthly: copy the USDA farmers market directory (Locals tab markets)
 router.post('/farmers-markets-sync', verifyCloudScheduler, farmersMarketsTask.sync);
 // Weekly: where people opened the Local tab with no library calendar
@@ -108,6 +110,7 @@ router.get('/health', (req, res) => {
       '/api/tasks/piggy-bank-settlement',
       '/api/tasks/orphan-uploads',
       '/api/tasks/email-health',
+      '/api/tasks/app-clip-sync',
       '/api/tasks/instagram-post'
     ]
   });
