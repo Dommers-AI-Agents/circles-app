@@ -397,8 +397,10 @@ exports.getVenueByPlace = async (req, res) => {
       return res.json({ success: true, data: { venue: null, claim, canPrintCodes } });
     }
 
-    const isOwner = isVenueTeamMember(venue, userId)
-      || req.user.isSuperUser === true;
+    // The store's team only. A super-user is not the owner (Wes, 2026-10-28):
+    // the page keeps its claim card for the real owner, and the super-user
+    // reaches the store's codes and tools through "Print Store QR Codes".
+    const isOwner = isVenueTeamMember(venue, userId);
 
     // Claim state only matters while the venue is unowned
     let claim = { canClaim: false, myClaimStatus: null };
