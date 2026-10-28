@@ -36,19 +36,22 @@ extension PlaceDetailViewFactory {
 
     /// Shown only to someone who has never checked in here.
     static func checkInHereButton() -> UIButton {
-        // "Check In" (Wes, 2026-10-28): shorter, so Get Rewards and Order fit beside it
+        // "Check In" (Wes, 2026-10-28): shorter, so Rewards and Order fit beside it,
+        // and it never gives up width to its neighbours
         let button = UIButton.smallActionButton(title: "Check In", style: .primary)
         button.setImage(.checkInIcon, for: .normal)
         button.tintColor = .white
         button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
         button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
         return button
     }
 
     /// Shown beside the check-in control at stores that give rewards —
     /// including to regulars, who need it most.
     static func getRewardsButton() -> UIButton {
-        let button = UIButton.smallActionButton(title: "Get Rewards", style: .secondary)
+        // "Rewards", not "Get Rewards" (Wes, 2026-10-28): the row was squeezing Check In
+        let button = UIButton.smallActionButton(title: "Rewards", style: .secondary)
         button.setImage(UIImage(systemName: "gift"), for: .normal)
         button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
         button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
