@@ -21,7 +21,28 @@ const reply = (res, venue, key, value) => {
 
 // @route GET /api/rewards/venues/:venueId/storefront   (owner view)
 exports.getStorefront = async (req, res) => {
+  // A store gets its web address the first time its owner opens Manage
+  // Store (best-effort: the rest of the screen never waits on it)
+  if (!req.venue.slug && req.venue.isVirtual !== true) {
+    await require('../../services/venueSlugService').ensureSlug(req.venue)
+      .catch((e) => console.warn('Venue slug mint failed:', e.message));
+  }
   res.json({ success: true, data: storefront.ownerStorefront(req.venue) });
+};
+
+// @route PUT /api/rewards/venues/:venueId/slug   body: { slug }   (primary owner)
+// The store's web address, order.favcircles.com/<slug>. Old addresses keep
+// working as redirects.
+exports.setSlug = async (req, res) => {
+  try {
+    if (!req.isPrimaryVenueOwner) {
+      return res.status(403).json({ success: false, code: 'owner_only', message: 'Only the store’s owner can change its web address.' });
+    }
+    const result = await require('../../services/venueSlugService').setSlug(req.venue, (req.body || {}).slug);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    require('../../utils/serviceError').sendServiceError(res, error, { log: 'Slug change failed', fallbackCode: 'slug_failed', fallbackMessage: 'Couldn’t change the web address. Try again.' });
+  }
 };
 
 // @route PUT /api/rewards/venues/:venueId/storefront/offerings   (Business)

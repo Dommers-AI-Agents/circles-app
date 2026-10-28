@@ -165,6 +165,7 @@ router.get('/venues/:venueId/codes', requireVenueOwner, listRedemptionCodes);
 // paying. Menu and gallery are Business-tier, like announcements.
 const storefront = require('../controllers/venues/venueStorefrontController');
 router.get('/venues/:venueId/storefront', requireVenueOwner, storefront.getStorefront);
+router.put('/venues/:venueId/slug', requireVenueOwner, storefront.setSlug); // the store's web address (order.favcircles.com/<slug>)
 router.put('/venues/:venueId/storefront/actions', requireVenueOwner, storefront.updateActions);
 router.put('/venues/:venueId/storefront/offerings', requireVenueOwner, requireOwnerPremium, storefront.updateOfferings);
 router.put('/venues/:venueId/storefront/gallery', requireVenueOwner, requireOwnerPremium, storefront.updateGallery);

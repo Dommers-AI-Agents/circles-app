@@ -29,15 +29,23 @@ async function loadVenue(db, venueId) {
   return { venueId: doc.id, ...doc.data() };
 }
 
-/** What the customer and the store both see. */
-const view = (id, o) => ({
+/**
+ * What the customer and the store both see. `customerId` is always a
+ * string on the wire: web guests (services/orders/webOrderService) are
+ * stored with null and sent as 'guest', because the app decodes the
+ * store's order list strictly. `forTeam` adds the guest's phone/email, the
+ * store's to call; never shown to anyone else.
+ */
+const view = (id, o, { forTeam = false } = {}) => ({
   orderId: id,
   test: o.test === true,
   venueId: o.venueId,
   venueName: o.venueName,
   globalPlaceId: o.globalPlaceId || null,
-  customerId: o.customerId,
+  customerId: o.customerId || 'guest',
   customerName: o.customerName,
+  channel: o.channel || 'app',
+  ...(forTeam && o.customer ? { customer: { name: o.customer.name || o.customerName, phone: o.customer.phone || null, email: o.customer.email || null } } : {}),
   lines: o.lines,
   note: o.note || null,
   pickup: o.pickup,
@@ -50,6 +58,8 @@ const view = (id, o) => ({
   createdAt: o.createdAt,
   updatedAt: o.updatedAt
 });
+
+const isGuest = (o) => !o.customerId && o.channel === 'web';
 
 const summary = (lines) => lines.map((l) => `${l.qty}× ${l.name}`).join(', ');
 const timeText = (iso, timeZone) => {
@@ -81,9 +91,6 @@ async function place({ customerId, venueId, items, note, pickup, test = false },
   }
   if (!test && onTeam) throw new ServiceError(400, 'own_store', 'To try your own store, use “Try it as a customer” in Online ordering.');
 
-  const priced = rules.priceCart(venue.storefront.menu, items);
-  const when = rules.pickupFor(pickup, { leadMinutes: ordering.leadMinutes, now });
-
   const open = await db.collection(ORDERS).where('customerId', '==', customerId).where('status', 'in', [...OPEN]).get();
   if (open.size >= LIMITS.openPerCustomer) {
     throw new ServiceError(429, 'too_many_open', 'You have a few orders in progress. Pick those up first.');
@@ -95,6 +102,20 @@ async function place({ customerId, venueId, items, note, pickup, test = false },
 
   const userDoc = await db.collection('users').doc(customerId).get();
   const customerName = (userDoc.exists && (userDoc.data().displayName || '').trim()) || 'A customer';
+  const made = await createOrder(venue, { ordering, customerId, customerName, channel: 'app', items, note, pickup, test }, { db, now });
+  return view(made.orderId, made.order);
+}
+
+/**
+ * The part of placing an order that doesn't care who's ordering: price the
+ * cart from the menu, check the pickup time, write the doc, tell the team.
+ * `place` (app, signed in) and webOrderService.placeGuest (web, no account)
+ * both end here. `ordering` is the store's live setting (rules.orderingFor).
+ */
+async function createOrder(venue, { ordering, customerId = null, customerName, customer = null, guestKey = null, channel = 'app', items, note, pickup, test = false }, { db = getFirestore(), now = new Date() } = {}) {
+  if (!ordering) throw new ServiceError(409, 'ordering_off', 'This store isn’t taking orders right now.');
+  const priced = rules.priceCart(venue.storefront.menu, items);
+  const when = rules.pickupFor(pickup, { leadMinutes: ordering.leadMinutes, now });
   const ref = db.collection(ORDERS).doc();
   const order = {
     venueId: venue.venueId,
@@ -104,6 +125,9 @@ async function place({ customerId, venueId, items, note, pickup, test = false },
     team: team(venue),
     customerId,
     customerName,
+    channel,
+    ...(customer ? { customer } : {}),
+    ...(guestKey ? { guestKey } : {}),
     lines: priced.lines,
     note: String(note || '').trim().slice(0, LIMITS.orderNote) || null,
     pickup: when,
@@ -111,13 +135,13 @@ async function place({ customerId, venueId, items, note, pickup, test = false },
     estimateIsPartial: priced.estimateIsPartial,
     status: STATUS.PLACED,
     test: test === true,
-    history: [{ status: STATUS.PLACED, at: now.toISOString(), by: customerId }],
+    history: [{ status: STATUS.PLACED, at: now.toISOString(), by: customerId || 'guest' }],
     createdAt: now.toISOString(),
     updatedAt: now.toISOString()
   };
   await ref.set(order);
   notifyTeamOfNewOrder(db, ref.id, order).catch((e) => console.error('order: team notice failed', e.message));
-  return view(ref.id, order);
+  return { orderId: ref.id, order };
 }
 
 async function mine(customerId, { db = getFirestore() } = {}) {
@@ -149,9 +173,10 @@ async function get(orderId, viewerId, { db = getFirestore() } = {}) {
   const doc = await db.collection(ORDERS).doc(String(orderId || '')).get();
   if (!doc.exists) throw new ServiceError(404, 'order_not_found', 'That order wasn’t found.');
   const o = doc.data();
-  const allowed = isSameUser(o.customerId, viewerId) || (o.team || []).some((id) => isSameUser(id, viewerId));
+  const onTeam = (o.team || []).some((id) => isSameUser(id, viewerId));
+  const allowed = isSameUser(o.customerId, viewerId) || onTeam;
   if (!allowed) throw new ServiceError(404, 'order_not_found', 'That order wasn’t found.');
-  return view(doc.id, o);
+  return view(doc.id, o, { forTeam: onTeam });
 }
 
 async function cancel(orderId, customerId, { db = getFirestore() } = {}) {
@@ -161,6 +186,11 @@ async function cancel(orderId, customerId, { db = getFirestore() } = {}) {
 /** The customer has the order in hand: it leaves their page and the store's board. */
 async function pickedUp(orderId, customerId, { db = getFirestore() } = {}) {
   return act(orderId, 'picked_up', { by: 'customer', actorId: customerId, db });
+}
+
+/** A web guest cancels (the caller verified the order's token). */
+async function cancelAsGuest(orderId, { db = getFirestore() } = {}) {
+  return act(orderId, 'cancel', { by: 'customer', asGuest: true, actorId: 'guest', db });
 }
 
 // ------------------------------------------------------------------- store
@@ -187,7 +217,7 @@ async function forVenue(venueId, { db = getFirestore(), open = true } = {}) {
   let q = db.collection(ORDERS).where('venueId', '==', venueId);
   q = open ? q.where('status', 'in', [...OPEN]) : q.orderBy('createdAt', 'desc').limit(50);
   const snap = await q.get();
-  const list = snap.docs.map((d) => view(d.id, d.data()));
+  const list = snap.docs.map((d) => view(d.id, d.data(), { forTeam: true }));
   // Oldest waiting first: the counter works through them in order
   return open ? list.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))) : list;
 }
@@ -201,13 +231,14 @@ async function storeAction(venueId, orderId, action, { actorId, readyInMinutes, 
   return act(orderId, action, { by: 'store', venueId, actorId, readyInMinutes, reason, db });
 }
 
-async function act(orderId, action, { by, venueId, actorId, readyInMinutes, reason, db, now = new Date() }) {
+async function act(orderId, action, { by, asGuest = false, venueId, actorId, readyInMinutes, reason, db, now = new Date() }) {
   const ref = db.collection(ORDERS).doc(String(orderId || ''));
   const result = await db.runTransaction(async (tx) => {
     const doc = await tx.get(ref);
     if (!doc.exists) throw new ServiceError(404, 'order_not_found', 'That order wasn’t found.');
     const o = doc.data();
-    if (by === 'customer' && !isSameUser(o.customerId, actorId)) throw new ServiceError(404, 'order_not_found', 'That order wasn’t found.');
+    const customerOk = asGuest ? isGuest(o) : isSameUser(o.customerId, actorId);
+    if (by === 'customer' && !customerOk) throw new ServiceError(404, 'order_not_found', 'That order wasn’t found.');
     if (by === 'store' && o.venueId !== venueId) throw new ServiceError(404, 'order_not_found', 'That order wasn’t found.');
     const to = rules.transition(o, action, by);
     const patch = { status: to, updatedAt: now.toISOString(), history: [...(o.history || []), { status: to, at: now.toISOString(), by: actorId }] };
@@ -221,7 +252,7 @@ async function act(orderId, action, { by, venueId, actorId, readyInMinutes, reas
     return { id: doc.id, order: { ...o, ...patch } };
   });
   notifyStep(result.id, result.order, action, by);
-  return view(result.id, result.order);
+  return view(result.id, result.order, { forTeam: by === 'store' });
 }
 
 // --------------------------------------------------------------- settings
@@ -251,8 +282,9 @@ async function saveSettings(venue, input, { db = getFirestore() } = {}) {
 
 async function notifyTeamOfNewOrder(db, orderId, o) {
   const when = o.pickup.asap ? 'as soon as possible' : `at ${timeText(o.pickup.at, o.timeZone)}`;
-  const title = `${o.test ? 'Test order' : 'New order'}: ${o.customerName}`;
-  const body = `${summary(o.lines)}. Pickup ${when}. Tap to accept.`;
+  const web = isGuest(o);
+  const title = `${o.test ? 'Test order' : (web ? 'New web order' : 'New order')}: ${o.customerName}`;
+  const body = `${summary(o.lines)}. Pickup ${when}.${web && o.customer && o.customer.phone ? ` Call ${o.customer.phone}.` : ''} Tap to accept.`;
   for (const uid of o.team) {
     sendInBackground(uid, { type: 'order_new', title, body, data: { orderId, venueId: o.venueId } }, 'order_new');
   }
@@ -264,8 +296,8 @@ async function notifyTeamOfNewOrder(db, orderId, o) {
   const rows = o.lines.map((l) => `<tr><td style="padding:4px 12px 4px 0">${l.qty}×</td><td style="padding:4px 12px 4px 0"><b>${escapeHtml(l.name)}</b>${l.note ? `<br><i>${escapeHtml(l.note)}</i>` : ''}</td><td style="padding:4px 0;text-align:right">${escapeHtml(l.price || '')}</td></tr>`).join('');
   const estimate = o.estimate ? `About $${o.estimate.toFixed(2)}${o.estimateIsPartial ? ' (plus items priced at the counter)' : ''}, paid at pickup.` : 'Paid at pickup.';
   const html = `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px">
-<h2 style="margin:0 0 6px">New order from ${escapeHtml(o.customerName)}</h2>
-<p style="margin:0 0 14px;color:#555">${escapeHtml(o.venueName)} · pickup ${escapeHtml(when)}</p>
+<h2 style="margin:0 0 6px">New ${web ? 'web ' : ''}order from ${escapeHtml(o.customerName)}</h2>
+<p style="margin:0 0 14px;color:#555">${escapeHtml(o.venueName)} · pickup ${escapeHtml(when)}${web && o.customer && o.customer.phone ? ` · call ${escapeHtml(o.customer.phone)}` : ''}</p>
 <table style="border-collapse:collapse;font-size:15px">${rows}</table>
 ${o.note ? `<p style="margin:14px 0 0"><b>Note:</b> ${escapeHtml(o.note)}</p>` : ''}
 <p style="margin:14px 0">${escapeHtml(estimate)}</p>
@@ -296,8 +328,12 @@ function notifyStep(orderId, o, action, by = 'store') {
   const data = { orderId, venueId: o.venueId, status: o.status };
   if (notice.team) {
     for (const uid of o.team || []) sendInBackground(uid, { type: 'order_new', title: notice.title, body: notice.body, data }, 'order_cancel');
-  } else {
+  } else if (o.customerId) {
     sendInBackground(o.customerId, { type: 'order_update', title: notice.title, body: notice.body, data }, 'order_update');
+  } else if (isGuest(o) && o.customer && o.customer.email) {
+    // A web guest has no app to push to: the same step, by email
+    require('./orderEmails').sendGuestStep(orderId, o, action, notice)
+      .catch((e) => console.error('order: guest email failed', e.message));
   }
 }
 
@@ -326,4 +362,4 @@ async function sweep({ db = getFirestore(), now = new Date() } = {}) {
   return { expired, closed };
 }
 
-module.exports = { ORDERS, view, place, mine, openOrdersAtVenue, get, cancel, pickedUp, newCount, forVenue, storeAction, normalizeSettings, saveSettings, sweep };
+module.exports = { ORDERS, view, isGuest, loadVenue, createOrder, place, mine, openOrdersAtVenue, get, cancel, pickedUp, cancelAsGuest, newCount, forVenue, storeAction, normalizeSettings, saveSettings, sweep, timeText, summary };

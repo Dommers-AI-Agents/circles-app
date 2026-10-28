@@ -80,6 +80,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// order.favcircles.com/<slug> is the same app: the ordering host is folded
+// onto /order (routes/orderWebRoutes) so one router serves both hosts.
+// /order, /public and /.well-known already mean the same thing there.
+const ORDER_HOST = (process.env.ORDER_PAGE_BASE_URL || 'https://order.favcircles.com').replace(/^https?:\/\//, '').split('/')[0];
+app.use((req, res, next) => {
+  const host = String(req.headers.host || '').split(':')[0].toLowerCase();
+  if (host === ORDER_HOST && !/^\/(order(\/|$)|public\/|\.well-known\/)/.test(req.url)) {
+    req.url = `/order${req.url === '/' ? '' : req.url}`;
+    req.orderHost = true;
+  }
+  next();
+});
+
 // Middleware - CORS with production security for Cloud Run
 const corsOptions = {
   origin: function (origin, callback) {
@@ -90,6 +103,7 @@ const corsOptions = {
       'https://favcircles.com',
       'https://www.favcircles.com',
       'https://api.favcircles.com', // the admin dashboard, served by this server
+      'https://order.favcircles.com', // store ordering pages (routes/orderWebRoutes)
       'capacitor://localhost', // iOS app
       'ionic://localhost', // iOS app alternative
       'http://localhost' // iOS app WebView
@@ -337,6 +351,8 @@ ${address ? `<p style="margin:0 0 16px;opacity:.85">${esc(address)}</p>` : ''}
 });
 // Public postcard pages (image proxy, QR, share page) — routes/postcardPublicRoutes.js
 app.use(require('./routes/postcardPublicRoutes'));
+// Store ordering pages, order.favcircles.com/<slug> — routes/orderWebRoutes.js
+app.use('/order', require('./routes/orderWebRoutes'));
 
 // instead of a 404 JSON blob.
 app.get(['/app/open', '/app/daily-summary', '/daily-summary', '/app/import'], (req, res) => {

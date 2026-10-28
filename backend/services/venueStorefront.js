@@ -191,6 +191,9 @@ const ownerStorefront = (venue) => {
     offerings: s.offerings || { link: null, files: [], featured: [] },
     menu: s.menu || { sections: [], source: 'manual', updatedAt: null },
     ordering: venue.ordering || { enabled: false, leadMinutes: 15, note: null },
+    // The store's web page (services/venueSlugService): menu for everyone,
+    // ordering once it's on. Null until a slug exists (virtual stores never)
+    orderingPage: venue.slug ? { slug: venue.slug, url: require('./venueSlugService').pageUrl(venue.slug) } : null,
     actions: Object.fromEntries(ACTION_KEYS.map((k) => [k, (s.actions && s.actions[k]) || null])),
     gallery: Array.isArray(s.gallery) ? s.gallery : []
   };

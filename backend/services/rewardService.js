@@ -107,7 +107,14 @@ class RewardService {
       venue.ownerUserId = await this.resolveOwnerUserId(venue.ownerEmail);
     }
     const ref = await this.db.collection(STICKER_COLLECTIONS.STICKER_VENUES).add(venue);
-    return { venueId: ref.id, ...venue };
+    const created = { venueId: ref.id, ...venue };
+    // Its web address (order.favcircles.com/<slug>), best-effort: Manage
+    // Store mints one later if this fails
+    if (venue.isVirtual !== true) {
+      await require('./venueSlugService').ensureSlug(created, { db: this.db })
+        .catch((e) => console.warn('Venue slug mint failed:', e.message));
+    }
+    return created;
   }
 
   async resolveOwnerUserId(email) {
