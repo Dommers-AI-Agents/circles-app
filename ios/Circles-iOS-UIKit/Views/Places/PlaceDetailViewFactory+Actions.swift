@@ -36,7 +36,8 @@ extension PlaceDetailViewFactory {
 
     /// Shown only to someone who has never checked in here.
     static func checkInHereButton() -> UIButton {
-        let button = UIButton.smallActionButton(title: "Check in here", style: .primary)
+        // "Check In" (Wes, 2026-10-28): shorter, so Get Rewards and Order fit beside it
+        let button = UIButton.smallActionButton(title: "Check In", style: .primary)
         button.setImage(.checkInIcon, for: .normal)
         button.tintColor = .white
         button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
@@ -49,6 +50,19 @@ extension PlaceDetailViewFactory {
     static func getRewardsButton() -> UIButton {
         let button = UIButton.smallActionButton(title: "Get Rewards", style: .secondary)
         button.setImage(UIImage(systemName: "gift"), for: .normal)
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        button.isHidden = true
+        return button
+    }
+
+    /// "Order" beside Get Rewards at a store that takes orders in the app:
+    /// the same menu the store card's "Order ahead" button opens, one
+    /// screen higher (Wes, 2026-10-28).
+    static func orderButton() -> UIButton {
+        let button = UIButton.smallActionButton(title: "Order", style: .secondary)
+        button.setImage(UIImage(systemName: "bag"), for: .normal)
         button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
         button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
         button.setContentCompressionResistancePriority(.required, for: .horizontal)

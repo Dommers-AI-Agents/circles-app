@@ -16,8 +16,6 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
     /// The store's full menu (sections of items)
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapFullMenu menu: StorefrontMenu, label: String,
                         ordering: StoreOrdering?, venue: PlaceVenue)
-    /// The customer's open order here: its status screen
-    func placeVenueView(_ view: PlaceVenueRewardsView, didTapMyOrder order: StoreOrder)
 }
 
 /// The rewards section of a place page: the venue's announcements and offers,
@@ -103,12 +101,6 @@ class PlaceVenueRewardsView: UIView {
         // not a rewards program: no "Rewards at" header, no earn line. With
         // nothing of the owner's to show either, the card is the same slim
         // "Is this your store?" an unenrolled place gets.
-        // The customer's order in progress here comes first, whatever else the
-        // card shows: once the status screen is gone this is how they get back
-        if !isOwner, let order = data.myOrder, order.isOpen {
-            containerStack.addArrangedSubview(makeMyOrderRow(order))
-        }
-
         let rewardsLive = data.rewardsLive != false
         let storefront = data.storefront
         let hasStorefrontContent = (storefront?.actions).map { makeActionButtonsRow($0) != nil } ?? false
@@ -118,7 +110,7 @@ class PlaceVenueRewardsView: UIView {
         if !isOwner, data.isOwner != true, !rewardsLive, !hasStorefrontContent {
             if let footer = makeClaimOnlyFooter(data.claim) {
                 containerStack.addArrangedSubview(footer)
-            } else if containerStack.arrangedSubviews.isEmpty {
+            } else {
                 isHidden = true
             }
             return
@@ -508,19 +500,6 @@ class PlaceVenueRewardsView: UIView {
             trailingView.trailingAnchor.constraint(equalTo: row.trailingAnchor)
         ])
 
-        return row
-    }
-
-    // MARK: - The customer's open order
-
-    /// "Your order · Accepted · ready by 12:40   [Track]"
-    private func makeMyOrderRow(_ order: StoreOrder) -> UIView {
-        let line = order.statusLine(readyTime: OrderStatusViewController.timeText(order.readyAt))
-        let row = makeFooterRow(text: "Your order \u{00B7} \(line)", buttonTitle: "Track") { [weak self] in
-            guard let self else { return }
-            self.delegate?.placeVenueView(self, didTapMyOrder: order)
-        }
-        row.isAccessibilityElement = false
         return row
     }
 

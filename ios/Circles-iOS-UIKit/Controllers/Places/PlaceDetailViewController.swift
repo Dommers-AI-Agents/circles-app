@@ -227,10 +227,14 @@ class PlaceDetailViewController: BaseViewController {
     // last Sep 5"), or — if you never have — the invitation to start one.
     // Whichever it is, an "i" explains what a check-in actually does.
     private let checkInStripView: UIStackView = PlaceDetailViewFactory.checkInStripView()
+    /// The customer's open order here, first thing under the photo
+    private let orderBannerView = PlaceOrderBannerView()
+    private var orderBannerGap: NSLayoutConstraint?
     private let checkInHistoryLabel: UILabel = PlaceDetailViewFactory.checkInHistoryLabel()
     private let checkInHereButton: UIButton = PlaceDetailViewFactory.checkInHereButton()
     private let checkInInfoButton: UIButton = PlaceDetailViewFactory.checkInInfoButton()
     private let getRewardsButton: UIButton = PlaceDetailViewFactory.getRewardsButton()
+    private let orderButton: UIButton = PlaceDetailViewFactory.orderButton()
 
     // Add to Circle: compact pill in the action row, left of Follow — same
     // size and style family (they're sibling actions; this one also picks
@@ -692,13 +696,17 @@ class PlaceDetailViewController: BaseViewController {
         // The check-in strip lives between the photo and the info card, so
         // the first thing under the picture is your own relationship with
         // the place.
+        // An order in progress comes before everything else on the page
+        contentView.addSubview(orderBannerView)
+        orderBannerView.onTap = { [weak self] in self?.openMyOrder() }
         contentView.addSubview(checkInStripView)
         checkInStripView.addArrangedSubview(checkInHistoryLabel)
         checkInStripView.addArrangedSubview(checkInHereButton)
         // The ⓘ sits right beside what it explains (Wes, 2026-10-21)
         checkInStripView.addArrangedSubview(checkInInfoButton)
         checkInStripView.addArrangedSubview(getRewardsButton)
-        // A long history line gives way before either button does.
+        checkInStripView.addArrangedSubview(orderButton)
+        // A long history line gives way before any button does.
         checkInHistoryLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let checkInSpacer = UIView()
         checkInSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -706,6 +714,7 @@ class PlaceDetailViewController: BaseViewController {
         checkInHereButton.addTarget(self, action: #selector(checkInRowButtonTapped), for: .touchUpInside)
         checkInInfoButton.addTarget(self, action: #selector(checkInInfoTapped), for: .touchUpInside)
         getRewardsButton.addTarget(self, action: #selector(getRewardsTapped), for: .touchUpInside)
+        orderButton.addTarget(self, action: #selector(orderTapped), for: .touchUpInside)
 
         // Add info container after image view
         contentView.addSubview(infoContainerView)
@@ -861,6 +870,8 @@ class PlaceDetailViewController: BaseViewController {
         navigationItem.rightBarButtonItems = [moreButton, navigationItem.rightBarButtonItem!, checkInBarButton]
         
         // Layout constraints
+        let bannerGap = checkInStripView.topAnchor.constraint(equalTo: orderBannerView.bottomAnchor, constant: 0)
+        orderBannerGap = bannerGap
         NSLayoutConstraint.activate([
             // Scroll view
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -910,8 +921,13 @@ class PlaceDetailViewController: BaseViewController {
             // updateInfoButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
             
             
-            // Check-in strip — directly under the photo
-            checkInStripView.topAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: Constants.Spacing.small),
+            // Order banner — directly under the photo, zero height while there's no open order
+            orderBannerView.topAnchor.constraint(equalTo: mediaCarouselView.bottomAnchor, constant: Constants.Spacing.small),
+            orderBannerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
+            orderBannerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
+
+            // Check-in strip — under the banner (or the photo, when the banner is hidden)
+            bannerGap,
             checkInStripView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
             checkInStripView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
 
@@ -3572,7 +3588,22 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
     }
 
     /// Owner bar → the store's Orders (the same screen Manage Store opens)
-    func placeVenueView(_ view: PlaceVenueRewardsView, didTapMyOrder order: StoreOrder) {
+    /// The menu to order from, when the store takes orders in the app and has one
+    private func orderingMenu(from data: PlaceVenueData?) -> (menu: StorefrontMenu, label: String, ordering: StoreOrdering, venue: PlaceVenue)? {
+        guard let data, let venue = data.venue, let storefront = data.storefront,
+              let ordering = storefront.ordering, ordering.enabled,
+              let menu = storefront.menu, !menu.isEmpty else { return nil }
+        return (menu, storefront.offeringsLabel, ordering, venue)
+    }
+
+    @objc private func orderTapped() {
+        guard let target = orderingMenu(from: placeVenueData) else { return }
+        placeVenueView(venueRewardsView, didTapFullMenu: target.menu, label: target.label, ordering: target.ordering, venue: target.venue)
+    }
+
+    /// The order banner: its status screen
+    private func openMyOrder() {
+        guard let order = placeVenueData?.myOrder else { return }
         navigationController?.pushViewController(OrderStatusViewController(order: order), animated: true)
     }
 
@@ -3775,6 +3806,12 @@ extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
     func loader(_ loader: VenueRewardsLoader, didLoadVenueData data: PlaceVenueData) {
         placeVenueData = data
         getRewardsButton.isHidden = RewardsAvailability(data) == .none
+        // "Order" up top at a store that takes orders (customers only; the
+        // team has Manage Store). Same menu as the store card's button.
+        orderButton.isHidden = data.isOwner == true || orderingMenu(from: data) == nil
+        // The customer's open order, above everything else on the page
+        orderBannerView.configure(order: data.isOwner == true ? nil : data.myOrder)
+        orderBannerGap?.constant = orderBannerView.isHidden ? 0 : Constants.Spacing.small
         venueRewardsView.configure(with: data)
         // The card shows for enrolled venues AND for the venue-less
         // "Is this your store?" claim states — collapsing on
