@@ -9,6 +9,8 @@ final class OrderStatusViewController: BaseViewController {
     override var showsLoadingIndicator: Bool { order == nil }
     override var loadsDataOnViewDidLoad: Bool { true }
     override var reloadsDataOnAppear: Bool { true }
+    /// Swipe down for the latest status (Wes, 2026-10-28); polling continues
+    override var enablesPullToRefresh: Bool { true }
 
     private let orderId: String
     private var order: StoreOrder?
@@ -47,6 +49,12 @@ final class OrderStatusViewController: BaseViewController {
     /// Ready (or accepted) and in hand: the customer closes it out themselves
     private lazy var pickedUpButton = UIButton.primaryButton(title: "I picked it up")
     private let stack = UIStackView()
+    private let scroll = UIScrollView()
+
+    override func setupRefreshControl() {
+        scroll.alwaysBounceVertical = true
+        scroll.refreshControl = refreshControl
+    }
 
     init(order: StoreOrder) {
         self.orderId = order.orderId
@@ -71,7 +79,6 @@ final class OrderStatusViewController: BaseViewController {
                 (self?.navigationController ?? self)?.dismiss(animated: true)
             })
         }
-        let scroll = UIScrollView()
         scroll.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scroll)
         stack.axis = .vertical

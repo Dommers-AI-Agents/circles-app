@@ -229,6 +229,8 @@ class PlaceDetailViewController: BaseViewController {
     private let checkInStripView: UIStackView = PlaceDetailViewFactory.checkInStripView()
     /// The customer's open order here, first thing under the photo
     private let orderBannerView = PlaceOrderBannerView()
+    /// Swipe down: the place, the store card and your order's status again (Wes, 2026-10-28)
+    private let pullRefresh = UIRefreshControl()
     private var orderBannerGap: NSLayoutConstraint?
     private let checkInHistoryLabel: UILabel = PlaceDetailViewFactory.checkInHistoryLabel()
     private let checkInHereButton: UIButton = PlaceDetailViewFactory.checkInHereButton()
@@ -437,6 +439,15 @@ class PlaceDetailViewController: BaseViewController {
     /// store's page is already open
     var shownGlobalPlaceId: String { place.globalPlaceId ?? place.id }
 
+    /// The place record, the store card (offers, menu, your open orders)
+    /// and the partner buttons, fresh from the server
+    @objc private func pullToRefresh() {
+        refreshPlaceFromServer()
+        venueLoader.loadVenueRewards()
+        // The venue callbacks end the spinner; this is the fallback
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in self?.pullRefresh.endRefreshing() }
+    }
+
     @objc private func handleStoreOrdersChanged() {
         // The owner's counts, or the customer's own order row, moved
         guard placeVenueData?.isOwner == true || placeVenueData?.myOrder != nil || !(placeVenueData?.myOrders ?? []).isEmpty else { return }
@@ -466,6 +477,9 @@ class PlaceDetailViewController: BaseViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(handlePlaceRatingChanged(_:)), name: .placeRatingChanged, object: nil)
         // The owner bar counts new orders: refresh it when they change
         NotificationCenter.default.addObserver(self, selector: #selector(handleStoreOrdersChanged), name: VenueOrdersViewController.ordersChanged, object: nil)
+        scrollView.alwaysBounceVertical = true
+        scrollView.refreshControl = pullRefresh
+        pullRefresh.addTarget(self, action: #selector(pullToRefresh), for: .valueChanged)
         NotificationCenter.default.addObserver(self, selector: #selector(handleRewardPointsChanged), name: .rewardPointsDidChange, object: nil)
         // The owner edited the store's details in Manage Store: show them here
         NotificationCenter.default.addObserver(self, selector: #selector(handleStoreDetailsChanged(_:)), name: .storeDetailsChanged, object: nil)
@@ -3803,6 +3817,7 @@ extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
     }
 
     func loader(_ loader: VenueRewardsLoader, didLoadVenueData data: PlaceVenueData) {
+        if pullRefresh.isRefreshing { pullRefresh.endRefreshing() }
         placeVenueData = data
         getRewardsButton.isHidden = RewardsAvailability(data) == .none
         // "Order" up top at a store that takes orders (customers only; the
@@ -3834,6 +3849,7 @@ extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
     }
 
     func loaderVenueLookupFailed(_ loader: VenueRewardsLoader) {
+        if pullRefresh.isRefreshing { pullRefresh.endRefreshing() }
         // Additive section — a failed lookup just leaves it collapsed
         venueRewardsView.configure(with: nil)
     }
