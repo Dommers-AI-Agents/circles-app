@@ -44,6 +44,8 @@ final class OrderStatusViewController: BaseViewController {
         return label
     }()
     private lazy var cancelButton = UIButton.dangerButton(title: "Cancel order")
+    /// Ready (or accepted) and in hand: the customer closes it out themselves
+    private lazy var pickedUpButton = UIButton.primaryButton(title: "I picked it up")
     private let stack = UIStackView()
 
     init(order: StoreOrder) {
@@ -62,9 +64,11 @@ final class OrderStatusViewController: BaseViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Your order"
-        if navigationController?.viewControllers.first === self {
+        // Inside the ordering sheet (just placed, or opened from a push): Done
+        // closes the whole sheet and lands back on the place page
+        if navigationController?.presentingViewController != nil {
             navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in
-                self?.dismiss(animated: true)
+                (self?.navigationController ?? self)?.dismiss(animated: true)
             })
         }
         let scroll = UIScrollView()
@@ -76,7 +80,7 @@ final class OrderStatusViewController: BaseViewController {
         scroll.addSubview(stack)
         let iconHolder = UIView()
         iconHolder.addSubview(iconView)
-        [iconHolder, statusLabel, detailLabel, linesLabel, cancelButton].forEach(stack.addArrangedSubview)
+        [iconHolder, statusLabel, detailLabel, linesLabel, pickedUpButton, cancelButton].forEach(stack.addArrangedSubview)
         stack.setCustomSpacing(24, after: detailLabel)
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -94,7 +98,10 @@ final class OrderStatusViewController: BaseViewController {
             iconView.widthAnchor.constraint(equalToConstant: 64)
         ])
         cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        pickedUpButton.addTarget(self, action: #selector(pickedUpTapped), for: .touchUpInside)
         render()
+        // Seeing the order settles its "ready" / "accepted" notices
+        NotificationService.shared.originSeen(kind: "order", id: orderId, userInfoKey: "orderId")
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -167,6 +174,27 @@ final class OrderStatusViewController: BaseViewController {
         }
         linesLabel.text = lines.joined(separator: "\n")
         cancelButton.isHidden = order.status != "placed"
+        pickedUpButton.isHidden = !["accepted", "ready"].contains(order.status)
+    }
+
+    @objc private func pickedUpTapped() {
+        pickedUpButton.isEnabled = false
+        OrderService.shared.pickedUp(orderId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.pickedUpButton.isEnabled = true
+                switch result {
+                case .success(let order):
+                    self.order = order
+                    self.render()
+                    // The banner on the place page and the notices go with it
+                    NotificationCenter.default.post(name: VenueOrdersViewController.ordersChanged, object: nil)
+                    NotificationService.shared.originSeen(kind: "order", id: self.orderId, userInfoKey: "orderId")
+                case .failure(let error):
+                    self.showError(error.serverMessage ?? "Couldn\u{2019}t mark it picked up. Try again.")
+                }
+            }
+        }
     }
 
     @objc private func cancelTapped() {
@@ -176,7 +204,10 @@ final class OrderStatusViewController: BaseViewController {
             OrderService.shared.cancel(self.orderId) { result in
                 DispatchQueue.main.async {
                     switch result {
-                    case .success(let order): self.order = order; self.render()
+                    case .success(let order):
+                        self.order = order
+                        self.render()
+                        NotificationCenter.default.post(name: VenueOrdersViewController.ordersChanged, object: nil)
                     case .failure(let error): self.showError(error.serverMessage ?? "Couldn\u{2019}t cancel it. Call the store.")
                     }
                 }

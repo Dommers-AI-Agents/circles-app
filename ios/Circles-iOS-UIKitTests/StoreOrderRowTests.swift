@@ -32,4 +32,13 @@ struct StoreOrderRowTests {
         let good = try JSONDecoder().decode(PlaceVenueData.self, from: Data(("{\"venue\": null, \"myOrder\": " + String(decoding: try JSONEncoder().encode(try order(status: "placed", label: "Waiting for the store")), as: UTF8.self) + "}").utf8))
         #expect(good.myOrder?.venueName == "Test Bakery")
     }
+
+    @Test func everyOpenOrderAtTheStoreComesThrough() throws {
+        let one = String(decoding: try JSONEncoder().encode(try order(status: "ready", label: "Ready for pickup")), as: UTF8.self)
+        let two = String(decoding: try JSONEncoder().encode(try order(status: "placed", label: "Waiting for the store")), as: UTF8.self)
+        let data = try JSONDecoder().decode(PlaceVenueData.self, from: Data("{\"venue\": null, \"myOrders\": [\(two), \(one)]}".utf8))
+        #expect(data.myOrders?.map(\.status) == ["placed", "ready"])
+        // A server before the field: nil, and the page falls back to the single order
+        #expect(try JSONDecoder().decode(PlaceVenueData.self, from: Data(#"{"venue": null}"#.utf8)).myOrders == nil)
+    }
 }

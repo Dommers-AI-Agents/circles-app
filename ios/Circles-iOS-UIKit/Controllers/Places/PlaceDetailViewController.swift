@@ -439,7 +439,7 @@ class PlaceDetailViewController: BaseViewController {
 
     @objc private func handleStoreOrdersChanged() {
         // The owner's counts, or the customer's own order row, moved
-        guard placeVenueData?.isOwner == true || placeVenueData?.myOrder != nil else { return }
+        guard placeVenueData?.isOwner == true || placeVenueData?.myOrder != nil || !(placeVenueData?.myOrders ?? []).isEmpty else { return }
         venueLoader.loadVenueRewards()
     }
 
@@ -447,7 +447,7 @@ class PlaceDetailViewController: BaseViewController {
         super.viewDidAppear(animated)
         // Back from Manage Store, Orders or an order's status: the owner
         // bar's counts or the customer's order row may have moved
-        if hasAppeared, placeVenueData?.isOwner == true || placeVenueData?.myOrder != nil { venueLoader.loadVenueRewards() }
+        if hasAppeared, placeVenueData?.isOwner == true || placeVenueData?.myOrder != nil || !(placeVenueData?.myOrders ?? []).isEmpty { venueLoader.loadVenueRewards() }
         hasAppeared = true
         openPendingPhotoIfReady()
         if showCommentsOnAppear {
@@ -698,7 +698,7 @@ class PlaceDetailViewController: BaseViewController {
         // the place.
         // An order in progress comes before everything else on the page
         contentView.addSubview(orderBannerView)
-        orderBannerView.onTap = { [weak self] in self?.openMyOrder() }
+        orderBannerView.onTap = { [weak self] order in self?.openMyOrder(order) }
         contentView.addSubview(checkInStripView)
         checkInStripView.addArrangedSubview(checkInHistoryLabel)
         checkInStripView.addArrangedSubview(checkInHereButton)
@@ -3601,9 +3601,8 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         placeVenueView(venueRewardsView, didTapFullMenu: target.menu, label: target.label, ordering: target.ordering, venue: target.venue)
     }
 
-    /// The order banner: its status screen
-    private func openMyOrder() {
-        guard let order = placeVenueData?.myOrder else { return }
+    /// The order banner: that order's status screen
+    private func openMyOrder(_ order: StoreOrder) {
         navigationController?.pushViewController(OrderStatusViewController(order: order), animated: true)
     }
 
@@ -3810,7 +3809,7 @@ extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
         // team has Manage Store). Same menu as the store card's button.
         orderButton.isHidden = data.isOwner == true || orderingMenu(from: data) == nil
         // The customer's open order, above everything else on the page
-        orderBannerView.configure(order: data.isOwner == true ? nil : data.myOrder)
+        orderBannerView.configure(orders: data.isOwner == true ? [] : (data.myOrders ?? [data.myOrder].compactMap { $0 }))
         orderBannerGap?.constant = orderBannerView.isHidden ? 0 : Constants.Spacing.small
         venueRewardsView.configure(with: data)
         // The card shows for enrolled venues AND for the venue-less

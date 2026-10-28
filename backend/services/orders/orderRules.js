@@ -29,14 +29,16 @@ const DEFAULT_LEAD_MINUTES = 15;
 const TRANSITIONS = {
   accept: { by: 'store', from: [STATUS.PLACED], to: STATUS.ACCEPTED },
   ready: { by: 'store', from: [STATUS.PLACED, STATUS.ACCEPTED], to: STATUS.READY },
-  picked_up: { by: 'store', from: [STATUS.ACCEPTED, STATUS.READY], to: STATUS.PICKED_UP },
+  // The customer can say they have it too (Wes, 2026-10-28): the ready
+  // notice shouldn't wait on the counter remembering to tap
+  picked_up: { by: ['store', 'customer'], from: [STATUS.ACCEPTED, STATUS.READY], to: STATUS.PICKED_UP },
   decline: { by: 'store', from: [STATUS.PLACED, STATUS.ACCEPTED], to: STATUS.DECLINED },
   cancel: { by: 'customer', from: [STATUS.PLACED], to: STATUS.CANCELLED }
 };
 
 function transition(order, action, by) {
   const t = TRANSITIONS[action];
-  if (!t || t.by !== by) throw new ServiceError(400, 'bad_action', 'That can’t be done to an order.');
+  if (!t || ![].concat(t.by).includes(by)) throw new ServiceError(400, 'bad_action', 'That can’t be done to an order.');
   if (!t.from.includes(order.status)) {
     throw new ServiceError(409, 'order_moved_on', `This order is already ${label(order.status).toLowerCase()}.`);
   }

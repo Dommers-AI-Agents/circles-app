@@ -21,6 +21,8 @@ const SETTLES = {
   person: { types: ['connection_accepted', 'new_follower'], keys: ['fromUserId', 'followerId'] },
   connection: { types: ['connection_request'], keys: ['connectionId'] },
   checkIn: { types: ['check_in', 'check_in_response'], keys: ['checkInId'] },
+  // Opening an order's status settles its accepted/ready/declined rows
+  order: { types: ['order_update'], keys: ['orderId'] },
   carePlan: {
     types: ['care_invite', 'care_accepted', 'care_silence', 'care_watcher_request', 'care_watcher_invite',
       'care_watcher_accepted', 'care_watcher_declined', 'care_watcher_joined', 'care_watcher_removed'],

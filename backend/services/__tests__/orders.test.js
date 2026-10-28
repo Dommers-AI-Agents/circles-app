@@ -35,17 +35,30 @@ describe('rules', () => {
     expect(p.lines[2].note).toBe('extra garlic');
   });
 
-  test('the place page finds the customer\'s open order at that store, newest first, and nothing once it is closed', async () => {
-    expect(await orders.openAtVenue('cust', 'v1')).toBeNull();
+  test('the place page lists every open order the customer has at that store, newest first', async () => {
+    expect(await orders.openOrdersAtVenue('cust', 'v1')).toEqual([]);
     const first = await orders.place({ customerId: 'cust', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }], pickup: 'asap' });
     const second = await orders.place({ customerId: 'cust', venueId: 'v1', items: [{ itemId: 'd', qty: 1 }], pickup: 'asap' }, { now: new Date(Date.now() + 1000) });
-    expect((await orders.openAtVenue('cust', 'v1')).orderId).toBe(second.orderId);
-    expect(await orders.openAtVenue('cust', 'other-venue')).toBeNull();
-    expect(await orders.openAtVenue('someone-else', 'v1')).toBeNull();
+    expect((await orders.openOrdersAtVenue('cust', 'v1')).map((o) => o.orderId)).toEqual([second.orderId, first.orderId]);
+    expect(await orders.openOrdersAtVenue('cust', 'other-venue')).toEqual([]);
+    expect(await orders.openOrdersAtVenue('someone-else', 'v1')).toEqual([]);
     await orders.cancel(second.orderId, 'cust');
-    expect((await orders.openAtVenue('cust', 'v1')).orderId).toBe(first.orderId);
+    expect((await orders.openOrdersAtVenue('cust', 'v1')).map((o) => o.orderId)).toEqual([first.orderId]);
     await orders.cancel(first.orderId, 'cust');
-    expect(await orders.openAtVenue('cust', 'v1')).toBeNull();
+    expect(await orders.openOrdersAtVenue('cust', 'v1')).toEqual([]);
+  });
+
+  test('the customer can mark a ready (or accepted) order picked up; the counter hears, a stranger cannot', async () => {
+    const placed = await orders.place({ customerId: 'cust', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }], pickup: 'asap' });
+    await expect(orders.pickedUp(placed.orderId, 'cust')).rejects.toMatchObject({ code: 'order_moved_on' });
+    await orders.storeAction('v1', placed.orderId, 'ready', { actorId: 'owner' });
+    mockPushes.length = 0;
+    await expect(orders.pickedUp(placed.orderId, 'someone-else')).rejects.toMatchObject({ code: 'order_not_found' });
+    const done = await orders.pickedUp(placed.orderId, 'cust');
+    expect(done.status).toBe('picked_up');
+    expect(mockPushes.map((p) => [p.uid, p.type])).toEqual([['owner', 'order_new'], ['mgr', 'order_new']]);
+    expect(mockPushes[0].title).toBe('Picked up: Ana');
+    expect(await orders.openOrdersAtVenue('cust', 'v1')).toEqual([]);
   });
 
   test('a removed item, a silly quantity or an empty cart is refused', () => {

@@ -33,6 +33,13 @@ final class OrderService {
         }
     }
 
+    /// The customer has the order in hand
+    func pickedUp(_ orderId: String, completion: @escaping (Result<StoreOrder, APIError>) -> Void) {
+        api.request(endpoint: "orders/\(orderId)/picked-up", method: .post, body: [:], requiresAuth: true) { (r: Result<Envelope<StoreOrder>, APIError>) in
+            completion(r.map(\.data))
+        }
+    }
+
     func cancel(_ orderId: String, completion: @escaping (Result<StoreOrder, APIError>) -> Void) {
         api.request(endpoint: "orders/\(orderId)/cancel", method: .post, body: [:], requiresAuth: true) { (r: Result<Envelope<StoreOrder>, APIError>) in
             completion(r.map(\.data))

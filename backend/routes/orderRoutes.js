@@ -9,5 +9,6 @@ router.post('/', orders.place);
 router.get('/mine', orders.mine);
 router.get('/:orderId', orders.get);
 router.post('/:orderId/cancel', orders.cancel);
+router.post('/:orderId/picked-up', orders.pickedUp);
 
 module.exports = router;

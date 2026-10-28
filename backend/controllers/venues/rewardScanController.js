@@ -428,9 +428,9 @@ exports.getVenueByPlace = async (req, res) => {
 
     // The caller's open order-ahead order here, if any: the page shows a
     // "Your order" row that opens its status. Never lets the page fail.
-    let myOrder = null;
+    let myOrders = [];
     try {
-      myOrder = await require('../../services/orders/orderService').openAtVenue(userId, venue.venueId);
+      myOrders = await require('../../services/orders/orderService').openOrdersAtVenue(userId, venue.venueId);
     } catch (orderError) {
       console.error('⚠️ Open-order lookup failed (place page continues):', orderError.message);
     }
@@ -462,7 +462,8 @@ exports.getVenueByPlace = async (req, res) => {
         }),
         balance,
         venueBalance,
-        myOrder,
+        myOrders,
+        myOrder: myOrders[0] || null,
         isOwner,
         // Super-users keep the place page's "Print Store QR Codes" door once
         // the store is enrolled too (it opens the Store page)

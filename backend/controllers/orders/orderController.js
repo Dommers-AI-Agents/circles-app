@@ -27,3 +27,8 @@ exports.get = async (req, res) => {
 exports.cancel = async (req, res) => {
   try { res.json({ success: true, data: await orders.cancel(req.params.orderId, req.user.uid) }); } catch (error) { fail(res, error); }
 };
+
+// @route POST /api/orders/:orderId/picked-up   (the customer has it)
+exports.pickedUp = async (req, res) => {
+  try { res.json({ success: true, data: await orders.pickedUp(req.params.orderId, req.user.uid) }); } catch (error) { fail(res, error); }
+};

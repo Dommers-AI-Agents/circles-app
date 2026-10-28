@@ -1130,6 +1130,8 @@ struct PlaceVenueData: Codable {
     /// shows a "Your order" row that opens its status (2026-10-28). Lenient:
     /// a shape this build doesn't know leaves the row out, not the card.
     @LenientlyDecoded var myOrder: StoreOrder?
+    /// All of them, newest first: two orders at one store never hide each other
+    @LenientlyDecoded var myOrders: [StoreOrder]?
     let isOwner: Bool?
     // Present only when isOwner: whether the owner has the Business tier
     // (false drives the in-place "Upgrade to Business" teaser)

@@ -126,21 +126,22 @@ async function mine(customerId, { db = getFirestore() } = {}) {
 }
 
 /**
- * The customer's open order at one store (newest), for the store's place
- * page: a "Your order" row so the status is one tap away after the first
- * screen is gone (Wes, 2026-10-28). Open orders are capped at 3 per
- * customer, so the status filter keeps this to a handful of docs.
+ * The customer's open orders at one store, newest first, for the store's
+ * place page: a banner per order so the status is one tap away after the
+ * first screen is gone, and two orders never hide each other (Wes,
+ * 2026-10-28). Open orders are capped at 3 per customer, so the status
+ * filter keeps this to a handful of docs.
  */
-async function openAtVenue(customerId, venueId, { db = getFirestore() } = {}) {
+async function openOrdersAtVenue(customerId, venueId, { db = getFirestore() } = {}) {
   const snap = await db.collection(ORDERS)
     .where('customerId', '==', customerId)
     .where('status', 'in', [...OPEN])
     .get();
-  const mine = snap.docs
+  return snap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
     .filter((o) => o.venueId === venueId)
-    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  return mine.length ? view(mine[0].id, mine[0]) : null;
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .map((o) => view(o.id, o));
 }
 
 /** One order, for its customer or the store's team. */
@@ -155,6 +156,11 @@ async function get(orderId, viewerId, { db = getFirestore() } = {}) {
 
 async function cancel(orderId, customerId, { db = getFirestore() } = {}) {
   return act(orderId, 'cancel', { by: 'customer', actorId: customerId, db });
+}
+
+/** The customer has the order in hand: it leaves their page and the store's board. */
+async function pickedUp(orderId, customerId, { db = getFirestore() } = {}) {
+  return act(orderId, 'picked_up', { by: 'customer', actorId: customerId, db });
 }
 
 // ------------------------------------------------------------------- store
@@ -214,7 +220,7 @@ async function act(orderId, action, { by, venueId, actorId, readyInMinutes, reas
     tx.update(ref, patch);
     return { id: doc.id, order: { ...o, ...patch } };
   });
-  notifyStep(result.id, result.order, action);
+  notifyStep(result.id, result.order, action, by);
   return view(result.id, result.order);
 }
 
@@ -274,13 +280,15 @@ ${o.note ? `<p style="margin:14px 0 0"><b>Note:</b> ${escapeHtml(o.note)}</p>` :
   }
 }
 
-function notifyStep(orderId, o, action) {
+function notifyStep(orderId, o, action, by = 'store') {
   const place = o.venueName;
   const notice = {
     accept: { title: `${place} accepted your order`, body: `Ready around ${timeText(o.readyAt, o.timeZone)}. Pay at pickup.` },
     ready: { title: `Your order is ready at ${place}`, body: 'Head to the counter to pick it up and pay.' },
     decline: { title: `${place} couldn’t take your order`, body: o.declineReason || 'They can’t make it right now.' },
-    picked_up: null,
+    // The counter marking it needs no notice; the customer marking it tells
+    // the counter the order is off their board
+    picked_up: by === 'customer' ? { team: true, title: `Picked up: ${o.customerName}`, body: `${summary(o.lines)}. The customer has it.` } : null,
     cancel: { team: true, title: `Order cancelled: ${o.customerName}`, body: `${summary(o.lines)}. No need to make it.` },
     expire: { title: `${place} didn’t answer your order`, body: 'It wasn’t taken, so don’t head over for it. Try calling the store.' }
   }[action];
@@ -318,4 +326,4 @@ async function sweep({ db = getFirestore(), now = new Date() } = {}) {
   return { expired, closed };
 }
 
-module.exports = { ORDERS, view, place, mine, openAtVenue, get, cancel, newCount, forVenue, storeAction, normalizeSettings, saveSettings, sweep };
+module.exports = { ORDERS, view, place, mine, openOrdersAtVenue, get, cancel, pickedUp, newCount, forVenue, storeAction, normalizeSettings, saveSettings, sweep };
