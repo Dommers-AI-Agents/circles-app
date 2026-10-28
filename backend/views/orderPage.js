@@ -70,7 +70,7 @@ ${extraMeta}
 </head>`;
 
 const footer = (p) => `<footer>Powered by <b>FavCircles</b> · save ${esc(p.name)} to your map and earn rewards there<br>
-<a class="get" href="${p.globalPlaceId ? `${API_BASE}/place/${esc(p.globalPlaceId)}` : APP_STORE_URL}">Get the app</a></footer>`;
+<a class="get" href="${APP_STORE_URL}" rel="noopener">Get the app</a></footer>`;
 
 const hoursHtml = (hours) => {
   if (!hours) return '';
@@ -79,9 +79,12 @@ const hoursHtml = (hours) => {
     `<tr${h.day === today ? ' class="today"' : ''}><td>${esc(h.label)}</td><td>${esc(h.text)}</td></tr>`).join('')}</table></details>`;
 };
 
-// Menu prices are free text ("9", "4.50", "$12", "MP"): a bare number gets a
-// dollar sign on the page; anything else prints as the owner typed it
-const priceText = (price) => (/^\s*\d+(?:\.\d{1,2})?\s*$/.test(String(price || '')) ? `$${String(price).trim()}` : (price || ''));
+// Menu prices are free text ("9", "4.50", "$12", "MP"): anything numeric
+// prints as $X.XX (Wes, 2026-10-28); anything else as the owner typed it
+const priceText = (price) => {
+  const m = /^\s*\$?\s*(\d+(?:\.\d{1,2})?)\s*$/.exec(String(price || ''));
+  return m ? `$${Number(m[1]).toFixed(2)}` : (price || '');
+};
 
 const itemHtml = (item, canOrder) => `<button class="item" type="button" data-item-id="${esc(item.id)}"${canOrder ? '' : ' disabled'}>
 <span class="t"><span class="n">${esc(item.name)}<span class="q" data-qty></span></span>${item.description ? `<span class="d">${esc(item.description)}</span>` : ''}${item.tags && item.tags.length ? `<span class="tags">${esc(item.tags.join(' · '))}</span>` : ''}</span>
