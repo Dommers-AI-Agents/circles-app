@@ -40,6 +40,9 @@ enum VenueManageLayout {
         /// Order ahead from the menu, pay at pickup (2026-10-20)
         case orders
         case onlineOrdering
+        /// The store's web page, order.favcircles.com/<slug>: link it from the
+        /// store's own site (2026-10-28)
+        case orderPage
         case gallery
         // Loyalty program
         case earnRate
@@ -91,7 +94,9 @@ enum VenueManageLayout {
         if facts.hasPlace && physical { placePage.append(.hours) }
         placePage += [.storefrontButtons, .fullMenu]
         if !facts.orderingOn { placePage.append(.orders) }
-        placePage += [.onlineOrdering, .menu]
+        placePage.append(.onlineOrdering)
+        if physical { placePage.append(.orderPage) }
+        placePage.append(.menu)
         // No place page (online-only store): its own storefront gallery
         if !facts.hasPlace { placePage.append(.gallery) }
 
@@ -126,7 +131,7 @@ enum VenueManageLayout {
     static func isBusiness(_ row: Row) -> Bool {
         switch row {
         case .savers, .followers, .activity,
-             .menu, .fullMenu, .orders, .onlineOrdering, .gallery,
+             .menu, .fullMenu, .orders, .onlineOrdering, .orderPage, .gallery,
              .earnRate, .offer, .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes,
              .announcement, .addAnnouncement:
             return true

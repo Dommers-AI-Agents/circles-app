@@ -68,6 +68,13 @@ final class OrderService {
         }
     }
 
+    /// The store's web address (order.favcircles.com/<slug>); owner only
+    func setOrderSlug(venueId: String, slug: String, completion: @escaping (Result<StorefrontOrderingPage, APIError>) -> Void) {
+        api.request(endpoint: "rewards/venues/\(venueId)/slug", method: .put, body: ["slug": slug], requiresAuth: true) { (r: Result<Envelope<StorefrontOrderingPage>, APIError>) in
+            completion(r.map(\.data))
+        }
+    }
+
     func saveOrdering(venueId: String, _ ordering: StoreOrdering, completion: @escaping (Result<StoreOrdering, APIError>) -> Void) {
         let body: [String: Any] = ["enabled": ordering.enabled, "leadMinutes": ordering.leadMinutes, "note": ordering.note ?? NSNull()]
         api.request(endpoint: "rewards/venues/\(venueId)/ordering", method: .put, body: body, requiresAuth: true) { (r: Result<Envelope<StoreOrdering>, APIError>) in

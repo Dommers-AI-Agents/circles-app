@@ -1162,12 +1162,15 @@ struct VenueStorefront: Codable {
     let ordering: StoreOrdering?
     let actions: StorefrontActions?
     let gallery: [StorefrontGalleryPhoto]
+    /// The store's web page (order.favcircles.com/<slug>), owner view only;
+    /// nil until the server has minted one (online-only stores never)
+    let orderingPage: StorefrontOrderingPage?
 
-    enum CodingKeys: String, CodingKey { case offeringsLabel, offerings, menu, ordering, actions, gallery }
+    enum CodingKeys: String, CodingKey { case offeringsLabel, offerings, menu, ordering, actions, gallery, orderingPage }
     init(offeringsLabel: String, offerings: StorefrontOfferings?, menu: StorefrontMenu? = nil, ordering: StoreOrdering? = nil,
-         actions: StorefrontActions?, gallery: [StorefrontGalleryPhoto]) {
+         actions: StorefrontActions?, gallery: [StorefrontGalleryPhoto], orderingPage: StorefrontOrderingPage? = nil) {
         self.offeringsLabel = offeringsLabel; self.offerings = offerings; self.menu = menu; self.ordering = ordering
-        self.actions = actions; self.gallery = gallery
+        self.actions = actions; self.gallery = gallery; self.orderingPage = orderingPage
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -1177,7 +1180,14 @@ struct VenueStorefront: Codable {
         ordering = try? c.decodeIfPresent(StoreOrdering.self, forKey: .ordering)
         actions = try? c.decodeIfPresent(StorefrontActions.self, forKey: .actions)
         gallery = (try? c.decode([StorefrontGalleryPhoto].self, forKey: .gallery)) ?? []
+        orderingPage = try? c.decodeIfPresent(StorefrontOrderingPage.self, forKey: .orderingPage)
     }
+}
+
+/// A store's public ordering page: its address (slug) and full URL
+struct StorefrontOrderingPage: Codable, Equatable {
+    let slug: String
+    let url: String
 }
 
 struct StorefrontOfferings: Codable {

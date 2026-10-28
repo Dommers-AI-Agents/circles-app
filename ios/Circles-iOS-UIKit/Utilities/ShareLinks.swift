@@ -8,6 +8,9 @@ import Foundation
 enum ShareLinks {
 
     static let base = "https://api.favcircles.com"
+    /// A store's public ordering page lives on its own host so the app never
+    /// intercepts it (no universal link there): the store's website links it
+    static let orderBase = "https://order.favcircles.com"
     static let appStore = "https://apps.apple.com/us/app/favcircles/id6746807095"
 
     /// Place page link. Carries share attribution (ref) so the sharer earns
@@ -37,6 +40,11 @@ enum ShareLinks {
     /// Public profile link (opens the profile in-app when installed)
     static func user(id: String) -> URL {
         return URL(string: "\(base)/user/\(id)") ?? URL(string: base)!
+    }
+
+    /// The store's ordering page, order.favcircles.com/<slug>
+    static func orderPage(slug: String) -> URL {
+        return URL(string: "\(orderBase)/\(slug)") ?? URL(string: orderBase)!
     }
 
     static var appStoreURL: URL { URL(string: appStore)! }

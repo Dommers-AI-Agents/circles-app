@@ -16,6 +16,13 @@ struct StoreOrder: Codable, Equatable {
         let at: String?
     }
 
+    /// A web guest's contact (channel "web"), sent to the store's team only
+    struct Customer: Codable, Equatable {
+        let name: String?
+        let phone: String?
+        let email: String?
+    }
+
     let orderId: String
     /// The store's own team trying it ("Try it as a customer")
     let test: Bool?
@@ -24,6 +31,9 @@ struct StoreOrder: Codable, Equatable {
     let globalPlaceId: String?
     let customerId: String
     let customerName: String
+    /// "app" or "web" (the store's public ordering page); absent on older servers
+    let channel: String?
+    let customer: Customer?
     let lines: [Line]
     let note: String?
     let pickup: Pickup
@@ -38,6 +48,8 @@ struct StoreOrder: Codable, Equatable {
     let updatedAt: String?
 
     var isOpen: Bool { ["placed", "accepted", "ready"].contains(status) }
+    /// Placed from the store's web page by someone without the app
+    var isWeb: Bool { channel == "web" }
 
     /// One line for a list row or the place page: the status, with the ready
     /// time once the store has given one ("Accepted · ready by 12:40").

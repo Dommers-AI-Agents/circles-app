@@ -32,7 +32,16 @@ struct VenueManageLayoutTests {
 
     @Test func noPlaceRecordHidesPlaceRows() {
         let page = rows(L.Facts(hasPlace: false), .placePage) ?? []
-        #expect(page == [.storefrontButtons, .fullMenu, .orders, .onlineOrdering, .menu, .gallery])
+        #expect(page == [.storefrontButtons, .fullMenu, .orders, .onlineOrdering, .orderPage, .menu, .gallery])
+    }
+
+    @Test func webOrderingPageFollowsOnlineOrderingForPhysicalStoresOnly() {
+        for facts in [L.Facts(), L.Facts(orderingOn: true), L.Facts(hasPlace: false)] {
+            let page = rows(facts, .placePage) ?? []
+            let i = page.firstIndex(of: .onlineOrdering)!
+            #expect(page[i + 1] == .orderPage)
+        }
+        #expect(!(rows(L.Facts(isVirtual: true, hasPlace: false), .placePage) ?? []).contains(.orderPage))
     }
 
     @Test func storeDetailsSitUnderViewYourPage() {
@@ -72,7 +81,7 @@ struct VenueManageLayoutTests {
     }
 
     @Test func businessToolsAreLocked() {
-        let paid: [L.Row] = [.savers, .followers, .activity, .menu, .fullMenu, .orders, .onlineOrdering, .gallery, .earnRate, .offer(0), .addOffer,
+        let paid: [L.Row] = [.savers, .followers, .activity, .menu, .fullMenu, .orders, .onlineOrdering, .orderPage, .gallery, .earnRate, .offer(0), .addOffer,
                              .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .announcement(0), .addAnnouncement]
         paid.forEach { #expect(L.isBusiness($0), "\($0) should need Business") }
     }

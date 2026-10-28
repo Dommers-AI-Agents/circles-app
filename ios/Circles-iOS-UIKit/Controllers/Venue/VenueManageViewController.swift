@@ -115,6 +115,19 @@ class VenueManageViewController: BaseViewController {
                 }
             }
             navigationController?.pushViewController(vc, animated: true)
+        case .orderPage:
+            let vc = VenueOrderPageViewController(venueId: venueId, venueName: venueName, page: storefront?.orderingPage,
+                                                  orderingOn: storefront?.ordering?.enabled == true)
+            vc.onChanged = { [weak self] _ in
+                guard let self else { return }
+                RewardsService.shared.fetchStorefront(venueId: self.venueId) { result in
+                    DispatchQueue.main.async {
+                        if case .success(let fresh) = result { self.storefront = fresh }
+                        self.reload()
+                    }
+                }
+            }
+            navigationController?.pushViewController(vc, animated: true)
         case .gallery:
             let vc = VenueStorefrontGalleryViewController(venueId: venueId, photos: storefront?.gallery ?? [])
             vc.onSaved = onSaved
@@ -875,6 +888,9 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         case .onlineOrdering:
             let o = storefront?.ordering
             set("Online ordering", o?.enabled == true ? "On \u{00B7} usually ready in \(o?.leadMinutes ?? 15) min" : "Off", "switch.2")
+        case .orderPage:
+            let url = storefront?.orderingPage?.url.replacingOccurrences(of: "https://", with: "")
+            set("Your ordering page", url ?? "Your menu and ordering on the web \u{2014} link it from your site", "globe")
         case .menu:
             let label = storefront?.offeringsLabel ?? "Menu"
             let o = storefront?.offerings
@@ -985,7 +1001,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             openHours()
         case .photos:
             openPhotoLibrary()
-        case .storefrontButtons, .menu, .fullMenu, .orders, .onlineOrdering, .gallery:
+        case .storefrontButtons, .menu, .fullMenu, .orders, .onlineOrdering, .orderPage, .gallery:
             openStorefrontRow(row)
 
         case .earnRate:

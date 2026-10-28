@@ -90,6 +90,10 @@ final class VenueOrdersViewController: BaseViewController {
 
     private func actions(for order: StoreOrder, from view: UIView) {
         var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = []
+        // A web guest left a phone number; the counter may need to call about the order
+        if let phone = order.customer?.phone, let url = URL(string: "tel:\(phone.filter { $0.isNumber || $0 == "+" })") {
+            actions.append((title: "Call \(phone)", style: .default, handler: { UIApplication.shared.open(url) }))
+        }
         switch order.status {
         case "placed":
             actions.append((title: "Accept\u{2026}", style: .default, handler: { [weak self] in self?.chooseReadyTime(order, from: view) }))
@@ -185,7 +189,7 @@ extension VenueOrdersViewController: UITableViewDataSource, UITableViewDelegate 
         let o = list[indexPath.row]
         let pickup = o.pickup.asap ? "ASAP" : "pickup \(OrderStatusViewController.timeText(o.pickup.at) ?? "")"
         let ready = o.status == "accepted" ? OrderStatusViewController.timeText(o.readyAt).map { " \u{00B7} ready by \($0)" } ?? "" : ""
-        config.text = "\(o.test == true ? "TEST \u{00B7} " : "")\(o.customerName) \u{00B7} \(pickup)\(ready)"
+        config.text = "\(o.test == true ? "TEST \u{00B7} " : "")\(o.isWeb ? "Web \u{00B7} " : "")\(o.customerName) \u{00B7} \(pickup)\(ready)"
         config.textProperties.font = .systemFont(ofSize: 17, weight: .semibold)
         var detail = o.lines.map { line in "\(line.qty)\u{00D7} \(line.name)\(line.note.map { " (\($0))" } ?? "")" }.joined(separator: "\n")
         if let note = o.note { detail += "\nNote: \(note)" }
@@ -222,6 +226,8 @@ final class VenueOrderingSettingsViewController: BaseViewController {
     private let label: String
     private let venueName: String
     private lazy var tryButton = UIButton.secondaryButton(title: "Try it as a customer")
+    private lazy var pageButton = UIButton.secondaryButton(title: "Your ordering page")
+    private let page: StorefrontOrderingPage?
     private let enabledSwitch = UISwitch()
     private let leadStepper = UIStepper()
     private let leadLabel = UILabel()
@@ -235,6 +241,7 @@ final class VenueOrderingSettingsViewController: BaseViewController {
         self.menu = storefront?.menu
         self.label = storefront?.offeringsLabel ?? "Menu"
         self.hasMenu = !(storefront?.menu?.isEmpty ?? true)
+        self.page = storefront?.orderingPage
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -273,7 +280,19 @@ final class VenueOrderingSettingsViewController: BaseViewController {
             tryButton.addTarget(self, action: #selector(tryTapped), for: .touchUpInside)
             stack.addArrangedSubview(tryButton)
         }
+        if page != nil {
+            stack.addArrangedSubview(VenueFormLayout.hintLabel(
+                "Customers without the app order from your web page, with the same menu and the same Orders list. Link it from your website or social pages."))
+            pageButton.setImage(UIImage(systemName: "globe"), for: .normal)
+            pageButton.addTarget(self, action: #selector(pageTapped), for: .touchUpInside)
+            stack.addArrangedSubview(pageButton)
+        }
         leadChanged()
+    }
+
+    @objc private func pageTapped() {
+        let vc = VenueOrderPageViewController(venueId: venueId, venueName: venueName, page: page, orderingOn: enabledSwitch.isOn)
+        navigationController?.pushViewController(vc, animated: true)
     }
 
     /// The owner orders from their own menu (marked TEST), then sees it in Orders
