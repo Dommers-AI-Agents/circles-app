@@ -46,20 +46,21 @@ echo "servant up: $HS"
 shot() { sleep ${2:-2}; xcrun simctl io $UD screenshot --display=$DISP "$OUT/$1.png" >/dev/null 2>&1; echo "captured $1 ($(sips -g pixelWidth -g pixelHeight "$OUT/$1.png" | tail -2 | awk '{print $2}' | paste -sd x -))"; }
 cmd()  { echo "$1" > "$HS/cmd"; for i in {1..600}; do [[ -e "$HS/$1.done" ]] && { rm -f "$HS/$1.done"; return 0; }; sleep 0.5; done; echo "WARN: $1 timed out"; }
 go()   { xcrun simctl openurl $UD "$1" >/dev/null 2>&1; sleep ${2:-5}; }
+# ONLY="storepoints privacy" re-shoots just those screens
+want() { [[ -z ${ONLY:-} || " $ONLY " == *" $1 "* ]]; }
 
 xcrun simctl location $UD set 35.2271,-80.8431   # uptown Charlotte, as in the September set
 # App Store status bar, same as the September set
 xcrun simctl status_bar $UD override --time 9:41 --batteryState charged --batteryLevel 100 --cellularMode active --cellularBars 4 --wifiBars 3 >/dev/null 2>&1
-sleep 7; cmd locate;                       shot home 2
-cmd dismiss
-go "$API/app/map" 6; cmd locate;           shot fullmap 4
-go "$API/app/widget/postcard" 6;           shot postcard
-go "$API/app/open?path=me" 5;              shot profile
-go "$API/place/$PLACE" 6;                  shot place
-go "$API/app/open?path=rewards/piggy-bank" 4; cmd store-points; shot storepoints 8
-go "$API/app/tab/widgets" 5; cmd dismiss;  shot widgets
-cmd privacy;                               shot privacy
-go "$API/app/open?path=add-place" 4;       shot addplace
+want home && { sleep 7; cmd locate;                       shot home 2; cmd dismiss; }
+want fullmap && { go "$API/app/map" 6; cmd locate;           shot fullmap 4; }
+want postcard && { go "$API/app/widget/postcard" 6;           shot postcard; }
+want profile && { go "$API/app/open?path=me" 5;              shot profile; }
+want place && { go "$API/place/$PLACE" 6;                  shot place; }
+want storepoints && { go "$API/app/open?path=rewards/piggy-bank" 4; cmd store-points; shot storepoints 8; }
+want widgets && { go "$API/app/tab/widgets" 5; cmd dismiss;  shot widgets; }
+want privacy && { cmd privacy;                               shot privacy; }
+want addplace && { go "$API/app/open?path=add-place" 4;       shot addplace; }
 echo end > "$HS/cmd"
 xcrun simctl status_bar $UD clear >/dev/null 2>&1
 wait $TEST; echo "servant exit $?"
