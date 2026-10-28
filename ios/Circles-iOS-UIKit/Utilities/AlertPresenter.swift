@@ -128,7 +128,11 @@ class AlertPresenter {
             })
         }
         
-        actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        // A sheet may hold exactly one Cancel; UIKit throws on a second
+        // (2026-10-28: the QR screen's Share crashed by passing its own)
+        if !actions.contains(where: { $0.style == .cancel }) {
+            actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        }
         
         // iPad requires popover presentation
         if let popover = actionSheet.popoverPresentationController {

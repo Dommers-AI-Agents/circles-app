@@ -1133,9 +1133,9 @@ struct PlaceVenueData: Codable {
     /// Present only when isOwner: headline counters for the inline stat strip
     let ownerStats: VenueOwnerStats?
     let claim: PlaceVenueClaim?
-    /// Super-users only, and only while the place has no venue: they can
-    /// enroll the store from its page to print its QR codes (2026-10-28)
-    let canEnroll: Bool?
+    /// Super-users only: the place page offers "Print Store QR Codes",
+    /// whether the store is enrolled yet or not (2026-10-28)
+    let canPrintCodes: Bool?
     /// Menu / money buttons / gallery. nil when the owner has set nothing;
     /// the paid blocks are already stripped server-side when the store's
     /// subscription isn't live, so the view renders whatever arrives.

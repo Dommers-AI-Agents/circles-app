@@ -1990,10 +1990,10 @@ class PlaceDetailViewController: BaseViewController {
                 self?.openPhotoGallery(arranging: true)
             }))
         }
-        // Super-user on a store nobody has enrolled: set it up from here and
-        // print its codes (window sign, table tent, counter card). An enrolled
-        // store, claimed or not, already shows them Manage Store below.
-        if placeVenueData?.venue == nil, placeVenueData?.canEnroll == true {
+        // Super-user: the store's codes (window sign, table tent, counter
+        // card) from any place, claimed or not. A store nobody enrolled is
+        // set up on the way; the Store page opens either way.
+        if placeVenueData?.canPrintCodes == true {
             actions.append((title: "Print Store QR Codes", style: .default, handler: { [weak self] in
                 self?.enrollStoreForPrinting()
             }))
@@ -3647,11 +3647,11 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         }
     }
 
-    /// Super-user: give this place its venue record (codes, no owner) and
-    /// open the store page, where both QR codes print and email.
+    /// Super-user: open the store page, where both QR codes print and email,
+    /// giving the place its venue record (codes, no owner) first if it has none.
     private func enrollStoreForPrinting() {
         let placeId = place.globalPlaceId ?? place.id
-        let loading = AlertPresenter.showLoading(message: "Setting up the store's codes...", from: self)
+        let loading = AlertPresenter.showLoading(message: "Opening the store's codes...", from: self)
         RewardsService.shared.enrollPlaceVenue(placeId: placeId, googlePlaceId: place.googlePlaceId) { [weak self] result in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) {

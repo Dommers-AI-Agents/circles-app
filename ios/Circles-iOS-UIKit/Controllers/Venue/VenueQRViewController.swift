@@ -150,8 +150,7 @@ class VenueQRViewController: BaseViewController {
             message: "A sign, a table tent or a counter card prints at real size, with the code 2, 3 or 4 inches wide. The image is for texts and social posts.",
             actions: [
                 ("Print a sign or tent…", .default, { [weak self] in self?.showPrintOptions(venueId: venueId) }),
-                ("Share image", .default, { [weak self] in self?.shareImage() }),
-                ("Cancel", .cancel, {})
+                ("Share image", .default, { [weak self] in self?.shareImage() })
             ],
             from: self,
             sourceView: shareButton

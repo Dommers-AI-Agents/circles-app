@@ -391,10 +391,10 @@ exports.getVenueByPlace = async (req, res) => {
           console.error('⚠️ Claim status lookup failed:', claimError.message);
         }
       }
-      // Super-users can enroll the store right here (print its codes); the
-      // place page shows that door only when this says so
-      const canEnroll = req.user.isSuperUser === true && claim.canClaim;
-      return res.json({ success: true, data: { venue: null, claim, canEnroll } });
+      // Super-users print any store's codes from its page; a place nobody
+      // enrolled gets its venue minted on the way (POST venues/from-place)
+      const canPrintCodes = req.user.isSuperUser === true && claim.canClaim;
+      return res.json({ success: true, data: { venue: null, claim, canPrintCodes } });
     }
 
     const isOwner = isVenueTeamMember(venue, userId)
@@ -448,6 +448,9 @@ exports.getVenueByPlace = async (req, res) => {
         balance,
         venueBalance,
         isOwner,
+        // Super-users keep the place page's "Print Store QR Codes" door once
+        // the store is enrolled too (it opens the Store page)
+        canPrintCodes: req.user.isSuperUser === true,
         // For the owner viewing their own place: drives the in-place
         // "Upgrade to Business" teaser when they can't post announcements yet
         ownerPremium: isOwner ? isOwnerPremiumForVenue(req.user, venue.venueId, venue) : undefined,
