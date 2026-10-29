@@ -4,7 +4,7 @@
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
-const { GLOBAL_COLLECTIONS, buildSearchTokens } = require('../models/GlobalPlace');
+const { GLOBAL_COLLECTIONS, buildSearchTokens, geohashForLocation } = require('../models/GlobalPlace');
 const { sanitizeVenueDescription } = require('../utils/venueDescriptionSanitizer');
 const { VENUE_TOP_FIELDS, VENUE_GOOGLE_FIELDS } = require('../services/placeReadService');
 const db = getFirestore();
@@ -31,6 +31,10 @@ const buildGlobalVenueUpdates = (updateData) => {
   if (updates.name !== undefined) {
     updates.nameLower = (updates.name || '').toLowerCase();
     updates.searchTokens = buildSearchTokens(updates.name);
+  }
+  // A moved venue moves in distance-first search too
+  if (updates.location !== undefined) {
+    updates.geohash = geohashForLocation(updates.location);
   }
   return updates;
 };

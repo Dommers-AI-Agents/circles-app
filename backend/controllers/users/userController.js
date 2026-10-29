@@ -241,6 +241,15 @@ exports.updateUser = async (req, res, next) => {
     }
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
+    if (displayName !== undefined || firstName !== undefined || lastName !== undefined) {
+      // Name search reads tokens built from all three (services/userSearchService)
+      const current = (await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get()).data() || {};
+      Object.assign(updateData, require('../../services/userSearchService').userSearchFields({
+        displayName: displayName !== undefined ? displayName : current.displayName,
+        firstName: firstName !== undefined ? firstName : current.firstName,
+        lastName: lastName !== undefined ? lastName : current.lastName
+      }));
+    }
     if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
     if (bio !== undefined) updateData.bio = bio;
     if (location !== undefined) updateData.location = location;
@@ -417,9 +426,11 @@ exports.searchUsers = async (req, res, next) => {
     // select() keeps email/phone out of memory entirely — nothing below can
     // leak a field it never read.
     const [usersSnapshot, connectionMap, currentUserDoc] = await Promise.all([
-      // Cached per instance for a few minutes (services/userSearchIndex) —
-      // one full read per 5 min instead of one per search
-      require('../../services/userSearchIndex').searchableUsers(),
+      // One indexed read on name tokens (services/userSearchService) — was a
+      // full users-collection snapshot per instance every 5 minutes
+      require('../../services/userSearchService').findUsersByName(searchTerm, {
+        fields: ['profilePicture', 'bio', 'location', 'preferences']
+      }),
       buildConnectionMap(currentUserId),
       db.collection(COLLECTIONS.USERS).doc(currentUserId).get()
     ]);
@@ -432,8 +443,7 @@ exports.searchUsers = async (req, res, next) => {
     const blocked = new Set([...excludedUserIds(currentData)].map(normalizeUserId).filter(Boolean));
 
     const matchingUsers = [];
-    for (const doc of usersSnapshot) {
-      const user = serializeDoc(doc);
+    for (const user of usersSnapshot) {
       if (isSameUser(user.id, currentUserId)) continue;
 
       const targetUserId = normalizeUserId(user.id);

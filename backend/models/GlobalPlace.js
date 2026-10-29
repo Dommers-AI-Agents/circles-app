@@ -7,17 +7,20 @@ const { PLACE_PRIVACY_LEVELS } = require('../services/visibility');
 
 // Word-prefix tokens for search: every prefix of every word in the name, so
 // an array-contains query matches "pizza" or "colv" anywhere in the name.
-// A 3-word name yields ~25 short strings — well under Firestore's limits.
-const buildSearchTokens = (name) => {
-  const tokens = new Set();
-  const words = (name || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-  for (const word of words) {
-    const w = word.slice(0, 20);
-    for (let i = 1; i <= w.length; i++) {
-      tokens.add(w.slice(0, i));
-    }
-  }
-  return [...tokens];
+// Shared with every query tokenizer (utils/searchTokens) so writers and
+// readers fold accents/apostrophes the same way.
+const { buildSearchTokens: buildTokens } = require('../utils/searchTokens');
+const geofire = require('geofire-common');
+const buildSearchTokens = (name) => buildTokens(name);
+
+/** Geohash of a GeoJSON point ([lng, lat]), or null — powers distance-first catalog search. */
+const geohashForLocation = (location) => {
+  const c = location && Array.isArray(location.coordinates) ? location.coordinates : null;
+  if (!c || c.length < 2) return null;
+  const [lng, lat] = c;
+  if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) return null;
+  return geofire.geohashForLocation([lat, lng]);
 };
 
 // Global Place model structure for normalized place data
@@ -34,6 +37,7 @@ const createGlobalPlace = (placeData) => {
     searchTokens: buildSearchTokens(placeData.name), // word-prefix tokens for array-contains search
     address: placeData.address,
     location: placeData.location, // GeoPoint { type: 'Point', coordinates: [lng, lat] }
+    geohash: geohashForLocation(placeData.location), // distance-first search (globalPlaceSearch)
     category: placeData.category,
     subcategory: placeData.subcategory || null,
     // Venue description — Google's editorial summary when available. Older iOS
@@ -425,6 +429,7 @@ const GLOBAL_COLLECTIONS = {
 module.exports = {
   GLOBAL_COLLECTIONS,
   buildSearchTokens,
+  geohashForLocation,
   createGlobalPlace,
   createAttributedPhoto,
   createAttributedVideo,

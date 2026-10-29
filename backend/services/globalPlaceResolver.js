@@ -355,15 +355,17 @@ const haversineMeters = (lat1, lng1, lat2, lng2) => {
 // off until Wes flips VENUE_SIMILAR_NAME_MATCH=1 after reviewing the audit.
 const similarNameMatchEnabled = () => process.env.VENUE_SIMILAR_NAME_MATCH === '1';
 
+const { words: searchWords } = require('../utils/searchTokens');
+
 async function findCanonicalByNameAndLocation(name, location, excludeId = null, { googlePlaceId = null } = {}) {
   const normalized = normalizeVenueName(name);
   const coords = location && location.coordinates;
   if (!normalized || !Array.isArray(coords) || coords.length !== 2) return null;
   const [lng, lat] = coords;
 
-  // Token must match buildSearchTokens' splitting (non-alphanumerics are
-  // separators): "Nickyo's" indexes as "nickyo", never "nickyos"
-  const tokens = (name || '').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+  // Same splitting as the stored tokens (utils/searchTokens: accents off,
+  // "Nickyo's" → "nickyos", which the stored list also carries)
+  const tokens = searchWords(name).filter((t) => t.length >= 3);
   if (tokens.length === 0) return null;
   const longestToken = tokens.sort((a, b) => b.length - a.length)[0].slice(0, 20);
 

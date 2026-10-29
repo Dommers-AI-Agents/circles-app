@@ -423,50 +423,35 @@ const searchUsersAdvanced = async (req, res) => {
     const searchResults = [];
     const processedIds = new Set();
     
-    // Search by display name (using Firestore's limited text search)
-    // Note: For production, consider using Algolia or ElasticSearch
-    const usersSnapshot = await db.collection(COLLECTIONS.USERS)
-      .orderBy('displayNameLowercase')
-      .startAt(searchTerm)
-      .endAt(searchTerm + '\uf8ff')
-      .limit(50)
-      .get();
-    
-    usersSnapshot.forEach(doc => {
-      if (doc.id !== userId && !processedIds.has(doc.id)) {
-        processedIds.add(doc.id);
-        searchResults.push({ id: doc.id, ...doc.data(), matchType: 'name' });
-      }
-    });
-    
-    // Search by email (exact match for privacy)
-    if (query.includes('@')) {
-      const emailQuery = await db.collection(COLLECTIONS.USERS)
-        .where('email', '==', searchTerm)
-        .limit(1)
-        .get();
-      
-      emailQuery.forEach(doc => {
-        if (doc.id !== userId && !processedIds.has(doc.id)) {
-          processedIds.add(doc.id);
-          searchResults.push({ id: doc.id, ...doc.data(), matchType: 'email' });
-        }
+    // Name words (indexed tokens, services/userSearchService), plus exact
+    // email and username lookups — all three in parallel
+    const { findUsersByName } = require('../services/userSearchService');
+    const cardFields = ['profilePicture', 'bio', 'username', 'followersCount', 'isVerified'];
+    const [byName, emailQuery, usernameQuery] = await Promise.all([
+      findUsersByName(searchTerm, { fields: cardFields }),
+      query.includes('@')
+        ? db.collection(COLLECTIONS.USERS).where('email', '==', searchTerm.trim()).limit(1).get()
+        : Promise.resolve({ docs: [] }),
+      db.collection(COLLECTIONS.USERS).where('username', '==', searchTerm.trim()).limit(1).get()
+    ]);
+
+    // Exact email/username matches lead; then name matches by relevance
+    const { searchRelevanceRank } = require('../services/publicProjection');
+    const take = (id, data, matchType) => {
+      if (id === userId || processedIds.has(id)) return;
+      processedIds.add(id);
+      searchResults.push({ id, ...data, matchType });
+    };
+    emailQuery.docs.forEach(doc => take(doc.id, doc.data(), 'email'));
+    usernameQuery.docs.forEach(doc => take(doc.id, doc.data(), 'username'));
+    byName
+      .map(user => ({ user, rank: searchRelevanceRank(user, searchTerm.trim()) }))
+      .sort((a, b) => a.rank - b.rank || (a.user.displayName || '').localeCompare(b.user.displayName || ''))
+      .forEach(({ user }) => {
+        const { id, ...data } = user;
+        take(id, data, 'name');
       });
-    }
-    
-    // Search by username if implemented
-    const usernameQuery = await db.collection(COLLECTIONS.USERS)
-      .where('username', '==', searchTerm)
-      .limit(1)
-      .get();
-    
-    usernameQuery.forEach(doc => {
-      if (doc.id !== userId && !processedIds.has(doc.id)) {
-        processedIds.add(doc.id);
-        searchResults.push({ id: doc.id, ...doc.data(), matchType: 'username' });
-      }
-    });
-    
+
     // Get connection status and the bulk place-count map
     const [connectionsSnapshot, currentUserDoc, placeCounts] = await Promise.all([
       db.collection(COLLECTIONS.CONNECTIONS)
@@ -518,15 +503,7 @@ const searchUsersAdvanced = async (req, res) => {
       });
     }
     
-    // Sort by relevance
-    enrichedResults.sort((a, b) => {
-      // Exact matches first
-      if (a.matchType === 'email' || a.matchType === 'username') return -1;
-      if (b.matchType === 'email' || b.matchType === 'username') return 1;
-      
-      // Then by places count
-      return (b.placesCount || 0) - (a.placesCount || 0);
-    });
+    // Order was set above: exact email/username, then name relevance
     
     // Clamp the client's ?limit (security audit 2026-10-01)
     const finalResults = enrichedResults.slice(0, clampPagination({ limit }, { defaultLimit: 20, maxLimit: 50 }).limit);

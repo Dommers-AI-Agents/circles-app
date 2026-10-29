@@ -111,7 +111,7 @@ exports.matchGlobalPlace = async (req, res) => {
     // robust against whitespace/punctuation quirks in stored names, which an
     // exact nameLower equality is not. Candidates are then confirmed by
     // normalized-name equality + proximity in memory.
-    const normalizeName = (n) => String(n || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join(' ');
+    const normalizeName = (n) => require('../utils/searchTokens').words(n).join(' ');
     const normalizedQueryName = normalizeName(name);
     const queryWords = normalizedQueryName.split(' ');
     const longestWord = queryWords.slice().sort((a, b) => b.length - a.length)[0];

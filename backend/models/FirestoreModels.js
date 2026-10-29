@@ -86,6 +86,12 @@ const COLLECTIONS = {
 
 // User model structure
 const createUser = (userData) => {
+  const user = buildUserDoc(userData);
+  // Findable by name from the first request (services/userSearchService)
+  return { ...user, ...require('../services/userSearchService').userSearchFields(user) };
+};
+
+const buildUserDoc = (userData) => {
   const now = new Date().toISOString();
   return {
     email: userData.email || null,

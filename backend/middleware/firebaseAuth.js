@@ -27,6 +27,7 @@ const stampLastActive = (userId) => {
 // doesn't pay a Firestore read to rehydrate req.user on every request. Only
 // served for GET: any mutating request reads fresh (and refreshes the cache),
 // so a write never acts on — or returns — stale user state.
+const { healUserSearchFields } = require('../services/userSearchService');
 const USER_CACHE_TTL_MS = 20 * 1000;
 const userCache = new Map(); // decoded.uid -> { userData, finalUserId, expires }
 
@@ -164,6 +165,9 @@ exports.protect = async (req, res, next) => {
       userCache.set(decoded.uid, { userData, finalUserId, expires: Date.now() + USER_CACHE_TTL_MS });
       req.user = buildReqUser(decoded, userData, finalUserId);
       stampLastActive(finalUserId);
+      // Renamed through some path that didn't restamp the search tokens (or
+      // never had them): fix it now, off the request path
+      healUserSearchFields(finalUserId, userData);
       next();
     } catch (error) {
       console.error('❌ AUTH MIDDLEWARE: Token verification failed:', error);

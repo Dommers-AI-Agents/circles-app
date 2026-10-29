@@ -21,6 +21,9 @@ class FakeQuery {
     const id = typeof cursor === 'string' ? cursor : (cursor ? cursor.id : null);
     return new FakeQuery(this.store, this.filters, this.order, this.max, id);
   }
+  /** Range cursors on the ordered field (inclusive), e.g. a geohash cell. */
+  startAt(v) { return this.where(this.order.field, '>=', v); }
+  endAt(v) { return this.where(this.order.field, '<=', v); }
   // Real queries use select() to fetch ids without the document bodies. The
   // fake always returns whole docs, so this is just a pass-through that keeps
   // the call chain working.

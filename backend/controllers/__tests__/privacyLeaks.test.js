@@ -24,7 +24,9 @@ const res = () => {
   return r;
 };
 const fail = (e) => { throw e; };
-const put = (col, id, data) => mockDb.collection(col).doc(id).set(data);
+// Users are stored the way createUser/updateUser write them (name tokens included)
+const { userSearchFields } = require('../../services/userSearchService');
+const put = (col, id, data) => mockDb.collection(col).doc(id).set(col === 'users' ? { ...data, ...userSearchFields(data) } : data);
 
 beforeEach(() => {
   for (const name of ['users', 'circles', 'circleComments', 'placeVideos', 'connections']) {
@@ -34,10 +36,8 @@ beforeEach(() => {
 
 describe('GET /api/users/search', () => {
   const { searchUsers } = require('../users/userController');
-  const { resetSearchIndexForTests } = require('../../services/userSearchIndex');
 
   beforeEach(async () => {
-    resetSearchIndexForTests(); // each test seeds its own users
     await put('users', 'me', { displayName: 'Me', blockedUsers: ['blocked1'], blockedBy: ['blocker1'] });
     await put('users', 'sal', {
       displayName: 'Sal Smith', email: 'sal@example.com', phoneNumber: '7045550199',
