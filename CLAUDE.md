@@ -80,7 +80,7 @@ The app follows a client-server architecture:
 - Shared details (name, address/location, category, description, phone, website, hours) change ONLY through `services/venueDetailsService.updateVenueDetails` (PATCH `/places/global/:id/details`; `PUT /places/:id`, `update-address` and `PATCH /rewards/venues/:id/place` delegate to it): canonical record written once, cache fields synced to every save. Only the store's team (stickerVenues owner/managers) or a super-user may change them (Wes, 2026-10-01: Google/Apple import is the truth; owner/admin correct it; ordinary savers use Report a problem). Personal fields (notes, privacy, tags, circle, rating) stay on each save.
 - Likes toggle in ONE transaction on the globalPlaces doc (`likePlace`). Never fan out social writes across copies.
 - Migration scripts (idempotent, support `DRY_RUN=true`): `scripts/backfill-global-place-links.js`, `scripts/migrate-social-to-global.js`, `scripts/strip-place-venue-fields.js` (run last, after soak).
-- `placeTransitionService.js` and its `USE_GLOBAL_PLACES_*` env flags, plus `userPlaceRelations`, are legacy/dormant (the media subsystem still uses `userPlaceRelations`); do not build on them.
+- `placeTransitionService.js` and its `USE_GLOBAL_PLACES_*` flags were deleted (2026-10-29). `userPlaceRelations` is legacy (the media subsystem still uses it); do not build on it.
 
 ## Code Reuse Architecture
 

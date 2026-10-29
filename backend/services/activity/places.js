@@ -5,7 +5,7 @@
 const { admin, getFirestore } = require('../../config/firebase');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const db = getFirestore();
-const { createActivity } = require('../../controllers/activityController');
+const { createActivity } = require('./createActivity');
 const SSEService = require('../sseService');
 const notificationService = require('../notificationService');
 const { wantsActivityPush, claimPushSlot } = require('../activityPushPrefs');

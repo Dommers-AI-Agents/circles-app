@@ -749,7 +749,7 @@ exports.likeComment = async (req, res, next) => {
       }
     }
     if (!alreadyLiked && existingActivity.empty) {
-      const { createActivity } = require('../activityController');
+      const { createActivity } = require('../../services/activity/createActivity');
       await createActivity(
         'comment_liked',
         userId,

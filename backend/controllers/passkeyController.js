@@ -19,7 +19,7 @@ const { isoBase64URL, isoUint8Array } = require('@simplewebauthn/server/helpers'
 const admin = require('firebase-admin');
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS, createUser, serializeDoc } = require('../models/FirestoreModels');
-const { mintSessionToken, getTokenExpiresInSeconds } = require('./firebaseAuthController');
+const { mintSessionToken, getTokenExpiresInSeconds } = require('../services/sessionToken');
 const { normalizeUserId } = require('../services/idService');
 
 const db = getFirestore();

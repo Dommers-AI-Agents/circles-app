@@ -12,7 +12,7 @@ const {
   serializeDoc,
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
-const { createActivity } = require('./activityController');
+const { createActivity } = require('../services/activity/createActivity');
 const { recordPrivateCheckIn } = require('../services/ownActivity/record');
 const notificationService = require('../services/notificationService');
 const { isCheckInVisibleTo } = require('../services/checkInVisibility');

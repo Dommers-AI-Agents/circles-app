@@ -8,7 +8,7 @@ const record = async (type, actorId, targetType, targetId, targetName, metadata 
   try {
     // The feed's writer, required late: controllers/activityController pulls
     // in the whole feed stack, and this module is loaded by services it uses.
-    const { createActivity } = require('../../controllers/activityController');
+    const { createActivity } = require('../activity/createActivity');
     await createActivity(type, actorId, targetType, targetId, targetName, { ...metadata, ownerOnly: true });
   } catch (error) {
     console.error(`[own-activity] ${type} not recorded: ${error.message}`);

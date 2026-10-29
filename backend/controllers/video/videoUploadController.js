@@ -5,7 +5,7 @@
 const { getFirestore, FieldValue, admin } = require('../../config/firebase');
 const { getStorage } = require('firebase-admin/storage');
 const { COLLECTIONS, createPlaceVideo, createUserVideoQuota, validatePlaceVideo, serializeDoc } = require('../../models/FirestoreModels');
-const { createActivity } = require('../activityController');
+const { createActivity } = require('../../services/activity/createActivity');
 const videoQuotaService = require('../../services/videoQuotaService');
 const {
   MAX_VIDEO_BYTES,

@@ -68,7 +68,7 @@ async function postPlaceComment({ placeDoc, userId, text, source = null, checkIn
       const circleDoc = await db.collection(COLLECTIONS.CIRCLES).doc(place.circleId).get();
       circleName = circleDoc.exists ? (circleDoc.data().name || null) : null;
     }
-    const { createActivity } = require('../controllers/activityController');
+    const { createActivity } = require('./activity/createActivity');
     await createActivity('place_commented', userId, 'place', placeDoc.id, place.name || 'Unknown Place', {
       circleId: place.circleId || null,
       circleName: circleName || 'Unknown Circle',

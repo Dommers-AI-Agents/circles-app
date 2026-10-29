@@ -3,7 +3,7 @@
 // Split out of rewardController.js (handlers unchanged).
 const { getFirestore } = require('../../config/firebase');
 const { validateOfferInput, validateAnnouncementInput, validateAnnouncementEvent, cleanAnnouncementEvent, eventExpiry, STICKER_COLLECTIONS, MAX_ANNOUNCEMENTS } = require('../../models/StickerModels');
-const { createActivity } = require('../activityController');
+const { createActivity } = require('../../services/activity/createActivity');
 const sseService = require('../../services/sseService');
 const db = getFirestore();
 // Announcements expired this long ago get pruned on the next write, keeping

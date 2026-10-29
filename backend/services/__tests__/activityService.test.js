@@ -6,7 +6,7 @@ jest.mock('../../config/firebase', () => ({
   admin: { firestore: { FieldValue: {}, Timestamp: {} } },
   getFirestore: () => ({}),
 }));
-jest.mock('../../controllers/activityController', () => ({ createActivity: jest.fn() }));
+jest.mock('../activity/createActivity', () => ({ createActivity: jest.fn() }));
 jest.mock('../sseService', () => ({}));
 jest.mock('../notificationService', () => ({}));
 

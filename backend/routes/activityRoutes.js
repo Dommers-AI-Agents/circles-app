@@ -31,7 +31,7 @@ router.post('/activities/comments/:commentId/like', protect, activityInteraction
 // Test endpoint to manually create activity (for debugging)
 router.post('/test/create-activity', protect, requireSuperUser, async (req, res) => {
   try {
-    const { createActivity } = require('../controllers/activityController');
+    const { createActivity } = require('../services/activity/createActivity');
     const activityId = await createActivity(
       'test_activity',
       req.user.uid,
