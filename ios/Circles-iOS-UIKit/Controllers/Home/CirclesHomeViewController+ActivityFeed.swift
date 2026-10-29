@@ -98,8 +98,7 @@ extension CirclesHomeViewController {
     
     func loadCircleAndNavigate(circleId: String) {
         // Show loading
-        let loadingAlert = UIAlertController(title: "Loading", message: "Loading circle...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(title: "Loading", message: "Loading circle...", from: self)
         
         CircleService.shared.fetchCircleById(id: circleId) { [weak self] result in
             guard let self = self else { return }
@@ -110,13 +109,7 @@ extension CirclesHomeViewController {
                         let detailVC = CircleDetailViewController(circle: circle)
                         self.navigationController?.pushViewController(detailVC, animated: true)
                     case .failure(let error):
-                        let alert = UIAlertController(
-                            title: "Error",
-                            message: "Failed to load circle: \(error.localizedDescription)",
-                            preferredStyle: .alert
-                        )
-                        alert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(alert, animated: true)
+                        AlertPresenter.showError(title: "Error", message: "Failed to load circle: \(error.localizedDescription)", from: self)
                     }
                 }
             }
@@ -256,8 +249,7 @@ extension CirclesHomeViewController {
     
     func loadPlaceAndNavigate(placeId: String, showComments: Bool = false) {
         // Show loading
-        let loadingAlert = UIAlertController(title: "Loading", message: "Loading place...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(title: "Loading", message: "Loading place...", from: self)
         
         PlaceService.shared.fetchPlaceById(id: placeId) { [weak self] result in
             guard let self = self else { return }
@@ -267,13 +259,7 @@ extension CirclesHomeViewController {
                     case .success(let place):
                         // We need to find the circle
                         guard let circleId = place.circleId else {
-                            let alert = UIAlertController(
-                                title: "Error",
-                                message: "Place has no associated circle",
-                                preferredStyle: .alert
-                            )
-                            alert.addAction(UIAlertAction(title: "OK", style: .default))
-                            self.present(alert, animated: true)
+                            AlertPresenter.showError(title: "Error", message: "Place has no associated circle", from: self)
                             return
                         }
                         CircleService.shared.fetchCircleById(id: circleId) { circleResult in
@@ -285,24 +271,12 @@ extension CirclesHomeViewController {
                                     self.navigationController?.pushViewController(placeDetailVC, animated: true)
                                 case .failure:
                                     // Show error
-                                    let alert = UIAlertController(
-                                        title: "Error",
-                                        message: "Failed to load place details",
-                                        preferredStyle: .alert
-                                    )
-                                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                                    self.present(alert, animated: true)
+                                    AlertPresenter.showError(title: "Error", message: "Failed to load place details", from: self)
                                 }
                             }
                         }
                     case .failure(let error):
-                        let alert = UIAlertController(
-                            title: "Error",
-                            message: "Failed to load place: \(error.localizedDescription)",
-                            preferredStyle: .alert
-                        )
-                        alert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(alert, animated: true)
+                        AlertPresenter.showError(title: "Error", message: "Failed to load place: \(error.localizedDescription)", from: self)
                     }
                 }
             }

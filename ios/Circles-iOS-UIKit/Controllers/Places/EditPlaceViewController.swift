@@ -9,7 +9,7 @@ protocol EditPlaceDelegate: AnyObject {
 }
 
 class EditPlaceViewController: BaseViewController {
-    
+
     // MARK: - Constants
     private enum Constants {
         enum Spacing {
@@ -18,7 +18,7 @@ class EditPlaceViewController: BaseViewController {
             static let large: CGFloat = 20
             static let xlarge: CGFloat = 32
         }
-        
+
         enum FontSize {
             static let small: CGFloat = 14
             static let medium: CGFloat = 16
@@ -26,7 +26,7 @@ class EditPlaceViewController: BaseViewController {
             static let xlarge: CGFloat = 20
             static let xxlarge: CGFloat = 24
         }
-        
+
         enum Colors {
             static let primary = UIColor.systemBlue
             static let background = UIColor.systemBackground
@@ -36,7 +36,7 @@ class EditPlaceViewController: BaseViewController {
             static let white = UIColor.white
         }
     }
-    
+
     // MARK: - Properties
     private var place: Place
     private let locationManager = CLLocationManager()
@@ -98,23 +98,23 @@ class EditPlaceViewController: BaseViewController {
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .bold)
         return label
     }()
-    
+
     // MARK: - Configuration
     override var loadsDataOnViewDidLoad: Bool { false }
-    
+
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         return scrollView
     }()
-    
+
     private let contentView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
-    
+
     private let nameLabel: UILabel = {
         let label = UILabel()
         label.text = "Place Name"
@@ -123,7 +123,7 @@ class EditPlaceViewController: BaseViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private let nameTextField: UITextField = {
         let textField = UITextField()
         textField.placeholder = "Enter place name"
@@ -131,7 +131,7 @@ class EditPlaceViewController: BaseViewController {
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     private let categoryLabel: UILabel = {
         let label = UILabel()
         label.text = "Category"
@@ -140,7 +140,7 @@ class EditPlaceViewController: BaseViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private let customCategoryLabel: UILabel = {
         let label = UILabel()
         label.text = "Custom Category Name (subcategory of Other)"
@@ -150,7 +150,7 @@ class EditPlaceViewController: BaseViewController {
         label.isHidden = true
         return label
     }()
-    
+
     private let customCategoryTextField: UITextField = {
         let textField = UITextField()
         textField.placeholder = "e.g., Coffee work, Study spot, etc."
@@ -159,7 +159,7 @@ class EditPlaceViewController: BaseViewController {
         textField.isHidden = true
         return textField
     }()
-    
+
     private let descriptionLabel: UILabel = {
         let label = UILabel()
         label.text = "Description (optional)"
@@ -168,7 +168,7 @@ class EditPlaceViewController: BaseViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private let descriptionTextView: UITextView = {
         let textView = UITextView()
         textView.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
@@ -178,7 +178,7 @@ class EditPlaceViewController: BaseViewController {
         textView.translatesAutoresizingMaskIntoConstraints = false
         return textView
     }()
-    
+
     private let addressLabel: UILabel = {
         let label = UILabel()
         label.text = "Address"
@@ -187,7 +187,7 @@ class EditPlaceViewController: BaseViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private let refreshAddressButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Refresh from Apple Maps", for: .normal)
@@ -198,7 +198,7 @@ class EditPlaceViewController: BaseViewController {
         button.isHidden = false
         return button
     }()
-    
+
     private let streetTextField: UITextField = {
         let textField = UITextField()
         textField.placeholder = "Street"
@@ -206,7 +206,7 @@ class EditPlaceViewController: BaseViewController {
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     private let cityTextField: UITextField = {
         let textField = UITextField()
         textField.placeholder = "City"
@@ -214,7 +214,7 @@ class EditPlaceViewController: BaseViewController {
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     private let stateTextField: UITextField = {
         let textField = UITextField()
         textField.placeholder = "State"
@@ -222,7 +222,7 @@ class EditPlaceViewController: BaseViewController {
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     private let zipCodeTextField: UITextField = {
         let textField = UITextField()
         textField.placeholder = "Zip Code"
@@ -231,7 +231,7 @@ class EditPlaceViewController: BaseViewController {
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     private let countryTextField: UITextField = {
         let textField = UITextField()
         textField.placeholder = "Country"
@@ -239,7 +239,7 @@ class EditPlaceViewController: BaseViewController {
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     private let mapLabel: UILabel = {
         let label = UILabel()
         label.text = "Location"
@@ -248,7 +248,7 @@ class EditPlaceViewController: BaseViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private let mapView: MKMapView = {
         let mapView = MKMapView()
         mapView.layer.cornerRadius = 12
@@ -256,7 +256,7 @@ class EditPlaceViewController: BaseViewController {
         mapView.translatesAutoresizingMaskIntoConstraints = false
         return mapView
     }()
-    
+
     private let useCurrentLocationButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Use Current Location", for: .normal)
@@ -264,7 +264,7 @@ class EditPlaceViewController: BaseViewController {
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
-    
+
     private let privacyLabel: UILabel = {
         let label = UILabel()
         label.text = "Privacy"
@@ -273,7 +273,7 @@ class EditPlaceViewController: BaseViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     // Was a four-segment control whose titles were hardcoded as
     // ["Follow Circle", "Public", "Friends", "Private"] — with "Friends" being
     // the same tier Edit Circle called "My Network" and moments called
@@ -286,7 +286,7 @@ class EditPlaceViewController: BaseViewController {
         }
         return picker
     }()
-    
+
     private let notesLabel: UILabel = {
         let label = UILabel()
         label.text = "Private note (only you can see this)"
@@ -295,7 +295,7 @@ class EditPlaceViewController: BaseViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private let notesTextView: UITextView = {
         let textView = UITextView()
         textView.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
@@ -305,7 +305,7 @@ class EditPlaceViewController: BaseViewController {
         textView.translatesAutoresizingMaskIntoConstraints = false
         return textView
     }()
-    
+
     private let tagsLabel: UILabel = {
         let label = UILabel()
         label.text = "Tags (optional, comma separated)"
@@ -314,7 +314,7 @@ class EditPlaceViewController: BaseViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private let tagsTextField: UITextField = {
         let textField = UITextField()
         textField.placeholder = "e.g. family-friendly, romantic, cheap"
@@ -322,7 +322,7 @@ class EditPlaceViewController: BaseViewController {
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     private let websiteLabel: UILabel = {
         let label = UILabel()
         label.text = "Website (optional)"
@@ -331,7 +331,7 @@ class EditPlaceViewController: BaseViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private let websiteTextField: UITextField = {
         let textField = UITextField()
         textField.placeholder = "https://example.com"
@@ -341,7 +341,7 @@ class EditPlaceViewController: BaseViewController {
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     private let phoneLabel: UILabel = {
         let label = UILabel()
         label.text = "Phone (optional)"
@@ -350,7 +350,7 @@ class EditPlaceViewController: BaseViewController {
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
+
     private let phoneTextField: UITextField = {
         let textField = UITextField()
         textField.placeholder = "+1 (555) 123-4567"
@@ -359,20 +359,9 @@ class EditPlaceViewController: BaseViewController {
         textField.translatesAutoresizingMaskIntoConstraints = false
         return textField
     }()
-    
+
     // Photo UI elements
-    
-    private let saveButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Save Changes", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 10
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
+
     private let deleteButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Unsave Place", for: .normal)
@@ -381,7 +370,7 @@ class EditPlaceViewController: BaseViewController {
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
-    
+
     private let moveToCircleButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Move to Different Circle", for: .normal)
@@ -390,18 +379,18 @@ class EditPlaceViewController: BaseViewController {
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
-    
+
     // MARK: - Lifecycle
-    
+
     init(place: Place) {
         self.place = place
         super.init(nibName: nil, bundle: nil)
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
@@ -516,9 +505,9 @@ class EditPlaceViewController: BaseViewController {
     @objc private func flagPlaceInfoTapped() {
         promptFlagPlaceInfo(placeId: place.id, placeName: place.name)
     }
-    
+
     // MARK: - UI Setup
-    
+
     private func setupUI() {
         view.backgroundColor = Constants.Colors.background
         title = "Edit Place"
@@ -626,47 +615,47 @@ class EditPlaceViewController: BaseViewController {
     private func setupLocationManager() {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        
+
         // Show current place location on map
         if let location = place.location?.clLocation {
             selectedLocation = location.coordinate
-            
+
             let region = MKCoordinateRegion(
                 center: location.coordinate,
                 span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
             )
             mapView.setRegion(region, animated: false)
-            
+
             // Add annotation
             let annotation = MKPointAnnotation()
             annotation.coordinate = location.coordinate
             annotation.title = place.name
             mapView.addAnnotation(annotation)
         }
-        
+
         // Add tap gesture recognizer to the map
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleMapTap(_:)))
         mapView.addGestureRecognizer(tapGesture)
     }
-    
+
     private func setupActions() {
         // Add button actions
         useCurrentLocationButton.addTarget(self, action: #selector(useCurrentLocationButtonTapped), for: .touchUpInside)
         deleteButton.addTarget(self, action: #selector(deleteButtonTapped), for: .touchUpInside)
         moveToCircleButton.addTarget(self, action: #selector(moveToCircleButtonTapped), for: .touchUpInside)
         refreshAddressButton.addTarget(self, action: #selector(refreshAddressButtonTapped), for: .touchUpInside)
-        
-        
+
+
         // Add gesture recognizer to dismiss keyboard when tapping on the view
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         tapGesture.cancelsTouchesInView = false
         view.addGestureRecognizer(tapGesture)
     }
-    
+
     private func populateFields() {
         nameTextField.text = place.name
         descriptionTextView.text = place.description
-        
+
         // Category (the full list) and, on an "Other" place, your own label
         selectedCategory = place.category
         customCategoryTextField.text = place.category == .other ? place.customCategoryId : nil
@@ -674,7 +663,7 @@ class EditPlaceViewController: BaseViewController {
 
         // Show/hide refresh address button based on whether place has location
         refreshAddressButton.isHidden = place.location?.clLocation == nil
-        
+
         // Parse address
         let addressComponents = place.address.components(separatedBy: ", ")
         if addressComponents.count > 0 {
@@ -692,31 +681,31 @@ class EditPlaceViewController: BaseViewController {
         if addressComponents.count > 4 {
             countryTextField.text = addressComponents[4]
         }
-        
+
         // Set privacy. A value this build doesn't recognise disables the
         // control instead of showing a narrower one we'd then save back.
         privacyPicker.select(place.privacy.option, listId: place.audienceListId)
-        
+
         // The only note on a save is the private one; shared thoughts are comments
         notesTextView.text = place.privateNotes
-        
+
         // Tags
         if let tags = place.tags {
             tagsTextField.text = tags.joined(separator: ", ")
         }
-        
+
         websiteTextField.text = place.website
         phoneTextField.text = place.phone
         initialAddressText = addressBoxesText
-        
+
     }
-    
+
     // MARK: - Actions
-    
+
     @objc private func cancelButtonTapped() {
         dismiss(animated: true)
     }
-    
+
     /// Prevents double-tapping the nav-bar Save from firing a second update
     private var isSaving = false
 
@@ -728,21 +717,21 @@ class EditPlaceViewController: BaseViewController {
             presentAlert(title: "Error", message: "Please enter a name for the place")
             return
         }
-        
+
         // Check if any fields have changed
         let hasChanges = checkForChanges()
-        
+
         guard hasChanges else {
             dismiss(animated: true)
             return
         }
-        
+
         // Special handling for Home/Work places
         if place.id == "home-place" || place.id == "work-place" {
             saveHomeOrWorkPlace()
             return
         }
-        
+
         // Untouched boxes keep the stored address exactly
         let addressText = addressBoxesText == initialAddressText ? place.address : addressBoxesText
 
@@ -872,7 +861,7 @@ class EditPlaceViewController: BaseViewController {
             break
         }
     }
-    
+
     @objc private func refreshAddressButtonTapped() {
         let name = (nameTextField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let pin = selectedLocation ?? place.location?.clLocation?.coordinate
@@ -967,51 +956,51 @@ class EditPlaceViewController: BaseViewController {
     @objc private func handleMapTap(_ gestureRecognizer: UITapGestureRecognizer) {
         let touchPoint = gestureRecognizer.location(in: mapView)
         let coordinate = mapView.convert(touchPoint, toCoordinateFrom: mapView)
-        
+
         // Store the selected location
         self.selectedLocation = coordinate
-        
+
         // Clear existing annotations
         mapView.removeAnnotations(mapView.annotations)
-        
+
         // Add a new annotation
         let annotation = MKPointAnnotation()
         annotation.coordinate = coordinate
         annotation.title = "Selected Location"
         mapView.addAnnotation(annotation)
-        
+
         // Get address from coordinates
         lookUpCurrentLocation(coordinate) { [weak self] placemark in
             guard let self = self else { return }
             guard let placemark = placemark else { return }
-            
+
             DispatchQueue.main.async {
                 self.updateAddressFields(with: placemark)
             }
         }
     }
-    
+
     private func saveHomeOrWorkPlace() {
         // Format the address string
         let formattedAddress = [streetTextField.text, cityTextField.text, stateTextField.text, zipCodeTextField.text, countryTextField.text]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
-        
+
         guard !formattedAddress.isEmpty else {
             presentAlert(title: "Error", message: "Please enter an address")
             return
         }
-        
+
         // Save to UserDefaults
         let key = place.id == "home-place" ? "userHomeAddress" : "userWorkAddress"
         UserDefaults.standard.set(formattedAddress, forKey: key)
-        
+
         // FIXME: Need to update this to handle Place creation properly
         // For now, just dismiss without updating since Place no longer has a direct initializer
         // This only affects local home/work places which are a special case
         dismiss(animated: true)
-        
+
         /*
         // Create updated place object
         let updatedPlace = Place(
@@ -1041,134 +1030,127 @@ class EditPlaceViewController: BaseViewController {
             createdAt: place.createdAt,
             updatedAt: Date()
         )
-        
+
         // Notify delegate and dismiss
         delegate?.didUpdatePlace(updatedPlace)
         dismiss(animated: true)
         */
     }
-    
+
     @objc private func moveToCircleButtonTapped() {
         let circleSelectionVC = CircleSelectionViewController(excludedCircleId: place.circleId)
         circleSelectionVC.delegate = self
         present(circleSelectionVC, animated: true)
     }
-    
+
     @objc private func deleteButtonTapped() {
         // Special handling for Home/Work places
         if place.id == "home-place" || place.id == "work-place" {
-            let alert = UIAlertController(
+            AlertPresenter.showConfirmation(
                 title: "Clear \(place.name)",
                 message: "Are you sure you want to clear your \(place.name.lowercased()) address?",
-                preferredStyle: .alert
-            )
-            
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            alert.addAction(UIAlertAction(title: "Clear", style: .destructive) { [weak self] _ in
+                confirmTitle: "Clear",
+                isDestructive: true,
+                from: self
+            ) { [weak self] in
                 self?.clearHomeOrWorkPlace()
-            })
-            
-            present(alert, animated: true)
+            }
             return
         }
-        
-        let alert = UIAlertController(
+
+        AlertPresenter.showConfirmation(
             title: "Unsave Place",
             message: "Take \(place.name) out of your circles? Your notes, photos and rating on it go too. This can't be undone.",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Unsave", style: .destructive) { [weak self] _ in
+            confirmTitle: "Unsave",
+            isDestructive: true,
+            from: self
+        ) { [weak self] in
             self?.deletePlace()
-        })
-        
-        present(alert, animated: true)
+        }
     }
-    
+
     @objc private func dismissKeyboard() {
         view.endEditing(true)
     }
-    
-    
+
+
     // MARK: - Photo Methods
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
     // MARK: - Helper Methods
-    
+
     private func checkForChanges() -> Bool {
         // Check name
         if nameTextField.text != place.name { return true }
-        
+
         // Check description
         let currentDescription = descriptionTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let originalDescription = place.description ?? ""
         if currentDescription != originalDescription { return true }
-        
+
         // Check category
         if selectedCategory != place.category { return true }
-        
+
         // Check custom category if "Other" is selected
         if place.category == .other {
             let currentCustomCategory = customCategoryTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let originalCustomCategory = place.customCategoryId ?? ""
             if currentCustomCategory != originalCustomCategory { return true }
         }
-        
+
         // Check address
         let formattedAddress = [streetTextField.text, cityTextField.text, stateTextField.text, zipCodeTextField.text, countryTextField.text]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
         if formattedAddress != place.address { return true }
-        
+
         // Check privacy
         // A locked picker can't have changed anything, so it isn't "dirty".
         if let picked = privacyPicker.selectedPlacePrivacy, picked != place.privacy { return true }
-        
+
         // Check notes
         let currentNotes = notesTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let originalNotes = place.publicNotes ?? place.notes ?? ""
         if currentNotes != originalNotes { return true }
-        
+
         // Check tags
         let currentTags = tagsTextField.text?.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespacesAndNewlines)) } ?? []
         let originalTags = place.tags ?? []
         if currentTags != originalTags { return true }
-        
+
         // Check website
         let currentWebsite = websiteTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let originalWebsite = place.website ?? ""
         if currentWebsite != originalWebsite { return true }
-        
+
         // Check phone
         let currentPhone = phoneTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let originalPhone = place.phone ?? ""
         if currentPhone != originalPhone { return true }
-        
-        
+
+
         return false
     }
-    
+
     private func clearHomeOrWorkPlace() {
         // Clear from UserDefaults
         let key = place.id == "home-place" ? "userHomeAddress" : "userWorkAddress"
         UserDefaults.standard.removeObject(forKey: key)
-        
+
         // Notify delegate and dismiss
         delegate?.didDeletePlace(place.id)
         dismiss(animated: true)
     }
-    
+
     private func deletePlace() {
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Unsaving Place", message: "Please wait...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
+        let loadingAlert = AlertPresenter.showLoading(title: "Unsaving Place", message: "Please wait...", from: self)
+
         PlaceService.shared.deletePlace(id: place.id) { [weak self] result in
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
@@ -1176,7 +1158,7 @@ class EditPlaceViewController: BaseViewController {
                     case .success(_):
                         self?.delegate?.didDeletePlace(self?.place.id ?? "")
                         self?.dismiss(animated: true)
-                        
+
                     case .failure(let error):
                         self?.presentAlert(title: "Error", message: error.localizedDescription)
                     }
@@ -1184,28 +1166,24 @@ class EditPlaceViewController: BaseViewController {
             }
         }
     }
-    
+
     private func showLocationPermissionAlert() {
-        let alert = UIAlertController(
+        AlertPresenter.showConfirmation(
             title: "Location Access Required",
             message: "Please allow access to your location in Settings to use this feature.",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Settings", style: .default) { _ in
+            confirmTitle: "Settings",
+            from: self
+        ) {
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 UIApplication.shared.open(url)
             }
-        })
-        
-        present(alert, animated: true)
+        }
     }
-    
+
     private func lookUpCurrentLocation(_ coordinate: CLLocationCoordinate2D, completionHandler: @escaping (CLPlacemark?) -> Void) {
         let geocoder = CLGeocoder()
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        
+
         geocoder.reverseGeocodeLocation(location) { placemarks, error in
             if error == nil {
                 let placemark = placemarks?[0]
@@ -1215,7 +1193,7 @@ class EditPlaceViewController: BaseViewController {
             }
         }
     }
-    
+
     private func updateAddressFields(with placemark: CLPlacemark) {
         streetTextField.text = [placemark.subThoroughfare, placemark.thoroughfare].compactMap { $0 }.joined(separator: " ")
         cityTextField.text = placemark.locality
@@ -1223,11 +1201,9 @@ class EditPlaceViewController: BaseViewController {
         zipCodeTextField.text = placemark.postalCode
         countryTextField.text = placemark.country
     }
-    
-    private func presentAlert(title: String, message: String, completion: ((UIAlertAction) -> Void)? = nil) {
-        let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alertController.addAction(UIAlertAction(title: "OK", style: .default, handler: completion))
-        present(alertController, animated: true)
+
+    private func presentAlert(title: String, message: String) {
+        AlertPresenter.showError(title: title, message: message, from: self)
     }
 }
 
@@ -1263,44 +1239,44 @@ extension EditPlaceViewController: PHPickerViewControllerDelegate {
 extension EditPlaceViewController: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
-        
+
         // Stop updating location
         manager.stopUpdatingLocation()
-        
+
         // Store user's location
         self.selectedLocation = location.coordinate
-        
+
         // Center map on user's location
         let region = MKCoordinateRegion(
             center: location.coordinate,
             span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
         )
         mapView.setRegion(region, animated: true)
-        
+
         // Clear existing annotations
         mapView.removeAnnotations(mapView.annotations)
-        
+
         // Add a new annotation
         let annotation = MKPointAnnotation()
         annotation.coordinate = location.coordinate
         annotation.title = "Current Location"
         mapView.addAnnotation(annotation)
-        
+
         // Get address from coordinates
         lookUpCurrentLocation(location.coordinate) { [weak self] placemark in
             guard let self = self else { return }
             guard let placemark = placemark else { return }
-            
+
             DispatchQueue.main.async {
                 self.updateAddressFields(with: placemark)
             }
         }
     }
-    
+
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         Logger.debug("Location manager failed with error: \(error.localizedDescription)")
     }
-    
+
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         // This fires on delegate assignment at screen open — only act when
         // the user actually tapped "Use Current Location"
@@ -1321,48 +1297,39 @@ extension EditPlaceViewController: CLLocationManagerDelegate {
 extension EditPlaceViewController: CircleSelectionDelegate {
     func circleSelectionViewController(_ controller: CircleSelectionViewController, didSelectCircle circle: Circle) {
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Moving Place", message: "Moving \(place.name) to \(circle.name)...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
-        
+        let loadingAlert = AlertPresenter.showLoading(title: "Moving Place", message: "Moving \(place.name) to \(circle.name)...", from: self)
+
         // Perform the move
         PlaceService.shared.movePlaceToCircle(placeId: place.id, targetCircleId: circle.id) { [weak self] result in
             guard let self = self else { return }
-            
+
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
                     case .success(let updatedPlace):
                         // Update the local place object
                         self.place = updatedPlace
-                        
+
                         // Notify delegate about the update
                         self.delegate?.didUpdatePlace(updatedPlace)
-                        
+
                         // Show success message
-                        let successAlert = UIAlertController(
+                        AlertPresenter.showSuccess(
                             title: "Success",
                             message: "\(self.place.name) has been moved to \(circle.name)",
-                            preferredStyle: .alert
-                        )
-                        successAlert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+                            from: self
+                        ) {
                             self.dismiss(animated: true)
-                        })
-                        self.present(successAlert, animated: true)
-                        
+                        }
+
                     case .failure(let error):
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: "Failed to move place: \(error.localizedDescription)",
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(errorAlert, animated: true)
+                        AlertPresenter.showError(title: "Error", message: "Failed to move place: \(error.localizedDescription)", from: self)
                     }
                 }
             }
         }
     }
-    
+
     func circleSelectionViewControllerDidCancel(_ controller: CircleSelectionViewController) {
         // User cancelled, nothing to do
     }

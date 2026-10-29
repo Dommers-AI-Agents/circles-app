@@ -4,9 +4,9 @@ import UIKit
 // Eliminates redundant button configuration code throughout the app
 
 extension UIButton {
-    
+
     // MARK: - Primary Button Styles
-    
+
     /// Creates a primary action button (filled background)
     static func primaryButton(title: String) -> UIButton {
         let button = UIButton(type: .system)
@@ -20,7 +20,7 @@ extension UIButton {
         button.enableTapFeedback()
         return button
     }
-    
+
     /// Creates a secondary action button (outlined)
     static func secondaryButton(title: String) -> UIButton {
         let button = UIButton(type: .system)
@@ -36,7 +36,7 @@ extension UIButton {
         button.enableTapFeedback()
         return button
     }
-    
+
     /// Creates a danger/destructive button
     static func dangerButton(title: String) -> UIButton {
         let button = UIButton(type: .system)
@@ -50,9 +50,9 @@ extension UIButton {
         button.enableTapFeedback()
         return button
     }
-    
+
     // MARK: - Social Login Buttons
-    
+
     /// Creates a social login button with icon
     static func socialButton(title: String, icon: String, backgroundColor: UIColor) -> UIButton {
         let button = UIButton(type: .system)
@@ -63,7 +63,7 @@ extension UIButton {
         button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.heightAnchor.constraint(equalToConstant: 50).isActive = true
-        
+
         // Add icon - try named asset first, fallback to system symbol
         if let image = UIImage(named: icon)?.withRenderingMode(.alwaysOriginal) {
             button.setImage(image, for: .normal)
@@ -72,11 +72,11 @@ extension UIButton {
             button.setImage(systemImage, for: .normal)
             button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
         }
-        
+
         button.enableTapFeedback()
         return button
     }
-    
+
     /// Creates a Google Sign In button
     static func googleSignInButton() -> UIButton {
         let button = UIButton(type: .system)
@@ -89,19 +89,19 @@ extension UIButton {
         button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.heightAnchor.constraint(equalToConstant: 50).isActive = true
-        
+
         // Add Google icon
         if let systemImage = UIImage(systemName: "globe") {
             button.setImage(systemImage, for: .normal)
             button.tintColor = .black
             button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
         }
-        
+
         button.enableTapFeedback()
         return button
     }
-    
-    /// Creates a Facebook Sign In button  
+
+    /// Creates a Facebook Sign In button
     static func facebookSignInButton() -> UIButton {
         let button = UIButton(type: .system)
         button.setTitle("Sign in with Facebook", for: .normal)
@@ -111,18 +111,18 @@ extension UIButton {
         button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.heightAnchor.constraint(equalToConstant: 50).isActive = true
-        
+
         // Add Facebook icon
         if let systemImage = UIImage(systemName: "person.2.circle") {
             button.setImage(systemImage, for: .normal)
             button.tintColor = .white
             button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
         }
-        
+
         button.enableTapFeedback()
         return button
     }
-    
+
     /// Creates an Apple Sign In button
     static func appleSignInButton() -> UIButton {
         let button = UIButton(type: .system)
@@ -133,20 +133,20 @@ extension UIButton {
         button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.heightAnchor.constraint(equalToConstant: 50).isActive = true
-        
+
         // Add Apple icon
         if let systemImage = UIImage(systemName: "applelogo") {
             button.setImage(systemImage, for: .normal)
             button.tintColor = .white
             button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
         }
-        
+
         button.enableTapFeedback()
         return button
     }
-    
+
     // MARK: - Small Action Buttons
-    
+
     /// Creates a small action button (e.g., for profile actions)
     static func smallActionButton(title: String, style: FactoryButtonStyle = .primary) -> UIButton {
         let button = UIButton(type: .system)
@@ -154,7 +154,7 @@ extension UIButton {
         button.layer.cornerRadius = 6
         button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
         button.translatesAutoresizingMaskIntoConstraints = false
-        
+
         switch style {
         case .primary:
             button.setTitleColor(.white, for: .normal)
@@ -176,11 +176,11 @@ extension UIButton {
             button.backgroundColor = .systemGray5
             button.layer.borderWidth = 0
         }
-        
+
         button.enableTapFeedback()
         return button
     }
-    
+
     /// Creates an icon button
     static func iconButton(systemName: String, pointSize: CGFloat = 20) -> UIButton {
         let button = UIButton(type: .system)
@@ -191,7 +191,23 @@ extension UIButton {
         button.enableTapFeedback()
         return button
     }
-    
+
+    /// A round white control floating on a map (expand, zoom to me): blue
+    /// symbol, soft shadow. The owner sizes it (30 pt on the circle map).
+    static func mapControlButton(systemName: String, cornerRadius: CGFloat = 15) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: systemName), for: .normal)
+        button.tintColor = .systemBlue
+        button.backgroundColor = .white
+        button.layer.cornerRadius = cornerRadius
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }
+
     /// A small symbol + text status in the navigation bar (the home header's
     /// "☀️ 72°"); the owner sets the image and title as they change.
     static func navStatusButton() -> UIButton {
@@ -276,7 +292,7 @@ extension UIButton {
     }
 
     // MARK: - Button Style Enum
-    
+
     enum FactoryButtonStyle {
         case primary
         case secondary
@@ -284,9 +300,9 @@ extension UIButton {
         case disabled
         case following
     }
-    
+
     // MARK: - Convenience Methods
-    
+
     private enum TapFeedbackKeys {
         static var savedTitle = "fc.button.savedTitle"
     }
@@ -345,7 +361,7 @@ extension UIButton {
             self.transform = .identity
         }
     }
-    
+
     /// Updates button style
     func setStyle(_ style: FactoryButtonStyle) {
         switch style {
