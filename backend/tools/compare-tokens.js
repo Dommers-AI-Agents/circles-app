@@ -5,7 +5,7 @@
  */
 
 require('dotenv').config();
-const { initializeFirebase, getFirestore } = require('./config/firebase');
+const { initializeFirebase, getFirestore } = require('../config/firebase');
 
 async function compareTokens() {
   try {

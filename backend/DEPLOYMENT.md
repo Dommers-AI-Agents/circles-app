@@ -116,7 +116,7 @@ For subsequent deployments after code changes:
 Update environment variables without redeploying:
 
 ```bash
-./update-env-vars.sh
+tools/ops/update-env-vars.sh
 ```
 
 Options:

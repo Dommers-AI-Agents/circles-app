@@ -1,5 +1,5 @@
 const admin = require('firebase-admin');
-const serviceAccount = require('./config/firebase-service-account.json');
+const serviceAccount = require('../config/firebase-service-account.json');
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
 
@@ -39,7 +39,7 @@ async function enableDailySummary() {
     
     // Now trigger a test summary
     console.log('\n📊 Triggering test daily summary...');
-    const dailySummaryService = require('./services/dailySummaryService');
+    const dailySummaryService = require('../services/dailySummaryService');
     await dailySummaryService.generateAndSendSummary({ 
       id: userId, 
       ...user,
