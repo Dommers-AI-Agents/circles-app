@@ -85,15 +85,17 @@ exports.scan = async (req, res) => {
       // Generic "Join FavCircles" code: no venue to reward — never award the
       // signup bonus against the virtual doc (that stays reserved for the
       // first REAL partner store the user scans).
-      const signupResult = venue.genericJoin
-        ? { awarded: false, reason: 'generic_join' }
-        : await rewardService.awardStickerSignup(userId, venue);
+      // Store points exist only where the store's loyalty program is live
+      // (claimed, owner on Business). No signup bonus before that (Wes,
+      // 2026-10-29: points nobody can spend would be confusing).
+      const windowLive = !venue.genericJoin && await isVenueLoyaltyActive(venue);
+      const signupResult = windowLive
+        ? await rewardService.awardStickerSignup(userId, venue)
+        : { awarded: false, reason: venue.genericJoin ? 'generic_join' : 'loyalty_not_live' };
       const alreadySaved = await userHasSavedVenuePlace(userId, venue);
       const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
       const venueBalance = (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0;
       // What points buy HERE, so the welcome is in the store's own terms
-      // (Wes, 2026-10-29) — only while the store's loyalty is live
-      const windowLive = !venue.genericJoin && await isVenueLoyaltyActive(venue);
       const offers = windowLive ? activeOffers(venue) : [];
       const earnRate = windowLive ? rewardService.effectiveEarnRate(venue) : null;
 
@@ -108,6 +110,9 @@ exports.scan = async (req, res) => {
           alreadySaved,
           balance: rewardPoints,
           venueBalance,
+          loyaltyLive: windowLive,
+          // The save bonus the app may promise ("earn 50 more"): none until loyalty is live
+          saveBonusPoints: windowLive ? rewardConfig.POINTS.STICKER_SAVE : 0,
           earnRate,
           offers: offers.map(({ offerId, title, pointsCost }) => ({ offerId, title, pointsCost })),
           nextReward: rewardProgress.nextReward(offers, venueBalance, earnRate),
@@ -133,6 +138,8 @@ exports.scan = async (req, res) => {
           venue: publicVenueInfo(venue),
           awarded: null,
           loyaltyPaused: true,
+          loyaltyLive: false,
+          saveBonusPoints: 0,
           alreadySaved,
           balance: rewardPoints,
           venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0,
@@ -164,6 +171,8 @@ exports.scan = async (req, res) => {
         alreadySaved,
         balance: rewardPoints,
         venueBalance,
+        loyaltyLive: true,
+        saveBonusPoints: rewardConfig.POINTS.STICKER_SAVE,
         earnRate,
         offers,
         // The store's own terms: how far this balance is from the next reward
@@ -202,7 +211,11 @@ exports.confirmStickerSave = async (req, res) => {
       });
     }
 
-    const result = await rewardService.awardStickerSave(userId, venue);
+    // The save bonus is store points: none until the store's loyalty is live
+    const loyaltyLive = await isVenueLoyaltyActive(venue);
+    const result = loyaltyLive
+      ? await rewardService.awardStickerSave(userId, venue)
+      : { awarded: false, reason: 'loyalty_not_live' };
     const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
 
     res.json({
@@ -210,6 +223,7 @@ exports.confirmStickerSave = async (req, res) => {
       data: {
         awarded: result.awarded ? { type: 'sticker_save', points: result.points } : null,
         alreadyAwarded: !!result.duplicate,
+        loyaltyLive,
         balance: rewardPoints,
         venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0
       }
