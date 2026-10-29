@@ -150,9 +150,7 @@ final class ClipSuccessViewController: UIViewController {
         emojiLabel.isHidden = false
         emojiLabel.text = "✅"
         titleLabel.text = "Account created!"
-        detailLabel.text = preview.signupBonusPoints > 0
-            ? "Your \(preview.signupBonusPoints) points at \(preview.venueName) are on the way — open the full app to collect them."
-            : "Open the full app to keep \(preview.venueName) on your map."
+        detailLabel.text = "Your \(preview.signupBonusPoints) points at \(preview.venueName) are on the way — open the full app to collect them."
         popEmoji()
         presentInstallOverlay(afterDelay: 1.2)
     }

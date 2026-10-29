@@ -176,22 +176,17 @@ final class StickerRewardCoordinator: NSObject {
         }
 
         if scan.alreadySaved == true {
-            message += scan.loyaltyLive == false
-                ? "\(scan.venue.venueName) is already in your circles."
-                : "\(scan.venue.venueName) is already in your circles. Come back and scan the register card with a purchase to keep earning!"
+            message += "\(scan.venue.venueName) is already in your circles. Come back and scan the register card with a purchase to keep earning!"
             AlertPresenter.showSuccess(title: "Welcome back!", message: message, from: presenter)
             return
         }
 
-        // Store points only where loyalty is live: no promise before that
-        message += scan.saveBonus > 0
-            ? "Save \(scan.venue.venueName) to one of your circles so you don't forget it — and earn \(scan.saveBonus) more store points."
-            : "Save \(scan.venue.venueName) to one of your circles so you don't forget it."
+        message += "Save \(scan.venue.venueName) to one of your circles so you don't forget it — and earn 50 more store points."
 
         AlertPresenter.showConfirmation(
             title: "Don't forget \(scan.venue.venueName)!",
             message: message,
-            confirmTitle: scan.saveBonus > 0 ? "Save & Earn" : "Save",
+            confirmTitle: "Save & Earn",
             cancelTitle: "Not Now",
             from: presenter
         ) { [weak self] in
@@ -200,14 +195,12 @@ final class StickerRewardCoordinator: NSObject {
     }
 
     /// "Save this store?" after a register scan, into the circle they pick
-    private func offerSave(venue: RewardVenue, code: String, bonus: Int) {
+    private func offerSave(venue: RewardVenue, code: String) {
         guard let presenter = presenter else { return }
         AlertPresenter.showConfirmation(
             title: "Save \(venue.venueName)?",
-            message: bonus > 0
-                ? "Add it to one of your circles so you can find it again and share it with friends, and earn \(bonus) more points here."
-                : "Add it to one of your circles so you can find it again and share it with friends.",
-            confirmTitle: bonus > 0 ? "Save & Earn" : "Save",
+            message: "Add it to one of your circles so you can find it again and share it with friends, and earn 50 more points here.",
+            confirmTitle: "Save & Earn",
             cancelTitle: "Not Now",
             from: presenter
         ) { [weak self] in
@@ -321,7 +314,7 @@ final class StickerRewardCoordinator: NSObject {
         // After the points, offer to save the store if it isn't saved yet
         let offerSave: () -> Void = { [weak self] in
             guard scan.alreadySaved == false else { return }
-            self?.offerSave(venue: scan.venue, code: code, bonus: scan.saveBonus)
+            self?.offerSave(venue: scan.venue, code: code)
         }
 
         var title = scan.venue.venueName

@@ -62,8 +62,7 @@ exports.getVenuePreview = async (req, res) => {
         placeAddress: venue.placeAddress || null,
         category: venue.category || null,
         kind: venue.kind, // 'window' | 'register'
-        // No signup bonus before the store's loyalty is live (Wes, 2026-10-29)
-        signupBonusPoints: loyaltyLive ? rewardConfig.POINTS.STICKER_SIGNUP : 0,
+        signupBonusPoints: rewardConfig.POINTS.STICKER_SIGNUP,
         loyaltyLive,
         earnRate: loyaltyLive ? rewardService.effectiveEarnRate(venue) : null,
         offers,
