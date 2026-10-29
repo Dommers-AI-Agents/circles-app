@@ -15,13 +15,14 @@
 // No SDK dependency: a direct fetch to the Messages API (Node 18+ global fetch).
 
 const { AUTO_CATEGORIES } = require('./placeCategoryDerivation');
+const flags = require('../config/flags');
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = process.env.CATEGORY_LLM_MODEL || 'claude-haiku-4-5';
 const CONFIDENCE_FLOOR = parseFloat(process.env.CATEGORY_LLM_CONFIDENCE_FLOOR || '0.5');
 
 function isEnabled() {
-  return process.env.CATEGORY_LLM_ENABLED === 'true' && !!process.env.ANTHROPIC_API_KEY;
+  return flags.categoryLlm();
 }
 
 const CATEGORY_DEFINITIONS = `

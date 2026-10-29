@@ -4,6 +4,7 @@
 // checkout (name + phone, email optional); the order's status link carries
 // a signed token that can only ever read or cancel that one order.
 const jwt = require('jsonwebtoken');
+const { jwtSecret } = require('../../config/secrets');
 const { getFirestore } = require('../../config/firebase');
 const { ServiceError } = require('../../utils/serviceError');
 const { GLOBAL_COLLECTIONS } = require('../../models/GlobalPlace');
@@ -20,7 +21,7 @@ const { OPEN } = rules;
 const TOKEN_PURPOSE = 'web_order';
 const TOKEN_TTL = '30d';
 
-const secret = () => process.env.JWT_SECRET || 'dev-secret';
+const secret = () => jwtSecret();
 
 /** Which photo fronts the page: the owner's cover, else the first photo. */
 const coverPhotoOf = (place) => {

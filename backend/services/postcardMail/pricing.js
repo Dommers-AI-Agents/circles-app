@@ -10,6 +10,7 @@
 // before sending), and an order presenting a valid quote is held at that price even if the special ended while they wrote
 // the card. Without one, the order is priced at that moment.
 const crypto = require('crypto');
+const { jwtSecret } = require('../../config/secrets');
 const { ServiceError } = require('../../utils/serviceError');
 
 const DOC = ['appConfig', 'postcardPricing'];
@@ -24,7 +25,7 @@ const minPriceCents = () => Number(process.env.POSTCARD_MIN_PRICE_CENTS) || 149;
 
 let cache = null;
 
-const secret = () => `${process.env.JWT_SECRET || ''}:postcard-price`;
+const secret = () => `${jwtSecret()}:postcard-price`;
 const sign = (payload) => crypto.createHmac('sha256', secret()).update(payload).digest('base64url');
 
 /** The price right now: the lowest special running at `now`, else regular. Pure. */

@@ -43,12 +43,18 @@ exports.invalidateUserCache = (userId) => {
   }
 };
 
+// The profile fields handlers read (displayName, following, blocks, …) come
+// from the user doc, but the IDENTITY fields are set last so nothing stored
+// on the doc (a stray `uid` or `id`) can override who authenticated.
+// `req.user.uid` is the one id to use; `id` mirrors it for older readers.
 const buildReqUser = (decoded, userData, finalUserId) => ({
+  ...userData,
   uid: finalUserId,
+  id: finalUserId,
   firebaseDocId: finalUserId,
   originalUid: decoded.uid,
-  email: decoded.email || userData.email,
-  ...userData
+  // The account's stored address wins (as before), the token's only fills a gap
+  email: userData.email || decoded.email
 });
 
 // Protect routes - require valid JWT token

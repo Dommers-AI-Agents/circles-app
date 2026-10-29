@@ -7,6 +7,7 @@
 // seen in a log or a screenshot is useless a minute later. The page gets
 // its own 12-hour token, never the app's long-lived one.
 const crypto = require('crypto');
+const { jwtSecret } = require('../config/secrets');
 const { getFirestore } = require('../config/firebase');
 const { ServiceError } = require('../utils/serviceError');
 
@@ -14,7 +15,7 @@ const COLLECTION = 'adminHandoffs';
 const CODE_TTL_MS = 60 * 1000;
 
 // Keyed with the server secret, so stored hashes are useless without it
-const hash = (value) => crypto.createHmac('sha256', process.env.JWT_SECRET || '').update(String(value)).digest('hex');
+const hash = (value) => crypto.createHmac('sha256', jwtSecret()).update(String(value)).digest('hex');
 const { signDashboardToken } = require('../middleware/adminDashboardAuth');
 const sameHash = (a, b) => {
   const x = Buffer.from(String(a)); const y = Buffer.from(String(b));

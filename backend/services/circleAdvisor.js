@@ -19,6 +19,7 @@
 // the Messages API rather than an SDK dependency, flag-gated, and never on a
 // hot path.
 
+const flags = require('../config/flags');
 const API_URL = 'https://api.anthropic.com/v1/messages';
 // Sonnet 5 at a fraction of Opus's price (~3.5¢ vs ~9¢ a run): labelling
 // circles and spotting overlaps doesn't need the biggest model.
@@ -43,7 +44,7 @@ const costCents = (usage, model = MODEL) => {
 };
 
 const isEnabled = () =>
-  process.env.CIRCLE_ADVISOR_ENABLED === 'true' && !!process.env.ANTHROPIC_API_KEY;
+  flags.circleAdvisor();
 
 /** The organizing schemes a circle can use. */
 const SCHEMES = ['place', 'type', 'person', 'trip', 'system', 'unclear'];

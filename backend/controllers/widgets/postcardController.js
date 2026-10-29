@@ -3,6 +3,7 @@
 // with a connection. Deliberately NOT a new message type — old builds decode
 // the whole thread and would break on an unknown type; they see "📷 Photo".
 const { getFirestore } = require('../../config/firebase');
+const flags = require('../../config/flags');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { normalizeUserId } = require('../../services/idService');
 const { isBlockedEitherWay } = require('../../services/moderationService');
@@ -14,7 +15,7 @@ const db = getFirestore();
 
 const MESSAGE_MAX_CHARS = 500;
 const TEMPLATE_ID_RE = /^[a-z0-9_-]{1,32}$/;
-const piggyEnabled = () => process.env.WIDGET_PIGGY_ENABLED === '1';
+const piggyEnabled = () => flags.widgetPiggy();
 
 // Only images our own upload route produced may be stamped into a message.
 // Same bucket fallback chain as services/storage.js; with no bucket

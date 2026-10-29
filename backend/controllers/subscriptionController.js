@@ -77,7 +77,7 @@ async function consumePendingSubscriptions({ scope, originalTransactionId, userI
 exports.verifySubscription = async (req, res) => {
     try {
         const { receipt, signedTransaction, transactionId, productId, originalTransactionId, purchaseDate, expirationDate } = req.body;
-        const userId = req.user?.uid || req.userId; // Check both req.user.uid and req.userId
+        const userId = req.user?.uid;
 
         if (!userId) {
             return res.status(401).json({
@@ -496,7 +496,7 @@ exports.verifySubscription = async (req, res) => {
 // @access  Private
 exports.getSubscriptionStatus = async (req, res) => {
     try {
-        const userId = req.user?.uid || req.userId; // Check both req.user.uid and req.userId
+        const userId = req.user?.uid;
         
         if (!userId) {
             return res.status(401).json({
@@ -919,7 +919,7 @@ async function handleBusinessWebhook({ notificationType, originalTransactionId, 
 // @access  Private
 exports.startFreeTrial = async (req, res) => {
     try {
-        const userId = req.user?.uid || req.userId; // Check both req.user.uid and req.userId
+        const userId = req.user?.uid;
         
         // Check if user already had a trial
         const userDoc = await admin.firestore().collection('users').doc(userId).get();
@@ -985,7 +985,7 @@ exports.startFreeTrial = async (req, res) => {
 // @access  Private
 exports.getUserUsageStats = async (req, res) => {
     try {
-        const userId = req.user?.uid || req.userId;
+        const userId = req.user?.uid;
         
         if (!userId) {
             return res.status(401).json({
@@ -1015,7 +1015,7 @@ exports.getUserUsageStats = async (req, res) => {
 // (Settings → Subscriptions). Billing lives with each product; this only reads.
 exports.listAllSubscriptions = async (req, res) => {
     try {
-        const userId = req.user?.uid || req.userId;
+        const userId = req.user?.uid;
         const subscriptions = await require('../services/subscriptionsOverview').listSubscriptions(userId);
         res.json({ success: true, subscriptions });
     } catch (error) {

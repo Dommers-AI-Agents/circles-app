@@ -1,4 +1,5 @@
 // backend/services/emailService.js
+const flags = require('../config/flags');
 let nodemailer;
 try {
   nodemailer = require('nodemailer');
@@ -24,7 +25,7 @@ const oneLine = (value) => String(value == null ? '' : value).replace(/[\r\n]+/g
 // logged no-ops with just an env change — account mail (password reset,
 // welcome, receipts) keeps flowing. Logged once per process.
 let killSwitchLogged = false;
-const userMailDisabled = () => process.env.EMAIL_SENDING_DISABLED === 'true';
+const userMailDisabled = () => flags.emailSendingDisabled();
 
 class EmailService {
   constructor() {

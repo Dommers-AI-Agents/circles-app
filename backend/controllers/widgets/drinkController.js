@@ -10,6 +10,7 @@
 // drink_received): coins are never moved between users. Once ever per
 // sender→recipient pair, 3 a day per recipient (config/piggyBankConfig.js).
 const { getFirestore } = require('../../config/firebase');
+const flags = require('../../config/flags');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { normalizeUserId } = require('../../services/idService');
 const { isBlockedEitherWay } = require('../../services/moderationService');
@@ -23,7 +24,7 @@ const db = getFirestore();
 const DRINK_ID_RE = /^[a-z0-9-]{1,48}$/;
 const NAME_MAX = 60;
 const NOTE_MAX = 200;
-const piggyEnabled = () => process.env.WIDGET_PIGGY_ENABLED === '1';
+const piggyEnabled = () => flags.widgetPiggy();
 
 const fail = (res, status, code, message) => res.status(status).json({ success: false, code, message });
 

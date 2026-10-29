@@ -13,6 +13,7 @@
 // stays null, and the postcard reconciler/unwind paths skip the money steps
 // for it. A print failure gives a credit back, never a Stripe refund.
 const { ServiceError } = require('../../utils/serviceError');
+const flags = require('../../config/flags');
 const { sendInBackground } = require('../notifyQuiet');
 const { getFirestore, FieldValue } = require('../../config/firebase');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
@@ -46,7 +47,7 @@ const SUB_ACTIVE = new Set(['active', 'trialing']);
 
 class FridgeMailError extends ServiceError {}
 
-const isEnabled = () => process.env.POSTCARD_MAIL_ENABLED === '1';
+const isEnabled = () => flags.postcardMail();
 const dryRun = () => process.env.FRIDGEMAIL_DRY_RUN === '1';
 const { newId, nowIso } = require('../../utils/ids');
 const { escapeHtml } = require('../../utils/text');

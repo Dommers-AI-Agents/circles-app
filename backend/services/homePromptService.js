@@ -3,6 +3,7 @@
 // Picking, suppression and acks here; the per-kind card builders are mixed in from ./homePrompt/cards.
 // Constants and pure helpers live in ./homePrompt/shared.js.
 const { ACTIONS, CARDS_COLLECTION, CATALOG_COLLECTION, CLIENT_ACK_KEYS, COLLECTIONS, DYNAMIC_ACK_TTL_MS, HomePromptError, NEW_ACCOUNT_GUARD_MS, NUDGE_REPEAT_MS, POSTCARD_REPEAT_MS, POSTCARD_REPEAT_SKIPPED_MS, SHOW_INTERVAL_MS, getFirestore, homeCards, isDynamicKey, isEnabled, toMillis } = require('./homePrompt/shared');
+const flags = require('../config/flags');
 
 class HomePromptService {
   constructor(db = getFirestore()) {
@@ -229,7 +230,7 @@ class HomePromptService {
   // switch (POSTCARD_NUDGE_ENABLED=0) — but it honours the new-account guard,
   // because a first-week user is being walked through onboarding already.
   async postcardNudgeEligible(userId, { now = Date.now() } = {}) {
-    if (process.env.POSTCARD_NUDGE_ENABLED === '0') return false;
+    if (!flags.postcardNudge()) return false;
     const doc = await this.db.collection(COLLECTIONS.USERS).doc(userId).get();
     if (!doc.exists) return false;
     const user = doc.data() || {};

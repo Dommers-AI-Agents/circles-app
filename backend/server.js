@@ -831,6 +831,9 @@ app.use('*', (req, res) => {
 // Error handling middleware
 app.use(errorHandler);
 
+// A production instance without its signing secret must not serve
+require('./config/secrets').assertSecretsAtBoot();
+
 const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, '0.0.0.0', () => {

@@ -2,6 +2,7 @@
 // account): a name, a phone the store can call, an optional email for
 // updates. Pure; the phone's HMAC is the key every guest limit hangs on.
 const crypto = require('crypto');
+const { jwtSecret } = require('../../config/secrets');
 const { ServiceError } = require('../../utils/serviceError');
 
 const GUEST_LIMITS = { openPerPhone: 3, perDay: 10, name: 60, email: 120 };
@@ -29,7 +30,7 @@ function cleanGuest(input = {}) {
 }
 
 /** The limit key for a phone: an HMAC so the raw number never sits in an index. */
-function guestKeyFor(phone, secret = process.env.JWT_SECRET || 'dev-secret') {
+function guestKeyFor(phone, secret = jwtSecret()) {
   return crypto.createHmac('sha256', String(secret)).update(String(phone)).digest('hex').slice(0, 40);
 }
 

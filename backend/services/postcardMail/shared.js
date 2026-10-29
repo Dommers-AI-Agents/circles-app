@@ -21,6 +21,7 @@
 // webhook; the hourly reconciler is the safety net when that webhook never
 // arrives (it asks Lob directly and captures after a grace period).
 const { getFirestore, FieldValue } = require('../../config/firebase');
+const flags = require('../../config/flags');
 const { ServiceError } = require('../../utils/serviceError');
 const { sendInBackground } = require('../notifyQuiet');
 const { escapeHtml } = require('../../utils/text');
@@ -63,7 +64,7 @@ const ORDER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
 class MailError extends ServiceError {}
 
-const isEnabled = () => process.env.POSTCARD_MAIL_ENABLED === '1';
+const isEnabled = () => flags.postcardMail();
 const priceCents = () => Number(process.env.POSTCARD_PRICE_CENTS_US) || DEFAULT_PRICE_CENTS;
 
 function requireEnabled() {

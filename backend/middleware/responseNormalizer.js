@@ -28,6 +28,7 @@
 //    badge, while the other direction would tell someone their content is
 //    narrower than it really is. Never round a privacy label outwards.
 
+const flags = require('../config/flags');
 const FOLLOWERS_HEADER = 'x-fc-moments-followers';
 const INNER_CIRCLE_HEADER = 'x-fc-inner-circle';
 
@@ -77,7 +78,7 @@ function downgradeFollowersVisibility(node, depth = 0) {
 // prompt Always-location users, after a real stop. The override is for the
 // builds before that, whose banner fired on region entry.
 const DWELL_HEADER = 'x-fc-dwell-checkin';
-const bannersOff = () => process.env.PROXIMITY_BANNERS_ENABLED === '0';
+const bannersOff = () => !flags.proximityBanners();
 const isUserPath = (path) => path.includes('/users') || path.includes('/auth');
 function forceLocationPromptsOff(node, depth = 0) {
   if (!node || typeof node !== 'object' || depth > 4) return;

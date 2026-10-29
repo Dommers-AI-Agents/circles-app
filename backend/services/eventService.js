@@ -15,6 +15,7 @@
 // is enforced by only ever returning them to members.
 
 const { FieldValue, FieldPath } = require('firebase-admin/firestore');
+const flags = require('../config/flags');
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS, createCircle } = require('../models/FirestoreModels');
 const { normalizeUserId } = require('./idService');
@@ -412,7 +413,7 @@ async function joinByToken(token, uid) {
       body: `${result.data.memberIds.length} people are in`,
       data: { eventId: ref.id }
     }, 'event_joined');
-    if (process.env.WIDGET_PIGGY_ENABLED === '1') {
+    if (flags.widgetPiggy()) {
       const bonus = await require('./piggyBankService').credit({
         userId: uid, eventType: 'event_joined', sourceRef: { eventId: ref.id }
       });
@@ -704,7 +705,7 @@ async function addPhotos(eventId, uid, photos) {
   await batch.commit();
 
   // A challenge photo: one FavCoin per challenge per person (dedup key + daily cap)
-  if (process.env.WIDGET_PIGGY_ENABLED === '1') {
+  if (flags.widgetPiggy()) {
     const done = [...new Set(created.map(c => c.row.challengeId).filter(Boolean))];
     for (const challengeId of done) {
       const photo = created.find(c => c.row.challengeId === challengeId);

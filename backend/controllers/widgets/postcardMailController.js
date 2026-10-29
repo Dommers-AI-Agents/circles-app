@@ -4,6 +4,7 @@
 // caps at 1MB base64 and the iOS pipeline downsizes to 1280px, both of which
 // would silently destroy print resolution, so print art needs its own door.
 const sizeOf = require('image-size');
+const flags = require('../../config/flags');
 const { uploadImage } = require('../../services/storage');
 const mailService = require('../../services/postcardMailService');
 const stripeClient = require('../../services/stripeClient');
@@ -21,7 +22,7 @@ const ASPECT_TOLERANCE = 0.01;
 // a denser card without letting an arbitrary upload through.
 const MAX_BASE64_BYTES = 6 * 1024 * 1024;
 
-const mailEnabled = () => process.env.POSTCARD_MAIL_ENABLED === '1';
+const mailEnabled = () => flags.postcardMail();
 
 const { sendServiceError } = require('../../utils/serviceError');
 const fail = (res, status, code, message) =>

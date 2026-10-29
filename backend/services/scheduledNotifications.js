@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const flags = require('../config/flags');
 const { getFirestore } = require('../config/firebase');
 const notificationService = require('./notificationService');
 const dailySummaryService = require('./dailySummaryService');
@@ -77,7 +78,7 @@ class ScheduledNotifications {
 
   // Schedule weekly summary
   scheduleWeeklyMapDigest() {
-    if (process.env.WEEKLY_MAP_DIGEST_ENABLED !== 'true') {
+    if (!flags.weeklyMapDigest()) {
       console.log('🗺️ Weekly map digest email: disabled (WEEKLY_MAP_DIGEST_ENABLED != true)');
       return;
     }

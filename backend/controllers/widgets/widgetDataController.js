@@ -3,11 +3,12 @@
 // opaque JSON per (user, widgetId) with an optimistic version lock; widget
 // schemas live entirely in the iOS FavWidgets package.
 const widgetDataService = require('../../services/widgetDataService');
+const flags = require('../../config/flags');
 const { ValidationError, VersionConflictError, SchemaTooOldError } = require('../../services/widgetDataService');
 const piggyBankService = require('../../services/piggyBankService');
 
 // Read at call time so the flag can flip without a restart in tests.
-const piggyEnabled = () => process.env.WIDGET_PIGGY_ENABLED === '1';
+const piggyEnabled = () => flags.widgetPiggy();
 const utcDay = (iso) => (iso ? String(iso).slice(0, 10) : null);
 
 function sendError(res, error, fallback) {

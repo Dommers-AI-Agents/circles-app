@@ -29,10 +29,11 @@
 //                                     quarantine for human review
 
 const https = require('https');
+const flags = require('../config/flags');
 const { createHash } = require('crypto');
 
 const env = () => ({
-  enabled: process.env.PIGGY_CLAIMS_ENABLED === 'true',
+  enabled: flags.piggyClaims(),
   baseUrl: process.env.CACTUS_BROKER_URL || process.env.CACTUS_WALLET_RPC_URL || '',
   certB64: process.env.CACTUS_RPC_CERT_B64 || '',
   keyB64: process.env.CACTUS_RPC_KEY_B64 || '',

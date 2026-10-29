@@ -17,7 +17,7 @@ router.post('/test/friend-activity', protect, async (req, res) => {
     const { placeCount = 3, category = 'restaurant' } = req.body;
     
     await engagementNotificationService.sendFriendActivityAlert(
-      req.user.uid || req.user.id,
+      req.user.uid,
       placeCount,
       category
     );
@@ -40,7 +40,7 @@ router.post('/test/milestone', protect, async (req, res) => {
   try {
     const { type = 'places' } = req.body;
     
-    await engagementNotificationService.checkAndSendMilestone(req.user.uid || req.user.id, type);
+    await engagementNotificationService.checkAndSendMilestone(req.user.uid, type);
     
     res.json({
       success: true,
@@ -60,7 +60,7 @@ router.post('/test/engagement-reminder', protect, async (req, res) => {
   try {
     const { type = 'moments' } = req.body;
     
-    await engagementNotificationService.sendEngagementReminder(req.user.uid || req.user.id, type);
+    await engagementNotificationService.sendEngagementReminder(req.user.uid, type);
     
     res.json({
       success: true,
@@ -82,7 +82,7 @@ router.post('/test/all-engagement-reminders', protect, async (req, res) => {
     const results = [];
     
     for (const type of types) {
-      await engagementNotificationService.sendEngagementReminder(req.user.uid || req.user.id, type);
+      await engagementNotificationService.sendEngagementReminder(req.user.uid, type);
       results.push(type);
       // Wait 1 second between notifications
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -105,11 +105,11 @@ router.post('/test/all-engagement-reminders', protect, async (req, res) => {
 // Test weekly summary
 router.post('/test/weekly-summary', protect, async (req, res) => {
   try {
-    const stats = await engagementNotificationService.gatherWeeklyStats(req.user.uid || req.user.id);
-    const user = { id: req.user.uid || req.user.id, displayName: req.user.displayName };
+    const stats = await engagementNotificationService.gatherWeeklyStats(req.user.uid);
+    const user = { id: req.user.uid, displayName: req.user.displayName };
     const notification = engagementNotificationService.buildWeeklySummaryNotification(stats, user);
     
-    await notificationService.sendToUser(req.user.uid || req.user.id, notification);
+    await notificationService.sendToUser(req.user.uid, notification);
     
     res.json({
       success: true,
@@ -128,7 +128,7 @@ router.post('/test/weekly-summary', protect, async (req, res) => {
 // Test monthly summary
 router.post('/test/monthly-summary', protect, async (req, res) => {
   try {
-    const stats = await engagementNotificationService.gatherMonthlyStats(req.user.uid || req.user.id);
+    const stats = await engagementNotificationService.gatherMonthlyStats(req.user.uid);
     
     const lastMonth = new Date();
     lastMonth.setMonth(lastMonth.getMonth() - 1);
@@ -145,7 +145,7 @@ router.post('/test/monthly-summary', protect, async (req, res) => {
       }
     };
     
-    await notificationService.sendToUser(req.user.uid || req.user.id, notification);
+    await notificationService.sendToUser(req.user.uid, notification);
     
     res.json({
       success: true,
@@ -207,7 +207,7 @@ router.post('/test/special-event', protect, async (req, res) => {
       }
     };
     
-    await notificationService.sendToUser(req.user.uid || req.user.id, notification);
+    await notificationService.sendToUser(req.user.uid, notification);
     
     res.json({
       success: true,
@@ -227,7 +227,7 @@ router.post('/test/network-growth', protect, async (req, res) => {
   try {
     const { count = 5 } = req.body;
     
-    await engagementNotificationService.sendNetworkGrowthAlert(req.user.uid || req.user.id, count);
+    await engagementNotificationService.sendNetworkGrowthAlert(req.user.uid, count);
     
     res.json({
       success: true,
@@ -245,7 +245,7 @@ router.post('/test/network-growth', protect, async (req, res) => {
 // Get user stats
 router.get('/test/user-stats', protect, async (req, res) => {
   try {
-    const stats = await milestoneService.getUserStats(req.user.uid || req.user.id);
+    const stats = await milestoneService.getUserStats(req.user.uid);
     
     res.json({
       success: true,
@@ -264,7 +264,7 @@ router.get('/test/user-stats', protect, async (req, res) => {
 router.post('/test/daily-summary', protect, async (req, res) => {
   try {
     const user = {
-      id: req.user.uid || req.user.id,
+      id: req.user.uid,
       email: req.user.email,
       displayName: req.user.displayName,
       notificationPreferences: { dailySummary: true }
@@ -290,7 +290,7 @@ router.post('/test/daily-summary', protect, async (req, res) => {
 router.post('/test/notification-suite', protect, async (req, res) => {
   try {
     const results = [];
-    const userId = req.user.uid || req.user.id;
+    const userId = req.user.uid;
     
     // 1. Friend activity
     await engagementNotificationService.sendFriendActivityAlert(userId, 3, 'restaurant');

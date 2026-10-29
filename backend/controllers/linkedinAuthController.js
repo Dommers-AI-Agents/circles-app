@@ -1,5 +1,6 @@
 // backend/controllers/linkedinAuthController.js
 const { getFirestore } = require('../config/firebase');
+const { jwtSecret } = require('../config/secrets');
 const { COLLECTIONS, createUser, serializeDoc } = require('../models/FirestoreModels');
 const jwt = require('jsonwebtoken');
 
@@ -287,7 +288,7 @@ exports.linkedinAuth = async (req, res, next) => {
         uid: user.id || user.uid,
         email: user.email 
       },
-      process.env.JWT_SECRET || 'your-secret-key',
+      jwtSecret(),
       { expiresIn: process.env.JWT_EXPIRE || '7d' }
     );
 

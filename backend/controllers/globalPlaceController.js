@@ -195,7 +195,7 @@ exports.getGlobalPlace = async (req, res, next) => {
     // The place's photo library as this viewer sees it: the owner's order,
     // minus removed photos and other people's private ones, one per URL
     // (placePhotoService). The cover is the first photo everyone can see.
-    const viewerUid = req.user?.uid || req.user?.id || null;
+    const viewerUid = req.user?.uid || null;
     const storedPhotos = Array.isArray(placeData.photos) ? placeData.photos : [];
     placeData.photos = placePhotos.visiblePhotos(storedPhotos, viewerUid);
     placeData.coverPhotoUrl = placePhotos.coverUrl(storedPhotos);
@@ -211,9 +211,9 @@ exports.getGlobalPlace = async (req, res, next) => {
     
     // Get user's relationship to this place if they have one
     let userRelation = null;
-    if (req.user?.id) {
+    if (req.user?.uid) {
       const relationQuery = await db.collection(GLOBAL_COLLECTIONS.USER_PLACE_RELATIONS)
-        .where('userId', '==', req.user.id)
+        .where('userId', '==', req.user.uid)
         .where('placeId', '==', placeId)
         .limit(1)
         .get();
@@ -271,7 +271,7 @@ exports.getGlobalPlace = async (req, res, next) => {
       const savesSnap = await db.collection('places')
         .where('globalPlaceId', '==', placeDoc.id)
         .get();
-      const viewerId = req.user?.uid || req.user?.id || null;
+      const viewerId = req.user?.uid || null;
       const { overlayVenueFields, buildAddedByUserMap, isPlaceVisibleToViewer } = require('../services/placeReadService');
       const { canViewCircleFor } = require('../services/circleAccess');
       const { buildViewerContext } = require('../services/viewerContext');
@@ -431,7 +431,7 @@ exports.createUserPlaceRelation = async (req, res, next) => {
     const placeId = req.params.placeId;
     const relationData = {
       ...req.body,
-      userId: req.user.id,
+      userId: req.user.uid,
       placeId: placeId
     };
     
@@ -447,7 +447,7 @@ exports.createUserPlaceRelation = async (req, res, next) => {
     
     // Check if relation already exists
     const existingQuery = await db.collection(GLOBAL_COLLECTIONS.USER_PLACE_RELATIONS)
-      .where('userId', '==', req.user.id)
+      .where('userId', '==', req.user.uid)
       .where('placeId', '==', placeId)
       .where('circleId', '==', relationData.circleId)
       .limit(1)
@@ -488,7 +488,7 @@ exports.addPublicReview = async (req, res, next) => {
     const placeId = req.params.placeId;
     const reviewData = {
       ...req.body,
-      userId: req.user.id,
+      userId: req.user.uid,
       userName: req.user.displayName,
       userPhoto: req.user.profilePicture
     };
@@ -519,7 +519,7 @@ exports.addPublicReview = async (req, res, next) => {
     await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(placeId).update({
       publicReviews: admin.firestore.FieldValue.arrayUnion(publicReview),
       'userContributions.totalReviews': admin.firestore.FieldValue.increment(1),
-      'userContributions.contributors': admin.firestore.FieldValue.arrayUnion(req.user.id),
+      'userContributions.contributors': admin.firestore.FieldValue.arrayUnion(req.user.uid),
       lastActivityAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
@@ -575,13 +575,13 @@ exports.uploadPlaceMedia = async (req, res, next) => {
       
       attributedMedia = createAttributedPhoto({
         url: mediaUrl,
-        uploadedBy: req.user.id,
+        uploadedBy: req.user.uid,
         uploadedByName: req.user.displayName,
         source: source,
         uploadedAt: uploadedAt
       });
       // Added by someone who keeps this place Private: theirs alone
-      isPrivatePhoto = await placePhotos.uploaderSaveIsPrivate(resolvedId, req.user.uid || req.user.id);
+      isPrivatePhoto = await placePhotos.uploaderSaveIsPrivate(resolvedId, req.user.uid);
       if (isPrivatePhoto) attributedMedia.private = true;
       updateField = 'photos';
       incrementField = 'userContributions.totalPhotos';
@@ -589,13 +589,13 @@ exports.uploadPlaceMedia = async (req, res, next) => {
       console.log(`📸 [UploadMedia] Creating photo for place ${placeId}:`);
       console.log(`📸 [UploadMedia] - Photo ID: ${attributedMedia.id}`);
       console.log(`📸 [UploadMedia] - Photo URL: ${mediaUrl}`);
-      console.log(`📸 [UploadMedia] - Uploaded by: ${req.user.displayName} (${req.user.id})`);
+      console.log(`📸 [UploadMedia] - Uploaded by: ${req.user.displayName} (${req.user.uid})`);
       console.log(`📸 [UploadMedia] - Timestamp: ${attributedMedia.uploadedAt}`);
     } else if (mediaType === 'video') {
       attributedMedia = createAttributedVideo({
         videoUrl: mediaUrl,
         thumbnailUrl: thumbnailUrl,
-        uploadedBy: req.user.id,
+        uploadedBy: req.user.uid,
         uploadedByName: req.user.displayName,
         title: title || '',
         description: description || ''
@@ -642,7 +642,7 @@ exports.uploadPlaceMedia = async (req, res, next) => {
     }
     await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).update({
       [incrementField]: admin.firestore.FieldValue.increment(1),
-      'userContributions.contributors': admin.firestore.FieldValue.arrayUnion(req.user.id),
+      'userContributions.contributors': admin.firestore.FieldValue.arrayUnion(req.user.uid),
       lastActivityAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
@@ -690,7 +690,7 @@ exports.uploadPlaceMedia = async (req, res, next) => {
           resolvedId,
           placeName,
           mediaUrl,
-          req.user.id
+          req.user.uid
         );
         
         console.log(`✅ [UploadMedia] Photo upload activity tracked successfully`);
@@ -709,7 +709,7 @@ exports.uploadPlaceMedia = async (req, res, next) => {
     if (mediaType === 'photo') {
       try {
         const homePromptService = require('../services/homePromptService');
-        postcardNudge = { eligible: await homePromptService.postcardNudgeEligible(req.user.uid || req.user.id) };
+        postcardNudge = { eligible: await homePromptService.postcardNudgeEligible(req.user.uid) };
       } catch (nudgeError) {
         console.warn('⚠️ [UploadMedia] postcard eligibility check failed:', nudgeError.message);
       }
@@ -732,7 +732,7 @@ exports.uploadPlaceMedia = async (req, res, next) => {
 exports.getUserPlaceRelation = async (req, res, next) => {
   try {
     const placeId = req.params.placeId;
-    const userId = req.user.id;
+    const userId = req.user.uid;
     
     const relationQuery = await db.collection(GLOBAL_COLLECTIONS.USER_PLACE_RELATIONS)
       .where('userId', '==', userId)
@@ -769,7 +769,7 @@ exports.updateUserPlaceRelation = async (req, res, next) => {
     }
     
     const relationData = relationDoc.data();
-    if (relationData.userId !== req.user.id) {
+    if (relationData.userId !== req.user.uid) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to update this relation'
@@ -956,7 +956,7 @@ exports.getPhotosDebug = async (req, res, next) => {
 exports.deleteUserPhoto = async (req, res, next) => {
   try {
     const { placeId, photoId } = req.params;
-    const currentUserId = req.user.uid || req.user.id;
+    const currentUserId = req.user.uid;
 
     // Resolve the global place (the app may pass a legacy place id)
     const { globalPlaceDoc: placeDoc, legacyPlaceDoc } = await resolveGlobalPlace(placeId);
@@ -1011,7 +1011,7 @@ exports.reorderPlacePhotos = async (req, res) => {
     const result = await placePhotos.reorder(placeDoc.id, (req.body || {}).photoIds, rights);
     res.json({
       success: true,
-      photos: placePhotos.visiblePhotos(result.photos, req.user.uid || req.user.id),
+      photos: placePhotos.visiblePhotos(result.photos, req.user.uid),
       coverPhotoUrl: result.coverPhotoUrl
     });
   } catch (error) {
@@ -1030,7 +1030,7 @@ exports.setPlaceCoverPhoto = async (req, res) => {
     const result = await placePhotos.setCover(placeDoc.id, String((req.body || {}).photoId || ''), rights);
     res.json({
       success: true,
-      photos: placePhotos.visiblePhotos(result.photos, req.user.uid || req.user.id),
+      photos: placePhotos.visiblePhotos(result.photos, req.user.uid),
       coverPhotoUrl: result.coverPhotoUrl
     });
   } catch (error) {
@@ -1048,7 +1048,7 @@ const { trackGlobalPlaceLiked, trackPhotoUploaded } = require('../services/activ
 exports.likeGlobalPlaceUpload = async (req, res, next) => {
   try {
     const { placeId, photoId } = req.params;
-    const userId = req.user.uid || req.user.id;
+    const userId = req.user.uid;
 
     const { globalPlaceDoc: placeDoc } = await resolveGlobalPlace(placeId);
     if (!placeDoc || !placeDoc.exists) {
@@ -1107,7 +1107,7 @@ exports.likeGlobalPlaceUpload = async (req, res, next) => {
 exports.unlikeGlobalPlaceUpload = async (req, res, next) => {
   try {
     const { placeId, photoId } = req.params;
-    const userId = req.user.uid || req.user.id;
+    const userId = req.user.uid;
 
     const { globalPlaceDoc: placeDoc } = await resolveGlobalPlace(placeId);
     if (!placeDoc || !placeDoc.exists) {

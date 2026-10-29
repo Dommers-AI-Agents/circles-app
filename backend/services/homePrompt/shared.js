@@ -20,6 +20,7 @@
 // card today, which is the cheap failure. Ships dark behind HOME_PROMPTS_ENABLED.
 
 const { getFirestore } = require('../../config/firebase');
+const flags = require('../../config/flags');
 const { ServiceError } = require('../../utils/serviceError');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { PIGGY_COLLECTIONS } = require('../../models/PiggyBankModels');
@@ -95,7 +96,7 @@ const POSTCARD_PLACE_SCAN_LIMIT = 20;
 // cooldown (and vice versa).
 const CLIENT_ACK_KEYS = new Set(['favcoins_intro', 'postcard_nudge']);
 
-const isEnabled = () => process.env.HOME_PROMPTS_ENABLED === '1';
+const isEnabled = () => flags.homePrompts();
 // Read per call, like isEnabled: 0/unset keeps the tightener off.
 const minTripMiles = () => parseFloat(process.env.POSTCARD_NUDGE_MIN_MILES || '0');
 

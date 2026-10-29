@@ -5,6 +5,7 @@
 // club settings and muting. Member maps are rewritten whole inside a
 // transaction (never a dotted field path: some legacy user ids contain dots).
 const s = require('./shared');
+const flags = require('../../config/flags');
 const { ServiceError } = require('../../utils/serviceError');
 const { normalizeUserId } = require('../idService');
 const { isBlockedEitherWay } = require('../moderationService');
@@ -175,7 +176,7 @@ async function joinByToken(token, uid) {
         data: { clubId: ref.id }
       }, 'club_joined');
     }
-    if (process.env.WIDGET_PIGGY_ENABLED === '1') {
+    if (flags.widgetPiggy()) {
       const bonus = await require('../piggyBankService').credit({
         userId: uid, eventType: 'club_joined', sourceRef: { clubId: ref.id }
       });

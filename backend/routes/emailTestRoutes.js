@@ -57,7 +57,7 @@ router.post('/test-connection-request', protect, async (req, res) => {
     const { toEmail } = req.body;
     const userEmail = toEmail || req.user.email;
     const userName = req.user.displayName || 'Test User';
-    const userId = req.user.id;
+    const userId = req.user.uid;
     
     await emailService.sendConnectionRequestEmail(userEmail, userName, userId);
     
