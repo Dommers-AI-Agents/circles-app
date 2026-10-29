@@ -415,7 +415,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                         )
                         
                         alertController.addAction(UIAlertAction(title: "View Network", style: .default) { _ in
-                            NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+                            NotificationCenter.default.post(name: .navigateToNetwork, object: nil)
                         })
                         
                         alertController.addAction(UIAlertAction(title: "Later", style: .cancel))
@@ -567,13 +567,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         
         if unreadMessages > 0 {
             alert.addAction(UIAlertAction(title: "View Messages", style: .default) { _ in
-                NotificationCenter.default.post(name: Notification.Name("NavigateToMessages"), object: nil)
+                NotificationCenter.default.post(name: .navigateToMessages, object: nil)
             })
         }
         
         if newConnections > 0 {
             alert.addAction(UIAlertAction(title: "View Network", style: .default) { _ in
-                NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+                NotificationCenter.default.post(name: .navigateToNetwork, object: nil)
             })
         }
         
@@ -635,9 +635,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         let center = NotificationCenter.default
         switch destination {
         case .conversation(let id):
-            center.post(name: Notification.Name("NavigateToConversation"), object: id)
+            center.post(name: .navigateToConversation, object: id)
         case .messages:
-            center.post(name: Notification.Name("NavigateToMessages"), object: nil)
+            center.post(name: .navigateToMessages, object: nil)
         case .homeWidget(let id):
             // A reminder tapped with the app closed arrives before the tab
             // bar exists; a bare post then reached nobody and the tap just
@@ -691,7 +691,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             var info: [String: Any] = [:]
             if let placeId { info["placeId"] = placeId }
             if let suggestionId { info["suggestionId"] = suggestionId }
-            center.post(name: Notification.Name("NavigateToSuggestions"), object: nil, userInfo: info.isEmpty ? nil : info)
+            center.post(name: .navigateToSuggestions, object: nil, userInfo: info.isEmpty ? nil : info)
         case .circle(let id, let showComments):
             postOrStashDeepLink(navName: "NavigateToCircle", pending: "circle:\(id)",
                                 object: id, userInfo: showComments.map { ["showComments": $0] })
@@ -699,14 +699,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             postOrStashDeepLink(navName: "NavigateToPlace", pending: "place:\(id)",
                                 object: id, userInfo: showComments.map { ["showComments": $0] })
         case .activity(let id):
-            center.post(name: Notification.Name("NavigateToActivity"), object: id)
+            center.post(name: .navigateToActivity, object: id)
         case .network(let showPending):
             postOrStashDeepLink(navName: "NavigateToNetwork", pending: "network",
                                 userInfo: showPending ? ["showPending": true] : nil)
         case .connectionAccepted(let userId):
             UserDefaults.standard.set(userId, forKey: "newlyAcceptedConnectionId")
             UserDefaults.standard.set(Date(), forKey: "newlyAcceptedConnectionDate")
-            center.post(name: Notification.Name("NavigateToNetwork"), object: userId)
+            center.post(name: .navigateToNetwork, object: userId)
         case .dailySummary:
             // Informational only: clear the badge, then open the summary (or
             // stash it for the scene on a cold start).
@@ -718,7 +718,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             ProximityNotificationScheduler.markPromptedToday(placeId: placeId)
             postOrStashDeepLink(navName: Notification.Name.navigateToCheckIn.rawValue, pending: "check-in:\(placeId)", object: placeId)
         case .piggyBank:
-            center.post(name: Notification.Name("NavigateToPiggyBank"), object: nil)
+            center.post(name: .navigateToPiggyBank, object: nil)
         case .userProfile(let id):
             sceneDelegate?.navigateToUserProfile(userId: id)
         case .video(let id):

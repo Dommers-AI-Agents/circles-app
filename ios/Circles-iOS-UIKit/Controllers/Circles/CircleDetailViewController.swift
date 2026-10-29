@@ -254,33 +254,9 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         return mapView
     }()
     
-    private let expandMapButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "arrow.up.left.and.arrow.down.right"), for: .normal)
-        button.tintColor = .systemBlue
-        button.backgroundColor = .white
-        button.layer.cornerRadius = 15
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.2
-        button.layer.shadowOffset = CGSize(width: 0, height: 2)
-        button.layer.shadowRadius = 4
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private let expandMapButton = UIButton.mapControlButton(systemName: "arrow.up.left.and.arrow.down.right")
     
-    private let zoomToMeButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "location.fill"), for: .normal)
-        button.tintColor = .systemBlue
-        button.backgroundColor = .white
-        button.layer.cornerRadius = 15
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.2
-        button.layer.shadowOffset = CGSize(width: 0, height: 2)
-        button.layer.shadowRadius = 4
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
+    private let zoomToMeButton = UIButton.mapControlButton(systemName: "location.fill")
     
     let tableView: UITableView = {
         let tableView = UITableView()
@@ -297,13 +273,9 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     }()
     
     private let addPlaceButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Add Place", for: .normal)
-        button.setTitleColor(Constants.Colors.white, for: .normal)
-        button.backgroundColor = Constants.Colors.primary
+        let button = UIButton.primaryButton(title: "Add Place")
         button.layer.cornerRadius = 25
         button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
@@ -654,13 +626,12 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                 // Check if any annotation was selected in the last 0.5 seconds
                 if self.mapView.selectedAnnotations.isEmpty {
                     // No annotation selected, offer to add place at this location
-                    let alert = UIAlertController(
+                    AlertPresenter.showConfirmation(
                         title: "Add Place Here?",
                         message: "Would you like to add a place at this location?",
-                        preferredStyle: .alert
-                    )
-                    
-                    alert.addAction(UIAlertAction(title: "Add Place", style: .default) { _ in
+                        confirmTitle: "Add Place",
+                        from: self
+                    ) {
                         let addPlaceVC = AddPlaceViewController(circleId: self.circle.id)
                         self.navigationController?.pushViewController(addPlaceVC, animated: true)
                         
@@ -668,11 +639,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             addPlaceVC.prefillSearchWithPlace(name: "", coordinate: coordinate)
                         }
-                    })
-                    
-                    alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                    
-                    self.present(alert, animated: true)
+                    }
                 }
             }
         }
@@ -1227,35 +1194,22 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     
     @objc private func copyCircleButtonTapped() {
         // Show confirmation alert
-        let alert = UIAlertController(
+        // The name field starts as "<name> (Copy)"
+        AlertPresenter.showTextInput(
             title: "Copy Circle",
             message: "Would you like to copy '\(circle.name)' and all its places to your circles?",
-            preferredStyle: .alert
-        )
-        
-        // Add text field for custom name
-        alert.addTextField { textField in
-            textField.placeholder = "\(self.circle.name) (Copy)"
-            textField.text = "\(self.circle.name) (Copy)"
-            textField.autocapitalizationType = .words
-        }
-        
-        alert.addAction(UIAlertAction(title: "Copy", style: .default) { [weak self] _ in
+            placeholder: "\(circle.name) (Copy)",
+            initialText: "\(circle.name) (Copy)",
+            autocapitalization: .words,
+            confirmTitle: "Copy",
+            from: self
+        ) { [weak self] text in
             guard let self = self else { return }
             
-            let customName = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let customName = text?.trimmingCharacters(in: .whitespacesAndNewlines)
             
             // Show loading indicator
-            let loadingAlert = UIAlertController(title: nil, message: "Copying circle...", preferredStyle: .alert)
-            let loadingIndicator = UIActivityIndicatorView(style: .large)
-            loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
-            loadingIndicator.startAnimating()
-            loadingAlert.view.addSubview(loadingIndicator)
-            NSLayoutConstraint.activate([
-                loadingIndicator.centerXAnchor.constraint(equalTo: loadingAlert.view.centerXAnchor),
-                loadingIndicator.centerYAnchor.constraint(equalTo: loadingAlert.view.centerYAnchor, constant: 30)
-            ])
-            self.present(loadingAlert, animated: true)
+            let loadingAlert = AlertPresenter.showLoading(message: "Copying circle...", from: self)
             
             // Copy the circle
             CircleService.shared.copyCircle(circleId: self.circle.id, newName: customName) { result in
@@ -1264,37 +1218,27 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                         switch result {
                         case .success(let copiedCircle):
                             // Show success message
-                            let successAlert = UIAlertController(
+                            AlertPresenter.showConfirmation(
                                 title: "Success",
                                 message: "Circle copied successfully!",
-                                preferredStyle: .alert
-                            )
-                            successAlert.addAction(UIAlertAction(title: "View Circle", style: .default) { _ in
+                                confirmTitle: "View Circle",
+                                cancelTitle: "OK",
+                                from: self
+                            ) {
                                 // Navigate to the new circle
                                 let detailVC = CircleDetailViewController(circle: copiedCircle)
                                 self.navigationController?.pushViewController(detailVC, animated: true)
-                            })
-                            successAlert.addAction(UIAlertAction(title: "OK", style: .cancel))
-                            self.present(successAlert, animated: true)
+                            }
                             
                         case .failure(let error):
                             // Show error message
                             let errorMessage = (error as? APIError)?.localizedDescription ?? error.localizedDescription
-                            let errorAlert = UIAlertController(
-                                title: "Copy Failed",
-                                message: errorMessage,
-                                preferredStyle: .alert
-                            )
-                            errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                            self.present(errorAlert, animated: true)
+                            AlertPresenter.showError(title: "Copy Failed", message: errorMessage, from: self)
                         }
                     }
                 }
             }
-        })
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        present(alert, animated: true)
+        }
     }
     
     @objc private func addPlaceButtonTapped() {
@@ -1369,7 +1313,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                         self.refreshMapPill()
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         // The home map refetches circles, or the change never lands there
-                        NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+                        NotificationCenter.default.post(name: .refreshCircles, object: nil)
                     case .failure(let error):
                         self.showError(error)
                     }
@@ -1392,32 +1336,18 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         }
         
         // Show export options
-        let alertController = UIAlertController(
+        AlertPresenter.showActionSheet(
             title: "Export Circle",
             message: "Choose export format",
-            preferredStyle: .actionSheet
+            actions: [
+                ("Export as PDF", .default, { [weak self] in self?.exportAsPDF() }),
+                ("Export as CSV", .default, { [weak self] in self?.exportAsCSV() }),
+                ("Export as Text", .default, { [weak self] in self?.exportAsText() })
+            ],
+            from: self,
+            // For iPad
+            barButtonItem: navigationItem.rightBarButtonItems?.first { $0.action == #selector(exportButtonTapped) }
         )
-        
-        alertController.addAction(UIAlertAction(title: "Export as PDF", style: .default) { [weak self] _ in
-            self?.exportAsPDF()
-        })
-        
-        alertController.addAction(UIAlertAction(title: "Export as CSV", style: .default) { [weak self] _ in
-            self?.exportAsCSV()
-        })
-        
-        alertController.addAction(UIAlertAction(title: "Export as Text", style: .default) { [weak self] _ in
-            self?.exportAsText()
-        })
-        
-        alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        // For iPad
-        if let popover = alertController.popoverPresentationController {
-            popover.barButtonItem = navigationItem.rightBarButtonItems?.first { $0.action == #selector(exportButtonTapped) }
-        }
-        
-        present(alertController, animated: true)
     }
     
     @objc private func zoomToMeButtonTapped() {
@@ -1440,34 +1370,23 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     }
     
     private func showCategoryFilterMenu() {
-        let actionSheet = UIAlertController(title: "Filter by Category", message: nil, preferredStyle: .actionSheet)
-        
-        // All categories option
-        actionSheet.addAction(UIAlertAction(title: "All Categories", style: .default) { [weak self] _ in
-            self?.selectedCategory = nil
-            self?.categoryFilterButton.setTitle("All Categories", for: .normal)
-            self?.applyFilter()
-        })
-        
-        // Add action for each category present in the circle
+        // All categories, then each category present in the circle
+        var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = [
+            ("All Categories", .default, { [weak self] in
+                self?.selectedCategory = nil
+                self?.categoryFilterButton.setTitle("All Categories", for: .normal)
+                self?.applyFilter()
+            })
+        ]
         for category in CirclePlaceFilter.categoryOptions(for: places) {
-            actionSheet.addAction(UIAlertAction(title: category.displayName, style: .default) { [weak self] _ in
+            actions.append((category.displayName, .default, { [weak self] in
                 self?.selectedCategory = category
                 self?.categoryFilterButton.setTitle(category.displayName, for: .normal)
                 self?.applyFilter()
-            })
+            }))
         }
-        
-        // Cancel action
-        actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        // For iPad
-        if let popover = actionSheet.popoverPresentationController {
-            popover.sourceView = categoryFilterButton
-            popover.sourceRect = categoryFilterButton.bounds
-        }
-        
-        present(actionSheet, animated: true)
+        AlertPresenter.showActionSheet(title: "Filter by Category", actions: actions, from: self,
+                                       sourceView: categoryFilterButton)
     }
     
     /// Re-derives the tag chip row from the current places. Chips are the 12
@@ -1546,7 +1465,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleShowPlaceDetails(_:)),
-            name: Notification.Name("ShowPlaceDetails"),
+            name: .showPlaceDetails,
             object: nil
         )
         
@@ -1554,7 +1473,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handlePlaceDeleted(_:)),
-            name: Notification.Name("PlaceDeleted"),
+            name: .placeDeleted,
             object: nil
         )
         
@@ -1562,7 +1481,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handlePlaceAdded(_:)),
-            name: Notification.Name("PlaceAddedToCircle"),
+            name: .placeAddedToCircle,
             object: nil
         )
     }
@@ -1659,13 +1578,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     func openPlaceInMaps(_ place: Place) {
         guard let location = place.location?.clLocation else { 
             // Show alert if no location available
-            let alert = UIAlertController(
-                title: "No Location Available",
-                message: "This place doesn't have location information.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            present(alert, animated: true)
+            AlertPresenter.showError(title: "No Location Available", message: "This place doesn't have location information.", from: self)
             return 
         }
         
@@ -1700,13 +1613,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                 case .failure(let error):
                     Logger.debug("Failed to like place: \(error)")
                     // Show error alert
-                    let alert = UIAlertController(
-                        title: "Error",
-                        message: "Failed to like place. Please try again.",
-                        preferredStyle: .alert
-                    )
-                    alert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self?.present(alert, animated: true)
+                    if let self { AlertPresenter.showError(title: "Error", message: "Failed to like place. Please try again.", from: self) }
                 }
             }
         }
@@ -1769,8 +1676,7 @@ extension CircleDetailViewController: PlaceSearchDelegate {
             guard let self = self else { return }
             
             // Show loading indicator
-            let loadingAlert = UIAlertController(title: "Adding Place", message: "Please wait...", preferredStyle: .alert)
-            self.present(loadingAlert, animated: true)
+            let loadingAlert = AlertPresenter.showLoading(title: "Adding Place", message: "Please wait...", from: self)
             
             // Determine category from string or default
             let placeCategory: PlaceCategory
@@ -1812,13 +1718,7 @@ extension CircleDetailViewController: PlaceSearchDelegate {
                         // appearing in the list are the feedback
 
                     case .failure(let error):
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: "Failed to add place: \(error.localizedDescription)",
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(errorAlert, animated: true)
+                        AlertPresenter.showError(title: "Error", message: "Failed to add place: \(error.localizedDescription)", from: self)
                     }
                 }
             }
@@ -2093,38 +1993,19 @@ extension CircleDetailViewController {
     
     // Show action sheet with place options
     private func showPlaceActionSheet(for place: Place) {
-        let actionSheet = UIAlertController(title: place.name, message: place.address, preferredStyle: .actionSheet)
-        
-        // View Details action
-        actionSheet.addAction(UIAlertAction(title: "View Details", style: .default) { [weak self] _ in
-            guard let self = self else { return }
-            let placeDetailVC = PlaceDetailViewController(place: place, circle: self.circle)
-            self.navigationController?.pushViewController(placeDetailVC, animated: true)
-        })
-        
-        // Get Directions action
-        if place.location != nil {
-            actionSheet.addAction(UIAlertAction(title: "Get Directions", style: .default) { [weak self] _ in
-                self?.openPlaceInMaps(place)
+        var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = [
+            ("View Details", .default, { [weak self] in
+                guard let self = self else { return }
+                let placeDetailVC = PlaceDetailViewController(place: place, circle: self.circle)
+                self.navigationController?.pushViewController(placeDetailVC, animated: true)
             })
+        ]
+        if place.location != nil {
+            actions.append(("Get Directions", .default, { [weak self] in self?.openPlaceInMaps(place) }))
         }
-        
-        // Share action
-        actionSheet.addAction(UIAlertAction(title: "Share", style: .default) { [weak self] _ in
-            self?.sharePlace(place)
-        })
-        
-        // Cancel action
-        actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        // For iPad
-        if let popover = actionSheet.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
-            popover.permittedArrowDirections = []
-        }
-        
-        present(actionSheet, animated: true)
+        actions.append(("Share", .default, { [weak self] in self?.sharePlace(place) }))
+        // No source view: centered on iPad, no arrow (as before)
+        AlertPresenter.showActionSheet(title: place.name, message: place.address, actions: actions, from: self)
     }
 }
 

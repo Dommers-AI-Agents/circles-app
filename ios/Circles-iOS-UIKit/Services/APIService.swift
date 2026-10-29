@@ -88,14 +88,8 @@ enum APIError: Error, LocalizedError {
         // Endpoints are split between {"message": ...} and {"error": ...}
         // response shapes (rewards uses `error`) — accept both, otherwise the
         // server's explanation is silently replaced by a generic status blurb.
-        if let data = data,
-           let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            if let simpleMessage = jsonObject["message"] as? String, !simpleMessage.isEmpty {
-                return polishErrorMessage(simpleMessage)
-            }
-            if let errorText = jsonObject["error"] as? String, !errorText.isEmpty {
-                return polishErrorMessage(errorText)
-            }
+        if let simpleMessage = APIError.serverMessage(from: data) {
+            return polishErrorMessage(simpleMessage)
         }
         
         // Fallback to user-friendly status code messages
@@ -145,8 +139,14 @@ extension APIError {
     /// substituting canned text is how "You don't have permission" ended up
     /// hiding "Free users can add up to 15 places per circle".
     var serverMessage: String? {
-        guard case .httpError(_, let data) = self,
-              let data = data,
+        guard case .httpError(_, let data) = self else { return nil }
+        return Self.serverMessage(from: data)
+    }
+
+    /// The one parser for a server error body (also used where a response
+    /// isn't wrapped in an APIError, like the widget API channel).
+    static func serverMessage(from data: Data?) -> String? {
+        guard let data = data,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }
@@ -206,7 +206,7 @@ class APIService {
     
     // Session and configuration
     private let session: URLSession
-    private let decoder = JSONDecoder()
+    private let decoder = APIService.makeResponseDecoder()
     
     // Authentication
     private var authToken: String?
@@ -259,24 +259,10 @@ class APIService {
     // Logger flags
     private var hasLoggedNoInternetOnce = false
     
-    private init() {
-        let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 30
-        // Resource timeout is the TOTAL ceiling per transfer — 30s capped even
-        // requests that set a longer per-request timeoutInterval (import)
-        configuration.timeoutIntervalForResource = 180
-        // HTTP cache for ETag revalidation: the backend stamps API GETs with
-        // Cache-Control: no-cache + a weak ETag, so cached entries are ALWAYS
-        // revalidated with the server (never served stale) — an unchanged
-        // response costs a ~0-byte 304 instead of a full body. Huge on weak
-        // cell signal.
-        configuration.urlCache = URLCache(
-            memoryCapacity: 20 * 1024 * 1024,
-            diskCapacity: 100 * 1024 * 1024
-        )
-        configuration.requestCachePolicy = .useProtocolCachePolicy
-        session = URLSession(configuration: configuration)
-        
+    /// The decoder every response goes through (ISO 8601 dates with or
+    /// without fractional seconds). Test fakes decode with it too.
+    static func makeResponseDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
         // Setup date decoding strategy for ISO8601 with fractional seconds
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
@@ -303,6 +289,26 @@ class APIService {
             
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected date string to be ISO8601-formatted with or without fractional seconds")
         }
+        return decoder
+    }
+
+    private init() {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 30
+        // Resource timeout is the TOTAL ceiling per transfer — 30s capped even
+        // requests that set a longer per-request timeoutInterval (import)
+        configuration.timeoutIntervalForResource = 180
+        // HTTP cache for ETag revalidation: the backend stamps API GETs with
+        // Cache-Control: no-cache + a weak ETag, so cached entries are ALWAYS
+        // revalidated with the server (never served stale) — an unchanged
+        // response costs a ~0-byte 304 instead of a full body. Huge on weak
+        // cell signal.
+        configuration.urlCache = URLCache(
+            memoryCapacity: 20 * 1024 * 1024,
+            diskCapacity: 100 * 1024 * 1024
+        )
+        configuration.requestCachePolicy = .useProtocolCachePolicy
+        session = URLSession(configuration: configuration)
         
         // Load saved tokens from Keychain if available
         authToken = keychainService.getAuthToken()
@@ -1276,244 +1282,6 @@ class APIService {
             }
         }
     }
-    
-    // MARK: - Check-In API
-    
-    /// `offersRatingAfterward`: false when the check-in screen already asked
-    /// "How was it?" — the one-screen composer does, so asking again once it
-    /// closes was a second prompt for the same visit.
-    func createCheckIn(_ checkInData: [String: Any], offersRatingAfterward: Bool = true, completion: @escaping (Result<(checkIn: CheckIn, stats: CheckInStats?), APIError>) -> Void) {
-        request(
-            endpoint: "check-ins",
-            method: .post,
-            body: checkInData,
-            requiresAuth: true
-        ) { (result: Result<APIResponse<CheckIn>, APIError>) in
-            switch result {
-            case .success(let response):
-                // A check-in earns a coin (once per venue per day)
-                PiggyBankDepositView.play(credit: response.piggyBank)
-                var info: [String: Any] = ["checkInId": response.data.id, "placeName": response.data.placeName]
-                if let placeId = response.data.placeId { info["placeId"] = placeId }
-                if let stats = response.myCheckInStats { info["stats"] = stats }
-                // On main: observers touch labels and layout constraints, and
-                // this completion arrives on URLSession's queue.
-                NotificationCenter.default.postOnMain(name: .checkInCreated, userInfo: info)
-                // "How was it this time?" — once the check-in flow is off screen,
-                // and only if that flow didn't already ask
-                if offersRatingAfterward, let placeId = response.data.placeId {
-                    PostCheckInRatePresenter.offer(placeId: placeId, checkInId: response.data.id, placeName: response.data.placeName)
-                }
-                completion(.success((checkIn: response.data, stats: response.myCheckInStats)))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
-    
-    func getActiveCheckIns(completion: @escaping (Result<[CheckIn], APIError>) -> Void) {
-        request(
-            endpoint: "check-ins/active",
-            method: .get,
-            requiresAuth: true
-        ) { (result: Result<APIResponse<[CheckIn]>, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.data))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
-    
-    func getMyActiveCheckIns(completion: @escaping (Result<[CheckIn], APIError>) -> Void) {
-        request(
-            endpoint: "check-ins/my-active",
-            method: .get,
-            requiresAuth: true
-        ) { (result: Result<APIResponse<[CheckIn]>, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.data))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
-    
-    func respondToCheckIn(checkInId: String, status: String, completion: @escaping (Result<CheckIn, APIError>) -> Void) {
-        request(
-            endpoint: "check-ins/\(checkInId)/respond",
-            method: .put,
-            body: ["status": status],
-            requiresAuth: true
-        ) { (result: Result<APIResponse<CheckIn>, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.data))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
-    
-    func endCheckIn(checkInId: String, completion: @escaping (Result<Void, APIError>) -> Void) {
-        request(
-            endpoint: "check-ins/\(checkInId)",
-            method: .delete,
-            requiresAuth: true
-        ) { (result: Result<SimpleAPIResponse, APIError>) in
-            switch result {
-            case .success:
-                completion(.success(()))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
-    
-    func getCheckInsAtPlace(placeId: String, completion: @escaping (Result<[CheckIn], APIError>) -> Void) {
-        request(
-            endpoint: "check-ins/at-place/\(placeId)",
-            method: .get,
-            requiresAuth: true
-        ) { (result: Result<APIResponse<[CheckIn]>, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.data))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
-    
-    // MARK: - Videos
-    
-    func getUserVideos(userId: String, limit: Int = 20, offset: Int = 0, completion: @escaping (Result<VideosResponse, APIError>) -> Void) {
-        let queryParams = "?limit=\(limit)&offset=\(offset)"
-        request(
-            endpoint: "videos/user/\(userId)\(queryParams)",
-            method: .get,
-            requiresAuth: true // the server shows private/network moments only to viewers it can identify (security audit 2026-10-01)
-        ) { (result: Result<VideosResponse, APIError>) in
-            completion(result)
-        }
-    }
-    
-    func getUserReels(userId: String, limit: Int = 20, offset: Int = 0, completion: @escaping (Result<VideosResponse, APIError>) -> Void) {
-        let queryParams = "?limit=\(limit)&offset=\(offset)"
-        request(
-            endpoint: "videos/reels/user/\(userId)\(queryParams)",
-            method: .get,
-            requiresAuth: true
-        ) { (result: Result<VideosResponse, APIError>) in
-            completion(result)
-        }
-    }
-    
-    func getReelsFeed(limit: Int = 20, offset: Int = 0, completion: @escaping (Result<VideosResponse, APIError>) -> Void) {
-        let queryParams = "?limit=\(limit)&offset=\(offset)"
-        request(
-            endpoint: "videos/reels/feed\(queryParams)",
-            method: .get,
-            requiresAuth: true
-        ) { (result: Result<VideosResponse, APIError>) in
-            completion(result)
-        }
-    }
-    
-    func deleteVideo(videoId: String, completion: @escaping (Result<Void, APIError>) -> Void) {
-        request(
-            endpoint: "videos/\(videoId)",
-            method: .delete,
-            requiresAuth: true
-        ) { (result: Result<SimpleAPIResponse, APIError>) in
-            switch result {
-            case .success:
-                completion(.success(()))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
-    
-    /// Change a moment's privacy. Reuses PUT /videos/:id (owner-checked server-side).
-    func updateVideoVisibility(videoId: String, visibility: VideoVisibility, completion: @escaping (Result<Void, APIError>) -> Void) {
-        request(
-            endpoint: "videos/\(videoId)",
-            method: .put,
-            body: ["visibility": visibility.rawValue],
-            requiresAuth: true
-        ) { (result: Result<SimpleAPIResponse, APIError>) in
-            switch result {
-            case .success:
-                completion(.success(()))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
-
-    func likeReel(videoId: String, completion: @escaping (Result<Void, APIError>) -> Void) {
-        request(
-            endpoint: "videos/reels/\(videoId)/like",
-            method: .post,
-            requiresAuth: true
-        ) { (result: Result<SimpleAPIResponse, APIError>) in
-            switch result {
-            case .success:
-                completion(.success(()))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
-    
-    func unlikeReel(videoId: String, completion: @escaping (Result<Void, APIError>) -> Void) {
-        request(
-            endpoint: "videos/reels/\(videoId)/like",
-            method: .delete,
-            requiresAuth: true
-        ) { (result: Result<SimpleAPIResponse, APIError>) in
-            switch result {
-            case .success:
-                completion(.success(()))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
-    
-    func trackReelView(videoId: String, completion: @escaping (Result<Void, APIError>) -> Void) {
-        request(
-            endpoint: "videos/reels/\(videoId)/view",
-            method: .post,
-            requiresAuth: true
-        ) { (result: Result<SimpleAPIResponse, APIError>) in
-            switch result {
-            case .success:
-                completion(.success(()))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
-    
-    // MARK: - Daily Summary
-    func fetchDailySummary(completion: @escaping (Result<DailySummaryData, APIError>) -> Void) {
-        request(
-            endpoint: "users/me/daily-summary",
-            method: .get,
-            requiresAuth: true
-        ) { (result: Result<DailySummaryResponse, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.data))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-    }
 }
 
 // MARK: - Response Types
@@ -1522,30 +1290,6 @@ struct RefreshTokenResponse: Decodable {
     let success: Bool
     let token: String?
     let expiresIn: Int?
-}
-
-// MARK: - Daily Summary Response Types
-struct DailySummaryResponse: Decodable {
-    let success: Bool
-    let data: DailySummaryData
-}
-
-struct DailySummaryData: Decodable {
-    let date: String
-    let newPlaces: Int
-    let newPlacesByCategory: [String: Int]
-    let newConnections: Int
-    let unreadMessages: Int
-    let placeComments: Int
-    let placeLikes: Int
-    let topContributors: [DailySummaryContributor]
-    let connectionCount: Int
-    let userPlaceCount: Int
-}
-
-struct DailySummaryContributor: Decodable {
-    let name: String
-    let count: Int
 }
 
 extension APIService {

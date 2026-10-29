@@ -52,7 +52,7 @@ class StoreKitObserver: NSObject, SKPaymentTransactionObserver {
             // Post notification to prompt login
             DispatchQueue.main.async {
                 NotificationCenter.default.post(
-                    name: Notification.Name("PromotedPurchaseRequiresLogin"),
+                    name: .promotedPurchaseRequiresLogin,
                     object: nil,
                     userInfo: ["productId": product.productIdentifier]
                 )
@@ -71,7 +71,7 @@ class StoreKitObserver: NSObject, SKPaymentTransactionObserver {
             // Post notification to show current subscription
             DispatchQueue.main.async {
                 NotificationCenter.default.post(
-                    name: Notification.Name("PromotedPurchaseAlreadySubscribed"),
+                    name: .promotedPurchaseAlreadySubscribed,
                     object: nil
                 )
             }
@@ -85,7 +85,7 @@ class StoreKitObserver: NSObject, SKPaymentTransactionObserver {
         // Post notification to handle the purchase through our UI
         DispatchQueue.main.async {
             NotificationCenter.default.post(
-                name: Notification.Name("ProcessPromotedPurchase"),
+                name: .processPromotedPurchase,
                 object: nil,
                 userInfo: ["productId": product.productIdentifier]
             )
@@ -121,7 +121,7 @@ class StoreKitObserver: NSObject, SKPaymentTransactionObserver {
         // Post notification to process the purchase
         DispatchQueue.main.async {
             NotificationCenter.default.post(
-                name: Notification.Name("ProcessPromotedPurchase"),
+                name: .processPromotedPurchase,
                 object: nil,
                 userInfo: ["productId": product.productIdentifier]
             )
@@ -139,17 +139,4 @@ class StoreKitObserver: NSObject, SKPaymentTransactionObserver {
         deferredProduct = nil
         Logger.debug("💎 Cleared deferred purchase")
     }
-}
-
-// MARK: - Notification Names
-
-extension Notification.Name {
-    /// Posted when a promoted purchase requires user login
-    static let promotedPurchaseRequiresLogin = Notification.Name("PromotedPurchaseRequiresLogin")
-    
-    /// Posted when a promoted purchase is attempted but user is already subscribed
-    static let promotedPurchaseAlreadySubscribed = Notification.Name("PromotedPurchaseAlreadySubscribed")
-    
-    /// Posted when a promoted purchase should be processed
-    static let processPromotedPurchase = Notification.Name("ProcessPromotedPurchase")
 }

@@ -9,7 +9,7 @@ final class VenueOrdersViewController: BaseViewController {
     override var enablesPullToRefresh: Bool { true }
     override var reloadsDataOnAppear: Bool { true }
 
-    static let ordersChanged = Notification.Name("VenueOrdersChanged")
+    static let ordersChanged = Notification.Name.venueOrdersChanged
 
     private let venueId: String
     private var orders: [StoreOrder] = []

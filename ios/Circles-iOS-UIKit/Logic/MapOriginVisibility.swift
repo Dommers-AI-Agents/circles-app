@@ -6,7 +6,7 @@ import Foundation
 /// rows (Wes, 2026-10-16: control automated vs manual additions). Kept on
 /// this phone, per account.
 enum MapOriginVisibility {
-    static let changed = Notification.Name("MapOriginVisibilityChanged")
+    static let changed = Notification.Name.mapOriginVisibilityChanged
 
     /// A place's origin key.
     static func origin(of place: Place) -> String { place.importSource ?? "in_app" }

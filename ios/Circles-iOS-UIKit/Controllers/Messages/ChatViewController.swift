@@ -336,7 +336,7 @@ class ChatViewController: BaseViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleNewMessages(_:)),
-            name: Notification.Name("NewMessagesReceived"),
+            name: .newMessagesReceived,
             object: nil
         )
         Logger.debug("🔍 ChatViewController: Added observer for NewMessagesReceived")
@@ -345,7 +345,7 @@ class ChatViewController: BaseViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleConversationUpdated(_:)),
-            name: Notification.Name("ConversationUpdated"),
+            name: .conversationUpdated,
             object: nil
         )
         Logger.debug("🔍 ChatViewController: Added observer for ConversationUpdated")
@@ -1068,7 +1068,7 @@ class MessageCell: UITableViewCell {
                 } else {
                     // Show initials or default avatar
                     if let senderName = message.senderDetails?.displayName {
-                        avatarImageView.image = createInitialsImage(for: senderName)
+                        avatarImageView.image = AvatarPlaceholder.image(name: senderName, seed: message.senderId, diameter: 32)
                     } else {
                         avatarImageView.image = UIImage(systemName: "person.3.fill")
                     }
@@ -1084,7 +1084,7 @@ class MessageCell: UITableViewCell {
                 } else {
                     // Show initials or default avatar
                     if let senderName = message.senderDetails?.displayName {
-                        avatarImageView.image = createInitialsImage(for: senderName)
+                        avatarImageView.image = AvatarPlaceholder.image(name: senderName, seed: message.senderId, diameter: 32)
                     } else {
                         avatarImageView.image = UIImage(systemName: "person.circle.fill")
                     }
@@ -1179,35 +1179,6 @@ class MessageCell: UITableViewCell {
         delegate?.didTapProfileImage(for: userId)
     }
     
-    private func createInitialsImage(for name: String) -> UIImage {
-        let initials = name.components(separatedBy: " ")
-            .compactMap { $0.first?.uppercased() }
-            .prefix(2)
-            .joined()
-        
-        let size = CGSize(width: 32, height: 32)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        
-        return renderer.image { context in
-            Constants.Colors.tertiaryBackground.setFill()
-            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
-            
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 14, weight: .semibold),
-                .foregroundColor: Constants.Colors.label
-            ]
-            
-            let textSize = initials.size(withAttributes: attributes)
-            let textRect = CGRect(
-                x: (size.width - textSize.width) / 2,
-                y: (size.height - textSize.height) / 2,
-                width: textSize.width,
-                height: textSize.height
-            )
-            
-            initials.draw(in: textRect, withAttributes: attributes)
-        }
-    }
 }
 
 // MARK: - MessageCellDelegate

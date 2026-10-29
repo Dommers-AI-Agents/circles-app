@@ -212,12 +212,6 @@ class AccountMergeViewController: BaseViewController {
     }
 }
 
-extension Notification.Name {
-    /// Two accounts became one and the session may now be a different user;
-    /// screens holding per-user data reload.
-    static let accountDidMerge = Notification.Name("AccountDidMerge")
-}
-
 // MARK: - UITableViewDataSource
 extension AccountMergeViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {

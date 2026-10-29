@@ -101,7 +101,7 @@ final class PlaceSaveOutbox {
                     if let file = entry.imageFile, let image = UIImage(contentsOfFile: self.directory.appendingPathComponent(file).path) {
                         PlacePhotoOutbox.shared.add([image], to: place)
                     }
-                    NotificationCenter.default.post(name: Notification.Name("PlaceAddedToCircle"), object: nil,
+                    NotificationCenter.default.post(name: .placeAddedToCircle, object: nil,
                                                     userInfo: ["circleId": place.circleId ?? "", "place": place])
                     ImportPhotoQueue.shared.kick()
                     self.close(entry, message: "Saved \(entry.placeName)")
@@ -133,7 +133,7 @@ final class PlaceSaveOutbox {
         }
         if let file = entry.imageFile { try? FileManager.default.removeItem(at: directory.appendingPathComponent(file)) }
         if let message { Self.announce(message) }
-        NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+        NotificationCenter.default.post(name: .refreshCircles, object: nil)
         isDraining = false
         drain()
     }

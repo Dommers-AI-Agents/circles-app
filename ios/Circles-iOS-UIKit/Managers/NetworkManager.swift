@@ -556,7 +556,7 @@ class NetworkManager {
                             
                             // Post notification for UI updates
                             NotificationCenter.default.post(
-                                name: NSNotification.Name("ConnectionsChanged"),
+                                name: .connectionsChanged,
                                 object: nil
                             )
 
@@ -649,7 +649,7 @@ class NetworkManager {
                         
                         // Post notification for UI updates
                         NotificationCenter.default.post(
-                            name: NSNotification.Name("ConnectionsChanged"),
+                            name: .connectionsChanged,
                             object: nil
                         )
                         
@@ -1031,7 +1031,7 @@ class NetworkManager {
                         
                         // Post notification for UI updates
                         NotificationCenter.default.post(
-                            name: NSNotification.Name("ConnectionsChanged"),
+                            name: .connectionsChanged,
                             object: nil
                         )
                         

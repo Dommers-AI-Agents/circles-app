@@ -192,7 +192,7 @@ class ConnectionPickerView: UIView {
         }
         
         // Notify parent view controller to adjust scroll view
-        NotificationCenter.default.post(name: NSNotification.Name("ConnectionPickerDropdownShown"), object: self, userInfo: ["height": height])
+        NotificationCenter.default.post(name: .connectionPickerDropdownShown, object: self, userInfo: ["height": height])
     }
     
     private func hideDropdown() {
@@ -208,7 +208,7 @@ class ConnectionPickerView: UIView {
         }
         
         // Notify parent view controller to reset scroll view
-        NotificationCenter.default.post(name: NSNotification.Name("ConnectionPickerDropdownHidden"), object: self)
+        NotificationCenter.default.post(name: .connectionPickerDropdownHidden, object: self)
     }
     
     private func addSelectedConnection(_ user: User) {
@@ -365,48 +365,17 @@ private class ConnectionPickerCell: UITableViewCell {
         // Display connection info instead of email for privacy
         userInfoLabel.text = "Connected"
         
-        if let profilePicture = user.profilePicture, let url = URL(string: profilePicture) {
-            URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-                if let data = data, let image = UIImage(data: data) {
-                    DispatchQueue.main.async {
-                        self?.profileImageView.image = image
-                    }
+        if let profilePicture = user.profilePicture, URL(string: profilePicture) != nil {
+            ImageService.shared.loadProfileImage(for: user.id, from: profilePicture) { [weak self] image in
+                if let image = image {
+                    self?.profileImageView.image = image
                 }
-            }.resume()
+            }
         } else {
-            profileImageView.image = createInitialsImage(for: user.displayName)
+            profileImageView.image = AvatarPlaceholder.image(for: user, diameter: 40)
         }
     }
     
-    private func createInitialsImage(for name: String) -> UIImage {
-        let initials = name.components(separatedBy: " ")
-            .compactMap { $0.first?.uppercased() }
-            .prefix(2)
-            .joined()
-        
-        let size = CGSize(width: 40, height: 40)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        
-        return renderer.image { context in
-            Constants.Colors.tertiaryBackground.setFill()
-            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
-            
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 16, weight: .semibold),
-                .foregroundColor: Constants.Colors.label
-            ]
-            
-            let textSize = initials.size(withAttributes: attributes)
-            let textRect = CGRect(
-                x: (size.width - textSize.width) / 2,
-                y: (size.height - textSize.height) / 2,
-                width: textSize.width,
-                height: textSize.height
-            )
-            
-            initials.draw(in: textRect, withAttributes: attributes)
-        }
-    }
 }
 
 // MARK: - Connection Chip View

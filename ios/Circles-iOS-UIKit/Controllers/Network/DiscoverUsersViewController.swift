@@ -526,8 +526,3 @@ extension DiscoverUsersViewController: DiscoverUserCellDelegate {
 
 // MARK: - Response Models
 // DiscoveryUsersResponse and SearchUsersResponse are now in Models/NetworkResponses.swift
-
-// MARK: - Notification Names
-extension Notification.Name {
-    static let connectionRequestSent = Notification.Name("connectionRequestSent")
-}

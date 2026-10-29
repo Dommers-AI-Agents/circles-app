@@ -225,7 +225,7 @@ extension CirclesHomeViewController: SuggestedUsersOverlayViewDelegate {
 
 // MARK: - ContentUploadDelegate
 extension CirclesHomeViewController: ContentUploadDelegate {
-    func contentUploadDidFinish(with moment: PlaceMoment) {
+    func contentUploadDidFinish(with moment: PlaceVideo) {
         // Refresh reels to show the newly uploaded video
         fetchReels()
         

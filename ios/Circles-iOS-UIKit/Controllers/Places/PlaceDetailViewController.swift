@@ -564,7 +564,7 @@ class PlaceDetailViewController: BaseViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handlePlaceAddedToCircle(_:)),
-            name: Notification.Name("PlaceAddedToCircle"),
+            name: .placeAddedToCircle,
             object: nil
         )
     }
@@ -2096,7 +2096,7 @@ class PlaceDetailViewController: BaseViewController {
                     switch result {
                     case .success:
                         // The circle screen behind already listens for this
-                        NotificationCenter.default.post(name: Notification.Name("PlaceDeleted"),
+                        NotificationCenter.default.post(name: .placeDeleted,
                                                         object: nil,
                                                         userInfo: ["placeId": self.place.id])
                         // Pushed from a circle, presented from the map: leave the way we came
@@ -2595,31 +2595,21 @@ class PlaceDetailViewController: BaseViewController {
             let loadGroup = DispatchGroup()
             
             for (index, photoUrl) in photos.enumerated() {
-                guard let url = URL(string: photoUrl) else { 
+                guard URL(string: photoUrl) != nil else { 
                     Logger.debug("❌ PlaceDetailViewController: Invalid photo URL at index \(index): \(photoUrl)")
                     continue 
                 }
                 
                 loadGroup.enter()
-                URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
-                    if let error = error {
-                        Logger.debug("❌ PlaceDetailViewController: Error loading photo \(index): \(error)")
-                    }
-                    
-                    if let httpResponse = response as? HTTPURLResponse {
-                        Logger.debug("📡 PlaceDetailViewController: Photo \(index) HTTP Status: \(httpResponse.statusCode)")
-                    }
-                    
-                    if let data = data, let image = UIImage(data: data) {
+                ImageService.shared.loadImage(from: photoUrl) { [weak self] image in
+                    if let image = image {
                         Logger.debug("✅ PlaceDetailViewController: Successfully loaded photo \(index)")
-                        DispatchQueue.main.async {
-                            self?.placePhotos.append((image: image, url: photoUrl))
-                        }
+                        self?.placePhotos.append((image: image, url: photoUrl))
                     } else {
-                        Logger.debug("❌ PlaceDetailViewController: Failed to create image from data for photo \(index)")
+                        Logger.debug("❌ PlaceDetailViewController: Failed to load photo \(index)")
                     }
                     loadGroup.leave()
-                }.resume()
+                }
             }
             
             loadGroup.notify(queue: .main) { [weak self] in
@@ -2831,7 +2821,7 @@ class PlaceDetailViewController: BaseViewController {
                         self.showSuccess("Location and address have been updated successfully")
                         
                         // Post notification to refresh any lists
-                        NotificationCenter.default.post(name: NSNotification.Name("PlaceUpdated"), object: nil, userInfo: ["place": updatedPlace])
+                        NotificationCenter.default.post(name: .placeUpdated, object: nil, userInfo: ["place": updatedPlace])
                         
                     case .failure(let error):
                         // Show error message
@@ -3205,7 +3195,7 @@ extension PlaceDetailViewController {
                             self?.present(alert, animated: true)
                             
                             // Post notification to refresh circles if needed
-                            NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+                            NotificationCenter.default.post(name: .refreshCircles, object: nil)
                             
                         case .failure(let error):
                             // Provide more specific error messages

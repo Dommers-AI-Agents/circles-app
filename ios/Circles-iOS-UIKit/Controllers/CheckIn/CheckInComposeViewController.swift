@@ -406,7 +406,7 @@ final class CheckInComposeViewController: BaseViewController {
         checkInButton.isEnabled = false
         // The rating row above already asked; no second prompt afterwards,
         // even when it was left blank
-        APIService.shared.createCheckIn(data, offersRatingAfterward: false) { [weak self] result in
+        CheckInService.shared.createCheckIn(data, offersRatingAfterward: false) { [weak self] result in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) {
                     guard let self = self else { return }

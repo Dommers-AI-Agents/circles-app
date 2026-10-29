@@ -128,14 +128,14 @@ extension UIViewController {
         ) { [weak self] in
             guard let self = self else { return }
             let loading = AlertPresenter.showLoading(message: "Deleting…", from: self)
-            APIService.shared.deleteVideo(videoId: reel.id) { result in
+            VideoService.shared.deleteVideo(videoId: reel.id) { result in
                 DispatchQueue.main.async {
                     loading.dismiss(animated: true) {
                         switch result {
                         case .success:
                             onDeleted()
                             NotificationCenter.default.post(
-                                name: Notification.Name("MomentDeleted"),
+                                name: .momentDeleted,
                                 object: nil,
                                 userInfo: ["videoId": reel.id])
                             self.showSuccess("Moment deleted")

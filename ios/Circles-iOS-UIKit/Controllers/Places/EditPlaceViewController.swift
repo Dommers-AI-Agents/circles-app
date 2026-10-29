@@ -362,17 +362,6 @@ class EditPlaceViewController: BaseViewController {
     
     // Photo UI elements
     
-    private let saveButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Save Changes", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = Constants.Colors.primary
-        button.layer.cornerRadius = 10
-        button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.large, weight: .semibold)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
     private let deleteButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("Unsave Place", for: .normal)
@@ -1057,33 +1046,27 @@ class EditPlaceViewController: BaseViewController {
     @objc private func deleteButtonTapped() {
         // Special handling for Home/Work places
         if place.id == "home-place" || place.id == "work-place" {
-            let alert = UIAlertController(
+            AlertPresenter.showConfirmation(
                 title: "Clear \(place.name)",
                 message: "Are you sure you want to clear your \(place.name.lowercased()) address?",
-                preferredStyle: .alert
-            )
-            
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            alert.addAction(UIAlertAction(title: "Clear", style: .destructive) { [weak self] _ in
+                confirmTitle: "Clear",
+                isDestructive: true,
+                from: self
+            ) { [weak self] in
                 self?.clearHomeOrWorkPlace()
-            })
-            
-            present(alert, animated: true)
+            }
             return
         }
         
-        let alert = UIAlertController(
+        AlertPresenter.showConfirmation(
             title: "Unsave Place",
             message: "Take \(place.name) out of your circles? Your notes, photos and rating on it go too. This can't be undone.",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Unsave", style: .destructive) { [weak self] _ in
+            confirmTitle: "Unsave",
+            isDestructive: true,
+            from: self
+        ) { [weak self] in
             self?.deletePlace()
-        })
-        
-        present(alert, animated: true)
+        }
     }
     
     @objc private func dismissKeyboard() {
@@ -1166,8 +1149,7 @@ class EditPlaceViewController: BaseViewController {
     
     private func deletePlace() {
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Unsaving Place", message: "Please wait...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(title: "Unsaving Place", message: "Please wait...", from: self)
         
         PlaceService.shared.deletePlace(id: place.id) { [weak self] result in
             DispatchQueue.main.async {
@@ -1186,20 +1168,16 @@ class EditPlaceViewController: BaseViewController {
     }
     
     private func showLocationPermissionAlert() {
-        let alert = UIAlertController(
+        AlertPresenter.showConfirmation(
             title: "Location Access Required",
             message: "Please allow access to your location in Settings to use this feature.",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Settings", style: .default) { _ in
+            confirmTitle: "Settings",
+            from: self
+        ) {
             if let url = URL(string: UIApplication.openSettingsURLString) {
                 UIApplication.shared.open(url)
             }
-        })
-        
-        present(alert, animated: true)
+        }
     }
     
     private func lookUpCurrentLocation(_ coordinate: CLLocationCoordinate2D, completionHandler: @escaping (CLPlacemark?) -> Void) {
@@ -1224,10 +1202,8 @@ class EditPlaceViewController: BaseViewController {
         countryTextField.text = placemark.country
     }
     
-    private func presentAlert(title: String, message: String, completion: ((UIAlertAction) -> Void)? = nil) {
-        let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alertController.addAction(UIAlertAction(title: "OK", style: .default, handler: completion))
-        present(alertController, animated: true)
+    private func presentAlert(title: String, message: String) {
+        AlertPresenter.showError(title: title, message: message, from: self)
     }
 }
 
@@ -1321,8 +1297,7 @@ extension EditPlaceViewController: CLLocationManagerDelegate {
 extension EditPlaceViewController: CircleSelectionDelegate {
     func circleSelectionViewController(_ controller: CircleSelectionViewController, didSelectCircle circle: Circle) {
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: "Moving Place", message: "Moving \(place.name) to \(circle.name)...", preferredStyle: .alert)
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(title: "Moving Place", message: "Moving \(place.name) to \(circle.name)...", from: self)
         
         // Perform the move
         PlaceService.shared.movePlaceToCircle(placeId: place.id, targetCircleId: circle.id) { [weak self] result in
@@ -1339,24 +1314,16 @@ extension EditPlaceViewController: CircleSelectionDelegate {
                         self.delegate?.didUpdatePlace(updatedPlace)
                         
                         // Show success message
-                        let successAlert = UIAlertController(
+                        AlertPresenter.showSuccess(
                             title: "Success",
                             message: "\(self.place.name) has been moved to \(circle.name)",
-                            preferredStyle: .alert
-                        )
-                        successAlert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+                            from: self
+                        ) {
                             self.dismiss(animated: true)
-                        })
-                        self.present(successAlert, animated: true)
+                        }
                         
                     case .failure(let error):
-                        let errorAlert = UIAlertController(
-                            title: "Error",
-                            message: "Failed to move place: \(error.localizedDescription)",
-                            preferredStyle: .alert
-                        )
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self.present(errorAlert, animated: true)
+                        AlertPresenter.showError(title: "Error", message: "Failed to move place: \(error.localizedDescription)", from: self)
                     }
                 }
             }

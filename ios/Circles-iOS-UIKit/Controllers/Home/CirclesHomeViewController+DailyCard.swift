@@ -155,7 +155,7 @@ extension CirclesHomeViewController {
     private func route(_ destination: HomePromptTarget) {
         switch destination {
         case .place(let id):
-            NotificationCenter.default.post(name: Notification.Name("NavigateToPlace"), object: id)
+            NotificationCenter.default.post(name: .navigateToPlace, object: id)
         case .video(let id):
             UIApplication.shared.connectedScenes
                 .compactMap { $0.delegate as? SceneDelegate }
@@ -187,14 +187,14 @@ extension CirclesHomeViewController {
                 HomePromptService.shared.ack(key: "favcoins_intro", action: openPiggyBank ? .acted : .skipped)
                 guard openPiggyBank else { return }
                 self?.dismiss(animated: true) {
-                    NotificationCenter.default.post(name: Notification.Name("NavigateToPiggyBank"), object: nil)
+                    NotificationCenter.default.post(name: .navigateToPiggyBank, object: nil)
                 }
             }
             present(intro, animated: true)
         case .allPlacesMap:
-            NotificationCenter.default.post(name: Notification.Name("NavigateToAllPlacesMap"), object: nil)
+            NotificationCenter.default.post(name: .navigateToAllPlacesMap, object: nil)
         case .createWallet:
-            NotificationCenter.default.post(name: Notification.Name("NavigateToCreateWallet"), object: nil)
+            NotificationCenter.default.post(name: .navigateToCreateWallet, object: nil)
         case .network:
             tabBarController?.selectedIndex = 1
         case .widget(let id):

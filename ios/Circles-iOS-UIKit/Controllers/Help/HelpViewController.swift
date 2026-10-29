@@ -172,7 +172,7 @@ class HelpViewController: BaseViewController {
                 
                 // Post notification to trigger the overlays
                 NotificationCenter.default.post(
-                    name: Notification.Name("ShowOnboardingTour"),
+                    name: .showOnboardingTour,
                     object: nil,
                     userInfo: ["source": "help"]
                 )

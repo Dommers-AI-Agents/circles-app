@@ -140,7 +140,7 @@ final class ImportResolutionQueue {
             Logger.debug("📍 ImportResolutionQueue: pass \(interrupted ? "paused" : "done") — \(resolvedCount) resolved, \(duplicates.count) duplicate(s)")
             guard !interrupted else { return }
             if resolvedCount > 0 {
-                NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+                NotificationCenter.default.post(name: .refreshCircles, object: nil)
             }
             if !duplicates.isEmpty {
                 presentDuplicateReview(duplicates)

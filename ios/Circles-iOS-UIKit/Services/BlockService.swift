@@ -119,10 +119,3 @@ class BlockService {
         // MessagingService will filter out blocked users in conversation lists
     }
 }
-
-// MARK: - Notification Names
-
-extension Notification.Name {
-    static let userBlocked = Notification.Name("userBlocked")
-    static let userUnblocked = Notification.Name("userUnblocked")
-}

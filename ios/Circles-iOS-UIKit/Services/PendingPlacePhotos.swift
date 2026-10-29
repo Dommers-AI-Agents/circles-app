@@ -33,7 +33,7 @@ final class PendingPlacePhotos {
         guard !images.isEmpty else { return }
         pending = Pending(images: images, near: coordinate, expires: Date().addingTimeInterval(Self.lifetime), completion: completion)
         guard observer == nil else { return }
-        observer = NotificationCenter.default.addObserver(forName: Notification.Name("PlaceAddedToCircle"), object: nil, queue: .main) { [weak self] note in
+        observer = NotificationCenter.default.addObserver(forName: .placeAddedToCircle, object: nil, queue: .main) { [weak self] note in
             self?.placeAdded(note.userInfo?["place"] as? Place)
         }
     }

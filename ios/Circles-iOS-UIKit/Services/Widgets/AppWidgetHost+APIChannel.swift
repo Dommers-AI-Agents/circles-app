@@ -38,7 +38,7 @@ extension AppWidgetHost {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
             let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-            let message = (body?["message"] as? String) ?? (body?["error"] as? String) ?? "Request failed (\(status))"
+            let message = APIError.serverMessage(from: data) ?? "Request failed (\(status))"
             throw WidgetAPIError(status: status, code: body?["code"] as? String, message: message)
         }
         return data

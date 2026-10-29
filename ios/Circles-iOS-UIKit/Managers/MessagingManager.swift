@@ -146,7 +146,7 @@ class MessagingManager {
                             self?.conversationsCacheTime = nil
                             
                             NotificationCenter.default.post(
-                                name: Notification.Name("NewMessagesReceived"),
+                                name: .newMessagesReceived,
                                 object: nil,
                                 userInfo: ["conversationId": conversationId]
                             )
@@ -240,7 +240,7 @@ class MessagingManager {
     /// good once you left the tab, so a new user saw a blank screen.
     private func didLoadConversations() {
         hasLoadedConversations = true
-        NotificationCenter.default.post(name: Notification.Name("ConversationsUpdated"), object: nil)
+        NotificationCenter.default.post(name: .conversationsUpdated, object: nil)
     }
 
     // MARK: - Messages
@@ -279,7 +279,7 @@ class MessagingManager {
                     // Post notification that new messages were received
                     Logger.debug("🔍 MessagingManager: Posting NewMessagesReceived notification")
                     NotificationCenter.default.post(
-                        name: Notification.Name("NewMessagesReceived"),
+                        name: .newMessagesReceived,
                         object: nil,
                         userInfo: ["conversationId": conversationId]
                     )
@@ -365,7 +365,7 @@ class MessagingManager {
                             
                             // Post notification that conversations have been updated
                             NotificationCenter.default.post(
-                                name: Notification.Name("ConversationsUpdated"),
+                                name: .conversationsUpdated,
                                 object: nil,
                                 userInfo: ["conversationId": conversationId]
                             )
@@ -395,7 +395,7 @@ class MessagingManager {
                         self?.conversationsCacheTime = nil
                         
                         NotificationCenter.default.post(
-                            name: Notification.Name("UnreadMessagesCountChanged"),
+                            name: .unreadMessagesCountChanged,
                             object: nil
                         )
                     }
@@ -447,12 +447,12 @@ class MessagingManager {
             
             // Post notifications
             NotificationCenter.default.post(
-                name: Notification.Name("UnreadMessagesCountChanged"),
+                name: .unreadMessagesCountChanged,
                 object: nil
             )
             
             NotificationCenter.default.post(
-                name: Notification.Name("ConversationsUpdated"),
+                name: .conversationsUpdated,
                 object: nil,
                 userInfo: ["conversationId": conversationId]
             )
@@ -514,7 +514,7 @@ class MessagingManager {
                     
                     // Post notification that conversation was deleted
                     NotificationCenter.default.post(
-                        name: Notification.Name("ConversationDeleted"),
+                        name: .conversationDeleted,
                         object: nil,
                         userInfo: ["conversationId": conversationId]
                     )

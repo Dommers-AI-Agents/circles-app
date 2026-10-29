@@ -191,6 +191,22 @@ extension UIButton {
         button.enableTapFeedback()
         return button
     }
+
+    /// A round white control floating on a map (expand, zoom to me): blue
+    /// symbol, soft shadow. The owner sizes it (30 pt on the circle map).
+    static func mapControlButton(systemName: String, cornerRadius: CGFloat = 15) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setImage(UIImage(systemName: systemName), for: .normal)
+        button.tintColor = .systemBlue
+        button.backgroundColor = .white
+        button.layer.cornerRadius = cornerRadius
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.2
+        button.layer.shadowOffset = CGSize(width: 0, height: 2)
+        button.layer.shadowRadius = 4
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }
     
     /// A small symbol + text status in the navigation bar (the home header's
     /// "☀️ 72°"); the owner sets the image and title as they change.

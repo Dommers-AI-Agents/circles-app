@@ -832,7 +832,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
             NotificationCenter.default.addObserver(
                 self,
                 selector: #selector(handlePlaceAddedFromMap(_:)),
-                name: Notification.Name("PlaceAddedToCircle"),
+                name: .placeAddedToCircle,
                 object: nil
             )
         }

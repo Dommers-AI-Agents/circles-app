@@ -72,4 +72,72 @@ extension Notification.Name {
     /// status starts `.none` and resolves asynchronously, so any UI that gates
     /// on premium must rebuild on this rather than reading the value once.
     static let subscriptionStatusChanged = Notification.Name("SubscriptionStatusChanged")
+
+    /// The Inner Circle list changed. Privacy pickers listen so their caption
+    /// ("3 people · Edit list") stays true while a form is open.
+    static let innerCircleDidChange = Notification.Name("innerCircleDidChange")
+
+    /// Posted on the main queue when the path changes between reachable and
+    /// not (never for every path update). Queues drain on the way back up;
+    /// the offline banner shows on the way down.
+    static let networkReachabilityDidChange = Notification.Name("NetworkReachabilityDidChange")
+
+    /// Two accounts became one and the session may now be a different user;
+    /// screens holding per-user data reload.
+    static let accountDidMerge = Notification.Name("AccountDidMerge")
+
+    /// A scan or a typed code may have changed the user's store points.
+    /// Screens showing a balance refetch.
+    static let rewardPointsDidChange = Notification.Name("rewardPointsDidChange")
+
+    /// Posted when a promoted purchase requires user login
+    static let promotedPurchaseRequiresLogin = Notification.Name("PromotedPurchaseRequiresLogin")
+    
+    /// Posted when a promoted purchase is attempted but user is already subscribed
+    static let promotedPurchaseAlreadySubscribed = Notification.Name("PromotedPurchaseAlreadySubscribed")
+    
+    /// Posted when a promoted purchase should be processed
+    static let processPromotedPurchase = Notification.Name("ProcessPromotedPurchase")
+
+    static let connectionRequestSent = Notification.Name("connectionRequestSent")
+
+    static let circleDeleted = Notification.Name("circleDeleted")
+
+    static let userBlocked = Notification.Name("userBlocked")
+    static let userUnblocked = Notification.Name("userUnblocked")
+
+    /// Armed the first time a store code earns points; Home then points at
+    /// its $ button once: "all your reward points live here".
+    static let rewardsHintArmed = Notification.Name("RewardsHintArmed")
+
+    /// A map origin (in-app / photos / an import) was shown or hidden.
+    static let mapOriginVisibilityChanged = Notification.Name("MapOriginVisibilityChanged")
+
+    /// A store order was placed or changed status; order lists refetch.
+    static let venueOrdersChanged = Notification.Name("VenueOrdersChanged")
+
+    // Formerly inline Notification.Name("…") literals (same raw strings)
+    static let connectionPickerDropdownHidden = Notification.Name("ConnectionPickerDropdownHidden")
+    static let connectionPickerDropdownShown = Notification.Name("ConnectionPickerDropdownShown")
+    static let connectionsChanged = Notification.Name("ConnectionsChanged")
+    static let conversationDeleted = Notification.Name("ConversationDeleted")
+    static let conversationUpdated = Notification.Name("ConversationUpdated")
+    static let conversationsUpdated = Notification.Name("ConversationsUpdated")
+    static let momentDeleted = Notification.Name("MomentDeleted")
+    static let momentUploaded = Notification.Name("MomentUploaded")
+    static let navigateToHome = Notification.Name("NavigateToHome")
+    static let navigateToPiggyBank = Notification.Name("NavigateToPiggyBank")
+    static let newMessagesReceived = Notification.Name("NewMessagesReceived")
+    static let openConversationById = Notification.Name("OpenConversationById")
+    static let placeAdded = Notification.Name("PlaceAdded")
+    static let placeAddedToCircle = Notification.Name("PlaceAddedToCircle")
+    static let placeDeleted = Notification.Name("PlaceDeleted")
+    static let placeUpdated = Notification.Name("PlaceUpdated")
+    static let refreshCircles = Notification.Name("RefreshCircles")
+    static let savePlaceToCircle = Notification.Name("SavePlaceToCircle")
+    static let showLoginForPromotedPurchase = Notification.Name("ShowLoginForPromotedPurchase")
+    static let showOnboardingTour = Notification.Name("ShowOnboardingTour")
+    static let showPlaceDetails = Notification.Name("ShowPlaceDetails")
+    static let videoEngagementUpdate = Notification.Name("VideoEngagementUpdate")
+    static let visitHistoryCleared = Notification.Name("VisitHistoryCleared")
 }

@@ -124,7 +124,7 @@ final class ImportPhotoQueue {
             isRunning = false
             Logger.debug("📸 ImportPhotoQueue: pass \(interrupted ? "paused" : "done") — \(applied) photo(s) attached")
             if applied > 0, !interrupted {
-                NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+                NotificationCenter.default.post(name: .refreshCircles, object: nil)
             }
         }
 

@@ -328,7 +328,7 @@ class SubscriptionManager {
                 from: topViewController
             ) {
                 // Post notification to show login screen
-                NotificationCenter.default.post(name: Notification.Name("ShowLoginForPromotedPurchase"), object: nil)
+                NotificationCenter.default.post(name: .showLoginForPromotedPurchase, object: nil)
             }
         }
     }

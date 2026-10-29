@@ -109,6 +109,26 @@ class AlertPresenter {
         viewController.present(alert, animated: true)
     }
     
+    // MARK: - General Alerts
+
+    /// An alert with exactly the buttons given, in order — for choices the
+    /// fixed helpers above can't spell (Retry + Logout, a single custom
+    /// button). Unlike `showActionSheet`, no Cancel is added.
+    static func showAlert(
+        title: String?,
+        message: String?,
+        actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)],
+        from viewController: UIViewController
+    ) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        for action in actions {
+            alert.addAction(UIAlertAction(title: action.title, style: action.style) { _ in
+                action.handler()
+            })
+        }
+        viewController.present(alert, animated: true)
+    }
+
     // MARK: - Action Sheets
     
     /// Shows an action sheet with multiple options
@@ -118,7 +138,8 @@ class AlertPresenter {
         actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)],
         from viewController: UIViewController,
         sourceView: UIView? = nil,
-        sourceRect: CGRect? = nil
+        sourceRect: CGRect? = nil,
+        barButtonItem: UIBarButtonItem? = nil
     ) {
         let actionSheet = UIAlertController(title: title, message: message, preferredStyle: .actionSheet)
         
@@ -136,7 +157,9 @@ class AlertPresenter {
         
         // iPad requires popover presentation
         if let popover = actionSheet.popoverPresentationController {
-            if let sourceView = sourceView {
+            if let barButtonItem = barButtonItem {
+                popover.barButtonItem = barButtonItem
+            } else if let sourceView = sourceView {
                 popover.sourceView = sourceView
                 popover.sourceRect = sourceRect ?? sourceView.bounds
             } else {
@@ -158,6 +181,7 @@ class AlertPresenter {
         placeholder: String? = nil,
         initialText: String? = nil,
         keyboardType: UIKeyboardType = .default,
+        autocapitalization: UITextAutocapitalizationType = .sentences,
         confirmTitle: String = "OK",
         from viewController: UIViewController,
         onSubmit: @escaping (String?) -> Void
@@ -168,6 +192,7 @@ class AlertPresenter {
             textField.placeholder = placeholder
             textField.text = initialText
             textField.keyboardType = keyboardType
+            textField.autocapitalizationType = autocapitalization
         }
         
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
@@ -212,11 +237,14 @@ class AlertPresenter {
     // MARK: - Loading Alerts
     
     /// Shows a loading alert that can be dismissed programmatically
+    @discardableResult
     static func showLoading(
+        title: String? = nil,
         message: String = "Loading...",
-        from viewController: UIViewController
+        from viewController: UIViewController,
+        completion: (() -> Void)? = nil
     ) -> UIAlertController {
-        let alert = LoadingAlertController(title: nil, message: message, preferredStyle: .alert)
+        let alert = LoadingAlertController(title: title, message: message, preferredStyle: .alert)
         
         let loadingIndicator = UIActivityIndicatorView(style: .medium)
         loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
@@ -228,7 +256,7 @@ class AlertPresenter {
             loadingIndicator.bottomAnchor.constraint(equalTo: alert.view.bottomAnchor, constant: -20)
         ])
         
-        viewController.present(alert, animated: true)
+        viewController.present(alert, animated: true, completion: completion)
         return alert
     }
     

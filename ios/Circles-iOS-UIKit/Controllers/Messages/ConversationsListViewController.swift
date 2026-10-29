@@ -105,7 +105,7 @@ class ConversationsListViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleOpenConversationById(_:)),
-            name: Notification.Name("OpenConversationById"),
+            name: .openConversationById,
             object: nil
         )
         setupSubscribers()
@@ -274,7 +274,7 @@ class ConversationsListViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleNewMessages),
-            name: Notification.Name("NewMessagesReceived"),
+            name: .newMessagesReceived,
             object: nil
         )
         
@@ -282,7 +282,7 @@ class ConversationsListViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleConversationsUpdate),
-            name: Notification.Name("ConversationsUpdated"),
+            name: .conversationsUpdated,
             object: nil
         )
         
@@ -290,7 +290,7 @@ class ConversationsListViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleConversationDeleted),
-            name: Notification.Name("ConversationDeleted"),
+            name: .conversationDeleted,
             object: nil
         )
         
@@ -483,13 +483,7 @@ class ConversationsListViewController: UIViewController {
         // Validate conversation has required data
         guard !conversation.id.isEmpty else {
             Logger.debug("❌ ConversationsListViewController: Invalid conversation - missing ID")
-            let alert = UIAlertController(
-                title: "Error",
-                message: "Unable to open conversation. Please try again.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            present(alert, animated: true)
+            AlertPresenter.showError(title: "Error", message: "Unable to open conversation. Please try again.", from: self)
             return
         }
         
@@ -497,17 +491,8 @@ class ConversationsListViewController: UIViewController {
         messagingManager.markConversationAsReadLocally(conversation.id)
         
         // Show a brief loading indicator before navigation
-        let loadingAlert = UIAlertController(title: nil, message: "Opening conversation...", preferredStyle: .alert)
-        let loadingIndicator = UIActivityIndicatorView(style: .medium)
-        loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
-        loadingIndicator.startAnimating()
-        loadingAlert.view.addSubview(loadingIndicator)
-        NSLayoutConstraint.activate([
-            loadingIndicator.centerXAnchor.constraint(equalTo: loadingAlert.view.centerXAnchor),
-            loadingIndicator.bottomAnchor.constraint(equalTo: loadingAlert.view.bottomAnchor, constant: -20)
-        ])
-        
-        present(loadingAlert, animated: true) { [weak self] in
+        var loadingAlert: UIAlertController!
+        loadingAlert = AlertPresenter.showLoading(message: "Opening conversation...", from: self) { [weak self] in
             guard let self = self else { return }
             Logger.debug("🔍 ConversationsListViewController: Creating ChatViewController")
             
@@ -577,17 +562,13 @@ extension ConversationsListViewController: UITableViewDelegate {
             let conversation = self.messagingManager.conversations[indexPath.row]
             
             // Show confirmation alert
-            let alert = UIAlertController(
+            AlertPresenter.showConfirmation(
                 title: "Delete Conversation",
                 message: "Are you sure you want to delete this conversation? This action cannot be undone.",
-                preferredStyle: .alert
-            )
-            
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
-                completion(false)
-            })
-            
-            alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in
+                confirmTitle: "Delete",
+                isDestructive: true,
+                from: self,
+                onConfirm: {
                 // Delete the conversation
                 self.messagingManager.deleteConversation(conversation.id) { result in
                     DispatchQueue.main.async {
@@ -598,20 +579,14 @@ extension ConversationsListViewController: UITableViewDelegate {
                             completion(true)
                         case .failure(let error):
                             // Show error alert
-                            let errorAlert = UIAlertController(
-                                title: "Error",
-                                message: "Failed to delete conversation: \(error.localizedDescription)",
-                                preferredStyle: .alert
-                            )
-                            errorAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                            self.present(errorAlert, animated: true)
+                            AlertPresenter.showError(title: "Error", message: "Failed to delete conversation: \(error.localizedDescription)", from: self)
                             completion(false)
                         }
                     }
                 }
+            }, onCancel: {
+                completion(false)
             })
-            
-            self.present(alert, animated: true)
         }
         deleteAction.backgroundColor = .systemRed
         deleteAction.image = UIImage(systemName: "trash")
@@ -639,17 +614,7 @@ extension ConversationsListViewController: SelectConnectionViewControllerDelegat
         Logger.debug("🔍 ConversationsListViewController: Creating conversation with user: \(otherUserId) (normalized)")
         
         // Show loading indicator
-        let loadingAlert = UIAlertController(title: nil, message: "Creating conversation with \(connectionName)...", preferredStyle: .alert)
-        let loadingIndicator = UIActivityIndicatorView(style: .medium)
-        loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
-        loadingIndicator.startAnimating()
-        loadingAlert.view.addSubview(loadingIndicator)
-        NSLayoutConstraint.activate([
-            loadingIndicator.centerXAnchor.constraint(equalTo: loadingAlert.view.centerXAnchor),
-            loadingIndicator.bottomAnchor.constraint(equalTo: loadingAlert.view.bottomAnchor, constant: -20)
-        ])
-        
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(message: "Creating conversation with \(connectionName)...", from: self)
         
         // Track completion state for timeout handling
         var isCompleted = false
@@ -660,13 +625,7 @@ extension ConversationsListViewController: SelectConnectionViewControllerDelegat
             if !isCompleted {
                 Logger.debug("⚠️ ConversationsListViewController: Conversation creation timed out")
                 loadingAlert.dismiss(animated: true) {
-                    let timeoutAlert = UIAlertController(
-                        title: "Connection Timeout",
-                        message: "Unable to create conversation. Please check your internet connection and try again.",
-                        preferredStyle: .alert
-                    )
-                    timeoutAlert.addAction(UIAlertAction(title: "OK", style: .default))
-                    self.present(timeoutAlert, animated: true)
+                    AlertPresenter.showError(title: "Connection Timeout", message: "Unable to create conversation. Please check your internet connection and try again.", from: self)
                 }
             }
         }
@@ -713,8 +672,7 @@ extension ConversationsListViewController: SelectConnectionViewControllerDelegat
                                 Logger.debug("Server error details: \(serverMessage)")
                                 if serverMessage.contains("yourself") {
                                     errorMessage = "Cannot create conversation with yourself"
-                                } else if let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                                              let message = jsonData["message"] as? String {
+                                } else if let message = APIError.serverMessage(from: data) {
                                     errorMessage = message
                                 }
                             }
@@ -727,13 +685,7 @@ extension ConversationsListViewController: SelectConnectionViewControllerDelegat
                         }
                         
                         // Show alert
-                        let alert = UIAlertController(
-                            title: "Error",
-                            message: errorMessage,
-                            preferredStyle: .alert
-                        )
-                        alert.addAction(UIAlertAction(title: "OK", style: .default))
-                        self?.present(alert, animated: true)
+                        if let self { AlertPresenter.showError(title: "Error", message: errorMessage, from: self) }
                     }
                 }
             }
@@ -850,17 +802,7 @@ extension ConversationsListViewController: SSEServiceDelegate {
 extension ConversationsListViewController: GroupConnectionSelectionViewControllerDelegate {
     func didSelectConnections(_ connections: [Connection], groupName: String?) {
         // Create loading indicator
-        let loadingAlert = UIAlertController(title: nil, message: "Creating group...", preferredStyle: .alert)
-        let loadingIndicator = UIActivityIndicatorView(style: .medium)
-        loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
-        loadingIndicator.startAnimating()
-        loadingAlert.view.addSubview(loadingIndicator)
-        NSLayoutConstraint.activate([
-            loadingIndicator.centerXAnchor.constraint(equalTo: loadingAlert.view.centerXAnchor),
-            loadingIndicator.bottomAnchor.constraint(equalTo: loadingAlert.view.bottomAnchor, constant: -20)
-        ])
-        
-        present(loadingAlert, animated: true)
+        let loadingAlert = AlertPresenter.showLoading(message: "Creating group...", from: self)
         
         // Get participant IDs
         let participantIds = connections.compactMap { connection in

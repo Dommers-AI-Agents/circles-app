@@ -134,7 +134,7 @@ class VisitHistoryViewController: BaseViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleHistoryCleared),
-            name: NSNotification.Name("VisitHistoryCleared"),
+            name: .visitHistoryCleared,
             object: nil
         )
     }

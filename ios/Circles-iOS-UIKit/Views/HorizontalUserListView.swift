@@ -234,7 +234,7 @@ class HorizontalUserListView: UIView {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleConnectionsChanged),
-            name: NSNotification.Name("ConnectionsChanged"),
+            name: .connectionsChanged,
             object: nil
         )
 
@@ -284,7 +284,7 @@ class HorizontalUserListView: UIView {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleConnectionsChanged),
-            name: NSNotification.Name("ConnectionsChanged"),
+            name: .connectionsChanged,
             object: nil
         )
         
@@ -408,7 +408,7 @@ class HorizontalUserListView: UIView {
             loadActiveConnections()
         } else {
             // Post notification to navigate to My Network tab
-            NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+            NotificationCenter.default.post(name: .navigateToNetwork, object: nil)
         }
     }
 
@@ -418,7 +418,7 @@ class HorizontalUserListView: UIView {
     /// segment post is delayed because MyNetworkViewController registers its
     /// observer in viewDidLoad, which runs on the tab switch itself.
     private func navigateToDiscover() {
-        NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+        NotificationCenter.default.post(name: .navigateToNetwork, object: nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             NotificationCenter.default.post(name: .showDiscoverSegment, object: nil)
         }

@@ -119,7 +119,7 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleMomentDeleted(_:)),
-            name: Notification.Name("MomentDeleted"),
+            name: .momentDeleted,
             object: nil
         )
     }

@@ -208,7 +208,7 @@ class UserActivityCell: UICollectionViewCell {
                     profileImageView.image = cached
                 } else {
                     // Cache miss: show initials, then swap in the downloaded image
-                    profileImageView.image = createInitialsImage(for: displayName)
+                    profileImageView.image = AvatarPlaceholder.image(name: displayName, seed: user.id, diameter: 56)
                     ImageService.shared.loadImageWithKey(from: profilePicture, cacheKey: profileCacheKey) { [weak self] image in
                         DispatchQueue.main.async {
                             // Check if the cell is still displaying the same user
@@ -226,7 +226,7 @@ class UserActivityCell: UICollectionViewCell {
                 }
             } else {
                 // No profile picture at all — show initials
-                profileImageView.image = createInitialsImage(for: displayName)
+                profileImageView.image = AvatarPlaceholder.image(name: displayName, seed: user.id, diameter: 56)
             }
         }
         
@@ -239,36 +239,6 @@ class UserActivityCell: UICollectionViewCell {
         }
     }
     
-    // MARK: - Helper Methods
-    private func createInitialsImage(for name: String) -> UIImage {
-        let initials = name.components(separatedBy: " ")
-            .compactMap { $0.first?.uppercased() }
-            .prefix(2)
-            .joined()
-        
-        let size = CGSize(width: 56, height: 56)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        
-        return renderer.image { context in
-            Constants.Colors.tertiaryBackground.setFill()
-            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
-            
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 20, weight: .semibold),
-                .foregroundColor: Constants.Colors.label
-            ]
-            
-            let textSize = initials.size(withAttributes: attributes)
-            let textRect = CGRect(
-                x: (size.width - textSize.width) / 2,
-                y: (size.height - textSize.height) / 2,
-                width: textSize.width,
-                height: textSize.height
-            )
-            
-            initials.draw(in: textRect, withAttributes: attributes)
-        }
-    }
     
     private func addRingAnimation() {
         // Subtle fade animation for the ring
@@ -301,7 +271,7 @@ class UserActivityCell: UICollectionViewCell {
             if let cached = ImageService.shared.cachedImage(forKey: cacheKey) {
                 profileImageView.image = cached
             } else {
-                profileImageView.image = createInitialsImage(for: displayName)
+                profileImageView.image = AvatarPlaceholder.image(name: displayName, seed: user.id, diameter: 56)
                 let expectedId = user.id
                 ImageService.shared.loadImageWithKey(from: profilePicture, cacheKey: cacheKey) { [weak self] image in
                     DispatchQueue.main.async {
@@ -312,7 +282,7 @@ class UserActivityCell: UICollectionViewCell {
                 }
             }
         } else {
-            profileImageView.image = createInitialsImage(for: displayName)
+            profileImageView.image = AvatarPlaceholder.image(name: displayName, seed: user.id, diameter: 56)
         }
 
         activityRingView.isHidden = true

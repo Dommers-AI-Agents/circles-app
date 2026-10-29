@@ -121,7 +121,7 @@ final class PlacePhotoOutbox {
         }
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(item.file))
         Logger.debug("📮 PlacePhotoOutbox: photo for \(item.placeName) \(removed ? "sent" : "dropped")")
-        NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+        NotificationCenter.default.post(name: .refreshCircles, object: nil)
         DispatchQueue.main.async {
             self.isDraining = false
             self.drain()

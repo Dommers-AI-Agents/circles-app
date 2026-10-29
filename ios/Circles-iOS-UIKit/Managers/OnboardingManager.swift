@@ -344,7 +344,7 @@ class OnboardingManager {
 
     /// Armed the first time a store code earns points; Home then points at
     /// its $ button once: "all your reward points live here".
-    static let rewardsHintArmed = Notification.Name("RewardsHintArmed")
+    static let rewardsHintArmed = Notification.Name.rewardsHintArmed
     private let rewardsHintArmedKey = "rewardsHintArmed"
     private let rewardsHintShownKey = "rewardsHintShown"
 

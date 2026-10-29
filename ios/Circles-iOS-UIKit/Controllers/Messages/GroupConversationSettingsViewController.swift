@@ -341,7 +341,7 @@ class GroupConversationSettingsViewController: BaseViewController {
                     case .success:
                         // Post notification to update conversations list
                         NotificationCenter.default.post(
-                            name: Notification.Name("ConversationDeleted"),
+                            name: .conversationDeleted,
                             object: nil,
                             userInfo: ["conversationId": self?.conversation.id ?? ""]
                         )
@@ -524,7 +524,7 @@ class GroupConversationSettingsViewController: BaseViewController {
                         
                         // Post notification to update other views
                         NotificationCenter.default.post(
-                            name: Notification.Name("ConversationUpdated"),
+                            name: .conversationUpdated,
                             object: nil,
                             userInfo: ["conversation": updatedConversation]
                         )
@@ -803,7 +803,7 @@ extension GroupConversationSettingsViewController: AddParticipantsDelegate {
                     
                     // Post notification to update chat view if it's open
                     NotificationCenter.default.post(
-                        name: Notification.Name("ConversationUpdated"),
+                        name: .conversationUpdated,
                         object: nil,
                         userInfo: ["conversationId": self.conversation.id]
                     )

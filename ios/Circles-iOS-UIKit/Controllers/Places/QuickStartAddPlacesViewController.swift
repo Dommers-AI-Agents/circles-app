@@ -328,7 +328,7 @@ class QuickStartAddPlacesViewController: BaseViewController {
                     self.added.append((details.name, details.category))
                     self.placeLanded()
                     // Let the home screen refresh its map/data
-                    NotificationCenter.default.post(name: Notification.Name("PlaceAdded"), object: nil)
+                    NotificationCenter.default.post(name: .placeAdded, object: nil)
                 case .failure(let error):
                     self.showError(error)
                 }

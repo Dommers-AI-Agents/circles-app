@@ -1,11 +1,5 @@
 import Foundation
 
-extension Notification.Name {
-    /// The Inner Circle list changed. Privacy pickers listen so their caption
-    /// ("3 people · Edit list") stays true while a form is open.
-    static let innerCircleDidChange = Notification.Name("innerCircleDidChange")
-}
-
 /// App-wide cache of the signed-in user's Inner Circle list.
 ///
 /// Every privacy picker wants to say how many people the tier reaches, and the

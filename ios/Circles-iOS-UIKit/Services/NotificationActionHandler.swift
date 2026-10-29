@@ -116,7 +116,7 @@ final class NotificationActionHandler {
             // Navigate to specific conversation
             if let conversationId = userInfo["conversationId"] as? String {
                 NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToConversation"),
+                    name: .navigateToConversation,
                     object: conversationId
                 )
             }
@@ -125,7 +125,7 @@ final class NotificationActionHandler {
             // Navigate to place detail
             if let placeId = userInfo["placeId"] as? String {
                 NotificationCenter.default.post(
-                    name: Notification.Name("NavigateToPlace"),
+                    name: .navigateToPlace,
                     object: placeId
                 )
             }
@@ -329,7 +329,7 @@ final class NotificationActionHandler {
                         case .success:
                             // Show success and navigate to network
                             AlertPresenter.showSuccess("Connection accepted!", from: topVC)
-                            NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+                            NotificationCenter.default.post(name: .navigateToNetwork, object: nil)
                         case .failure(let error):
                             AlertPresenter.showError(error, from: topVC)
                         }
@@ -373,7 +373,7 @@ final class NotificationActionHandler {
                             from: topVC
                         ) {
                             NotificationCenter.default.post(
-                                name: Notification.Name("NavigateToConversation"),
+                                name: .navigateToConversation,
                                 object: conversationId
                             )
                         }
@@ -387,7 +387,7 @@ final class NotificationActionHandler {
         // Show circle picker to save place
         DispatchQueue.main.async {
             NotificationCenter.default.post(
-                name: Notification.Name("SavePlaceToCircle"),
+                name: .savePlaceToCircle,
                 object: placeId
             )
         }
@@ -400,22 +400,22 @@ final class NotificationActionHandler {
             case "new_place", "place_liked":
                 if let circleId = userInfo["circleId"] as? String {
                     NotificationCenter.default.post(
-                        name: Notification.Name("NavigateToCircle"),
+                        name: .navigateToCircle,
                         object: circleId
                     )
                 }
             case "new_connection":
-                NotificationCenter.default.post(name: Notification.Name("NavigateToNetwork"), object: nil)
+                NotificationCenter.default.post(name: .navigateToNetwork, object: nil)
             case "comment":
                 if let placeId = userInfo["placeId"] as? String {
                     NotificationCenter.default.post(
-                        name: Notification.Name("NavigateToPlace"),
+                        name: .navigateToPlace,
                         object: placeId
                     )
                 }
             default:
                 // Navigate to home/activity feed
-                NotificationCenter.default.post(name: Notification.Name("NavigateToHome"), object: nil)
+                NotificationCenter.default.post(name: .navigateToHome, object: nil)
             }
         }
     }
