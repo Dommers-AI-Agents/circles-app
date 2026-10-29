@@ -372,39 +372,10 @@ private class ConnectionPickerCell: UITableViewCell {
                 }
             }
         } else {
-            profileImageView.image = createInitialsImage(for: user.displayName)
+            profileImageView.image = AvatarPlaceholder.image(for: user, diameter: 40)
         }
     }
     
-    private func createInitialsImage(for name: String) -> UIImage {
-        let initials = name.components(separatedBy: " ")
-            .compactMap { $0.first?.uppercased() }
-            .prefix(2)
-            .joined()
-        
-        let size = CGSize(width: 40, height: 40)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        
-        return renderer.image { context in
-            Constants.Colors.tertiaryBackground.setFill()
-            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).fill()
-            
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 16, weight: .semibold),
-                .foregroundColor: Constants.Colors.label
-            ]
-            
-            let textSize = initials.size(withAttributes: attributes)
-            let textRect = CGRect(
-                x: (size.width - textSize.width) / 2,
-                y: (size.height - textSize.height) / 2,
-                width: textSize.width,
-                height: textSize.height
-            )
-            
-            initials.draw(in: textRect, withAttributes: attributes)
-        }
-    }
 }
 
 // MARK: - Connection Chip View

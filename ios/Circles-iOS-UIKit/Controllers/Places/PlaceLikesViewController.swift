@@ -39,7 +39,7 @@ class PlaceLikesViewController: BaseViewController {
         
         tableView.delegate = self
         tableView.dataSource = self
-        tableView.register(PlaceLikeUserCell.self, forCellReuseIdentifier: "PlaceLikeUserCell")
+        tableView.register(UserRowCell.self, forCellReuseIdentifier: UserRowCell.reuseIdentifier)
     }
     
     // MARK: - Data Loading
@@ -81,9 +81,11 @@ extension PlaceLikesViewController: UITableViewDataSource {
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "PlaceLikeUserCell", for: indexPath) as! PlaceLikeUserCell
+        let cell = tableView.dequeueReusableCell(withIdentifier: UserRowCell.reuseIdentifier, for: indexPath) as! UserRowCell
         let user = users[indexPath.row]
-        cell.configure(with: user)
+        // Bio when they wrote one, otherwise a neutral line
+        let bio = user.bio.flatMap { $0.isEmpty ? nil : $0 }
+        cell.configure(with: user, subtitle: bio ?? "Circles user")
         return cell
     }
 }
@@ -104,114 +106,3 @@ extension PlaceLikesViewController: UITableViewDelegate {
 }
 
 // PlaceLikesResponse is now defined in PlaceService.swift
-
-// MARK: - Place Like User Cell
-class PlaceLikeUserCell: UITableViewCell {
-    
-    // MARK: - UI Elements
-    private let containerView: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let profileImageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.contentMode = .scaleAspectFill
-        imageView.clipsToBounds = true
-        imageView.backgroundColor = Constants.Colors.tertiaryBackground
-        imageView.layer.cornerRadius = 25
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        return imageView
-    }()
-    
-    private let nameLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = Constants.Colors.label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    private let bioLabel: UILabel = {
-        let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 14)
-        label.textColor = Constants.Colors.secondaryLabel
-        label.numberOfLines = 1
-        label.translatesAutoresizingMaskIntoConstraints = false
-        return label
-    }()
-    
-    // MARK: - Init
-    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
-        super.init(style: style, reuseIdentifier: reuseIdentifier)
-        setupUI()
-    }
-    
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-    
-    // MARK: - Setup
-    private func setupUI() {
-        backgroundColor = Constants.Colors.background
-        selectionStyle = .default
-        
-        contentView.addSubview(containerView)
-        containerView.addSubview(profileImageView)
-        containerView.addSubview(nameLabel)
-        containerView.addSubview(bioLabel)
-        
-        NSLayoutConstraint.activate([
-            containerView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            containerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
-            containerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
-            containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            
-            profileImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
-            profileImageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
-            profileImageView.widthAnchor.constraint(equalToConstant: 50),
-            profileImageView.heightAnchor.constraint(equalToConstant: 50),
-            
-            nameLabel.topAnchor.constraint(equalTo: profileImageView.topAnchor, constant: 5),
-            nameLabel.leadingAnchor.constraint(equalTo: profileImageView.trailingAnchor, constant: 12),
-            nameLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
-            
-            bioLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
-            bioLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            bioLabel.trailingAnchor.constraint(equalTo: nameLabel.trailingAnchor)
-        ])
-    }
-    
-    // MARK: - Configuration
-    func configure(with user: User) {
-        nameLabel.text = user.displayName
-        
-        // Show bio if available, otherwise show placeholder
-        if let bio = user.bio, !bio.isEmpty {
-            bioLabel.text = bio
-        } else {
-            bioLabel.text = "Circles user"
-        }
-        
-        // Load profile image
-        if let profilePicture = user.profilePicture {
-            ImageService.shared.loadImage(from: profilePicture) { [weak self] image in
-                DispatchQueue.main.async {
-                    self?.profileImageView.image = image ?? UIImage(systemName: "person.circle.fill")
-                }
-            }
-        } else {
-            profileImageView.image = UIImage(systemName: "person.circle.fill")
-            profileImageView.tintColor = Constants.Colors.primary
-        }
-    }
-    
-    // MARK: - Reuse
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        profileImageView.image = nil
-        nameLabel.text = nil
-        bioLabel.text = nil
-    }
-}
