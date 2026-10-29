@@ -1,5 +1,6 @@
 // backend/controllers/userDiscoveryController.js
 const { getFirestore } = require('../config/firebase');
+const { sendServiceError } = require('../utils/serviceError');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { FieldValue } = require('firebase-admin/firestore');
 const { COLLECTIONS } = require('../models/FirestoreModels');
@@ -399,8 +400,7 @@ const getDiscoverUsers = async (req, res) => {
       hasMore: users.length > offsetNum + limitNum
     });
   } catch (error) {
-    console.error('Error getting discovery users:', error);
-    res.status(500).json({ success: false, message: 'Failed to get discovery users', error: error.message });
+    sendServiceError(res, error, { log: 'Error getting discovery users', fallbackMessage: 'Failed to get discovery users' });
   }
 };
 
@@ -518,12 +518,7 @@ const searchUsersAdvanced = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error searching users:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to search users',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error searching users', fallbackMessage: 'Failed to search users' });
   }
 };
 
@@ -563,12 +558,7 @@ const updateUserLocation = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error updating user location:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update location',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error updating user location', fallbackMessage: 'Failed to update location' });
   }
 };
 
@@ -589,8 +579,7 @@ const dismissSuggestion = async (req, res) => {
 
     res.json({ success: true, message: 'Suggestion dismissed' });
   } catch (error) {
-    console.error('Error dismissing suggestion:', error);
-    res.status(500).json({ success: false, message: 'Failed to dismiss suggestion', error: error.message });
+    sendServiceError(res, error, { log: 'Error dismissing suggestion', fallbackMessage: 'Failed to dismiss suggestion' });
   }
 };
 

@@ -1,5 +1,6 @@
 // backend/controllers/circleGroupsController.js
 const { getFirestore, FieldValue, Timestamp } = require('../config/firebase');
+const { sendServiceError } = require('../utils/serviceError');
 const { createCircleGroup } = require('../models/FirestoreModels');
 
 // Get all circle groups for the current user
@@ -26,12 +27,7 @@ exports.getMyCircleGroups = async (req, res) => {
       data: groups
     });
   } catch (error) {
-    console.error('Error getting circle groups:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get circle groups',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting circle groups', fallbackMessage: 'Failed to get circle groups' });
   }
 };
 
@@ -69,12 +65,7 @@ exports.createCircleGroup = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error creating circle group:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create circle group',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error creating circle group', fallbackMessage: 'Failed to create circle group' });
   }
 };
 
@@ -124,12 +115,7 @@ exports.updateCircleGroup = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error updating circle group:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update circle group',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error updating circle group', fallbackMessage: 'Failed to update circle group' });
   }
 };
 
@@ -165,12 +151,7 @@ exports.deleteCircleGroup = async (req, res) => {
       message: 'Circle group deleted successfully'
     });
   } catch (error) {
-    console.error('Error deleting circle group:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete circle group',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error deleting circle group', fallbackMessage: 'Failed to delete circle group' });
   }
 };
 
@@ -231,12 +212,7 @@ exports.addCircleToGroup = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error adding circle to group:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to add circle to group',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error adding circle to group', fallbackMessage: 'Failed to add circle to group' });
   }
 };
 
@@ -280,11 +256,6 @@ exports.removeCircleFromGroup = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error removing circle from group:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to remove circle from group',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error removing circle from group', fallbackMessage: 'Failed to remove circle from group' });
   }
 };

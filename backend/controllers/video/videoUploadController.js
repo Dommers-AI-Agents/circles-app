@@ -3,6 +3,7 @@
 // Split out of videoController.js (handlers unchanged).
 // backend/controllers/videoController.js
 const { getFirestore, FieldValue, admin } = require('../../config/firebase');
+const { sendServiceError } = require('../../utils/serviceError');
 const { getStorage } = require('firebase-admin/storage');
 const { COLLECTIONS, createPlaceVideo, createUserVideoQuota, validatePlaceVideo, serializeDoc } = require('../../models/FirestoreModels');
 const { createActivity } = require('../../services/activity/createActivity');
@@ -279,12 +280,7 @@ exports.checkVideoQuota = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error checking video quota:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check video quota',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error checking video quota', fallbackMessage: 'Failed to check video quota' });
   }
 };
 
@@ -573,12 +569,7 @@ exports.initiateVideoUpload = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error initiating video upload:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to initiate video upload',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error initiating video upload', fallbackMessage: 'Failed to initiate video upload' });
   }
 };
 
@@ -805,12 +796,7 @@ exports.completeVideoUpload = async (req, res) => {
       data: updatedVideo
     });
   } catch (error) {
-    console.error('Error completing video upload:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to complete video upload',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error completing video upload', fallbackMessage: 'Failed to complete video upload' });
   }
 };
 
@@ -846,12 +832,7 @@ exports.deleteVideo = async (req, res) => {
       message: 'Video deleted successfully'
     });
   } catch (error) {
-    console.error('Error deleting video:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete video',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error deleting video', fallbackMessage: 'Failed to delete video' });
   }
 };
 
@@ -954,12 +935,7 @@ exports.updateVideo = async (req, res) => {
       data: serializeDoc(updatedDoc)
     });
   } catch (error) {
-    console.error('Error updating video:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update video',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error updating video', fallbackMessage: 'Failed to update video' });
   }
 };
 
@@ -1136,12 +1112,7 @@ exports.addEmbeddedVideo = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error adding embedded video:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to add embedded video',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error adding embedded video', fallbackMessage: 'Failed to add embedded video' });
   }
 };
 
@@ -1170,8 +1141,7 @@ exports.removeMyMomentTag = async (req, res) => {
     console.log(`🏷️ ${userId} removed their tag from moment ${videoId}`);
     res.json({ success: true, data: { removed: true } });
   } catch (error) {
-    console.error('Error removing moment tag:', error);
-    res.status(500).json({ success: false, message: 'Failed to remove tag' });
+    sendServiceError(res, error, { log: 'Error removing moment tag', fallbackMessage: 'Failed to remove tag' });
   }
 };
 
@@ -1240,11 +1210,6 @@ exports.checkVideoStatus = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error checking video status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check video status',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error checking video status', fallbackMessage: 'Failed to check video status' });
   }
 };

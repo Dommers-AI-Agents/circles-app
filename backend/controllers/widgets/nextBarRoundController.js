@@ -1,22 +1,13 @@
 // backend/controllers/widgets/nextBarRoundController.js
 // NextBar voting rounds: thin HTTP layer over services/nextBarRoundService.
 // All validation, permission checks, and the vote/close transaction live in
-// the service; this file only maps RoundError → status/code.
+// the service; RoundError is a ServiceError, answered by sendServiceError.
 const nextBarRoundService = require('../../services/nextBarRoundService');
-const { RoundError } = require('../../services/nextBarRoundService');
+const { sendServiceError } = require('../../utils/serviceError');
 
-function sendError(res, error, fallback) {
-  if (error instanceof RoundError) {
-    return res.status(error.status).json({
-      success: false,
-      code: error.code,
-      message: error.message,
-      ...(error.userId ? { userId: error.userId } : {})
-    });
-  }
-  console.error(`🍸 ${fallback}:`, error.message);
-  return res.status(500).json({ success: false, message: fallback });
-}
+// RoundError is a ServiceError; everything else is a logged 500
+const sendError = (res, error, fallback) =>
+  sendServiceError(res, error, { log: `🍸 ${fallback}`, fallbackMessage: fallback });
 
 // @desc    Start a bar vote among tagged connections
 // @route   POST /api/widgets/nextbar/rounds

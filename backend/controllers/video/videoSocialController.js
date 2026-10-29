@@ -3,6 +3,7 @@
 // Split out of videoController.js (handlers unchanged).
 // backend/controllers/videoController.js
 const { getFirestore, FieldValue, admin } = require('../../config/firebase');
+const { sendServiceError } = require('../../utils/serviceError');
 const { COLLECTIONS, serializeDoc } = require('../../models/FirestoreModels');
 const { queryInChunks } = require('../../utils/firestoreChunks');
 const { clampPagination } = require('../../utils/pagination');
@@ -106,12 +107,7 @@ exports.likeReel = async (req, res) => {
       piggyBank: likePiggyBank
     });
   } catch (error) {
-    console.error('Error liking reel:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to like video',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error liking reel', fallbackMessage: 'Failed to like video' });
   }
 };
 
@@ -161,12 +157,7 @@ exports.unlikeReel = async (req, res) => {
       message: 'Video unliked successfully'
     });
   } catch (error) {
-    console.error('Error unliking reel:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to unlike video',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error unliking reel', fallbackMessage: 'Failed to unlike video' });
   }
 };
 
@@ -203,12 +194,7 @@ exports.trackReelView = async (req, res) => {
       message: 'View tracked successfully'
     });
   } catch (error) {
-    console.error('Error tracking view:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to track view',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error tracking view', fallbackMessage: 'Failed to track view' });
   }
 };
 
@@ -285,12 +271,7 @@ exports.getVideoComments = async (req, res) => {
       hasMore: comments.length === limit
     });
   } catch (error) {
-    console.error('Error getting video comments:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get comments',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting video comments', fallbackMessage: 'Failed to get comments' });
   }
 };
 
@@ -378,12 +359,7 @@ exports.createVideoComment = async (req, res) => {
       data: comment
     });
   } catch (error) {
-    console.error('Error creating video comment:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create comment',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error creating video comment', fallbackMessage: 'Failed to create comment' });
   }
 };
 
@@ -443,12 +419,7 @@ exports.getVideoActivity = async (req, res) => {
       data: activity
     });
   } catch (error) {
-    console.error('Error getting video activity:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get video activity',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting video activity', fallbackMessage: 'Failed to get video activity' });
   }
 };
 
@@ -509,12 +480,7 @@ exports.getVideoLikes = async (req, res) => {
       data: likes
     });
   } catch (error) {
-    console.error('Error getting video likes:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get video likes',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting video likes', fallbackMessage: 'Failed to get video likes' });
   }
 };
 
@@ -570,12 +536,7 @@ exports.deleteVideoComment = async (req, res) => {
       message: 'Comment deleted successfully'
     });
   } catch (error) {
-    console.error('Error deleting video comment:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete comment',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error deleting video comment', fallbackMessage: 'Failed to delete comment' });
   }
 };
 
@@ -654,12 +615,7 @@ exports.createVideoCommentReply = async (req, res) => {
       data: reply
     });
   } catch (error) {
-    console.error('Error creating video comment reply:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create reply',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error creating video comment reply', fallbackMessage: 'Failed to create reply' });
   }
 };
 
@@ -740,12 +696,7 @@ exports.likeVideoComment = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error liking video comment:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update comment like',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error liking video comment', fallbackMessage: 'Failed to update comment like' });
   }
 };
 
@@ -807,11 +758,6 @@ exports.getVideoCommentReplies = async (req, res) => {
       data: replies
     });
   } catch (error) {
-    console.error('Error getting video comment replies:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get replies',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting video comment replies', fallbackMessage: 'Failed to get replies' });
   }
 };

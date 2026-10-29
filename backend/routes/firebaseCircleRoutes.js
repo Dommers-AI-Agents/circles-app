@@ -1,5 +1,6 @@
 // backend/routes/firebaseCircleRoutes.js
 const express = require('express');
+const { sendServiceError } = require('../utils/serviceError');
 const {
   getMyCircles,
   getSharedCircles,
@@ -135,12 +136,7 @@ router.route('/:id/mark-activities-viewed')
         message: 'Circle activities marked as viewed'
       });
     } catch (error) {
-      console.error('Error marking circle activities as viewed:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to mark circle activities as viewed',
-        error: error.message
-      });
+      sendServiceError(res, error, { log: 'Error marking circle activities as viewed', fallbackMessage: 'Failed to mark circle activities as viewed' });
     }
   });
 
@@ -159,12 +155,7 @@ router.route('/:id/mark-viewed')
         message: 'Circle marked as viewed'
       });
     } catch (error) {
-      console.error('Error marking circle as viewed:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to mark circle as viewed',
-        error: error.message
-      });
+      sendServiceError(res, error, { log: 'Error marking circle as viewed', fallbackMessage: 'Failed to mark circle as viewed' });
     }
   });
 

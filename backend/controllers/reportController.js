@@ -1,4 +1,5 @@
 const { admin, getFirestore } = require('../config/firebase');
+const { sendServiceError } = require('../utils/serviceError');
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
 
 const db = getFirestore();
@@ -62,12 +63,7 @@ const reportUser = async (req, res) => {
       message: 'Report submitted. Thank you for keeping FavCircles safe.'
     });
   } catch (error) {
-    console.error('Error reporting user:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to submit report',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error reporting user', fallbackMessage: 'Failed to submit report' });
   }
 };
 
@@ -146,12 +142,7 @@ const reportContent = async (req, res) => {
       autoHidden: autoHide.hidden === true
     });
   } catch (error) {
-    console.error('Error reporting content:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to submit report',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error reporting content', fallbackMessage: 'Failed to submit report' });
   }
 };
 
@@ -187,12 +178,7 @@ const getReports = async (req, res) => {
       reports
     });
   } catch (error) {
-    console.error('Error fetching reports:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch reports',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching reports', fallbackMessage: 'Failed to fetch reports' });
   }
 };
 
@@ -249,12 +235,7 @@ const updateReportStatus = async (req, res) => {
       report: updatedReport
     });
   } catch (error) {
-    console.error('Error updating report:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update report',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error updating report', fallbackMessage: 'Failed to update report' });
   }
 };
 
@@ -334,8 +315,7 @@ const actionReport = async (req, res) => {
 
     return res.status(400).json({ success: false, message: 'action must be dismiss, remove_content, or ban_user' });
   } catch (error) {
-    console.error('Error actioning report:', error);
-    res.status(500).json({ success: false, message: 'Failed to action report', error: error.message });
+    sendServiceError(res, error, { log: 'Error actioning report', fallbackMessage: 'Failed to action report' });
   }
 };
 

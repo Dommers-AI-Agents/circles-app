@@ -10,6 +10,7 @@
 // Locals either way. Quiet hours and the "Stores you follow" switch in
 // Settings are honoured by notificationService.
 const { getFirestore, FieldValue } = require('../config/firebase');
+const { ServiceError } = require('../utils/serviceError');
 const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
 const notificationService = require('./notificationService');
 const { claimPushSlot } = require('./activityPushPrefs');
@@ -17,8 +18,8 @@ const { claimPushSlot } = require('./activityPushPrefs');
 const db = getFirestore();
 const STORE_ALERT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-class PlaceAlertError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+class PlaceAlertError extends ServiceError {
+  constructor(status, message) { super(status, 'PLACE_ALERTS', message); }
 }
 
 /** Who gets alerts: followers with the bell on (never someone who unfollowed). */

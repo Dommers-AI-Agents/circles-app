@@ -3,6 +3,7 @@
 // Split out of firebasePlaceController.js (handlers unchanged).
 // backend/controllers/firebasePlaceController.js
 const admin = require('firebase-admin');
+const { sendServiceError } = require('../../utils/serviceError');
 const { getFirestore } = require('../../config/firebase');
 const { COLLECTIONS, serializeDoc } = require('../../models/FirestoreModels');
 const { Client } = require('@googlemaps/google-maps-services-js');
@@ -409,8 +410,7 @@ exports.flagPlaceInfo = async (req, res) => {
       data: { reportId: reportRef.id }
     });
   } catch (error) {
-    console.error('❌ flagPlaceInfo failed:', error);
-    res.status(500).json({ success: false, message: 'Failed to submit report' });
+    sendServiceError(res, error, { log: '❌ flagPlaceInfo failed', fallbackMessage: 'Failed to submit report' });
   }
 };
 
@@ -441,8 +441,7 @@ exports.getUnresolvedPlaces = async (req, res) => {
     });
     res.json({ success: true, data: { places, count: places.length } });
   } catch (error) {
-    console.error('❌ getUnresolvedPlaces failed:', error);
-    res.status(500).json({ success: false, message: 'Failed to load unresolved places' });
+    sendServiceError(res, error, { log: '❌ getUnresolvedPlaces failed', fallbackMessage: 'Failed to load unresolved places' });
   }
 };
 
@@ -476,8 +475,7 @@ exports.getPlacesNeedingPhoto = async (req, res) => {
     // Newest imports first; the client caps each pass
     res.json({ success: true, data: { places: places.slice(0, 60), count: places.length } });
   } catch (error) {
-    console.error('❌ getPlacesNeedingPhoto failed:', error);
-    res.status(500).json({ success: false, message: 'Failed to load places needing a photo' });
+    sendServiceError(res, error, { log: '❌ getPlacesNeedingPhoto failed', fallbackMessage: 'Failed to load places needing a photo' });
   }
 };
 
@@ -534,8 +532,7 @@ exports.setDefaultGooglePhoto = async (req, res) => {
     }
     return done(true, 'google_photo');
   } catch (error) {
-    console.error('❌ setDefaultGooglePhoto failed:', error);
-    res.status(500).json({ success: false, message: 'Failed to add a photo' });
+    sendServiceError(res, error, { log: '❌ setDefaultGooglePhoto failed', fallbackMessage: 'Failed to add a photo' });
   }
 };
 
@@ -586,8 +583,7 @@ exports.setPlacePhotoFallback = async (req, res) => {
     }
     res.json({ success: true, data: { placeId: ref.id, applied: true } });
   } catch (error) {
-    console.error('❌ setPlacePhotoFallback failed:', error);
-    res.status(500).json({ success: false, message: 'Failed to set photo' });
+    sendServiceError(res, error, { log: '❌ setPlacePhotoFallback failed', fallbackMessage: 'Failed to set photo' });
   }
 };
 
@@ -722,8 +718,7 @@ exports.resolveImportedPlace = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ resolveImportedPlace failed:', error);
-    res.status(500).json({ success: false, message: 'Failed to resolve place' });
+    sendServiceError(res, error, { log: '❌ resolveImportedPlace failed', fallbackMessage: 'Failed to resolve place' });
   }
 };
 

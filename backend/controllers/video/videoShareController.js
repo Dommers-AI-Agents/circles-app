@@ -3,6 +3,7 @@
 // Split out of videoController.js (handlers unchanged).
 // backend/controllers/videoController.js
 const fs = require('fs');
+const { sendServiceError } = require('../../utils/serviceError');
 const path = require('path');
 const { getFirestore } = require('../../config/firebase');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
@@ -103,8 +104,7 @@ exports.getVideoShareInfo = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching video share info:', error);
-    res.status(500).json({ success: false, message: 'Failed to load moment' });
+    sendServiceError(res, error, { log: 'Error fetching video share info', fallbackMessage: 'Failed to load moment' });
   }
 };
 
@@ -149,11 +149,6 @@ exports.generateVideoShareLink = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error generating share link:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to generate share link',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error generating share link', fallbackMessage: 'Failed to generate share link' });
   }
 };

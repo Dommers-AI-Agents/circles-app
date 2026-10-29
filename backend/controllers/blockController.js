@@ -1,4 +1,5 @@
 const { admin, getFirestore } = require('../config/firebase');
+const { sendServiceError } = require('../utils/serviceError');
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
 const { projectPublicUser } = require('../services/publicUserProjection');
 
@@ -26,12 +27,7 @@ const blockUser = async (req, res) => {
     if (error && error.status && error.status < 500) {
       return res.status(error.status).json({ success: false, message: error.message });
     }
-    console.error('Error blocking user:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to block user',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error blocking user', fallbackMessage: 'Failed to block user' });
   }
 };
 
@@ -98,12 +94,7 @@ const unblockUser = async (req, res) => {
       message: 'User unblocked successfully'
     });
   } catch (error) {
-    console.error('Error unblocking user:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to unblock user',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error unblocking user', fallbackMessage: 'Failed to unblock user' });
   }
 };
 
@@ -142,12 +133,7 @@ const getBlockedUsers = async (req, res) => {
       hasMore: hasMoreBlocks
     });
   } catch (error) {
-    console.error('Error fetching blocked users:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch blocked users',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching blocked users', fallbackMessage: 'Failed to fetch blocked users' });
   }
 };
 
@@ -178,12 +164,7 @@ const checkIfBlocked = async (req, res) => {
       isBlocked: !blockedByMeQuery.empty || !blockedMeQuery.empty
     });
   } catch (error) {
-    console.error('Error checking block status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check block status',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error checking block status', fallbackMessage: 'Failed to check block status' });
   }
 };
 

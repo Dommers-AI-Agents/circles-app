@@ -1,5 +1,6 @@
 // backend/routes/firebasePlaceRoutes.js
 const express = require('express');
+const { sendServiceError } = require('../utils/serviceError');
 const {
   getPlacesByCircleId,
   getPlace,
@@ -169,12 +170,7 @@ router.route('/:id/mark-viewed')
         message: 'Place marked as viewed'
       });
     } catch (error) {
-      console.error('Error marking place as viewed:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to mark place as viewed',
-        error: error.message
-      });
+      sendServiceError(res, error, { log: 'Error marking place as viewed', fallbackMessage: 'Failed to mark place as viewed' });
     }
   });
 

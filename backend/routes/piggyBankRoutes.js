@@ -5,6 +5,7 @@
 // scheduled tasks.
 
 const express = require('express');
+const { sendServiceError } = require('../utils/serviceError');
 const { bech32m } = require('bech32');
 const { protect } = require('../middleware/firebaseAuth');
 const piggyBankService = require('../services/piggyBankService');
@@ -70,8 +71,7 @@ router.get('/', async (req, res) => {
       ...(wantsDecimals(req) ? payload : intifyPayload(payload))
     });
   } catch (error) {
-    console.error('🐷 getPiggyBank failed:', error.message);
-    res.status(500).json({ success: false, message: 'Failed to load piggy bank' });
+    sendServiceError(res, error, { log: '🐷 getPiggyBank failed', fallbackMessage: 'Failed to load piggy bank' });
   }
 });
 
@@ -84,8 +84,7 @@ router.get('/history', async (req, res) => {
       events: wantsDecimals(req) ? events : events.map(intifyEvent)
     });
   } catch (error) {
-    console.error('🐷 piggy history failed:', error.message);
-    res.status(500).json({ success: false, message: 'Failed to load history' });
+    sendServiceError(res, error, { log: '🐷 piggy history failed', fallbackMessage: 'Failed to load history' });
   }
 });
 
@@ -104,8 +103,7 @@ router.post('/wallet', async (req, res) => {
     const result = await piggyBankService.linkWallet(req.user.uid, address);
     res.status(200).json({ success: true, ...result });
   } catch (error) {
-    console.error('🐷 linkWallet failed:', error.message);
-    res.status(500).json({ success: false, message: 'Failed to link wallet' });
+    sendServiceError(res, error, { log: '🐷 linkWallet failed', fallbackMessage: 'Failed to link wallet' });
   }
 });
 
@@ -125,8 +123,7 @@ router.post('/claim', async (req, res) => {
     }
     res.status(200).json({ success: true, claim: result.claim });
   } catch (error) {
-    console.error('🐷 claim route failed:', error.message);
-    res.status(500).json({ success: false, message: 'Failed to claim' });
+    sendServiceError(res, error, { log: '🐷 claim route failed', fallbackMessage: 'Failed to claim' });
   }
 });
 

@@ -25,8 +25,7 @@ const MAX_BASE64_BYTES = 6 * 1024 * 1024;
 const mailEnabled = () => flags.postcardMail();
 
 const { sendServiceError } = require('../../utils/serviceError');
-const fail = (res, status, code, message) =>
-  res.status(status).json({ success: false, code, message });
+const { refuse: fail } = require('../../utils/serviceError');
 
 /**
  * Measures a decoded image buffer and says whether it can be printed.

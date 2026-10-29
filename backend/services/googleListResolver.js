@@ -31,6 +31,7 @@
 // the list request itself is built from the validated ID only — a client can
 // never make this service fetch an arbitrary URL.
 
+const { ServiceError } = require('../utils/serviceError');
 const MAPS_SHORT_HOSTS = new Set(['maps.app.goo.gl', 'goo.gl']);
 const MAPS_HOSTS = new Set(['www.google.com', 'google.com', 'maps.google.com']);
 const MAX_REDIRECTS = 4;
@@ -42,10 +43,10 @@ const USER_AGENT = 'FavCircles CFNetwork Darwin';
 
 const LIST_ID_RE = /^[A-Za-z0-9_-]{8,128}$/;
 
-class GoogleListError extends Error {
+class GoogleListError extends ServiceError {
+  // The HTTP status per code lives with the route (importController)
   constructor(code, message) {
-    super(message);
-    this.code = code;
+    super(400, code, message);
   }
 }
 

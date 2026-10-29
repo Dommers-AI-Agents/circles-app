@@ -1,5 +1,6 @@
 // backend/controllers/firebaseAuthController.js
 const { getFirestore, getAuth } = require('../config/firebase');
+const { sendServiceError } = require('../utils/serviceError');
 const { maskEmail } = require('../utils/text');
 const { COLLECTIONS, createUser, serializeDoc } = require('../models/FirestoreModels');
 const jwt = require('jsonwebtoken');
@@ -924,11 +925,7 @@ exports.login = async (req, res, next) => {
 
       console.log('✅ Password verified successfully via Firebase REST API');
     } catch (error) {
-      console.error('❌ Firebase REST API error:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Authentication service error'
-      });
+      return sendServiceError(res, error, { log: '❌ Firebase REST API error', fallbackMessage: 'Authentication service error' });
     }
 
     // Get user profile from Firestore - check by email first for account merging

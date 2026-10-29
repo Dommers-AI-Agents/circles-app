@@ -3,6 +3,7 @@
 // Split out of videoController.js (handlers unchanged).
 // backend/controllers/videoController.js
 const { getFirestore, FieldValue } = require('../../config/firebase');
+const { sendServiceError } = require('../../utils/serviceError');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../../models/FirestoreModels');
 // Disappearing moments that ran out never show (the sweep deletes them soon after)
 const { isExpired, withoutExpired, GONE_CODE, GONE_MESSAGE } = require('../../services/momentExpiry');
@@ -27,12 +28,7 @@ exports.getPlaceVideos = async (req, res) => {
     const visible = await momentsVisibleTo(await readyMomentsAt([req.params.placeId]), req.user.uid);
     res.json({ success: true, ...page(visible, req) });
   } catch (error) {
-    console.error('Error getting place videos:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get place videos',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting place videos', fallbackMessage: 'Failed to get place videos' });
   }
 };
 
@@ -148,12 +144,7 @@ exports.getUserVideos = async (req, res) => {
       hasMore: videos.length === parseInt(limit)
     });
   } catch (error) {
-    console.error('Error getting user videos:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get user videos',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting user videos', fallbackMessage: 'Failed to get user videos' });
   }
 };
 
@@ -251,12 +242,7 @@ exports.getVideoFeed = async (req, res) => {
       hasMore: videos.length === parseInt(limit)
     });
   } catch (error) {
-    console.error('Error getting video feed:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get video feed',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting video feed', fallbackMessage: 'Failed to get video feed' });
   }
 };
 
@@ -417,12 +403,7 @@ exports.getVideoDetails = async (req, res) => {
       data: response
     });
   } catch (error) {
-    console.error('Error getting video details:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get video details',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting video details', fallbackMessage: 'Failed to get video details' });
   }
 };
 
@@ -605,12 +586,7 @@ exports.getReelsFeed = async (req, res) => {
       hasMore: videos.length > parseInt(offset) + parseInt(limit)
     });
   } catch (error) {
-    console.error('Error getting reels feed:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get reels feed',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting reels feed', fallbackMessage: 'Failed to get reels feed' });
   }
 };
 
@@ -684,12 +660,7 @@ exports.getUserReels = async (req, res) => {
       hasMore: videos.length === parseInt(limit)
     });
   } catch (error) {
-    console.error('Error getting user reels:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get user reels',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting user reels', fallbackMessage: 'Failed to get user reels' });
   }
 };
 
@@ -766,12 +737,7 @@ exports.getPlaceReels = async (req, res) => {
     const visible = await momentsVisibleTo(await readyMomentsAt([req.params.placeId]), req.user.uid);
     res.json({ success: true, ...page(visible, req) });
   } catch (error) {
-    console.error('Error getting place reels:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get place reels',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting place reels', fallbackMessage: 'Failed to get place reels' });
   }
 };
 
@@ -791,8 +757,7 @@ exports.getVenueMoments = async (req, res) => {
     const visible = await momentsVisibleTo(await readyMomentsAt(placeIds), req.user.uid);
     res.json({ success: true, ...page(visible, req) });
   } catch (error) {
-    console.error('Error getting venue moments:', error);
-    res.status(500).json({ success: false, message: 'Failed to get moments for this place' });
+    sendServiceError(res, error, { log: 'Error getting venue moments', fallbackMessage: 'Failed to get moments for this place' });
   }
 };
 
@@ -849,11 +814,6 @@ exports.getPublicVideoDetails = async (req, res) => {
       data: publicVideo
     });
   } catch (error) {
-    console.error('Error getting public video details:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get video details',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting public video details', fallbackMessage: 'Failed to get video details' });
   }
 };

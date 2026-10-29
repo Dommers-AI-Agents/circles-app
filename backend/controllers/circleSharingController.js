@@ -1,5 +1,6 @@
 // backend/controllers/circleSharingController.js
 const { admin, getFirestore } = require('../config/firebase');
+const { sendServiceError } = require('../utils/serviceError');
 const { queryInChunks } = require('../utils/firestoreChunks');
 const { sortCirclesByUserOrder } = require('../utils/circleOrder');
 const { 
@@ -195,12 +196,7 @@ const shareCircle = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error sharing circle:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error sharing circle', fallbackMessage: 'Server error' });
   }
 };
 
@@ -272,12 +268,7 @@ const revokeShare = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error revoking share:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error revoking share', fallbackMessage: 'Server error' });
   }
 };
 
@@ -341,12 +332,7 @@ const getCircleShares = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching circle shares:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching circle shares', fallbackMessage: 'Server error' });
   }
 };
 
@@ -397,12 +383,7 @@ const getSharedCircles = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching shared circles:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching shared circles', fallbackMessage: 'Server error' });
   }
 };
 
@@ -444,12 +425,7 @@ const updateShareAccess = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error updating share access:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error updating share access', fallbackMessage: 'Server error' });
   }
 };
 
@@ -531,12 +507,7 @@ const getCirclesSharedWithMe = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching circles shared with me:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching circles shared with me', fallbackMessage: 'Server error' });
   }
 };
 
@@ -686,12 +657,7 @@ const getMyNetworkCircles = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching my network circles:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching my network circles', fallbackMessage: 'Server error' });
   }
 };
 
@@ -774,12 +740,7 @@ const getUsersWithCircles = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching users with circles:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching users with circles', fallbackMessage: 'Server error' });
   }
 };
 

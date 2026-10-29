@@ -1,5 +1,6 @@
 // backend/routes/connectionRoutes.js
 const express = require('express');
+const { sendServiceError } = require('../utils/serviceError');
 const requireSuperUser = require('../middleware/requireSuperUser');
 const {
   getConnections,
@@ -80,12 +81,7 @@ router.post('/admin/cleanup-activities', requireSuperUser, async (req, res) => {
       message: `Cleaned up activities older than ${daysToKeep} days`
     });
   } catch (error) {
-    console.error('Error running activity cleanup:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to cleanup activities',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error running activity cleanup', fallbackMessage: 'Failed to cleanup activities' });
   }
 });
 

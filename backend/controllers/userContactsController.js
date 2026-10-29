@@ -1,5 +1,6 @@
 // backend/controllers/userContactsController.js
 const { getFirestore } = require('../config/firebase');
+const { sendServiceError } = require('../utils/serviceError');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const emailService = require('../services/emailService');
 const dailyBudget = require('../services/dailyBudget');
@@ -219,12 +220,7 @@ const syncContacts = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error syncing contacts:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to sync contacts',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error syncing contacts', fallbackMessage: 'Failed to sync contacts' });
   }
 };
 
@@ -394,12 +390,7 @@ const getSuggestedUsers = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error getting suggested users:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get suggested users',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting suggested users', fallbackMessage: 'Failed to get suggested users' });
   }
 };
 
@@ -515,12 +506,7 @@ const inviteContacts = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error sending invitations:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to send invitations',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error sending invitations', fallbackMessage: 'Failed to send invitations' });
   }
 };
 

@@ -2,6 +2,7 @@
 // The profile's Activity tab: the signed-in user's own history and the
 // month's summary. Owner only — there is no way to ask for someone else's.
 const ownActivity = require('../../services/ownActivity');
+const { sendServiceError } = require('../../utils/serviceError');
 
 // @route GET /api/users/me/activity?filter=all|checkins|places|moments|sent|social&cursor=<iso>&limit=30
 exports.list = async (req, res) => {
@@ -10,8 +11,7 @@ exports.list = async (req, res) => {
     const page = await ownActivity.list({ userId: req.user.uid, filter: String(req.query.filter || 'all'), cursor: req.query.cursor || null, limit });
     res.json({ success: true, ...page });
   } catch (error) {
-    console.error('[own-activity] list failed:', error);
-    res.status(500).json({ success: false, message: 'Could not load your activity' });
+    sendServiceError(res, error, { log: '[own-activity] list failed', fallbackMessage: 'Could not load your activity' });
   }
 };
 
@@ -21,7 +21,6 @@ exports.summary = async (req, res) => {
     const summary = await ownActivity.summary({ userId: req.user.uid, month: req.query.month, timezone: String(req.query.timezone || 'UTC') });
     res.json({ success: true, summary });
   } catch (error) {
-    console.error('[own-activity] summary failed:', error);
-    res.status(500).json({ success: false, message: 'Could not load your month' });
+    sendServiceError(res, error, { log: '[own-activity] summary failed', fallbackMessage: 'Could not load your month' });
   }
 };

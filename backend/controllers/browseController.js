@@ -11,6 +11,7 @@
 //    unique venues, capped. The adaptive people filter falls out of the result.
 
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
+const { sendServiceError } = require('../utils/serviceError');
 const { getDocsById } = require('../utils/batchGet');
 const { getFirestore } = require('../config/firebase');
 const { getAllowedCircleIds } = require('../utils/networkAccess');
@@ -46,8 +47,7 @@ async function getBrowseLocations(req, res) {
     placeCache.set(TREE_CACHE_TYPE, userId, tree, TREE_TTL_MS);
     return res.status(200).json({ success: true, ...tree });
   } catch (error) {
-    console.error('❌ [browse] getBrowseLocations failed:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to load location browse' });
+    return sendServiceError(res, error, { log: '❌ [browse] getBrowseLocations failed', fallbackMessage: 'Failed to load location browse' });
   }
 }
 
@@ -196,8 +196,7 @@ async function getBrowseCityPlaces(req, res) {
       places: venues
     });
   } catch (error) {
-    console.error('❌ [browse] getBrowseCityPlaces failed:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to load city places' });
+    return sendServiceError(res, error, { log: '❌ [browse] getBrowseCityPlaces failed', fallbackMessage: 'Failed to load city places' });
   }
 }
 

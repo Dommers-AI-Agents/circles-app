@@ -1,5 +1,6 @@
 // backend/controllers/connectionController.js
 const { getFirestore } = require('../config/firebase');
+const { sendServiceError } = require('../utils/serviceError');
 const { clampPagination } = require('../utils/pagination');
 const { isLiveConnection, onePerPerson } = require('../services/connectionMap');
 const { projectPublicUser } = require('../services/publicUserProjection');
@@ -99,12 +100,7 @@ const getConnectionById = async (req, res) => {
       connection: connection
     });
   } catch (error) {
-    console.error('❌ Error fetching connection:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: '❌ Error fetching connection', fallbackMessage: 'Server error' });
   }
 };
 
@@ -282,12 +278,7 @@ const getConnections = async (req, res) => {
       connections: validConnections
     });
   } catch (error) {
-    console.error('Error fetching connections:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching connections', fallbackMessage: 'Server error' });
   }
 };
 
@@ -826,12 +817,7 @@ const acceptConnection = async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error accepting connection:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error accepting connection', fallbackMessage: 'Server error' });
   }
 };
 
@@ -893,12 +879,7 @@ const declineConnection = async (req, res) => {
     archiveConnectionRequestNotifications(connectionId);
 
   } catch (error) {
-    console.error('Error declining connection:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error declining connection', fallbackMessage: 'Server error' });
   }
 };
 
@@ -947,12 +928,7 @@ const blockConnection = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error blocking connection:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error blocking connection', fallbackMessage: 'Server error' });
   }
 };
 
@@ -1021,12 +997,7 @@ const getSharedCirclesWithConnection = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching shared circles with connection:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching shared circles with connection', fallbackMessage: 'Server error' });
   }
 };
 
@@ -1106,12 +1077,7 @@ const removeConnection = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error removing connection:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error removing connection', fallbackMessage: 'Server error' });
   }
 };
 
@@ -1238,12 +1204,7 @@ const getActiveConnections = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching active connections:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching active connections', fallbackMessage: 'Server error' });
   }
 };
 
@@ -1275,12 +1236,7 @@ const clearConnectionActivity = async (req, res) => {
       message: 'Activity notification cleared'
     });
   } catch (error) {
-    console.error('Error clearing activity notification:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error clearing activity notification', fallbackMessage: 'Server error' });
   }
 };
 
@@ -1312,12 +1268,7 @@ const trackConnectionView = async (req, res) => {
       message: 'View tracked'
     });
   } catch (error) {
-    console.error('Error tracking connection view:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error tracking connection view', fallbackMessage: 'Server error' });
   }
 };
 
@@ -1490,12 +1441,7 @@ const getActiveRelationships = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error getting active relationships:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting active relationships', fallbackMessage: 'Server error' });
   }
 };
 
@@ -1558,12 +1504,7 @@ const updateConnectionNotificationPreferences = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error updating connection notification preferences:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error updating connection notification preferences', fallbackMessage: 'Server error' });
   }
 };
 

@@ -33,4 +33,9 @@ function sendServiceError(res, error, { log, fallbackCode, fallbackMessage }) {
   return res.status(500).json(body);
 }
 
-module.exports = { ServiceError, sendServiceError };
+/** Answers a refusal directly: `{ success: false, code, message }` with `status`. */
+function refuse(res, status, code, message) {
+  return sendServiceError(res, new ServiceError(status, code, message), {});
+}
+
+module.exports = { ServiceError, sendServiceError, refuse };

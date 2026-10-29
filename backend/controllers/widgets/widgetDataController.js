@@ -3,21 +3,18 @@
 // opaque JSON per (user, widgetId) with an optimistic version lock; widget
 // schemas live entirely in the iOS FavWidgets package.
 const widgetDataService = require('../../services/widgetDataService');
+const { sendServiceError } = require('../../utils/serviceError');
 const flags = require('../../config/flags');
-const { ValidationError, VersionConflictError, SchemaTooOldError } = require('../../services/widgetDataService');
+const { VersionConflictError, SchemaTooOldError } = require('../../services/widgetDataService');
 const piggyBankService = require('../../services/piggyBankService');
 
 // Read at call time so the flag can flip without a restart in tests.
 const piggyEnabled = () => flags.widgetPiggy();
 const utcDay = (iso) => (iso ? String(iso).slice(0, 10) : null);
 
-function sendError(res, error, fallback) {
-  if (error instanceof ValidationError) {
-    return res.status(error.status).json({ success: false, code: error.code, message: error.message });
-  }
-  console.error(`🧩 ${fallback}:`, error.message);
-  return res.status(500).json({ success: false, message: fallback });
-}
+// ValidationError is a ServiceError; everything else is a logged 500
+const sendError = (res, error, fallback) =>
+  sendServiceError(res, error, { log: `🧩 ${fallback}`, fallbackMessage: fallback });
 
 // @desc    Batch read widget documents (?ids=water,calories,calories_2026-09)
 // @route   GET /api/widgets/data

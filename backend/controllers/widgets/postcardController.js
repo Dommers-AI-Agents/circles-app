@@ -34,8 +34,7 @@ function allowedImagePrefixes() {
 const isAllowedImageUrl = (url) =>
   typeof url === 'string' && allowedImagePrefixes().some(prefix => url.startsWith(prefix));
 
-const fail = (res, status, code, message) =>
-  res.status(status).json({ success: false, code, message });
+const { refuse: fail, sendServiceError } = require('../../utils/serviceError');
 
 // Firestore rejects undefined field values, so every metadata scalar is
 // coerced to a string or null. Flat map only: Message.swift keeps just the
@@ -116,8 +115,7 @@ exports.sendPostcard = async (req, res) => {
       ...(piggyBank && piggyBank.credited ? { piggyBank } : {})
     });
   } catch (error) {
-    console.error('📮 sendPostcard failed:', error.message);
-    res.status(500).json({ success: false, message: 'Failed to send postcard' });
+    sendServiceError(res, error, { log: '📮 sendPostcard failed', fallbackMessage: 'Failed to send postcard' });
   }
 };
 
@@ -139,8 +137,7 @@ exports.createShareLink = async (req, res) => {
     if (error && error.status) {
       return res.status(error.status).json({ success: false, code: error.code, message: error.message });
     }
-    console.error('🧩 createShareLink failed:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to create the postcard link' });
+    return sendServiceError(res, error, { log: '🧩 createShareLink failed', fallbackMessage: 'Failed to create the postcard link' });
   }
 };
 
@@ -244,7 +241,6 @@ exports.emailPostcard = async (req, res) => {
     if (error && error.status) {
       return res.status(error.status).json({ success: false, code: error.code, message: error.message });
     }
-    console.error('🧩 emailPostcard failed:', error.message);
-    return res.status(500).json({ success: false, message: 'Failed to email the postcard' });
+    return sendServiceError(res, error, { log: '🧩 emailPostcard failed', fallbackMessage: 'Failed to email the postcard' });
   }
 };

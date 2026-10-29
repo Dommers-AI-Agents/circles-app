@@ -18,6 +18,7 @@
 // single-field index, and it yields the set the visibility gate needs.
 
 const { getFirestore } = require('../config/firebase');
+const { ServiceError } = require('../utils/serviceError');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { getConnectedUserIds, getInnerCircleGrantorIds } = require('../utils/networkAccess');
 const {
@@ -30,11 +31,9 @@ const db = getFirestore();
 // means something and the user doc stays far from Firestore's 1MB ceiling.
 const MAX_INNER_CIRCLE = 150;
 
-class InnerCircleError extends Error {
+class InnerCircleError extends ServiceError {
   constructor(message, code = 'INNER_CIRCLE_INVALID') {
-    super(message);
-    this.name = 'InnerCircleError';
-    this.code = code;
+    super(code === 'INNER_CIRCLE_NO_LIST' ? 404 : 400, code, message);
   }
 }
 

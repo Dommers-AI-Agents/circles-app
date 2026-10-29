@@ -10,6 +10,7 @@
 // drink_received): coins are never moved between users. Once ever per
 // sender→recipient pair, 3 a day per recipient (config/piggyBankConfig.js).
 const { getFirestore } = require('../../config/firebase');
+const { sendServiceError } = require('../../utils/serviceError');
 const flags = require('../../config/flags');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { normalizeUserId } = require('../../services/idService');
@@ -26,7 +27,7 @@ const NAME_MAX = 60;
 const NOTE_MAX = 200;
 const piggyEnabled = () => flags.widgetPiggy();
 
-const fail = (res, status, code, message) => res.status(status).json({ success: false, code, message });
+const { refuse: fail } = require('../../utils/serviceError');
 
 /** Pure: validate and shape a send request. Returns { error } or { value }. */
 const parseDrinkSend = (body, senderId) => {
@@ -86,8 +87,7 @@ exports.sendDrink = async (req, res) => {
 
     res.status(201).json({ success: true, messageId: sent.id, conversationId: conversation.id, recipientCredited });
   } catch (error) {
-    console.error('🍸 sendDrink failed:', error.message);
-    res.status(500).json({ success: false, message: 'Failed to send the drink' });
+    sendServiceError(res, error, { log: '🍸 sendDrink failed', fallbackMessage: 'Failed to send the drink' });
   }
 };
 

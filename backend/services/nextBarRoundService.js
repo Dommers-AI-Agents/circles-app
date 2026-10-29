@@ -15,6 +15,7 @@
 // comparison behave identically in Firestore and in the in-memory test mock.
 
 const { getFirestore } = require('../config/firebase');
+const { ServiceError } = require('../utils/serviceError');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { normalizeUserId, isSameUser } = require('./idService');
 const { isBlockedEitherWay } = require('./moderationService');
@@ -33,12 +34,10 @@ const LIST_LIMIT = 20;
 const PUSH_TYPE_ROUND = 'nextbar_round';
 const PUSH_TYPE_RESULT = 'nextbar_result';
 
-class RoundError extends Error {
+class RoundError extends ServiceError {
   constructor(status, code, message, extra = {}) {
-    super(message || code);
-    this.name = 'RoundError';
-    this.status = status;
-    this.code = code;
+    // extra (e.g. { userId }) rides in the response body too
+    super(status, code, message || code, Object.keys(extra).length ? extra : null);
     Object.assign(this, extra);
   }
 }

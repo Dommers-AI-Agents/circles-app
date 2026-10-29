@@ -64,8 +64,8 @@ const respondWithLists = async (res, lists) => {
 
 const handleError = (res, next, error, action) => {
   if (error instanceof InnerCircleError) {
-    const status = error.code === 'INNER_CIRCLE_NO_LIST' ? 404 : 400;
-    return res.status(status).json({ success: false, code: error.code, message: error.message });
+    // The error carries its status (404 for a missing list, else 400)
+    return res.status(error.status).json({ success: false, code: error.code, message: error.message });
   }
   console.error(`Error ${action} inner circle:`, error);
   return next(error);

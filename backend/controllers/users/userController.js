@@ -2,6 +2,7 @@
 // profile read/update, user search, circle order, public circles, daily summary
 // Split out of firebaseUserController.js (handlers unchanged).
 const { getFirestore } = require('../../config/firebase');
+const { sendServiceError } = require('../../utils/serviceError');
 const { maskEmail } = require('../../utils/text');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../../models/FirestoreModels');
 const { normalizeUserId, isSameUser } = require('../../services/idService');
@@ -643,11 +644,6 @@ exports.getDailySummary = async (req, res, next) => {
       data: summaryData
     });
   } catch (error) {
-    console.error('❌ Error getting daily summary:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get daily summary',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: '❌ Error getting daily summary', fallbackMessage: 'Failed to get daily summary' });
   }
 };

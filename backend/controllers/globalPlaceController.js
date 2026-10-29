@@ -164,8 +164,7 @@ exports.matchGlobalPlace = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ [GlobalPlace] match lookup failed:', error);
-    res.status(500).json({ success: false, message: 'Match lookup failed' });
+    sendServiceError(res, error, { log: '❌ [GlobalPlace] match lookup failed', fallbackMessage: 'Match lookup failed' });
   }
 };
 

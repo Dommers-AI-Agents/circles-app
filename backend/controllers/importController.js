@@ -2,6 +2,7 @@
 // (Mapstr, Google Takeout, Swarm). Premium-gated.
 
 const jwt = require('jsonwebtoken');
+const { sendServiceError } = require('../utils/serviceError');
 const importService = require('../services/importService');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
 const { LIMIT_ERROR_MESSAGES } = require('../config/subscriptionLimits');
@@ -127,8 +128,7 @@ exports.prepareImport = async (req, res) => {
 
     res.json({ success: true, preview: result.preview });
   } catch (error) {
-    console.error('❌ Import prepare error:', error);
-    res.status(500).json({ success: false, message: 'Failed to prepare import' });
+    sendServiceError(res, error, { log: '❌ Import prepare error', fallbackMessage: 'Failed to prepare import' });
   }
 };
 
@@ -203,8 +203,7 @@ exports.executeImport = async (req, res) => {
     console.log(`📥 Import executed for user ${req.user.uid}:`, totals);
     res.json({ success: true, results: result.results, totals });
   } catch (error) {
-    console.error('❌ Import execute error:', error);
-    res.status(500).json({ success: false, message: 'Failed to execute import' });
+    sendServiceError(res, error, { log: '❌ Import execute error', fallbackMessage: 'Failed to execute import' });
   }
 };
 
@@ -235,8 +234,7 @@ exports.getSwarmAuthUrl = async (req, res) => {
 
     res.json({ success: true, url: swarmService.authorizationUrl(state) });
   } catch (error) {
-    console.error('❌ Swarm auth-url error:', error);
-    res.status(500).json({ success: false, message: 'Failed to start Swarm authorization' });
+    sendServiceError(res, error, { log: '❌ Swarm auth-url error', fallbackMessage: 'Failed to start Swarm authorization' });
   }
 };
 
@@ -318,7 +316,6 @@ exports.fetchSwarmData = async (req, res) => {
 
     res.json({ success: true, payload });
   } catch (error) {
-    console.error('❌ Swarm fetch error:', error.message);
-    res.status(500).json({ success: false, message: 'Failed to fetch data from Swarm' });
+    sendServiceError(res, error, { log: '❌ Swarm fetch error', fallbackMessage: 'Failed to fetch data from Swarm' });
   }
 };

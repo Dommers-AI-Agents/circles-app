@@ -15,6 +15,7 @@ const {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse
 } = require('@simplewebauthn/server');
+const { sendServiceError } = require('../utils/serviceError');
 const { isoBase64URL, isoUint8Array } = require('@simplewebauthn/server/helpers');
 const admin = require('firebase-admin');
 const { getFirestore } = require('../config/firebase');
@@ -92,8 +93,7 @@ exports.emailCheck = async (req, res) => {
     const hasPasskey = exists && !!(snap.docs[0].data().linkedProviders || {}).passkey;
     res.json({ success: true, exists, hasPasskey });
   } catch (error) {
-    console.error('email-check failed:', error);
-    res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
+    sendServiceError(res, error, { log: 'email-check failed', fallbackMessage: 'Something went wrong. Please try again.' });
   }
 };
 
@@ -146,8 +146,7 @@ exports.passkeyRegisterOptions = async (req, res) => {
 
     res.json({ success: true, options });
   } catch (error) {
-    console.error('passkey register-options failed:', error);
-    res.status(500).json({ success: false, message: 'Could not start passkey setup. Please try again.' });
+    sendServiceError(res, error, { log: 'passkey register-options failed', fallbackMessage: 'Could not start passkey setup. Please try again.' });
   }
 };
 
@@ -282,8 +281,7 @@ exports.passkeyRegisterVerify = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('passkey register-verify failed:', error);
-    res.status(500).json({ success: false, message: 'Could not finish sign-up. Please try again.' });
+    sendServiceError(res, error, { log: 'passkey register-verify failed', fallbackMessage: 'Could not finish sign-up. Please try again.' });
   }
 };
 
@@ -316,8 +314,7 @@ exports.passkeyLoginOptions = async (req, res) => {
 
     res.json({ success: true, options });
   } catch (error) {
-    console.error('passkey login-options failed:', error);
-    res.status(500).json({ success: false, message: 'Could not start sign-in. Please try again.' });
+    sendServiceError(res, error, { log: 'passkey login-options failed', fallbackMessage: 'Could not start sign-in. Please try again.' });
   }
 };
 
@@ -421,8 +418,7 @@ exports.passkeyLoginVerify = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('passkey login-verify failed:', error);
-    res.status(500).json({ success: false, message: 'Could not sign in. Please try again.' });
+    sendServiceError(res, error, { log: 'passkey login-verify failed', fallbackMessage: 'Could not sign in. Please try again.' });
   }
 };
 
@@ -468,8 +464,7 @@ exports.passkeyAddOptions = async (req, res) => {
 
     res.json({ success: true, options });
   } catch (error) {
-    console.error('passkey add-options failed:', error);
-    res.status(500).json({ success: false, message: 'Could not start passkey setup. Please try again.' });
+    sendServiceError(res, error, { log: 'passkey add-options failed', fallbackMessage: 'Could not start passkey setup. Please try again.' });
   }
 };
 
@@ -533,7 +528,6 @@ exports.passkeyAddVerify = async (req, res) => {
       // Same credential re-posted — treat as success (idempotent)
       return res.json({ success: true, message: 'Passkey already added' });
     }
-    console.error('passkey add-verify failed:', error);
-    res.status(500).json({ success: false, message: 'Could not add passkey. Please try again.' });
+    sendServiceError(res, error, { log: 'passkey add-verify failed', fallbackMessage: 'Could not add passkey. Please try again.' });
   }
 };

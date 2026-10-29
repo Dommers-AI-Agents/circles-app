@@ -344,12 +344,7 @@ const getOrCreateDirectConversation = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error in getOrCreateDirectConversation:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error in getOrCreateDirectConversation', fallbackMessage: 'Server error' });
   }
 };
 
@@ -470,12 +465,7 @@ const createNewConversation = async (req, res) => {
     if (error && error.status && error.code) {
       return sendServiceError(res, error, { log: 'Error creating conversation' });
     }
-    console.error('Error creating conversation:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error creating conversation', fallbackMessage: 'Server error' });
   }
 };
 
@@ -547,12 +537,7 @@ const getMessages = async (req, res) => {
       messages: populatedMessages.reverse() // Return in chronological order
     });
   } catch (error) {
-    console.error('Error fetching messages:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching messages', fallbackMessage: 'Server error' });
   }
 };
 
@@ -696,12 +681,7 @@ const sendMessage = async (req, res) => {
       message
     });
   } catch (error) {
-    console.error('Error sending message:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error sending message', fallbackMessage: 'Server error' });
   }
 };
 
@@ -770,12 +750,7 @@ const editMessage = async (req, res) => {
       message: updatedMessage
     });
   } catch (error) {
-    console.error('Error editing message:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error editing message', fallbackMessage: 'Server error' });
   }
 };
 
@@ -818,12 +793,7 @@ const deleteMessage = async (req, res) => {
       message: 'Message deleted successfully'
     });
   } catch (error) {
-    console.error('Error deleting message:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error deleting message', fallbackMessage: 'Server error' });
   }
 };
 
@@ -910,12 +880,7 @@ const markMessagesAsRead = async (req, res) => {
       message: `Marked ${validMessageCount} messages as read`
     });
   } catch (error) {
-    console.error('Error marking messages as read:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error marking messages as read', fallbackMessage: 'Server error' });
   }
 };
 
@@ -951,12 +916,7 @@ const getUnreadCount = async (req, res) => {
       unreadByConversation
     });
   } catch (error) {
-    console.error('Error getting unread count:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting unread count', fallbackMessage: 'Server error' });
   }
 };
 
@@ -1072,12 +1032,7 @@ const deleteConversation = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error deleting conversation:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error deleting conversation', fallbackMessage: 'Server error' });
   }
 };
 
@@ -1170,11 +1125,7 @@ const updateConversation = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error updating conversation:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update conversation'
-    });
+    sendServiceError(res, error, { log: 'Error updating conversation', fallbackMessage: 'Failed to update conversation' });
   }
 };
 
@@ -1227,12 +1178,7 @@ const toggleNotifications = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error toggling notifications:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error toggling notifications', fallbackMessage: 'Server error' });
   }
 };
 
@@ -1333,12 +1279,7 @@ const addParticipant = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error adding participant:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error adding participant', fallbackMessage: 'Server error' });
   }
 };
 
@@ -1429,12 +1370,7 @@ const removeParticipant = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error removing participant:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error removing participant', fallbackMessage: 'Server error' });
   }
 };
 

@@ -3,6 +3,7 @@
 // dedup) and sends the how-to-get-your-FavCoins email once per address.
 
 const express = require('express');
+const { sendServiceError } = require('../utils/serviceError');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const { getFirestore, admin } = require('../config/firebase');
@@ -54,8 +55,7 @@ router.post('/website', leadLimiter, async (req, res) => {
 
     res.status(200).json({ success: true, message: 'Check your inbox — your FavCoins guide is on the way!' });
   } catch (error) {
-    console.error('❌ Website lead capture failed:', error.message);
-    res.status(500).json({ success: false, message: 'Something went wrong — please try again.' });
+    sendServiceError(res, error, { log: '❌ Website lead capture failed', fallbackMessage: 'Something went wrong — please try again.' });
   }
 });
 

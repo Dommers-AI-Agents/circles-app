@@ -1,5 +1,6 @@
 // backend/controllers/checkInController.js
 const { getFirestore, FieldValue, GeoPoint } = require('../config/firebase');
+const { sendServiceError } = require('../utils/serviceError');
 const { firstPhotoUrl, venuePhotoUrl, resolvePlacePhoto } = require('../services/placePhoto');
 const { 
   COLLECTIONS, 
@@ -549,12 +550,7 @@ exports.createCheckIn = async (req, res) => {
       piggyBank
     });
   } catch (error) {
-    console.error('Error creating check-in:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create check-in',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error creating check-in', fallbackMessage: 'Failed to create check-in' });
   }
 };
 
@@ -580,12 +576,7 @@ exports.getActiveCheckIns = async (req, res) => {
       data: await visibleCheckIns(checkInsQuery.docs, userId)
     });
   } catch (error) {
-    console.error('Error getting active check-ins:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get active check-ins',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting active check-ins', fallbackMessage: 'Failed to get active check-ins' });
   }
 };
 
@@ -623,8 +614,7 @@ exports.getMySummary = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting check-in summary:', error);
-    res.status(500).json({ success: false, message: 'Failed to get check-in summary' });
+    sendServiceError(res, error, { log: 'Error getting check-in summary', fallbackMessage: 'Failed to get check-in summary' });
   }
 };
 
@@ -649,12 +639,7 @@ exports.getMyActiveCheckIns = async (req, res) => {
       data: checkIns
     });
   } catch (error) {
-    console.error('Error getting my check-ins:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get check-ins',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting my check-ins', fallbackMessage: 'Failed to get check-ins' });
   }
 };
 
@@ -745,12 +730,7 @@ exports.respondToCheckIn = async (req, res) => {
       data: serializeDoc(updatedDoc)
     });
   } catch (error) {
-    console.error('Error responding to check-in:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to respond to check-in',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error responding to check-in', fallbackMessage: 'Failed to respond to check-in' });
   }
 };
 
@@ -795,12 +775,7 @@ exports.endCheckIn = async (req, res) => {
       message: 'Check-in ended successfully'
     });
   } catch (error) {
-    console.error('Error ending check-in:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to end check-in',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error ending check-in', fallbackMessage: 'Failed to end check-in' });
   }
 };
 
@@ -829,12 +804,7 @@ exports.getCheckInsAtPlace = async (req, res) => {
       count: checkIns.length
     });
   } catch (error) {
-    console.error('Error getting check-ins at place:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get check-ins at place',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting check-ins at place', fallbackMessage: 'Failed to get check-ins at place' });
   }
 };
 
@@ -903,11 +873,6 @@ exports.cleanupExpiredCheckIns = async (req, res) => {
       message: `Cleaned up ${count} expired check-ins`
     });
   } catch (error) {
-    console.error('Error cleaning up check-ins:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to cleanup check-ins',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error cleaning up check-ins', fallbackMessage: 'Failed to cleanup check-ins' });
   }
 };

@@ -1,5 +1,6 @@
 // backend/routes/emailTestRoutes.js
 const express = require('express');
+const { sendServiceError } = require('../utils/serviceError');
 const router = express.Router();
 const { protect } = require('../middleware/firebaseAuth');
 const emailService = require('../services/emailService');
@@ -17,12 +18,7 @@ router.get('/test-config', protect, async (req, res) => {
       fromName: emailService.fromName
     });
   } catch (error) {
-    console.error('Email config test error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to test email configuration',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Email config test error', fallbackMessage: 'Failed to test email configuration' });
   }
 });
 
@@ -42,12 +38,7 @@ router.post('/test-send', protect, async (req, res) => {
       messageId: result.messageId
     });
   } catch (error) {
-    console.error('Test email send error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to send test email',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Test email send error', fallbackMessage: 'Failed to send test email' });
   }
 });
 
@@ -67,12 +58,7 @@ router.post('/test-connection-request', protect, async (req, res) => {
       to: userEmail
     });
   } catch (error) {
-    console.error('Test connection request email error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to send test connection request email',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Test connection request email error', fallbackMessage: 'Failed to send test connection request email' });
   }
 });
 
@@ -91,12 +77,7 @@ router.post('/test-connection-accepted', protect, async (req, res) => {
       to: userEmail
     });
   } catch (error) {
-    console.error('Test connection accepted email error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to send test connection accepted email',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Test connection accepted email error', fallbackMessage: 'Failed to send test connection accepted email' });
   }
 });
 

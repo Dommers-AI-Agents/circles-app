@@ -1,4 +1,5 @@
 const { getFirestore, FieldValue, GeoPoint } = require('../config/firebase');
+const { sendServiceError } = require('../utils/serviceError');
 const { 
   COLLECTIONS, 
   createPlaceVisit, 
@@ -46,12 +47,7 @@ exports.trackVisit = async (req, res) => {
       data: serializeDoc(visitDoc)
     });
   } catch (error) {
-    console.error('Error tracking visit:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to track visit',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error tracking visit', fallbackMessage: 'Failed to track visit' });
   }
 };
 
@@ -147,12 +143,7 @@ exports.getVisits = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting visits:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get visits',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting visits', fallbackMessage: 'Failed to get visits' });
   }
 };
 
@@ -251,12 +242,7 @@ exports.bulkAddToCircles = async (req, res) => {
       results
     });
   } catch (error) {
-    console.error('Error bulk adding visits:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to add visits to circles',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error bulk adding visits', fallbackMessage: 'Failed to add visits to circles' });
   }
 };
 
@@ -305,12 +291,7 @@ exports.updateVisit = async (req, res) => {
       data: serializeDoc(updatedDoc)
     });
   } catch (error) {
-    console.error('Error updating visit:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update visit',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error updating visit', fallbackMessage: 'Failed to update visit' });
   }
 };
 
@@ -337,12 +318,7 @@ exports.deleteVisit = async (req, res) => {
       message: 'Visit deleted successfully'
     });
   } catch (error) {
-    console.error('Error deleting visit:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete visit',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error deleting visit', fallbackMessage: 'Failed to delete visit' });
   }
 };
 
@@ -365,12 +341,7 @@ exports.updateTrackingPreferences = async (req, res) => {
       data: preferences
     });
   } catch (error) {
-    console.error('Error updating tracking preferences:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update tracking preferences',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error updating tracking preferences', fallbackMessage: 'Failed to update tracking preferences' });
   }
 };
 
@@ -403,12 +374,7 @@ exports.clearAllVisits = async (req, res) => {
       count: deleteCount
     });
   } catch (error) {
-    console.error('Error clearing visits:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to clear visits',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error clearing visits', fallbackMessage: 'Failed to clear visits' });
   }
 };
 
@@ -474,12 +440,7 @@ exports.getVisitStats = async (req, res) => {
       data: stats
     });
   } catch (error) {
-    console.error('Error getting visit stats:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get visit statistics',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting visit stats', fallbackMessage: 'Failed to get visit statistics' });
   }
 };
 
@@ -513,11 +474,6 @@ exports.updateExclusionSettings = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error updating exclusion settings:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update exclusion settings',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error updating exclusion settings', fallbackMessage: 'Failed to update exclusion settings' });
   }
 };

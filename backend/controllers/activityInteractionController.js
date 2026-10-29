@@ -1,5 +1,6 @@
 // backend/controllers/activityInteractionController.js
 const { getFirestore, FieldValue } = require('../config/firebase');
+const { sendServiceError } = require('../utils/serviceError');
 const { 
   COLLECTIONS, 
   createActivityReaction,
@@ -164,12 +165,7 @@ exports.addReaction = async (req, res) => {
       piggyBank
     });
   } catch (error) {
-    console.error('Error adding reaction:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to add reaction',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error adding reaction', fallbackMessage: 'Failed to add reaction' });
   }
 };
 
@@ -205,12 +201,7 @@ exports.removeReaction = async (req, res) => {
       message: 'Reaction removed'
     });
   } catch (error) {
-    console.error('Error removing reaction:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to remove reaction',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error removing reaction', fallbackMessage: 'Failed to remove reaction' });
   }
 };
 
@@ -253,12 +244,7 @@ exports.getReactions = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting reactions:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get reactions',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting reactions', fallbackMessage: 'Failed to get reactions' });
   }
 };
 
@@ -288,12 +274,7 @@ exports.getReactionDetails = async (req, res) => {
       data: detailedReactions
     });
   } catch (error) {
-    console.error('Error getting reaction details:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get reaction details',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting reaction details', fallbackMessage: 'Failed to get reaction details' });
   }
 };
 
@@ -422,12 +403,7 @@ exports.addComment = async (req, res) => {
       data: serializeDoc(commentDoc)
     });
   } catch (error) {
-    console.error('Error adding comment:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to add comment',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error adding comment', fallbackMessage: 'Failed to add comment' });
   }
 };
 
@@ -459,12 +435,7 @@ exports.getComments = async (req, res) => {
       data: comments
     });
   } catch (error) {
-    console.error('Error getting comments:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get comments',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting comments', fallbackMessage: 'Failed to get comments' });
   }
 };
 
@@ -517,12 +488,7 @@ exports.deleteComment = async (req, res) => {
       message: 'Comment deleted'
     });
   } catch (error) {
-    console.error('Error deleting comment:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete comment',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error deleting comment', fallbackMessage: 'Failed to delete comment' });
   }
 };
 
@@ -565,11 +531,6 @@ exports.toggleCommentLike = async (req, res) => {
       data: { isLiked: !isLiked }
     });
   } catch (error) {
-    console.error('Error toggling comment like:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to toggle comment like',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error toggling comment like', fallbackMessage: 'Failed to toggle comment like' });
   }
 };

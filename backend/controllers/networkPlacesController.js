@@ -3,6 +3,7 @@
 // from all circles the requesting user is allowed to see.
 
 const { getFirestore } = require('../config/firebase');
+const { sendServiceError } = require('../utils/serviceError');
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
 const { getAllowedCircleIds } = require('../utils/networkAccess');
 const { isPlaceVisibleToViewer } = require('../services/visibility');
@@ -173,12 +174,7 @@ const getNetworkPlacesInViewport = async (req, res) => {
       clampedRadiusM: radiusM
     });
   } catch (error) {
-    console.error('❌ Error in viewport places query:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching places in viewport',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: '❌ Error in viewport places query', fallbackMessage: 'Error fetching places in viewport' });
   }
 };
 
@@ -309,8 +305,7 @@ const searchNetworkPlaces = async (req, res) => {
 
     res.status(200).json({ success: true, places, total: places.length, hasMore });
   } catch (error) {
-    console.error('❌ Error in network place search:', error);
-    res.status(500).json({ success: false, message: 'Error searching network places', error: error.message });
+    sendServiceError(res, error, { log: '❌ Error in network place search', fallbackMessage: 'Error searching network places' });
   }
 };
 

@@ -13,6 +13,7 @@
 // hands back the current document so the client can merge.
 
 const { getFirestore } = require('../config/firebase');
+const { ServiceError } = require('../utils/serviceError');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 
 // Covers plain ids (`water`, `prefs`) and month shards (`calories_2026-09`).
@@ -22,21 +23,15 @@ const WIDGET_PAYLOAD_MAX_BYTES = 200 * 1024; // well under Firestore's 1 MiB doc
 // open got a 400; the app now also splits requests into ≤30-id chunks
 const MAX_BATCH_IDS = 60;
 
-class ValidationError extends Error {
+class ValidationError extends ServiceError {
   constructor(status, code, message) {
-    super(message || code);
-    this.name = 'ValidationError';
-    this.status = status;
-    this.code = code;
+    super(status, code, message || code);
   }
 }
 
-class VersionConflictError extends Error {
+class VersionConflictError extends ServiceError {
   constructor(current) {
-    super('Widget document version conflict');
-    this.name = 'VersionConflictError';
-    this.status = 409;
-    this.code = 'VERSION_CONFLICT';
+    super(409, 'VERSION_CONFLICT', 'Widget document version conflict');
     this.current = current;
   }
 }
@@ -53,12 +48,9 @@ class VersionConflictError extends Error {
  * This must be enforced here rather than on the device, because the clients
  * that cause the damage are already in people's hands and cannot be fixed.
  */
-class SchemaTooOldError extends Error {
+class SchemaTooOldError extends ServiceError {
   constructor(current, storedSchema, incomingSchema) {
-    super('Widget document was written by a newer version of the app');
-    this.name = 'SchemaTooOldError';
-    this.status = 409;
-    this.code = 'SCHEMA_TOO_OLD';
+    super(409, 'SCHEMA_TOO_OLD', 'Widget document was written by a newer version of the app');
     this.current = current;
     this.storedSchema = storedSchema;
     this.incomingSchema = incomingSchema;

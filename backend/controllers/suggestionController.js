@@ -1,5 +1,6 @@
 // backend/controllers/suggestionController.js
 const { getFirestore } = require('../config/firebase');
+const { sendServiceError } = require('../utils/serviceError');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { FieldValue, FieldPath } = require('firebase-admin/firestore');
 const { 
@@ -154,12 +155,7 @@ const createNewSuggestion = async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error creating suggestion:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error creating suggestion', fallbackMessage: 'Server error' });
   }
 };
 
@@ -243,12 +239,7 @@ const getNetworkSuggestions = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching network suggestions:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching network suggestions', fallbackMessage: 'Server error' });
   }
 };
 
@@ -285,12 +276,7 @@ const getReceivedSuggestions = async (req, res) => {
       count: suggestions.length
     });
   } catch (error) {
-    console.error('Error fetching received suggestions:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching received suggestions', fallbackMessage: 'Server error' });
   }
 };
 
@@ -331,12 +317,7 @@ const deleteSuggestion = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error deleting suggestion:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error deleting suggestion', fallbackMessage: 'Server error' });
   }
 };
 
@@ -371,12 +352,7 @@ const cleanupExpiredSuggestions = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error cleaning up suggestions:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error cleaning up suggestions', fallbackMessage: 'Server error' });
   }
 };
 
@@ -439,12 +415,7 @@ const addComment = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error adding comment:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error adding comment', fallbackMessage: 'Server error' });
   }
 };
 
@@ -484,12 +455,7 @@ const getComments = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error getting comments:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error getting comments', fallbackMessage: 'Server error' });
   }
 };
 
@@ -593,12 +559,7 @@ const likeSuggestion = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error liking suggestion:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error liking suggestion', fallbackMessage: 'Server error' });
   }
 };
 
@@ -645,12 +606,7 @@ const unlikeSuggestion = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error unliking suggestion:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error unliking suggestion', fallbackMessage: 'Server error' });
   }
 };
 
@@ -712,12 +668,7 @@ const getSuggestionsByUser = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error fetching user suggestions:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
+    sendServiceError(res, error, { log: 'Error fetching user suggestions', fallbackMessage: 'Server error' });
   }
 };
 
