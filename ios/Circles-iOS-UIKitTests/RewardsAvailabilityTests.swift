@@ -72,4 +72,47 @@ struct RewardsAvailabilityTests {
         #expect(RewardsAvailability.checkInNudge(details(0))
                 == "Shop has rewards. Scan the QR code at the register to collect them.")
     }
+
+    // MARK: - Next reward (the progress card that replaced "type a code")
+
+    private func details(balance: Int, rate: Int? = 25, offers: [(String, Int)] = [("Free drip coffee", 100), ("Free croissant with any latte", 150)]) -> RewardsAvailability.Details {
+        RewardsAvailability.Details(venueName: "Test Bakery", earnRate: rate, venueBalance: balance,
+                                    offers: offers.map { RewardsAvailability.Offer(title: $0.0, pointsCost: $0.1) })
+    }
+
+    @Test func nextRewardIsTheCheapestStillOutOfReach() {
+        let r = RewardsAvailability.nextReward(details(balance: 25))!
+        #expect(r.title == "Free drip coffee")
+        #expect(r.remaining == 75)
+        #expect(r.visitsLeft == 3)
+        #expect(abs(r.fraction - 0.25) < 0.001)
+        #expect(!r.canRedeem)
+        #expect(RewardsAvailability.nextRewardLine(r) == "75 more points for a free drip coffee · about 3 more visits")
+    }
+
+    @Test func enoughPointsSaysSoAndNamesTheBestAffordableReward() {
+        let r = RewardsAvailability.nextReward(details(balance: 160))!
+        #expect(r.title == "Free croissant with any latte")
+        #expect(r.canRedeem)
+        #expect(r.fraction == 1)
+        #expect(RewardsAvailability.nextRewardLine(r) == "You've got enough for a free croissant with any latte. Scan at the register to use it.")
+    }
+
+    @Test func unknownEarnRateSkipsTheVisitCount() {
+        let r = RewardsAvailability.nextReward(details(balance: 99, rate: nil))!
+        #expect(r.visitsLeft == nil)
+        #expect(RewardsAvailability.nextRewardLine(r) == "1 more point for a free drip coffee")
+    }
+
+    @Test func noOffersMeansNoCard() {
+        #expect(RewardsAvailability.nextReward(details(balance: 10, offers: [])) == nil)
+        #expect(RewardsAvailability.nextReward(details(balance: 10, offers: [("Broken", 0)])) == nil)
+    }
+
+    @Test func articlesReadNaturally() {
+        let an = RewardsAvailability.nextReward(details(balance: 0, offers: [("Espresso shot", 50)]))!
+        #expect(RewardsAvailability.nextRewardLine(an).contains("for an espresso shot"))
+        let the = RewardsAvailability.nextReward(details(balance: 0, offers: [("The weekend special", 50)]))!
+        #expect(RewardsAvailability.nextRewardLine(the).contains("for The weekend special"))
+    }
 }

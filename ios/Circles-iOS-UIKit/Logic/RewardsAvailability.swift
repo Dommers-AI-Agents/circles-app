@@ -15,6 +15,29 @@ enum RewardsAvailability: Equatable {
         /// Points this person already holds at this store.
         let venueBalance: Int
         let offers: [Offer]
+        /// The store's current posts (specials, events), newest first
+        var announcements: [Announcement] = []
+    }
+
+    struct Announcement: Equatable {
+        let title: String
+        let message: String
+    }
+
+    /// The reward a customer is working toward, for the progress card on
+    /// Get Rewards (replaced "type a code", Wes 2026-10-29: stores only
+    /// scan). The cheapest offer still out of reach; or, once something is
+    /// affordable, the best one they can take right now.
+    struct NextReward: Equatable {
+        let title: String
+        let pointsCost: Int
+        /// Points still needed; 0 when they can redeem now
+        let remaining: Int
+        /// Register scans still needed at the store's earn rate; nil when the rate is unknown
+        let visitsLeft: Int?
+        /// 0…1 toward the reward
+        let fraction: Float
+        var canRedeem: Bool { remaining == 0 }
     }
 
     struct Offer: Equatable {
@@ -39,7 +62,10 @@ enum RewardsAvailability: Equatable {
             venueBalance: data.venueBalance ?? 0,
             offers: (data.offers ?? [])
                 .filter { $0.active != false }
-                .map { Offer(title: $0.title, pointsCost: $0.pointsCost) }
+                .map { Offer(title: $0.title, pointsCost: $0.pointsCost) },
+            announcements: (data.announcements ?? [])
+                .filter { !$0.isExpired }
+                .map { Announcement(title: $0.title, message: $0.message) }
         ))
     }
 
@@ -74,6 +100,39 @@ enum RewardsAvailability: Equatable {
         case 1: return "You have 1 point here"
         default: return "You have \(details.venueBalance) points here"
         }
+    }
+
+    static func nextReward(_ details: Details) -> NextReward? {
+        let offers = details.offers.filter { $0.pointsCost > 0 }.sorted { $0.pointsCost < $1.pointsCost }
+        guard !offers.isEmpty else { return nil }
+        let balance = max(0, details.venueBalance)
+        if let best = offers.last(where: { $0.pointsCost <= balance }) {
+            return NextReward(title: best.title, pointsCost: best.pointsCost, remaining: 0, visitsLeft: 0, fraction: 1)
+        }
+        let next = offers[0]
+        let remaining = next.pointsCost - balance
+        let visits = details.earnRate.flatMap { $0 > 0 ? Int((Double(remaining) / Double($0)).rounded(.up)) : nil }
+        return NextReward(title: next.title, pointsCost: next.pointsCost, remaining: remaining, visitsLeft: visits,
+                          fraction: Float(balance) / Float(next.pointsCost))
+    }
+
+    /// "75 more points for a free drip coffee · about 3 more visits" /
+    /// "You've got enough for a free drip coffee".
+    static func nextRewardLine(_ reward: NextReward) -> String {
+        if reward.canRedeem { return "You've got enough for \(article(reward.title)). Scan at the register to use it." }
+        var line = "\(reward.remaining) more \(reward.remaining == 1 ? "point" : "points") for \(article(reward.title))"
+        if let visits = reward.visitsLeft, visits > 0 { line += " · about \(visits) more \(visits == 1 ? "visit" : "visits")" }
+        return line
+    }
+
+    /// "Free drip coffee" → "a free drip coffee"; titles that already start with a/an/the/your keep theirs.
+    private static func article(_ title: String) -> String {
+        let t = title.trimmingCharacters(in: .whitespaces)
+        guard let first = t.first else { return t }
+        let lower = t.lowercased()
+        if ["a ", "an ", "the ", "your ", "free!"].contains(where: { lower.hasPrefix($0) }) { return t }
+        let vowel = "aeiou".contains(first.lowercased())
+        return "\(vowel ? "an" : "a") \(t.prefix(1).lowercased() + t.dropFirst())"
     }
 
     /// The check-in confirmation's line about rewards.

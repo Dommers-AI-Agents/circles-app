@@ -1,8 +1,8 @@
 import UIKit
 
-/// "Get Rewards" for one store: how to earn here, in the order a customer
-/// needs it — scan the QR code at the register, or type a code from a receipt
-/// or card — then what the points buy.
+/// "Get Rewards" for one store: how to earn here — scan the QR code at the
+/// register — how close the next reward is, what's on at the store, then
+/// what the points buy. (Stores only scan: no typed codes, Wes 2026-10-29.)
 ///
 /// Opened from the place page's Get Rewards button and from the check-in
 /// confirmation. Built from the venue data the caller already has; refetches
@@ -49,10 +49,19 @@ final class GetRewardsViewController: BaseViewController {
         return button
     }()
 
-    private lazy var typeCodeButton: UIButton = {
-        let button = UIButton.secondaryButton(title: "Type a code")
-        button.addTarget(self, action: #selector(typeCodeTapped), for: .touchUpInside)
-        return button
+    /// Progress toward the next reward
+    private let nextRewardStack: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = Constants.Spacing.small
+        return stack
+    }()
+    /// The store's current posts
+    private let announcementsStack: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = Constants.Spacing.xsmall
+        return stack
     }()
 
     /// - Returns: nil when the data says there are no rewards to get here.
@@ -113,11 +122,10 @@ final class GetRewardsViewController: BaseViewController {
         stack.addArrangedSubview(scanButton)
         stack.setCustomSpacing(Constants.Spacing.large, after: scanButton)
 
-        stack.addArrangedSubview(Self.stepHeader("Have a code instead?"))
-        stack.addArrangedSubview(Self.caption("Codes printed on a receipt, an order card or under the store's QR code work too."))
-        stack.addArrangedSubview(typeCodeButton)
-        stack.setCustomSpacing(Constants.Spacing.large, after: typeCodeButton)
-
+        stack.addArrangedSubview(nextRewardStack)
+        stack.setCustomSpacing(Constants.Spacing.large, after: nextRewardStack)
+        stack.addArrangedSubview(announcementsStack)
+        stack.setCustomSpacing(Constants.Spacing.large, after: announcementsStack)
         stack.addArrangedSubview(offersStack)
     }
 
@@ -125,11 +133,67 @@ final class GetRewardsViewController: BaseViewController {
         earnLabel.text = RewardsAvailability.earnLine(details) ?? "Earn points every visit"
         balanceLabel.text = RewardsAvailability.balanceLine(details)
 
+        renderNextReward()
+        renderAnnouncements()
         offersStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard !details.offers.isEmpty else { return }
         offersStack.addArrangedSubview(Self.stepHeader("What your points get you here"))
         for offer in details.offers.sorted(by: { $0.pointsCost < $1.pointsCost }) {
             offersStack.addArrangedSubview(offerRow(offer))
+        }
+    }
+
+    private func renderNextReward() {
+        nextRewardStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        nextRewardStack.isHidden = true
+        guard let reward = RewardsAvailability.nextReward(details) else { return }
+        nextRewardStack.isHidden = false
+        nextRewardStack.addArrangedSubview(Self.stepHeader(reward.canRedeem ? "Ready to redeem" : "Your next reward"))
+        let title = Self.label(size: Constants.FontSize.large, weight: .medium)
+        title.text = reward.title
+        let cost = Self.label(size: Constants.FontSize.medium, weight: .semibold, color: Constants.Colors.secondaryLabel)
+        cost.text = "\(details.venueBalance) / \(reward.pointsCost) pts"
+        cost.setContentHuggingPriority(.required, for: .horizontal)
+        cost.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let top = UIStackView(arrangedSubviews: [title, cost])
+        top.spacing = Constants.Spacing.small
+        top.alignment = .firstBaseline
+        let bar = UIProgressView(progressViewStyle: .default)
+        bar.progressTintColor = Constants.Colors.primary
+        bar.trackTintColor = Constants.Colors.primary.withAlphaComponent(0.18)
+        bar.progress = reward.fraction
+        bar.layer.cornerRadius = 3
+        bar.clipsToBounds = true
+        bar.heightAnchor.constraint(equalToConstant: 6).isActive = true
+        let line = Self.caption(RewardsAvailability.nextRewardLine(reward))
+        let card = UIStackView(arrangedSubviews: [top, bar, line])
+        card.axis = .vertical
+        card.spacing = Constants.Spacing.small
+        card.isLayoutMarginsRelativeArrangement = true
+        card.layoutMargins = UIEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
+        card.backgroundColor = Constants.Colors.secondaryBackground
+        card.layer.cornerRadius = 10
+        nextRewardStack.addArrangedSubview(card)
+    }
+
+    private func renderAnnouncements() {
+        announcementsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let posts = Array(details.announcements.prefix(3))
+        announcementsStack.isHidden = posts.isEmpty
+        guard !posts.isEmpty else { return }
+        announcementsStack.addArrangedSubview(Self.stepHeader("What's on at \(details.venueName)"))
+        for post in posts {
+            let title = Self.label(size: Constants.FontSize.large, weight: .medium)
+            title.text = post.title
+            let message = Self.caption(post.message)
+            let row = UIStackView(arrangedSubviews: [title, message])
+            row.axis = .vertical
+            row.spacing = Constants.Spacing.tiny
+            row.isLayoutMarginsRelativeArrangement = true
+            row.layoutMargins = UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
+            row.backgroundColor = Constants.Colors.secondaryBackground
+            row.layer.cornerRadius = 10
+            announcementsStack.addArrangedSubview(row)
         }
     }
 
@@ -177,10 +241,6 @@ final class GetRewardsViewController: BaseViewController {
         let nav = UINavigationController(rootViewController: RewardScannerViewController())
         nav.modalPresentationStyle = .fullScreen
         present(nav, animated: true)
-    }
-
-    @objc private func typeCodeTapped() {
-        StickerRewardCoordinator.shared.promptForCode(from: self)
     }
 
     @objc private func closeTapped() {
