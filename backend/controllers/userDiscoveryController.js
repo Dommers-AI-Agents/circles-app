@@ -136,7 +136,10 @@ const getDiscoverUsers = async (req, res) => {
       // with zero saved places has no assumed location and nothing to show on
       // a discovery card anyway.
       const NEARBY_POOL = 150;
-      const poolIds = rankedIds.filter((id) => isSuggestable(id)).slice(0, NEARBY_POOL);
+      // Suggestions are people you are NOT connected with: an existing
+      // connection (or a request either way) drops out here like it does
+      // from the engine's list (Wes, 2026-10-29: See all listed connections)
+      const poolIds = rankedIds.filter((id) => isSuggestable(id) && !hasActiveConnection(id)).slice(0, NEARBY_POOL);
       const [poolDocs, origin] = await Promise.all([
         fetchDocsByIds(poolIds),
         effectiveCoords(userId, currentUserData)
@@ -235,7 +238,8 @@ const getDiscoverUsers = async (req, res) => {
       // already opted in, so following back is a single tap with no approval
       // step and no chance of rejection.
       // +1 so the final page slice can tell whether more remain (hasMore)
-      const pending = [...myFollowers].filter((id) => isSuggestable(id)).slice(0, offsetNum + limitNum + 1);
+      const pending = [...myFollowers].filter((id) => isSuggestable(id) && !hasActiveConnection(id))
+        .slice(0, offsetNum + limitNum + 1);
       if (pending.length > 0) {
         const docs = await db.getAll(...pending.map((id) => db.collection(COLLECTIONS.USERS).doc(id)));
         users = docs.filter((d) => d.exists && !isHiddenAccount(d.data())).map((d) => shape(d, 'followsYou'));

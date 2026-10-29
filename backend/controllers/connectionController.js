@@ -426,11 +426,17 @@ const sendConnectionRequest = async (req, res) => {
       // rule existed when the user taps Connect again
       ensureFollows(userId, targetUserDocId).catch(err =>
         console.error('⚠️ Auto-follow on repeat connect failed:', err.message));
-      return res.status(409).json({
-        success: false,
+      // Idempotent: a second tap (or a retry) gets the request that already
+      // exists, as a success. It used to 409, and every card treated that
+      // like a refusal and flipped "Request Sent" back to "Connect" even
+      // though the request was sitting there (Wes, 2026-10-29).
+      const connection = serializeDoc(existingConnection);
+      connection.connectedUser = projectPublicUser(serializeDoc(targetUserDoc));
+      return res.status(200).json({
+        success: true,
+        data: connection,
         message: 'Connection request already pending',
-        connectionId: existingConnection.id,
-        status: connectionData.status
+        alreadyPending: true
       });
     }
 

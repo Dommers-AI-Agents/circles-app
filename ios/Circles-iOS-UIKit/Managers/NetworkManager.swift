@@ -448,10 +448,13 @@ class NetworkManager {
                     switch result {
                     case .success(let response):
                         if let connection = response.data {
-                            // Add to appropriate list based on status
+                            // Add to the right list once: a repeat tap gets
+                            // the same request back (the server is idempotent)
                             if connection.status == .accepted {
-                                self.connections.append(connection)
-                            } else {
+                                if !self.connections.contains(where: { $0.id == connection.id }) {
+                                    self.connections.append(connection)
+                                }
+                            } else if !self.pendingConnections.contains(where: { $0.id == connection.id }) {
                                 self.pendingConnections.append(connection)
                             }
                             completion(.success(connection))

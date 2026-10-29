@@ -69,6 +69,16 @@ describe('GET /api/users/contacts/discover?type=following', () => {
     expect(body.users[1]).toMatchObject({ isFollowing: true, followsYou: false, suggestionReason: 'You follow them' });
   });
 
+  test('follows-you suggestions skip people you are already connected with or have asked', async () => {
+    await put('users', 'me', { displayName: 'Me', following: [], followers: ['fan', 'connected', 'asked'] });
+    for (const id of ['fan', 'connected', 'asked']) await put('users', id, { displayName: id, following: ['me'] });
+    await put('connections', 'c1', { userId: 'me', connectedUserId: 'connected', status: 'accepted' });
+    await put('connections', 'c2', { userId: 'asked', connectedUserId: 'me', status: 'pending' });
+    const out = res();
+    await getDiscoverUsers({ user: { uid: 'me' }, query: { type: 'followsYou' } }, out);
+    expect(out.json.mock.calls[0][0].users.map((u) => u.id)).toEqual(['fan']);
+  });
+
   test('nobody followed means an empty list, not an error', async () => {
     await put('users', 'me', { displayName: 'Me' });
     const out = res();

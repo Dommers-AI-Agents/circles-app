@@ -77,6 +77,20 @@ test('a bare autoAccept from a stranger only creates a pending request', async (
   expect(mockNotifyConnectionRequest).toHaveBeenCalledWith('sal', 'wes', expect.any(String));
 });
 
+test('tapping Connect twice gets the same pending request back, not a refusal', async () => {
+  const first = await send({ targetUserId: 'wes' });
+  expect(first.statusCode).toBe(201);
+  const again = await send({ targetUserId: 'wes' });
+  expect(again.statusCode).toBe(200);
+  expect(again.body).toMatchObject({ success: true, alreadyPending: true, message: 'Connection request already pending' });
+  expect(again.body.data.id).toBe(first.body.data.id);
+  expect(again.body.data.status).toBe('pending');
+  expect(again.body.data.connectedUser.email).toBeUndefined();
+  expect(connections()).toHaveLength(1);
+  // The second tap does not re-notify
+  expect(mockNotifyConnectionRequest).toHaveBeenCalledTimes(1);
+});
+
 test('the response never carries the target\'s email or phone', async () => {
   const out = await send({ targetUserId: 'wes' });
   expect(out.body.data.connectedUser.displayName).toBe('Wes');
