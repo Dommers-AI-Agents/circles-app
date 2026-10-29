@@ -176,7 +176,8 @@ async function createGlobalPlaceFromLegacy(legacyPlaceDoc) {
     dineIn: legacyPlace.dineIn ?? signals.dineIn,
     name: legacyPlace.name
   });
-  if (fromGoogle) {
+  // Generic types alone (store/food) only fill in when the app sent nothing
+  if (fromGoogle && (fromGoogle.strong || incomingCategory === 'other')) {
     category = fromGoogle.category;
     categoryMeta = {
       categorySource: 'google',

@@ -234,11 +234,19 @@ function refineCategory({ category, googleTypes = [], serves = {}, dineIn = null
  * The venue's category from Google's signals alone, or null when Google
  * doesn't say (no types, or none we map).
  */
+// Types Google puts on almost anything: an amphitheatre that sells tickets is
+// a 'store', a stadium with concessions is 'food'. They classify a venue that
+// has nothing better, but never overrule a category we already have
+// (Skyla Credit Union Amphitheatre came out 'retail', 2026-10-29).
+const WEAK_GOOGLE_TYPES = new Set(['store', 'food', 'point_of_interest', 'establishment']);
+
 function classifyFromGoogle({ googlePrimaryType, googleTypes, serves, dineIn, name } = {}) {
   const derived = deriveCategory({ googlePrimaryType, googleTypes });
   if (derived.source !== 'google') return null;
   const refined = refineCategory({ category: derived.category, googleTypes, serves, dineIn, name });
-  return { ...refined, source: 'google', confidence: derived.confidence };
+  const specific = (googleTypes || []).filter((t) => !WEAK_GOOGLE_TYPES.has(t));
+  const strong = !!googlePrimaryType || categoryFromGoogleTypes(specific) !== 'other';
+  return { ...refined, source: 'google', confidence: strong ? derived.confidence : 0.5, strong };
 }
 
 /**
@@ -251,6 +259,11 @@ function googleReclassification(venueData = {}, signals = {}) {
   if ((venueData.categorySource || null) === 'manual') return null;
   const google = classifyFromGoogle({ ...signals, name: signals.name || venueData.name });
   if (!google) return null;
+  // Only generic types: keep the category we have, but still take Google's
+  // second label when it adds one for that same category
+  if (!google.strong && (venueData.category || 'other') !== 'other') {
+    if (google.category !== venueData.category) return null;
+  }
   const sameCat = google.category === (venueData.category || 'other');
   const sameSub = (google.subcategory || null) === (venueData.subcategory || null);
   if (sameCat && sameSub && venueData.categorySource === 'google') return null;

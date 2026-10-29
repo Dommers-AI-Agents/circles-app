@@ -58,4 +58,14 @@ describe('categories from Google', () => {
     const done = { ...venue, category: 'restaurant', subcategory: 'Wine bar & shop', categorySource: 'google' };
     expect(googleReclassification(done, sig(FRENCHYS))).toBeNull();
   });
+
+  test("generic types ('store', 'food') never overrule a category we have", () => {
+    const amph = { name: 'Skyla Credit Union Amphitheatre', category: 'attraction', categorySource: 'google' };
+    expect(googleReclassification(amph, { googleTypes: ['establishment', 'point_of_interest', 'store'] })).toBeNull();
+    // ...but they still classify a venue that has nothing
+    expect(googleReclassification({ name: 'X', category: 'other' }, { googleTypes: ['store', 'establishment'] })).toMatchObject({ category: 'retail' });
+    // and a specific type still wins: Community Matters Cafe was saved as a restaurant
+    expect(googleReclassification({ name: 'Community Matters Cafe', category: 'restaurant', categorySource: 'client' },
+      { googleTypes: ['cafe', 'establishment', 'food'] })).toMatchObject({ category: 'cafe' });
+  });
 });
