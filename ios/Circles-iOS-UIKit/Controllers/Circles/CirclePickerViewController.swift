@@ -72,6 +72,12 @@ class CirclePickerViewController: UIViewController {
             action: #selector(cancelButtonTapped)
         )
 
+        // What a circle is, for someone adding their first places (Wes, 2026-10-29)
+        let info = UIBarButtonItem(image: UIImage(systemName: "info.circle"), style: .plain,
+                                   target: self, action: #selector(infoButtonTapped))
+        info.accessibilityLabel = "What is a circle?"
+        navigationItem.rightBarButtonItem = info
+
         // Always-visible search bar under the title
         navigationItem.searchController = searchController
         navigationItem.hidesSearchBarWhenScrolling = false
@@ -167,6 +173,14 @@ class CirclePickerViewController: UIViewController {
     }
     
     // MARK: - Actions
+    @objc private func infoButtonTapped() {
+        AlertPresenter.showInfo(
+            title: "What's a circle?",
+            message: "A circle is a list of your places: a city, a trip, a neighborhood, a theme like \"Best Coffee\". Pick the circle this place belongs in, or tap Create New Circle to start one.\n\nEach circle has its own privacy: Public, My Network or Private. You can move a place to another circle later.",
+            from: self
+        )
+    }
+
     @objc private func cancelButtonTapped() {
         searchController.isActive = false
         dismiss(animated: true)
