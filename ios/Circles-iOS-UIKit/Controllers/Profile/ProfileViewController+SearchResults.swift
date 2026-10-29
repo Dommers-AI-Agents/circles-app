@@ -71,7 +71,7 @@ extension ProfileViewController {
 
 // MARK: - ContentUploadDelegate
 extension ProfileViewController: ContentUploadDelegate {
-    func contentUploadDidFinish(with moment: PlaceMoment) {
+    func contentUploadDidFinish(with moment: PlaceVideo) {
         showSuccess("Moment shared successfully!")
         
         // Refresh videos/moments if on Moments tab

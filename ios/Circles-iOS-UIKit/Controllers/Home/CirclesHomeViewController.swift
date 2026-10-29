@@ -4319,9 +4319,7 @@ extension CirclesHomeViewController: HomeContentTabHost {
 // MARK: - VideoLinkInputDelegate
 extension CirclesHomeViewController: VideoLinkInputDelegate {
     func videoLinkInputDidFinish(with video: PlaceVideo) {
-        // Convert to moment and handle
-        let moment = PlaceMoment(from: video)
-        contentUploadDidFinish(with: moment)
+        contentUploadDidFinish(with: video)
     }
 
     func videoLinkInputDidCancel() {

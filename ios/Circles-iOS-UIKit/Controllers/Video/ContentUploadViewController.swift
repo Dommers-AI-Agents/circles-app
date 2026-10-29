@@ -4,7 +4,7 @@ import Photos
 import CoreLocation
 
 protocol ContentUploadDelegate: AnyObject {
-    func contentUploadDidFinish(with moment: PlaceMoment)
+    func contentUploadDidFinish(with moment: PlaceVideo)
     func contentUploadDidCancel()
 }
 
@@ -118,7 +118,7 @@ class ContentUploadViewController: UIViewController {
 
     /// Every successful share ends here: remember its audience, then hand the
     /// moment on.
-    private func finishUpload(with moment: PlaceMoment) {
+    private func finishUpload(with moment: PlaceVideo) {
         AudienceMemory.save(AudienceMemory.Choice(tier: selectedVisibility.rawValue, listId: selectedAudienceListId),
                             for: .moment, userId: AuthService.shared.getUserId())
         delegate?.contentUploadDidFinish(with: moment)
@@ -625,9 +625,7 @@ extension ContentUploadViewController: VideoRecordingDelegate {
 // MARK: - VideoLinkInputDelegate
 extension ContentUploadViewController: VideoLinkInputDelegate {
     func videoLinkInputDidFinish(with video: PlaceVideo) {
-        // Convert to PlaceMoment and notify delegate
-        let moment = PlaceMoment(from: video)
-        finishUpload(with: moment)
+        finishUpload(with: video)
         dismiss(animated: true)
     }
     
@@ -781,12 +779,11 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             uploadCarousel(images, for: place, loadingAlert: loadingAlert)
         case .embedded(let video):
             // Embedded video already created
-            let moment = PlaceMoment(from: video)
             loadingAlert.dismiss(animated: true) {
                 if self.shouldNavigateToMomentsOnSuccess {
-                    self.navigateToMomentsTab(with: moment)
+                    self.navigateToMomentsTab(with: video)
                 } else {
-                    self.finishUpload(with: moment)
+                    self.finishUpload(with: video)
                     self.dismiss(animated: true)
                 }
             }
@@ -810,15 +807,14 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             uploadCarousel(images, for: place, loadingAlert: loadingAlert)
         case .embedded(let video):
             // Embedded video already created
-            let moment = PlaceMoment(from: video)
             loadingAlert.dismiss(animated: true) {
-                self.finishUpload(with: moment)
+                self.finishUpload(with: video)
                 self.dismiss(animated: true)
             }
         }
     }
     
-    private func navigateToMomentsTab(with moment: PlaceMoment) {
+    private func navigateToMomentsTab(with moment: PlaceVideo) {
         // Notify delegate first
         self.finishUpload(with: moment)
         
@@ -1178,11 +1174,10 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                                     self?.showErrorAlert("Upload failed. Please try again.")
                                 }
                             } else if response.success {
-                                let moment = PlaceMoment(from: video)
                                 if self?.shouldNavigateToMomentsOnSuccess == true {
-                                    self?.navigateToMomentsTab(with: moment)
+                                    self?.navigateToMomentsTab(with: video)
                                 } else {
-                                    self?.finishUpload(with: moment)
+                                    self?.finishUpload(with: video)
                                     self?.dismiss(animated: true)
                                 }
                             } else {
@@ -1276,11 +1271,10 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                                     self?.showErrorAlert("Upload failed. Please try again.")
                                 }
                             } else if response.success {
-                                let moment = PlaceMoment(from: video)
                                 if self?.shouldNavigateToMomentsOnSuccess == true {
-                                    self?.navigateToMomentsTab(with: moment)
+                                    self?.navigateToMomentsTab(with: video)
                                 } else {
-                                    self?.finishUpload(with: moment)
+                                    self?.finishUpload(with: video)
                                     self?.dismiss(animated: true)
                                 }
                             } else {
