@@ -30,6 +30,9 @@ const TITLE_MAX = 30;
 const SUBTITLE_MAX = 56;
 const W = 1800;
 const H = 1200;
+// Bump when the header's look changes: every store's card republishes over
+// the next nightly runs (the picture alone, so no new text review).
+const HEADER_VERSION = 1;
 const SANS = "'DejaVu Sans', -apple-system, Helvetica, Arial, sans-serif";
 
 // Apple's required businessCategory for an advanced experience, from the
@@ -271,7 +274,7 @@ async function coverUrlFor(venue) {
 
 function fingerprintFor(venue, kind, code, coverUrl) {
   const points = kind === 'register' ? rewardService.effectiveEarnRate(venue) : '';
-  return crypto.createHash('md5').update([venue.venueName, points, coverUrl || '', kind, code].join('|')).digest('hex');
+  return crypto.createHash('md5').update([venue.venueName, points, coverUrl || '', kind, code, `v${HEADER_VERSION}`].join('|')).digest('hex');
 }
 
 /// Creates or refreshes the store's experiences. Returns what's on the venue
@@ -326,4 +329,4 @@ function syncVenueQuiet(venue, options) {
   syncVenue(venue, options).catch((error) => console.error('⚠️ App Clip experience sync failed:', venue.venueId, error.message));
 }
 
-module.exports = { KINDS, copyFor, businessCategoryFor, wrapName, headerImagePNG, fingerprintFor, syncVenue, syncVenueQuiet, removeExperience, TITLE_MAX, SUBTITLE_MAX };
+module.exports = { KINDS, HEADER_VERSION, copyFor, businessCategoryFor, wrapName, headerImagePNG, fingerprintFor, syncVenue, syncVenueQuiet, removeExperience, TITLE_MAX, SUBTITLE_MAX };
