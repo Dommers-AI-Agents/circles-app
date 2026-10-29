@@ -663,6 +663,34 @@ final class HomeDataLoader {
         }
     }
 
+    // MARK: - Live network places
+
+    private var pendingNetworkPlaceRefresh: DispatchWorkItem?
+
+    /// A connection just added a place (the server's live `new_activity`
+    /// event): load what the map is showing again, so the pin appears without
+    /// a pan or a filter change (Wes, 2026-10-29: Brittany's new place showed
+    /// in Activity but not on her filtered map). Debounced: a burst of saves
+    /// (an import) refreshes once.
+    func networkPlaceAdded(by actorId: String) {
+        pendingNetworkPlaceRefresh?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            // Their own places, when they're the person the map is filtered to
+            if let selected = self.state.selectedConnectionId, IDNormalizer.isSameUser(selected, actorId) {
+                self.fetchAllPlacesForConnection(selected)
+            }
+            // And the visible area, for everyone else's view of the map
+            if let mapVC = self.delegate?.embeddedMapViewController {
+                self.state.fetchedViewportCircles.removeAll()
+                self.fetchViewportPlaces(region: mapVC.currentRegion, for: mapVC)
+            }
+        }
+        pendingNetworkPlaceRefresh = work
+        // A beat for the save's venue fields and photo to settle server-side
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+    }
+
     // MARK: - Per-connection places
 
     /// Fetches ALL places for one connection (not viewport-bounded) so the map

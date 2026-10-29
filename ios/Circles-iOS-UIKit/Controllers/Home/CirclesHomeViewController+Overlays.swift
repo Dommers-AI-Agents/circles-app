@@ -72,6 +72,12 @@ extension CirclesHomeViewController {
             Logger.info("Received new activity event for activity feed")
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
+                // A connection added a place: put it on the map now
+                if event.data["type"] as? String == "place_added",
+                   let actorId = event.data["actorId"] as? String,
+                   !IDNormalizer.isSameUser(actorId, AuthService.shared.getUserId() ?? "") {
+                    self.loader.networkPlaceAdded(by: actorId)
+                }
                 // Update notification badge when new activity arrives
                 Logger.debug("🔔 CirclesHomeViewController: Updating badge for new activity SSE event")
                 self.updateNotificationBadge()

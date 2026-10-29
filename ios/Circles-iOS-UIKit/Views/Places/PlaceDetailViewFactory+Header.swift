@@ -96,7 +96,7 @@ extension PlaceDetailViewFactory {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 24, weight: .bold)
         label.textColor = Constants.Colors.label
-        label.numberOfLines = 2
+        label.numberOfLines = 3 // room for a long name beside the category pill
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }
@@ -109,6 +109,10 @@ extension PlaceDetailViewFactory {
         label.layer.cornerRadius = 8
         label.clipsToBounds = true
         label.translatesAutoresizingMaskIntoConstraints = false
+        // The pill keeps its full width; a long name beside it wraps instead
+        // (a two-line name squeezed "Services" to a sliver, Wes 2026-10-29)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        label.setContentHuggingPriority(.required, for: .horizontal)
         return label
     }
 
