@@ -920,6 +920,15 @@ struct RewardScanData: Codable {
     /// Points held at the scanned venue — the spendable balance there
     let venueBalance: Int?
     let offers: [RewardOffer]?
+    /// Points one register scan awards here (live stores only, 2026-10-29)
+    let earnRate: Int?
+
+    /// The scan in the store's own terms: balance here, and the next reward
+    var rewardDetails: RewardsAvailability.Details {
+        RewardsAvailability.Details(venueName: venue.venueName, earnRate: earnRate, venueBalance: venueBalance ?? balance,
+                                    offers: (offers ?? []).filter { $0.active != false }
+                                        .map { RewardsAvailability.Offer(title: $0.title, pointsCost: $0.pointsCost) })
+    }
 }
 
 /// Per-store loyalty: one shop's slice of the user's points. Points are

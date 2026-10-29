@@ -119,7 +119,11 @@ class PlaceVenueRewardsView: UIView {
         // Customers see their points at this store right in the header
         let balanceHere = (!isOwner && rewardsLive) ? data.venueBalance : nil
         let header = RewardsAvailability.storeCardHeader(venueName: venue.venueName, isOwner: isOwner, rewardsLive: rewardsLive)
-        containerStack.addArrangedSubview(makeHeader(venue, header: header, isOwner: isOwner, balanceHere: balanceHere))
+        // The store's own terms (Wes, 2026-10-29): how far this balance is from the next reward
+        let nextRewardLine: String? = (!isOwner && rewardsLive)
+            ? RewardsAvailability(data).details.flatMap(RewardsAvailability.nextReward).map(RewardsAvailability.nextRewardLine)
+            : nil
+        containerStack.addArrangedSubview(makeHeader(venue, header: header, isOwner: isOwner, balanceHere: balanceHere, nextRewardLine: nextRewardLine))
         // The money buttons sit right under the name — Reserve / Order are
         // the reason most people open a store's page at all.
         if let actions = storefront?.actions, let row = makeActionButtonsRow(actions) {
@@ -185,7 +189,7 @@ class PlaceVenueRewardsView: UIView {
 
     // MARK: - Rows
 
-    private func makeHeader(_ venue: PlaceVenue, header: RewardsAvailability.StoreCardHeader, isOwner: Bool = false, balanceHere: Int? = nil) -> UIView {
+    private func makeHeader(_ venue: PlaceVenue, header: RewardsAvailability.StoreCardHeader, isOwner: Bool = false, balanceHere: Int? = nil, nextRewardLine: String? = nil) -> UIView {
         let row = UIView()
         row.translatesAutoresizingMaskIntoConstraints = false
 
@@ -223,6 +227,18 @@ class PlaceVenueRewardsView: UIView {
             earnLabel.textColor = .secondaryLabel
         }
         earnLabel.numberOfLines = 1
+        if let nextRewardLine {
+            // "25 more points for a free coffee · about 1 more visit", under the balance
+            earnLabel.numberOfLines = 0
+            let joined = NSMutableAttributedString()
+            if let existing = earnLabel.attributedText { joined.append(existing) }
+            else if let text = earnLabel.text { joined.append(NSAttributedString(string: text, attributes: [.font: UIFont.systemFont(ofSize: 13), .foregroundColor: UIColor.secondaryLabel])) }
+            joined.append(NSAttributedString(string: "\n\(nextRewardLine)", attributes: [
+                .font: UIFont.systemFont(ofSize: 13, weight: .medium),
+                .foregroundColor: UIColor.label
+            ]))
+            earnLabel.attributedText = joined
+        }
 
         row.addSubview(icon)
         row.addSubview(titleLabel)

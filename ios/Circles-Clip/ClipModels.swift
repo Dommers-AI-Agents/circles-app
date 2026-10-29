@@ -18,6 +18,12 @@ struct VenuePreview: Decodable {
     let signupBonusPoints: Int
     let signupBonusCoins: Int? // generic joins reward FavCoins instead of store points
     let generic: Bool? // true = "Join FavCircles" code, no store attached
+    /// The store's own terms (2026-10-29): points per visit and the first
+    /// reward on its menu, only while its loyalty program is live
+    let loyaltyLive: Bool?
+    let earnRate: Int?
+    let offers: [ClipOffer]?
+    let firstReward: ClipOffer?
 
     var isGeneric: Bool { generic == true }
     var favCoinBonus: Int { signupBonusCoins ?? 50 }
@@ -49,11 +55,18 @@ struct ScanResponse: Decodable {
     let data: ScanResult
 }
 
+struct ClipOffer: Decodable {
+    let title: String
+    let pointsCost: Int
+}
+
 struct ScanResult: Decodable {
     let kind: String?
     let awarded: ScanAward?
     let balance: Int?
     let venueBalance: Int?
+    /// "75 more points for a free coffee · about 3 more visits" (server-made)
+    let nextRewardLine: String?
 }
 
 struct ScanAward: Decodable {

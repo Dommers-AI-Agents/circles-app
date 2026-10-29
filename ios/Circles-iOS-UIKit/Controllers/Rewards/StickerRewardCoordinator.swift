@@ -167,7 +167,12 @@ final class StickerRewardCoordinator: NSObject {
 
         var message = ""
         if let awarded = scan.awarded {
-            message += "You earned \(awarded.points) store points for joining! 🎉 You have \(scan.venueBalance ?? scan.balance) points here.\n\n"
+            message += "You earned \(awarded.points) store points for joining! 🎉 You have \(scan.venueBalance ?? scan.balance) points here."
+            // What those points are worth at THIS store, when it has a menu of rewards
+            if let next = RewardsAvailability.nextReward(scan.rewardDetails) {
+                message += " \(RewardsAvailability.nextRewardLine(next))."
+            }
+            message += "\n\n"
         }
 
         if scan.alreadySaved == true {
@@ -334,8 +339,10 @@ final class StickerRewardCoordinator: NSObject {
         let affordableOffers = (scan.offers ?? []).filter { $0.pointsCost <= balanceHere }
 
         guard !affordableOffers.isEmpty else {
-            if let cheapest = (scan.offers ?? []).map({ $0.pointsCost }).min() {
-                message += "\n\nEarn \(cheapest - balanceHere > 0 ? "\(cheapest - balanceHere) more points here" : "more points") to unlock a reward."
+            // The store's own terms (Wes, 2026-10-29): "75 more points for a
+            // free coffee · about 3 more visits", the same line as Get Rewards
+            if let next = RewardsAvailability.nextReward(scan.rewardDetails) {
+                message += "\n\n\(RewardsAvailability.nextRewardLine(next))"
             }
             AlertPresenter.showSuccess(title: title, message: message, from: presenter, completion: offerSave)
             return

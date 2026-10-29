@@ -116,14 +116,16 @@ final class ClipSuccessViewController: UIViewController {
         emojiLabel.text = "🎉"
 
         if let award = result.awarded {
-            detailLabel.text = "Spend them at \(preview.venueName). Get the full FavCircles app to browse offers, save places, and keep earning."
+            // In the store's own terms when it has a menu of rewards
+            detailLabel.text = result.nextRewardLine.map { "\($0). Get the full FavCircles app to keep earning at \(preview.venueName)." }
+                ?? "Spend them at \(preview.venueName). Get the full FavCircles app to browse offers, save places, and keep earning."
             celebrate(points: award.points)
         } else {
             // Idempotent replay or outside the signup window — still a win state
             titleLabel.text = "You're in!"
             let balance = result.venueBalance ?? 0
             detailLabel.text = balance > 0
-                ? "You have \(balance) points at \(preview.venueName). Get the full app to spend them."
+                ? "You have \(balance) points at \(preview.venueName).\(result.nextRewardLine.map { " \($0)." } ?? "") Get the full app to spend them."
                 : "Welcome to FavCircles! Get the full app to start earning at \(preview.venueName)."
             popEmoji()
             presentInstallOverlay(afterDelay: 1.2)

@@ -6,6 +6,7 @@ const geofire = require('geofire-common');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { sanitizeKeyPart, STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const rewardService = require('../../services/rewardService');
+const rewardProgress = require('../../services/rewardProgress');
 const nearbyEventsService = require('../../services/nearbyEventsService');
 const { listLiveVenues } = require('../../services/liveVenues');
 const rewardConfig = require('../../config/rewardConfig');
@@ -89,6 +90,12 @@ exports.scan = async (req, res) => {
         : await rewardService.awardStickerSignup(userId, venue);
       const alreadySaved = await userHasSavedVenuePlace(userId, venue);
       const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
+      const venueBalance = (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0;
+      // What points buy HERE, so the welcome is in the store's own terms
+      // (Wes, 2026-10-29) — only while the store's loyalty is live
+      const windowLive = !venue.genericJoin && await isVenueLoyaltyActive(venue);
+      const offers = windowLive ? activeOffers(venue) : [];
+      const earnRate = windowLive ? rewardService.effectiveEarnRate(venue) : null;
 
       return res.json({
         success: true,
@@ -100,7 +107,11 @@ exports.scan = async (req, res) => {
             : null,
           alreadySaved,
           balance: rewardPoints,
-          venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0
+          venueBalance,
+          earnRate,
+          offers: offers.map(({ offerId, title, pointsCost }) => ({ offerId, title, pointsCost })),
+          nextReward: rewardProgress.nextReward(offers, venueBalance, earnRate),
+          nextRewardLine: rewardProgress.nextRewardLine(rewardProgress.nextReward(offers, venueBalance, earnRate))
         }
       });
     }
@@ -138,6 +149,9 @@ exports.scan = async (req, res) => {
     const visitResult = await rewardService.awardVenueVisit(userId, venue);
 
     const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
+    const venueBalance = (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0;
+    const offers = activeOffers(venue);
+    const earnRate = rewardService.effectiveEarnRate(venue);
     return res.json({
       success: true,
       data: {
@@ -149,8 +163,12 @@ exports.scan = async (req, res) => {
         alreadyEarnedToday: visitResult.reason === 'already_today',
         alreadySaved,
         balance: rewardPoints,
-        venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0,
-        offers: activeOffers(venue)
+        venueBalance,
+        earnRate,
+        offers,
+        // The store's own terms: how far this balance is from the next reward
+        nextReward: rewardProgress.nextReward(offers, venueBalance, earnRate),
+        nextRewardLine: rewardProgress.nextRewardLine(rewardProgress.nextReward(offers, venueBalance, earnRate))
       }
     });
   } catch (error) {
@@ -462,6 +480,8 @@ exports.getVenueByPlace = async (req, res) => {
         }),
         balance,
         venueBalance,
+        // The store's next reward for this balance (the card's "N more for a free coffee")
+        nextReward: venueLoyaltyLive ? rewardProgress.nextReward(activeOffers(venue), venueBalance, rewardService.effectiveEarnRate(venue)) : null,
         myOrders,
         myOrder: myOrders[0] || null,
         isOwner,

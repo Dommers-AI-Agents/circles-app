@@ -46,6 +46,20 @@ describe('appClipExperienceService copy', () => {
       .toBe(svc.fingerprintFor(base, 'window', 'C1', null, { live: true }));
   });
 
+  test('a live register card names the store\'s first reward in the picture, not the words', () => {
+    const venue = { venueName: 'X', earnRate: 25, offers: [{ title: 'Free lunch', pointsCost: 300 }, { title: 'Free coffee', pointsCost: 100 }] };
+    const copy = svc.copyFor(venue, 'register');
+    expect(copy.lead).toBe('100 points = Free coffee');
+    expect(copy.subtitle).toBe('Earn 25 points every visit. Save it to your map.');
+    expect(copy.pill).toBe('Earn 25 points every visit');
+    // A changed offer republishes the picture
+    const f = svc.fingerprintFor(venue, 'register', 'C1', null);
+    expect(svc.fingerprintFor({ ...venue, offers: [{ title: 'Free coffee', pointsCost: 120 }] }, 'register', 'C1', null)).not.toBe(f);
+    expect(svc.fingerprintFor({ ...venue, offers: [] }, 'register', 'C1', null)).not.toBe(f);
+    // The window card ignores offers
+    expect(svc.fingerprintFor({ ...venue, offers: [] }, 'window', 'C1', null)).toBe(svc.fingerprintFor(venue, 'window', 'C1', null));
+  });
+
   test('the fingerprint changes with name, points, cover and code', () => {
     const base = { venueName: 'A', earnRate: 10 };
     const f = svc.fingerprintFor(base, 'register', 'C1', null);

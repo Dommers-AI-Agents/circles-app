@@ -22,6 +22,7 @@ const { getFirestore } = require('../config/firebase');
 const { STICKER_COLLECTIONS } = require('../models/StickerModels');
 const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
 const placePhotos = require('./placePhotoService');
+const rewardProgress = require('./rewardProgress');
 
 const APP_BUNDLE_ID = 'com.favcircles.circles';
 const KINDS = ['register', 'window'];
@@ -80,11 +81,15 @@ function copyFor(venue, kind, { live = true } = {}) {
   const name = clip(venue.venueName || 'This store', TITLE_MAX);
   if (kind === 'register' && live) {
     const points = rewardService.effectiveEarnRate(venue);
+    // The store's first reward rides in the picture, never the words: Apple
+    // lets a published card's picture change, but new words mean a new card
+    // (and a review), and owners edit offers often.
+    const first = rewardProgress.firstReward(venue.offers);
     return {
       title: name,
       subtitle: clip(`Earn ${points} points every visit. Save it to your map.`, SUBTITLE_MAX),
       pill: `Earn ${points} points every visit`,
-      lead: 'Scan at the register, collect points, redeem them here.'
+      lead: first ? clip(rewardProgress.firstRewardLine(first), 44) : 'Scan at the register, collect points, redeem them here.'
     };
   }
   return {
@@ -278,8 +283,11 @@ async function coverUrlFor(venue) {
 }
 
 function fingerprintFor(venue, kind, code, coverUrl, { live = true } = {}) {
-  const points = kind === 'register' && live ? rewardService.effectiveEarnRate(venue) : '';
-  return crypto.createHash('md5').update([venue.venueName, points, coverUrl || '', kind, code, `v${HEADER_VERSION}`].join('|')).digest('hex');
+  const rewarding = kind === 'register' && live;
+  const points = rewarding ? rewardService.effectiveEarnRate(venue) : '';
+  const first = rewarding ? rewardProgress.firstReward(venue.offers) : null;
+  const reward = first ? `${first.pointsCost}:${first.title}` : '';
+  return crypto.createHash('md5').update([venue.venueName, points, reward, coverUrl || '', kind, code, `v${HEADER_VERSION}`].join('|')).digest('hex');
 }
 
 /// Creates or refreshes the store's experiences. Returns what's on the venue

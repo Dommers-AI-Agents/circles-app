@@ -47,6 +47,13 @@ exports.getVenuePreview = async (req, res) => {
       });
     }
 
+    // The store's own terms (Wes, 2026-10-29): points per visit and the
+    // first thing they buy, only while the store's loyalty program is live
+    const { isVenueLoyaltyActive } = require('../services/ownerSubscriptionService');
+    const { activeOffers } = require('../services/venueHelpers');
+    const rewardProgress = require('../services/rewardProgress');
+    const loyaltyLive = await isVenueLoyaltyActive(venue);
+    const offers = loyaltyLive ? rewardProgress.rewardLadder(activeOffers(venue)) : [];
     return res.json({
       success: true,
       data: {
@@ -55,7 +62,11 @@ exports.getVenuePreview = async (req, res) => {
         placeAddress: venue.placeAddress || null,
         category: venue.category || null,
         kind: venue.kind, // 'window' | 'register'
-        signupBonusPoints: rewardConfig.POINTS.STICKER_SIGNUP
+        signupBonusPoints: rewardConfig.POINTS.STICKER_SIGNUP,
+        loyaltyLive,
+        earnRate: loyaltyLive ? rewardService.effectiveEarnRate(venue) : null,
+        offers,
+        firstReward: offers[0] || null
       }
     });
   } catch (error) {

@@ -194,6 +194,12 @@ final class ClipOfferViewController: UIViewController {
             titleLabel.text = preview.venueName
             pointsPill.text = "  🎁  \(preview.signupBonusPoints) free points  "
             subtitleLabel.text = "Join FavCircles right here and your points are waiting at the counter."
+            // The store's own terms: what each visit earns and the first thing it buys
+            if preview.loyaltyLive == true, let rate = preview.earnRate {
+                var line = "Earn \(rate) points every visit"
+                if let first = preview.firstReward { line += " · \(first.pointsCost) points = \(first.title)" }
+                statusLabel.text = line
+            }
         }
         ClipTheme.animateIn([brandMark, titleLabel, pointsPill, subtitleLabel, appleButton, emailButton, statusLabel])
     }
