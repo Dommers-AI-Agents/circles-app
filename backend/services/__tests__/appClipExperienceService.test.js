@@ -19,7 +19,7 @@ describe('appClipExperienceService copy', () => {
     const register = svc.copyFor({ venueName: 'X', earnRate: 25 }, 'register');
     expect(register.subtitle).toBe('Earn 25 points every visit. Save it to your map.');
     const window = svc.copyFor({ venueName: 'X' }, 'window');
-    expect(window.subtitle).toMatch(/Save this spot/);
+    expect(window.subtitle).toBe('Love it here? Save us to your map & share with friends.');
     expect(register.subtitle.length).toBeLessThanOrEqual(svc.SUBTITLE_MAX);
     expect(window.subtitle.length).toBeLessThanOrEqual(svc.SUBTITLE_MAX);
   });

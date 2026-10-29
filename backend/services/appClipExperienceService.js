@@ -92,11 +92,24 @@ function copyFor(venue, kind, { live = true } = {}) {
       lead: first ? clip(rewardProgress.firstRewardLine(first), 44) : 'Scan at the register, collect points, redeem them here.'
     };
   }
+  if (kind === 'register') {
+    // Before loyalty is live. Its own words (unchanged since 2026-10-29), so
+    // a window-copy change never recreates these cards and resets Apple's
+    // pickup of them
+    return {
+      title: name,
+      subtitle: clip('Save this spot to your map and share it with friends.', SUBTITLE_MAX),
+      pill: 'Save this spot',
+      lead: 'Keep it on your map and see what friends think.'
+    };
+  }
+  // The window sticker, in the sign's own voice (Wes, 2026-10-29). Apple's
+  // subtitle limit is 56 characters, hence "&".
   return {
     title: name,
-    subtitle: clip('Save this spot to your map and share it with friends.', SUBTITLE_MAX),
-    pill: 'Save this spot',
-    lead: 'Keep it on your map and see what friends think.'
+    subtitle: clip('Love it here? Save us to your map & share with friends.', SUBTITLE_MAX),
+    pill: 'Love it here? Save us.',
+    lead: 'Keep us on your map and share us with friends.'
   };
 }
 
@@ -287,7 +300,10 @@ function fingerprintFor(venue, kind, code, coverUrl, { live = true } = {}) {
   const points = rewarding ? rewardService.effectiveEarnRate(venue) : '';
   const first = rewarding ? rewardProgress.firstReward(venue.offers) : null;
   const reward = first ? `${first.pointsCost}:${first.title}` : '';
-  return crypto.createHash('md5').update([venue.venueName, points, reward, coverUrl || '', kind, code, `v${HEADER_VERSION}`].join('|')).digest('hex');
+  // The card's words too: a copy change republishes without a version bump
+  const copy = copyFor(venue, kind, { live });
+  const words = [copy.subtitle, copy.pill, copy.lead].join('/');
+  return crypto.createHash('md5').update([venue.venueName, points, reward, words, coverUrl || '', kind, code, `v${HEADER_VERSION}`].join('|')).digest('hex');
 }
 
 /// Creates or refreshes the store's experiences. Returns what's on the venue
