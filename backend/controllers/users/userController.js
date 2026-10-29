@@ -2,6 +2,7 @@
 // profile read/update, user search, circle order, public circles, daily summary
 // Split out of firebaseUserController.js (handlers unchanged).
 const { getFirestore } = require('../../config/firebase');
+const { getAcceptedConnectionSnapshots } = require('../../utils/networkAccess');
 const { sendServiceError } = require('../../utils/serviceError');
 const { maskEmail } = require('../../utils/text');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../../models/FirestoreModels');
@@ -151,28 +152,10 @@ exports.getUser = async (req, res, next) => {
       // Calculate mutual connections count
       try {
         // Get current user's connections
-        const [currentUserConnections1, currentUserConnections2] = await Promise.all([
-          db.collection(COLLECTIONS.CONNECTIONS)
-            .where('userId', '==', req.user.uid)
-            .where('status', '==', 'accepted')
-            .get(),
-          db.collection(COLLECTIONS.CONNECTIONS)
-            .where('connectedUserId', '==', req.user.uid)
-            .where('status', '==', 'accepted')
-            .get()
-        ]);
+        const [currentUserConnections1, currentUserConnections2] = await getAcceptedConnectionSnapshots(req.user.uid, { first: 'userId' });
         
         // Get target user's connections
-        const [targetUserConnections1, targetUserConnections2] = await Promise.all([
-          db.collection(COLLECTIONS.CONNECTIONS)
-            .where('userId', '==', userId)
-            .where('status', '==', 'accepted')
-            .get(),
-          db.collection(COLLECTIONS.CONNECTIONS)
-            .where('connectedUserId', '==', userId)
-            .where('status', '==', 'accepted')
-            .get()
-        ]);
+        const [targetUserConnections1, targetUserConnections2] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
         
         // Extract connection IDs for current user
         const currentUserConnectionIds = new Set();

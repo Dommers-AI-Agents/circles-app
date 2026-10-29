@@ -3,6 +3,7 @@
 // Split from services/activityService.js (Phase 6); that path is now a barrel.
 
 const { admin, getFirestore } = require('../../config/firebase');
+const { getAcceptedConnectionSnapshots } = require('../../utils/networkAccess');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const db = getFirestore();
 const { createActivity } = require('./createActivity');
@@ -27,16 +28,7 @@ const trackReaction = async (targetType, targetId, targetName, reaction, reacted
     );
     
     // Send SSE events to connections
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', reactedByUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', reactedByUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(reactedByUserId, { first: 'connectedUserId' });
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     
@@ -97,16 +89,7 @@ const trackComment = async (targetType, targetId, targetName, commentId, comment
     );
     
     // Send SSE events to connections
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', commentedByUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', commentedByUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(commentedByUserId, { first: 'connectedUserId' });
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     
@@ -188,16 +171,7 @@ const trackSuggestionSent = async (suggestionId, placeId, placeName, fromUserId,
     });
 
     // Send activity to connections who have opted in
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', fromUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', fromUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(fromUserId, { first: 'connectedUserId' });
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     
@@ -404,16 +378,7 @@ const trackUserFollowed = async (followedUserId, followerUserId, action = 'follo
     }
 
     // Send activity to mutual connections who have opted in
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', followerUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', followerUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(followerUserId, { first: 'connectedUserId' });
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     
@@ -493,16 +458,7 @@ const trackProfileUpdated = async (userId, updateType = 'profile', updateDetails
     );
 
     // Send activity to connections who have opted in
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(userId, { first: 'connectedUserId' });
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     
@@ -582,16 +538,7 @@ const trackUserActivity = async (userId, activityType = 'active', metadata = {})
 
     // Send activity to connections who have opted in (only for significant activities)
     if (['joined', 'milestone'].includes(activityType)) {
-      const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('connectedUserId', '==', userId)
-          .where('status', '==', 'accepted')
-          .get(),
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', userId)
-          .where('status', '==', 'accepted')
-          .get()
-      ]);
+      const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(userId, { first: 'connectedUserId' });
       
       const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
       

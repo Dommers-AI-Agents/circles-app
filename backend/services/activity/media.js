@@ -3,6 +3,7 @@
 // Split from services/activityService.js (Phase 6); that path is now a barrel.
 
 const { getFirestore } = require('../../config/firebase');
+const { getAcceptedConnectionSnapshots } = require('../../utils/networkAccess');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const db = getFirestore();
 const { createActivity } = require('./createActivity');
@@ -54,16 +55,7 @@ const trackMomentUpload = async (momentId, placeId, placeName, uploadedByUserId)
     }
     
     // Send SSE events to connections and followers
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', uploadedByUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', uploadedByUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(uploadedByUserId, { first: 'connectedUserId' });
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     
@@ -194,16 +186,7 @@ const trackVideoLiked = async (videoId, placeId, placeName, likedByUserId, video
     });
 
     // Send activity to connections who have opted in
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', likedByUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', likedByUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(likedByUserId, { first: 'connectedUserId' });
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     

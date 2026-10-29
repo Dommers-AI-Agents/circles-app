@@ -1,5 +1,7 @@
 // backend/controllers/suggestionController.js
 const { getFirestore } = require('../config/firebase');
+const { getConnectionPairSnapshots } = require('../utils/networkAccess');
+const { getAcceptedConnectionSnapshots } = require('../utils/networkAccess');
 const { sendServiceError } = require('../utils/serviceError');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { FieldValue, FieldPath } = require('firebase-admin/firestore');
@@ -118,15 +120,7 @@ const createNewSuggestion = async (req, res) => {
         await notificationService.notifyDirectedSuggestion(suggestion, suggestionData.recipientId);
       } else {
         // Broadcast: fan out to the author's connections (legacy behavior)
-        const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', userId)
-          .where('status', '==', 'accepted')
-          .get();
-
-        const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
-          .where('connectedUserId', '==', userId)
-          .where('status', '==', 'accepted')
-          .get();
+        const [connectionsQuery1, connectionsQuery2] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
 
         const notifyUserIds = new Set();
 
@@ -168,15 +162,7 @@ const getNetworkSuggestions = async (req, res) => {
     const now = new Date();
 
     // Get all connections for the current user
-    const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', userId)
-      .where('status', '==', 'accepted')
-      .get();
-      
-    const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('connectedUserId', '==', userId)
-      .where('status', '==', 'accepted')
-      .get();
+    const [connectionsQuery1, connectionsQuery2] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
 
     // Get connected user IDs
     const connectedUserIds = new Set();
@@ -619,17 +605,7 @@ const getSuggestionsByUser = async (req, res) => {
     const targetUserId = req.params.userId;
     
     // Verify that the requesting user is connected to the target user
-    const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', requestingUserId)
-      .where('connectedUserId', '==', targetUserId)
-      .where('status', '==', 'accepted')
-      .get();
-      
-    const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', targetUserId)
-      .where('connectedUserId', '==', requestingUserId)
-      .where('status', '==', 'accepted')
-      .get();
+    const [connection1, connection2] = await getConnectionPairSnapshots(requestingUserId, targetUserId);
     
     const isConnected = !connection1.empty || !connection2.empty;
     const isSelf = requestingUserId === targetUserId;

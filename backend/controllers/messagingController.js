@@ -1,5 +1,6 @@
 // backend/controllers/messagingController.js
 const { getFirestore } = require('../config/firebase');
+const { getConnectionPairSnapshots } = require('../utils/networkAccess');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { 
   COLLECTIONS, 
@@ -225,18 +226,7 @@ const getOrCreateDirectConversation = async (req, res) => {
 
     // Check if users are connected (LinkedIn-style: only connections can message)
     console.log('🔒 Checking if users are connected before allowing messaging');
-    const [connection1, connection2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', currentUserId)
-        .where('connectedUserId', '==', targetUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', targetUserId)
-        .where('connectedUserId', '==', currentUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connection1, connection2] = await getConnectionPairSnapshots(currentUserId, targetUserId);
 
     const isConnected = !connection1.empty || !connection2.empty;
     

@@ -1,4 +1,5 @@
 const { getFirestore, FieldValue } = require('../config/firebase');
+const { getAcceptedConnectionSnapshots } = require('../utils/networkAccess');
 const notificationService = require('./notificationService');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { runResumableJob } = require('../utils/firestorePaging');
@@ -35,16 +36,7 @@ class EngagementNotificationService {
       const actorName = actor.displayName || 'Someone in your network';
       
       // Get all connections of this user
-      const [connectionsAsUser, connectionsAsConnected] = await Promise.all([
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', actorUserId)
-          .where('status', '==', 'accepted')
-          .get(),
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('connectedUserId', '==', actorUserId)
-          .where('status', '==', 'accepted')
-          .get()
-      ]);
+      const [connectionsAsUser, connectionsAsConnected] = await getAcceptedConnectionSnapshots(actorUserId, { first: 'userId' });
       
       const connectionUserIds = new Set();
       connectionsAsUser.forEach(doc => {
@@ -604,16 +596,7 @@ class EngagementNotificationService {
   }
   
   async getUserConnectionsCount(userId) {
-    const [asUser, asConnected] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [asUser, asConnected] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
     
     return asUser.size + asConnected.size;
   }
@@ -758,16 +741,7 @@ class EngagementNotificationService {
   }
   
   async getUserConnectionIds(userId) {
-    const [asUser, asConnected] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [asUser, asConnected] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
     
     const ids = new Set();
     asUser.forEach(doc => {

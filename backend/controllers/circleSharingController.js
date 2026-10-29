@@ -1,5 +1,7 @@
 // backend/controllers/circleSharingController.js
 const { admin, getFirestore } = require('../config/firebase');
+const { getConnectionPairSnapshots } = require('../utils/networkAccess');
+const { getAcceptedConnectionSnapshots } = require('../utils/networkAccess');
 const { sendServiceError } = require('../utils/serviceError');
 const { queryInChunks } = require('../utils/firestoreChunks');
 const { sortCirclesByUserOrder } = require('../utils/circleOrder');
@@ -437,15 +439,7 @@ const getCirclesSharedWithMe = async (req, res) => {
     const userId = req.user.uid;
 
     // Get all connections for the current user (where they are either userId or connectedUserId)
-    const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', userId)
-      .where('status', '==', 'accepted')
-      .get();
-      
-    const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('connectedUserId', '==', userId)
-      .where('status', '==', 'accepted')
-      .get();
+    const [connectionsQuery1, connectionsQuery2] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
 
     // Get connected user IDs
     const connectedUserIds = new Set();
@@ -670,15 +664,7 @@ const getUsersWithCircles = async (req, res) => {
     console.log('🔍 Getting users with circles for:', userId);
 
     // Get all connections for the current user
-    const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', userId)
-      .where('status', '==', 'accepted')
-      .get();
-      
-    const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('connectedUserId', '==', userId)
-      .where('status', '==', 'accepted')
-      .get();
+    const [connectionsQuery1, connectionsQuery2] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
 
     // Get connected user IDs
     const connectedUserIds = new Set();
@@ -758,17 +744,7 @@ const getUserCircles = async (req, res) => {
     console.log('getUserCircles called:', { currentUserId, targetUserId });
 
     // Check if users are connected OR if current user is following target user
-    const connection1 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', currentUserId)
-      .where('connectedUserId', '==', targetUserId)
-      .where('status', '==', 'accepted')
-      .get();
-      
-    const connection2 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', targetUserId)
-      .where('connectedUserId', '==', currentUserId)
-      .where('status', '==', 'accepted')
-      .get();
+    const [connection1, connection2] = await getConnectionPairSnapshots(currentUserId, targetUserId);
 
     const isConnected = !connection1.empty || !connection2.empty;
     let isFollowing = false;

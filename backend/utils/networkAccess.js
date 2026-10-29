@@ -23,8 +23,17 @@ async function getConnectedUserIds(userId) {
   return memo(`connections:${userId}`, () => readConnectedUserIds(userId));
 }
 
-async function readConnectedUserIds(userId) {
-  const [connectionsQuery1, connectionsQuery2] = await Promise.all([
+/**
+ * The user's accepted connection docs, both directions, as the two query
+ * snapshots — for callers that need the docs themselves (they write activity
+ * onto each connection). `first` says which direction comes first, matching
+ * the order the caller's code expects. Read once per request (requestMemo).
+ * This replaced ~35 hand-written copies of the same two queries.
+ *
+ * @returns {Promise<[QuerySnapshot, QuerySnapshot]>}
+ */
+async function getAcceptedConnectionSnapshots(userId, { first = 'userId' } = {}) {
+  const [byUserId, byConnectedUserId] = await memo(`connectionSnapshots:${userId}`, () => Promise.all([
     db.collection(COLLECTIONS.CONNECTIONS)
       .where('userId', '==', userId)
       .where('status', '==', 'accepted')
@@ -33,7 +42,36 @@ async function readConnectedUserIds(userId) {
       .where('connectedUserId', '==', userId)
       .where('status', '==', 'accepted')
       .get()
-  ]);
+  ]));
+  return first === 'connectedUserId' ? [byConnectedUserId, byUserId] : [byUserId, byConnectedUserId];
+}
+
+/**
+ * The accepted connection between two people, as the two directional query
+ * snapshots [a→b, b→a] — `!x.empty || !y.empty` is "connected", and callers
+ * that need the connection doc read it from whichever is non-empty. Once per
+ * request (requestMemo).
+ */
+async function getConnectionPairSnapshots(a, b) {
+  const query = (from, to) => db.collection(COLLECTIONS.CONNECTIONS)
+    .where('userId', '==', from).where('connectedUserId', '==', to)
+    .where('status', '==', 'accepted').get();
+  const [ab, ba] = await memo(`connectionPair:${[a, b].sort().join('|')}`, () => {
+    const [x, y] = [a, b].sort();
+    return Promise.all([query(x, y), query(y, x)]);
+  });
+  // Memo is keyed on the unordered pair; hand back in the caller's order
+  return [a, b].sort()[0] === a ? [ab, ba] : [ba, ab];
+}
+
+/** Accepted connection in either direction. */
+async function areConnected(a, b) {
+  const [ab, ba] = await getConnectionPairSnapshots(a, b);
+  return !ab.empty || !ba.empty;
+}
+
+async function readConnectedUserIds(userId) {
+  const [connectionsQuery1, connectionsQuery2] = await getAcceptedConnectionSnapshots(userId);
 
   const connectedUserIds = new Set();
   connectionsQuery1.docs.forEach(doc => connectedUserIds.add(doc.data().connectedUserId));
@@ -194,4 +232,4 @@ async function readAllowedCircleIds(userId, { connectionId = null, mapOnly = fal
   return { circleIds: Array.from(circleIds) };
 }
 
-module.exports = { getAllowedCircleIds, getConnectedUserIds, getUserDocOnce, getFollowedOnlyUserIds, getInnerCircleGrantorIds, getInnerCircleGrantorLists };
+module.exports = { getAllowedCircleIds, getConnectedUserIds, getAcceptedConnectionSnapshots, getConnectionPairSnapshots, areConnected, getUserDocOnce, getFollowedOnlyUserIds, getInnerCircleGrantorIds, getInnerCircleGrantorLists };

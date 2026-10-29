@@ -2,6 +2,8 @@
 // Place save records: list by circle(s), get, create, update, delete, search, address edit, reorder, move, add-existing, my-save lookups
 // Split out of firebasePlaceController.js (handlers unchanged).
 const { getFirestore } = require('../../config/firebase');
+const { getConnectionPairSnapshots } = require('../../utils/networkAccess');
+const { getAcceptedConnectionSnapshots } = require('../../utils/networkAccess');
 const { queryInChunks } = require('../../utils/firestoreChunks');
 const { COLLECTIONS, validatePlace, serializeDoc, serializeQuerySnapshot } = require('../../models/FirestoreModels');
 const geofire = require('geofire-common');
@@ -348,18 +350,7 @@ exports.getPlacesByCircleIdPublic = async (req, res, next) => {
     
     if (userId && circle.owner !== userId) {
       // Authenticated user viewing public circle - check for activity records
-      const [connection1, connection2] = await Promise.all([
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', userId)
-          .where('connectedUserId', '==', circle.owner)
-          .where('status', '==', 'accepted')
-          .get(),
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', circle.owner)
-          .where('connectedUserId', '==', userId)
-          .where('status', '==', 'accepted')
-          .get()
-      ]);
+      const [connection1, connection2] = await getConnectionPairSnapshots(userId, circle.owner);
       
       // Combine activities from both connection documents
       const connections = [...connection1.docs, ...connection2.docs];
@@ -1714,16 +1705,7 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     // normalized ids. The previous per-circle exact-match connection queries
     // silently denied myNetwork circles whose owner id used a different format
     // than the connection doc (e.g. Apple Sign-In complex ids).
-    const [connSnap1, connSnap2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', currentUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', currentUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connSnap1, connSnap2] = await getAcceptedConnectionSnapshots(currentUserId, { first: 'userId' });
     const connectedUserIds = new Set();
     connSnap1.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().connectedUserId)));
     connSnap2.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().userId)));

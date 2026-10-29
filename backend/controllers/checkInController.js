@@ -1,5 +1,6 @@
 // backend/controllers/checkInController.js
 const { getFirestore, FieldValue, GeoPoint } = require('../config/firebase');
+const { getAcceptedConnectionSnapshots } = require('../utils/networkAccess');
 const { sendServiceError } = require('../utils/serviceError');
 const { firstPhotoUrl, venuePhotoUrl, resolvePlacePhoto } = require('../services/placePhoto');
 const { 
@@ -810,16 +811,7 @@ exports.getCheckInsAtPlace = async (req, res) => {
 
 // Accepted connections of a user (both directions), plus the user
 async function acceptedConnectionIds(userId) {
-  const [connections1, connections2] = await Promise.all([
-    db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', userId)
-      .where('status', '==', 'accepted')
-      .get(),
-    db.collection(COLLECTIONS.CONNECTIONS)
-      .where('connectedUserId', '==', userId)
-      .where('status', '==', 'accepted')
-      .get()
-  ]);
+  const [connections1, connections2] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
   const connectionIds = new Set([userId]); // Include self
   connections1.docs.forEach(doc => connectionIds.add(doc.data().connectedUserId));
   connections2.docs.forEach(doc => connectionIds.add(doc.data().userId));

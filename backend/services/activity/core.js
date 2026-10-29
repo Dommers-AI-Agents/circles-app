@@ -3,6 +3,7 @@
 // Split from services/activityService.js (Phase 6); that path is now a barrel.
 
 const { admin, getFirestore } = require('../../config/firebase');
+const { getAcceptedConnectionSnapshots } = require('../../utils/networkAccess');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const db = getFirestore();
 
@@ -33,16 +34,7 @@ const logActivity = async (activityData) => {
     // If visibility is connections, update connection documents
     if (visibility === 'connections') {
       // Get all connections of the actor
-      const [connections1, connections2] = await Promise.all([
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', actorId)
-          .where('status', '==', 'accepted')
-          .get(),
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('connectedUserId', '==', actorId)
-          .where('status', '==', 'accepted')
-          .get()
-      ]);
+      const [connections1, connections2] = await getAcceptedConnectionSnapshots(actorId, { first: 'userId' });
       
       const batch = db.batch();
       const allConnections = [...connections1.docs, ...connections2.docs];

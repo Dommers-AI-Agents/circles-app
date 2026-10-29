@@ -23,18 +23,8 @@ const db = getFirestore();
 
 const listIncludes = (list, userId) => (list || []).some(id => isSameUser(id, userId));
 
-/** Accepted connection in either direction. */
-const areConnected = async (a, b) => {
-  const [outgoing, incoming] = await Promise.all([
-    db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', a).where('connectedUserId', '==', b)
-      .where('status', '==', 'accepted').get(),
-    db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', b).where('connectedUserId', '==', a)
-      .where('status', '==', 'accepted').get()
-  ]);
-  return !outgoing.empty || !incoming.empty;
-};
+/** Accepted connection in either direction (shared helper, utils/networkAccess). */
+const areConnected = (a, b) => require('../utils/networkAccess').areConnected(a, b);
 
 /**
  * @param {object} circle   the circle doc (serialized or raw)

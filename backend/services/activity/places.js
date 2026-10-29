@@ -3,6 +3,7 @@
 // Split from services/activityService.js (Phase 6); that path is now a barrel.
 
 const { admin, getFirestore } = require('../../config/firebase');
+const { getAcceptedConnectionSnapshots } = require('../../utils/networkAccess');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const db = getFirestore();
 const { createActivity } = require('./createActivity');
@@ -66,16 +67,7 @@ const trackPlaceAdded = async (placeId, circleId, placeName, circleName, addedBy
     }
     
     // Get all connections of the user who added the place (both directions)
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', addedByUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', addedByUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(addedByUserId, { first: 'connectedUserId' });
 
     const batch = db.batch();
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
@@ -357,16 +349,7 @@ const trackPlaceLiked = async (placeId, placeName, circleId, circleName, likedBy
     });
 
     // Send activity to connections who have opted in
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', likedByUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', likedByUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(likedByUserId, { first: 'connectedUserId' });
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     // The actor's own "who can see my activity" grid decides who is told.
@@ -452,16 +435,7 @@ const trackPlaceDiscovered = async (placeId, placeName, discoveredByUserId, disc
     );
 
     // Send activity to connections who have opted in
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', discoveredByUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', discoveredByUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(discoveredByUserId, { first: 'connectedUserId' });
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     
@@ -542,16 +516,7 @@ const trackCheckIn = async (placeId, placeName, circleId, circleName, checkedInB
     );
     
     // Send SSE events to connections
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', checkedInByUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', checkedInByUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(checkedInByUserId, { first: 'connectedUserId' });
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     
@@ -641,16 +606,7 @@ const trackPhotoUploaded = async (photoId, placeId, placeName, photoUrl, uploade
     );
     
     // Send SSE events to connections and followers
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', uploadedByUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', uploadedByUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(uploadedByUserId, { first: 'connectedUserId' });
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     // The actor's own "who can see my activity" grid decides who is told.
@@ -769,16 +725,7 @@ const trackGlobalPlaceLiked = async (uploadId, globalPlaceId, placeName, likedBy
     });
 
     // Send activity to connections who have opted in
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', likedByUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', likedByUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(likedByUserId, { first: 'connectedUserId' });
     
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
     // The actor's own "who can see my activity" grid decides who is told.
@@ -848,16 +795,7 @@ const trackGlobalPlaceLiked = async (uploadId, globalPlaceId, placeName, likedBy
 const markPlaceAsViewed = async (userId, placeId, circleId) => {
   try {
     // Get all connections for this user
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
 
     const batch = db.batch();
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];

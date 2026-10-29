@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const { getAcceptedConnectionSnapshots } = require('../utils/networkAccess');
 const flags = require('../config/flags');
 const { getFirestore } = require('../config/firebase');
 const notificationService = require('./notificationService');
@@ -291,16 +292,7 @@ class ScheduledNotifications {
   // userId/connectedUserId fields — NOT a participants array (that field is
   // on circleGroups); the old participants query silently matched nothing.
   async getAcceptedConnectionIds(userId) {
-    const [asUser, asConnected] = await Promise.all([
-      db.collection('connections')
-        .where('userId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection('connections')
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [asUser, asConnected] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
     const ids = new Set();
     asUser.forEach(doc => ids.add(doc.data().connectedUserId));
     asConnected.forEach(doc => ids.add(doc.data().userId));

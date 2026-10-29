@@ -3,6 +3,7 @@
 // Split out of videoController.js (handlers unchanged).
 // backend/controllers/videoController.js
 const { getFirestore, FieldValue, admin } = require('../../config/firebase');
+const { getAcceptedConnectionSnapshots } = require('../../utils/networkAccess');
 const { sendServiceError } = require('../../utils/serviceError');
 const { getStorage } = require('firebase-admin/storage');
 const { COLLECTIONS, createPlaceVideo, createUserVideoQuota, validatePlaceVideo, serializeDoc } = require('../../models/FirestoreModels');
@@ -290,12 +291,7 @@ async function resolveTaggedConnections(userId, requestedIds) {
     .slice(0, MAX_MOMENT_TAGS);
   if (ids.length === 0) return { taggedUserIds: [], taggedUsers: [] };
 
-  const [outgoing, incoming] = await Promise.all([
-    db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', userId).where('status', '==', 'accepted').get(),
-    db.collection(COLLECTIONS.CONNECTIONS)
-      .where('connectedUserId', '==', userId).where('status', '==', 'accepted').get()
-  ]);
+  const [outgoing, incoming] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
   const connected = new Set();
   outgoing.forEach(doc => connected.add(doc.data().connectedUserId));
   incoming.forEach(doc => connected.add(doc.data().userId));

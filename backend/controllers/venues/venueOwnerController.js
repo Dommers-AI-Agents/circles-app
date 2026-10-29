@@ -2,6 +2,7 @@
 // Owner dashboard: requireVenueOwner middleware, my venues, dashboard, audience, cover photo, venue info/settings, register code
 // Split out of rewardController.js (handlers unchanged).
 const { getFirestore } = require('../../config/firebase');
+const { getAcceptedConnectionSnapshots } = require('../../utils/networkAccess');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { validateEarnRate, STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const venueDetails = require('../../services/venueDetailsService');
@@ -311,16 +312,7 @@ exports.getVenueSavers = async (req, res) => {
       docs.forEach((doc) => { if (doc.exists) circlesById.set(doc.id, doc.data()); });
     }
 
-    const [outgoing, incomingAccepted] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', ownerId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', ownerId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [outgoing, incomingAccepted] = await getAcceptedConnectionSnapshots(ownerId, { first: 'userId' });
     const connectedIds = new Set();
     outgoing.forEach((doc) => connectedIds.add(normalizeUserId(doc.data().connectedUserId)));
     incomingAccepted.forEach((doc) => connectedIds.add(normalizeUserId(doc.data().userId)));

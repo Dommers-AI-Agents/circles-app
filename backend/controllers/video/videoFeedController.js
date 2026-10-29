@@ -3,6 +3,7 @@
 // Split out of videoController.js (handlers unchanged).
 // backend/controllers/videoController.js
 const { getFirestore, FieldValue } = require('../../config/firebase');
+const { getAcceptedConnectionSnapshots } = require('../../utils/networkAccess');
 const { sendServiceError } = require('../../utils/serviceError');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../../models/FirestoreModels');
 // Disappearing moments that ran out never show (the sweep deletes them soon after)
@@ -155,16 +156,7 @@ exports.getVideoFeed = async (req, res) => {
     const { limit, offset } = clampPagination(req.query, FEED_PAGINATION); // security audit 2026-10-01
     
     // Get user's connections
-    const [connections1, connections2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connections1, connections2] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
     
     const connectionIds = new Set([userId]); // Include self
     connections1.docs.forEach(doc => connectionIds.add(doc.data().connectedUserId));

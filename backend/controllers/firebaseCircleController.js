@@ -1,5 +1,7 @@
 // backend/controllers/firebaseCircleController.js
 const { getFirestore } = require('../config/firebase');
+const { getConnectionPairSnapshots } = require('../utils/networkAccess');
+const { getAcceptedConnectionSnapshots } = require('../utils/networkAccess');
 const circleAdvisor = require('../services/circleAdvisor');
 const circleAdvisorQuota = require('../services/circleAdvisorQuota');
 const { 
@@ -183,16 +185,7 @@ exports.getSharedCircles = async (req, res, next) => {
     );
     
     // Get connections to check for new activities
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', currentUserId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', currentUserId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(currentUserId, { first: 'userId' });
     
     // Collect all recent activities from connections
     const allActivities = [];
@@ -293,18 +286,7 @@ exports.getCircle = async (req, res, next) => {
     // Check for new places in this circle
     if (!isOwner && circle.privacy !== 'private') {
       // Get connection between current user and circle owner
-      const [connectionSnapshot1, connectionSnapshot2] = await Promise.all([
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', req.user.uid)
-          .where('connectedUserId', '==', circle.owner)
-          .where('status', '==', 'accepted')
-          .get(),
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', circle.owner)
-          .where('connectedUserId', '==', req.user.uid)
-          .where('status', '==', 'accepted')
-          .get()
-      ]);
+      const [connectionSnapshot1, connectionSnapshot2] = await getConnectionPairSnapshots(req.user.uid, circle.owner);
       
       const connectionDoc = !connectionSnapshot1.empty ? connectionSnapshot1.docs[0] : 
                            (!connectionSnapshot2.empty ? connectionSnapshot2.docs[0] : null);

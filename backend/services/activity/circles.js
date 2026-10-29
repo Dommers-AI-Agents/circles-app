@@ -3,6 +3,7 @@
 // Split from services/activityService.js (Phase 6); that path is now a barrel.
 
 const { admin, getFirestore } = require('../../config/firebase');
+const { getAcceptedConnectionSnapshots } = require('../../utils/networkAccess');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const db = getFirestore();
 const { createActivity } = require('./createActivity');
@@ -55,16 +56,7 @@ const trackCircleCreated = async (circleId, createdByUserId) => {
     // the owner is entitled to them
     if (audience.emits) {
       // Get all connections of the user who created the circle (both directions)
-      const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('connectedUserId', '==', createdByUserId)
-          .where('status', '==', 'accepted')
-          .get(),
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', createdByUserId)
-          .where('status', '==', 'accepted')
-          .get()
-      ]);
+      const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(createdByUserId, { first: 'connectedUserId' });
 
       const batch = db.batch();
       const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];
@@ -335,16 +327,7 @@ const trackCircleCommented = async (circleId, commentedByUserId, circleOwnerId, 
 const markCircleActivitiesAsViewed = async (userId, circleId) => {
   try {
     // Get all connections for this user
-    const [connectionsSnapshot1, connectionsSnapshot2] = await Promise.all([
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('userId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get(),
-      db.collection(COLLECTIONS.CONNECTIONS)
-        .where('connectedUserId', '==', userId)
-        .where('status', '==', 'accepted')
-        .get()
-    ]);
+    const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
 
     const batch = db.batch();
     const allConnections = [...connectionsSnapshot1.docs, ...connectionsSnapshot2.docs];

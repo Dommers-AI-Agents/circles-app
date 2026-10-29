@@ -1,4 +1,5 @@
 const { getFirestore, FieldValue } = require('../config/firebase');
+const { getAcceptedConnectionSnapshots } = require('../utils/networkAccess');
 const { localClock: userLocalClock } = require('../utils/localClock');
 const notificationService = require('./notificationService');
 const emailService = require('./emailService');
@@ -173,16 +174,7 @@ class DailySummaryService {
 
     try {
       // Get user's connections (need to check both userId and connectedUserId fields)
-      const [connectionsAsUser, connectionsAsConnected] = await Promise.all([
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('userId', '==', userId)
-          .where('status', '==', 'accepted')
-          .get(),
-        db.collection(COLLECTIONS.CONNECTIONS)
-          .where('connectedUserId', '==', userId)
-          .where('status', '==', 'accepted')
-          .get()
-      ]);
+      const [connectionsAsUser, connectionsAsConnected] = await getAcceptedConnectionSnapshots(userId, { first: 'userId' });
 
       const connectionIds = [];
       
