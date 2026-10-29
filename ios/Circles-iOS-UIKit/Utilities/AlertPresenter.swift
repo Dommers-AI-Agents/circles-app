@@ -109,8 +109,28 @@ class AlertPresenter {
         viewController.present(alert, animated: true)
     }
     
+    // MARK: - General Alerts
+
+    /// An alert with exactly the buttons given, in order — for choices the
+    /// fixed helpers above can't spell (Retry + Logout, a single custom
+    /// button). Unlike `showActionSheet`, no Cancel is added.
+    static func showAlert(
+        title: String?,
+        message: String?,
+        actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)],
+        from viewController: UIViewController
+    ) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        for action in actions {
+            alert.addAction(UIAlertAction(title: action.title, style: action.style) { _ in
+                action.handler()
+            })
+        }
+        viewController.present(alert, animated: true)
+    }
+
     // MARK: - Action Sheets
-    
+
     /// Shows an action sheet with multiple options
     static func showActionSheet(
         title: String? = nil,
