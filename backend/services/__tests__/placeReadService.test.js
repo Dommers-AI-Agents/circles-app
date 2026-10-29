@@ -124,18 +124,23 @@ describe('buildAddedByUserMap', () => {
   beforeEach(() => { mockGet.mockReset(); mockDoc.mockClear(); });
 
   it('keys each user by doc id AND by the raw addedBy value, unwrapping provider.uid.suffix ids', async () => {
-    mockGet.mockImplementation(async () => ({
-      id: 'abc', exists: true, data: () => ({ displayName: 'Wes', profilePicture: 'pic' })
-    }));
+    // One batched getAll for every adder (was a doc().get() per adder)
+    mockDoc.mockImplementation((id) => ({ id, get: mockGet }));
+    mockGetAll.mockReset();
+    mockGetAll.mockImplementation(async (...refs) => refs.filter(r => r && r.id).map(r => ({
+      id: r.id, exists: true, data: () => ({ displayName: 'Wes', profilePicture: 'pic' })
+    })));
     const map = await svc.buildAddedByUserMap([{ addedBy: 'google.abc.1' }, { addedBy: 'google.abc.1' }, { addedBy: null }]);
     expect(mockDoc).toHaveBeenCalledWith('abc');
     expect(mockDoc).toHaveBeenCalledTimes(1);
+    expect(mockGetAll).toHaveBeenCalledTimes(1);
     expect(map.get('abc')).toEqual({ id: 'abc', displayName: 'Wes', profilePicture: 'pic' });
     expect(map.get('google.abc.1')).toEqual(map.get('abc'));
   });
 
   it('skips users whose doc is missing', async () => {
-    mockGet.mockResolvedValue({ exists: false });
+    mockGetAll.mockReset();
+    mockGetAll.mockImplementation(async (...refs) => refs.filter(r => r && r.id).map(r => ({ id: r.id, exists: false })));
     const map = await svc.buildAddedByUserMap([{ addedBy: 'ghost' }]);
     expect(map.size).toBe(0);
   });

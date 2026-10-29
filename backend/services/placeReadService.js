@@ -147,17 +147,18 @@ const buildAddedByUserMap = async (places) => {
   const userMap = new Map();
   if (userIds.length === 0) return userMap;
 
-  const userDocs = await Promise.all(userIds.map(userId => {
-    // Handle complex ID format if needed (e.g. "provider.uid.suffix")
-    let actualUserId = userId;
+  // Handle complex ID format if needed (e.g. "provider.uid.suffix")
+  const docIdOf = (userId) => {
     if (userId.includes('.')) {
       const parts = userId.split('.');
-      if (parts.length >= 2) {
-        actualUserId = parts[1];
-      }
+      if (parts.length >= 2) return parts[1];
     }
-    return db.collection(COLLECTIONS.USERS).doc(actualUserId).get();
-  }));
+    return userId;
+  };
+  // One batched read (was a request per adder)
+  const byId = await require('../utils/batchGet').getDocsById(COLLECTIONS.USERS, userIds.map(docIdOf),
+    { fields: ['displayName', 'profilePicture'] });
+  const userDocs = userIds.map(userId => byId.get(docIdOf(userId)) || { exists: false });
 
   userDocs.forEach((doc, index) => {
     if (!doc.exists) return;

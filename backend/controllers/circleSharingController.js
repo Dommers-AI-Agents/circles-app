@@ -1,5 +1,6 @@
 // backend/controllers/circleSharingController.js
 const { admin, getFirestore } = require('../config/firebase');
+const { queryInChunks } = require('../utils/firestoreChunks');
 const { sortCirclesByUserOrder } = require('../utils/circleOrder');
 const { 
   COLLECTIONS, 
@@ -378,11 +379,8 @@ const getSharedCircles = async (req, res) => {
     });
 
     // Fetch circle details
-    const circlePromises = Array.from(circleIds).map(id => 
-      db.collection(COLLECTIONS.CIRCLES).doc(id).get()
-    );
-    
-    const circleDocs = await Promise.all(circlePromises);
+    // One batched read (was a request per circle)
+    const circleDocs = [...(await require('../utils/batchGet').getDocsById(COLLECTIONS.CIRCLES, circleIds)).values()];
     
     // Build response with share data
     const result = circleDocs
@@ -852,26 +850,8 @@ const getUserCircles = async (req, res) => {
 
     const userData = serializeDoc(userDoc);
 
-    // Get the user's connections count
-    const connectionsQuery1 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', targetUserId)
-      .where('status', '==', 'accepted')
-      .get();
-      
-    const connectionsQuery2 = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('connectedUserId', '==', targetUserId)
-      .where('status', '==', 'accepted')
-      .get();
-    
-    // Count unique connections (avoid duplicates)
-    const connectionIds = new Set();
-    connectionsQuery1.docs.forEach(doc => {
-      connectionIds.add(doc.data().connectedUserId);
-    });
-    connectionsQuery2.docs.forEach(doc => {
-      connectionIds.add(doc.data().userId);
-    });
-    
+    // The user's connections count (shared helper, both directions)
+    const connectionIds = await require('../utils/networkAccess').getConnectedUserIds(targetUserId);
     userData.connectionsCount = connectionIds.size;
 
     // Check if current user is following target user
@@ -956,10 +936,25 @@ const getUserCircles = async (req, res) => {
     // the person viewing this profile is never the owner of these places
     const { isPlaceVisibleToViewer } = require('../services/placeReadService');
 
-    // Fetch places for each circle
+    // Everyone else sees this person's PUBLIC card — the whole user doc
+    // (email, phone, device tokens) used to ride along here and in data.user.
+    const { projectPublicUser } = require('../services/publicUserProjection');
+    const publicUser = projectPublicUser(userData, ['isFollowing', 'followsYou'], { viewerId: currentUserId });
+
+    // Every viewable circle's places in chunked circleId-in reads (was one
+    // query per circle), grouped by circle, newest first
+    const viewableIds = sortedDocs.filter(doc => canViewCircle(doc.data(), currentUserId, viewerCtx)).map(doc => doc.id);
+    const placeDocsByCircle = new Map(viewableIds.map(id => [id, []]));
+    for (const placeDoc of await queryInChunks(viewableIds, chunk =>
+      db.collection(COLLECTIONS.PLACES).where('circleId', 'in', chunk).get())) {
+      const list = placeDocsByCircle.get(placeDoc.data().circleId);
+      if (list) list.push(placeDoc);
+    }
+    const newestFirst = (a, b) => new Date(b.data().createdAt || 0) - new Date(a.data().createdAt || 0);
+
     const circles = await Promise.all(sortedDocs.map(async doc => {
       const circle = serializeDoc(doc);
-      circle.ownerDetails = userData;
+      circle.ownerDetails = publicUser;
       
       // Mark if this circle is new (unviewed)
       circle.isNew = unviewedCircleIds.has(circle._id);
@@ -971,56 +966,24 @@ const getUserCircles = async (req, res) => {
       // Only fetch places for circles the viewer may actually open. The query
       // above already limited the tiers, so this is the belt to that braces.
       if (canViewCircle(doc.data(), currentUserId, viewerCtx)) {
-        try {
-          // Try with index first
-          const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
-            .where('circleId', '==', circle._id)
-            .orderBy('createdAt', 'desc')
-            .get();
-            
-          // Trashed places are invisible to their owner — never show them to
-          // the owner's connections either. Private places are owner-only too.
-          const activePlaceDocs = placesSnapshot.docs.filter(doc => {
-            const d = doc.data();
+        // Trashed places are invisible to their owner — never show them to
+        // the owner's connections either. Private places are owner-only too.
+        const activePlaceDocs = (placeDocsByCircle.get(circle._id) || [])
+          .filter(placeDoc => {
+            const d = placeDoc.data();
             return !d.deletedAt && isPlaceVisibleToViewer(d, currentUserId, viewerCtx);
-          });
+          })
+          .sort(newestFirst);
 
-          // Return both place IDs and full details in separate fields
-          circle.places = activePlaceDocs.map(doc => doc.id);
-          circle.placesWithDetails = activePlaceDocs.map(doc => {
-            const place = serializeDoc(doc);
-            return {
-              ...place,
-              isNew: unviewedPlaceIds.has(place._id)
-            };
-          });
-        } catch (indexError) {
-          // Fallback: fetch without orderBy and sort in memory
-          console.log(`Index not ready, using fallback for circle ${circle._id}`);
-          const placesSnapshot = await db.collection(COLLECTIONS.PLACES)
-            .where('circleId', '==', circle._id)
-            .get();
-            
-          const sortedDocs = placesSnapshot.docs
-            .filter(doc => {
-              const d = doc.data();
-              return !d.deletedAt && isPlaceVisibleToViewer(d, currentUserId, viewerCtx);
-            })
-            .sort((a, b) => {
-              const aDate = new Date(a.data().createdAt || 0);
-              const bDate = new Date(b.data().createdAt || 0);
-              return bDate - aDate;
-            });
-          
-          circle.places = sortedDocs.map(doc => doc.id);
-          circle.placesWithDetails = sortedDocs.map(doc => {
-            const place = serializeDoc(doc);
-            return {
-              ...place,
-              isNew: unviewedPlaceIds.has(place._id)
-            };
-          });
-        }
+        // Return both place IDs and full details in separate fields
+        circle.places = activePlaceDocs.map(placeDoc => placeDoc.id);
+        circle.placesWithDetails = activePlaceDocs.map(placeDoc => {
+          const place = serializeDoc(placeDoc);
+          return {
+            ...place,
+            isNew: unviewedPlaceIds.has(place._id)
+          };
+        });
       } else {
         circle.places = [];
         circle.placesWithDetails = [];
@@ -1087,7 +1050,7 @@ const getUserCircles = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
-        user: userData,
+        user: publicUser,
         circles: circles,
         hasRecentActivity: connectionData ? (connectionData.hasNewActivity || connectionData.hasRecentPlace || false) : false
       }

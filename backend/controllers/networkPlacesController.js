@@ -13,6 +13,7 @@ const { isSameUser } = require('../services/idService');
 const { queryInChunks } = require('../utils/firestoreChunks');
 const globalPlaceSearch = require('../services/globalPlaceSearch');
 const geofire = require('geofire-common');
+const { getDocsById } = require('../utils/batchGet');
 
 const db = getFirestore();
 
@@ -186,9 +187,11 @@ const getNetworkPlacesInViewport = async (req, res) => {
 // cards match the detail page. Shared by the viewport and the search.
 async function enrichNetworkPlaces(places) {
   const adderIds = [...new Set(places.map(p => p.addedBy).filter(Boolean))];
-  const adderDocs = await Promise.all(
-    adderIds.map(id => db.collection(COLLECTIONS.USERS).doc(normalizeUserId(id) || String(id)).get())
-  );
+  const docIdOf = (id) => normalizeUserId(id) || String(id);
+  // One batched read (was a request per adder)
+  const byId = await getDocsById(COLLECTIONS.USERS, adderIds.map(docIdOf),
+    { fields: ['displayName', 'profilePicture'] });
+  const adderDocs = adderIds.map(id => byId.get(docIdOf(id)) || { exists: false });
   const userMap = new Map();
   adderDocs.forEach((doc, index) => {
     if (doc.exists) {

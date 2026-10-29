@@ -12,7 +12,7 @@
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
-const { getConnectedUserIds, getInnerCircleGrantorLists } = require('../utils/networkAccess');
+const { getConnectedUserIds, getInnerCircleGrantorLists, getUserDocOnce } = require('../utils/networkAccess');
 const { normalizeUserId } = require('./idService');
 
 const db = getFirestore();
@@ -58,13 +58,14 @@ const makeViewerContext = ({ viewerId, connections, following, innerCircleGranto
   };
 };
 
-/** The full three-read build, for callers starting from nothing. */
+/** The full three-read build, for callers starting from nothing. Inside a
+ *  GET request each read is shared with every other caller (utils/requestMemo). */
 const buildViewerContext = async (viewerId) => {
   if (!viewerId) return makeViewerContext({ viewerId: null });
 
   const [connections, userDoc, innerCircleLists] = await Promise.all([
     getConnectedUserIds(viewerId),
-    db.collection(COLLECTIONS.USERS).doc(String(viewerId)).get(),
+    getUserDocOnce(viewerId),
     getInnerCircleGrantorLists(viewerId)
   ]);
 

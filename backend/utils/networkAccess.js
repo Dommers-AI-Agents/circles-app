@@ -9,10 +9,21 @@ const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { normalizeUserId, isSameUser } = require('../services/idService');
 
+const { memo } = require('./requestMemo');
+
 const db = getFirestore();
+
+/** The user doc, read once per request (utils/requestMemo). */
+function getUserDocOnce(userId) {
+  return memo(`userDoc:${userId}`, () => db.collection(COLLECTIONS.USERS).doc(String(userId)).get());
+}
 
 /** Accepted-connection user ids, both directions. */
 async function getConnectedUserIds(userId) {
+  return memo(`connections:${userId}`, () => readConnectedUserIds(userId));
+}
+
+async function readConnectedUserIds(userId) {
   const [connectionsQuery1, connectionsQuery2] = await Promise.all([
     db.collection(COLLECTIONS.CONNECTIONS)
       .where('userId', '==', userId)
@@ -32,7 +43,7 @@ async function getConnectedUserIds(userId) {
 
 /** Ids the user follows (from their user doc), excluding any in `exclude`. */
 async function getFollowedOnlyUserIds(userId, exclude = new Set()) {
-  const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+  const userDoc = await getUserDocOnce(userId);
   const following = (userDoc.exists && userDoc.data().following) || [];
   return following.filter(id => id && id !== userId && !exclude.has(id));
 }
@@ -52,6 +63,10 @@ async function getFollowedOnlyUserIds(userId, exclude = new Set()) {
  */
 async function getInnerCircleGrantorLists(userId) {
   if (!userId) return new Map();
+  return memo(`innerCircleLists:${userId}`, () => readInnerCircleGrantorLists(userId));
+}
+
+async function readInnerCircleGrantorLists(userId) {
   const { listsFrom, listIdsContaining } = require('../services/innerCircleLists');
   const snapshot = await db.collection(COLLECTIONS.USERS)
     .where('innerCircle', 'array-contains', String(userId))
@@ -66,11 +81,8 @@ async function getInnerCircleGrantorLists(userId) {
 
 async function getInnerCircleGrantorIds(userId) {
   if (!userId) return new Set();
-  const snapshot = await db.collection(COLLECTIONS.USERS)
-    .where('innerCircle', 'array-contains', String(userId))
-    .select()
-    .get();
-  return new Set(snapshot.docs.map(doc => doc.id));
+  // Same query as the per-list answer; the owners are its keys
+  return new Set((await getInnerCircleGrantorLists(userId)).keys());
 }
 
 /** Batched owner-in + privacy-in circle query (10 owners per batch keeps the
@@ -105,7 +117,14 @@ async function circlesByOwners(ownerIds, privacies) {
  *   Missing showOnMap counts as visible.
  * @returns {Promise<{circleIds: string[]}>}
  */
-async function getAllowedCircleIds(userId, { connectionId = null, mapOnly = false } = {}) {
+async function getAllowedCircleIds(userId, options = {}) {
+  const { connectionId = null, mapOnly = false } = options;
+  const result = await memo(`allowedCircles:${userId}:${connectionId || ''}:${mapOnly ? 1 : 0}`,
+    () => readAllowedCircleIds(userId, { connectionId, mapOnly }));
+  return { circleIds: [...result.circleIds] };
+}
+
+async function readAllowedCircleIds(userId, { connectionId = null, mapOnly = false } = {}) {
   const circleIds = new Set();
   const addCircle = (doc) => {
     if (mapOnly && doc.data().showOnMap === false) return;
@@ -141,7 +160,7 @@ async function getAllowedCircleIds(userId, { connectionId = null, mapOnly = fals
     getConnectedUserIds(userId),
     db.collection(COLLECTIONS.CIRCLES).where('owner', '==', userId).get(),
     db.collection(COLLECTIONS.CIRCLES).where('sharedWith', 'array-contains', userId).get(),
-    db.collection(COLLECTIONS.USERS).doc(userId).get(),
+    getUserDocOnce(userId),
     getInnerCircleGrantorIds(userId)
   ]);
   ownCircles.docs.forEach(addCircle);
@@ -175,4 +194,4 @@ async function getAllowedCircleIds(userId, { connectionId = null, mapOnly = fals
   return { circleIds: Array.from(circleIds) };
 }
 
-module.exports = { getAllowedCircleIds, getConnectedUserIds, getFollowedOnlyUserIds, getInnerCircleGrantorIds, getInnerCircleGrantorLists };
+module.exports = { getAllowedCircleIds, getConnectedUserIds, getUserDocOnce, getFollowedOnlyUserIds, getInnerCircleGrantorIds, getInnerCircleGrantorLists };

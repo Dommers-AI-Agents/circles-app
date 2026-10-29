@@ -160,6 +160,10 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// One memo per GET: connections, Inner Circle lists and the viewer's user doc
+// are read once however many helpers ask (utils/requestMemo).
+app.use('/api', require('./utils/requestMemo').requestMemoMiddleware);
+
 // Vendor webhooks for printed postcards. These MUST be mounted above the
 // JSON parser below: both Stripe and Lob sign the raw request body, and a
 // parsed-then-restringified body no longer matches the signature. They also

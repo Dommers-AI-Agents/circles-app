@@ -2,6 +2,7 @@
 // Place save records: list by circle(s), get, create, update, delete, search, address edit, reorder, move, add-existing, my-save lookups
 // Split out of firebasePlaceController.js (handlers unchanged).
 const { getFirestore } = require('../../config/firebase');
+const { queryInChunks } = require('../../utils/firestoreChunks');
 const { COLLECTIONS, validatePlace, serializeDoc, serializeQuerySnapshot } = require('../../models/FirestoreModels');
 const geofire = require('geofire-common');
 const { normalizeUserId, isSameUser } = require('../../services/idService');
@@ -1120,90 +1121,6 @@ exports.deletePlace = async (req, res, next) => {
   }
 };
 
-// @desc    Search places
-// @route   GET /api/places/search
-// @access  Private
-exports.searchPlaces = async (req, res, next) => {
-  try {
-    const { q: query, category } = req.query;
-
-    if (!query) {
-      return res.status(400).json({
-        success: false,
-        message: 'Search query is required'
-      });
-    }
-
-    let placesRef = db.collection(COLLECTIONS.PLACES);
-
-    // Filter by category if provided
-    if (category) {
-      placesRef = placesRef.where('category', '==', category);
-    }
-
-    // Note: Firestore doesn't have full-text search built-in
-    // For production, you'd want to use Algolia or similar
-    // For now, we'll do a simple name search
-    const snapshot = await placesRef
-      .where('name', '>=', query)
-      .where('name', '<=', query + '\uf8ff')
-      .limit(50)
-      .get();
-
-    const places = serializeQuerySnapshot(snapshot).filter(place => !place.deletedAt);
-
-    // Filter results to only include places from circles the user can access.
-    // One batched getAll over the unique circle ids instead of a serial
-    // per-place round trip.
-    const circleIds = [...new Set(places.map(p => p.circleId).filter(Boolean))];
-    const circleMap = new Map();
-    if (circleIds.length > 0) {
-      const circleDocs = await db.getAll(
-        ...circleIds.map(id => db.collection(COLLECTIONS.CIRCLES).doc(id))
-      );
-      circleDocs.forEach(doc => {
-        if (doc.exists) circleMap.set(doc.id, serializeDoc(doc));
-      });
-    }
-
-    // Search never showed connections-only circles: it skipped the myNetwork
-    // tier entirely. Going through the shared gate makes it consistent with
-    // every other read path, and applies the place's own privacy on top.
-    const searchViewerCtx = await buildViewerContext(req.user.uid);
-    const accessiblePlaces = places.filter(place => {
-      const circle = circleMap.get(place.circleId);
-      if (!circle) return false;
-      return canViewCircle(circle, req.user.uid, searchViewerCtx)
-        && isPlaceVisibleToViewer(place, req.user.uid, searchViewerCtx);
-    });
-
-    // Sort results by name
-    accessiblePlaces.sort((a, b) => a.name.localeCompare(b.name));
-
-    // Attach adder info; filter privateNotes to the user who added the place
-    const addedByUserMap = await buildAddedByUserMap(accessiblePlaces);
-    const enrichedPlaces = accessiblePlaces.map(place => {
-      const placeData = {
-        ...place,
-        addedByUser: addedByUserMap.get(place.addedBy) || null
-      };
-      if (place.addedBy !== req.user.uid) {
-        delete placeData.privateNotes;
-      }
-      return placeData;
-    });
-
-    res.status(200).json({
-      success: true,
-      count: enrichedPlaces.length,
-      places: enrichedPlaces
-    });
-  } catch (error) {
-    console.error('Error searching places:', error);
-    next(error);
-  }
-};
-
 exports.updatePlaceAddress = async (req, res, next) => {
   try {
     const { address, location } = req.body;
@@ -2026,17 +1943,11 @@ exports.getMyPlacesForCheckIn = async (req, res, next) => {
     console.log('🏠 Fetching places for check-in - User:', userId);
     console.log('📍 This endpoint now includes places from both owned and shared circles');
     
-    // Get all user's own circles
-    const ownCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
-      .where('owner', '==', userId)
-      .orderBy('updatedAt', 'desc')
-      .get();
-    
-    // Get circles shared with the user
-    const sharedCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
-      .where('sharedWith', 'array-contains', userId)
-      .orderBy('updatedAt', 'desc')
-      .get();
+    // Own circles and circles shared with the user, together
+    const [ownCirclesSnapshot, sharedCirclesSnapshot] = await Promise.all([
+      db.collection(COLLECTIONS.CIRCLES).where('owner', '==', userId).orderBy('updatedAt', 'desc').get(),
+      db.collection(COLLECTIONS.CIRCLES).where('sharedWith', 'array-contains', userId).orderBy('updatedAt', 'desc').get()
+    ]);
     
     // Combine both snapshots
     const allCircles = [...ownCirclesSnapshot.docs, ...sharedCirclesSnapshot.docs];
@@ -2049,52 +1960,42 @@ exports.getMyPlacesForCheckIn = async (req, res, next) => {
       });
     }
     
-    // Collect all places from user's circles
-    const placesPromises = [];
     const circleMap = new Map(); // Store circle info for each place
-    
     allCircles.forEach(circleDoc => {
       const circle = serializeDoc(circleDoc);
       circleMap.set(circle.id, circle);
-      
-      // Get places from this circle
-      const placesPromise = db.collection(COLLECTIONS.PLACES)
-        .where('circleId', '==', circle.id)
-        .orderBy('createdAt', 'desc')
-        .get();
-      
-      placesPromises.push(placesPromise);
     });
-    
-    // Wait for all place queries
-    const placesSnapshots = await Promise.all(placesPromises);
+
+    // Every circle's places in chunked circleId-in queries (was one query per
+    // circle — a 200-circle account made 200 reads per picker open). The list
+    // is sorted below, so no per-query order is needed.
+    const placeDocs = await queryInChunks([...circleMap.keys()], chunk =>
+      db.collection(COLLECTIONS.PLACES).where('circleId', 'in', chunk).get());
     
     // Combine and format all places
     const allPlaces = [];
-    placesSnapshots.forEach(snapshot => {
-      snapshot.forEach(placeDoc => {
-        const place = serializeDoc(placeDoc);
-        // Trashed saves stay out of the picker: checking in via one pinned
-        // the check-in to a deleted doc and skipped the re-save
-        if (place.deletedAt) return;
-        const circle = circleMap.get(place.circleId);
-        
-        // Filter privateNotes - only visible to the user who added the place
-        const placeData = {
-          ...place,
-          circleName: circle?.name || 'Unknown Circle',
-          circleCategory: circle?.category || 'other'
-        };
-        
-        // Remove privateNotes if the current user is not the one who added the place
-        if (place.addedBy !== userId) {
-          delete placeData.privateNotes;
-        }
-        
-        allPlaces.push(placeData);
-      });
+    placeDocs.forEach(placeDoc => {
+      const place = serializeDoc(placeDoc);
+      // Trashed saves stay out of the picker: checking in via one pinned
+      // the check-in to a deleted doc and skipped the re-save
+      if (place.deletedAt) return;
+      const circle = circleMap.get(place.circleId);
+      
+      // Filter privateNotes - only visible to the user who added the place
+      const placeData = {
+        ...place,
+        circleName: circle?.name || 'Unknown Circle',
+        circleCategory: circle?.category || 'other'
+      };
+      
+      // Remove privateNotes if the current user is not the one who added the place
+      if (place.addedBy !== userId) {
+        delete placeData.privateNotes;
+      }
+      
+      allPlaces.push(placeData);
     });
-    
+  
     // Sort by most recently added/updated
     allPlaces.sort((a, b) => {
       const dateA = new Date(a.updatedAt || a.createdAt);

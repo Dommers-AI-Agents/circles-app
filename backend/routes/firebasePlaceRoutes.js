@@ -6,7 +6,6 @@ const {
   createPlace,
   updatePlace,
   deletePlace,
-  searchPlaces,
   updatePlaceAddress,
   addExistingPlaceToCircle,
   movePlace,
@@ -83,8 +82,8 @@ router.route('/migrate-photos')
     ? next()
     : res.status(403).json({ success: false, message: 'Super-users only' })), migrateGooglePhotosToFirebase);
 
-router.route('/search')
-  .get(searchPlaces);
+// GET /search retired 2026-10-29: case-sensitive, platform-wide, filtered
+// after its limit. Home search uses /network/places/search + /places/global/search.
 
 // More specific routes before generic :id route
 // Billed Google Places calls: 30 per account per day across all instances

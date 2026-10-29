@@ -11,6 +11,7 @@
 //    unique venues, capped. The adaptive people filter falls out of the result.
 
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
+const { getDocsById } = require('../utils/batchGet');
 const { getFirestore } = require('../config/firebase');
 const { getAllowedCircleIds } = require('../utils/networkAccess');
 const { isPlaceVisibleToViewer } = require('../services/visibility');
@@ -94,42 +95,37 @@ async function fetchCirclePlacesInCity(circleIds, regionKey, { viewerId, viewerC
   return places;
 }
 
+// Batched reads (utils/batchGet) — these were one request per id
 async function mapUsers(ids) {
   const map = new Map();
-  await Promise.all(ids.map(async id => {
-    try {
-      const doc = await db.collection(COLLECTIONS.USERS).doc(id).get();
-      if (doc.exists) {
-        const u = doc.data();
-        map.set(id, { id, displayName: u.displayName || 'Someone', profilePicture: u.profilePicture || null });
-      }
-    } catch (_) { /* best-effort */ }
-  }));
+  try {
+    const docs = await getDocsById(COLLECTIONS.USERS, ids, { fields: ['displayName', 'profilePicture'] });
+    for (const [id, doc] of docs) {
+      const u = doc.data();
+      map.set(id, { id, displayName: u.displayName || 'Someone', profilePicture: u.profilePicture || null });
+    }
+  } catch (_) { /* best-effort */ }
   return map;
 }
 
 async function mapCircleNames(ids) {
   const map = new Map();
-  await Promise.all(ids.map(async id => {
-    try {
-      const doc = await db.collection(COLLECTIONS.CIRCLES).doc(id).get();
-      if (doc.exists) map.set(id, doc.data().name || 'Circle');
-    } catch (_) { /* best-effort */ }
-  }));
+  try {
+    const docs = await getDocsById(COLLECTIONS.CIRCLES, ids, { fields: ['name'] });
+    for (const [id, doc] of docs) map.set(id, doc.data().name || 'Circle');
+  } catch (_) { /* best-effort */ }
   return map;
 }
 
 async function mapVenueRatings(globalPlaceIds) {
   const map = new Map();
-  await Promise.all(globalPlaceIds.map(async id => {
-    try {
-      const doc = await db.collection('globalPlaces').doc(id).get();
-      if (doc.exists) {
-        const r = doc.data().googleData && doc.data().googleData.rating;
-        if (typeof r === 'number') map.set(id, r);
-      }
-    } catch (_) { /* best-effort */ }
-  }));
+  try {
+    const docs = await getDocsById('globalPlaces', globalPlaceIds, { fields: ['googleData.rating'] });
+    for (const [id, doc] of docs) {
+      const r = doc.data().googleData && doc.data().googleData.rating;
+      if (typeof r === 'number') map.set(id, r);
+    }
+  } catch (_) { /* best-effort */ }
   return map;
 }
 

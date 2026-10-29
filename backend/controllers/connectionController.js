@@ -1,5 +1,6 @@
 // backend/controllers/connectionController.js
 const { getFirestore } = require('../config/firebase');
+const { clampPagination } = require('../utils/pagination');
 const { isLiveConnection, onePerPerson } = require('../services/connectionMap');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { serializeDates } = require('../utils/wireDates');
@@ -1120,10 +1121,7 @@ const removeConnection = async (req, res) => {
 const getActiveConnections = async (req, res) => {
   try {
     const userId = req.user.firebaseDocId || req.user.uid;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = parseInt(req.query.offset) || 0;
-    
-    console.log(`🔍 Getting active connections for user ${userId} with limit ${limit}, offset ${offset}`);
+    const { limit, offset } = clampPagination(req.query, { defaultLimit: 10, maxLimit: 100 });
     
     // Get all accepted connections
     const connectionsQuery1 = db.collection(COLLECTIONS.CONNECTIONS)
@@ -1145,143 +1143,88 @@ const getActiveConnections = async (req, res) => {
       index === self.findIndex(d => d.id === doc.id)
     );
 
-    // Process connections with all necessary data
-    const connectionsWithScores = await Promise.all(
-      uniqueConnections.map(async (doc) => {
-        const connection = serializeDoc(doc);
-        
-        // Get the connected user
-        const otherUserIdRaw = connection.userId === userId ? connection.connectedUserId : connection.userId;
-        // Normalize the ID before looking up the user
-        const otherUserId = normalizeUserId(otherUserIdRaw);
-        
-        try {
-          const userDoc = await db.collection(COLLECTIONS.USERS).doc(otherUserId).get();
-          if (userDoc.exists) {
-            // Public card only — no email (security audit 2026-10-01; see
-            // services/publicUserProjection.js for what iOS reads).
-            connection.connectedUser = projectPublicUser(serializeDoc(userDoc));
-            
-            // Get total places count
-            const userCirclesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
-              .where('owner', '==', otherUserId)
-              .get();
-            
-            let totalPlaces = 0;
-            for (const circleDoc of userCirclesSnapshot.docs) {
-              const circleData = circleDoc.data();
-              totalPlaces += (circleData.places || []).length;
-            }
-            
-            // Check for unviewed activities AND calculate total activity
-            const recentActivity = connection.recentActivity || [];
-            const hasUnviewedActivity = recentActivity.length > 0 && recentActivity.some(activity => {
-              const viewedBy = activity.viewedBy || [];
-              return !viewedBy.includes(userId);
-            });
-            
-            // Calculate total activity count (viewed + unviewed) for highly active user detection
-            const totalActivityCount = recentActivity.length;
-            const unviewedActivityCount = recentActivity.filter(activity => {
-              const viewedBy = activity.viewedBy || [];
-              return !viewedBy.includes(userId);
-            }).length;
-            
-            // Get last message info for this connection (THIS WAS MISSING!)
-            let lastMessageAt = null;
-            let lastMessageSenderId = null;
-            let hasRecentMessage = false;
-            
-            // Find conversations between current user and connected user
-            const conversationQuery = db.collection(COLLECTIONS.CONVERSATIONS)
-              .where('type', '==', 'direct')
-              .where('participants', 'array-contains', userId);
-              
-            const conversationSnapshot = await conversationQuery.get();
-            
-            // Filter to find conversation with this specific connected user
-            const conversation = conversationSnapshot.docs.find(doc => {
-              const data = doc.data();
-              return data.participants.includes(otherUserId);
-            });
-            
-            if (conversation) {
-              const convData = conversation.data();
-              if (convData.lastMessageTime) {
-                lastMessageAt = convData.lastMessageTime;
-                lastMessageSenderId = convData.lastMessageSenderId || null;
-                
-                // Check if message is recent (within last 7 days)
-                const messageDate = new Date(convData.lastMessageTime);
-                const sevenDaysAgo = new Date();
-                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-                hasRecentMessage = messageDate > sevenDaysAgo;
-              }
-            }
-            
-            // Add stats - FIXED: Only set hasRecentPlace/hasNewActivity if there's actual unviewed content
-            connection.totalPlaces = totalPlaces;
-            connection.hasRecentPlace = hasUnviewedActivity && unviewedActivityCount > 0;
-            connection.hasNewActivity = hasUnviewedActivity && unviewedActivityCount > 0;
-            connection.viewCount = connection.viewCount || 0;
-            connection.lastMessageAt = lastMessageAt;
-            connection.lastMessageSenderId = lastMessageSenderId;
-            connection.hasRecentMessage = hasRecentMessage;
-            
-            // Add total activity tracking for highly active users
-            connection.totalActivityCount = totalActivityCount;
-            connection.unviewedActivityCount = unviewedActivityCount;
-            
-            // Calculate score
-            const scoreData = scoringService.calculateConnectionScore(connection, userId);
-            connection.connectionScore = scoreData.score;
-            connection.scoreComponents = scoreData.components;
-            connection.scoreLastCalculated = scoreData.calculatedAt;
-            
-            // Score calculated for connection
-            
-            // Score processing completed
+    // Everything the scores need, read ONCE for all connections: the other
+    // people's docs (one batched read), their circles (chunked owner-in, place
+    // ids only) and the viewer's direct conversations. These used to be read
+    // per connection — the conversations query N times over.
+    const otherIdOf = (connection) =>
+      normalizeUserId(connection.userId === userId ? connection.connectedUserId : connection.userId);
+    const connections = uniqueConnections.map(doc => serializeDoc(doc));
+    const otherIds = [...new Set(connections.map(otherIdOf).filter(Boolean))];
+    const { getDocsById } = require('../utils/batchGet');
+    const { queryInChunks } = require('../utils/firestoreChunks');
+    const [userDocs, circleDocs, conversationSnapshot] = await Promise.all([
+      getDocsById(COLLECTIONS.USERS, otherIds),
+      queryInChunks(otherIds, chunk => db.collection(COLLECTIONS.CIRCLES)
+        .where('owner', 'in', chunk).select('owner', 'places').get()),
+      db.collection(COLLECTIONS.CONVERSATIONS)
+        .where('type', '==', 'direct')
+        .where('participants', 'array-contains', userId)
+        .get()
+    ]);
+    const placesByOwner = new Map();
+    for (const circleDoc of circleDocs) {
+      const { owner, places } = circleDoc.data();
+      placesByOwner.set(owner, (placesByOwner.get(owner) || 0) + (places || []).length);
+    }
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const connectionsWithScores = connections.map((connection) => {
+      try {
+        const otherUserId = otherIdOf(connection);
+        const userDoc = userDocs.get(otherUserId);
+        if (!userDoc) return connection;
+        // Public card only — no email (security audit 2026-10-01; see
+        // services/publicUserProjection.js for what iOS reads).
+        connection.connectedUser = projectPublicUser(serializeDoc(userDoc));
+
+        const recentActivity = connection.recentActivity || [];
+        const unviewedActivityCount = recentActivity.filter(activity => !(activity.viewedBy || []).includes(userId)).length;
+
+        // The direct conversation with this person, if any
+        let lastMessageAt = null;
+        let lastMessageSenderId = null;
+        let hasRecentMessage = false;
+        const conversation = conversationSnapshot.docs.find(doc => (doc.data().participants || []).includes(otherUserId));
+        if (conversation) {
+          const convData = conversation.data();
+          if (convData.lastMessageTime) {
+            lastMessageAt = convData.lastMessageTime;
+            lastMessageSenderId = convData.lastMessageSenderId || null;
+            hasRecentMessage = new Date(convData.lastMessageTime) > sevenDaysAgo;
           }
-        } catch (error) {
-          console.error(`Error processing connection ${doc.id}:`, error);
         }
-        
-        return connection;
-      })
-    );
+
+        connection.totalPlaces = placesByOwner.get(otherUserId) || 0;
+        connection.hasRecentPlace = unviewedActivityCount > 0;
+        connection.hasNewActivity = unviewedActivityCount > 0;
+        connection.viewCount = connection.viewCount || 0;
+        connection.lastMessageAt = lastMessageAt;
+        connection.lastMessageSenderId = lastMessageSenderId;
+        connection.hasRecentMessage = hasRecentMessage;
+        // Total activity tracking for highly active users
+        connection.totalActivityCount = recentActivity.length;
+        connection.unviewedActivityCount = unviewedActivityCount;
+
+        const scoreData = scoringService.calculateConnectionScore(connection, userId);
+        connection.connectionScore = scoreData.score;
+        connection.scoreComponents = scoreData.components;
+        connection.scoreLastCalculated = scoreData.calculatedAt;
+      } catch (error) {
+        console.error(`Error processing connection ${connection.id}:`, error);
+      }
+      return connection;
+    });
 
     // Filter valid connections and sort by score
     const validConnections = connectionsWithScores
       .filter(conn => conn.connectedUser && conn.connectionScore !== undefined)
       .sort((a, b) => b.connectionScore - a.connectionScore);
 
-    // 🔍 DEBUG: Log all connections with scores to debug Dan Wickner ordering
-    console.log('🔍 DEBUG: All connections with scores (before limit):');
-    validConnections.forEach((conn, index) => {
-      const name = conn.connectedUser?.displayName || 'Unknown';
-      const score = conn.connectionScore || 0;
-      const components = conn.scoreComponents;
-      const hasMessages = conn.lastMessageAt ? '✓' : '✗';
-      const hasActivity = conn.hasRecentPlace ? '✓' : '✗';
-      const messageAge = conn.lastMessageAt ? Math.round((Date.now() - new Date(conn.lastMessageAt).getTime()) / (1000 * 60 * 60 * 24)) + 'd' : 'none';
-      
-      console.log(`   ${index + 1}. ${name} | Score: ${score} | Messages: ${hasMessages} (${messageAge}) | Activity: ${hasActivity} | Places: ${conn.totalPlaces || 0} | Views: ${conn.viewCount || 0} | TotalActivity: ${conn.totalActivityCount || 0}`);
-      
-      if (components) {
-        console.log(`      Components: M:${components.messages} E:${components.engagement} C:${components.content} R:${components.recency} = ${components.total}`);
-      }
-    });
-
     // Apply pagination with offset
     const finalConnections = validConnections.slice(offset, offset + limit);
     
-    // Log final order
-    console.log(`🔍 DEBUG: Returning connections ${offset + 1}-${offset + finalConnections.length} out of ${validConnections.length} total:`);
-    finalConnections.forEach((conn, index) => {
-      const name = conn.connectedUser?.displayName || 'Unknown';
-      console.log(`   ${offset + index + 1}. ${name} (Score: ${conn.connectionScore})`);
-    });
-
     // Returning connections sorted by score
     
     res.status(200).json({

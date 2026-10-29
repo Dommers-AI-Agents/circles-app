@@ -7,7 +7,8 @@ const mockNetwork = { connections: new Set(), grantors: new Set(), lists: new Ma
 jest.mock('../../utils/networkAccess', () => ({
   getConnectedUserIds: jest.fn(async () => mockNetwork.connections),
   getInnerCircleGrantorIds: jest.fn(async () => mockNetwork.grantors),
-  getInnerCircleGrantorLists: jest.fn(async () => mockNetwork.lists)
+  getInnerCircleGrantorLists: jest.fn(async () => mockNetwork.lists),
+  getUserDocOnce: jest.fn((id) => mockDb.collection('users').doc(String(id)).get())
 }));
 
 const { makeViewerContext, buildViewerContext } = require('../viewerContext');
