@@ -189,8 +189,8 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
               place_id: googlePlaceId,
               // rating/user_ratings_total already bill Atmosphere, so the
               // service-option booleans below ride the same SKU for free
-              fields: ['name', 'rating', 'user_ratings_total', 'photos', 'formatted_address', 'formatted_phone_number', 'website', 'opening_hours',
-                       'delivery', 'dine_in', 'reservable', 'takeout', 'curbside_pickup'],
+              // Every field this call's groups already pay for (googlePlaceFields)
+              fields: require('../../services/googlePlaceFields').DETAILS_ALL,
               key: googleMapsApiKey
             }
           });
@@ -238,6 +238,12 @@ exports.refreshPlaceFromGoogle = async (req, res, next) => {
       if (googlePlace.reservable !== undefined) updateData.reservable = googlePlace.reservable;
       if (googlePlace.takeout !== undefined) updateData.takeout = googlePlace.takeout;
       if (googlePlace.curbside_pickup !== undefined) updateData.curbsidePickup = googlePlace.curbside_pickup;
+      // Types, serves_* and the rest onto the venue record; the category
+      // follows Google unless an owner or admin chose it
+      if (place && place.globalPlaceId) {
+        await require('../../services/venueGoogleSignals').applyGoogleDetails(place.globalPlaceId, googlePlace)
+          .catch((e) => console.warn('⚠️ Google signals not applied on refresh:', e.message));
+      }
       
       // Update photos if available (always refresh to get latest photos)
       if (googlePlace.photos && googlePlace.photos.length > 0) {

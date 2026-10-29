@@ -94,8 +94,13 @@ const buildDetailUpdates = (fields) => {
     if (!VALID_CATEGORIES.includes(fields.category)) throw new ServiceError(400, 'INVALID_CATEGORY', 'Pick one of the listed categories.');
     venue.category = fields.category;
     cache.category = fields.category;
+    // An owner's or admin's choice: Google's types never override it
+    venue.categorySource = 'manual';
   }
-  if (fields.subcategory !== undefined) venue.subcategory = fields.subcategory || null;
+  if (fields.subcategory !== undefined) {
+    venue.subcategory = fields.subcategory || null;
+    venue.categorySource = 'manual';
+  }
   if (fields.description !== undefined) {
     // Prose only — contact details have their own fields
     venue.description = String(fields.description || '')

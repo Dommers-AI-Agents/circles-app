@@ -52,7 +52,8 @@ async function fetchDetails(googlePlaceId, key = process.env.GOOGLE_MAPS_API_KEY
   const timer = setTimeout(() => controller.abort(), 8000);
   try {
     const res = await fetch(`${DETAILS_URL}?${new URLSearchParams({
-      place_id: googlePlaceId, fields: 'formatted_phone_number,website,opening_hours,business_status,rating,user_ratings_total,price_level', language: 'en', key
+      // Every field this call's groups already pay for (googlePlaceFields)
+      place_id: googlePlaceId, fields: require('./googlePlaceFields').DETAILS_ALL.join(','), language: 'en', key
     })}`, { signal: controller.signal });
     if (!res.ok) return null;
     const body = await res.json();
@@ -109,8 +110,22 @@ async function fillVenue(globalPlaceId, { force = false, fetcher = fetchDetails 
         filled.push('rating');
       }
     }
+    // Types, serves_* and the rest: kept, and the category follows Google
+    // unless an owner or admin chose it (services/venueGoogleSignals)
+    let reclassified = null;
+    if (!result.gone) {
+      const { updatesFor, syncCategoryToSaves } = require('./venueGoogleSignals');
+      const { updates, reclass } = updatesFor(venue, result);
+      Object.assign(update, updates);
+      if (reclass && reclass.category !== (venue.category || 'other')) {
+        await ref.update(update);
+        await syncCategoryToSaves(globalPlaceId, reclass.category, now, { db });
+        reclassified = reclass.category;
+        return { filled, reclassified };
+      }
+    }
     await ref.update(update);
-    return { filled };
+    return reclassified ? { filled, reclassified } : { filled };
   } catch (error) {
     console.error(`[venue-details] fill failed for ${globalPlaceId}: ${error.message}`);
     return { skipped: 'error' };

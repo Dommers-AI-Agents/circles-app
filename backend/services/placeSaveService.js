@@ -115,14 +115,10 @@ const anchorVenueFieldsToSource = async (placeData) => {
         const response = await googleMapsClient.placeDetails({
           params: {
             place_id: googlePlaceId,
-            // editorial_summary rides the Atmosphere SKU this call already
-            // bills for rating/price_level — no incremental API cost
-            // types: tells an address entry from a business (Basic, no extra cost)
-            fields: ['name', 'types', 'formatted_address', 'geometry', 'website',
-                     'formatted_phone_number', 'rating', 'user_ratings_total', 'price_level',
-                     'editorial_summary',
-                     // Atmosphere SKU already billed above — no incremental cost
-                     'delivery', 'dine_in', 'reservable', 'takeout', 'curbside_pickup'],
+            // Every field the groups this call already pays for return
+            // (services/googlePlaceFields): types, serves_*, status … at no
+            // extra cost
+            fields: require('./googlePlaceFields').DETAILS_ALL,
             key: googleMapsApiKey
           }
         });
@@ -156,6 +152,11 @@ const anchorVenueFieldsToSource = async (placeData) => {
     placeData.reservable = details.reservable ?? null;
     placeData.takeout = details.takeout ?? null;
     placeData.curbsidePickup = details.curbside_pickup ?? null;
+    // Types and the rest of the free signals: the venue's category comes
+    // from these, not from the phone's guess (globalPlaceResolver)
+    const signals = require('./googlePlaceFields').googleSignals(details);
+    placeData.googleTypes = signals.googleTypes;
+    placeData.googleSignals = signals;
     // Google's editorial summary replaces whatever the client synthesized —
     // old app builds still send placeholder text ("A dining establishment in …")
     if (details.editorial_summary?.overview) {

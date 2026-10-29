@@ -52,12 +52,8 @@ async function enrichPlaceWithGoogleData(placeName, location, options = {}) {
     const detailsResponse = await googleMapsClient.placeDetails({
       params: {
         place_id: placeId,
-        fields: ['name', 'formatted_address', 'photos', 'types', 'rating', 'user_ratings_total', 'price_level', 'website', 'formatted_phone_number', 'opening_hours',
-                 // editorial_summary + the service-option booleans ride the
-                 // Atmosphere SKU this call already bills for
-                 // rating/price_level — no incremental cost
-                 'editorial_summary',
-                 'delivery', 'dine_in', 'reservable', 'takeout', 'curbside_pickup'],
+        // Every field this call's groups already pay for (googlePlaceFields)
+        fields: require('./googlePlaceFields').DETAILS_ALL,
         // Pin to English so weekday_text day names match the dayIndex map below
         language: 'en',
         key: googleMapsApiKey
@@ -107,6 +103,8 @@ async function enrichPlaceWithGoogleData(placeName, location, options = {}) {
       reservable: placeDetails.reservable ?? null,
       takeout: placeDetails.takeout ?? null,
       curbsidePickup: placeDetails.curbside_pickup ?? null,
+      // The rest of the free signals (types are above as googleTypes)
+      googleSignals: require('./googlePlaceFields').googleSignals(placeDetails),
       // Convert Google's weekday_text strings to { day, hours } objects -
       // the iOS OpeningHour model requires an integer `day` and fails to
       // decode plain strings (which breaks any response containing the place)
@@ -169,6 +167,7 @@ async function enrichSaveFromGoogle(placeData) {
         if (googleData.address) placeData.address = googleData.address;
         if (googleData.photos && googleData.photos.length > 0) placeData.photos = googleData.photos;
         if (googleData.googleTypes && googleData.googleTypes.length > 0) placeData.googleTypes = googleData.googleTypes;
+        if (googleData.googleSignals) placeData.googleSignals = googleData.googleSignals;
         placeData.rating = googleData.rating ?? placeData.rating;
         placeData.userRatingsTotal = googleData.userRatingsTotal ?? placeData.userRatingsTotal;
         placeData.priceLevel = googleData.priceLevel ?? placeData.priceLevel;
@@ -227,6 +226,10 @@ async function enrichSaveFromGoogle(placeData) {
           }
           await canonicalDoc.ref.update(canonicalUpdates);
           console.log(`⬆️ Upgraded bare canonical ${canonicalDoc.id} with Google enrichment`);
+          // Types/serves_* kept, category from Google unless manually chosen
+          await require('./venueGoogleSignals').applyGoogleDetails(canonicalDoc.id, null, {
+            venue: { ...canonicalData, ...canonicalUpdates }, signals: googleData.googleSignals, name: upgradedName })
+            .catch((e) => console.warn('⚠️ Google signals not applied:', e.message));
         }
       }
     }

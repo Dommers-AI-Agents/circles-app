@@ -182,12 +182,95 @@ function categoryUpgradeForOther(venueData = {}, saveData = {}) {
   return stamp(derived.category, derived.source, derived.confidence);
 }
 
+// ---- Google's richer signals (googlePlaceFields.googleSignals) --------------
+
+const MEAL_TYPES = new Set(['restaurant', 'meal_takeaway', 'meal_delivery']);
+const SHOP_TYPES = new Set(['store', 'liquor_store', 'clothing_store', 'home_goods_store', 'gift_shop', 'book_store', 'shopping_mall']);
+
+/**
+ * One word isn't enough for many places. Google types come in the order it
+ * ranks them, so a wine bar that serves dinner reads 'bar' first. A place
+ * Google also calls a restaurant, or one that serves meals, is a restaurant
+ * whose second label says what else it is (Wes, 2026-10-29: Frenchy's Sip and
+ * Shop, "more like a restaurant with a wine bar").
+ * Returns { category, subcategory } (subcategory may be null).
+ */
+function refineCategory({ category, googleTypes = [], serves = {}, dineIn = null, name = '' } = {}) {
+  const types = new Set(googleTypes || []);
+  const s = serves || {};
+  const nm = String(name || '');
+  const hasBar = types.has('bar') || types.has('night_club');
+  const servesMeals = s.breakfast === true || s.brunch === true || s.lunch === true || s.dinner === true;
+  const mealPlace = [...MEAL_TYPES].some((t) => types.has(t)) || servesMeals;
+  const shop = [...SHOP_TYPES].some((t) => types.has(t)) || /\b(shop|market|provisions|boutique|bottle shop)\b/i.test(nm);
+
+  const barKind = () => {
+    if (/wine|vino|enoteca|cellar/i.test(nm) || (s.wine === true && (s.beer !== true || /\bsip\b/i.test(nm)))) return 'Wine bar';
+    if (/brew(ery|ing|pub)|taproom/i.test(nm)) return 'Brewery';
+    if (types.has('night_club')) return 'Nightclub';
+    return 'Bar';
+  };
+  const withShop = (label) => (shop ? `${label} & shop` : label);
+
+  let cat = category;
+  let sub = null;
+  if (cat === 'bar' && (mealPlace || (dineIn === true && servesMeals))) {
+    cat = 'restaurant';
+    sub = withShop(barKind());
+  } else if (cat === 'restaurant' && hasBar) {
+    sub = withShop(barKind());
+  } else if (cat === 'bar') {
+    const kind = barKind();
+    sub = kind === 'Bar' ? (shop ? 'Bar & shop' : null) : withShop(kind);
+  } else if (cat === 'cafe' && types.has('bakery')) {
+    sub = 'Bakery';
+  }
+  return { category: cat, subcategory: sub };
+}
+
+/**
+ * The venue's category from Google's signals alone, or null when Google
+ * doesn't say (no types, or none we map).
+ */
+function classifyFromGoogle({ googlePrimaryType, googleTypes, serves, dineIn, name } = {}) {
+  const derived = deriveCategory({ googlePrimaryType, googleTypes });
+  if (derived.source !== 'google') return null;
+  const refined = refineCategory({ category: derived.category, googleTypes, serves, dineIn, name });
+  return { ...refined, source: 'google', confidence: derived.confidence };
+}
+
+/**
+ * What to write when Google's signals arrive for a venue: Google outranks the
+ * phone's guess (Apple POI, a category the app sent, text rules, the LLM).
+ * Only an owner's or admin's choice ('manual') stands. Null when nothing
+ * changes.
+ */
+function googleReclassification(venueData = {}, signals = {}) {
+  if ((venueData.categorySource || null) === 'manual') return null;
+  const google = classifyFromGoogle({ ...signals, name: signals.name || venueData.name });
+  if (!google) return null;
+  const sameCat = google.category === (venueData.category || 'other');
+  const sameSub = (google.subcategory || null) === (venueData.subcategory || null);
+  if (sameCat && sameSub && venueData.categorySource === 'google') return null;
+  return {
+    category: google.category,
+    subcategory: google.subcategory || null,
+    categorySource: 'google',
+    categoryConfidence: google.confidence,
+    categoryBefore: venueData.category || 'other',
+    categoryClassifiedAt: new Date().toISOString()
+  };
+}
+
 function firstNonEmptyArray(...candidates) {
   return candidates.find(c => Array.isArray(c) && c.length > 0) || undefined;
 }
 
 module.exports = {
   deriveCategory,
+  refineCategory,
+  classifyFromGoogle,
+  googleReclassification,
   categoryUpgradeForOther,
   categoryFromApplePoi,
   APPLE_POI_TO_CATEGORY,

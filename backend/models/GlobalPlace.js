@@ -107,6 +107,15 @@ const createGlobalPlace = (placeData) => {
       reservable: placeData.reservable ?? null,
       takeout: placeData.takeout ?? null,
       curbsidePickup: placeData.curbsidePickup ?? null,
+      // The rest of what the same Google call returns for free
+      // (services/googlePlaceFields): serves_*, status, accessibility, offset
+      ...(placeData.googleSignals ? {
+        serves: placeData.googleSignals.serves || null,
+        businessStatus: placeData.googleSignals.businessStatus || null,
+        wheelchairAccessibleEntrance: placeData.googleSignals.wheelchairAccessibleEntrance ?? null,
+        mapsUrl: placeData.googleSignals.mapsUrl || null,
+        utcOffsetMinutes: placeData.googleSignals.utcOffsetMinutes ?? null
+      } : {}),
       lastRefreshedAt: placeData.lastRefreshedAt || null
     },
     

@@ -13,7 +13,7 @@ const {
   calculateQualityScore,
   generatePlaceKey
 } = require('../models/GlobalPlace');
-const { deriveCategory, categoryUpgradeForOther } = require('./placeCategoryDerivation');
+const { deriveCategory, categoryUpgradeForOther, classifyFromGoogle } = require('./placeCategoryDerivation');
 const { deriveLocation } = require('./placeLocationDerivation');
 
 const db = getFirestore();
@@ -166,7 +166,26 @@ async function createGlobalPlaceFromLegacy(legacyPlaceDoc) {
   const incomingCategory = legacyPlace.category || 'other';
   let category = incomingCategory;
   let categoryMeta = { categorySource: incomingCategory === 'other' ? null : 'client' };
-  if (incomingCategory === 'other') {
+  // Google's types (fetched on the save, at no extra cost) outrank the
+  // category the phone guessed from Apple Maps (2026-10-29)
+  const signals = legacyPlace.googleSignals || {};
+  const fromGoogle = classifyFromGoogle({
+    googlePrimaryType: legacyPlace.googlePrimaryType,
+    googleTypes: legacyPlace.googleTypes,
+    serves: signals.serves,
+    dineIn: legacyPlace.dineIn ?? signals.dineIn,
+    name: legacyPlace.name
+  });
+  if (fromGoogle) {
+    category = fromGoogle.category;
+    categoryMeta = {
+      categorySource: 'google',
+      categoryConfidence: fromGoogle.confidence,
+      categoryBefore: incomingCategory,
+      categoryClassifiedAt: new Date().toISOString(),
+      ...(fromGoogle.subcategory ? { subcategory: fromGoogle.subcategory } : {})
+    };
+  } else if (incomingCategory === 'other') {
     const derived = deriveCategory({
       googlePrimaryType: legacyPlace.googlePrimaryType,
       googleTypes: legacyPlace.googleTypes,
@@ -309,7 +328,7 @@ async function createGlobalPlaceFromDetails({ name, address, location, category,
 const STRIPPED_VENUE_FIELDS = [
   'likes', 'likesCount', 'website', 'phone', 'rating', 'userRatingsTotal',
   'openingHours', 'priceLevel', 'subcategory',
-  'delivery', 'dineIn', 'reservable', 'takeout', 'curbsidePickup'
+  'delivery', 'dineIn', 'reservable', 'takeout', 'curbsidePickup', 'googleSignals'
 ];
 
 // Denormalized query-cache fields mirrored from the canonical venue onto each

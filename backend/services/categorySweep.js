@@ -20,7 +20,7 @@
 
 const { getFirestore } = require('../config/firebase');
 const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
-const { categoryUpgradeForOther } = require('./placeCategoryDerivation');
+const { categoryUpgradeForOther, googleReclassification } = require('./placeCategoryDerivation');
 const classifier = require('./categoryClassifier');
 
 const db = getFirestore();
@@ -116,6 +116,31 @@ async function runCategorySweep({
     } catch (e) {
       report.failed++;
       console.error(`   ❌ [categorySweep] free tier ${doc.id}: ${e.message}`);
+    }
+  }
+
+  // Google's types outrank every guess (2026-10-29): a venue that has them
+  // and wasn't classified from them, or chosen by hand, is re-read. Free.
+  report.googleReclassified = 0;
+  report.googleSample = [];
+  const guessed = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+    .where('categorySource', 'in', ['client', 'apple', 'text', 'llm', 'google'])
+    .get();
+  for (const doc of guessed.docs) {
+    const d = doc.data();
+    if (!Array.isArray(d.googleTypes) || !d.googleTypes.length || upgradedIds.has(doc.id)) continue;
+    const reclass = googleReclassification(d, { googleTypes: d.googleTypes, googlePrimaryType: d.googlePrimaryType,
+      serves: (d.googleData || {}).serves, dineIn: (d.googleData || {}).dineIn, name: d.name });
+    if (!reclass) continue;
+    report.googleReclassified++;
+    if (report.googleSample.length < 50) report.googleSample.push({ id: doc.id, name: d.name, from: d.category, to: reclass.category, sub: reclass.subcategory });
+    if (dryRun) continue;
+    try {
+      await doc.ref.update({ ...reclass, updatedAt: now });
+      if (reclass.category !== d.category) report.cacheSynced += await syncCacheToPlaces(doc.id, reclass.category, now);
+    } catch (e) {
+      report.failed++;
+      console.error(`   ❌ [categorySweep] google tier ${doc.id}: ${e.message}`);
     }
   }
 
