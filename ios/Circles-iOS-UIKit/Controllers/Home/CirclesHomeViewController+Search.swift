@@ -4,14 +4,18 @@ import FavWidgetsCore
 import MapKit
 import CoreLocation
 
-// Search-bar delegate, custom place/people search, and PlaceSearchable
-// navigation for CirclesHomeViewController. Extracted (Wave 4).
+// The home search bar: the delegate, the local match, and the remote lookups.
+//
+// One keystroke matches locally at once (your places, the network's, and
+// whatever is on the map — the same corpus the pins use), then ONE debounce
+// asks the remote channels the current mode shows: the network's saves, the
+// catalog and Apple Maps for Places; people for People. Answers are cached per
+// (channel, query, origin cell) so backspacing or flipping the mode costs
+// nothing, superseded requests are cancelled, and a status line says when
+// lookups are still out or failed (offline used to look like "no results").
 
 // MARK: - UISearchBarDelegate
 extension CirclesHomeViewController: UISearchBarDelegate {
-    // Unified search: place matches filter the MAP pins (and its list, when
-    // the user opens it) instantly; people are fetched from the server
-    // (debounced) and render in the dropdown with the SUGGESTED fallback.
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -19,79 +23,74 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         isSearchSheetCollapsed = false
 
         guard !trimmed.isEmpty else {
-            state.clearSearch()
-            userSearchWorkItem?.cancel()
-            suggestedSearchWorkItem?.cancel()
-            mapViewController?.setSearchFilter(nil)
-            hideSearchResults()
-            updateEmptyState()
+            endSearch(keepFocus: true)
             return
         }
 
         isSearching = true
         enterSearchLayout()
-        if trimmed != lastAppleQuery { appleCandidates = []; lastAppleQuery = trimmed }
+        matchedWidgetsCache = searchMode == .places
+            ? WidgetSearchMatcher.matches(trimmed, in: FavWidgetRegistry.descriptors, limit: HomeSearchPlan.maxWidgetRows)
+            : []
 
-        // Places — local, instant. These now render as rows again (capped, see
-        // HomeSearchPlan) as well as narrowing the map.
-        filterPlaces(searchText: trimmed)
-
-        // The pins narrow with the text (FSM debounces internally, camera
-        // stays), but only in Places mode — filtering the map by a person's
-        // name matches place names by accident and empties it for nothing.
-        mapViewController?.setSearchFilter(searchMode.filtersMap(trimmed), matchedPlaceIds: searchMode == .places ? appleMatchedPlaceIds : [])
-
-        // People — debounced server search so we don't fire a request per
-        // keystroke. Clear stale people up front so the PEOPLE section never
-        // shows results that don't match the current text (places carry the
-        // overlay in the meantime).
-        searchedUsers = []
-        userSearchWorkItem?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            UserService.shared.searchUsers(query: trimmed) { result in
-                DispatchQueue.main.async {
-                    guard let self = self,
-                          self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
-                    if case .success(let users) = result {
-                        // Cap for a tidy overlay; already excludes the current user server-side
-                        self.searchedUsers = Array(users.prefix(12))
-                        self.refreshSearchOverlay()
-                    }
-                }
-            }
+        // Apple answers by meaning ("deli" finds delis), so they can't be
+        // re-filtered by text: keep them while the query only grows
+        // ("bak" → "bake"), drop them when it changes direction.
+        if !trimmed.lowercased().hasPrefix(state.lastAppleQuery.lowercased()) || state.lastAppleQuery.isEmpty {
+            appleCandidates = []
         }
-        userSearchWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        // People already on screen stay if they still match — no flicker
+        // between keystrokes while the new answer is on its way.
+        searchedUsers = searchedUsers.filter { Self.userMatches($0, query: trimmed) }
 
-        // Show place matches right away; people fill in when the fetch returns
+        filterPlaces(searchText: trimmed)
+        applySearchFilterToMap(trimmed)
+        scheduleRemoteSearch(for: trimmed)
+
         refreshSearchOverlay()
         updateEmptyState()
     }
 
-    /// Shows the PEOPLE/SUGGESTED dropdown when either has matches. Place
-     /// What the dropdown should show right now. Everything that draws or sizes
+    /// The query a person's name must contain, word by word.
+    static func userMatches(_ user: User, query: String) -> Bool {
+        let name = PlaceSearchText.fold([user.displayName, user.firstName ?? "", user.lastName ?? ""].joined(separator: " "))
+        return PlaceSearchText.fold(query).split(separator: " ").allSatisfy { name.contains($0) }
+    }
+
+    /// What the dropdown should show right now. Everything that draws or sizes
     /// the overlay asks this, so the sections can never disagree about how
     /// many rows exist.
     var searchPlan: HomeSearchPlan {
-        HomeSearchPlan.make(
+        if !isSearching {
+            // Focused, nothing typed: recent searches and browse chips
+            guard searchBar.isFirstResponder else {
+                return HomeSearchPlan.make(mode: searchMode, matchedPlaces: 0, suggestedPlaces: 0, people: 0)
+            }
+            return HomeSearchPlan.idle(mode: searchMode, recent: recentSearches.list.queries.count)
+        }
+        return HomeSearchPlan.make(
             mode: searchMode,
             matchedPlaces: filteredPlaces.count,
             suggestedPlaces: suggestedRows.count,
             people: searchedUsers.count,
-            widgets: matchedWidgets.count
+            widgets: matchedWidgetsCache.count,
+            status: state.searchStatus
         )
     }
 
     /// Widgets the query names ("postcard" → Postcard), every widget the
     /// app has whether or not it's turned on in the tab
     var matchedWidgets: [FavWidgetDescriptor] {
-        guard isSearching else { return [] }
-        return WidgetSearchMatcher.matches(searchBar.text ?? "", in: FavWidgetRegistry.descriptors,
-                                           limit: HomeSearchPlan.maxWidgetRows)
+        isSearching ? matchedWidgetsCache : []
+    }
+
+    /// Recent searches shown under the empty bar
+    var visibleRecentSearches: [String] {
+        Array(recentSearches.list.queries.prefix(searchPlan.recentRows))
     }
 
     /// Switching between Places and People re-runs the current query under the
-    /// new rules — including handing the map back when People is chosen.
+    /// new rules — answers already fetched come from the cache.
     @objc func searchModeControlChanged() {
         guard let mode = HomeSearchMode(rawValue: searchModeControl.selectedSegmentIndex) else { return }
         searchModeChanged(to: mode)
@@ -110,9 +109,9 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         searchBar(searchBar, textDidChange: trimmed)
     }
 
-
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         // Same as the Done button: keyboard down, the list stays open (Wes).
+        recordRecentSearch()
         searchBar.resignFirstResponder()
         updateEmptyState()
     }
@@ -126,6 +125,8 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         searchBar.setShowsCancelButton(true, animated: true)
         // Refocusing a collapsed sheet expands it again
         expandSearchSheet()
+        // Nothing typed yet: recent searches and browse chips
+        if !isSearching { refreshSearchOverlay() }
     }
 
     func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
@@ -153,64 +154,87 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         searchBar.placeholder = HomeSearchMode.places.placeholder
         searchBar.text = ""
         searchBar.resignFirstResponder()
+        endSearch(keepFocus: false)
+    }
+
+    /// The one teardown every exit uses (empty text, Cancel, a person or a
+    /// nearby venue tapped): lookups cancelled, search state back to rest,
+    /// the map's filter and the network hits' extra pins gone.
+    func endSearch(keepFocus: Bool) {
+        let hadNetworkHits = !state.networkSearchHits.isEmpty
+        cancelRemoteSearch()
         state.clearSearch()
-        userSearchWorkItem?.cancel()
-        suggestedSearchWorkItem?.cancel()
+        matchedWidgetsCache = []
         mapViewController?.setSearchFilter(nil)
-        hideSearchResults()
+        if hadNetworkHits { refreshMapDisplay(adjustRegion: false) }
+        if keepFocus && searchBar.isFirstResponder {
+            refreshSearchOverlay()   // recent searches + browse
+        } else {
+            hideSearchResults()
+        }
         updateEmptyState()
+    }
+
+    /// Runs a recent search or a browse chip as if typed.
+    func runSearch(_ query: String) {
+        searchBar.text = query
+        searchBar(searchBar, textDidChange: query)
+    }
+
+    /// The bar's text as a recent search (a result was tapped, or Search).
+    func recordRecentSearch() {
+        let text = (searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        recentSearches.record(text)
     }
 }
 
-// MARK: - Custom Search Implementation
+// MARK: - Local match
 extension CirclesHomeViewController {
-    // Unified place search: always searches your places AND your network's
-    // (deduplicated) — the old "your places / all places" scope split was
-    // low value since "all" already includes yours and the text narrows it.
-    /// - Parameter refetchSuggestions: whether this pass may schedule the
-    ///   nearby lookups (catalog + Apple). Only a change of query or origin
-    ///   should; a pass run BECAUSE a lookup came back must not, or the
-    ///   completions schedule the lookups that schedule the completions —
-    ///   the search sheet re-ran the whole match every half second while
-    ///   the person was just scrolling it (2026-09-24).
-    func filterPlaces(searchText: String, refetchSuggestions: Bool = true) {
+    /// The places the search matches against and the pins show while it is
+    /// up (HomeState.searchCorpus): built once per change of the places or
+    /// the map's people/category filter.
+    func searchCorpus() -> (places: [Place], index: SavedPlaceIndex) {
+        state.searchCorpus(context: placeFilterContext())
+    }
+
+    /// Matches the corpus against the text and rebuilds the nearby rows. No
+    /// network: the remote lookups are scheduled by the keystroke itself
+    /// (scheduleRemoteSearch), and an answer arriving only re-runs this.
+    func filterPlaces(searchText: String) {
         let interval = Signposts.search.begin("filterPlaces")
         defer { Signposts.search.end(interval) }
-        let searchSource = deduplicatePlaces(userPlaces: userOwnPlaces, networkPlaces: networkPlaces)
+        let corpus = searchCorpus()
 
         // Shared matcher (Place.matches) — the same predicate filters the map
         // pins, so this list and the pins can't drift. Apple Maps may have
         // recognised a saved "restaurant" as the deli being asked for; those
         // ids ride along to the pins too (setSearchFilter(_:matchedPlaceIds:)).
-        let split = POIDuplicateMatcher.partition(candidates: appleCandidates, saved: searchSource)
+        let split = POIDuplicateMatcher.partition(candidates: appleCandidates, index: corpus.index)
         appleMatchedPlaceIds = Set(split.matched.map(\.id))
         appleVenues = split.unsaved
-        let matched = searchSource.filter { appleMatchedPlaceIds.contains($0.id) || $0.matches(searchQuery: searchText) }
+        let matched = corpus.places.filter { appleMatchedPlaceIds.contains($0.id) || $0.matches(searchQuery: searchText) }
         // One row per real-world venue, however many people saved it (the
-        // same collapse the map's list uses) — every match gets a row now,
-        // so two copies of Indaco were two rows.
-        filteredPlaces = Place.dedupedByVenue(matched, preferredOwnerId: AuthService.shared.getUserId() ?? "")
+        // same collapse the map's list uses).
+        let deduped = Place.dedupedByVenue(matched, preferredOwnerId: AuthService.shared.getUserId() ?? "")
 
         // Nearest first, with the distance shown on each row ("looking for
-        // pizza NEAR ME" is the whole query) — same reference the places
-        // list uses: real location, else the map's center.
-        // Built locally, then assigned once — `searchDistances` forwards to
-        // HomeState, so per-key writes would copy the dictionary each time.
-        let entries = DistancePlaceSorter.sorted(filteredPlaces, from: searchReferenceLocation())
+        // pizza NEAR ME" is the whole query).
+        let entries = DistancePlaceSorter.sorted(deduped, from: searchReferenceLocation())
         var distances: [String: CLLocationDistance] = [:]
         for entry in entries { if let d = entry.distance { distances[entry.place.id] = d } }
         searchDistances = distances
         filteredPlaces = entries.map(\.place)
 
-        // Nothing saved by you or your network matches? Suggest nearby global
-        // venues instead of a dead end. Centralized here so every caller
-        // (keystroke, scope change, late network-places load) keeps the rule:
-        // suggested exists only while the local sections are empty.
-        if refetchSuggestions {
-            updateSuggestedPlaces(for: searchText)
-        } else {
-            rebuildSuggestedRows()
-        }
+        rebuildSuggestedRows(index: corpus.index)
+    }
+
+    /// The pins narrow with the text (the map debounces internally, camera
+    /// stays), but only in Places mode — filtering the map by a person's name
+    /// matches place names by accident and empties it for nothing.
+    func applySearchFilterToMap(_ query: String) {
+        mapViewController?.setSearchFilter(searchMode.filtersMap(query),
+                                           matchedPlaceIds: searchMode == .places ? appleMatchedPlaceIds : [])
     }
 
     /// The search text currently filtering the home surface, or nil — the
@@ -239,14 +263,12 @@ extension CirclesHomeViewController {
             let centre = map.currentRegion.center
             candidates.append(.init(location: CLLocation(latitude: centre.latitude, longitude: centre.longitude), source: .mapRegion))
         }
-        let resolution = SearchOriginResolver.resolve(candidates)
-        Logger.debug("🔎 search origin: \(resolution?.source.rawValue ?? "none")")
-        return resolution
+        return SearchOriginResolver.resolve(candidates)
     }
 
     /// A fresh fix is worth a short wait, but the list never waits for it:
-    /// results render from the best cached origin, and re-sort only if the
-    /// real position turns out to be somewhere else.
+    /// results render from the best cached origin, and re-sort (and re-ask
+    /// the nearby channels) only if the real position is somewhere else.
     func refreshSearchOriginIfStale() {
         let current = resolvedSearchOrigin()
         let freshEnough = current?.source == .serviceFix
@@ -259,6 +281,7 @@ extension CirclesHomeViewController {
                 let text = self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 guard !text.isEmpty else { return }
                 self.filterPlaces(searchText: text)
+                self.scheduleRemoteSearch(for: text)
                 self.refreshSearchOverlay()
             }
         }
@@ -271,9 +294,10 @@ extension CirclesHomeViewController {
     }
 
     /// Recomputes the nearby section from both channels.
-    func rebuildSuggestedRows() {
-        let saved = deduplicatePlaces(userPlaces: userOwnPlaces, networkPlaces: networkPlaces)
-        let merged = SuggestedNearbyMerger.merge(global: suggestedPlaces, apple: appleVenues, saved: saved, from: searchReferenceLocation())
+    func rebuildSuggestedRows(index: SavedPlaceIndex? = nil) {
+        let savedIndex = index ?? searchCorpus().index
+        let merged = SuggestedNearbyMerger.merge(global: suggestedPlaces, apple: appleVenues,
+                                                 savedIndex: savedIndex, from: searchReferenceLocation())
         suggestedRows = merged.map(\.row)
         var distances: [String: CLLocationDistance] = [:]
         for entry in merged { if let d = entry.distance { distances[entry.row.id] = d } }
@@ -284,90 +308,208 @@ extension CirclesHomeViewController {
     var visibleFilteredPlaces: [Place] {
         Array(filteredPlaces.prefix(searchPlan.placeRows))
     }
+}
 
-    /// Debounced lookups, three channels: the network's saves of matching
-    /// venues (they join PLACES), the shared catalog (name-word prefixes) and
-    /// Apple Maps (plain language — "deli" finds delis, whatever they were
-    /// filed under). Runs whether or not your own places matched;
-    /// HomeSearchPlan decides how many rows the answer gets.
-    func updateSuggestedPlaces(for query: String) {
-        suggestedSearchWorkItem?.cancel()
+// MARK: - Remote channels
+extension CirclesHomeViewController {
+    /// Cancels every lookup still out and ends the debounce generation.
+    func cancelRemoteSearch() {
+        searchDebouncer.cancel()
+        searchRequests.values.forEach { $0.cancel() }
+        searchRequests.removeAll()
+        venueSearch.cancelVenueSearch()
+    }
+
+    /// Asks the channels the current mode shows, after one debounce. Cached
+    /// answers apply at once and skip the network.
+    func scheduleRemoteSearch(for query: String, bypassCache: Bool = false) {
+        searchRequests.values.forEach { $0.cancel() }
+        searchRequests.removeAll()
+        state.pendingSearchChannels = []
+        state.failedSearchChannels = []
+        state.searchFailedOffline = false
+
+        guard SearchDebouncer.isServerEligible(query) else {
+            searchDebouncer.cancel()
+            return
+        }
         // No reference point → skip the nearby channels: quality-ranked global
         // hits with no geo filter would confidently suggest pizza on another
         // continent. The network's saves still match by name.
         let reference = searchReferenceLocation()
-        rebuildSuggestedRows()
+        let origin = reference?.coordinate
+        let caches = state.searchCaches
 
-        let work = DispatchWorkItem { [weak self] in
+        var channels: [HomeSearchChannel] = []
+        switch searchMode {
+        case .people:
+            channels = [.people]
+        case .places:
+            channels = [.network]
+            if reference != nil {
+                channels.append(.catalog)
+                if query.count >= 3 { channels.append(.apple) }   // NearbyPlaceSearch's own minimum
+            }
+        }
+
+        // Serve what the cache has; ask for the rest
+        var toFetch: [HomeSearchChannel] = []
+        for channel in channels {
+            if !bypassCache, applyCached(channel, query: query, origin: origin, caches: caches) { continue }
+            toFetch.append(channel)
+        }
+        guard !toFetch.isEmpty else {
+            searchDebouncer.cancel()
+            return
+        }
+        state.pendingSearchChannels = Set(toFetch)
+
+        searchDebouncer.schedule { [weak self] generation in
             guard let self else { return }
-            self.loadNetworkPlaces(matching: query, reference: reference)
-            guard let reference else { return }
-            self.fetchSuggestedPlaces(serverQuery: query, typedQuery: query,
-                                      reference: reference, allowFallback: true)
-            self.fetchAppleVenues(typedQuery: query, reference: reference)
-        }
-        suggestedSearchWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
-    }
-
-    /// The Apple channel. Whatever comes back is split against the saved
-    /// places on every filter pass (phase 1), so a saved place Apple called a
-    /// deli joins PLACES and its pin stays; the rest go under MORE NEARBY.
-    private func fetchAppleVenues(typedQuery: String, reference: CLLocation) {
-        venueSearch.searchVenues(query: typedQuery, near: reference) { [weak self] result in
-            guard let self, self.isSearching,
-                  self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) == typedQuery else { return }
-            guard case .success(let venues) = result else { return }   // throttled/offline: silently nothing
-            self.appleCandidates = venues
-            // A completion re-matches; it never re-schedules the lookups
-            self.filterPlaces(searchText: typedQuery, refetchSuggestions: false)
-            self.mapViewController?.setSearchFilter(self.searchMode.filtersMap(typedQuery),
-                                                    matchedPlaceIds: self.searchMode == .places ? self.appleMatchedPlaceIds : [])
-            self.refreshSearchOverlay()
-            self.updateEmptyState()
+            for channel in toFetch {
+                self.fetch(channel, query: query, reference: reference, generation: generation)
+            }
         }
     }
 
-    /// One SUGGESTED fetch. The server matches exact name-word PREFIXES, so a
-    /// typo ("piza") returns nothing even though the local sections now
-    /// forgive it — when the full query comes back empty, retry ONCE with a
-    /// 3-char prefix of the longest word ("piz" does match pizza-named
-    /// venues). Staleness is always checked against what the user TYPED.
-    private func fetchSuggestedPlaces(serverQuery: String, typedQuery: String,
-                                      reference: CLLocation, allowFallback: Bool) {
-        // limit is applied server-side BEFORE the radius filter (quality
-        // cut first), so ask generously and trim client-side.
-        GlobalPlaceService.shared.searchGlobalPlaces(
-            query: serverQuery,
-            location: (lat: reference.coordinate.latitude, lng: reference.coordinate.longitude),
-            radius: 80,
-            limit: 50
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self, self.isSearching,
-                      self.searchBar.text?.trimmingCharacters(in: .whitespacesAndNewlines) == typedQuery else { return }
-                guard case .success(let places) = result else { return }
+    /// Applies a cached answer for `channel`; false when there is none.
+    private func applyCached(_ channel: HomeSearchChannel, query: String,
+                             origin: CLLocationCoordinate2D?, caches: HomeSearchCaches) -> Bool {
+        switch channel {
+        case .people:
+            guard let users = caches.people.value(for: .init(channel: "people", query: query, origin: nil)) else { return false }
+            searchedUsers = users
+        case .network:
+            guard let places = caches.network.value(for: .init(channel: "network", query: query, origin: origin)) else { return false }
+            state.networkSearchHits = places
+            filterPlaces(searchText: query)
+            refreshMapDisplay(adjustRegion: false)
+        case .catalog:
+            guard let places = caches.catalog.value(for: .init(channel: "catalog", query: query, origin: origin)) else { return false }
+            suggestedPlaces = places
+            rebuildSuggestedRows()
+        case .apple:
+            guard let venues = caches.apple.value(for: .init(channel: "apple", query: query, origin: origin)) else { return false }
+            state.lastAppleQuery = query
+            appleCandidates = venues
+            filterPlaces(searchText: query)
+            applySearchFilterToMap(query)
+        }
+        return true
+    }
 
-                if places.isEmpty, allowFallback,
-                   let longest = typedQuery.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
-                       .max(by: { $0.count < $1.count }),
-                   longest.count >= 4 {
-                    self.fetchSuggestedPlaces(serverQuery: String(longest.prefix(3)),
-                                              typedQuery: typedQuery,
-                                              reference: reference, allowFallback: false)
-                    return
+    private func fetch(_ channel: HomeSearchChannel, query: String, reference: CLLocation?, generation: Int) {
+        let origin = reference?.coordinate
+        let caches = state.searchCaches
+        switch channel {
+        case .people:
+            searchRequests[.people] = UserService.shared.searchUsers(query: query) { [weak self] result in
+                DispatchQueue.main.async {
+                    self?.finish(.people, generation: generation, result: result.map { Array($0.prefix(12)) }) { users in
+                        caches.people.store(users, for: .init(channel: "people", query: query, origin: nil))
+                        self?.searchedUsers = users
+                    }
                 }
-
-                // Server sorts nearest-first when given a location; the
-                // merger re-sorts once Apple's rows are in the mix.
-                self.suggestedPlaces = Array(places.prefix(8))
-                self.rebuildSuggestedRows()
+            }
+        case .network:
+            searchRequests[.network] = PlaceService.shared.searchNetworkPlaces(query: query, near: reference) { [weak self] result in
+                DispatchQueue.main.async {
+                    self?.finish(.network, generation: generation, result: result) { places in
+                        caches.network.store(places, for: .init(channel: "network", query: query, origin: origin))
+                        guard let self else { return }
+                        self.state.networkSearchHits = places
+                        self.filterPlaces(searchText: query)
+                        // New hits get their pins (the map reads the same corpus)
+                        self.refreshMapDisplay(adjustRegion: false)
+                        self.applySearchFilterToMap(query)
+                    }
+                }
+            }
+        case .catalog:
+            guard let reference else { return }
+            fetchCatalog(serverQuery: query, typedQuery: query, reference: reference,
+                         generation: generation, allowFallback: true)
+        case .apple:
+            guard let reference else { return }
+            venueSearch.searchVenues(query: query, near: reference) { [weak self] result in
+                guard let self, self.searchDebouncer.isCurrent(generation) else { return }
+                self.state.pendingSearchChannels.remove(.apple)
+                // Throttled or offline: Apple's channel is silently nothing
+                if case .success(let venues) = result {
+                    caches.apple.store(venues, for: .init(channel: "apple", query: query, origin: reference.coordinate))
+                    self.state.lastAppleQuery = query
+                    self.appleCandidates = venues
+                    self.filterPlaces(searchText: query)
+                    self.applySearchFilterToMap(query)
+                }
                 self.refreshSearchOverlay()
                 self.updateEmptyState()
             }
         }
     }
 
+    /// The server matches exact name-word PREFIXES, so a typo ("piza")
+    /// returns nothing even though the local sections forgive it — when the
+    /// full query comes back empty, retry ONCE with a 3-char prefix of the
+    /// longest word ("piz" does match pizza-named venues).
+    private func fetchCatalog(serverQuery: String, typedQuery: String, reference: CLLocation,
+                              generation: Int, allowFallback: Bool) {
+        let caches = state.searchCaches
+        searchRequests[.catalog] = GlobalPlaceService.shared.searchGlobalPlaces(
+            query: serverQuery,
+            location: (lat: reference.coordinate.latitude, lng: reference.coordinate.longitude),
+            radius: 80,
+            limit: 50
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, self.searchDebouncer.isCurrent(generation) else { return }
+                if case .success(let places) = result, places.isEmpty, allowFallback,
+                   let longest = typedQuery.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                       .max(by: { $0.count < $1.count }),
+                   longest.count >= 4 {
+                    self.fetchCatalog(serverQuery: String(longest.prefix(3)), typedQuery: typedQuery,
+                                      reference: reference, generation: generation, allowFallback: false)
+                    return
+                }
+                self.finish(.catalog, generation: generation, result: result.map { Array($0.prefix(8)) }) { places in
+                    caches.catalog.store(places, for: .init(channel: "catalog", query: typedQuery, origin: reference.coordinate))
+                    self.suggestedPlaces = places
+                    self.rebuildSuggestedRows()
+                }
+            }
+        }
+    }
+
+    /// One answer in: stale ones (an older generation) are dropped; a failure
+    /// marks the channel for the status line; then the sheet redraws.
+    private func finish<T>(_ channel: HomeSearchChannel, generation: Int, result: Result<T, Error>,
+                           apply: (T) -> Void) {
+        guard searchDebouncer.isCurrent(generation), isSearching else { return }
+        searchRequests[channel] = nil
+        state.pendingSearchChannels.remove(channel)
+        switch result {
+        case .success(let value):
+            apply(value)
+        case .failure(let error):
+            state.failedSearchChannels.insert(channel)
+            if case .noInternet? = error as? APIError { state.searchFailedOffline = true }
+            Logger.debug("🔎 \(channel) lookup failed: \(error)")
+        }
+        refreshSearchOverlay()
+        updateEmptyState()
+    }
+
+    /// The status row was tapped after a failure: ask again, past the cache.
+    func retryFailedSearch() {
+        let text = (searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        scheduleRemoteSearch(for: text, bypassCache: true)
+        refreshSearchOverlay()
+    }
+}
+
+// MARK: - Results actions
+extension CirclesHomeViewController {
     /// The 'i' accessory: peek at a place in a sheet WITHOUT tearing down the
     /// search — dismiss and the results are still there.
     func presentSearchPreview(place: Place, circle: Circle?) {
@@ -381,19 +523,13 @@ extension CirclesHomeViewController {
         present(nav, animated: true)
     }
 
-
     /// Handles a tap on a PEOPLE result: connections/followees filter the map
     /// (like tapping their avatar); everyone else opens their profile to act.
     func selectSearchedUser(_ user: User) {
-        // Clear the search UI first
+        recordRecentSearch()
         searchBar.text = ""
         searchBar.resignFirstResponder()
-        state.clearSearch()
-        userSearchWorkItem?.cancel()
-        suggestedSearchWorkItem?.cancel()
-        mapViewController?.setSearchFilter(nil)
-        hideSearchResults()
-        updateEmptyState()
+        endSearch(keepFocus: false)
 
         let isConnected = user.connectionStatus == "connected" || user.connectionStatus == "accepted"
         let isFollowing = user.isFollowing == true
@@ -405,32 +541,19 @@ extension CirclesHomeViewController {
             navigationController?.pushViewController(profileVC, animated: true)
         }
     }
-}
 
-// MARK: - PlaceSearchable Navigation
-extension CirclesHomeViewController {
-    func navigateToPlace(_ place: Place) {
-        // Find the circle this place belongs to
-        var targetCircle: Circle?
-        
-        // Check user's circles first
-        if let circleId = place.circleId, let circle = circles.first(where: { $0.id == circleId }) {
-            targetCircle = circle
-        }
-        
-        // Check network circles if not found
-        if targetCircle == nil {
-            if let circleId = place.circleId {
-                targetCircle = networkCircles.first(where: { $0.id == circleId })
+    /// The matched part of `text` in bold, for a result row.
+    func highlighted(_ text: String, query: String, font: UIFont = .systemFont(ofSize: 17)) -> NSAttributedString {
+        let out = NSMutableAttributedString(string: text, attributes: [.font: font])
+        let words = query.split(whereSeparator: { $0.isWhitespace }).map(String.init).filter { !$0.isEmpty }
+        let bold = UIFont.systemFont(ofSize: font.pointSize, weight: .semibold)
+        for word in words {
+            var searchRange = text.startIndex..<text.endIndex
+            while let range = text.range(of: word, options: [.caseInsensitive, .diacriticInsensitive], range: searchRange) {
+                out.addAttribute(.font, value: bold, range: NSRange(range, in: text))
+                searchRange = range.upperBound..<text.endIndex
             }
         }
-        
-        guard let circle = targetCircle else {
-            Logger.debug("⚠️ Could not find circle for place: \(place.name)")
-            return
-        }
-        
-        let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
-        navigationController?.pushViewController(placeDetailVC, animated: true)
+        return out
     }
 }

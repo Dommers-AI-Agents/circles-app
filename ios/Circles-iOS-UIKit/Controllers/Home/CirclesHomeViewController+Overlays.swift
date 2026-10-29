@@ -15,20 +15,16 @@ extension CirclesHomeViewController: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard let touchView = touch.view else { return false }
 
-        // The bar, the Places/People control, the results sheet and the scope
-        // dropdown handle their own touches — the tap-outside recognizer must
+        // The bar, the Places/People control and the results sheet handle
+        // their own touches — the tap-outside recognizer must
         // never fire for them (it used to hide the results when the mode
         // control was tapped, then the control re-showed them: a flicker).
         if touchView.isDescendant(of: searchBar)
             || touchView.isDescendant(of: searchModeControl)
-            || touchView.isDescendant(of: searchResultsSheet)
-            || touchView.isDescendant(of: searchScopeTableView) {
+            || touchView.isDescendant(of: searchResultsSheet) {
             return false
         }
         let location = touch.location(in: view)
-        if !searchScopeDropdownView.isHidden && searchScopeDropdownView.frame.contains(location) {
-            return false
-        }
         if searchResultsSheet.isVisible && searchResultsSheet.frame.contains(location) {
             return false
         }

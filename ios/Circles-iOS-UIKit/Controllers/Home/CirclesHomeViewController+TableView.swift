@@ -15,6 +15,12 @@ enum SearchSection: Int, CaseIterable {
     case places
     case suggested
     case people
+    /// One line: searching / offline / failed (tap to retry)
+    case status
+    /// Focused, empty bar: the person's recent searches…
+    case recent
+    /// …and one-tap category searches
+    case browse
 }
 
 // MARK: - Dropdown TableView Delegate & DataSource
@@ -28,16 +34,16 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if tableView == placesListTableView {
             return distanceSortedPlaces.count
-        } else if tableView == searchScopeTableView {
-            return SearchScope.allCases.count
         } else if tableView == searchResultsTableView {
-            guard isSearching else { return 0 }
             let plan = searchPlan
             switch SearchSection(rawValue: section) {
             case .widgets: return plan.widgetRows
             case .places: return plan.placeRows
             case .suggested: return plan.suggestedRows
             case .people: return plan.peopleRows
+            case .status: return plan.statusRows
+            case .recent: return plan.recentRows
+            case .browse: return plan.browseRows
             case .none: return 0
             }
         }
@@ -53,30 +59,64 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             cell.configure(with: entry.place, isSelected: false, distanceText: distanceText,
                            savedBy: savedByText(entry.savedBy))
             return cell
-        } else if tableView == searchScopeTableView {
-            let cell = tableView.dequeueReusableCell(withIdentifier: "SearchScopeCell") ?? UITableViewCell(style: .default, reuseIdentifier: "SearchScopeCell")
-            
-            cell.backgroundColor = .clear
-            cell.textLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
-            cell.selectionStyle = .default
-            
-            // Set selection background color
-            let selectedView = UIView()
-            selectedView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
-            cell.selectedBackgroundView = selectedView
-            
-            // Add bounds check
-            guard indexPath.row < SearchScope.allCases.count else {
-                return cell
-            }
-            
-            let scope = SearchScope.allCases[indexPath.row]
-            cell.textLabel?.text = scope.title
-            cell.textLabel?.textColor = currentSearchScope == scope ? Constants.Colors.primary : Constants.Colors.label
-            cell.accessoryType = currentSearchScope == scope ? .checkmark : .none
-            
-            return cell
         } else if tableView == searchResultsTableView {
+            let query = (searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            switch SearchSection(rawValue: indexPath.section) {
+            case .status:
+                let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
+                let status = searchPlan.status ?? .searching
+                var content = cell.defaultContentConfiguration()
+                content.text = status.text
+                content.textProperties.font = UIFont.systemFont(ofSize: 14)
+                content.textProperties.color = Constants.Colors.secondaryLabel
+                switch status {
+                case .searching:
+                    let spinner = UIActivityIndicatorView(style: .medium)
+                    spinner.startAnimating()
+                    cell.accessoryView = spinner
+                    content.image = UIImage(systemName: "magnifyingglass")
+                case .offline:
+                    cell.accessoryView = nil
+                    content.image = UIImage(systemName: "wifi.slash")
+                case .failed:
+                    cell.accessoryView = nil
+                    content.image = UIImage(systemName: "arrow.clockwise")
+                }
+                content.imageProperties.tintColor = Constants.Colors.secondaryLabel
+                cell.accessoryType = .none
+                cell.contentConfiguration = content
+                return cell
+            case .recent:
+                let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
+                cell.accessoryView = nil
+                cell.accessoryType = .none
+                let recents = visibleRecentSearches
+                guard indexPath.row < recents.count else { return cell }
+                var content = cell.defaultContentConfiguration()
+                content.text = recents[indexPath.row]
+                content.image = UIImage(systemName: "clock.arrow.circlepath")
+                content.imageProperties.tintColor = Constants.Colors.secondaryLabel
+                cell.contentConfiguration = content
+                return cell
+            case .browse:
+                let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
+                cell.accessoryView = nil
+                cell.accessoryType = .disclosureIndicator
+                let items = HomeSearchBrowseItem.all
+                guard indexPath.row < items.count else { return cell }
+                var content = cell.defaultContentConfiguration()
+                content.text = items[indexPath.row].title
+                content.secondaryText = "Near you"
+                content.secondaryTextProperties.color = Constants.Colors.secondaryLabel
+                content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
+                content.image = UIImage(systemName: items[indexPath.row].symbolName)
+                content.imageProperties.tintColor = Constants.Colors.primary
+                cell.contentConfiguration = content
+                return cell
+            default:
+                break
+            }
+
             // WIDGETS section: tap to open that widget
             if SearchSection(rawValue: indexPath.section) == .widgets {
                 let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
@@ -106,7 +146,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 let user = searchedUsers[indexPath.row]
 
                 var content = cell.defaultContentConfiguration()
-                content.text = user.displayName
+                content.attributedText = highlighted(user.displayName, query: query)
 
                 let isConnected = user.connectionStatus == "connected" || user.connectionStatus == "accepted"
                 let isFollowing = user.isFollowing == true
@@ -132,13 +172,14 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             if SearchSection(rawValue: indexPath.section) == .places {
                 let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
                 cell.accessoryView = nil
-                cell.accessoryType = .disclosureIndicator
+                // Tap opens the place; 'i' peeks at it without leaving the search
+                cell.accessoryType = .detailDisclosureButton
                 let places = visibleFilteredPlaces
                 guard indexPath.row < places.count else { return cell }
                 let place = places[indexPath.row]
 
                 var content = cell.defaultContentConfiguration()
-                content.text = place.name
+                content.attributedText = highlighted(place.name, query: query)
                 var subtitle = place.address
                 if let distance = searchDistances[place.id] {
                     subtitle = "\(listDistanceFormatter.string(fromDistance: distance)) · \(subtitle)"
@@ -164,7 +205,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 let suggestion = row.place
 
                 var content = cell.defaultContentConfiguration()
-                content.text = suggestion.name
+                content.attributedText = highlighted(suggestion.name, query: query)
                 var subtitle = suggestion.address
                 if let rating = suggestion.rating {
                     subtitle = String(format: "★ %.1f · %@", rating, subtitle)
@@ -207,24 +248,27 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     // Search overlay section headers (PLACES / PEOPLE) — hidden when the
     // section is empty so a places-only or people-only search reads cleanly.
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        guard tableView == searchResultsTableView, isSearching else { return nil }
-        switch SearchSection(rawValue: section) {
-        case .widgets: return searchPlan.widgetRows == 0 ? nil : "WIDGETS"
-        case .places: return searchPlan.placeRows == 0 ? nil : searchPlan.placesHeader
-        case .suggested: return searchPlan.suggestedRows == 0 ? nil : searchPlan.suggestedHeader
-        case .people: return searchPlan.peopleRows == 0 ? nil : "PEOPLE"
-        case .none: return nil
-        }
+        guard tableView == searchResultsTableView else { return nil }
+        return searchSectionTitle(section)
     }
 
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
-        guard tableView == searchResultsTableView, isSearching else { return 0 }
+        guard tableView == searchResultsTableView else { return 0 }
+        // Same rule as the titles: a header exactly where a title is
+        return searchSectionTitle(section) == nil ? 0 : SearchSheetLayout.headerHeight
+    }
+
+    /// The header over a results section, nil when it has no rows (or no header).
+    func searchSectionTitle(_ section: Int) -> String? {
+        let plan = searchPlan
         switch SearchSection(rawValue: section) {
-        case .widgets: return searchPlan.widgetRows == 0 ? 0 : SearchSheetLayout.headerHeight
-        case .places: return searchPlan.placeRows == 0 ? 0 : SearchSheetLayout.headerHeight
-        case .suggested: return searchPlan.suggestedRows == 0 ? 0 : SearchSheetLayout.headerHeight
-        case .people: return searchPlan.peopleRows == 0 ? 0 : SearchSheetLayout.headerHeight
-        case .none: return 0
+        case .widgets: return plan.widgetRows == 0 ? nil : "WIDGETS"
+        case .places: return plan.placeRows == 0 ? nil : plan.placesHeader
+        case .suggested: return plan.suggestedRows == 0 ? nil : plan.suggestedHeader
+        case .people: return plan.peopleRows == 0 ? nil : "PEOPLE"
+        case .recent: return plan.recentRows == 0 ? nil : "RECENT"
+        case .browse: return plan.browseRows == 0 ? nil : "BROWSE NEARBY"
+        case .status, .none: return nil
         }
     }
     
@@ -234,8 +278,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         guard tableView == searchResultsTableView else { return }
         switch SearchSection(rawValue: indexPath.section) {
         case .places:
-            guard indexPath.row < filteredPlaces.count else { return }
-            let place = filteredPlaces[indexPath.row]
+            let places = visibleFilteredPlaces
+            guard indexPath.row < places.count else { return }
+            let place = places[indexPath.row]
             presentSearchPreview(place: place, circle: resolveCircle(for: place))
         case .suggested:
             guard indexPath.row < visibleSuggestedRows.count else { return }
@@ -254,45 +299,21 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             return
         }
 
-        if tableView == searchScopeTableView {
-            // Add bounds check
-            guard indexPath.row < SearchScope.allCases.count else { return }
-            
-            let selectedScope = SearchScope.allCases[indexPath.row]
-            currentSearchScope = selectedScope
-            
-            // Update search bar placeholder
-            searchBar.placeholder = selectedScope.placeholder
-            
-            // If currently searching, refresh the search results with new scope
-            if isSearching {
-                // Scope only changes which saved places match; the nearby
-                // lookups depend on the query and origin, not the scope
-                filterPlaces(searchText: searchBar.text ?? "", refetchSuggestions: false)
-            }
-            
-            // Switching to network search asks the server for the network's
-            // saves matching the current text
-            if selectedScope == .networkPlaces {
-                loadNetworkPlaces(matching: searchBar.text ?? "", reference: searchReferenceLocation())
-            }
-            
-            // Update UI and hide dropdown
-            hideSearchScopeDropdown()
-            isSearchScopeDropdownOpen = false
-        } else if tableView == searchResultsTableView {
+        if tableView == searchResultsTableView {
             switch SearchSection(rawValue: indexPath.section) {
             case .widgets:
                 let widgets = matchedWidgets
                 guard indexPath.row < widgets.count else { return }
                 let id = widgets[indexPath.row].id
                 AnalyticsService.shared.logEvent("home_search_widget_opened", parameters: ["widget": id])
+                recordRecentSearch()
                 resetSearch()
                 showWidgetsTab(openingWidget: id)
             case .places:
                 let places = visibleFilteredPlaces
                 guard indexPath.row < places.count else { return }
                 // The search (query, pins, sheet) survives the push and the pop
+                recordRecentSearch()
                 searchBar.resignFirstResponder()
                 presentDetailForPlace(places[indexPath.row])
             case .people:
@@ -301,14 +322,10 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             case .suggested:
                 guard indexPath.row < visibleSuggestedRows.count else { return }
                 let row = visibleSuggestedRows[indexPath.row]
+                recordRecentSearch()
                 searchBar.text = ""
                 searchBar.resignFirstResponder()
-                state.clearSearch()
-                userSearchWorkItem?.cancel()
-                suggestedSearchWorkItem?.cancel()
-                mapViewController?.setSearchFilter(nil)
-                hideSearchResults()
-                updateEmptyState()
+                endSearch(keepFocus: false)
                 switch row {
                 case .global(let suggestion):
                     let detailVC = PlaceDetailViewController(place: suggestion.toLegacyPlace())
@@ -318,10 +335,35 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                     // the useful next step is saving it, prefilled.
                     openAddPlace(prefilledWith: venue)
                 }
+            case .status:
+                if searchPlan.status == .failed || searchPlan.status == .offline { retryFailedSearch() }
+            case .recent:
+                let recents = visibleRecentSearches
+                guard indexPath.row < recents.count else { return }
+                runSearch(recents[indexPath.row])
+            case .browse:
+                let items = HomeSearchBrowseItem.all
+                guard indexPath.row < items.count else { return }
+                AnalyticsService.shared.logEvent("home_search_browse", parameters: ["category": items[indexPath.row].query])
+                runSearch(items[indexPath.row].query)
             case .none:
                 break
             }
         }
+    }
+
+    /// Swipe a recent search away.
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        guard tableView == searchResultsTableView, SearchSection(rawValue: indexPath.section) == .recent else { return nil }
+        let recents = visibleRecentSearches
+        guard indexPath.row < recents.count else { return nil }
+        let query = recents[indexPath.row]
+        let remove = UIContextualAction(style: .destructive, title: "Remove") { [weak self] _, _, done in
+            self?.recentSearches.remove(query)
+            self?.refreshSearchOverlay()
+            done(true)
+        }
+        return UISwipeActionsConfiguration(actions: [remove])
     }
 }
 
@@ -330,20 +372,29 @@ extension CirclesHomeViewController {
     /// Add Place with the venue's name and pin already in the form, into the
     /// circle used last (same rule as a shared link, SceneDelegate).
     func openAddPlace(prefilledWith venue: Place) {
-        let coordinate = venue.location?.clLocation?.coordinate
+        // The home screen already holds the circles (profile order); only ask
+        // the server when it has none yet (still loading, or a failed load)
+        if !circles.isEmpty {
+            pushAddPlace(prefilledWith: venue, circles: circles)
+            return
+        }
         CircleService.shared.fetchUserCircles { [weak self] result in
             DispatchQueue.main.async {
                 guard let self, case .success(let circles) = result, !circles.isEmpty else {
                     self?.showError("Create a circle first, then save places into it.")
                     return
                 }
-                let lastUsedId = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey)
-                let target = circles.first(where: { $0.id == lastUsedId }) ?? circles[0]
-                let addPlaceVC = AddPlaceViewController(circleId: target.id, circles: circles)
-                addPlaceVC.circleWasRemembered = target.id == lastUsedId && circles.count > 1
-                addPlaceVC.prefillSearchWithPlace(name: venue.name, coordinate: coordinate)
-                self.navigationController?.pushViewController(addPlaceVC, animated: true)
+                self.pushAddPlace(prefilledWith: venue, circles: circles)
             }
         }
+    }
+
+    private func pushAddPlace(prefilledWith venue: Place, circles: [Circle]) {
+        let lastUsedId = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey)
+        let target = circles.first(where: { $0.id == lastUsedId }) ?? circles[0]
+        let addPlaceVC = AddPlaceViewController(circleId: target.id, circles: circles)
+        addPlaceVC.circleWasRemembered = target.id == lastUsedId && circles.count > 1
+        addPlaceVC.prefillSearchWithPlace(name: venue.name, coordinate: venue.location?.clLocation?.coordinate)
+        navigationController?.pushViewController(addPlaceVC, animated: true)
     }
 }

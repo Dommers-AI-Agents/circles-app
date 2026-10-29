@@ -394,6 +394,10 @@ class APIService {
     
     // MARK: - Request Methods
     
+    /// - Returns: a handle that cancels the request. A cancelled request
+    ///   never calls `completion` — search fields use this to drop the
+    ///   lookup a newer keystroke replaced. Everyone else ignores it.
+    @discardableResult
     func request<T: Decodable>(
         endpoint: String,
         method: RequestMethod = .get,
@@ -401,8 +405,13 @@ class APIService {
         body: [String: Any]? = nil,
         headers: [String: String]? = nil,
         requiresAuth: Bool = true,
-        completion: @escaping (Result<T, APIError>) -> Void
-    ) {
+        completion userCompletion: @escaping (Result<T, APIError>) -> Void
+    ) -> APIRequestHandle {
+        let handle = APIRequestHandle()
+        let completion: (Result<T, APIError>) -> Void = { result in
+            guard !handle.isCancelled else { return }
+            userCompletion(result)
+        }
         // Improved duplicate request prevention for GET requests
         // Only prevent duplicates for identical requests within a short time window
         if method == .get {
@@ -431,7 +440,7 @@ class APIService {
                 if isDuplicate {
                     Logger.debug("Preventing duplicate GET request: \(requestKey)")
                     completion(.failure(.duplicateRequest))
-                    return
+                    return handle
                 }
 
                 // Clean up pending request after 0.5 seconds (reduced from 1.0)
@@ -453,7 +462,7 @@ class APIService {
                 hasLoggedNoInternetOnce = true
             }
             completion(.failure(.noInternet))
-            return
+            return handle
         }
         
         // Check rate limiting
@@ -474,10 +483,11 @@ class APIService {
                         body: body,
                         headers: headers,
                         requiresAuth: requiresAuth,
+                        handle: handle,
                         completion: completion
                     )
                 }
-                return
+                return handle
             }
         }
         
@@ -489,8 +499,10 @@ class APIService {
             headers: headers,
             requiresAuth: requiresAuth,
             retryCount: 0,
+            handle: handle,
             completion: completion
         )
+        return handle
     }
     
     /// A raw GET for binary responses (a print-ready PDF), with the same
@@ -539,6 +551,7 @@ class APIService {
         headers: [String: String]?,
         requiresAuth: Bool,
         retryCount: Int = 0,
+        handle: APIRequestHandle? = nil,
         completion: @escaping (Result<T, APIError>) -> Void
     ) {
         if logLevel == .verbose {
@@ -579,6 +592,7 @@ class APIService {
                     headers: headers,
                     requiresAuth: requiresAuth,
                     retryCount: retryCount,
+                    handle: handle,
                     completion: completion
                 )
             }
@@ -731,6 +745,15 @@ class APIService {
         if logLevel == .verbose {
             Logger.debug("📡 API APIService: Executing HTTP request to: \(url.absoluteString)")
         }
+        // Cancelled before it started (a newer keystroke): no network at all.
+        // Release its duplicate-GET slot, or the same request later would be
+        // refused as "already in flight" forever.
+        if handle?.isCancelled == true {
+            if method == .get {
+                clearPendingRequest(createRequestKey(endpoint: endpoint, method: method, body: body, queryParams: queryParams))
+            }
+            return
+        }
         let task = session.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { 
                 // Can't access instance properties when self is nil
@@ -770,6 +793,7 @@ class APIService {
                             headers: headers,
                             requiresAuth: requiresAuth,
                             retryCount: retryCount + 1,
+                            handle: handle,
                             completion: completion
                         )
                     }
@@ -894,6 +918,7 @@ class APIService {
                                 headers: headers,
                                 requiresAuth: requiresAuth,
                                 retryCount: retryCount + 1,
+                                handle: handle,
                                 completion: completion
                             )
                         case .failure(let refreshError):
@@ -1000,6 +1025,7 @@ class APIService {
                             headers: headers,
                             requiresAuth: requiresAuth,
                             retryCount: retryCount + 1,
+                            handle: handle,
                             completion: completion
                         )
                     }
@@ -1063,6 +1089,7 @@ class APIService {
                             headers: headers,
                             requiresAuth: requiresAuth,
                             retryCount: retryCount + 1,
+                            handle: handle,
                             completion: completion
                         )
                     }
@@ -1168,6 +1195,7 @@ class APIService {
             }
         }
         
+        handle?.attach(task)
         task.resume()
     }
     
@@ -1526,5 +1554,34 @@ extension APIService {
         if let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
             request.setValue(build, forHTTPHeaderField: "X-App-Build")
         }
+    }
+}
+
+
+/// Cancels one `APIService.request`. The request may be waiting (throttle,
+/// token refresh, retry) or in flight; either way it stops and its completion
+/// never runs. Thread-safe.
+final class APIRequestHandle {
+    private let lock = NSLock()
+    private var cancelled = false
+    private var task: URLSessionTask?
+
+    var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let running = task
+        task = nil
+        lock.unlock()
+        running?.cancel()
+    }
+
+    /// The task now carrying the request (retries attach a fresh one).
+    func attach(_ newTask: URLSessionTask) {
+        lock.lock()
+        if cancelled { lock.unlock(); newTask.cancel(); return }
+        task = newTask
+        lock.unlock()
     }
 }

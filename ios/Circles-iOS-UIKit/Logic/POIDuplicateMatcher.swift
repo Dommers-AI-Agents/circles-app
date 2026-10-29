@@ -109,14 +109,17 @@ extension POIDuplicateMatcher {
     /// Splits search results into the saved places they turn out to be and
     /// the venues nobody has saved. Each saved place is claimed once.
     static func partition(candidates: [Place], saved: [Place]) -> (matched: [Place], unsaved: [Place]) {
-        let keyedSaved = saved.map(KeyedPlace.init)
+        partition(candidates: candidates, index: SavedPlaceIndex(saved))
+    }
+
+    static func partition(candidates: [Place], index: SavedPlaceIndex) -> (matched: [Place], unsaved: [Place]) {
         var matched: [Place] = []
         var claimed = Set<String>()
         var unsaved: [Place] = []
         for candidate in candidates {
             guard let coordinate = candidate.location?.clLocation?.coordinate else { unsaved.append(candidate); continue }
             let key = NameKey(candidate.name)
-            if let hit = keyedSaved.first(where: { !claimed.contains($0.place.id) && isSearchHit(key: key, coordinate: coordinate, saved: $0) }) {
+            if let hit = index.hits(key: key, coordinate: coordinate).first(where: { !claimed.contains($0.place.id) }) {
                 claimed.insert(hit.place.id)
                 matched.append(hit.place)
             } else {
@@ -124,5 +127,64 @@ extension POIDuplicateMatcher {
             }
         }
         return (matched, unsaved)
+    }
+}
+
+/// The saved places a search compares against, keyed ONCE per change of the
+/// saved set (not once per pass): by normalised name, and by a ~110 m grid so
+/// the "within 75 m" rule only looks at the cell and its neighbours. Each
+/// result used to scan every saved place (O(results × saved) per pass, several
+/// passes per keystroke).
+struct SavedPlaceIndex {
+    private let keyed: [POIDuplicateMatcher.KeyedPlace]
+    private let byName: [String: [Int]]
+    private let byCell: [Cell: [Int]]
+
+    private struct Cell: Hashable { let lat: Int; let lng: Int }
+    /// ~111 m of latitude; with the 3×3 neighbourhood it covers the 75 m rule
+    private static let step = 0.001
+
+    private static func cell(_ c: CLLocationCoordinate2D) -> Cell {
+        Cell(lat: Int((c.latitude / step).rounded(.down)), lng: Int((c.longitude / step).rounded(.down)))
+    }
+
+    init(_ saved: [Place]) {
+        let keyed = saved.map(POIDuplicateMatcher.KeyedPlace.init)
+        var byName: [String: [Int]] = [:]
+        var byCell: [Cell: [Int]] = [:]
+        for (i, k) in keyed.enumerated() {
+            if !k.key.normalized.isEmpty { byName[k.key.normalized, default: []].append(i) }
+            if let c = k.location?.coordinate { byCell[Self.cell(c), default: []].append(i) }
+        }
+        self.keyed = keyed
+        self.byName = byName
+        self.byCell = byCell
+    }
+
+    var isEmpty: Bool { keyed.isEmpty }
+
+    /// Saved places this venue IS (POIDuplicateMatcher.isSearchHit), in the
+    /// saved set's original order.
+    func hits(key: POIDuplicateMatcher.NameKey, coordinate: CLLocationCoordinate2D) -> [POIDuplicateMatcher.KeyedPlace] {
+        var candidates = Set(byName[key.normalized] ?? [])
+        let center = Self.cell(coordinate)
+        for dLat in -1...1 {
+            for dLng in -1...1 {
+                candidates.formUnion(byCell[Cell(lat: center.lat + dLat, lng: center.lng + dLng)] ?? [])
+            }
+        }
+        return candidates.sorted()
+            .map { keyed[$0] }
+            .filter { POIDuplicateMatcher.isSearchHit(key: key, coordinate: coordinate, saved: $0) }
+    }
+
+    /// Is this place (by name, and by name + proximity when it has a point)
+    /// one of the saved places?
+    func contains(_ place: Place) -> Bool {
+        let key = POIDuplicateMatcher.NameKey(place.name)
+        guard let coordinate = place.location?.clLocation?.coordinate else {
+            return byName[key.normalized] != nil
+        }
+        return !hits(key: key, coordinate: coordinate).isEmpty
     }
 }

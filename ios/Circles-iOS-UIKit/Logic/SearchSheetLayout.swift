@@ -32,9 +32,12 @@ struct SearchSheetLayout {
     /// Handle plus every non-empty section (header + rows).
     static func contentHeight(for plan: HomeSearchPlan) -> CGFloat {
         var height = handleHeight
-        for rows in [plan.widgetRows, plan.placeRows, plan.suggestedRows, plan.peopleRows] where rows > 0 {
+        for rows in [plan.widgetRows, plan.placeRows, plan.suggestedRows, plan.peopleRows,
+                     plan.recentRows, plan.browseRows] where rows > 0 {
             height += headerHeight + CGFloat(rows) * rowHeight
         }
+        // The status line has no header
+        height += CGFloat(plan.statusRows) * rowHeight
         return height
     }
 

@@ -23,7 +23,7 @@ struct HomePlaceFilter {
     static let myPlacesOnlyId = "my_places_only"
     static let myConnectionsOnlyId = "my_connections_only"
 
-    struct Context {
+    struct Context: Equatable {
         var selectedConnectionId: String? = nil
         var selectedCategory: UnifiedCategory? = nil
         var currentUserId: String = ""

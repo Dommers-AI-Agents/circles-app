@@ -34,15 +34,13 @@ enum SuggestedNearbyMerger {
 
     static func merge(global: [GlobalPlace], apple: [Place], saved: [Place],
                       from origin: CLLocation?) -> [(row: SuggestedRow, distance: CLLocationDistance?)] {
-        // Names normalised once per pass, not once per pair (see NameKey)
-        let keyedSaved = saved.map(POIDuplicateMatcher.KeyedPlace.init)
-        let isSaved: (Place) -> Bool = { place in
-            let key = POIDuplicateMatcher.NameKey(place.name)
-            guard let coordinate = place.location?.clLocation?.coordinate else {
-                return keyedSaved.contains { $0.key.normalized == key.normalized }
-            }
-            return keyedSaved.contains { POIDuplicateMatcher.isSearchHit(key: key, coordinate: coordinate, saved: $0) }
-        }
+        merge(global: global, apple: apple, savedIndex: SavedPlaceIndex(saved), from: origin)
+    }
+
+    /// Same, against a saved set keyed once per change (SavedPlaceIndex).
+    static func merge(global: [GlobalPlace], apple: [Place], savedIndex: SavedPlaceIndex,
+                      from origin: CLLocation?) -> [(row: SuggestedRow, distance: CLLocationDistance?)] {
+        let isSaved: (Place) -> Bool = { savedIndex.contains($0) }
         var rows: [SuggestedRow] = []
         var places: [Place] = []
         var keptKeys: [POIDuplicateMatcher.KeyedPlace] = []

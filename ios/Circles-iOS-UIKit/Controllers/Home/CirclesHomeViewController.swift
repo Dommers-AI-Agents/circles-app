@@ -7,7 +7,7 @@ import MapKit
 import AVFoundation
 import SafariServices
 
-class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEServiceDelegate {
+class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
     
     // MARK: - State
     /// Loaded circles/places, the people/category selection and the search
@@ -104,15 +104,18 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     var rewardsBadgeLabel: UILabel? // Badge label showing reward points balance
     var rewardsBarButton: UIBarButtonItem? // Store reference to rewards ($) button
     
-    // Search scope properties
-    var currentSearchScope: SearchScope { get { state.currentSearchScope } set { state.currentSearchScope = newValue } }
-    var networkPlaces: [Place] { get { state.networkPlaces } set { state.networkPlaces = newValue } } // Cache for network places
-
     // Unified search: places (local, instant) + people (server, debounced).
     // People results are the PEOPLE section of the search overlay; tapping one
     // filters the map to a connection/followee, or opens a stranger's profile.
     var searchedUsers: [User] { get { state.searchedUsers } set { state.searchedUsers = newValue } }
-    var userSearchWorkItem: DispatchWorkItem?
+    /// One debounce for every remote channel; its generation marks stale answers
+    let searchDebouncer = SearchDebouncer(delay: 0.3)
+    /// The lookups out for the current generation, cancelled by the next one
+    var searchRequests: [HomeSearchChannel: APIRequestHandle] = [:]
+    /// Widgets the current text names — computed once per keystroke, read by every row
+    var matchedWidgetsCache: [FavWidgetDescriptor] = []
+    /// Recent home searches on this phone
+    let recentSearches = RecentSearchStore()
     // Search overlay distance/suggested state: distances (meters) keyed by
     // place id for the PLACES rows, plus the SUGGESTED fallback — global
     // venues fetched when the query matches nothing you or your network saved
@@ -123,10 +126,8 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     var appleMatchedPlaceIds: Set<String> { get { state.appleMatchedPlaceIds } set { state.appleMatchedPlaceIds = newValue } }
     var appleVenues: [Place] { get { state.appleVenues } set { state.appleVenues = newValue } }
     var suggestedRows: [SuggestedRow] { get { state.suggestedRows } set { state.suggestedRows = newValue } }
-    var suggestedSearchWorkItem: DispatchWorkItem?
     /// Apple Maps, for the plain-language part of a search ("deli").
     let venueSearch = NearbyPlaceSearch()
-    var lastAppleQuery = ""
 
     // MARK: - Viewport-Based Network Place Loading
     // Guards the disk-cache paint so it happens at most once per instance
@@ -186,41 +187,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         searchBar.searchTextField.clearButtonMode = .never
         searchBar.translatesAutoresizingMaskIntoConstraints = false
         return searchBar
-    }()
-    
-    let searchScopeButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setImage(UIImage(systemName: "chevron.down"), for: .normal)
-        button.tintColor = .systemBlue
-        button.backgroundColor = .systemBackground
-        button.layer.cornerRadius = 8
-        button.layer.borderWidth = 1
-        button.layer.borderColor = UIColor.systemGray4.cgColor
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
-    let searchScopeDropdownView: UIView = {
-        let view = UIView()
-        view.backgroundColor = .systemBackground
-        view.layer.cornerRadius = 8
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
-        view.isHidden = true
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    let searchScopeTableView: UITableView = {
-        let tableView = UITableView()
-        tableView.backgroundColor = .clear
-        tableView.separatorStyle = .none
-        tableView.layer.cornerRadius = 8
-        tableView.isScrollEnabled = false
-        tableView.translatesAutoresizingMaskIntoConstraints = false
-        return tableView
     }()
     
     // Quick-access bar (Home / Places / Work cards) removed from the home page —
@@ -547,7 +513,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     /// The sheet's table — PlaceSearchable and the section code talk to this.
     var searchResultsTableView: UITableView { searchResultsSheet.tableView }
     /// Unused here (the sheet sizes itself); PlaceSearchable requires it.
-    var searchResultsHeightConstraint: NSLayoutConstraint?
     /// The map is lifted under the mode control and fills the screen.
     var isSearchLayoutActive = false
     var mapTopToPeopleRowConstraint: NSLayoutConstraint!
@@ -595,10 +560,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     
     var availableCategories: [UnifiedCategory] { get { state.availableCategories } set { state.availableCategories = newValue } }
     var mapHeightConstraint: NSLayoutConstraint?
-    
-    // Search scope dropdown properties
-    var isSearchScopeDropdownOpen = false
-    var searchScopeDropdownHeightConstraint: NSLayoutConstraint?
     
     // Activity tab (child); `activities` forwards for the loader/preload/blocked-user paths
     lazy var activityTab: HomeActivityFeedViewController = {
@@ -707,7 +668,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
     /// Places or People — the person says which rather than the search
     /// guessing from an ambiguous name.
-    var searchMode: HomeSearchMode = .places
+    var searchMode: HomeSearchMode { get { state.searchMode } set { state.searchMode = newValue } }
 
     /// Sits under the search bar while searching. A visible toggle rather than
     /// a question asked before every search: "Nick" is a person AND Nickyo's
@@ -1551,13 +1512,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         
         // Add search bar to main view (not scrolling)
         view.addSubview(searchBar)
-        view.addSubview(searchScopeButton)
-        searchScopeButton.isHidden = true // unified search: scope dropdown retired
         view.addSubview(quickAddPlaceButton)
-        
-        // Add search scope dropdown
-        view.addSubview(searchScopeDropdownView)
-        searchScopeDropdownView.addSubview(searchScopeTableView)
         
         // Add content to scroll view
         contentView.addSubview(userListView)
@@ -1648,14 +1603,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             searchBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
             searchBar.trailingAnchor.constraint(equalTo: quickAddPlaceButton.leadingAnchor, constant: -Constants.Spacing.small),
             searchBar.heightAnchor.constraint(equalToConstant: 44),
-
-            // Scope button retired (unified search): collapsed to zero size and
-            // hidden. Kept in the hierarchy so the (now dormant) dropdown
-            // constraints/wiring still resolve without a layout rewrite.
-            searchScopeButton.centerYAnchor.constraint(equalTo: searchBar.centerYAnchor),
-            searchScopeButton.trailingAnchor.constraint(equalTo: quickAddPlaceButton.leadingAnchor),
-            searchScopeButton.widthAnchor.constraint(equalToConstant: 0),
-            searchScopeButton.heightAnchor.constraint(equalToConstant: 0),
 
             // Scroll view
             scrollView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
@@ -1862,21 +1809,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
 
         installSearchResultsSheet()
         
-        // Search scope dropdown constraints
-        NSLayoutConstraint.activate([
-            searchScopeDropdownView.topAnchor.constraint(equalTo: searchScopeButton.bottomAnchor, constant: 4),
-            searchScopeDropdownView.trailingAnchor.constraint(equalTo: searchScopeButton.trailingAnchor),
-            searchScopeDropdownView.widthAnchor.constraint(equalToConstant: 250),
-            
-            searchScopeTableView.topAnchor.constraint(equalTo: searchScopeDropdownView.topAnchor),
-            searchScopeTableView.leadingAnchor.constraint(equalTo: searchScopeDropdownView.leadingAnchor),
-            searchScopeTableView.trailingAnchor.constraint(equalTo: searchScopeDropdownView.trailingAnchor),
-            searchScopeTableView.bottomAnchor.constraint(equalTo: searchScopeDropdownView.bottomAnchor)
-        ])
-        
-        searchScopeDropdownHeightConstraint = searchScopeDropdownView.heightAnchor.constraint(equalToConstant: 0)
-        searchScopeDropdownHeightConstraint?.isActive = true
-        
         // Add Place: search (as always) or save the places your photos were
         // taken at — for days out with no signal (Wes, 2026-10-04)
         quickAddPlaceButton.menu = UIMenu(children: [
@@ -1891,7 +1823,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         ])
         quickAddPlaceButton.showsMenuAsPrimaryAction = true
         mapExpandButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
-        searchScopeButton.addTarget(self, action: #selector(searchScopeButtonTapped), for: .touchUpInside)
         
         setupMapView()
         setupActivityFeed()
@@ -1948,13 +1879,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Distance-sorted places list (map/list toggle)
         placesListTableView.delegate = self
         placesListTableView.dataSource = self
-
-        // Configure search scope table view
-        searchScopeTableView.delegate = self
-        searchScopeTableView.dataSource = self
-        searchScopeTableView.register(UITableViewCell.self, forCellReuseIdentifier: "SearchScopeCell")
-        searchScopeTableView.delaysContentTouches = false
-        searchScopeTableView.canCancelContentTouches = true
     }
     
     func setupActivityFeed() {
@@ -2878,7 +2802,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             self.state.allPlaces.removeAll { $0.id == placeId }
             self.state.userOwnPlaces.removeAll { $0.id == placeId }
             self.state.cachedPlaces.removeAll { $0.id == placeId }
-            self.state.networkPlaces.removeAll { $0.id == placeId }
+            self.state.networkSearchHits.removeAll { $0.id == placeId }
             guard self.state.allPlaces.count + self.state.userOwnPlaces.count != before else { return }
             if self.state.allPlaces.isEmpty {
                 // refreshMapDisplay skips an empty set; clear the last pin here
@@ -3496,7 +3420,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         Logger.debug("🗺️ [RefreshMapDisplay] Refreshing map with current filters")
 
         // Skip if we don't have data yet
-        if allPlaces.isEmpty {
+        if allPlaces.isEmpty && state.networkSearchHits.isEmpty {
             Logger.debug("🗺️ [RefreshMapDisplay] No places data available, skipping refresh")
             return
         }
@@ -3507,8 +3431,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             return
         }
 
-        // Apply current filters to existing data
-        let placesToDisplay = applyFiltersToPlaces(allPlaces)
+        // Apply current filters to existing data. During a search the pins
+        // come from the same corpus as the results list (loaded places plus
+        // the network's hits for the query), so a hit always has its pin.
+        let placesToDisplay = isSearching ? searchCorpus().places : applyFiltersToPlaces(allPlaces)
 
         Logger.debug("🗺️ [RefreshMapDisplay] Displaying \(placesToDisplay.count) filtered places (from \(allPlaces.count) total)")
 
@@ -3976,42 +3902,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         }
     }
     
-    func showSearchScopeDropdown() {
-        // Calculate dropdown height for 2 options
-        let numberOfRows = SearchScope.allCases.count
-        let dropdownHeight = CGFloat(numberOfRows) * 44
-        
-        searchScopeDropdownView.isHidden = false
-        searchScopeDropdownHeightConstraint?.constant = dropdownHeight
-        
-        UIView.animate(withDuration: 0.2, animations: {
-            self.searchScopeDropdownView.alpha = 1
-            self.view.layoutIfNeeded()
-            
-            // Rotate arrow
-            self.searchScopeButton.imageView?.transform = CGAffineTransform(rotationAngle: .pi)
-        })
-        
-        // Bring dropdown to front
-        view.bringSubviewToFront(searchScopeDropdownView)
-        
-        // Reload table view
-        searchScopeTableView.reloadData()
-    }
-    
-    func hideSearchScopeDropdown() {
-        UIView.animate(withDuration: 0.2, animations: {
-            self.searchScopeDropdownView.alpha = 0
-            self.searchScopeDropdownHeightConstraint?.constant = 0
-            self.view.layoutIfNeeded()
-            
-            // Rotate arrow back
-            self.searchScopeButton.imageView?.transform = .identity
-        }) { _ in
-            self.searchScopeDropdownView.isHidden = true
-        }
-    }
-    
     @objc func dismissDropdowns(_ gesture: UITapGestureRecognizer? = nil) {
         // Handle keyboard dismissal first
         if searchBar.isFirstResponder {
@@ -4039,22 +3929,6 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
             if !sheetFrame.contains(location) && !searchBarFrame.contains(location) && !onModeControl {
                 collapseSearchSheet()
             }
-        }
-
-        // Then handle dropdown dismissal
-        if isSearchScopeDropdownOpen {
-            isSearchScopeDropdownOpen = false
-            hideSearchScopeDropdown()
-        }
-    }
-
-    @objc func searchScopeButtonTapped() {
-        isSearchScopeDropdownOpen.toggle()
-
-        if isSearchScopeDropdownOpen {
-            showSearchScopeDropdown()
-        } else {
-            hideSearchScopeDropdown()
         }
     }
     

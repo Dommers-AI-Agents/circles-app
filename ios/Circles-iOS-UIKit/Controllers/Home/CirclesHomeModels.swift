@@ -18,27 +18,3 @@ struct CirclesDataResponse: Codable {
     let success: Bool
     let data: [Circle]
 }
-
-// MARK: - Search Scope
-enum SearchScope: CaseIterable {
-    case myPlaces
-    case networkPlaces
-    
-    var title: String {
-        switch self {
-        case .myPlaces:
-            return "Search your places"
-        case .networkPlaces:
-            return "Search all places in your network"
-        }
-    }
-    
-    var placeholder: String {
-        switch self {
-        case .myPlaces:
-            return "Search your places..."
-        case .networkPlaces:
-            return "Search network places..."
-        }
-    }
-}

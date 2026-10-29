@@ -11,7 +11,8 @@ extension Place {
     func matches(searchQuery query: String) -> Bool {
         // What may match exactly vs. what may match loosely is decided in
         // PlaceSearchText (categories in, address fuzz out).
-        let haystack = PlaceSearchText.exactText(for: self)
+        let texts = PlaceSearchText.texts(for: self)   // memoized per place
+        let haystack = texts.exact
         let needle = PlaceSearchText.fold(query)
         guard !needle.isEmpty else { return true }
         if haystack.contains(needle) { return true }
@@ -20,7 +21,7 @@ extension Place {
         // text, or within typo distance of a word in the name/category text.
         let tokens = needle.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
         guard !tokens.isEmpty else { return false }
-        let words = PlaceSearchText.fuzzText(for: self)
+        let words = texts.fuzz
             .split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
         return tokens.allSatisfy { token in
             haystack.contains(token) || words.contains { Self.fuzzyMatch(token: token, word: $0) }

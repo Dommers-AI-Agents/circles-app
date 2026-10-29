@@ -97,7 +97,8 @@ extension CirclesHomeViewController {
     /// collapsed sheet stays collapsed — late async results must not yank
     /// the map away again.
     func refreshSearchOverlay() {
-        if isSearching && searchPlan.hasRows {
+        // A query with rows, or a focused empty bar (recent + browse)
+        if (isSearching || searchBar.isFirstResponder) && searchPlan.hasRows {
             showSearchResults()
         } else {
             hideSearchResults()
@@ -115,11 +116,16 @@ extension CirclesHomeViewController {
     /// The ids of the rows the sheet would draw, in order — unchanged rows
     /// mean nothing to redraw.
     var searchRowsSignature: String {
+        let plan = searchPlan
         let places = visibleFilteredPlaces.map(\.id)
         let nearby = visibleSuggestedRows.map(\.id)
-        let people = searchedUsers.prefix(searchPlan.peopleRows).map(\.id)
+        let people = searchedUsers.prefix(plan.peopleRows).map(\.id)
         let widgets = matchedWidgets.map(\.id)
-        return (widgets + ["|"] + places + ["|"] + nearby + ["|"] + people + ["|", searchMode.title]).joined(separator: ",")
+        let status = plan.status.map { "\($0)" } ?? ""
+        let recent = visibleRecentSearches
+        let query = searchBar.text ?? ""
+        return (widgets + ["|"] + places + ["|"] + nearby + ["|"] + people + ["|", status, "|"] + recent
+                + ["|", "\(plan.browseRows)", searchMode.title, query]).joined(separator: ",")
     }
 
     /// Sheet gone. When the search itself is over (every teardown path sets

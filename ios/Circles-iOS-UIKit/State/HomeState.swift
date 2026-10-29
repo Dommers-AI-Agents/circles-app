@@ -27,11 +27,14 @@ final class HomeState {
     // MARK: - Places
 
     /// Every place loaded so far (own + network + viewport), deduplicated by id.
-    var allPlaces: [Place] = []
+    var allPlaces: [Place] = [] { didSet { placesRevision &+= 1 } }
+    /// Bumped on every write to a place set the search reads (all, own,
+    /// network hits) — the search corpus is rebuilt only when it moves.
+    private(set) var placesRevision = 0
     /// The user's own places only. Changing this notifies the embedded map so
     /// it can center on the user's favorites (see `onUserOwnPlacesChanged`).
     var userOwnPlaces: [Place] = [] {
-        didSet { onUserOwnPlacesChanged?(userOwnPlaces) }
+        didSet { placesRevision &+= 1; onUserOwnPlacesChanged?(userOwnPlaces) }
     }
     /// True once the server has actually answered about the user's own
     /// places: a full fetch, or circles known to be empty. Only those paths
@@ -47,8 +50,11 @@ final class HomeState {
     func markCirclesLoaded() { circlesLoaded = true }
     /// Fired on every write to `userOwnPlaces`, whoever writes it.
     var onUserOwnPlacesChanged: (([Place]) -> Void)?
-    /// Network places fetched for search (the search overlay's second source).
-    var networkPlaces: [Place] = []
+    /// The network's saves matching the CURRENT query (GET
+    /// /network/places/search). Replaced per query and cleared with the
+    /// search — it used to accumulate for the whole session, keeping stale
+    /// copies and growing every pass.
+    var networkSearchHits: [Place] = [] { didSet { placesRevision &+= 1 } }
 
     // MARK: - Instance cache
 
@@ -87,7 +93,16 @@ final class HomeState {
     /// pulled it down). Late async results must not re-expand it; editing the
     /// query or refocusing the bar does.
     var isSearchSheetCollapsed = false
-    var currentSearchScope: SearchScope = .myPlaces
+    /// Places or People (the control under the bar)
+    var searchMode: HomeSearchMode = .places
+    /// The text the Apple candidates were fetched for
+    var lastAppleQuery = ""
+    /// Lookups still out / failed for the current query
+    var pendingSearchChannels: Set<HomeSearchChannel> = []
+    var failedSearchChannels: Set<HomeSearchChannel> = []
+    var searchFailedOffline = false
+    /// Recent answers per channel (backspace and mode flips cost nothing)
+    let searchCaches = HomeSearchCaches()
     /// People results (the PEOPLE section of the search overlay).
     var searchedUsers: [User] = []
     /// Meters from the search reference location, keyed by place id, for the PLACES rows.
@@ -119,7 +134,56 @@ final class HomeState {
         appleVenues = []
         suggestedRows = []
         suggestedDistances = [:]
+        networkSearchHits = []
+        lastAppleQuery = ""
+        pendingSearchChannels = []
+        failedSearchChannels = []
+        searchFailedOffline = false
     }
+
+    /// The status line for the current query.
+    var searchStatus: HomeSearchStatus? {
+        if !pendingSearchChannels.isEmpty { return .searching }
+        if failedSearchChannels.isEmpty { return nil }
+        return searchFailedOffline ? .offline : .failed
+    }
+
+    // MARK: - Search corpus
+
+    /// What a search matches against: every loaded place plus the network's
+    /// hits for the query, through the map's current people/category filter.
+    /// The results list AND the pins read this, so they can't disagree (they
+    /// did: the list searched own + network hits, the pins every loaded
+    /// place, so a hit could have a row and no pin or a pin and no row).
+    /// Built once per change of the places or the filter, with the index the
+    /// Apple/catalog duplicate checks need.
+    func searchCorpus(context: HomePlaceFilter.Context) -> (places: [Place], index: SavedPlaceIndex) {
+        if let memo = corpusMemo, memo.revision == placesRevision, memo.context == context {
+            return (memo.places, memo.index)
+        }
+        let loaded = HomePlaceFilter.apply(Self.dedupe(userOwnPlaces + allPlaces), context: context)
+        // The server already decided who may see each hit (it can be a
+        // circle shared by someone outside "Everyone"'s author list), so with
+        // no person selected only the category chip narrows them.
+        let hits: [Place]
+        if context.selectedConnectionId == nil {
+            hits = context.selectedCategory.map { category in networkSearchHits.filter { category.matches(place: $0) } } ?? networkSearchHits
+        } else {
+            hits = HomePlaceFilter.apply(networkSearchHits, context: context)
+        }
+        let places = Self.dedupe(loaded + hits)
+        let index = SavedPlaceIndex(places)
+        corpusMemo = CorpusMemo(revision: placesRevision, context: context, places: places, index: index)
+        return (places, index)
+    }
+
+    private struct CorpusMemo {
+        let revision: Int
+        let context: HomePlaceFilter.Context
+        let places: [Place]
+        let index: SavedPlaceIndex
+    }
+    private var corpusMemo: CorpusMemo?
 
     // MARK: - Cache rules
 
@@ -266,4 +330,21 @@ final class HomeState {
         return (userPlaces, connectionPlaces)
     }
 
+}
+
+/// The remote sources one home search asks.
+enum HomeSearchChannel: Hashable {
+    case people, network, catalog, apple
+}
+
+/// Per-channel recent answers (SearchResultCache), dropped with the search.
+final class HomeSearchCaches {
+    let people = SearchResultCache<[User]>()
+    let network = SearchResultCache<[Place]>()
+    let catalog = SearchResultCache<[GlobalPlace]>()
+    let apple = SearchResultCache<[Place]>()
+
+    func removeAll() {
+        people.removeAll(); network.removeAll(); catalog.removeAll(); apple.removeAll()
+    }
 }

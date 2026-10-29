@@ -44,4 +44,61 @@ enum PlaceSearchText {
     static func fold(_ text: String) -> String {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
     }
+
+    /// Both texts for a place, built once and reused until the place's
+    /// searchable fields change. Building them (joins + locale folding) for
+    /// every place on every keystroke was most of the cost of a search pass,
+    /// and the map's pin filter did it all again a beat later.
+    static func texts(for place: Place) -> (exact: String, fuzz: String) {
+        PlaceSearchTextCache.shared.texts(for: place)
+    }
+}
+
+/// Memo of `PlaceSearchText` per place id, checked against a fingerprint of
+/// every field that feeds it — an edited name or new tag rebuilds that one
+/// entry. Thread-safe; cleared wholesale if it ever outgrows `limit`.
+final class PlaceSearchTextCache {
+    static let shared = PlaceSearchTextCache()
+
+    private struct Entry { let fingerprint: Int; let exact: String; let fuzz: String }
+    private var entries: [String: Entry] = [:]
+    private let lock = NSLock()
+    let limit: Int
+
+    init(limit: Int = 20_000) { self.limit = limit }
+
+    static func fingerprint(of place: Place) -> Int {
+        var h = Hasher()
+        h.combine(place.name)
+        h.combine(place.address)
+        h.combine(place.description)
+        h.combine(place.notes)
+        h.combine(place.publicNotes)
+        h.combine(place.privateNotes)
+        h.combine(place.category.rawValue)
+        h.combine(place.subcategory)
+        h.combine(place.customCategoryId)
+        h.combine(place.tags)
+        return h.finalize()
+    }
+
+    func texts(for place: Place) -> (exact: String, fuzz: String) {
+        let fingerprint = Self.fingerprint(of: place)
+        lock.lock()
+        if let hit = entries[place.id], hit.fingerprint == fingerprint {
+            lock.unlock()
+            return (hit.exact, hit.fuzz)
+        }
+        lock.unlock()
+        let exact = PlaceSearchText.exactText(for: place)
+        let fuzz = PlaceSearchText.fuzzText(for: place)
+        lock.lock()
+        if entries.count >= limit { entries.removeAll(keepingCapacity: true) }
+        entries[place.id] = Entry(fingerprint: fingerprint, exact: exact, fuzz: fuzz)
+        lock.unlock()
+        return (exact, fuzz)
+    }
+
+    var count: Int { lock.lock(); defer { lock.unlock() }; return entries.count }
+    func removeAll() { lock.lock(); entries.removeAll(); lock.unlock() }
 }

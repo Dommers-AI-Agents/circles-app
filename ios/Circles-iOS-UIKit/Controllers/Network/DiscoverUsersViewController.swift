@@ -2,6 +2,8 @@ import UIKit
 import CoreLocation
 
 class DiscoverUsersViewController: BaseViewController {
+    private let searchDebouncer = SearchDebouncer(delay: 0.3)
+    private var searchRequest: APIRequestHandle?
     
     // MARK: - Properties
     private var discoveryUsers: [User] = []
@@ -208,27 +210,33 @@ class DiscoverUsersViewController: BaseViewController {
     }
     
     private func searchUsers(query: String) {
-        guard query.count >= 2 else {
+        searchRequest?.cancel()
+        guard SearchDebouncer.isServerEligible(query) else {
+            searchDebouncer.cancel()
             searchResults = []
             tableView.reloadData()
             return
         }
-        
-        APIService.shared.request(
-            endpoint: "users/contacts/search",
-            method: .get,
-            queryParams: ["query": query]
-        ) { [weak self] (result: Result<SearchUsersResponse, APIError>) in
-            guard let self = self else { return }
+
+        // One request when typing pauses; an older answer never replaces a newer one
+        searchDebouncer.schedule { [weak self] generation in
+            self?.searchRequest = APIService.shared.request(
+                endpoint: "users/contacts/search",
+                method: .get,
+                queryParams: ["query": query]
+            ) { [weak self] (result: Result<SearchUsersResponse, APIError>) in
+                guard let self = self else { return }
             
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let response):
-                    self.searchResults = response.users
-                    self.tableView.reloadData()
+                DispatchQueue.main.async {
+                    guard self.searchDebouncer.isCurrent(generation) else { return }
+                    switch result {
+                    case .success(let response):
+                        self.searchResults = response.users
+                        self.tableView.reloadData()
                     
-                case .failure(let error):
-                    Logger.error("Search failed: \(error)")
+                    case .failure(let error):
+                        Logger.error("Search failed: \(error)")
+                    }
                 }
             }
         }

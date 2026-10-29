@@ -352,10 +352,11 @@ class UserService {
 
     // MARK: - User Search
     
-    func searchUsers(query: String, completion: @escaping (Result<[User], Error>) -> Void) {
+    @discardableResult
+    func searchUsers(query: String, completion: @escaping (Result<[User], Error>) -> Void) -> APIRequestHandle {
         let queryParams = ["query": query]
         
-        APIService.shared.request(
+        return APIService.shared.request(
             endpoint: "users/search",
             method: .get,
             queryParams: queryParams,

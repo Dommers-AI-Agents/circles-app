@@ -137,6 +137,9 @@ class AllUsersListViewController: UIViewController {
     
     private let cellIdentifier = "UserCell"
     private var searchQuery: String = ""
+    /// Server people search waits for typing to pause; older answers are dropped
+    private let searchDebouncer = SearchDebouncer(delay: 0.3)
+    private var searchRequest: APIRequestHandle?
 
     // Incoming requests are no longer collapsible at all — the tab badge
     // announces them, so they have to be visible the moment you arrive.
@@ -435,21 +438,26 @@ class AllUsersListViewController: UIViewController {
     /// Searching reaches past your own network to everybody else — which is the
     /// only time a stranger belongs on this screen.
     private func searchBeyondNetwork(_ query: String) {
-        guard query.count >= 2 else {
+        searchRequest?.cancel()
+        guard SearchDebouncer.isServerEligible(query) else {
+            searchDebouncer.cancel()
             nonConnectedUsers = []
             filterUsers()
             tableView.reloadData()
             return
         }
 
-        UserService.shared.searchUsers(query: query) { [weak self] result in
-            DispatchQueue.main.async {
-                guard let self = self, self.searchQuery == query else { return }
-                if case .success(let users) = result {
-                    let known = Set(self.allUsers.map { $0.id })
-                    self.nonConnectedUsers = users.filter { !known.contains($0.id) }
-                    self.filterUsers()
-                    self.tableView.reloadData()
+        // One request when typing pauses, not one per keystroke
+        searchDebouncer.schedule { [weak self] generation in
+            self?.searchRequest = UserService.shared.searchUsers(query: query) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self = self, self.searchDebouncer.isCurrent(generation), self.searchQuery == query else { return }
+                    if case .success(let users) = result {
+                        let known = Set(self.allUsers.map { $0.id })
+                        self.nonConnectedUsers = users.filter { !known.contains($0.id) }
+                        self.filterUsers()
+                        self.tableView.reloadData()
+                    }
                 }
             }
         }

@@ -101,6 +101,7 @@ class GlobalPlaceService {
     ///   - radius: Search radius in km (default 50)
     ///   - limit: Number of results (default 20)
     ///   - completion: Completion handler with array of GlobalPlace
+    @discardableResult
     func searchGlobalPlaces(
         query: String? = nil,
         category: String? = nil,
@@ -108,7 +109,7 @@ class GlobalPlaceService {
         radius: Double = 50,
         limit: Int = 20,
         completion: @escaping (Result<[GlobalPlace], Error>) -> Void
-    ) {
+    ) -> APIRequestHandle {
         var queryParams: [String: String] = [
             "limit": "\(limit)",
             "radius": "\(radius)"
@@ -129,7 +130,7 @@ class GlobalPlaceService {
         
         let endpoint = "places/global/search"
         
-        apiService.request(
+        return apiService.request(
             endpoint: endpoint,
             method: .get,
             queryParams: queryParams,

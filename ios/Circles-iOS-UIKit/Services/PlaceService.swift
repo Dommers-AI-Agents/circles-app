@@ -150,8 +150,9 @@ class PlaceService {
     /// whole network — the home search's second source.
     /// The query string is embedded in the endpoint so APIService's
     /// duplicate-request suppression keys on the text too.
+    @discardableResult
     func searchNetworkPlaces(query: String, near reference: CLLocation?, limit: Int = 50,
-                             completion: @escaping (Result<[Place], Error>) -> Void) {
+                             completion: @escaping (Result<[Place], Error>) -> Void) -> APIRequestHandle {
         var endpoint = "network/places/search?limit=\(limit)"
         if let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)?
             .replacingOccurrences(of: "&", with: "%26") {
@@ -171,7 +172,7 @@ class PlaceService {
             }
         }
 
-        APIService.shared.request(
+        return APIService.shared.request(
             endpoint: endpoint,
             method: .get,
             requiresAuth: true,

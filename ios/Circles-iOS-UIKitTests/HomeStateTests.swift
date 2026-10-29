@@ -219,5 +219,8 @@ struct HomeStateTests {
         #expect(state.appleVenues.isEmpty)
         #expect(state.suggestedRows.isEmpty)
         #expect(state.suggestedDistances.isEmpty)
+        #expect(state.networkSearchHits.isEmpty)
+        #expect(state.pendingSearchChannels.isEmpty)
+        #expect(state.searchStatus == nil)
     }
 }

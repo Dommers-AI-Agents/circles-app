@@ -92,6 +92,12 @@ final class NearbyPlaceSearch: NSObject {
 
     private var venueSearch: MKLocalSearch?
 
+    /// Stops the venue lookup in flight; its completion never runs.
+    func cancelVenueSearch() {
+        venueSearch?.cancel()
+        venueSearch = nil
+    }
+
     /// Venues Apple Maps finds for a plain-language query near a point —
     /// "deli", "coffee", "tacos" — as unsaved Places. One request in flight at
     /// a time; a new query cancels the old one. The region is a bias, not a
