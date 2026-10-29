@@ -244,13 +244,18 @@ async function createExperience({ link, title, subtitle, imageId, businessCatego
 /// Apple refuses a second experience for a link, and a single GET by id is
 /// not always answered for a fresh one, so the clip's list is the lookup.
 async function findExperienceByLink(link) {
-  let path = `/appClips/${await clipId()}/appClipAdvancedExperiences?include=localizations&limit=200`;
+  let path = `/appClips/${await clipId()}/appClipAdvancedExperiences?limit=200`;
   while (path) {
     const page = await asc.get(path);
-    const hit = (page.data || []).find((e) => e.attributes.link === link && e.attributes.status !== 'REMOVED');
+    // A retired card for the link still counts: Apple blocks a second one,
+    // and it can be brought back (removed: false) and edited
+    const forLink = (page.data || []).filter((e) => e.attributes.link === link);
+    const hit = forLink.find((e) => e.attributes.status !== 'REMOVED') || forLink[0];
     if (hit) {
-      const locIds = new Set(((hit.relationships || {}).localizations?.data || []).map((l) => l.id));
-      const loc = (page.included || []).find((i) => i.type === 'appClipAdvancedExperienceLocalizations' && (locIds.size === 0 || locIds.has(i.id)));
+      // The words from the card itself: the list's included localizations
+      // don't line up with its cards (every card read as one store's words)
+      const one = await asc.get(`/appClipAdvancedExperiences/${hit.id}?include=localizations`);
+      const loc = (one.included || []).find((i) => i.type === 'appClipAdvancedExperienceLocalizations');
       return { id: hit.id, status: hit.attributes.status, title: loc?.attributes?.title, subtitle: loc?.attributes?.subtitle };
     }
     path = page.links && page.links.next ? page.links.next : null;
@@ -258,8 +263,33 @@ async function findExperienceByLink(link) {
   return null;
 }
 
-/// Only the picture can change on a published card (Apple refuses edits to
-/// its localizations), so a text change is a new card instead (see syncVenue).
+/// New words on an existing card, in place: a new localization replaces the
+/// old one (2026-10-29: Apple accepts this; retiring the card and creating a
+/// new one for the same link does not, and a new card takes hours to show).
+/// A retired card is brought back into service first.
+async function updateExperienceWords({ id, title, subtitle }) {
+  const patch = () => asc.patch(`/appClipAdvancedExperiences/${id}`, {
+    data: {
+      type: 'appClipAdvancedExperiences',
+      id,
+      relationships: { localizations: { data: [{ type: 'appClipAdvancedExperienceLocalizations', id: LOC_PLACEHOLDER }] } }
+    },
+    included: [{ type: 'appClipAdvancedExperienceLocalizations', id: LOC_PLACEHOLDER, attributes: { language: 'EN', title, subtitle } }]
+  });
+  try {
+    await patch();
+  } catch (error) {
+    // Already says this: nothing to do
+    if (/no change to the original/i.test(error.message)) return;
+    if (!/no longer active|removed/i.test(error.message)) throw error;
+    await asc.patch(`/appClipAdvancedExperiences/${id}`, {
+      data: { type: 'appClipAdvancedExperiences', id, attributes: { removed: false } }
+    });
+    await patch();
+  }
+}
+
+/// Only the picture of a card is set here; words go through updateExperienceWords.
 async function updateExperienceImage({ id, imageId, status }) {
   try {
     const updated = await asc.patch(`/appClipAdvancedExperiences/${id}`, {
@@ -329,14 +359,20 @@ async function syncVenue(venue, { force = false, kinds = KINDS, live = true } = 
     // words still fit: the venue's record, or a card published before the
     // record existed. Words changed (a rename, new points) mean a new card,
     // since Apple lets only the picture change on a published one.
+    // One card per link, kept for life: new words or a new picture edit it
+    // in place. Only a code that changed (a rotated register code) gets a
+    // new card, and the old code's card stops serving.
     let target = current && current.id && current.link === link ? current : await findExperienceByLink(link);
-    if (target && target.title === title && target.subtitle === subtitle) {
+    if (target) {
+      if (target.title !== title || target.subtitle !== subtitle || target.status === 'REMOVED') {
+        await updateExperienceWords({ id: target.id, title, subtitle });
+      }
       const data = await updateExperienceImage({ id: target.id, imageId, status: target.status });
       record = { id: data.id, imageId, link, title, subtitle, fingerprint, status: data.attributes.status };
     } else {
-      // The old card (rotated code, or old words) stops serving
-      const old = (target && target.id) || (current && current.id);
-      if (old) await removeExperience(old).catch((e) => console.warn('⚠️ App Clip: could not remove old experience:', e.message));
+      if (current && current.id && current.link !== link) {
+        await removeExperience(current.id).catch((e) => console.warn('⚠️ App Clip: could not retire the old code\'s card:', e.message));
+      }
       const data = await createExperience({ link, title, subtitle, imageId, businessCategory: businessCategoryFor(venue) });
       record = { id: data.id, imageId, link, title, subtitle, fingerprint, status: data.attributes.status };
     }
