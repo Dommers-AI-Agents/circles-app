@@ -18,7 +18,9 @@ exports.sync = scheduledTask({
   run: async (req) => {
     const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 25, 200));
     const snapshot = await getFirestore().collection(STICKER_COLLECTIONS.STICKER_VENUES).get();
-    const venues = snapshot.docs.map((d) => ({ venueId: d.id, ...d.data() })).filter((v) => !v.isTestStore);
+    // Test stores too (Wes, 2026-10-29): their codes are only in his hands,
+    // and the cards are how the real scan is checked before a store launches
+    const venues = snapshot.docs.map((d) => ({ venueId: d.id, ...d.data() }));
     const live = new Set((await listLiveVenues()).map((v) => v.venueId));
     let published = 0; let skipped = 0; const failed = [];
     for (const venue of venues) {
