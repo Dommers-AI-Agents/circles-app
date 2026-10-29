@@ -1235,7 +1235,7 @@
 			repositoryURL = "https://github.com/Dommers-AI-Agents/favcircles-widgets";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.53.6;
+				minimumVersion = 0.53.7;
 			};
 		};
 		FAB6000000000000000000D0 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */ = {
