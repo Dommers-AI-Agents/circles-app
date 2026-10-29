@@ -6,6 +6,7 @@
 // people's documents, and never deletes anything that belongs to someone
 // else:
 //   - their saves, circles, comments, check-ins, moments, activities,
+//     reward points and FavCoin entries, suggestions sent or received,
 //     notifications, connections, blocks, passkeys, widget documents;
 //   - their messages (the conversations stay for the other people);
 //   - their likes, follows, Inner Circle entries and circle shares in other
@@ -18,6 +19,7 @@
 // transaction records we must retain, and hold no profile beyond the id.
 const { getFirestore, getAuth, getStorage, admin } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
+const { PIGGY_COLLECTIONS } = require('../models/PiggyBankModels');
 const { deleteImage } = require('./storage');
 
 const BATCH = 400;
@@ -78,6 +80,13 @@ async function deleteAccount(uid, { db = getFirestore(), auth = getAuth(), stora
   await deleteAll('circles', db.collection(COLLECTIONS.CIRCLES).where('owner', '==', uid));
   await deleteAll('comments', db.collection(COLLECTIONS.PLACE_COMMENTS).where('userId', '==', uid));
   await deleteAll('checkIns', db.collection(COLLECTIONS.CHECK_INS).where('userId', '==', uid));
+  // Rewards and FavCoins, suggestions they sent or received, sign-in
+  // challenges (a deleted test account left these behind, 2026-10-29)
+  await deleteAll('rewardEvents', db.collection(COLLECTIONS.REWARD_EVENTS).where('userId', '==', uid));
+  await deleteAll('coinLedger', db.collection(PIGGY_COLLECTIONS.LEDGER).where('userId', '==', uid));
+  await deleteAll('suggestions', db.collection(COLLECTIONS.SUGGESTIONS).where('userId', '==', uid));
+  await deleteAll('suggestions', db.collection(COLLECTIONS.SUGGESTIONS).where('recipientId', '==', uid));
+  await deleteAll('signInChallenges', db.collection('webauthnChallenges').where('uid', '==', uid));
   await deleteAll('moments', db.collection(COLLECTIONS.PLACE_VIDEOS).where('userId', '==', uid));
   await deleteAll('activities', db.collection(COLLECTIONS.ACTIVITIES).where('actorId', '==', uid));
   await deleteAll('notifications', db.collection(COLLECTIONS.NOTIFICATIONS).where('userId', '==', uid));
