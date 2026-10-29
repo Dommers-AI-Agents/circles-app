@@ -84,15 +84,16 @@ describe('overlayVenueFields', () => {
   });
 });
 
-describe('isPlaceVisibleToViewer', () => {
+describe('isPlaceVisibleToViewer (services/visibility)', () => {
+  const { isPlaceVisibleToViewer } = require('../visibility');
   it('hides private places from everyone but the saver', () => {
     const place = { addedBy: 'u1', privacy: 'private' };
-    expect(svc.isPlaceVisibleToViewer(place, 'u1')).toBe(true);
-    expect(svc.isPlaceVisibleToViewer(place, 'u2')).toBe(false);
+    expect(isPlaceVisibleToViewer(place, 'u1')).toBe(true);
+    expect(isPlaceVisibleToViewer(place, 'u2')).toBe(false);
   });
   it('inherits circle visibility for every other privacy value', () => {
-    expect(svc.isPlaceVisibleToViewer({ addedBy: 'u1', privacy: 'followCircle' }, 'u2')).toBe(true);
-    expect(svc.isPlaceVisibleToViewer({ addedBy: 'u1' }, 'u2')).toBe(true);
+    expect(isPlaceVisibleToViewer({ addedBy: 'u1', privacy: 'followCircle' }, 'u2')).toBe(true);
+    expect(isPlaceVisibleToViewer({ addedBy: 'u1' }, 'u2')).toBe(true);
   });
 });
 

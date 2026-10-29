@@ -895,7 +895,7 @@ const getUserCircles = async (req, res) => {
 
     // Places marked Private are owner-only, even inside a visible circle —
     // the person viewing this profile is never the owner of these places
-    const { isPlaceVisibleToViewer } = require('../services/placeReadService');
+    const { isPlaceVisibleToViewer } = require('../services/visibility');
 
     // Everyone else sees this person's PUBLIC card — the whole user doc
     // (email, phone, device tokens) used to ride along here and in data.user.

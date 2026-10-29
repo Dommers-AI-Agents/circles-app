@@ -245,6 +245,14 @@ const resolveIncomingPrivacy = ({ incoming, stored, req }) => {
   return incoming;
 };
 
+/**
+ * Is a save credited to `saverId` in `circle` visible to `viewerId`? Your own
+ * saves always are; anyone else's only through a circle you may open. The
+ * "who saved this" lists (place savers, a store's savers) both ask this.
+ */
+const isSaveInCircleVisible = (circle, saverId, viewerId, ctx) =>
+  isSameUser(saverId, viewerId) || canViewCircle(circle, viewerId, ctx);
+
 module.exports = {
   PRIVACY,
   INNER_CIRCLE_HEADER,
@@ -259,5 +267,6 @@ module.exports = {
   canViewAtTier,
   canViewCircle,
   isPlaceVisibleToViewer,
+  isSaveInCircleVisible,
   canViewMoment
 };

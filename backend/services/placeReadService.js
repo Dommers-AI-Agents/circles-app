@@ -183,8 +183,6 @@ const buildAddedByUserMap = async (places) => {
 // `ctx` is the viewer's relationships (services/viewerContext.js). Callers that
 // have none may omit it, in which case every tier above `public` denies — the
 // safe direction.
-const isPlaceVisibleToViewer = (place, viewerId, ctx) =>
-  visibility.isPlaceVisibleToViewer(place, viewerId, ctx);
 
 module.exports = {
   normalizePhotosArray,
@@ -194,6 +192,5 @@ module.exports = {
   overlayVenueFields,
   getGlobalSocial,
   fetchGlobalSocialMap,
-  buildAddedByUserMap,
-  isPlaceVisibleToViewer
+  buildAddedByUserMap
 };

@@ -322,7 +322,7 @@ exports.getPlaceSavers = async (req, res, next) => {
       innerCircleLists: await getInnerCircleGrantorLists(userId)
     });
     const isCircleVisible = (circle, saverId) =>
-      isSameUser(saverId, userId) || canViewCircle(circle, userId, saverViewerCtx);
+      require('../../services/visibility').isSaveInCircleVisible(circle, saverId, userId, saverViewerCtx);
 
     const visibleSaverIds = [...circleIdsBySaver.entries()]
       .filter(([saverId, ids]) =>

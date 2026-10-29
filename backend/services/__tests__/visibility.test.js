@@ -237,3 +237,21 @@ describe('a named Inner Circle list', () => {
     expect(canViewCircle({ owner: 'owner', privacy: 'innerCircle', audienceListId: 'family' }, 'viewer', careless)).toBe(false);
   });
 });
+
+describe('isSaveInCircleVisible', () => {
+  const { isSaveInCircleVisible } = require('../visibility');
+  // The shape services/viewerContext.makeViewerContext returns
+  const makeViewerContext = ({ viewerId, connections = [] }) => ({
+    viewerId, connections: new Set(connections), following: new Set(),
+    innerCircleGrantors: new Set(), excluded: new Set(), innerCircleLists: new Map()
+  });
+  test('your own save always counts; others need a circle you can open', () => {
+    const ctx = makeViewerContext({ viewerId: 'me', connections: ['bob'] });
+    const privateCircle = { owner: 'bob', privacy: 'private' };
+    const networkCircle = { owner: 'bob', privacy: 'myNetwork' };
+    expect(isSaveInCircleVisible(privateCircle, 'me', 'me', ctx)).toBe(true);
+    expect(isSaveInCircleVisible(privateCircle, 'bob', 'me', ctx)).toBe(false);
+    expect(isSaveInCircleVisible(networkCircle, 'bob', 'me', ctx)).toBe(true);
+    expect(isSaveInCircleVisible(networkCircle, 'bob', 'stranger', makeViewerContext({ viewerId: 'stranger' }))).toBe(false);
+  });
+});

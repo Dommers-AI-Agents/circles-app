@@ -271,7 +271,8 @@ exports.getGlobalPlace = async (req, res, next) => {
         .where('globalPlaceId', '==', placeDoc.id)
         .get();
       const viewerId = req.user?.uid || null;
-      const { overlayVenueFields, buildAddedByUserMap, isPlaceVisibleToViewer } = require('../services/placeReadService');
+      const { overlayVenueFields, buildAddedByUserMap } = require('../services/placeReadService');
+      const { isPlaceVisibleToViewer } = require('../services/visibility');
       const { canViewCircleFor } = require('../services/circleAccess');
       const { buildViewerContext } = require('../services/viewerContext');
       const { pickRepresentativeSave } = require('../services/representativeSave');

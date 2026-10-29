@@ -331,7 +331,7 @@ exports.getVenueSavers = async (req, res) => {
       innerCircleLists: await getInnerCircleGrantorLists(ownerId)
     });
     const isCircleVisibleToOwner = (circle, saverId) =>
-      isSameUser(saverId, ownerId) || canViewCircle(circle, ownerId, ownerViewerCtx);
+      require('../../services/visibility').isSaveInCircleVisible(circle, saverId, ownerId, ownerViewerCtx);
 
     const visible = [...bySaver.entries()].filter(([saverId, entry]) =>
       entry.hasNonPrivate &&
