@@ -430,13 +430,11 @@ exports.getHomeScreen = async (req, res, next) => {
       db.collection(COLLECTIONS.CONNECTIONS)
         .where('userId', '==', userId)
         .where('status', '==', 'accepted')
-        .limit(25) // Limit for speed
         .get(),
 
       db.collection(COLLECTIONS.CONNECTIONS)
         .where('connectedUserId', '==', userId)
         .where('status', '==', 'accepted')
-        .limit(25) // Limit for speed
         .get(),
 
       // Current user data
@@ -460,18 +458,9 @@ exports.getHomeScreen = async (req, res, next) => {
     let usersMap = {};
     
     if (userIdArray.length > 0) {
-      const userSnapshots = await Promise.all([
-        db.collection(COLLECTIONS.USERS)
-          .where('__name__', 'in', userIdArray.slice(0, 10))
-          .get(),
-        userIdArray.length > 10 ? 
-          db.collection(COLLECTIONS.USERS)
-            .where('__name__', 'in', userIdArray.slice(10, 20))
-            .get() : 
-          Promise.resolve({ docs: [] })
-      ]);
-      
-      userSnapshots.forEach(snapshot => {
+      // One batched read of the docs we display (was two '__name__ in' queries)
+      const userDocs = await db.getAll(...userIdArray.map(id => db.collection(COLLECTIONS.USERS).doc(String(id))));
+      [{ docs: userDocs.filter(doc => doc.exists) }].forEach(snapshot => {
         snapshot.docs.forEach(doc => {
           const user = serializeDoc(doc);
           usersMap[user._id] = user;

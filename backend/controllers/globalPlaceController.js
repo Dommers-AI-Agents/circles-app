@@ -228,12 +228,13 @@ exports.getGlobalPlace = async (req, res, next) => {
       const userIds = [...new Set(placeData.publicReviews.map(review => review.userId))];
       
       // Get user information for reviewers
-      const usersQuery = await db.collection('users')
-        .where(admin.firestore.FieldPath.documentId(), 'in', userIds.slice(0, 10)) // Limit to prevent query size issues
-        .get();
+      // Every reviewer, in one batched read (was the first 10 only)
+      const reviewerDocs = userIds.length > 0
+        ? await db.getAll(...userIds.filter(Boolean).map(id => db.collection('users').doc(String(id))))
+        : [];
       
       const usersMap = {};
-      usersQuery.docs.forEach(doc => {
+      reviewerDocs.filter(doc => doc.exists).forEach(doc => {
         const userData = doc.data();
         usersMap[doc.id] = {
           id: doc.id,

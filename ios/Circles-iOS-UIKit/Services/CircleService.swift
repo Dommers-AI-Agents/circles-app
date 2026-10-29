@@ -141,61 +141,6 @@ class CircleService {
         })
     }
     
-    func fetchPublicCircles(page: Int = 1, limit: Int = 20, category: CircleCategory? = nil, completion: @escaping (Result<[Circle], Error>) -> Void) {
-        var queryParams: [String: String] = [
-            "page": "\(page)",
-            "limit": "\(limit)"
-        ]
-        
-        if let category = category {
-            queryParams["category"] = category.rawValue
-        }
-        
-        APIService.shared.request(
-            endpoint: "circles/public",
-            method: .get,
-            queryParams: queryParams,
-            requiresAuth: true,
-            completion: { [weak self] (result: Result<CirclesResponse, APIError>) in
-                guard let self = self else { return }
-                
-                switch result {
-                case .success(let response):
-                    completion(.success(response.circles))
-                case .failure(let error):
-                    completion(.failure(error))
-                }
-            }
-        )
-    }
-    
-    func searchCircles(query: String, category: CircleCategory? = nil, completion: @escaping (Result<[Circle], Error>) -> Void) {
-        var queryParams: [String: String] = [
-            "q": query
-        ]
-        
-        if let category = category {
-            queryParams["category"] = category.rawValue
-        }
-        
-        APIService.shared.request(
-            endpoint: "circles/search",
-            method: .get,
-            queryParams: queryParams,
-            requiresAuth: true,
-            completion: { [weak self] (result: Result<CirclesResponse, APIError>) in
-                guard let self = self else { return }
-                
-                switch result {
-                case .success(let response):
-                    completion(.success(response.circles))
-                case .failure(let error):
-                    completion(.failure(error))
-                }
-            }
-        )
-    }
-    
     // MARK: - Create, Update, Delete
     
     func createCircle(name: String, description: String?, privacy: PrivacyLevel, audienceListId: String? = nil, category: CircleCategory, customCategoryId: String? = nil, location: String? = nil, tags: [String]? = nil, showOnMap: Bool = true, coverImage: Data? = nil, completion: @escaping (Result<Circle, Error>) -> Void) {

@@ -5,6 +5,7 @@ const dailySummaryService = require('./dailySummaryService');
 const engagementNotificationService = require('./engagementNotificationService');
 const milestoneService = require('./milestoneService');
 const { pagedQuery } = require('../utils/firestorePaging');
+const { queryInChunks } = require('../utils/firestoreChunks');
 
 const db = getFirestore();
 
@@ -337,13 +338,14 @@ class ScheduledNotifications {
           let body = 'Your favorite places are waiting — add a new spot you love!';
           const connectionIds = await this.getAcceptedConnectionIds(user.id);
           if (connectionIds.length > 0) {
-            const placesSnapshot = await db.collection('places')
-              .where('addedBy', 'in', connectionIds.slice(0, 10))
+            // Every connection counts, not just the first 10 ('in' chunks)
+            const recent = await queryInChunks(connectionIds, chunk => db.collection('places')
+              .where('addedBy', 'in', chunk)
               .where('createdAt', '>=', sevenDaysAgo.toISOString())
               .limit(10)
-              .get();
-            if (placesSnapshot.size > 0) {
-              const count = placesSnapshot.size;
+              .get());
+            if (recent.length > 0) {
+              const count = Math.min(recent.length, 10);
               body = `Your friends added ${count} new place${count === 1 ? '' : 's'} this week — come see what's new!`;
             }
           }
@@ -401,16 +403,16 @@ class ScheduledNotifications {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
 
-      const placesSnapshot = await db.collection('places')
-        .where('addedBy', 'in', connectionIds.slice(0, 10)) // Firestore 'in' limit
+      const recentDocs = await queryInChunks(connectionIds, chunk => db.collection('places')
+        .where('addedBy', 'in', chunk)
         .where('category', '==', category)
         .where('createdAt', '>=', yesterday.toISOString())
         .limit(5)
-        .get();
+        .get());
 
-      if (placesSnapshot.empty) return;
+      if (recentDocs.length === 0) return;
 
-      const placeCount = placesSnapshot.size;
+      const placeCount = Math.min(recentDocs.length, 5);
       body = `Your network added ${placeCount} new ${category === 'coffee' ? 'coffee spots' : 'lunch spots'}`;
 
       await notificationService.sendToUser(user.id, {
@@ -451,16 +453,16 @@ class ScheduledNotifications {
           if (connectionIds.length === 0) continue;
 
           // Get trending places for weekend activities
-          const placesSnapshot = await db.collection('places')
-            .where('addedBy', 'in', connectionIds.slice(0, 10))
+          const recentDocs = await queryInChunks(connectionIds, chunk => db.collection('places')
+            .where('addedBy', 'in', chunk)
             .where('createdAt', '>=', weekAgo.toISOString())
             .orderBy('createdAt', 'desc')
             .limit(10)
-            .get();
+            .get());
 
-          if (placesSnapshot.empty) continue;
+          if (recentDocs.length === 0) continue;
 
-          const placeCount = placesSnapshot.size;
+          const placeCount = Math.min(recentDocs.length, 10);
 
           await notificationService.sendToUser(user.id, {
             type: 'weekend_recommendations',

@@ -94,7 +94,14 @@ final class HomeDataLoader {
         var activitiesResult: [Activity] = []
         var reelsResult: [PlaceVideo] = []
 
-        // 1. Load my circles
+        // Phase 2 state — places/batch starts the moment circles/me answers,
+        // not after activities, moments and network circles also finish.
+        let placeGroup = DispatchGroup()
+        var placesArray = [[Place]]()
+        let placesLock = NSLock()
+        var placesFetchComplete = true
+
+        // 1. Load my circles, then immediately their places
         group.enter()
         CircleService.shared.fetchUserCircles { result in
             switch result {
@@ -102,6 +109,28 @@ final class HomeDataLoader {
                 myCirclesResult = circles
                 myCirclesFetched = true
                 Logger.debug("✅ Fetched \(circles.count) user circles")
+                // One POST places/batch per 50 circle ids. Entered BEFORE
+                // group.leave(), so phase 1's notify always sees them.
+                let circleIdsToFetch = circles.map { $0.id }
+                var chunkStart = 0
+                while chunkStart < circleIdsToFetch.count {
+                    let chunk = Array(circleIdsToFetch[chunkStart..<min(chunkStart + 50, circleIdsToFetch.count)])
+                    chunkStart += 50
+                    placeGroup.enter()
+                    PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: chunk) { result in
+                        placesLock.lock()
+                        switch result {
+                        case .success(let places):
+                            placesArray.append(places)
+                            Logger.debug("✅ Batch fetched \(places.count) places from \(chunk.count) circles")
+                        case .failure(let error):
+                            Logger.debug("❌ Batch place fetch failed: \(error)")
+                            placesFetchComplete = false
+                        }
+                        placesLock.unlock()
+                        placeGroup.leave()
+                    }
+                }
             case .failure(let error):
                 Logger.debug("❌ Failed to fetch user circles: \(error)")
             }
@@ -189,33 +218,7 @@ final class HomeDataLoader {
                 return
             }
 
-            // Phase 2: Fetch places — one POST places/batch per 50 circle ids
-            let placeGroup = DispatchGroup()
-            var placesArray = [[Place]]()
-            let placesLock = NSLock()
-            var placesFetchComplete = true
-
-            let circleIdsToFetch = allCircles.map { $0.id }
-            var chunkStart = 0
-            while chunkStart < circleIdsToFetch.count {
-                let chunk = Array(circleIdsToFetch[chunkStart..<min(chunkStart + 50, circleIdsToFetch.count)])
-                chunkStart += 50
-                placeGroup.enter()
-                PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: chunk) { result in
-                    switch result {
-                    case .success(let places):
-                        placesLock.lock()
-                        placesArray.append(places)
-                        placesLock.unlock()
-                        Logger.debug("✅ Batch fetched \(places.count) places from \(chunk.count) circles")
-                    case .failure(let error):
-                        Logger.debug("❌ Batch place fetch failed: \(error)")
-                        placesFetchComplete = false
-                    }
-                    placeGroup.leave()
-                }
-            }
-
+            // Phase 2: the place batches started when circles/me answered
             placeGroup.notify(queue: .main) { [weak self] in
                 guard let self = self else { return }
 
@@ -444,6 +447,7 @@ final class HomeDataLoader {
         // only written from a COMPLETE set (a partial one served stale-missing
         // places when the old cache was enabled; that's why it was disabled).
         var ownPlacesFetchComplete = true
+        let accumulatorLock = NSLock()
 
         // One POST places/batch instead of one GET per circle (server caps
         // a request at 50 circle ids; typically this is a single request)
@@ -455,6 +459,8 @@ final class HomeDataLoader {
             index += 50
             group.enter()
             PlaceService.shared.fetchPlacesByMultipleCircles(circleIds: chunk) { result in
+                // Completions land on arbitrary queues; the accumulators are shared
+                accumulatorLock.lock()
                 switch result {
                 case .success(let places):
                     Logger.debug("✅ Batch fetched \(places.count) places from \(chunk.count) circles")
@@ -464,6 +470,7 @@ final class HomeDataLoader {
                     Logger.debug("❌ Batch place fetch failed: \(error)")
                     ownPlacesFetchComplete = false
                 }
+                accumulatorLock.unlock()
                 group.leave()
             }
         }
@@ -478,7 +485,8 @@ final class HomeDataLoader {
             ) { [weak self] (result: Result<CirclesDataResponse, APIError>) in
                 switch result {
                 case .success(let response):
-                    self?.state.networkCircles = response.data
+                    // State is main-thread only; APIService completes off main
+                    DispatchQueue.main.async { self?.state.networkCircles = response.data }
                     // Their places arrive per visible map region (viewport loading)
                 case .failure(let error):
                     Logger.debug("Failed to fetch network circles: \(error)")

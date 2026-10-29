@@ -646,29 +646,16 @@ exports.getUserReels = async (req, res) => {
     // Check which videos are liked by current user
     if (videos.length > 0) {
       const videoIds = videos.map(v => v.id);
-      const likesQuery = await db.collection(COLLECTIONS.VIDEO_LIKES)
+      // Every video on the page, chunked (Firestore 'in' caps at 30)
+      const likeDocs = await queryInChunks(videoIds, chunk => db.collection(COLLECTIONS.VIDEO_LIKES)
         .where('userId', '==', currentUserId)
-        .where('videoId', 'in', videoIds.slice(0, 10)) // Firestore 'in' limit
-        .get();
-      
+        .where('videoId', 'in', chunk)
+        .get());
+
       const likedVideoIds = new Set();
-      likesQuery.docs.forEach(doc => {
-        const [_, videoId] = doc.id.split('_');
-        likedVideoIds.add(videoId);
+      likeDocs.forEach(doc => {
+        likedVideoIds.add(doc.data().videoId || doc.id.split('_')[1]);
       });
-      
-      // Check remaining videos if more than 10
-      if (videoIds.length > 10) {
-        const remainingLikesQuery = await db.collection(COLLECTIONS.VIDEO_LIKES)
-          .where('userId', '==', currentUserId)
-          .where('videoId', 'in', videoIds.slice(10))
-          .get();
-        
-        remainingLikesQuery.docs.forEach(doc => {
-          const [_, videoId] = doc.id.split('_');
-          likedVideoIds.add(videoId);
-        });
-      }
       
       // Add like status to videos
       videos.forEach(video => {

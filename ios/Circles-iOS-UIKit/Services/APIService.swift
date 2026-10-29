@@ -375,10 +375,21 @@ class APIService {
     
     // MARK: - Request Deduplication
     
-    private func createRequestKey(endpoint: String, method: RequestMethod, body: [String: Any]?) -> String {
+    /// Identity of a request for dedupe and throttling: method, path, query
+    /// AND body. Query params used to be left out, so two different searches
+    /// on one endpoint ("bak" then "bakery") shared a key — the second was
+    /// delayed by the throttle or refused as a duplicate.
+    private func createRequestKey(endpoint: String, method: RequestMethod, body: [String: Any]?,
+                                  queryParams: [String: String]? = nil) -> String {
         let bodyData = body?.compactMapValues { $0 } ?? [:]
         let bodyString = bodyData.keys.sorted().map { "\($0)=\(bodyData[$0] ?? "")" }.joined(separator: "&")
-        return "\(method.rawValue):\(endpoint):\(bodyString)"
+        return "\(method.rawValue):\(endpoint)?\(Self.queryKey(queryParams)):\(bodyString)"
+    }
+
+    /// Sorted "k=v&k=v" of the query params ("" when none).
+    static func queryKey(_ queryParams: [String: String]?) -> String {
+        guard let queryParams, !queryParams.isEmpty else { return "" }
+        return queryParams.keys.sorted().map { "\($0)=\(queryParams[$0] ?? "")" }.joined(separator: "&")
     }
     
     // MARK: - Request Methods
@@ -395,7 +406,7 @@ class APIService {
         // Improved duplicate request prevention for GET requests
         // Only prevent duplicates for identical requests within a short time window
         if method == .get {
-            let requestKey = createRequestKey(endpoint: endpoint, method: method, body: body)
+            let requestKey = createRequestKey(endpoint: endpoint, method: method, body: body, queryParams: queryParams)
             
             // NOTE: endpoints arrive WITHOUT a leading slash ("circles/me"),
             // so these patterns only match nested paths (e.g. "users/x/y").
@@ -541,7 +552,7 @@ class APIService {
         // Read-and-stamp is one critical section: performRequest re-enters
         // from delayed-retry closures on arbitrary queues, and an unlocked
         // write here is what corrupted the dictionary (2026-08-25 crashes).
-        let requestKey = "\(method.rawValue):\(endpoint)"
+        let requestKey = "\(method.rawValue):\(endpoint)?\(Self.queryKey(queryParams))"
         stateLock.lock()
         let timeSinceLastRequest = lastRequestTimes[requestKey].map { Date().timeIntervalSince($0) }
         let throttleDelay: TimeInterval? = (timeSinceLastRequest != nil && timeSinceLastRequest! < minRequestInterval)
@@ -789,7 +800,7 @@ class APIService {
                 
                 // Clean up pending request tracking for GET requests
                 if method == .get {
-                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body, queryParams: queryParams)
                     self.clearPendingRequest(requestKey)
                 }
                 
@@ -809,7 +820,7 @@ class APIService {
                 
                 // Clean up pending request tracking for GET requests
                 if method == .get {
-                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body, queryParams: queryParams)
                     self.clearPendingRequest(requestKey)
                 }
                 
@@ -921,7 +932,7 @@ class APIService {
                     // Non-authenticated request (like login) - preserve error message
                     // Clean up any pending GET request tracking
                     if method == .get {
-                        let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                        let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body, queryParams: queryParams)
                         self.clearPendingRequest(requestKey)
                     }
                     completion(.failure(.httpError(401, data)))
@@ -936,7 +947,7 @@ class APIService {
                 
                 // Clean up pending request tracking for GET requests
                 if method == .get {
-                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body, queryParams: queryParams)
                     self.clearPendingRequest(requestKey)
                 }
                 
@@ -975,7 +986,7 @@ class APIService {
                     
                     // Clean up pending request tracking for GET requests
                     if method == .get {
-                        let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                        let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body, queryParams: queryParams)
                         self.clearPendingRequest(requestKey)
                     }
                     
@@ -1001,7 +1012,7 @@ class APIService {
                     
                     // Clean up pending request tracking for GET requests
                     if method == .get {
-                        let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                        let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body, queryParams: queryParams)
                         self.clearPendingRequest(requestKey)
                     }
                     
@@ -1032,7 +1043,7 @@ class APIService {
                 
                 // Clean up pending request tracking for GET requests
                 if method == .get {
-                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body, queryParams: queryParams)
                     self.clearPendingRequest(requestKey)
                 }
                 
@@ -1069,7 +1080,7 @@ class APIService {
                 
                 // Clean up pending request tracking for GET requests
                 if method == .get {
-                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body, queryParams: queryParams)
                     self.clearPendingRequest(requestKey)
                 }
                 
@@ -1116,7 +1127,7 @@ class APIService {
                 
                 // Remove from pending requests if it was a GET request
                 if method == .get {
-                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body, queryParams: queryParams)
                     self.clearPendingRequest(requestKey)
                 }
                 completion(.success(result))
@@ -1149,7 +1160,7 @@ class APIService {
                 
                 // Remove from pending requests if it was a GET request
                 if method == .get {
-                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body)
+                    let requestKey = self.createRequestKey(endpoint: endpoint, method: method, body: body, queryParams: queryParams)
                     self.clearPendingRequest(requestKey)
                 }
                 

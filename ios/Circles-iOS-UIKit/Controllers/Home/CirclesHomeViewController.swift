@@ -41,6 +41,10 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
     var selectedCategory: UnifiedCategory? { get { state.selectedCategory } set { state.selectedCategory = newValue } }
     var mapUpdateTimer: Timer? // Debounce timer for map updates
     var notificationBadgeTimer: Timer? // Periodic refresh timer for notification badge
+    /// The onboarding retry POST runs once per home instance, not on every appearance
+    var didRetryOnboarding = false
+    /// Block-based observers must be removed by token; removeObserver(self) misses them
+    var blockObserverTokens: [NSObjectProtocol] = []
     var isReturningFromFullScreenMap = false // Prevent map updates when returning from full screen
     var isShowingLoadingUI = false // Track if loading UI is currently shown
 
@@ -845,6 +849,7 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         notificationBadgeTimer?.invalidate()
         // Remove notification observers
         NotificationCenter.default.removeObserver(self)
+        blockObserverTokens.forEach { NotificationCenter.default.removeObserver($0) }
         // Remove SSE delegate
         SSEService.shared.removeDelegate(self)
         // Reset loading flag if this instance was loading
@@ -1097,11 +1102,14 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // bleeds into whatever screen the user moved to. Segment changes within
         // the tab already pause; this covers navigating away entirely.
         pauseAllVideos()
+        // The 30 s badge poll is for the home screen only; viewWillAppear restarts it
+        stopNotificationBadgeRefresh()
     }
 
     func checkAndRetryOnboardingIfNeeded() {
-        // If user has no circles and data has loaded, try onboarding
-        if circles.isEmpty && !isLoadingCircles {
+        // If user has no circles and data has loaded, try onboarding — once
+        if circles.isEmpty && !isLoadingCircles && !didRetryOnboarding {
+            didRetryOnboarding = true
             APIService.shared.request(
                 endpoint: "users/me/complete-onboarding",
                 method: .post,
@@ -1904,11 +1912,11 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
         // Seed the Connection dropdown's roster and its current selection.
         mapVC.setAvailableConnections(NetworkManager.shared.connections)
         mapVC.setConnectionSelection(id: selectedConnectionId, user: selectedConnectionUser)
-        NotificationCenter.default.addObserver(
+        blockObserverTokens.append(NotificationCenter.default.addObserver(
             forName: .connectionsLoaded, object: nil, queue: .main
         ) { [weak self] _ in
             self?.mapViewController?.setAvailableConnections(NetworkManager.shared.connections)
-        }
+        })
         
         addChild(mapVC)
         mapContainerView.addSubview(mapVC.view)
@@ -4085,25 +4093,31 @@ class CirclesHomeViewController: BaseViewController, PlaceSearchable, SSEService
                 method: .get,
                 requiresAuth: true
             ) { [weak self] (result: Result<CirclesDataResponse, APIError>) in
-                switch result {
-                case .success(let response):
-                    self?.networkCircles = response.data
-                    self?.fetchAllPlacesFromCircles()
-                case .failure(let error):
-                    Logger.debug("❌ Failed to refresh network circles: \(error)")
+                // APIService completes on its delegate queue; state and the
+                // place fetch it kicks off belong on main
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let response):
+                        self?.networkCircles = response.data
+                        self?.fetchAllPlacesFromCircles()
+                    case .failure(let error):
+                        Logger.debug("❌ Failed to refresh network circles: \(error)")
+                    }
+                    refreshGroup.leave()
                 }
-                refreshGroup.leave()
             }
         } else {
             CircleService.shared.fetchUserCircles { [weak self] result in
-                switch result {
-                case .success(let circles):
-                    self?.circles = circles
-                    self?.fetchAllPlacesFromCircles()
-                case .failure(let error):
-                    Logger.debug("❌ Failed to refresh user circles: \(error)")
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let circles):
+                        self?.circles = circles
+                        self?.fetchAllPlacesFromCircles()
+                    case .failure(let error):
+                        Logger.debug("❌ Failed to refresh user circles: \(error)")
+                    }
+                    refreshGroup.leave()
                 }
-                refreshGroup.leave()
             }
         }
         
