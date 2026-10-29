@@ -677,6 +677,12 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
   `services/notifyQuiet.js` (fire-and-forget push), `services/notificationTypes.js`
   (one row per push type). Scheduled endpoints use `middleware/scheduledTask` and
   live in `controllers/tasks/`; `routes/taskRoutes.js` is a manifest.
+- Text search (Oct 2026): `utils/searchTokens` is the ONLY tokenizer — writers
+  (`globalPlaces.searchTokens`, `users.searchTokens` via `services/userSearchService`)
+  and query readers must both use it. `globalPlaces.geohash` is stamped on create and
+  move; with an origin, catalog search is distance-first (indexes searchTokens+geohash,
+  category+geohash). People search = `userSearchService.findUsersByName`; the auth
+  middleware heals stale user tokens. Never add a whole-collection scan for search.
 - Firestore indexes: the ROOT `firestore.indexes.json` is the deployed one
   (`firebase.json` there); `backend/deploy-indexes.sh` deploys from the root. Create
   indexes before deploying code that queries them.

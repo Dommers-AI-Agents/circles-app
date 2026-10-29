@@ -229,8 +229,9 @@ exports.getGlobalPlace = async (req, res, next) => {
       
       // Get user information for reviewers
       // Every reviewer, in one batched read (was the first 10 only)
-      const reviewerDocs = userIds.length > 0
-        ? await db.getAll(...userIds.filter(Boolean).map(id => db.collection('users').doc(String(id))))
+      const reviewerIds = userIds.filter(Boolean);
+      const reviewerDocs = reviewerIds.length > 0
+        ? await db.getAll(...reviewerIds.map(id => db.collection('users').doc(String(id))))
         : [];
       
       const usersMap = {};

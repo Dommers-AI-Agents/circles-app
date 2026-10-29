@@ -331,6 +331,13 @@ extension CirclesHomeViewController {
 
         guard SearchDebouncer.isServerEligible(query) else {
             searchDebouncer.cancel()
+            // A longer query's nearby rows don't describe this one
+            suggestedPlaces = []
+            appleCandidates = []
+            let hadHits = !state.networkSearchHits.isEmpty
+            state.networkSearchHits = []
+            filterPlaces(searchText: query)
+            if hadHits { refreshMapDisplay(adjustRegion: false) }
             return
         }
         // No reference point → skip the nearby channels: quality-ranked global

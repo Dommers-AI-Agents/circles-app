@@ -767,6 +767,13 @@ class APIService {
             
             // Handle network errors
             if let error = error {
+                // A search cancelled by a newer keystroke is not an error
+                if handle?.isCancelled == true {
+                    if method == .get {
+                        self.clearPendingRequest(self.createRequestKey(endpoint: endpoint, method: method, body: body, queryParams: queryParams))
+                    }
+                    return
+                }
                 if self.logLevel >= .errors {
                     Logger.debug("❌ ERROR APIService: Network error for \(endpoint): \(error.localizedDescription)")
                     if self.logLevel == .verbose {
