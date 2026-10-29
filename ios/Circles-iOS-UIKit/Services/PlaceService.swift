@@ -297,30 +297,6 @@ class PlaceService {
         )
     }
     
-    func searchPlaces(query: String, category: PlaceCategory? = nil, completion: @escaping (Result<[Place], Error>) -> Void) {
-        var queryParams: [String: String] = [
-            "q": query
-        ]
-        
-        if let category = category {
-            queryParams["category"] = category.rawValue
-        }
-        
-        api.request(
-            endpoint: "places/search",
-            method: .get,
-            queryParams: queryParams,
-            requiresAuth: true,
-            completion: createAPICompletion { (result: Result<PlacesResponse, Error>) in
-                if case .success(let response) = result {
-                    completion(.success(response.places))
-                } else if case .failure(let error) = result {
-                    completion(.failure(error))
-                }
-            }
-        )
-    }
-    
     func getMyPlacesForCheckIn(completion: @escaping (Result<[Place], Error>) -> Void) {
         api.request(
             endpoint: "places/my-places",
