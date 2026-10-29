@@ -131,7 +131,8 @@ final class ProximityNotificationScheduler {
                 }
 
                 let excluded = Set(places.map { $0.id }.filter { Self.wasPromptedToday(placeId: $0) })
-                let plan = ProximityRegionPlanner.plan(places: places, around: around, excludedPlaceIds: excluded)
+                let plan = ProximityRegionPlanner.plan(places: places, around: around, excludedPlaceIds: excluded,
+                                                       ownerId: AuthService.shared.getUserId())
 
                 self.removePendingProximityRequests {
                     for region in plan {

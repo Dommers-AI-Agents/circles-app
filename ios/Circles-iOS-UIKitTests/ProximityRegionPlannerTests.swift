@@ -9,7 +9,7 @@ struct ProximityRegionPlannerTests {
     private let origin = CLLocation(latitude: 40.7484, longitude: -73.9857) // Empire State
 
     /// A place `meters` due north of the origin. 1° latitude ≈ 111,320 m.
-    private func place(_ id: String, meters: Double, name: String? = nil, located: Bool = true) -> Place {
+    private func place(_ id: String, meters: Double, name: String? = nil, located: Bool = true, addedBy: String = "u") -> Place {
         let location = located
             ? GeoLocation(type: "Point", coordinates: [origin.coordinate.longitude,
                                                        origin.coordinate.latitude + meters / 111_320])
@@ -19,7 +19,7 @@ struct ProximityRegionPlannerTests {
                      customCategoryId: nil, subcategory: nil, rating: nil, userRatingsTotal: nil, notes: nil,
                      privateNotes: nil, publicNotes: nil, tags: nil, reviews: nil, openingHours: nil,
                      priceLevel: nil, likes: nil, likesCount: nil, commentsCount: nil, circleId: "c",
-                     addedBy: "u", addedByUser: nil, privacy: .public, createdAt: Date(), updatedAt: Date())
+                     addedBy: addedBy, addedByUser: nil, privacy: .public, createdAt: Date(), updatedAt: Date())
     }
 
     @Test func nearestFirstAndCappedAtTheRegionLimit() {
@@ -90,5 +90,16 @@ struct ProximityRegionPlannerTests {
         #expect(plan.first?.placeId == "watched")
         let unpinned = ProximityRegionPlanner.plan(places: places, around: origin, excludedPlaceIds: ["watched"])
         #expect(!unpinned.contains { $0.placeId == "watched" })
+    }
+
+    @Test func onlyThePersonsOwnSavesAreWatched() {
+        // The map cache mixes in connections' places; a banner fired for one
+        let places = [place("mine", meters: 300), place("brittanys", meters: 200, addedBy: "brittany"),
+                      place("alsoMine", meters: 400)]
+        let plan = ProximityRegionPlanner.plan(places: places, around: origin, ownerId: "u")
+        #expect(plan.map(\.placeId) == ["mine", "alsoMine"])
+        // Even a pinned watch is dropped when the place isn't theirs
+        let pinned = ProximityRegionPlanner.plan(places: places, around: origin, pinnedPlaceIds: ["brittanys"], ownerId: "u")
+        #expect(!pinned.map(\.placeId).contains("brittanys"))
     }
 }

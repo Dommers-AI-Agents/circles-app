@@ -136,8 +136,13 @@ final class DwellCheckInMonitor: NSObject {
         guard running, let around else { return }
         let pinned: Set<String> = watch.map { [$0.placeId] } ?? []
         let excluded = Set(places.map(\.id).filter { ProximityNotificationScheduler.wasPromptedToday(placeId: $0) })
-        let plan = ProximityRegionPlanner.plan(places: places, around: around, excludedPlaceIds: excluded, pinnedPlaceIds: pinned)
+        guard let ownerId = AuthService.shared.getUserId() else { return }
+        let plan = ProximityRegionPlanner.plan(places: places, around: around, excludedPlaceIds: excluded,
+                                               pinnedPlaceIds: pinned, ownerId: ownerId)
         let wanted = Dictionary(uniqueKeysWithValues: plan.map { (DwellCheckInGate.identifierPrefix + $0.placeId, $0) })
+        // What may fire: a region already being watched for another
+        // person's place stops counting the moment the plan drops it
+        ownPlaceIds = Set(plan.map(\.placeId))
 
         for region in manager.monitoredRegions {
             guard let placeId = DwellCheckInGate.placeId(fromIdentifier: region.identifier) else { continue }
@@ -152,6 +157,13 @@ final class DwellCheckInMonitor: NSObject {
         }
         placeNames.merge(plan.map { ($0.placeId, $0.placeName) }) { _, new in new }
         Logger.debug("📍 Dwell check-in: monitoring \(wanted.count) region(s)")
+    }
+
+    /// The person's own saves in the current plan; an arrival anywhere else
+    /// never fires (remembered across relaunches, like the names)
+    private var ownPlaceIds: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: "dwellCheckIn.ownPlaceIds") ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: "dwellCheckIn.ownPlaceIds") }
     }
 
     /// Names for the banner, remembered across relaunches (a region event may
@@ -238,6 +250,11 @@ final class DwellCheckInMonitor: NSObject {
     }
 
     private func fire(placeId: String) {
+        guard ownPlaceIds.contains(placeId) else {
+            Logger.debug("📍 Dwell check-in: \(placeId) isn't one of their saves — no banner")
+            endWatch()
+            return
+        }
         // In the foreground the home chip owns this; a stamp here would
         // suppress it.
         if UIApplication.shared.applicationState == .active {

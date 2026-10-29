@@ -63,11 +63,16 @@ struct ProximityRegionPlanner {
                      around: CLLocation?,
                      excludedPlaceIds: Set<String> = [],
                      pinnedPlaceIds: Set<String> = [],
+                     ownerId: String? = nil,
                      limit: Int = regionLimit,
                      radius: CLLocationDistance = defaultRadiusMeters) -> [PlannedRegion] {
         guard let around = around, limit > 0 else { return [] }
 
         let located: [(Place, CLLocation)] = places.compactMap { place in
+            // Only the person's own saves: the map cache these places come
+            // from also holds connections' places, and one fired "You're at"
+            // for a place a connection saved (Wes, 2026-10-29)
+            if let ownerId, !IDNormalizer.isSameUser(place.addedBy, ownerId) { return nil }
             guard !place.name.trimmingCharacters(in: .whitespaces).isEmpty,
                   let location = place.location?.clLocation else { return nil }
             if pinnedPlaceIds.contains(place.id) { return (place, location) }
