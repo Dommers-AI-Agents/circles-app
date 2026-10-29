@@ -1226,6 +1226,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         captureStickerCodeFromPasteboardIfFirstLaunch()
         // A store QR opened from the background or a cold launch
         redeemPendingStickerCodeIfNeeded()
+        // Signed out: the scan's "Rewards Waiting!" prompt, if a system alert held it back
+        if rewardsPromptOwed { presentRewardsWaitingPrompt() }
         // A run's lock-screen display left over from a run the app lost (killed mid-run)
         if #available(iOS 16.2, *) {
             RunLiveActivityController.shared.endStaleActivities()
@@ -2032,6 +2034,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     // MARK: - Sticker Code Handling
 
+    /// A "Rewards Waiting!" prompt that couldn't show yet (see presentRewardsWaitingPrompt)
+    private var rewardsPromptOwed = false
+
     private func handleStickerCode(_ code: String) {
         Logger.debug("📱 SceneDelegate: handleStickerCode called with code: \(code)")
 
@@ -2049,20 +2054,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard AuthService.shared.isLoggedIn else {
             Logger.debug("📱 SceneDelegate: User not logged in, saving sticker code for later")
             RewardsService.shared.savePendingStickerCode(code)
-
-            let alert = UIAlertController(
-                title: "Rewards Waiting! 🎁",
-                message: "Sign up for FavCircles to save this place and earn store points you can use on your next visit.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "Sign Up", style: .default) { _ in
-                // The auth state listener will handle showing the auth screen
-            })
-            alert.addAction(UIAlertAction(title: "Later", style: .cancel))
-
-            if let topVC = window?.rootViewController {
-                topVC.present(alert, animated: true)
-            }
+            presentRewardsWaitingPrompt()
             return
         }
 
@@ -2076,6 +2068,48 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             return
         }
         StickerRewardCoordinator.shared.handleScannedCode(code)
+    }
+
+    /// "Rewards Waiting!" for a scan before there's an account. A fresh
+    /// install delivers the QR link while the launch root is still up; an
+    /// alert presented there was orphaned when the login screen replaced the
+    /// root a moment later, and its buttons stopped responding (Wes's iPad,
+    /// 2026-10-29). So wait until the login screen is the root and the scene
+    /// is active, then present on whatever is on top. Sign Up opens Create
+    /// Account; the code stays pending and is redeemed after signup.
+    private func presentRewardsWaitingPrompt(attempt: Int = 0) {
+        // Owed until shown: if the retries below run out (something else
+        // presenting for a long time), sceneDidBecomeActive asks again
+        rewardsPromptOwed = true
+        guard !AuthService.shared.isLoggedIn else { rewardsPromptOwed = false; return }
+        let authNav = window?.rootViewController as? UINavigationController
+        let loginReady = authNav?.viewControllers.first is LoginViewController
+        // Not gated on the app being active: a system alert over a fresh
+        // install can keep it inactive with no later activation, and the
+        // freeze came from a root swap, not from presenting while inactive
+        guard loginReady,
+              let presenter = topViewController(), presenter.view.window != nil,
+              !(presenter is UIAlertController), !presenter.isBeingPresented, !presenter.isBeingDismissed else {
+            // The login root animates in over ~0.3 s; keep trying for ~10 s,
+            // then sceneDidBecomeActive asks again
+            guard attempt < 40 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                self?.presentRewardsWaitingPrompt(attempt: attempt + 1)
+            }
+            return
+        }
+        rewardsPromptOwed = false
+        AlertPresenter.showConfirmation(
+            title: "Rewards Waiting! 🎁",
+            message: "Sign up for FavCircles to save this place and earn store points you can use on your next visit.",
+            confirmTitle: "Sign Up",
+            cancelTitle: "Later",
+            from: presenter
+        ) {
+            // Create Account, unless they're already on it
+            guard let nav = authNav, !(nav.topViewController is RegisterViewController) else { return }
+            nav.pushViewController(RegisterViewController(), animated: true)
+        }
     }
 
     /// Deferred deep link for store QR codes: the App Store install wipes any
