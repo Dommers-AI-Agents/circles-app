@@ -216,7 +216,7 @@ class DailySummaryViewController: UIViewController {
         loadingIndicator.startAnimating()
         scrollView.isHidden = true
         
-        APIService.shared.fetchDailySummary { [weak self] result in
+        DailySummaryService.shared.fetchDailySummary { [weak self] result in
             DispatchQueue.main.async {
                 self?.loadingIndicator.stopAnimating()
                 self?.refreshControl.endRefreshing()

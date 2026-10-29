@@ -42,8 +42,13 @@ enum UserError: Error, LocalizedError {
 
 class UserService {
     static let shared = UserService()
-    
-    private init() {}
+
+    private let api: APIClient
+
+    /// Tests pass a fake client; the app uses `shared` (the real APIService).
+    init(api: APIClient = APIService.shared) {
+        self.api = api
+    }
     
     // MARK: - Helper Methods
     
@@ -70,7 +75,7 @@ class UserService {
         Logger.debug("🚀 UserService: userId parameter: \(userId ?? "nil")")
         Logger.debug("🚀 UserService: Using endpoint: \(endpoint)")
         
-        APIService.shared.request(
+        api.request(
             endpoint: endpoint,
             method: .get,
             requiresAuth: true
@@ -179,7 +184,7 @@ class UserService {
             return
         }
         
-        APIService.shared.request(
+        api.request(
             endpoint: "users/me",
             method: .put,
             body: body,
@@ -210,7 +215,7 @@ class UserService {
         }
         let body: [String: Any] = ["preferences": prefs]
         
-        APIService.shared.request(
+        api.request(
             endpoint: "users/me",
             method: .put,
             body: body,
@@ -259,7 +264,7 @@ class UserService {
             body["longitude"] = fix.coordinate.longitude
         }
 
-        APIService.shared.request(
+        api.request(
             endpoint: "users/me/app-open",
             method: .post,
             body: body,
@@ -298,7 +303,7 @@ class UserService {
             ]
         ]
         
-        APIService.shared.request(
+        api.request(
             endpoint: "users/notification-preferences",
             method: .put,
             body: body,
@@ -326,7 +331,7 @@ class UserService {
         let sent = privacy.normalized
         let body: [String: Any] = ["activityPrivacy": sent.requestBody()]
 
-        APIService.shared.request(
+        api.request(
             endpoint: "users/me/activity-privacy",
             method: .put,
             body: body,
@@ -356,7 +361,7 @@ class UserService {
     func searchUsers(query: String, completion: @escaping (Result<[User], Error>) -> Void) -> APIRequestHandle {
         let queryParams = ["query": query]
         
-        return APIService.shared.request(
+        return api.request(
             endpoint: "users/search",
             method: .get,
             queryParams: queryParams,
@@ -386,7 +391,7 @@ class UserService {
             return
         }
 
-        APIService.shared.request(
+        api.request(
             endpoint: "users/\(userId)/following",
             method: .get,
             requiresAuth: true
@@ -410,7 +415,7 @@ class UserService {
             return
         }
 
-        APIService.shared.request(
+        api.request(
             endpoint: "users/\(userId)/followers",
             method: .get,
             requiresAuth: true
@@ -428,7 +433,7 @@ class UserService {
     // MARK: - Friend Management
 
     func getFriends(completion: @escaping (Result<[User], Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "users/me/friends",
             method: .get,
             requiresAuth: true
@@ -446,7 +451,7 @@ class UserService {
     }
     
     func getFriendRequests(completion: @escaping (Result<[FriendRequest], Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "users/me/friend-requests",
             method: .get,
             requiresAuth: true
@@ -466,7 +471,7 @@ class UserService {
     func sendFriendRequest(userId: String, completion: @escaping (Result<Bool, Error>) -> Void) {
         let body = ["userId": userId]
         
-        APIService.shared.request(
+        api.request(
             endpoint: "users/friend-request",
             method: .post,
             body: body,
@@ -485,7 +490,7 @@ class UserService {
     }
     
     func acceptFriendRequest(requestId: String, completion: @escaping (Result<Bool, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "users/friend-request/\(requestId)/accept",
             method: .post,
             requiresAuth: true
@@ -503,7 +508,7 @@ class UserService {
     }
     
     func rejectFriendRequest(requestId: String, completion: @escaping (Result<Bool, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "users/friend-request/\(requestId)/reject",
             method: .post,
             requiresAuth: true
@@ -521,7 +526,7 @@ class UserService {
     }
     
     func removeFriend(userId: String, completion: @escaping (Result<Bool, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "users/friend/\(userId)",
             method: .delete,
             requiresAuth: true
@@ -545,7 +550,7 @@ class UserService {
         let base64String = imageData.base64EncodedString()
         
         // Upload to backend
-        APIService.shared.request(
+        api.request(
             endpoint: "upload/image",
             method: .post,
             body: [
@@ -613,7 +618,7 @@ class UserService {
     }
     
     func deleteAccount(completion: @escaping (Result<Void, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "users/me",
             method: .delete,
             requiresAuth: true
@@ -638,7 +643,7 @@ class UserService {
             "displayName": user.displayName
         ]
         
-        APIService.shared.request(
+        shared.api.request(
             endpoint: "users/find-duplicates",
             method: .post,
             body: body,
@@ -661,7 +666,7 @@ class UserService {
             "secondaryAccountId": secondaryId
         ]
         
-        APIService.shared.request(
+        shared.api.request(
             endpoint: "users/merge-accounts",
             method: .post,
             body: body,
@@ -684,7 +689,7 @@ class UserService {
             body["currentPassword"] = currentPassword
         }
         
-        APIService.shared.request(
+        api.request(
             endpoint: "users/change-password",
             method: .post,
             body: body,
@@ -705,7 +710,7 @@ class UserService {
     func reorderCircles(circleIds: [String], completion: @escaping (Error?) -> Void) {
         let body: [String: Any] = ["circleIds": circleIds]
         
-        APIService.shared.request(
+        api.request(
             endpoint: "users/me/circles/reorder",
             method: .put,
             body: body,

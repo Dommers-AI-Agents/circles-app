@@ -365,14 +365,12 @@ private class ConnectionPickerCell: UITableViewCell {
         // Display connection info instead of email for privacy
         userInfoLabel.text = "Connected"
         
-        if let profilePicture = user.profilePicture, let url = URL(string: profilePicture) {
-            URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-                if let data = data, let image = UIImage(data: data) {
-                    DispatchQueue.main.async {
-                        self?.profileImageView.image = image
-                    }
+        if let profilePicture = user.profilePicture, URL(string: profilePicture) != nil {
+            ImageService.shared.loadProfileImage(for: user.id, from: profilePicture) { [weak self] image in
+                if let image = image {
+                    self?.profileImageView.image = image
                 }
-            }.resume()
+            }
         } else {
             profileImageView.image = createInitialsImage(for: user.displayName)
         }

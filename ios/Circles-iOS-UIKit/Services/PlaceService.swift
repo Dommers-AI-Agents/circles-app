@@ -54,8 +54,12 @@ class PlaceService {
     static let shared = PlaceService()
     
     private let geocoder = CLGeocoder()
-    
-    private init() {}
+    private let api: APIClient
+
+    /// Tests pass a fake client; the app uses `shared` (the real APIService).
+    init(api: APIClient = APIService.shared) {
+        self.api = api
+    }
     
     // MARK: - Helper Methods
     
@@ -86,7 +90,7 @@ class PlaceService {
             }
         }
         
-        APIService.shared.request(
+        api.request(
             endpoint: "circles/\(circleId)/places",
             method: .get,
             requiresAuth: true,
@@ -105,7 +109,7 @@ class PlaceService {
             }
         }
         
-        APIService.shared.request(
+        api.request(
             endpoint: "circles/\(circleId)/places/public",
             method: .get,
             requiresAuth: false,
@@ -137,7 +141,7 @@ class PlaceService {
             }
         }
 
-        APIService.shared.request(
+        api.request(
             endpoint: endpoint,
             method: .get,
             requiresAuth: true,
@@ -172,7 +176,7 @@ class PlaceService {
             }
         }
 
-        return APIService.shared.request(
+        return api.request(
             endpoint: endpoint,
             method: .get,
             requiresAuth: true,
@@ -194,7 +198,7 @@ class PlaceService {
             }
         }
         
-        APIService.shared.request(
+        api.request(
             endpoint: "places/batch",
             method: .post,
             body: body,
@@ -207,7 +211,7 @@ class PlaceService {
         Logger.info("📍 PlaceService.fetchPlaceById: Fetching place with ID: \(id)")
         
         // First try legacy places endpoint
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(id)",
             method: .get,
             requiresAuth: true
@@ -302,7 +306,7 @@ class PlaceService {
             queryParams["category"] = category.rawValue
         }
         
-        APIService.shared.request(
+        api.request(
             endpoint: "places/search",
             method: .get,
             queryParams: queryParams,
@@ -318,7 +322,7 @@ class PlaceService {
     }
     
     func getMyPlacesForCheckIn(completion: @escaping (Result<[Place], Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places/my-places",
             method: .get,
             requiresAuth: true,
@@ -412,7 +416,7 @@ class PlaceService {
     // MARK: - Create, Update, Delete
     
     func createPlaceFromGoogleData(_ googleData: [String: Any], completion: @escaping (Result<Place, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places",
             method: .post,
             body: googleData,
@@ -734,7 +738,7 @@ class PlaceService {
             body["refUserId"] = refUserId
         }
 
-        APIService.shared.request(
+        api.request(
             endpoint: "places",
             method: .post,
             body: body,
@@ -770,7 +774,7 @@ class PlaceService {
     /// Used when viewing ANOTHER user's copy of the venue so per-save actions
     /// (private notes) can target the caller's record. 404 = never saved it.
     func fetchMySaveOfVenue(globalPlaceId: String, completion: @escaping (Result<Place, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places/my-save/\(globalPlaceId)",
             method: .get,
             requiresAuth: true,
@@ -789,7 +793,7 @@ class PlaceService {
         var body: [String: Any] = [:]
         if let privateNotes = privateNotes { body["privateNotes"] = privateNotes }
         
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(id)",
             method: .put,
             body: body,
@@ -949,7 +953,7 @@ class PlaceService {
             body["refUserId"] = refUserId
         }
 
-        APIService.shared.request(
+        api.request(
             endpoint: "places",
             method: .post,
             body: body,
@@ -1137,7 +1141,7 @@ class PlaceService {
                 return
             }
             
-            APIService.shared.request(
+            self.api.request(
                 endpoint: "places/\(id)",
                 method: .put,
                 body: body,
@@ -1160,7 +1164,7 @@ class PlaceService {
     }
     
     func deletePlace(id: String, completion: @escaping (Result<Bool, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(id)",
             method: .delete,
             requiresAuth: true,
@@ -1191,7 +1195,7 @@ class PlaceService {
             ]
         }
         
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(id)/update-address",
             method: .put,
             body: body,
@@ -1209,7 +1213,7 @@ class PlaceService {
     /// Report incorrect place info (venue fields are Google-sourced and
     /// read-only — this stores a report and notifies the admin)
     func flagPlaceInfo(placeId: String, message: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(placeId)/flag",
             method: .post,
             body: ["message": message],
@@ -1375,7 +1379,7 @@ class PlaceService {
         
         Logger.debug("📤 Sending image upload request...")
         
-        APIService.shared.request(
+        api.request(
             endpoint: "upload/image",
             method: .post,
             body: body,
@@ -1413,7 +1417,7 @@ class PlaceService {
         ]
         
         return try await withCheckedThrowingContinuation { continuation in
-            APIService.shared.request(
+            api.request(
                 endpoint: "circles/\(circleId)/places/reorder",
                 method: .put,
                 body: body,
@@ -1469,7 +1473,7 @@ class PlaceService {
     // MARK: - Like/Unlike Place
     
     func likePlace(id: String, completion: @escaping (Result<Place, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(id)/like",
             method: .post,
             requiresAuth: true,
@@ -1486,7 +1490,7 @@ class PlaceService {
     }
     
     func fetchPlaceLikes(id: String, completion: @escaping (Result<PlaceLikesResponse, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(id)/likes",
             method: .get,
             requiresAuth: true,
@@ -1503,7 +1507,7 @@ class PlaceService {
     // MARK: - Follow/Unfollow Place
 
     func followPlace(id: String, completion: @escaping (Result<PlaceFollowResponse, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(id)/follow",
             method: .post,
             body: [:],
@@ -1515,7 +1519,7 @@ class PlaceService {
     }
 
     func unfollowPlace(id: String, completion: @escaping (Result<PlaceFollowResponse, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(id)/follow",
             method: .delete,
             requiresAuth: true,
@@ -1528,7 +1532,7 @@ class PlaceService {
     /// The bell on a followed place: its new specials, events and news as
     /// pushes (at most one a day per store). Followers only.
     func setPlaceAlerts(id: String, on: Bool, completion: @escaping (Result<PlaceAlertsResponse, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(id)/follow/alerts",
             method: on ? .post : .delete,
             body: on ? [:] : nil,
@@ -1540,7 +1544,7 @@ class PlaceService {
     }
 
     func fetchPlaceSavers(id: String, completion: @escaping (Result<PlaceSaversResponse, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(id)/savers",
             method: .get,
             requiresAuth: true,
@@ -1563,7 +1567,7 @@ class PlaceService {
         let endpoint = "places/\(placeId)/add-to-circle/\(circleId)"
         Logger.info("Adding existing place to circle - Endpoint: \(endpoint)")
         
-        APIService.shared.request(
+        api.request(
             endpoint: endpoint,
             method: .post,
             body: body.isEmpty ? nil : body,
@@ -1584,7 +1588,7 @@ class PlaceService {
     func getPlaceComments(placeId: String, completion: @escaping (Result<[PlaceComment], Error>) -> Void) {
         Logger.debug("🔍 PlaceService: Fetching comments for place: \(placeId)")
         
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(placeId)/comments",
             method: .get,
             requiresAuth: true,
@@ -1604,7 +1608,7 @@ class PlaceService {
         let body = ["text": text]
         Logger.debug("💬 PlaceService: Adding comment to place \(placeId): \(text.prefix(50))...")
         
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(placeId)/comments",
             method: .post,
             body: body,
@@ -1624,7 +1628,7 @@ class PlaceService {
     }
     
     func deletePlaceComment(placeId: String, commentId: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(placeId)/comments/\(commentId)",
             method: .delete,
             requiresAuth: true,
@@ -1640,7 +1644,7 @@ class PlaceService {
     }
     
     func likeComment(placeId: String, commentId: String, completion: @escaping (Result<(liked: Bool, likesCount: Int, piggyBank: PiggyBankCredit?), Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(placeId)/comments/\(commentId)/like",
             method: .post,
             requiresAuth: true,
@@ -1658,7 +1662,7 @@ class PlaceService {
     func addPlaceCommentReply(placeId: String, commentId: String, text: String, completion: @escaping (Result<PlaceComment, Error>) -> Void) {
         let requestBody = ["text": text]
         
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(placeId)/comments/\(commentId)/replies",
             method: .post,
             body: requestBody,
@@ -1677,7 +1681,7 @@ class PlaceService {
     func getPlaceCommentReplies(placeId: String, commentId: String, completion: @escaping (Result<[PlaceComment], Error>) -> Void) {
         Logger.debug("📡 PlaceService: Fetching replies for comment \(commentId) on place \(placeId)")
         
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(placeId)/comments/\(commentId)/replies",
             method: .get,
             requiresAuth: true,
@@ -1705,7 +1709,7 @@ class PlaceService {
             "targetCircleId": targetCircleId
         ]
         
-        APIService.shared.request(
+        api.request(
             endpoint: "places/\(placeId)/move",
             method: .post,
             body: body,
@@ -1725,7 +1729,7 @@ class PlaceService {
     
     /// Migrates Google Photos API URLs to Firebase Storage
     func migrateGooglePhotosToFirebase(completion: @escaping (Result<Bool, Error>) -> Void) {
-        APIService.shared.request(
+        api.request(
             endpoint: "places/migrate-photos",
             method: .post,
             requiresAuth: true

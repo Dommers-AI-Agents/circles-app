@@ -103,15 +103,13 @@ final class CircleShareController {
 
         // Add cover image if available (load asynchronously)
         if let coverImageUrl = circle.coverImage,
-           let url = URL(string: coverImageUrl) {
-            URLSession.shared.dataTask(with: url) { data, _, _ in
-                DispatchQueue.main.async {
-                    if let data = data, let image = UIImage(data: data) {
-                        activityItems.append(image)
-                    }
-                    presentShareSheet()
+           URL(string: coverImageUrl) != nil {
+            ImageService.shared.loadImage(from: coverImageUrl) { image in
+                if let image = image {
+                    activityItems.append(image)
                 }
-            }.resume()
+                presentShareSheet()
+            }
         } else {
             presentShareSheet()
         }

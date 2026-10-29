@@ -2595,31 +2595,21 @@ class PlaceDetailViewController: BaseViewController {
             let loadGroup = DispatchGroup()
             
             for (index, photoUrl) in photos.enumerated() {
-                guard let url = URL(string: photoUrl) else { 
+                guard URL(string: photoUrl) != nil else { 
                     Logger.debug("❌ PlaceDetailViewController: Invalid photo URL at index \(index): \(photoUrl)")
                     continue 
                 }
                 
                 loadGroup.enter()
-                URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
-                    if let error = error {
-                        Logger.debug("❌ PlaceDetailViewController: Error loading photo \(index): \(error)")
-                    }
-                    
-                    if let httpResponse = response as? HTTPURLResponse {
-                        Logger.debug("📡 PlaceDetailViewController: Photo \(index) HTTP Status: \(httpResponse.statusCode)")
-                    }
-                    
-                    if let data = data, let image = UIImage(data: data) {
+                ImageService.shared.loadImage(from: photoUrl) { [weak self] image in
+                    if let image = image {
                         Logger.debug("✅ PlaceDetailViewController: Successfully loaded photo \(index)")
-                        DispatchQueue.main.async {
-                            self?.placePhotos.append((image: image, url: photoUrl))
-                        }
+                        self?.placePhotos.append((image: image, url: photoUrl))
                     } else {
-                        Logger.debug("❌ PlaceDetailViewController: Failed to create image from data for photo \(index)")
+                        Logger.debug("❌ PlaceDetailViewController: Failed to load photo \(index)")
                     }
                     loadGroup.leave()
-                }.resume()
+                }
             }
             
             loadGroup.notify(queue: .main) { [weak self] in

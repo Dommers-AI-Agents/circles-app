@@ -358,7 +358,7 @@ class CheckInRecipientSelectionViewController: BaseViewController {
         checkInData["notifiedUsers"] = isPrivate ? [] : Array(selectedUsers)
         if isPrivate { checkInData["showInActivityFeed"] = false }
         
-        APIService.shared.createCheckIn(checkInData) { [weak self] result in
+        CheckInService.shared.createCheckIn(checkInData) { [weak self] result in
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     switch result {

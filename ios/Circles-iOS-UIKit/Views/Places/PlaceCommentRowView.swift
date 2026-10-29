@@ -38,14 +38,12 @@ final class PlaceCommentRowView: UIView {
         avatarImageView.heightAnchor.constraint(equalToConstant: 32).isActive = true
 
         // Load avatar if available
-        if let urlString = comment.user?.profilePicture, let url = URL(string: urlString) {
-            URLSession.shared.dataTask(with: url) { data, _, _ in
-                if let data = data, let image = UIImage(data: data) {
-                    DispatchQueue.main.async {
-                        avatarImageView.image = image
-                    }
+        if let user = comment.user, let urlString = user.profilePicture, URL(string: urlString) != nil {
+            ImageService.shared.loadProfileImage(for: user.id, from: urlString) { image in
+                if let image = image {
+                    avatarImageView.image = image
                 }
-            }.resume()
+            }
         }
 
         // Name and time stack

@@ -70,7 +70,7 @@ final class ProfileMomentsTabViewController: ProfileGridTabViewController {
         let isCurrentUser = AuthService.shared.isMe(userId)
         Logger.debug("📹 ProfileMoments: Fetching videos for user \(userId) (current user: \(isCurrentUser))")
 
-        APIService.shared.getUserVideos(userId: userId) { [weak self] result in
+        VideoService.shared.getUserVideos(userId: userId) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.isLoadingVideos = false
@@ -121,7 +121,7 @@ final class ProfileMomentsTabViewController: ProfileGridTabViewController {
     private func delete(_ video: PlaceVideo) {
         let loadingAlert = AlertPresenter.showLoading(message: "Deleting...", from: self)
 
-        APIService.shared.deleteVideo(videoId: video.id) { [weak self] result in
+        VideoService.shared.deleteVideo(videoId: video.id) { [weak self] result in
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     guard let self = self else { return }

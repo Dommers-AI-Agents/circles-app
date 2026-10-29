@@ -713,8 +713,7 @@ extension ConversationsListViewController: SelectConnectionViewControllerDelegat
                                 Logger.debug("Server error details: \(serverMessage)")
                                 if serverMessage.contains("yourself") {
                                     errorMessage = "Cannot create conversation with yourself"
-                                } else if let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                                              let message = jsonData["message"] as? String {
+                                } else if let message = APIError.serverMessage(from: data) {
                                     errorMessage = message
                                 }
                             }

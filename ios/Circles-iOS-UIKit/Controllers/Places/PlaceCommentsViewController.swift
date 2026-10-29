@@ -513,14 +513,12 @@ class CommentCell: UITableViewCell {
         timeLabel.text = formatter.localizedString(for: comment.createdAt, relativeTo: Date())
         
         // Load avatar if available
-        if let urlString = comment.user?.profilePicture, let url = URL(string: urlString) {
-            URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-                if let data = data, let image = UIImage(data: data) {
-                    DispatchQueue.main.async {
-                        self?.avatarImageView.image = image
-                    }
+        if let user = comment.user, let urlString = user.profilePicture, URL(string: urlString) != nil {
+            ImageService.shared.loadProfileImage(for: user.id, from: urlString) { [weak self] image in
+                if let image = image {
+                    self?.avatarImageView.image = image
                 }
-            }.resume()
+            }
         }
         
         // Show more button if user can delete

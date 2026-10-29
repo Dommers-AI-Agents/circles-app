@@ -166,14 +166,12 @@ class ConnectionRequestMessageCell: UITableViewCell {
         
         // Load avatar if available
         if let avatarUrl = metadata["senderAvatar"] as? String,
-           let url = URL(string: avatarUrl) {
-            URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-                if let data = data, let image = UIImage(data: data) {
-                    DispatchQueue.main.async {
-                        self?.avatarImageView.image = image
-                    }
+           URL(string: avatarUrl) != nil {
+            ImageService.shared.loadImage(from: avatarUrl) { [weak self] image in
+                if let image = image {
+                    self?.avatarImageView.image = image
                 }
-            }.resume()
+            }
         } else {
             avatarImageView.image = UIImage(systemName: "person.circle.fill")
             avatarImageView.tintColor = .systemGray3
