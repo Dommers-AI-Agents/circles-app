@@ -159,7 +159,7 @@ class VideoEngagementViewController: BaseViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleVideoEngagementUpdate(_:)),
-            name: Notification.Name("VideoEngagementUpdate"),
+            name: .videoEngagementUpdate,
             object: nil
         )
     }

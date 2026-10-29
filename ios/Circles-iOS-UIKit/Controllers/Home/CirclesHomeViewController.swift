@@ -2680,7 +2680,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handlePlaceDeleted(_:)),
-            name: Notification.Name("PlaceDeleted"),
+            name: .placeDeleted,
             object: nil
         )
 
@@ -2723,7 +2723,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleQuickStartPlaceAdded),
-            name: Notification.Name("PlaceAdded"),
+            name: .placeAdded,
             object: nil
         )
 
@@ -2734,7 +2734,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handlePlaceAddedToActivityFeed),
-            name: Notification.Name("PlaceAddedToCircle"),
+            name: .placeAddedToCircle,
             object: nil
         )
 
@@ -2751,7 +2751,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleRefreshCircles),
-            name: NSNotification.Name("RefreshCircles"),
+            name: .refreshCircles,
             object: nil
         )
         
@@ -2777,7 +2777,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleShowOnboardingTour),
-            name: Notification.Name("ShowOnboardingTour"),
+            name: .showOnboardingTour,
             object: nil
         )
         

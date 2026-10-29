@@ -446,11 +446,11 @@ class NotificationsViewController: BaseViewController {
             // A message notification opens the conversation — the row used to
             // fall to the default and do nothing (no placeId/fromUserId)
             if let conversationId = notification.data?.conversationId, !conversationId.isEmpty {
-                NotificationCenter.default.post(name: Notification.Name("NavigateToConversation"), object: conversationId)
+                NotificationCenter.default.post(name: .navigateToConversation, object: conversationId)
             } else if let senderId = notification.data?.senderId, !senderId.isEmpty {
                 navigateToProfile(userId: senderId)
             } else {
-                NotificationCenter.default.post(name: Notification.Name("NavigateToMessages"), object: nil)
+                NotificationCenter.default.post(name: .navigateToMessages, object: nil)
             }
         default:
             // Everything else goes where tapping its push goes (How Are You?,

@@ -195,7 +195,7 @@ class UnlocatedPlacesViewController: BaseViewController {
     }
 
     private func finishDeletion(deletedCount: Int, requested: Int) {
-        NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+        NotificationCenter.default.post(name: .refreshCircles, object: nil)
 
         var message = "Removed \(deletedCount) place\(deletedCount == 1 ? "" : "s")."
         if deletedCount < requested {

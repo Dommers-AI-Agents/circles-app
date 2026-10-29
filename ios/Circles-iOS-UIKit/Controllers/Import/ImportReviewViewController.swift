@@ -159,7 +159,7 @@ class ImportReviewViewController: BaseViewController {
         }
 
         // Refresh circles home when we land back there
-        NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+        NotificationCenter.default.post(name: .refreshCircles, object: nil)
 
         // Rows past the inline-resolution cap imported unmapped — start
         // locating them quietly now

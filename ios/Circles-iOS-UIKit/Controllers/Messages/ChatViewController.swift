@@ -336,7 +336,7 @@ class ChatViewController: BaseViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleNewMessages(_:)),
-            name: Notification.Name("NewMessagesReceived"),
+            name: .newMessagesReceived,
             object: nil
         )
         Logger.debug("🔍 ChatViewController: Added observer for NewMessagesReceived")
@@ -345,7 +345,7 @@ class ChatViewController: BaseViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleConversationUpdated(_:)),
-            name: Notification.Name("ConversationUpdated"),
+            name: .conversationUpdated,
             object: nil
         )
         Logger.debug("🔍 ChatViewController: Added observer for ConversationUpdated")

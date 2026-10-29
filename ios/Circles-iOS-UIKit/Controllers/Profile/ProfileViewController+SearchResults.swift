@@ -81,7 +81,7 @@ extension ProfileViewController: ContentUploadDelegate {
         
         // Track activity
         NotificationCenter.default.post(
-            name: Notification.Name("MomentUploaded"),
+            name: .momentUploaded,
             object: nil,
             userInfo: ["moment": moment]
         )

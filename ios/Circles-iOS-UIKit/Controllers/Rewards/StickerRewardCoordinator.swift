@@ -9,11 +9,6 @@ import CoreLocation
 /// points balance on the store card) reads over the store itself.
 /// SceneDelegate calls `handleScannedCode` and this coordinator owns the rest,
 /// including the CircleSelection delegate round-trip.
-extension Notification.Name {
-    /// A scan or a typed code may have changed the user's store points.
-    /// Screens showing a balance refetch.
-    static let rewardPointsDidChange = Notification.Name("rewardPointsDidChange")
-}
 
 final class StickerRewardCoordinator: NSObject {
 

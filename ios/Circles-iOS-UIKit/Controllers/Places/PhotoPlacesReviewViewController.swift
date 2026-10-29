@@ -412,7 +412,7 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
 
     private func reachedLimit(saved: Int, circleId: String?, coins: Double) {
         refreshFooter()
-        NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+        NotificationCenter.default.post(name: .refreshCircles, object: nil)
         AnalyticsService.shared.logEvent("photo_places_limit", parameters: ["saved": String(saved)])
         let left = chosen.count
         AlertPresenter.showConfirmation(
@@ -429,7 +429,7 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
     }
 
     private func finish(saved: Int, circleId: String?, coins: Double) {
-        NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+        NotificationCenter.default.post(name: .refreshCircles, object: nil)
         // A place Google had no photo for gets Apple's street photo now
         ImportPhotoQueue.shared.kick()
         AnalyticsService.shared.logEvent("photo_places_saved", parameters: ["saved": String(saved)])

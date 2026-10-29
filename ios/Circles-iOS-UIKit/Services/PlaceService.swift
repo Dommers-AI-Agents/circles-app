@@ -1168,7 +1168,7 @@ class PlaceService {
                 if case .success(_) = result {
                     // Post notification to refresh circles data
                     NotificationCenter.default.postOnMain(
-                        name: Notification.Name("PlaceDeleted"),
+                        name: .placeDeleted,
                         userInfo: ["placeId": id]
                     )
                     SpotlightIndexService.shared.removePlace(id: id)

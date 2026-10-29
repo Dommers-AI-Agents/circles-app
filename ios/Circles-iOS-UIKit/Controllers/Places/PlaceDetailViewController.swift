@@ -564,7 +564,7 @@ class PlaceDetailViewController: BaseViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handlePlaceAddedToCircle(_:)),
-            name: Notification.Name("PlaceAddedToCircle"),
+            name: .placeAddedToCircle,
             object: nil
         )
     }
@@ -2096,7 +2096,7 @@ class PlaceDetailViewController: BaseViewController {
                     switch result {
                     case .success:
                         // The circle screen behind already listens for this
-                        NotificationCenter.default.post(name: Notification.Name("PlaceDeleted"),
+                        NotificationCenter.default.post(name: .placeDeleted,
                                                         object: nil,
                                                         userInfo: ["placeId": self.place.id])
                         // Pushed from a circle, presented from the map: leave the way we came
@@ -2831,7 +2831,7 @@ class PlaceDetailViewController: BaseViewController {
                         self.showSuccess("Location and address have been updated successfully")
                         
                         // Post notification to refresh any lists
-                        NotificationCenter.default.post(name: NSNotification.Name("PlaceUpdated"), object: nil, userInfo: ["place": updatedPlace])
+                        NotificationCenter.default.post(name: .placeUpdated, object: nil, userInfo: ["place": updatedPlace])
                         
                     case .failure(let error):
                         // Show error message
@@ -3205,7 +3205,7 @@ extension PlaceDetailViewController {
                             self?.present(alert, animated: true)
                             
                             // Post notification to refresh circles if needed
-                            NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+                            NotificationCenter.default.post(name: .refreshCircles, object: nil)
                             
                         case .failure(let error):
                             // Provide more specific error messages

@@ -2759,7 +2759,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleRefreshCircles),
-            name: NSNotification.Name("RefreshCircles"),
+            name: .refreshCircles,
             object: nil
         )
         

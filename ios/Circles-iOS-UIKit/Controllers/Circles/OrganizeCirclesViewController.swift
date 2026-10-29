@@ -343,7 +343,7 @@ final class OrganizeCirclesViewController: BaseViewController {
 
         tableView.reloadData()
         // The profile already listens for this to reload its grid.
-        NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+        NotificationCenter.default.post(name: .refreshCircles, object: nil)
 
         let placeText = moved == 1 ? "1 place" : "\(moved) places"
         AlertPresenter.showSuccess(

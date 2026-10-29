@@ -88,11 +88,3 @@ enum ConnectionType {
     case ethernet
     case unknown
 }
-
-
-extension Notification.Name {
-    /// Posted on the main queue when the path changes between reachable and
-    /// not (never for every path update). Queues drain on the way back up;
-    /// the offline banner shows on the way down.
-    static let networkReachabilityDidChange = Notification.Name("NetworkReachabilityDidChange")
-}

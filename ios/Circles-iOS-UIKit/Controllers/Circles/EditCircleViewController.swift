@@ -675,7 +675,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                             // The delegate only reaches the presenting screen —
                             // the home tab must also refetch, or a "Show on
                             // home map" toggle never reaches the map
-                            NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+                            NotificationCenter.default.post(name: .refreshCircles, object: nil)
                             if let navigationController = self.navigationController, navigationController.viewControllers.count > 1 {
                                 navigationController.popViewController(animated: true)
                             } else {
@@ -712,7 +712,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                         self?.delegate?.didUpdateCircle(updatedCircle)
                         // See note in the other success branch: the home map
                         // must refetch or showOnMap changes never land there
-                        NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+                        NotificationCenter.default.post(name: .refreshCircles, object: nil)
                         if let navigationController = self?.navigationController, navigationController.viewControllers.count > 1 {
                             navigationController.popViewController(animated: true)
                         } else {

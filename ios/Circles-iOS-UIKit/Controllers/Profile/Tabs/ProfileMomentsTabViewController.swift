@@ -143,7 +143,7 @@ final class ProfileMomentsTabViewController: ProfileGridTabViewController {
 
                         // The home feed drops the moment's activity rows
                         NotificationCenter.default.post(
-                            name: Notification.Name("MomentDeleted"),
+                            name: .momentDeleted,
                             object: nil,
                             userInfo: ["videoId": video.id, "userId": video.userId]
                         )

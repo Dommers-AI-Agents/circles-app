@@ -188,7 +188,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     private func setupBadgeObservers() {
         // Listen for unread message count changes
         let messagesObserver = NotificationCenter.default.addObserver(
-            forName: Notification.Name("UnreadMessagesCountChanged"),
+            forName: .unreadMessagesCountChanged,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -198,7 +198,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         
         // Listen for pending connection requests
         let networkObserver = NotificationCenter.default.addObserver(
-            forName: Notification.Name("PendingConnectionsCountChanged"),
+            forName: .pendingConnectionsCountChanged,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -243,42 +243,42 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(navigateToMessages),
-            name: Notification.Name("NavigateToMessages"),
+            name: .navigateToMessages,
             object: nil
         )
         
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(navigateToNetwork),
-            name: Notification.Name("NavigateToNetwork"),
+            name: .navigateToNetwork,
             object: nil
         )
         
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(navigateToCircle(_:)),
-            name: Notification.Name("NavigateToCircle"),
+            name: .navigateToCircle,
             object: nil
         )
         
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(navigateToDailySummary(_:)),
-            name: Notification.Name("NavigateToDailySummary"),
+            name: .navigateToDailySummary,
             object: nil
         )
 
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(navigateToAllPlacesMap(_:)),
-            name: Notification.Name("NavigateToAllPlacesMap"),
+            name: .navigateToAllPlacesMap,
             object: nil
         )
 
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(navigateToCreateWallet),
-            name: Notification.Name("NavigateToCreateWallet"),
+            name: .navigateToCreateWallet,
             object: nil
         )
 
@@ -301,7 +301,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(navigateToPiggyBank),
-            name: Notification.Name("NavigateToPiggyBank"),
+            name: .navigateToPiggyBank,
             object: nil
         )
 
@@ -311,25 +311,25 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(navigateToPlaceNotification(_:)),
-            name: Notification.Name("NavigateToPlace"),
+            name: .navigateToPlace,
             object: nil
         )
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(navigateToConversationNotification(_:)),
-            name: Notification.Name("NavigateToConversation"),
+            name: .navigateToConversation,
             object: nil
         )
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(navigateToSuggestionsNotification),
-            name: Notification.Name("NavigateToSuggestions"),
+            name: .navigateToSuggestions,
             object: nil
         )
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(navigateToActivityFeed),
-            name: Notification.Name("NavigateToActivity"),
+            name: .navigateToActivity,
             object: nil
         )
         NotificationCenter.default.addObserver(
@@ -665,7 +665,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         // The conversations list opens it once its data is ready
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             NotificationCenter.default.post(
-                name: Notification.Name("OpenConversationById"),
+                name: .openConversationById,
                 object: conversationId
             )
         }

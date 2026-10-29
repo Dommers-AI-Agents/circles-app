@@ -1369,7 +1369,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                         self.refreshMapPill()
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         // The home map refetches circles, or the change never lands there
-                        NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+                        NotificationCenter.default.post(name: .refreshCircles, object: nil)
                     case .failure(let error):
                         self.showError(error)
                     }
@@ -1546,7 +1546,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleShowPlaceDetails(_:)),
-            name: Notification.Name("ShowPlaceDetails"),
+            name: .showPlaceDetails,
             object: nil
         )
         
@@ -1554,7 +1554,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handlePlaceDeleted(_:)),
-            name: Notification.Name("PlaceDeleted"),
+            name: .placeDeleted,
             object: nil
         )
         
@@ -1562,7 +1562,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handlePlaceAdded(_:)),
-            name: Notification.Name("PlaceAddedToCircle"),
+            name: .placeAddedToCircle,
             object: nil
         )
     }

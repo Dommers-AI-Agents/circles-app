@@ -258,7 +258,7 @@ extension AddPlaceViewController {
             self.dismiss(animated: true) {
                 // Post notification that place was successfully added
                 NotificationCenter.default.post(
-                    name: Notification.Name("PlaceAddedToCircle"),
+                    name: .placeAddedToCircle,
                     object: nil,
                     userInfo: ["circleId": self.selectedCircleId]
                 )

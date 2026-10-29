@@ -2299,7 +2299,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         var userInfo: [AnyHashable: Any] = [:]
         if let focusCategory = focusCategory { userInfo["focus"] = focusCategory }
-        NotificationCenter.default.post(name: Notification.Name("NavigateToAllPlacesMap"), object: nil, userInfo: userInfo)
+        NotificationCenter.default.post(name: .navigateToAllPlacesMap, object: nil, userInfo: userInfo)
     }
 
     /// Engagement-tip deep link: open the Piggy Bank wallet-create coach-mark.
@@ -2379,7 +2379,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             UserDefaults.standard.set("create-wallet", forKey: "pendingDeepLink")
             return
         }
-        NotificationCenter.default.post(name: Notification.Name("NavigateToCreateWallet"), object: nil)
+        NotificationCenter.default.post(name: .navigateToCreateWallet, object: nil)
     }
 
     // MARK: - Notification Settings Navigation
@@ -2417,7 +2417,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleShowLoginForPromotedPurchase),
-            name: Notification.Name("ShowLoginForPromotedPurchase"),
+            name: .showLoginForPromotedPurchase,
             object: nil
         )
     }

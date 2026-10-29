@@ -1,11 +1,6 @@
 import Foundation
 import UIKit
 
-// Notification for circle deletion
-extension Notification.Name {
-    static let circleDeleted = Notification.Name("circleDeleted")
-}
-
 enum CircleError: Error, LocalizedError {
     case notFound
     case permissionDenied

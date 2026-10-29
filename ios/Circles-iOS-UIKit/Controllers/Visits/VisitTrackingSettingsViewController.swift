@@ -193,7 +193,7 @@ class VisitTrackingSettingsViewController: UITableViewController {
                         self?.showAlert(title: "Success", message: "Your visit history has been cleared.")
                         
                         // Post notification to refresh visits list
-                        NotificationCenter.default.post(name: NSNotification.Name("VisitHistoryCleared"), object: nil)
+                        NotificationCenter.default.post(name: .visitHistoryCleared, object: nil)
                         
                     case .failure(let error):
                         self?.showAlert(title: "Error", message: "Failed to clear history: \(error.localizedDescription)")

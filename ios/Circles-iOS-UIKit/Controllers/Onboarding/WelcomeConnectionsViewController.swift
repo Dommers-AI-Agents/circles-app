@@ -342,7 +342,7 @@ final class WelcomeConnectionsViewController: BaseViewController {
                 case .success(let (_, credit)):
                     self.acceptedRequestIds.insert(request.id)
                     button.setTitle("Connected ✓", for: .normal)
-                    NotificationCenter.default.post(name: NSNotification.Name("RefreshCircles"), object: nil)
+                    NotificationCenter.default.post(name: .refreshCircles, object: nil)
                     PiggyBankDepositView.play(credit: credit)
                 case .failure(let error):
                     button.isEnabled = true

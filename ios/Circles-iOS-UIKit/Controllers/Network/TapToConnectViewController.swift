@@ -76,7 +76,7 @@ final class TapToConnectViewController: BaseViewController {
 
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(connectionsChanged),
-                                               name: NSNotification.Name("ConnectionsChanged"),
+                                               name: .connectionsChanged,
                                                object: nil)
     }
 

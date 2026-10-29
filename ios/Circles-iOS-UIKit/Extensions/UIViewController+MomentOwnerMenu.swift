@@ -135,7 +135,7 @@ extension UIViewController {
                         case .success:
                             onDeleted()
                             NotificationCenter.default.post(
-                                name: Notification.Name("MomentDeleted"),
+                                name: .momentDeleted,
                                 object: nil,
                                 userInfo: ["videoId": reel.id])
                             self.showSuccess("Moment deleted")

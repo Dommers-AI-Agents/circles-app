@@ -494,14 +494,14 @@ class CreateCircleViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(connectionPickerDropdownShown),
-            name: NSNotification.Name("ConnectionPickerDropdownShown"),
+            name: .connectionPickerDropdownShown,
             object: nil
         )
         
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(connectionPickerDropdownHidden),
-            name: NSNotification.Name("ConnectionPickerDropdownHidden"),
+            name: .connectionPickerDropdownHidden,
             object: nil
         )
     }
@@ -509,8 +509,8 @@ class CreateCircleViewController: UIViewController {
     private func removeKeyboardObservers() {
         NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillShowNotification, object: nil)
         NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
-        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("ConnectionPickerDropdownShown"), object: nil)
-        NotificationCenter.default.removeObserver(self, name: NSNotification.Name("ConnectionPickerDropdownHidden"), object: nil)
+        NotificationCenter.default.removeObserver(self, name: .connectionPickerDropdownShown, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .connectionPickerDropdownHidden, object: nil)
     }
     
     // MARK: - Actions

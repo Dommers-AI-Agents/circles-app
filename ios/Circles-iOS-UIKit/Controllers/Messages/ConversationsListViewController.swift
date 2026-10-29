@@ -105,7 +105,7 @@ class ConversationsListViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleOpenConversationById(_:)),
-            name: Notification.Name("OpenConversationById"),
+            name: .openConversationById,
             object: nil
         )
         setupSubscribers()
@@ -274,7 +274,7 @@ class ConversationsListViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleNewMessages),
-            name: Notification.Name("NewMessagesReceived"),
+            name: .newMessagesReceived,
             object: nil
         )
         
@@ -282,7 +282,7 @@ class ConversationsListViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleConversationsUpdate),
-            name: Notification.Name("ConversationsUpdated"),
+            name: .conversationsUpdated,
             object: nil
         )
         
@@ -290,7 +290,7 @@ class ConversationsListViewController: UIViewController {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleConversationDeleted),
-            name: Notification.Name("ConversationDeleted"),
+            name: .conversationDeleted,
             object: nil
         )
         

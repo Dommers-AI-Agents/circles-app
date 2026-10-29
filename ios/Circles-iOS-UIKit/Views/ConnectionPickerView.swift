@@ -192,7 +192,7 @@ class ConnectionPickerView: UIView {
         }
         
         // Notify parent view controller to adjust scroll view
-        NotificationCenter.default.post(name: NSNotification.Name("ConnectionPickerDropdownShown"), object: self, userInfo: ["height": height])
+        NotificationCenter.default.post(name: .connectionPickerDropdownShown, object: self, userInfo: ["height": height])
     }
     
     private func hideDropdown() {
@@ -208,7 +208,7 @@ class ConnectionPickerView: UIView {
         }
         
         // Notify parent view controller to reset scroll view
-        NotificationCenter.default.post(name: NSNotification.Name("ConnectionPickerDropdownHidden"), object: self)
+        NotificationCenter.default.post(name: .connectionPickerDropdownHidden, object: self)
     }
     
     private func addSelectedConnection(_ user: User) {

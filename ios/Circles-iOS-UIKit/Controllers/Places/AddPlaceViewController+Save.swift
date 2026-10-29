@@ -160,7 +160,7 @@ extension AddPlaceViewController {
     /// Leave Add Place and open the place they already saved.
     private func showExistingPlace(_ placeId: String) {
         let open = {
-            NotificationCenter.default.post(name: Notification.Name("NavigateToPlace"), object: placeId)
+            NotificationCenter.default.post(name: .navigateToPlace, object: placeId)
         }
         if presentingViewController != nil {
             dismiss(animated: true, completion: open)
@@ -313,7 +313,7 @@ extension AddPlaceViewController {
                             }
                             
                             NotificationCenter.default.post(
-                                name: Notification.Name("PlaceAddedToCircle"),
+                                name: .placeAddedToCircle,
                                 object: nil,
                                 userInfo: ["circleId": self?.selectedCircleId ?? "", "place": place]
                             )
@@ -460,7 +460,7 @@ extension AddPlaceViewController {
                         }
                         // Post notification that a place was added
                         NotificationCenter.default.post(
-                            name: Notification.Name("PlaceAddedToCircle"),
+                            name: .placeAddedToCircle,
                             object: nil,
                             userInfo: ["circleId": self?.selectedCircleId ?? "", "place": place]
                         )
@@ -540,7 +540,7 @@ extension AddPlaceViewController {
                         
                         // Post notification that a place was added
                         NotificationCenter.default.post(
-                            name: Notification.Name("PlaceAddedToCircle"),
+                            name: .placeAddedToCircle,
                             object: nil,
                             userInfo: ["circleId": self?.selectedCircleId ?? "", "place": place]
                         )
