@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 import CoreLocation
 
 class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocationManagerDelegate, UIGestureRecognizerDelegate, CircleSelectionWithPlaceDelegate {
-
+    
     // MARK: - Properties
     var circle: Circle
     var places: [Place] = []
@@ -22,31 +22,31 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         return loader
     }()
     private var editors: [User] = []
-
+    
     // Dynamic constraints for managing spacing when editors are hidden/shown
     private var circleInfoViewBottomToPrivacyConstraint: NSLayoutConstraint?
     private var circleInfoViewBottomToEditorsConstraint: NSLayoutConstraint?
-
+    
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         return scrollView
     }()
-
+    
     private let contentView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
-
+    
     private let headerView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.background
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
-
+    
     private let coverImageView: UIImageView = {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFill
@@ -55,7 +55,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
     }()
-
+    
     private let circleInfoView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.secondaryBackground
@@ -64,7 +64,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
-
+    
     private let nameLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.xxlarge, weight: .bold)
@@ -73,7 +73,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-
+    
     private let descriptionLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.medium)
@@ -82,7 +82,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-
+    
     private let privacyView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.tertiaryBackground
@@ -90,7 +90,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
-
+    
     /// Owner only: "On my map" / "Not on my map", tap to switch
     private lazy var mapPill: UIButton = {
         var config = UIButton.Configuration.gray()
@@ -110,7 +110,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
     }()
-
+    
     private let privacyLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
@@ -118,7 +118,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-
+    
     private let categoryLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
@@ -133,14 +133,14 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-
+    
     private let editorsContainerView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isHidden = true // Hidden by default
         return view
     }()
-
+    
     private let editorsLabel: UILabel = {
         let label = UILabel()
         label.text = "Editors"
@@ -149,7 +149,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-
+    
     private let editorsStackView: UIStackView = {
         let stackView = UIStackView()
         stackView.axis = .horizontal
@@ -159,7 +159,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         stackView.translatesAutoresizingMaskIntoConstraints = false
         return stackView
     }()
-
+    
     private let placesLabel: UILabel = {
         let label = UILabel()
         label.text = "Places"
@@ -168,7 +168,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-
+    
     private let categoryFilterButton: UIButton = {
         let button = UIButton(type: .system)
         button.setTitle("All Categories", for: .normal)
@@ -181,7 +181,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
-
+    
     private let tagChipBar: TagChipBar = {
         let bar = TagChipBar()
         bar.translatesAutoresizingMaskIntoConstraints = false
@@ -231,7 +231,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         mapView.layer.cornerRadius = 12
         mapView.clipsToBounds = true
         mapView.translatesAutoresizingMaskIntoConstraints = false
-
+        
         // Enable map controls
         mapView.showsUserLocation = true
         mapView.showsCompass = true
@@ -240,24 +240,24 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         mapView.isScrollEnabled = true
         mapView.isPitchEnabled = true
         mapView.isRotateEnabled = true
-
+        
         // Show points of interest on the map
         mapView.showsPointsOfInterest = true
         mapView.showsBuildings = true
-
+        
         // Enable POI selection (iOS 16+)
         if #available(iOS 16.0, *) {
             mapView.selectableMapFeatures = [.pointsOfInterest]
             Logger.debug("✅ POI selection enabled in map view init")
         }
-
+        
         return mapView
     }()
-
+    
     private let expandMapButton = UIButton.mapControlButton(systemName: "arrow.up.left.and.arrow.down.right")
-
+    
     private let zoomToMeButton = UIButton.mapControlButton(systemName: "location.fill")
-
+    
     let tableView: UITableView = {
         let tableView = UITableView()
         tableView.backgroundColor = .systemGroupedBackground
@@ -271,43 +271,43 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         tableView.rowHeight = UITableView.automaticDimension
         return tableView
     }()
-
+    
     private let addPlaceButton: UIButton = {
         let button = UIButton.primaryButton(title: "Add Place")
         button.layer.cornerRadius = 25
         button.titleLabel?.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
         return button
     }()
-
-
+    
+    
     // MARK: - Init
-
+    
     init(circle: Circle, isSharedViaLink: Bool = false) {
         self.circle = circle
         self.isSharedViaLink = isSharedViaLink
         super.init(nibName: nil, bundle: nil)
     }
-
+    
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-
+    
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
-
+    
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         configureUI()
-
+        
         // Track circle viewed event
         AnalyticsService.shared.trackCircleViewed(
             circleId: circle.id,
             isOwner: AuthService.shared.isMe(circle.owner)
         )
-
+        
         // Set a safe initial map region to prevent crashes during layout
         let safeInitialRegion = MKCoordinateRegion(
             center: Constants.DefaultLocation.coordinate,
@@ -315,34 +315,34 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             longitudinalMeters: 10000
         )
         mapView.setRegion(safeInitialRegion, animated: false)
-
+        
         setupLocationManager()
         fetchPlaces()
         setupNotificationObservers()
         updateAddPlaceButtonTitle()
-
+        
         // Configure scroll view to avoid bottom overlap with Add Place button if shown
         let bottomInset: CGFloat = circle.canAddPlaces ? 80 : 20
         scrollView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: bottomInset, right: 0)
         scrollView.scrollIndicatorInsets = scrollView.contentInset
     }
-
+    
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         // Refresh places when returning to this view (e.g., after adding a new place)
         // This ensures the list is always up to date
         fetchPlaces()
     }
-
+    
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-
+        
         // Force map to render properly
         mapView.setNeedsDisplay()
-
+        
         // Mark circle as viewed to clear new indicators
         markCircleAsViewed()
-
+        
         // Check current authorization status
         switch locationManager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
@@ -356,37 +356,37 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             break
         }
     }
-
+    
     // MARK: - UI Setup
     private func setupUI() {
         view.backgroundColor = Constants.Colors.background
-
+        
         // Add refresh control
         let refreshControl = UIRefreshControl()
         refreshControl.addTarget(self, action: #selector(refreshPlaces), for: .valueChanged)
         scrollView.refreshControl = refreshControl
-
+        
         // Add subviews
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
-
+        
         contentView.addSubview(headerView)
         headerView.addSubview(coverImageView)
         headerView.addSubview(circleInfoView)
-
+        
         circleInfoView.addSubview(nameLabel)
         circleInfoView.addSubview(descriptionLabel)
         circleInfoView.addSubview(privacyView)
         circleInfoView.addSubview(categoryLabel)
         circleInfoView.addSubview(editorsContainerView)
-
+        
         editorsContainerView.addSubview(editorsLabel)
         editorsContainerView.addSubview(editorsStackView)
-
+        
         circleInfoView.addSubview(mapPill)
         privacyView.addSubview(privacyImageView)
         privacyView.addSubview(privacyLabel)
-
+        
         contentView.addSubview(placesLabel)
         contentView.addSubview(categoryFilterButton)
         contentView.addSubview(unlocatedBanner)
@@ -395,12 +395,12 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         contentView.addSubview(expandMapButton)
         contentView.addSubview(zoomToMeButton)
         contentView.addSubview(tableView)
-
+        
         // Only add the add place button if user can add places
         if circle.canAddPlaces {
             view.addSubview(addPlaceButton)
         }
-
+        
         // Layout constraints
         NSLayoutConstraint.activate([
             // Scroll view
@@ -408,31 +408,31 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-
+            
             // Content view
             contentView.topAnchor.constraint(equalTo: scrollView.topAnchor),
             contentView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
             contentView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
             contentView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
-
+            
             // Header view
             headerView.topAnchor.constraint(equalTo: contentView.topAnchor),
             headerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
             headerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
-
+            
             // Cover image view
             coverImageView.topAnchor.constraint(equalTo: headerView.topAnchor),
             coverImageView.leadingAnchor.constraint(equalTo: headerView.leadingAnchor),
             coverImageView.trailingAnchor.constraint(equalTo: headerView.trailingAnchor),
             coverImageView.heightAnchor.constraint(equalToConstant: 200),
-
+            
             // Circle info view
             circleInfoView.topAnchor.constraint(equalTo: coverImageView.bottomAnchor, constant: -20),
             circleInfoView.leadingAnchor.constraint(equalTo: headerView.leadingAnchor),
             circleInfoView.trailingAnchor.constraint(equalTo: headerView.trailingAnchor),
             circleInfoView.bottomAnchor.constraint(equalTo: headerView.bottomAnchor),
-
+            
             // Name label
             nameLabel.topAnchor.constraint(equalTo: circleInfoView.topAnchor, constant: Constants.Spacing.large),
             nameLabel.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.large),
@@ -440,22 +440,22 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             // it ("Favorite Saskatoon Food Sp[Food & Dining]"). Long names wrap
             // to a second line in the freed column instead of colliding.
             nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: categoryLabel.leadingAnchor, constant: -Constants.Spacing.small),
-
+            
             // Category label
             categoryLabel.topAnchor.constraint(equalTo: nameLabel.topAnchor),
             categoryLabel.trailingAnchor.constraint(equalTo: circleInfoView.trailingAnchor, constant: -Constants.Spacing.large),
             categoryLabel.heightAnchor.constraint(equalToConstant: 24),
-
+            
             // Description label
             descriptionLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.medium),
             descriptionLabel.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.large),
             descriptionLabel.trailingAnchor.constraint(equalTo: circleInfoView.trailingAnchor, constant: -Constants.Spacing.large),
-
+            
             // Privacy view
             privacyView.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: Constants.Spacing.medium),
             privacyView.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.large),
             privacyView.heightAnchor.constraint(equalToConstant: 30),
-
+            
             mapPill.leadingAnchor.constraint(equalTo: privacyView.trailingAnchor, constant: Constants.Spacing.small),
             mapPill.centerYAnchor.constraint(equalTo: privacyView.centerYAnchor),
             mapPill.heightAnchor.constraint(equalToConstant: 30),
@@ -466,37 +466,37 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             privacyImageView.centerYAnchor.constraint(equalTo: privacyView.centerYAnchor),
             privacyImageView.widthAnchor.constraint(equalToConstant: 16),
             privacyImageView.heightAnchor.constraint(equalToConstant: 16),
-
+            
             // Privacy label
             privacyLabel.leadingAnchor.constraint(equalTo: privacyImageView.trailingAnchor, constant: Constants.Spacing.small),
             privacyLabel.trailingAnchor.constraint(equalTo: privacyView.trailingAnchor, constant: -Constants.Spacing.small),
             privacyLabel.centerYAnchor.constraint(equalTo: privacyView.centerYAnchor),
-
+            
             // Editors container
             editorsContainerView.topAnchor.constraint(equalTo: privacyView.bottomAnchor, constant: Constants.Spacing.medium),
             editorsContainerView.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.large),
             editorsContainerView.trailingAnchor.constraint(equalTo: circleInfoView.trailingAnchor, constant: -Constants.Spacing.large),
-
+            
             // Editors label
             editorsLabel.topAnchor.constraint(equalTo: editorsContainerView.topAnchor),
             editorsLabel.leadingAnchor.constraint(equalTo: editorsContainerView.leadingAnchor),
-
+            
             // Editors stack view
             editorsStackView.topAnchor.constraint(equalTo: editorsLabel.bottomAnchor, constant: Constants.Spacing.small),
             editorsStackView.leadingAnchor.constraint(equalTo: editorsContainerView.leadingAnchor),
             editorsStackView.trailingAnchor.constraint(equalTo: editorsContainerView.trailingAnchor),
             editorsStackView.bottomAnchor.constraint(equalTo: editorsContainerView.bottomAnchor),
             editorsStackView.heightAnchor.constraint(greaterThanOrEqualToConstant: 60),
-
+            
             // Places label
             placesLabel.topAnchor.constraint(equalTo: headerView.bottomAnchor, constant: Constants.Spacing.large),
             placesLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
-
+            
             // Category filter button
             categoryFilterButton.centerYAnchor.constraint(equalTo: placesLabel.centerYAnchor),
             categoryFilterButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             categoryFilterButton.heightAnchor.constraint(equalToConstant: 32),
-
+            
             // Unlocated-imports banner (zero height + zero top spacing when hidden)
             unlocatedBanner.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
             unlocatedBanner.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
@@ -510,39 +510,39 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             mapView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             mapView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             mapView.heightAnchor.constraint(equalToConstant: 200),
-
+            
             // Expand map button
             expandMapButton.topAnchor.constraint(equalTo: mapView.topAnchor, constant: 10),
             expandMapButton.trailingAnchor.constraint(equalTo: mapView.trailingAnchor, constant: -10),
             expandMapButton.widthAnchor.constraint(equalToConstant: 30),
             expandMapButton.heightAnchor.constraint(equalToConstant: 30),
-
+            
             // Zoom to me button
             zoomToMeButton.bottomAnchor.constraint(equalTo: mapView.bottomAnchor, constant: -10),
             zoomToMeButton.trailingAnchor.constraint(equalTo: mapView.trailingAnchor, constant: -10),
             zoomToMeButton.widthAnchor.constraint(equalToConstant: 30),
             zoomToMeButton.heightAnchor.constraint(equalToConstant: 30),
-
+            
             // Table view
             tableView.topAnchor.constraint(equalTo: mapView.bottomAnchor, constant: Constants.Spacing.large),
             tableView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.large),
             tableView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Constants.Spacing.large),
             tableView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: circle.canAddPlaces ? -100 : -20) // Adjust padding based on button visibility
         ])
-
+        
         // Create dynamic bottom constraints for circleInfoView
         // Constraint when editors are hidden - connect privacy view to circle info bottom
         circleInfoViewBottomToPrivacyConstraint = privacyView.bottomAnchor.constraint(
-            equalTo: circleInfoView.bottomAnchor,
+            equalTo: circleInfoView.bottomAnchor, 
             constant: -Constants.Spacing.large
         )
-
-        // Constraint when editors are shown - connect editors container to circle info bottom
+        
+        // Constraint when editors are shown - connect editors container to circle info bottom  
         circleInfoViewBottomToEditorsConstraint = editorsContainerView.bottomAnchor.constraint(
-            equalTo: circleInfoView.bottomAnchor,
+            equalTo: circleInfoView.bottomAnchor, 
             constant: -Constants.Spacing.large
         )
-
+        
         // Initially activate the editors constraint (will be switched in configureEditors)
         circleInfoViewBottomToEditorsConstraint?.isActive = true
 
@@ -566,7 +566,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             self?.selectedTag = tag
             self?.applyFilter()
         }
-
+        
         // Add constraints for add place button if it exists
         if circle.canAddPlaces {
             NSLayoutConstraint.activate([
@@ -576,10 +576,10 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                 addPlaceButton.heightAnchor.constraint(equalToConstant: 50)
             ])
         }
-
+        
         // Set initial table view height
         tableView.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-
+        
         // Setup button actions
         if circle.canAddPlaces {
             addPlaceButton.addTarget(self, action: #selector(addPlaceButtonTapped), for: .touchUpInside)
@@ -587,33 +587,33 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         categoryFilterButton.addTarget(self, action: #selector(categoryFilterButtonTapped), for: .touchUpInside)
         expandMapButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
         zoomToMeButton.addTarget(self, action: #selector(zoomToMeButtonTapped), for: .touchUpInside)
-
+        
         // Setup table view
         tableView.delegate = self
         tableView.dataSource = self
         tableView.dragDelegate = self
         tableView.dropDelegate = self
-
+        
         // Setup map view delegate
         mapView.delegate = self
-
+        
         // Add a tap gesture recognizer to debug POI selection
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleMapTap(_:)))
         tapGesture.delegate = self
         mapView.addGestureRecognizer(tapGesture)
     }
-
+    
     @objc private func handleMapTap(_ gesture: UITapGestureRecognizer) {
         let location = gesture.location(in: mapView)
         let coordinate = mapView.convert(location, toCoordinateFrom: mapView)
         Logger.debug("🗺️ Map tapped at coordinate: \(coordinate.latitude), \(coordinate.longitude)")
-
+        
         // Check if we tapped on any annotations
         let point = gesture.location(in: mapView)
         if let tappedViews = mapView.hitTest(point, with: nil) {
             Logger.debug("   Tapped views: \(tappedViews)")
         }
-
+        
         // On iOS < 16 or if POI selection isn't working, offer to add a place at the tapped location
         if #available(iOS 16.0, *) {
             // POI selection should handle this on iOS 16+
@@ -622,7 +622,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             // For older iOS versions, allow adding a place at tapped location
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 guard let self = self else { return }
-
+                
                 // Check if any annotation was selected in the last 0.5 seconds
                 if self.mapView.selectedAnnotations.isEmpty {
                     // No annotation selected, offer to add place at this location
@@ -634,7 +634,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                     ) {
                         let addPlaceVC = AddPlaceViewController(circleId: self.circle.id)
                         self.navigationController?.pushViewController(addPlaceVC, animated: true)
-
+                        
                         // Prefill with the tapped coordinate
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             addPlaceVC.prefillSearchWithPlace(name: "", coordinate: coordinate)
@@ -644,13 +644,13 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             }
         }
     }
-
+    
     private func configureUI() {
         title = circle.name
-
+        
         // Navigation bar buttons
         var rightBarButtons: [UIBarButtonItem] = []
-
+        
         // Always show share button
         let shareButton = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareButtonTapped))
         rightBarButtons.append(shareButton)
@@ -665,7 +665,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         )
         checkInButton.accessibilityLabel = "Check in"
         rightBarButtons.append(checkInButton)
-
+        
         // Show export button for circle owner
         if circle.isOwner {
             let exportButton = UIBarButtonItem(
@@ -676,21 +676,21 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             )
             rightBarButtons.append(exportButton)
         }
-
+        
         // Show copy button for non-owner users viewing public or shared circles
         if !circle.isOwner {
             let copyButton = UIBarButtonItem(title: "Copy", style: .plain, target: self, action: #selector(copyCircleButtonTapped))
             rightBarButtons.append(copyButton)
         }
-
+        
         // Only show edit button if user can edit
         if circle.canEdit {
             let editButton = UIBarButtonItem(barButtonSystemItem: .edit, target: self, action: #selector(editButtonTapped))
             rightBarButtons.append(editButton)
         }
-
+        
         navigationItem.rightBarButtonItems = rightBarButtons
-
+        
         // Cover image
         if let coverImageUrl = circle.coverImage {
             // Check if it's a default SF Symbol
@@ -725,18 +725,18 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             coverImageView.contentMode = .scaleAspectFit
             coverImageView.backgroundColor = Constants.Colors.background
         }
-
+        
         // Circle name and description
         nameLabel.text = circle.name
         descriptionLabel.text = circle.description ?? "No description provided"
-
+        
         // Privacy settings. One source for the icon and the label, so this
         // screen can't drift from the picker that set the value.
         let privacyTier = circle.privacy.tier ?? .private
         privacyImageView.image = UIImage(systemName: privacyTier.systemIconName)
         privacyLabel.text = privacyTier.title
         refreshMapPill()
-
+        
         // Show shared circle info if applicable
         if !circle.isOwner {
             var sharedInfo = "Shared by \(circle.displayOwnerName)"
@@ -752,10 +752,10 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             }
             descriptionLabel.text = sharedInfo + "\n\n" + (circle.description ?? "No description provided")
         }
-
+        
         // Category
         categoryLabel.text = "  \(circle.displayCategory)  " // Add padding with spaces
-
+        
         // Set category color
         switch circle.category {
         case .travel:
@@ -773,11 +773,11 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         case .other:
             categoryLabel.backgroundColor = UIColor(hex: "#718096") // Gray
         }
-
+        
         // Configure editors if any
         configureEditors()
     }
-
+    
     private func configureEditors() {
         // Check if circle has editors
         guard let editorIds = circle.editors, !editorIds.isEmpty else {
@@ -786,11 +786,11 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             switchToPrivacyConstraint()
             return
         }
-
-        // Has editors - show container and switch to editors constraint
+        
+        // Has editors - show container and switch to editors constraint  
         editorsContainerView.isHidden = false
         switchToEditorsConstraint()
-
+        
         // If editorsDetails is already populated, use it
         if let editorsDetails = circle.editorsDetails, !editorsDetails.isEmpty {
             self.editors = editorsDetails
@@ -800,21 +800,21 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             loadEditors()
         }
     }
-
+    
     /// Switches to privacy constraint when no editors exist (reduces spacing)
     private func switchToPrivacyConstraint() {
         circleInfoViewBottomToEditorsConstraint?.isActive = false
         circleInfoViewBottomToPrivacyConstraint?.isActive = true
         Logger.debug("📐 Switched to privacy constraint - reduced spacing for no editors")
     }
-
+    
     /// Switches to editors constraint when editors exist (normal spacing)
     private func switchToEditorsConstraint() {
         circleInfoViewBottomToPrivacyConstraint?.isActive = false
         circleInfoViewBottomToEditorsConstraint?.isActive = true
         Logger.debug("📐 Switched to editors constraint - normal spacing for editors section")
     }
-
+    
     private func loadEditors() {
         CircleService.shared.getEditors(circleId: circle.id) { [weak self] result in
             DispatchQueue.main.async {
@@ -831,23 +831,23 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             }
         }
     }
-
+    
     private func displayEditors() {
         // Clear existing views
         editorsStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
-
+        
         // Show the container
         editorsContainerView.isHidden = false
-
+        
         // Add editor views (max 5 visible, then show +X more)
         let maxVisible = 5
         let editorsToShow = Array(editors.prefix(maxVisible))
-
+        
         for editor in editorsToShow {
             let editorView = createEditorView(for: editor)
             editorsStackView.addArrangedSubview(editorView)
         }
-
+        
         // Add "+X more" label if needed
         if editors.count > maxVisible {
             let moreLabel = UILabel()
@@ -857,18 +857,18 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             editorsStackView.addArrangedSubview(moreLabel)
         }
     }
-
+    
     private func createEditorView(for user: User) -> UIView {
         let containerView = UIView()
         containerView.translatesAutoresizingMaskIntoConstraints = false
-
+        
         // Create vertical stack for avatar and name
         let stackView = UIStackView()
         stackView.axis = .vertical
         stackView.alignment = .center
         stackView.spacing = 4
         stackView.translatesAutoresizingMaskIntoConstraints = false
-
+        
         // Avatar image view
         let avatarImageView = UIImageView()
         avatarImageView.contentMode = .scaleAspectFill
@@ -876,7 +876,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         avatarImageView.layer.cornerRadius = 20
         avatarImageView.backgroundColor = Constants.Colors.tertiaryBackground
         avatarImageView.translatesAutoresizingMaskIntoConstraints = false
-
+        
         // Load avatar image
         if let avatarUrl = user.profilePicture {
             ImageService.shared.loadImage(from: avatarUrl) { image in
@@ -889,7 +889,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             avatarImageView.image = UIImage(systemName: "person.circle.fill")
             avatarImageView.tintColor = Constants.Colors.secondaryLabel
         }
-
+        
         // Name label
         let nameLabel = UILabel()
         nameLabel.text = user.displayName
@@ -897,37 +897,37 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         nameLabel.textColor = Constants.Colors.label
         nameLabel.textAlignment = .center
         nameLabel.lineBreakMode = .byTruncatingTail
-
+        
         stackView.addArrangedSubview(avatarImageView)
         stackView.addArrangedSubview(nameLabel)
-
+        
         containerView.addSubview(stackView)
-
+        
         NSLayoutConstraint.activate([
             avatarImageView.widthAnchor.constraint(equalToConstant: 40),
             avatarImageView.heightAnchor.constraint(equalToConstant: 40),
-
+            
             stackView.topAnchor.constraint(equalTo: containerView.topAnchor),
             stackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             stackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             stackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-
+            
             containerView.widthAnchor.constraint(equalToConstant: 60)
         ])
-
+        
         return containerView
     }
-
+    
     private func setupLocationManager() {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         mapView.delegate = self
-
+        
         // Ensure map is interactive
         mapView.isUserInteractionEnabled = true
         mapView.isScrollEnabled = true
         mapView.isZoomEnabled = true
-
+        
         // Debug: Print all gesture recognizers
         Logger.debug("🗺️ Map gesture recognizers: \(mapView.gestureRecognizers?.count ?? 0)")
         if let gestures = mapView.gestureRecognizers {
@@ -936,12 +936,12 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             }
         }
     }
-
+    
     // MARK: - Data Fetching
     @objc private func refreshPlaces() {
         fetchPlaces()
     }
-
+    
     func fetchPlaces() {
         placesLoader.fetchPlaces(for: circle, isSharedViaLink: isSharedViaLink)
     }
@@ -949,10 +949,10 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     func updateTableViewHeight() {
         // Force layout to calculate proper content size
         tableView.layoutIfNeeded()
-
+        
         // Use the table's content size for height
         let height = tableView.contentSize.height
-
+        
         // Update table view height constraint
         if let constraint = tableView.constraints.first(where: { $0.firstAttribute == .height }) {
             constraint.constant = height
@@ -960,45 +960,45 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             tableView.heightAnchor.constraint(equalToConstant: height).isActive = true
         }
     }
-
+    
     func addAnnotationsToMap() {
         // Remove existing annotations
         mapView.removeAnnotations(mapView.annotations)
         annotationPlaceMap.removeAll()
-
+        
         var coordinates: [CLLocationCoordinate2D] = []
         var placesWithValidLocation = 0
         var placesWithNoLocation = 0
         var placesWithInvalidLocation = 0
-
+        
         Logger.debug("🗺️ Adding annotations to map for circle: \(circle.name)")
         Logger.debug("🗺️ Total filtered places to process: \(filteredPlaces.count)")
-
+        
         // Add place annotations
         for (index, place) in filteredPlaces.enumerated() {
             Logger.debug("🗺️ Place \(index + 1): \(place.name)")
-
+            
             // Check if location exists
             if let location = place.location {
                 Logger.debug("  📍 Has location object with coordinates: \(location.coordinates)")
                 Logger.debug("  📍 Coordinates count: \(location.coordinates.count)")
-
+                
                 if location.coordinates.count == 2 {
                     Logger.debug("  📍 Longitude: \(location.coordinates[0]), Latitude: \(location.coordinates[1])")
-
+                    
                     if let clLocation = location.clLocation {
                         let coord = clLocation.coordinate
                         Logger.debug("  ✅ Valid CLLocation created: \(coord.latitude), \(coord.longitude)")
-
+                        
                         // Validate coordinates are within valid ranges
-                        if coord.latitude >= -90 && coord.latitude <= 90 &&
+                        if coord.latitude >= -90 && coord.latitude <= 90 && 
                            coord.longitude >= -180 && coord.longitude <= 180 {
                             let annotation = PlaceAnnotation(place: place)
                             mapView.addAnnotation(annotation)
-
+                            
                             // Store the place reference
                             annotationPlaceMap[ObjectIdentifier(annotation)] = place
-
+                            
                             // Add coordinate to array
                             coordinates.append(coord)
                             placesWithValidLocation += 1
@@ -1019,16 +1019,16 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                 placesWithNoLocation += 1
             }
         }
-
+        
         Logger.debug("🗺️ Location Summary:")
         Logger.debug("  ✅ Places with valid location: \(placesWithValidLocation)")
         Logger.debug("  ❌ Places with no location: \(placesWithNoLocation)")
         Logger.debug("  ❌ Places with invalid location: \(placesWithInvalidLocation)")
-
+        
         // Include user location if available
         if let userLocation = locationManager.location {
             let coord = userLocation.coordinate
-            if coord.latitude >= -90 && coord.latitude <= 90 &&
+            if coord.latitude >= -90 && coord.latitude <= 90 && 
                coord.longitude >= -180 && coord.longitude <= 180 {
                 coordinates.append(coord)
                 Logger.debug("📍 User location added to map: \(coord.latitude), \(coord.longitude)")
@@ -1037,7 +1037,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             }
         } else if let userLocation = self.userLocation {
             let coord = userLocation.coordinate
-            if coord.latitude >= -90 && coord.latitude <= 90 &&
+            if coord.latitude >= -90 && coord.latitude <= 90 && 
                coord.longitude >= -180 && coord.longitude <= 180 {
                 coordinates.append(coord)
                 Logger.debug("📍 Cached user location added to map: \(coord.latitude), \(coord.longitude)")
@@ -1047,9 +1047,9 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         } else {
             Logger.debug("⚠️ No user location available")
         }
-
+        
         Logger.debug("🗺️ Total coordinates to show: \(coordinates.count)")
-
+        
         // Adjust map to show annotations
         if !coordinates.isEmpty {
             if coordinates.count == 1 {
@@ -1066,7 +1066,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                 var maxLat = coordinates[0].latitude
                 var minLon = coordinates[0].longitude
                 var maxLon = coordinates[0].longitude
-
+                
                 Logger.debug("🗺️ Calculating bounds for \(coordinates.count) coordinates")
                 for (index, coordinate) in coordinates.enumerated() {
                     Logger.debug("  📍 Coordinate \(index): lat=\(coordinate.latitude), lon=\(coordinate.longitude)")
@@ -1075,12 +1075,12 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                     minLon = min(minLon, coordinate.longitude)
                     maxLon = max(maxLon, coordinate.longitude)
                 }
-
+                
                 Logger.debug("🗺️ Bounds: minLat=\(minLat), maxLat=\(maxLat), minLon=\(minLon), maxLon=\(maxLon)")
-
+                
                 let centerLat = (minLat + maxLat) / 2
                 let centerLon = (minLon + maxLon) / 2
-
+                
                 // Validate center coordinates
                 guard centerLat >= -90 && centerLat <= 90 && centerLon >= -180 && centerLon <= 180 else {
                     Logger.debug("❌ Invalid center coordinates: lat=\(centerLat), lon=\(centerLon)")
@@ -1094,19 +1094,19 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                     mapView.setRegion(region, animated: true)
                     return
                 }
-
+                
                 let center = CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon)
-
+                
                 // Calculate spans with absolute values to ensure positive
                 var latDelta = abs(maxLat - minLat) * 1.4 // Add 40% padding
                 var lonDelta = abs(maxLon - minLon) * 1.4
-
+                
                 // Handle International Date Line crossing
                 if minLon > maxLon {
                     // Coordinates cross the date line
                     lonDelta = ((180 - minLon) + (maxLon + 180)) * 1.4
                 }
-
+                
                 // Ensure minimum visible area and maximum span
                 let minDelta = 0.01
                 let maxDelta = 180.0 // Maximum allowed span
@@ -1114,7 +1114,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                     latitudeDelta: min(max(latDelta, minDelta), maxDelta),
                     longitudeDelta: min(max(lonDelta, minDelta), maxDelta)
                 )
-
+                
                 // Create and validate the region
                 if let region = createSafeRegion(center: center, span: span) {
                     mapView.setRegion(region, animated: true)
@@ -1140,12 +1140,12 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             mapView.setRegion(region, animated: true)
         }
     }
-
+    
     private func createMarkerView(for category: PlaceCategory) -> UIView? {
         // Create a Google Maps style circle marker with category icon
         let markerSize: CGFloat = 36
         let view = UIView(frame: CGRect(x: 0, y: 0, width: markerSize, height: markerSize))
-
+        
         // Background circle
         let circleView = UIView(frame: CGRect(x: 0, y: 0, width: markerSize, height: markerSize))
         circleView.backgroundColor = .white
@@ -1154,26 +1154,26 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         circleView.layer.shadowOffset = CGSize(width: 0, height: 2)
         circleView.layer.shadowRadius = 4
         circleView.layer.shadowOpacity = 0.3
-
+        
         // Inner colored circle
         let innerCircle = UIView(frame: CGRect(x: 3, y: 3, width: markerSize - 6, height: markerSize - 6))
         innerCircle.backgroundColor = category.color
         innerCircle.layer.cornerRadius = (markerSize - 6) / 2
-
+        
         // Category icon
         let iconView = UIImageView(frame: CGRect(x: 8, y: 8, width: 20, height: 20))
         iconView.image = UIImage(systemName: category.systemIconName)
         iconView.tintColor = .white
         iconView.contentMode = .scaleAspectFit
-
+        
         view.addSubview(circleView)
         circleView.addSubview(innerCircle)
         circleView.addSubview(iconView)
-
+        
         return view
     }
-
-
+    
+    
     // MARK: - Actions
     @objc private func circleCheckInTapped() {
         CheckInViewController.present(from: self, restrictedPlaces: places)
@@ -1191,7 +1191,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         let navController = UINavigationController(rootViewController: editCircleVC)
         present(navController, animated: true)
     }
-
+    
     @objc private func copyCircleButtonTapped() {
         // Show confirmation alert
         // The name field starts as "<name> (Copy)"
@@ -1205,12 +1205,12 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             from: self
         ) { [weak self] text in
             guard let self = self else { return }
-
+            
             let customName = text?.trimmingCharacters(in: .whitespacesAndNewlines)
-
+            
             // Show loading indicator
             let loadingAlert = AlertPresenter.showLoading(message: "Copying circle...", from: self)
-
+            
             // Copy the circle
             CircleService.shared.copyCircle(circleId: self.circle.id, newName: customName) { result in
                 DispatchQueue.main.async {
@@ -1229,7 +1229,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                                 let detailVC = CircleDetailViewController(circle: copiedCircle)
                                 self.navigationController?.pushViewController(detailVC, animated: true)
                             }
-
+                            
                         case .failure(let error):
                             // Show error message
                             let errorMessage = (error as? APIError)?.localizedDescription ?? error.localizedDescription
@@ -1240,28 +1240,28 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             }
         }
     }
-
+    
     @objc private func addPlaceButtonTapped() {
         // Check subscription limit
         let currentPlaceCount = places.count
-
+        
         if !SubscriptionManager.shared.checkPlaceLimit(currentCount: currentPlaceCount, from: self) {
             return
         }
-
+        
         // Directly open the AddPlaceViewController with map and search functionality
         let addPlaceVC = AddPlaceViewController(circleId: circle.id)
         navigationController?.pushViewController(addPlaceVC, animated: true)
     }
-
+    
     private func updateAddPlaceButtonTitle() {
         let placeCount = places.count
         let isSubscribed = SubscriptionManager.shared.isSubscribed
-
+        
         if !isSubscribed && placeCount >= PremiumFeatures.maxFreePlacesPerCircle - 2 {
             // Show count when near limit for free users
             addPlaceButton.setTitle("Add Place (\(placeCount)/\(PremiumFeatures.maxFreePlacesPerCircle))", for: .normal)
-
+            
             // Change color when at limit
             if placeCount >= PremiumFeatures.maxFreePlacesPerCircle {
                 addPlaceButton.backgroundColor = Constants.Colors.secondaryLabel
@@ -1277,11 +1277,11 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             addPlaceButton.backgroundColor = Constants.Colors.primary
         }
     }
-
+    
     @objc private func expandMapButtonTapped() {
         presentFullScreenMap()
     }
-
+    
     // MARK: - Include on my map
 
     private func refreshMapPill() {
@@ -1334,7 +1334,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         if !SubscriptionManager.shared.checkExportAccess(from: self) {
             return
         }
-
+        
         // Show export options
         AlertPresenter.showActionSheet(
             title: "Export Circle",
@@ -1349,14 +1349,14 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             barButtonItem: navigationItem.rightBarButtonItems?.first { $0.action == #selector(exportButtonTapped) }
         )
     }
-
+    
     @objc private func zoomToMeButtonTapped() {
         guard let userLocation = locationManager.location else {
             // Request location permission if not available
             locationManager.requestWhenInUseAuthorization()
             return
         }
-
+        
         let region = MKCoordinateRegion(
             center: userLocation.coordinate,
             latitudinalMeters: 1000,
@@ -1364,11 +1364,11 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         )
         mapView.setRegion(region, animated: true)
     }
-
+    
     @objc private func categoryFilterButtonTapped() {
         showCategoryFilterMenu()
     }
-
+    
     private func showCategoryFilterMenu() {
         // All categories, then each category present in the circle
         var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = [
@@ -1388,7 +1388,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         AlertPresenter.showActionSheet(title: "Filter by Category", actions: actions, from: self,
                                        sourceView: categoryFilterButton)
     }
-
+    
     /// Re-derives the tag chip row from the current places. Chips are the 12
     /// most common distinct tags (case-insensitive), most frequent first. The
     /// row is hidden entirely when no place has tags; the current selection is
@@ -1441,17 +1441,17 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         filteredPlaces = CirclePlaceFilter.apply(places, category: selectedCategory, tag: selectedTag)
 
         tableView.reloadData()
-
+        
         // Update table view height
         DispatchQueue.main.async { [weak self] in
             self?.tableView.layoutIfNeeded()
             self?.updateTableViewHeight()
         }
-
+        
         // Update map annotations
         addAnnotationsToMap()
     }
-
+    
     private func presentFullScreenMap() {
         let unifiedCategory = selectedCategory.map { UnifiedCategory.standard($0) }
         let fullScreenMapVC = FullScreenMapViewController(places: filteredPlaces, initialRegion: mapView.region, selectedCategory: unifiedCategory)
@@ -1459,7 +1459,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         fullScreenMapVC.isPresentedModally = true
         present(fullScreenMapVC, animated: true)
     }
-
+    
     private func setupNotificationObservers() {
         // Observe when user wants to view place details from full-screen map
         NotificationCenter.default.addObserver(
@@ -1468,7 +1468,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             name: .showPlaceDetails,
             object: nil
         )
-
+        
         // Observe when a place is deleted to refresh the list
         NotificationCenter.default.addObserver(
             self,
@@ -1476,7 +1476,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             name: .placeDeleted,
             object: nil
         )
-
+        
         // Observe when a new place is added to the circle
         NotificationCenter.default.addObserver(
             self,
@@ -1485,34 +1485,34 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             object: nil
         )
     }
-
+    
     @objc private func handleShowPlaceDetails(_ notification: Notification) {
         guard let place = notification.userInfo?["place"] as? Place else { return }
         let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
         navigationController?.pushViewController(placeDetailVC, animated: true)
     }
-
+    
     @objc private func handlePlaceAdded(_ notification: Notification) {
         // Check if the notification is for this circle
         guard let circleId = notification.userInfo?["circleId"] as? String,
               circleId == self.circle.id else { return }
-
+        
         // Refresh the places list
         Logger.info("New place added to circle, refreshing list")
         fetchPlaces()
     }
-
+    
     @objc private func handlePlaceDeleted(_ notification: Notification) {
         // Refresh the places list when any place is deleted
         // This ensures the UI is in sync after deletion
         Logger.info("Place deleted, refreshing list")
-
+        
         // Add a small delay to allow backend propagation
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.fetchPlaces()
         }
     }
-
+    
     private func presentGooglePlacesSearch() {
         // Navigate to PlaceSearchViewController for Apple Maps search
         let placeSearchVC = PlaceSearchViewController()
@@ -1520,89 +1520,89 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         let navController = UINavigationController(rootViewController: placeSearchVC)
         present(navController, animated: true)
     }
-
+    
     func sharePlace(_ place: Place) {
         // Create a formatted string with place name prominently displayed
         var shareText = "Check out \(place.name)!"
-
+        
         if let description = place.description, !description.isEmpty {
             shareText += "\n\n\(description)"
         }
-
+        
         // Category
         shareText += "\n\n🏷️ \(place.category.displayName)"
-
+        
         // Address
         shareText += "\n📍 \(place.address)"
-
+        
         // Rating if available
         if let rating = place.rating {
             let stars = String(repeating: "⭐", count: Int(rating.rounded()))
             shareText += "\n\(stars) \(rating)/5.0"
         }
-
+        
         // Contact info if available
         if let phone = place.phone, !phone.isEmpty {
             shareText += "\n📞 \(phone)"
         }
-
+        
         if let website = place.website, !website.isEmpty {
             shareText += "\n🌐 \(website)"
         }
-
+        
         // Add to your places message
         shareText += "\n\n➕ Add this place to your Circles!"
-
+        
         shareText += "\n\nSaved on FavCircles — see it (and who recommends it) here:"
 
         // The Circles place link is THE link of the share: opens in-app when
         // installed (carrying share attribution so the sharer earns points),
         // renders a preview page with App Store fallback otherwise
         let activityItems: [Any] = [shareText, ShareLinks.place(id: place.id)]
-
+        
         let activityViewController = UIActivityViewController(
             activityItems: activityItems,
             applicationActivities: nil
         )
-
+        
         // For iPad
         if let popover = activityViewController.popoverPresentationController {
             popover.sourceView = view
             popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
             popover.permittedArrowDirections = []
         }
-
+        
         present(activityViewController, animated: true)
     }
-
+    
     func openPlaceInMaps(_ place: Place) {
-        guard let location = place.location?.clLocation else {
+        guard let location = place.location?.clLocation else { 
             // Show alert if no location available
             AlertPresenter.showError(title: "No Location Available", message: "This place doesn't have location information.", from: self)
-            return
+            return 
         }
-
+        
         // Create the Apple Maps item with destination
         let coordinate = location.coordinate
         let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
         mapItem.name = place.name
-
+        
         // Open in Apple Maps with directions
         let launchOptions = [
             MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
         ]
-
+        
         mapItem.openInMaps(launchOptions: launchOptions)
     }
-
+    
     func likePlace(_ place: Place) {
         // Disable interaction while processing
         view.isUserInteractionEnabled = false
-
+        
         PlaceService.shared.likePlace(id: place.id) { [weak self] result in
             DispatchQueue.main.async {
                 self?.view.isUserInteractionEnabled = true
-
+                
                 switch result {
                 case .success(let updatedPlace):
                     // Update the place in our filtered list
@@ -1618,7 +1618,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             }
         }
     }
-
+    
     func showComments(for place: Place) {
         let commentsVC = PlaceCommentsViewController(place: place)
         let navController = UINavigationController(rootViewController: commentsVC)
@@ -1662,7 +1662,7 @@ extension CircleDetailViewController: EditCircleDelegate {
         self.circle = updatedCircle
         configureUI()
     }
-
+    
     func didDeleteCircle(_ circleId: String) {
         navigationController?.popViewController(animated: true)
     }
@@ -1674,10 +1674,10 @@ extension CircleDetailViewController: PlaceSearchDelegate {
         // Dismiss the search controller
         dismiss(animated: true) { [weak self] in
             guard let self = self else { return }
-
+            
             // Show loading indicator
             let loadingAlert = AlertPresenter.showLoading(title: "Adding Place", message: "Please wait...", from: self)
-
+            
             // Determine category from string or default
             let placeCategory: PlaceCategory
             if let categoryString = category {
@@ -1685,10 +1685,10 @@ extension CircleDetailViewController: PlaceSearchDelegate {
             } else {
                 placeCategory = .other
             }
-
+            
             // Create location object
             let location = GeoLocation(type: "Point", coordinates: [coordinate.longitude, coordinate.latitude])
-
+            
             // Add the place
             PlaceService.shared.createPlace(
                 name: name,
@@ -1705,7 +1705,7 @@ extension CircleDetailViewController: PlaceSearchDelegate {
             ) { [weak self] result in
                 loadingAlert.dismiss(animated: true) {
                     guard let self = self else { return }
-
+                    
                     switch result {
                     case .success(let newPlace):
                         // Add the new place to our list
@@ -1713,7 +1713,7 @@ extension CircleDetailViewController: PlaceSearchDelegate {
                         self.tableView.reloadData()
                         self.updateTableViewHeight()
                         self.addAnnotationsToMap()
-
+                        
                         // No success popup — the coin drop + the place
                         // appearing in the list are the feedback
 
@@ -1724,7 +1724,7 @@ extension CircleDetailViewController: PlaceSearchDelegate {
             }
         }
     }
-
+    
 }
 
 // MARK: - Helper Methods
@@ -1745,7 +1745,7 @@ extension CircleDetailViewController {
             }
         }
     }
-
+    
     private func createSafeRegion(center: CLLocationCoordinate2D, span: MKCoordinateSpan) -> MKCoordinateRegion? {
         // Validate center coordinates
         guard center.latitude >= -90 && center.latitude <= 90 &&
@@ -1753,19 +1753,19 @@ extension CircleDetailViewController {
             Logger.debug("❌ Invalid center for safe region: lat=\(center.latitude), lon=\(center.longitude)")
             return nil
         }
-
+        
         // Validate span values are positive
         guard span.latitudeDelta > 0 && span.longitudeDelta > 0 else {
             Logger.debug("❌ Invalid span for safe region: latDelta=\(span.latitudeDelta), lonDelta=\(span.longitudeDelta)")
             return nil
         }
-
+        
         // Additional validation for reasonable span values
         guard span.latitudeDelta <= 180 && span.longitudeDelta <= 360 else {
             Logger.debug("❌ Span too large: latDelta=\(span.latitudeDelta), lonDelta=\(span.longitudeDelta)")
             return nil
         }
-
+        
         return MKCoordinateRegion(center: center, span: span)
     }
 }
@@ -1774,16 +1774,16 @@ extension CircleDetailViewController {
 extension CircleDetailViewController {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
-
+        
         userLocation = location
-
+        
         // Update map to show user location and places
         addAnnotationsToMap()
-
+        
         // Stop updating to save battery
         manager.stopUpdatingLocation()
     }
-
+    
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         switch manager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
@@ -1798,7 +1798,7 @@ extension CircleDetailViewController {
             break
         }
     }
-
+    
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         // Location error occurred - map will stay at default NYC location
         Logger.debug("Location error: \(error.localizedDescription)")
@@ -1816,12 +1816,12 @@ extension CircleDetailViewController {
 
 // MARK: - MKMapViewDelegate
 extension CircleDetailViewController {
-
+    
     // Handle annotation selection
     func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
         Logger.debug("🗺️ Map annotation selected: \(type(of: view.annotation))")
         Logger.debug("   Annotation: \(view.annotation?.description ?? "nil")")
-
+        
         // Handle POI selection for iOS 16+
         if #available(iOS 16.0, *) {
             Logger.debug("📱 iOS 16+ device - checking for POI")
@@ -1837,7 +1837,7 @@ extension CircleDetailViewController {
         } else {
             Logger.debug("⚠️ iOS version < 16, POI selection not available")
         }
-
+        
         // For regular place annotations, navigate to place detail
         if let placeAnnotation = view.annotation as? PlaceAnnotation {
             Logger.debug("📍 Place annotation selected: \(placeAnnotation.place.name)")
@@ -1851,64 +1851,64 @@ extension CircleDetailViewController {
             Logger.debug("❓ Unknown annotation type: \(type(of: view.annotation))")
         }
     }
-
+    
     @available(iOS 16.0, *)
     private func handlePOISelection(_ featureAnnotation: MKMapFeatureAnnotation) {
         Logger.debug("🗺️ POI Selected: \(featureAnnotation.featureType.rawValue)")
-
+        
         let poiName = featureAnnotation.title ?? "Unknown Place"
         let poiSubtitle = featureAnnotation.subtitle ?? ""
         let coordinate = featureAnnotation.coordinate
-
+        
         Logger.debug("📍 POI Details:")
         Logger.debug("   Name: \(poiName)")
         Logger.debug("   Subtitle: \(poiSubtitle)")
         Logger.debug("   Coordinate: \(coordinate.latitude), \(coordinate.longitude)")
         Logger.debug("   Feature Type: \(featureAnnotation.featureType.rawValue)")
-
+        
         // Navigate to AddPlaceViewController with pre-filled data
         // DO NOT create the place yet - just pass the POI data
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-
+            
             // Navigate to AddPlaceViewController with pre-filled data
             let addPlaceVC = AddPlaceViewController(circleId: self.circle.id)
             self.navigationController?.pushViewController(addPlaceVC, animated: true)
-
+            
             // Deselect the POI annotation
             self.mapView.deselectAnnotation(featureAnnotation, animated: true)
-
+            
             // Prefill the search with the POI name and coordinate
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 addPlaceVC.prefillSearchWithPlace(name: poiName, coordinate: coordinate)
             }
         }
     }
-
+    
     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
         // Skip user location
         if annotation is MKUserLocation {
             return nil
         }
-
+        
         guard let placeAnnotation = annotation as? PlaceAnnotation else {
             return nil
         }
-
+        
         let identifier = "PlaceAnnotation"
         var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
-
+        
         if annotationView == nil {
             annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
             annotationView?.canShowCallout = true
-
+            
             // Add detail button
             let detailButton = UIButton(type: .detailDisclosure)
             annotationView?.rightCalloutAccessoryView = detailButton
         } else {
             annotationView?.annotation = annotation
         }
-
+        
         // Customize marker appearance
         if let markerView = annotationView {
             // Check if this is a new place
@@ -1917,7 +1917,7 @@ extension CircleDetailViewController {
                 markerView.markerTintColor = .systemRed
                 markerView.glyphImage = UIImage(systemName: "sparkles")
                 markerView.displayPriority = .required // Ensure new places show on top
-
+                
                 // Add subtle animation
                 let pulseAnimation = CABasicAnimation(keyPath: "transform.scale")
                 pulseAnimation.duration = 1.0
@@ -1933,17 +1933,17 @@ extension CircleDetailViewController {
                 markerView.layer.removeAnimation(forKey: "pulse")
             }
         }
-
+        
         return annotationView
     }
-
+    
     func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
         guard let placeAnnotation = view.annotation as? PlaceAnnotation else { return }
         // Navigate directly to place details instead of showing action sheet
         let placeDetailVC = PlaceDetailViewController(place: placeAnnotation.place, circle: circle)
         navigationController?.pushViewController(placeDetailVC, animated: true)
     }
-
+    
     // Handle map region changes for better performance
     func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
         // Update user location if needed
@@ -1951,7 +1951,7 @@ extension CircleDetailViewController {
             self.userLocation = userLocation
         }
     }
-
+    
     private func showNearbyPlacesIndicator(count: Int) {
         let label = UILabel()
         label.text = count > 0 ? "📍 \(count) place\(count == 1 ? "" : "s") nearby" : "No places nearby"
@@ -1962,25 +1962,25 @@ extension CircleDetailViewController {
         label.layer.cornerRadius = 8
         label.clipsToBounds = true
         label.translatesAutoresizingMaskIntoConstraints = false
-
+        
         view.addSubview(label)
-
+        
         NSLayoutConstraint.activate([
             label.bottomAnchor.constraint(equalTo: mapView.topAnchor, constant: -8),
             label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             label.heightAnchor.constraint(equalToConstant: 32),
             label.widthAnchor.constraint(greaterThanOrEqualToConstant: 120)
         ])
-
+        
         // Add padding
         label.layoutMargins = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
-
+        
         // Animate in
         label.alpha = 0
         UIView.animate(withDuration: 0.3) {
             label.alpha = 1
         }
-
+        
         // Remove after 3 seconds
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             UIView.animate(withDuration: 0.3, animations: {
@@ -1990,7 +1990,7 @@ extension CircleDetailViewController {
             }
         }
     }
-
+    
     // Show action sheet with place options
     private func showPlaceActionSheet(for place: Place) {
         var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = [
@@ -2014,7 +2014,7 @@ extension CircleDetailViewController: FullScreenMapViewControllerDelegate {
     func mapViewController(_ controller: FullScreenMapViewController, didSelectPlace place: Place) {
         // Navigate to place details
         let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
-
+        
         // Check if the map controller is presented modally
         if controller.isPresentedModally {
             // Present place detail modally on top of the full screen map

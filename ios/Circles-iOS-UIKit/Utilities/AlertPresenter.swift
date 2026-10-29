@@ -3,14 +3,14 @@ import UIKit
 /// A utility class for presenting standardized alerts throughout the app
 /// Eliminates redundant UIAlertController creation code
 class AlertPresenter {
-
+    
     // MARK: - Error Alerts
-
+    
     /// Shows a standard error alert with OK button
     static func showError(_ error: Error, from viewController: UIViewController) {
         showError(title: "Error", message: error.localizedDescription, from: viewController)
     }
-
+    
     /// Shows a standard error alert with custom message
     static func showError(
         title: String = "Error",
@@ -24,9 +24,9 @@ class AlertPresenter {
         })
         viewController.present(alert, animated: true)
     }
-
+    
     // MARK: - Success Alerts
-
+    
     /// Shows a success alert with OK button
     static func showSuccess(
         title: String = "Success",
@@ -40,7 +40,7 @@ class AlertPresenter {
         })
         viewController.present(alert, animated: true)
     }
-
+    
     /// Shows a success alert with just a message (no title)
     static func showSuccess(
         _ message: String,
@@ -49,7 +49,7 @@ class AlertPresenter {
     ) {
         showSuccess(title: "Success", message: message, from: viewController, completion: completion)
     }
-
+    
     // MARK: - Info Alerts
 
     /// Shows a neutral informational alert with an OK button (for ⓘ-style
@@ -83,7 +83,7 @@ class AlertPresenter {
     }
 
     // MARK: - Confirmation Alerts
-
+    
     /// Shows a confirmation alert with Yes/No or custom buttons
     static func showConfirmation(
         title: String,
@@ -96,19 +96,19 @@ class AlertPresenter {
         onCancel: (() -> Void)? = nil
     ) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-
+        
         let confirmStyle: UIAlertAction.Style = isDestructive ? .destructive : .default
         alert.addAction(UIAlertAction(title: confirmTitle, style: confirmStyle) { _ in
             onConfirm()
         })
-
+        
         alert.addAction(UIAlertAction(title: cancelTitle, style: .cancel) { _ in
             onCancel?()
         })
-
+        
         viewController.present(alert, animated: true)
     }
-
+    
     // MARK: - General Alerts
 
     /// An alert with exactly the buttons given, in order — for choices the
@@ -130,7 +130,7 @@ class AlertPresenter {
     }
 
     // MARK: - Action Sheets
-
+    
     /// Shows an action sheet with multiple options
     static func showActionSheet(
         title: String? = nil,
@@ -142,19 +142,19 @@ class AlertPresenter {
         barButtonItem: UIBarButtonItem? = nil
     ) {
         let actionSheet = UIAlertController(title: title, message: message, preferredStyle: .actionSheet)
-
+        
         for action in actions {
             actionSheet.addAction(UIAlertAction(title: action.title, style: action.style) { _ in
                 action.handler()
             })
         }
-
+        
         // A sheet may hold exactly one Cancel; UIKit throws on a second
         // (2026-10-28: the QR screen's Share crashed by passing its own)
         if !actions.contains(where: { $0.style == .cancel }) {
             actionSheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         }
-
+        
         // iPad requires popover presentation
         if let popover = actionSheet.popoverPresentationController {
             if let barButtonItem = barButtonItem {
@@ -168,12 +168,12 @@ class AlertPresenter {
                 popover.permittedArrowDirections = []
             }
         }
-
+        
         viewController.present(actionSheet, animated: true)
     }
-
+    
     // MARK: - Input Alerts
-
+    
     /// Shows an alert with a text input field
     static func showTextInput(
         title: String,
@@ -187,23 +187,23 @@ class AlertPresenter {
         onSubmit: @escaping (String?) -> Void
     ) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-
+        
         alert.addTextField { textField in
             textField.placeholder = placeholder
             textField.text = initialText
             textField.keyboardType = keyboardType
             textField.autocapitalizationType = autocapitalization
         }
-
+        
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         alert.addAction(UIAlertAction(title: confirmTitle, style: .default) { _ in
             let text = alert.textFields?.first?.text
             onSubmit(text)
         })
-
+        
         viewController.present(alert, animated: true)
     }
-
+    
     /// Shows an alert with several text input fields (e.g. a contact form).
     /// Submits an array of field values in the same order as `fields`.
     static func showMultiFieldInput(
@@ -235,7 +235,7 @@ class AlertPresenter {
     }
 
     // MARK: - Loading Alerts
-
+    
     /// Shows a loading alert that can be dismissed programmatically
     @discardableResult
     static func showLoading(
@@ -245,23 +245,23 @@ class AlertPresenter {
         completion: (() -> Void)? = nil
     ) -> UIAlertController {
         let alert = LoadingAlertController(title: title, message: message, preferredStyle: .alert)
-
+        
         let loadingIndicator = UIActivityIndicatorView(style: .medium)
         loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
         loadingIndicator.startAnimating()
-
+        
         alert.view.addSubview(loadingIndicator)
         NSLayoutConstraint.activate([
             loadingIndicator.centerXAnchor.constraint(equalTo: alert.view.centerXAnchor),
             loadingIndicator.bottomAnchor.constraint(equalTo: alert.view.bottomAnchor, constant: -20)
         ])
-
+        
         viewController.present(alert, animated: true, completion: completion)
         return alert
     }
-
+    
     // MARK: - Brief Messages
-
+    
     /// Shows a brief message alert that auto-dismisses after a short delay
     static func showBriefMessage(
         _ message: String,
@@ -270,7 +270,7 @@ class AlertPresenter {
     ) {
         let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
         viewController.present(alert, animated: true)
-
+        
         // Auto-dismiss after duration
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
             alert.dismiss(animated: true)

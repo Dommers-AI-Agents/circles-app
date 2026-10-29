@@ -20,10 +20,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = (scene as? UIWindowScene) else { return }
-
+        
         // Create a window with the window scene
         window = UIWindow(windowScene: windowScene)
-
+        
         // Configure API environment
         #if DEBUG
         // Use production environment even in DEBUG to connect to Firebase backend
@@ -31,7 +31,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         #else
         APIService.shared.configure(environment: .production, loggingEnabled: false)
         #endif
-
+        
         // Home Screen quick action on a cold start: stash it like any other
         // pending link; runPostLaunchSideEffects replays it once the tab bar
         // is up
@@ -72,7 +72,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if let activity = connectionOptions.userActivities.first {
             self.scene(scene, continue: activity)
         }
-
+        
         // App Clip handoff: if the clip left credentials in the shared keychain
         // mailbox, adopt them BEFORE any auth-state read so first launch lands
         // logged in. isLoggedIn reads the keychain live, so ordering is all
@@ -107,7 +107,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             } else {
                 Logger.debug("Token is still valid")
             }
-
+            
             // Restore Google Sign-In session asynchronously (don't block UI)
             if AuthService.shared.getAuthProvider() == "google" && !AuthService.shared.isTokenExpired() {
                 DispatchQueue.global(qos: .background).async {
@@ -123,7 +123,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 }
             }
         }
-
+        
         // Add authentication state listener
         AuthService.shared.addAuthStateListener(id: authListenerId) { [weak self] isLoggedIn in
             Logger.debug("SceneDelegate auth state listener called with isLoggedIn: \(isLoggedIn)")
@@ -133,10 +133,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 ReferralService.shared.prefetchMyReferralCode()
             }
         }
-
+        
         // Setup promoted purchase notifications
         setupPromotedPurchaseNotifications()
-
+        
         window?.makeKeyAndVisible()
         prewarmKeyboard()
     }
@@ -161,7 +161,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         Logger.debug("📱 SceneDelegate: openURLContexts called with \(URLContexts.count) contexts")
-
+        
         // Handle deep links when the app is already running
         if let url = URLContexts.first?.url {
             Logger.debug("📱 SceneDelegate: Processing URL: \(url.absoluteString)")
@@ -182,7 +182,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 Logger.debug("📘 Handled by Facebook SDK")
                 return
             }
-
+            
             // Check if it's a LinkedIn callback
             if url.scheme == "com.favcircles.circles" && url.absoluteString.contains("linkedin") {
                 Logger.debug("🔗 LinkedIn callback detected in SceneDelegate")
@@ -192,13 +192,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                     return
                 }
             }
-
+            
             // Handle other deep links
             Logger.debug("📱 SceneDelegate: Calling handleDeepLink with URL: \(url.absoluteString)")
             deepLinks.handleDeepLink(url)
         }
     }
-
+    
     // Handle Universal Links
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
         Logger.debug("📱 SceneDelegate: continue userActivity called")
@@ -218,18 +218,18 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             Logger.debug("📱 SceneDelegate: Not a web browsing activity")
             return
         }
-
+        
         Logger.debug("📱 SceneDelegate: Universal Link received: \(url.absoluteString)")
         Logger.debug("📱 SceneDelegate: URL host: \(url.host ?? "nil")")
         Logger.debug("📱 SceneDelegate: URL path: \(url.path)")
-
+        
         // Handle Universal Links from our backend (branded domain and the
         // legacy run.app host - old shared links must keep working)
         if let host = url.host, DeepLinkRouter.universalLinkHosts.contains(host) {
             deepLinks.handleUniversalLink(url)
         }
     }
-
+    
     /// Post-launch side effects that must run once the main interface is installed,
     /// regardless of whether launch went through the splash screen or the cache-first
     /// fast path: pending deep links, connection invites, onboarding, and tutorial.
@@ -462,7 +462,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 window?.rootViewController = splashVC
                 if isFreshSignup { self.firstSession.armFirstSessionChain() }
             }
-
+            
             // Failsafe watchdog: only fires if the preload completion never runs at all.
             // PreloadManager surfaces its own 45s timeout through the failure branch below,
             // so this deadline must stay above that to avoid racing a slow-but-successful load.
@@ -515,7 +515,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // User is not logged in, show authentication flow
             let loginVC = LoginViewController()
             let navController = UINavigationController(rootViewController: loginVC)
-
+            
             // Animate transition if there's an existing view controller
             if window?.rootViewController != nil {
                 UIView.transition(with: window!, duration: 0.3, options: .transitionCrossDissolve, animations: {
@@ -526,7 +526,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             }
         }
     }
-
+    
     // Public method to handle URLs from AppDelegate
     func handleURLContext(_ url: URL) {
         Logger.debug("📱 SceneDelegate: handleURLContext called with URL: \(url.absoluteString)")
@@ -573,14 +573,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
             // Record the app open (throttled inside the service)
             UserService.shared.reportAppOpen()
-
+            
             // Proactively check and refresh token if needed
             if AuthService.shared.isTokenExpired() {
                 Logger.debug("🔄 SceneDelegate: Token expired, attempting in-place refresh on scene activation")
                 // Refresh in place; only a definitive server rejection logs out
                 reauth.revalidateExpiredTokenNonDestructively()
             }
-
+            
             // Ensure push token is registered
             if let fcmToken = UserDefaults.standard.string(forKey: "FCMToken") {
                 Logger.debug("🎬 ===== SCENE ACTIVE - TOKEN CHECK =====")
@@ -602,26 +602,26 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 }
             }
         }
-
+        
         // Check for app updates
         checkForAppUpdates()
     }
-
+    
     private func checkForAppUpdates() {
         UpdateService.shared.checkForUpdates { [weak self] isUpdateAvailable, releaseNotes, isRequired in
             guard isUpdateAvailable else { return }
-
+            
             // Find the topmost view controller
             if let window = self?.window,
                let rootViewController = window.rootViewController {
-
+                
                 var topController = rootViewController
-
+                
                 // Navigate through navigation controllers
                 if let navController = topController as? UINavigationController {
                     topController = navController.visibleViewController ?? navController
                 }
-
+                
                 // Navigate through tab bar controllers
                 if let tabController = topController as? UITabBarController {
                     if let selectedNav = tabController.selectedViewController as? UINavigationController {
@@ -630,12 +630,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                         topController = selected
                     }
                 }
-
+                
                 // Navigate through presented view controllers
                 while let presented = topController.presentedViewController {
                     topController = presented
                 }
-
+                
                 // Show update prompt
                 if isRequired {
                     // For required updates, show alert immediately
@@ -734,9 +734,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         deepLinks.handlePendingDeepLink()
         completionHandler(true)
     }
-
+    
     // MARK: - Promoted Purchase Handling
-
+    
     private func setupPromotedPurchaseNotifications() {
         // Handle login required for promoted purchase
         NotificationCenter.default.addObserver(
@@ -746,10 +746,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             object: nil
         )
     }
-
+    
     @objc private func handleShowLoginForPromotedPurchase() {
         Logger.debug("💎 SceneDelegate: Showing login for promoted purchase")
-
+        
         DispatchQueue.main.async { [weak self] in
             // Show login screen
             let loginVC = LoginViewController()
