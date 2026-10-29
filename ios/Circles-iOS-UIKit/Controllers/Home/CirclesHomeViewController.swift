@@ -1011,6 +1011,9 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         // Check if onboarding needs to be retried
         checkAndRetryOnboardingIfNeeded()
 
+        // A store code just earned points: point at $ once (2026-10-29)
+        maybeShowRewardsHint()
+
         // Surface the sign-in-time duplicate-account hint (once per login)
         promptForDuplicateAccountsIfNeeded()
 
@@ -1363,6 +1366,38 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
 
         view.addSubview(bubble)
         bubble.pointTo(userListView, in: view)
+        bubble.show()
+    }
+
+    /// One-time bubble at the $ button after a store code first earns points:
+    /// every store's points live there. Waits out the home tour, sheets and
+    /// pushed screens (the scan opens the store page first), then shows once.
+    func maybeShowRewardsHint(attempt: Int = 0) {
+        guard OnboardingManager.shared.shouldShowRewardsHint() else { return }
+        let target = rewardsBarButton?.customView
+        let onTop = navigationController?.topViewController === self && view.window != nil
+        let clear = presentedViewController == nil && tabBarController?.presentedViewController == nil
+            && !OnboardingManager.shared.isHomeTourInProgress && suggestedUsersOverlay == nil
+        guard onTop, clear, let target, target.window != nil else {
+            // Visible-but-busy: try again shortly; off screen: viewDidAppear asks again
+            guard onTop, attempt < 60 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                self?.maybeShowRewardsHint(attempt: attempt + 1)
+            }
+            return
+        }
+        OnboardingManager.shared.markRewardsHintShown()
+        let bubble = BubbleView()
+        bubble.configureHint(
+            title: "Your reward points",
+            description: "Points from every store you scan live here. Tap $ to see your balance at each store and what you can get with it.",
+            arrowDirection: .top
+        )
+        bubble.onNext = { [weak bubble] in
+            bubble?.dismiss { bubble?.removeFromSuperview() }
+        }
+        view.addSubview(bubble)
+        bubble.pointTo(target, in: view)
         bubble.show()
     }
 

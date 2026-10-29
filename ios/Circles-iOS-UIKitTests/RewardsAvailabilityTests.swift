@@ -62,6 +62,19 @@ struct RewardsAvailabilityTests {
         #expect(owner == .init(title: "Your Store · Pasta & Provisions", showsEarnLine: false))
     }
 
+    @Test func pointsEarnedPopupSaysWhatTheStoreOffersOrToAskTheOwner() {
+        let notLive = RewardsAvailability.pointsEarned(venueName: "Pasta & Provisions", points: 100, venueBalance: 100,
+                                                       loyaltyLive: false, nextRewardLine: nil)
+        #expect(notLive.title == "+100 points at Pasta & Provisions! 🎉")
+        #expect(notLive.message.contains("hasn't started FavCircles Rewards yet"))
+        #expect(notLive.message.contains("Ask the owner"))
+        let live = RewardsAvailability.pointsEarned(venueName: "Test Bakery", points: 100, venueBalance: 100, loyaltyLive: true,
+                                                    nextRewardLine: "You've got enough for a free drip coffee. Scan at the register to use it")
+        #expect(live.message == "You have 100 points here. You've got enough for a free drip coffee. Scan at the register to use it.")
+        let older = RewardsAvailability.pointsEarned(venueName: "X", points: 1, venueBalance: 1, loyaltyLive: nil, nextRewardLine: nil)
+        #expect(older.message == "You have 1 point here.")
+    }
+
     @Test func balanceCopyCoversNoneAndOne() {
         func details(_ balance: Int) -> RewardsAvailability.Details {
             .init(venueName: "Shop", earnRate: nil, venueBalance: balance, offers: [])

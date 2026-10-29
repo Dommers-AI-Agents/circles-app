@@ -106,11 +106,17 @@ final class StickerRewardCoordinator: NSObject {
                 }
             }
         }
-        // A sheet left open over the tab bar would hide the page
-        if tabBar.presentedViewController != nil {
-            tabBar.dismiss(animated: true, completion: push)
-        } else {
-            push()
+        // Never close a sheet that's up (a new account's zip-code prompt was
+        // shut by this, Wes 2026-10-29): wait for it to be answered, then go
+        waitUntilNothingPresented(over: tabBar, then: push)
+    }
+
+    /// Runs `then` once nothing is presented over `host` (checked every half
+    /// second for up to five minutes; after that it goes ahead anyway).
+    private func waitUntilNothingPresented(over host: UIViewController, attempt: Int = 0, then: @escaping () -> Void) {
+        guard host.presentedViewController != nil, attempt < 600 else { then(); return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.waitUntilNothingPresented(over: host, attempt: attempt + 1, then: then)
         }
     }
 
@@ -164,33 +170,48 @@ final class StickerRewardCoordinator: NSObject {
 
     private func handleWindowScan(_ scan: RewardScanData, code: String) {
         guard let presenter = presenter else { return }
+        let balanceHere = scan.venueBalance ?? scan.balance
+        let notLiveLine = "\(scan.venue.venueName) hasn't started FavCircles Rewards yet. Ask the owner about it next time you're in."
 
-        var message = ""
-        if let awarded = scan.awarded {
-            message += "You earned \(awarded.points) store points for joining! 🎉 You have \(scan.venueBalance ?? scan.balance) points here."
-            // What those points are worth at THIS store, when it has a menu of rewards
-            if let next = RewardsAvailability.nextReward(scan.rewardDetails) {
-                message += " \(RewardsAvailability.nextRewardLine(next))."
+        // The save prompt, on its own after the points (if any)
+        let offerSaveAfterwards = { [weak self] in
+            guard let self, let presenter = self.presenter else { return }
+            if scan.alreadySaved == true {
+                // Points already confirmed above; without them, a short welcome back
+                guard scan.awarded == nil else { return }
+                let message = scan.loyaltyLive == false
+                    ? "\(scan.venue.venueName) is already in your circles. \(notLiveLine)"
+                    : "\(scan.venue.venueName) is already in your circles. Come back and scan the register card with a purchase to keep earning!"
+                AlertPresenter.showSuccess(title: "Welcome back!", message: message, from: presenter)
+                return
             }
-            message += "\n\n"
+            var message = "Save \(scan.venue.venueName) to one of your circles so you don't forget it — and earn 50 more store points."
+            if scan.awarded == nil, scan.loyaltyLive == false { message += "\n\n\(notLiveLine)" }
+            AlertPresenter.showConfirmation(
+                title: "Don't forget \(scan.venue.venueName)!",
+                message: message,
+                confirmTitle: "Save & Earn",
+                cancelTitle: "Not Now",
+                from: presenter
+            ) { [weak self] in
+                self?.startSaveFlow(venue: scan.venue, code: code)
+            }
         }
 
-        if scan.alreadySaved == true {
-            message += "\(scan.venue.venueName) is already in your circles. Come back and scan the register card with a purchase to keep earning!"
-            AlertPresenter.showSuccess(title: "Welcome back!", message: message, from: presenter)
+        guard let awarded = scan.awarded else {
+            offerSaveAfterwards()
             return
         }
-
-        message += "Save \(scan.venue.venueName) to one of your circles so you don't forget it — and earn 50 more store points."
-
-        AlertPresenter.showConfirmation(
-            title: "Don't forget \(scan.venue.venueName)!",
-            message: message,
-            confirmTitle: "Save & Earn",
-            cancelTitle: "Not Now",
-            from: presenter
-        ) { [weak self] in
-            self?.startSaveFlow(venue: scan.venue, code: code)
+        // The points get their own moment (they used to be the first line of
+        // the save prompt, and read as part of it)
+        let nextLine = RewardsAvailability.nextReward(scan.rewardDetails).map(RewardsAvailability.nextRewardLine)
+        let copy = RewardsAvailability.pointsEarned(venueName: scan.venue.venueName, points: awarded.points,
+                                                    venueBalance: balanceHere, loyaltyLive: scan.loyaltyLive,
+                                                    nextRewardLine: nextLine)
+        AlertPresenter.showSuccess(title: copy.title, message: copy.message, from: presenter) {
+            // Home points at the $ button once: where all their points live
+            OnboardingManager.shared.armRewardsHint()
+            offerSaveAfterwards()
         }
     }
 

@@ -340,6 +340,29 @@ class OnboardingManager {
     }
 
     /// Check if user should see the one-time hint bubble on the home Widgets tab
+    // MARK: - Rewards hint (2026-10-29)
+
+    /// Armed the first time a store code earns points; Home then points at
+    /// its $ button once: "all your reward points live here".
+    static let rewardsHintArmed = Notification.Name("RewardsHintArmed")
+    private let rewardsHintArmedKey = "rewardsHintArmed"
+    private let rewardsHintShownKey = "rewardsHintShown"
+
+    func armRewardsHint() {
+        guard !UserDefaults.standard.bool(forKey: rewardsHintShownKey) else { return }
+        UserDefaults.standard.set(true, forKey: rewardsHintArmedKey)
+        NotificationCenter.default.post(name: Self.rewardsHintArmed, object: nil)
+    }
+
+    func shouldShowRewardsHint() -> Bool {
+        UserDefaults.standard.bool(forKey: rewardsHintArmedKey) && !UserDefaults.standard.bool(forKey: rewardsHintShownKey)
+    }
+
+    func markRewardsHintShown() {
+        UserDefaults.standard.set(true, forKey: rewardsHintShownKey)
+        UserDefaults.standard.set(false, forKey: rewardsHintArmedKey)
+    }
+
     func shouldShowHomeWidgetsHint() -> Bool {
         return !UserDefaults.standard.bool(forKey: hasShownHomeWidgetsHintKey)
     }

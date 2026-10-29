@@ -922,6 +922,8 @@ struct RewardScanData: Codable {
     let offers: [RewardOffer]?
     /// Points one register scan awards here (live stores only, 2026-10-29)
     let earnRate: Int?
+    /// Whether the store's loyalty program runs yet; nil from older servers
+    let loyaltyLive: Bool?
 
     /// The scan in the store's own terms: balance here, and the next reward
     var rewardDetails: RewardsAvailability.Details {

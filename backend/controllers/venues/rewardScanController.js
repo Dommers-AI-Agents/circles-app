@@ -108,6 +108,9 @@ exports.scan = async (req, res) => {
           alreadySaved,
           balance: rewardPoints,
           venueBalance,
+          // Whether this store's loyalty program runs yet: the app tells the
+          // customer to ask the owner about it when it doesn't (2026-10-29)
+          loyaltyLive: windowLive,
           earnRate,
           offers: offers.map(({ offerId, title, pointsCost }) => ({ offerId, title, pointsCost })),
           nextReward: rewardProgress.nextReward(offers, venueBalance, earnRate),
