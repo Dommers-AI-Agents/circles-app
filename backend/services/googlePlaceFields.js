@@ -18,7 +18,7 @@
 
 const BASIC = [
   'address_components', 'business_status', 'formatted_address', 'geometry', 'name',
-  'photos', 'place_id', 'plus_code', 'types', 'url', 'utc_offset_minutes', 'vicinity',
+  'photos', 'place_id', 'plus_code', 'types', 'url', 'utc_offset', 'vicinity',
   'wheelchair_accessible_entrance'
 ];
 const CONTACT = ['formatted_phone_number', 'international_phone_number', 'opening_hours', 'website'];
@@ -54,7 +54,10 @@ function googleSignals(details = {}) {
     businessStatus: details.business_status || null,
     wheelchairAccessibleEntrance: bool(details.wheelchair_accessible_entrance),
     mapsUrl: details.url || null,
-    utcOffsetMinutes: Number.isFinite(details.utc_offset_minutes) ? details.utc_offset_minutes : null
+    // Legacy Place Details names it `utc_offset` (minutes); `utc_offset_minutes`
+    // is refused as a field name and fails the whole call (rev 00954, 2026-10-29)
+    utcOffsetMinutes: Number.isFinite(details.utc_offset) ? details.utc_offset
+      : (Number.isFinite(details.utc_offset_minutes) ? details.utc_offset_minutes : null)
   };
 }
 

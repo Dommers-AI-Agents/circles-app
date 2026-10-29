@@ -184,7 +184,9 @@ function categoryUpgradeForOther(venueData = {}, saveData = {}) {
 
 // ---- Google's richer signals (googlePlaceFields.googleSignals) --------------
 
-const MEAL_TYPES = new Set(['restaurant', 'meal_takeaway', 'meal_delivery']);
+// 'food' is Google's own "serves food" type: on a bar it means a kitchen
+// (Frenchy's Sip and Shop: bar + food, dine-in)
+const MEAL_TYPES = new Set(['restaurant', 'meal_takeaway', 'meal_delivery', 'food']);
 const SHOP_TYPES = new Set(['store', 'liquor_store', 'clothing_store', 'home_goods_store', 'gift_shop', 'book_store', 'shopping_mall']);
 
 /**

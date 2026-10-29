@@ -6,12 +6,13 @@ const { refineCategory, classifyFromGoogle, googleReclassification } = require('
 const FRENCHYS = {
   name: "Frenchy's Sip and Shop", types: ['bar', 'restaurant', 'food', 'point_of_interest', 'establishment'],
   serves_wine: true, serves_beer: true, serves_dinner: true, serves_lunch: false, dine_in: true,
-  business_status: 'OPERATIONAL', url: 'https://maps.google.com/?cid=1', utc_offset_minutes: -240, wheelchair_accessible_entrance: true
+  business_status: 'OPERATIONAL', url: 'https://maps.google.com/?cid=1', utc_offset: -240, wheelchair_accessible_entrance: true
 };
 
 describe('the field list', () => {
   test('every details call asks for types and the serves_* answers it already pays for, never reviews', () => {
-    expect(fields.DETAILS_ALL).toEqual(expect.arrayContaining(['types', 'serves_wine', 'serves_dinner', 'business_status', 'utc_offset_minutes', 'website', 'rating']));
+    expect(fields.DETAILS_ALL).toEqual(expect.arrayContaining(['types', 'serves_wine', 'serves_dinner', 'business_status', 'utc_offset', 'website', 'rating']));
+    expect(fields.DETAILS_ALL).not.toContain('utc_offset_minutes');
     expect(fields.DETAILS_ALL).not.toContain('reviews');
     expect(new Set(fields.DETAILS_ALL).size).toBe(fields.DETAILS_ALL.length);
   });
@@ -32,6 +33,10 @@ describe('categories from Google', () => {
 
   test("Frenchy's: a restaurant with a wine bar (and a shop), not a bar", () => {
     expect(classifyFromGoogle(sig(FRENCHYS))).toMatchObject({ category: 'restaurant', subcategory: 'Wine bar & shop', source: 'google' });
+  });
+  test("Google's real answer for Frenchy's (bar + food, wine, dine-in) reads as a restaurant with a wine bar", () => {
+    const real = { name: "Frenchy's Sip and Shop", types: ['bar', 'establishment', 'food', 'point_of_interest'], serves_wine: true, serves_beer: true, dine_in: true };
+    expect(classifyFromGoogle(sig(real))).toMatchObject({ category: 'restaurant', subcategory: 'Wine bar & shop' });
   });
   test('a bar that serves dinner is a restaurant & bar; a plain bar stays a bar', () => {
     expect(refineCategory({ category: 'bar', googleTypes: ['bar'], serves: { dinner: true, beer: true }, name: "Murphy's" })).toEqual({ category: 'restaurant', subcategory: 'Bar' });
