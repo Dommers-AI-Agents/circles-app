@@ -26,7 +26,9 @@ exports.sync = scheduledTask({
     for (const venue of venues) {
       if (published >= limit) break;
       try {
-        const result = await appClipExperiences.syncVenue(venue, { live: live.has(venue.venueId) });
+        // The register card promises points wherever a register scan earns
+        // them: live loyalty, or an unclaimed store's demo
+        const result = await appClipExperiences.syncVenue(venue, { live: live.has(venue.venueId) || !venue.ownerUserId });
         if (result.changed && result.changed.length) published += 1; else skipped += 1;
       } catch (error) {
         console.error('⚠️ App Clip card sync failed for', venue.venueId, venue.venueName, '-', error.message);

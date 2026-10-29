@@ -112,6 +112,20 @@ const venueLoyaltyStatus = async (venue) => {
 const isVenueLoyaltyActive = async (venue) => (await venueLoyaltyStatus(venue)).active;
 
 /**
+ * Whether a REGISTER scan earns points here: the loyalty program is live, or
+ * nobody has claimed the store yet, so its register code works as a demo of
+ * the program for the owner (Wes, 2026-10-29: "demonstrate the functionality
+ * to the store owners with their own store"). A lapsed owner's store stays
+ * paused. `demo` marks the unclaimed case for integrity logging.
+ */
+const registerScanEarns = async (venue) => {
+  const status = await venueLoyaltyStatus(venue);
+  if (status.active) return { earns: true, demo: false, status };
+  if (status.reason === 'no_owner') return { earns: true, demo: true, status };
+  return { earns: false, demo: false, status };
+};
+
+/**
  * The store's owner pays for Business (the 3 free months count; a comp does
  * not). Gates order ahead: only Business stores take orders (Wes,
  * 2026-10-21: "There should be no comped stores").
@@ -130,5 +144,6 @@ module.exports = {
   isCompActive,
   venueLoyaltyStatus,
   isVenueLoyaltyActive,
+  registerScanEarns,
   isVenueBusinessLive
 };

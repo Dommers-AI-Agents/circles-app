@@ -49,10 +49,13 @@ exports.getVenuePreview = async (req, res) => {
 
     // The store's own terms (Wes, 2026-10-29): points per visit and the
     // first thing they buy, only while the store's loyalty program is live
-    const { isVenueLoyaltyActive } = require('../services/ownerSubscriptionService');
+    const { isVenueLoyaltyActive, registerScanEarns } = require('../services/ownerSubscriptionService');
     const { activeOffers } = require('../services/venueHelpers');
     const rewardProgress = require('../services/rewardProgress');
-    const loyaltyLive = await isVenueLoyaltyActive(venue);
+    // A register code earns at an unclaimed store too (the owner demo)
+    const loyaltyLive = venue.kind === 'register'
+      ? (await registerScanEarns(venue)).earns
+      : await isVenueLoyaltyActive(venue);
     const offers = loyaltyLive ? rewardProgress.rewardLadder(activeOffers(venue)) : [];
     return res.json({
       success: true,

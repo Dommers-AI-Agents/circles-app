@@ -10,7 +10,7 @@ const rewardProgress = require('../../services/rewardProgress');
 const nearbyEventsService = require('../../services/nearbyEventsService');
 const { listLiveVenues } = require('../../services/liveVenues');
 const rewardConfig = require('../../config/rewardConfig');
-const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, venueLoyaltyStatus, isVenueBusinessLive } = require('../../services/ownerSubscriptionService');
+const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, registerScanEarns, isVenueBusinessLive } = require('../../services/ownerSubscriptionService');
 const db = getFirestore();
 const { isVenueTeamMember, isBrowsableBy, publicVenueInfo, activeOffers } = require('../../services/venueHelpers.js');
 const { findOwnSaveOfStore } = require('../../services/ownSaveOfVenue');
@@ -123,10 +123,10 @@ exports.scan = async (req, res) => {
     // gate — points come from the venue's owner-configured earn rate).
     // Loyalty pauses gracefully when the owner's business subscription lapses —
     // never a scary error at the register.
-    const loyalty = await venueLoyaltyStatus(venue);
+    const { earns, demo, status: loyalty } = await registerScanEarns(venue);
     // The app offers to save the store after a register scan when it isn't saved yet
     const alreadySaved = await userHasSavedVenuePlace(userId, venue);
-    if (!loyalty.active) {
+    if (!earns) {
       console.warn(`[loyalty-integrity] register scan paused venue=${venue.venueId} reason=${loyalty.reason}`);
       const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
       return res.json({
@@ -145,6 +145,9 @@ exports.scan = async (req, res) => {
     }
     // Comped venue awarding points has no paying subscriber — surface it so
     // revenue leakage is measurable, not invisible.
+    if (demo) {
+      console.info(`[loyalty-integrity] demo award (unclaimed store) venue=${venue.venueId}`);
+    }
     if (loyalty.reason === 'comp') {
       console.info(`[loyalty-integrity] comped award venue=${venue.venueId} until=${venue.loyaltyCompedUntil || 'open-ended'} reason=${venue.loyaltyCompReason || 'unspecified'}`);
     }

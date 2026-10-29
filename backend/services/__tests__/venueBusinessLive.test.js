@@ -4,7 +4,7 @@ const { FakeFirestore } = require('../../__fixtures__/fakeFirestore');
 const mockDb = new FakeFirestore({ namespaced: true });
 jest.mock('../../config/firebase', () => ({ getFirestore: () => mockDb }));
 
-const { isVenueBusinessLive, isVenueLoyaltyActive } = require('../ownerSubscriptionService');
+const { isVenueBusinessLive, isVenueLoyaltyActive, registerScanEarns } = require('../ownerSubscriptionService');
 
 const future = new Date(Date.now() + 30 * 86400000).toISOString();
 
@@ -30,4 +30,13 @@ test('an owner paying for Business for this store: ordering is live', async () =
 
 test('no owner, no orders', async () => {
   expect(await isVenueBusinessLive({ venueId: 'v3' })).toBe(false);
+});
+
+// The register code is the owner demo at a store nobody has claimed yet
+// (Wes, 2026-10-29); a lapsed owner's store stays paused.
+test('a register scan earns where loyalty is live or the store is unclaimed, never at a lapsed store', async () => {
+  await mockDb.collection('users').doc('lapsed').set({ ownerSubscriptionStatus: 'expired' });
+  expect(await registerScanEarns({ venueId: 'v3' })).toMatchObject({ earns: true, demo: true });
+  expect(await registerScanEarns({ venueId: 'v4', ownerUserId: 'lapsed' })).toMatchObject({ earns: false, demo: false });
+  expect(await registerScanEarns({ venueId: 'v5', ownerUserId: 'lapsed', loyaltyComped: true })).toMatchObject({ earns: true, demo: false });
 });
