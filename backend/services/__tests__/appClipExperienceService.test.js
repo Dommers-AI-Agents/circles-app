@@ -32,6 +32,20 @@ describe('appClipExperienceService copy', () => {
     expect(svc.businessCategoryFor({ category: 'other', venueName: 'Acme' })).toBe('SHOPPING');
   });
 
+  test('a register card before loyalty is live is the store\'s own card without the points promise', () => {
+    const notLive = svc.copyFor({ venueName: 'Pasta & Provisions', earnRate: 25 }, 'register', { live: false });
+    expect(notLive.title).toBe('Pasta & Provisions');
+    expect(notLive.subtitle).not.toMatch(/points|earn/i);
+    expect(notLive.pill).toBe('Save this spot');
+    // The night loyalty goes live the fingerprint moves, so the card republishes with the points
+    const base = { venueName: 'Pasta & Provisions', earnRate: 25 };
+    expect(svc.fingerprintFor(base, 'register', 'C1', null, { live: false }))
+      .not.toBe(svc.fingerprintFor(base, 'register', 'C1', null, { live: true }));
+    // The window card never cared about loyalty
+    expect(svc.fingerprintFor(base, 'window', 'C1', null, { live: false }))
+      .toBe(svc.fingerprintFor(base, 'window', 'C1', null, { live: true }));
+  });
+
   test('the fingerprint changes with name, points, cover and code', () => {
     const base = { venueName: 'A', earnRate: 10 };
     const f = svc.fingerprintFor(base, 'register', 'C1', null);

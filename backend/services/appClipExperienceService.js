@@ -71,9 +71,14 @@ const clip = (s, max) => {
 };
 
 /// Title: the store's name. Subtitle: what scanning does here.
-function copyFor(venue, kind) {
+// `live`: the store's loyalty program runs (claimed, owner on Business). A
+// register card before that is the store's own card without the points
+// promise (Wes, 2026-10-29: every code gets the store's card; the generic
+// one is only for codes no store owns), and it republishes with the points
+// the night loyalty goes live.
+function copyFor(venue, kind, { live = true } = {}) {
   const name = clip(venue.venueName || 'This store', TITLE_MAX);
-  if (kind === 'register') {
+  if (kind === 'register' && live) {
     const points = rewardService.effectiveEarnRate(venue);
     return {
       title: name,
@@ -129,8 +134,8 @@ async function coverBuffer(coverUrl) {
 
 /// 1800×1200 JPEG: the cover photo under a dark gradient (or the brand
 /// gradient alone), the store's name, a pill with what the scan does.
-async function headerImagePNG(venue, kind, coverUrl) {
-  const copy = copyFor(venue, kind);
+async function headerImagePNG(venue, kind, coverUrl, { live = true } = {}) {
+  const copy = copyFor(venue, kind, { live });
   const cover = await coverBuffer(coverUrl);
   const nameSize = 112;
   const nameLines = wrapName(venue.venueName || 'This store', nameSize, W - 240, 2);
@@ -272,14 +277,14 @@ async function coverUrlFor(venue) {
   return data.coverPhotoUrl || placePhotos.coverUrl(data.photos || []) || null;
 }
 
-function fingerprintFor(venue, kind, code, coverUrl) {
-  const points = kind === 'register' ? rewardService.effectiveEarnRate(venue) : '';
+function fingerprintFor(venue, kind, code, coverUrl, { live = true } = {}) {
+  const points = kind === 'register' && live ? rewardService.effectiveEarnRate(venue) : '';
   return crypto.createHash('md5').update([venue.venueName, points, coverUrl || '', kind, code, `v${HEADER_VERSION}`].join('|')).digest('hex');
 }
 
 /// Creates or refreshes the store's experiences. Returns what's on the venue
 /// afterwards, with `changed` listing the kinds that were (re)published.
-async function syncVenue(venue, { force = false, kinds = KINDS } = {}) {
+async function syncVenue(venue, { force = false, kinds = KINDS, live = true } = {}) {
   if (!asc.configured()) return { skipped: 'not configured', experiences: venue.appClipExperiences || {} };
   const existing = { ...(venue.appClipExperiences || {}) };
   const coverUrl = await coverUrlFor(venue);
@@ -288,12 +293,12 @@ async function syncVenue(venue, { force = false, kinds = KINDS } = {}) {
     const code = kind === 'register' ? venue.registerCode : venue.windowCode;
     if (!code) continue;
     const link = rewardService.stickerUrl(code);
-    const fingerprint = fingerprintFor(venue, kind, code, coverUrl);
+    const fingerprint = fingerprintFor(venue, kind, code, coverUrl, { live });
     const current = existing[kind];
     if (current && current.fingerprint === fingerprint && current.link === link && !force) continue;
 
-    const { title, subtitle } = copyFor(venue, kind);
-    const image = await headerImagePNG(venue, kind, coverUrl);
+    const { title, subtitle } = copyFor(venue, kind, { live });
+    const image = await headerImagePNG(venue, kind, coverUrl, { live });
     const imageId = await uploadHeaderImage(image, `${venue.venueId}-${kind}-1800x1200.jpg`);
     let record;
     // Whatever Apple already has for this link is the card to keep, if its

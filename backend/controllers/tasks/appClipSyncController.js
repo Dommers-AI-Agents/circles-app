@@ -10,8 +10,9 @@ const { STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const { listLiveVenues } = require('../../services/liveVenues');
 const appClipExperiences = require('../../services/appClipExperienceService');
 
-// Every enrolled store gets the window card (scan to save is free tier);
-// the register card (earn points) only where the loyalty program is live.
+// Every enrolled store gets both cards (Wes, 2026-10-29: the generic card is
+// only for codes no store owns); the register card promises points only
+// where the loyalty program is live, and republishes the night it goes live.
 exports.sync = scheduledTask({
   name: 'app-clip-sync', log: '📎 App Clip card sync triggered via API', failure: 'App Clip card sync failed',
   run: async (req) => {
@@ -23,8 +24,7 @@ exports.sync = scheduledTask({
     for (const venue of venues) {
       if (published >= limit) break;
       try {
-        const kinds = live.has(venue.venueId) ? ['register', 'window'] : ['window'];
-        const result = await appClipExperiences.syncVenue(venue, { kinds });
+        const result = await appClipExperiences.syncVenue(venue, { live: live.has(venue.venueId) });
         if (result.changed && result.changed.length) published += 1; else skipped += 1;
       } catch (error) {
         console.error('⚠️ App Clip card sync failed for', venue.venueId, venue.venueName, '-', error.message);
