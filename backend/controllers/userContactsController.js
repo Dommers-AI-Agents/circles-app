@@ -1,5 +1,6 @@
 // backend/controllers/userContactsController.js
 const { getFirestore } = require('../config/firebase');
+const { clampPagination } = require('../utils/pagination');
 const { sendServiceError } = require('../utils/serviceError');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const emailService = require('../services/emailService');
@@ -236,7 +237,7 @@ const CORE_SUGGESTED_EMAILS = [
 const getSuggestedUsers = async (req, res) => {
   try {
     const userId = req.user.uid;
-    const limit = parseInt(req.query.limit) || 10;
+    const { limit } = clampPagination(req.query, { defaultLimit: 10, maxLimit: 50 });
 
     console.log(`🌟 Getting suggested users for user ${userId}, limit: ${limit}`);
 

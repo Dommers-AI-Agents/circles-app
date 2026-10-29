@@ -2,12 +2,13 @@
 // The profile's Activity tab: the signed-in user's own history and the
 // month's summary. Owner only — there is no way to ask for someone else's.
 const ownActivity = require('../../services/ownActivity');
+const { clampPagination } = require('../../utils/pagination');
 const { sendServiceError } = require('../../utils/serviceError');
 
 // @route GET /api/users/me/activity?filter=all|checkins|places|moments|sent|social&cursor=<iso>&limit=30
 exports.list = async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit, 10) || 30;
+    const { limit } = clampPagination(req.query, { defaultLimit: 30, maxLimit: 100 });
     const page = await ownActivity.list({ userId: req.user.uid, filter: String(req.query.filter || 'all'), cursor: req.query.cursor || null, limit });
     res.json({ success: true, ...page });
   } catch (error) {

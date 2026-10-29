@@ -1,5 +1,6 @@
 // backend/controllers/notificationController.js
 const { getFirestore } = require('../config/firebase');
+const { clampPagination } = require('../utils/pagination');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
 const { computeBadgeCount } = require('../services/badgeService');
 
@@ -11,11 +12,12 @@ const db = getFirestore();
 exports.getNotifications = async (req, res, next) => {
   try {
     const userId = req.user.uid;
-    const { limit = 50, offset = 0, archived = 'false' } = req.query;
+    const { archived = 'false' } = req.query;
+    const { limit, offset } = clampPagination(req.query, { defaultLimit: 50, maxLimit: 200 });
     const isArchived = archived === 'true';
 
-    const limitNum = parseInt(limit);
-    const startIndex = parseInt(offset);
+    const limitNum = limit;
+    const startIndex = offset;
     const endIndex = startIndex + limitNum;
 
     // Archived status is filtered in memory (Firestore's 'in' operator doesn't

@@ -1,5 +1,6 @@
 // backend/controllers/messagingController.js
 const { getFirestore } = require('../config/firebase');
+const { clampPagination } = require('../utils/pagination');
 const { getConnectionPairSnapshots } = require('../utils/networkAccess');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { 
@@ -466,7 +467,8 @@ const getMessages = async (req, res) => {
   try {
     const userId = req.user.uid;
     const { conversationId } = req.params;
-    const { limit = 50, before } = req.query;
+    const { before } = req.query;
+    const { limit } = clampPagination(req.query, { defaultLimit: 50, maxLimit: 200 });
 
     // Verify user is part of this conversation
     const conversationDoc = await db.collection(COLLECTIONS.CONVERSATIONS).doc(conversationId).get();
@@ -489,7 +491,7 @@ const getMessages = async (req, res) => {
     let messagesQuery = db.collection(COLLECTIONS.MESSAGES)
       .where('conversationId', '==', conversationId)
       .orderBy('createdAt', 'desc')
-      .limit(parseInt(limit));
+      .limit(limit);
 
     // Add pagination if before timestamp provided
     if (before) {

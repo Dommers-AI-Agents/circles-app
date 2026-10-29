@@ -103,8 +103,8 @@ exports.getUserVideos = async (req, res) => {
       .where('deletedAt', '==', null)
       .where('visibility', 'in', visibilityFilter)
       .orderBy('createdAt', 'desc')
-      .limit(parseInt(limit))
-      .offset(parseInt(offset))
+      .limit(limit)
+      .offset(offset)
       .get();
 
     let videos = withoutExpired(serializeQuerySnapshot(videosQuery));
@@ -142,7 +142,7 @@ exports.getUserVideos = async (req, res) => {
     res.json({
       success: true,
       data: videosWithUsers,
-      hasMore: videos.length === parseInt(limit)
+      hasMore: videos.length === limit
     });
   } catch (error) {
     sendServiceError(res, error, { log: 'Error getting user videos', fallbackMessage: 'Failed to get user videos' });
@@ -165,8 +165,8 @@ exports.getVideoFeed = async (req, res) => {
     // Get videos from connections. Chunked over the connection set — 'in'
     // caps at 30 values and broke past 30 connections. Each chunk is fetched
     // sorted; merge, re-sort, and window to keep limit/offset semantics.
-    const pageLimit = parseInt(limit);
-    const pageOffset = parseInt(offset);
+    const pageLimit = limit;
+    const pageOffset = offset;
     // Inner-circle moments come from a SECOND query rather than an extra value
     // in the `visibility` IN-list. The list query applies its limit inside
     // Firestore, so post-filtering rows the viewer isn't entitled to would eat
@@ -231,7 +231,7 @@ exports.getVideoFeed = async (req, res) => {
     res.json({
       success: true,
       data: videosWithUsers,
-      hasMore: videos.length === parseInt(limit)
+      hasMore: videos.length === limit
     });
   } catch (error) {
     sendServiceError(res, error, { log: 'Error getting video feed', fallbackMessage: 'Failed to get video feed' });
@@ -489,7 +489,7 @@ exports.getReelsFeed = async (req, res) => {
     const graphIds = Array.from(allUserIds);
     const idBatches = [];
     for (let i = 0; i < graphIds.length; i += 30) idBatches.push(graphIds.slice(i, i + 30));
-    const need = parseInt(offset) + parseInt(limit);
+    const need = offset + limit;
 
     const snaps = graphIds.length > 0 ? await Promise.all(idBatches.map(batch =>
       db.collection(COLLECTIONS.PLACE_VIDEOS)
@@ -521,7 +521,7 @@ exports.getReelsFeed = async (req, res) => {
     videos.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     // Apply pagination
-    const paginatedVideos = videos.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+    const paginatedVideos = videos.slice(offset, offset + limit);
     
     // Owners, the viewer's likes and the activity rows, all at once
     const userIds = [...new Set(paginatedVideos.map(v => v.userId))];
@@ -575,7 +575,7 @@ exports.getReelsFeed = async (req, res) => {
     res.json({
       success: true,
       data: videosWithUsers,
-      hasMore: videos.length > parseInt(offset) + parseInt(limit)
+      hasMore: videos.length > offset + limit
     });
   } catch (error) {
     sendServiceError(res, error, { log: 'Error getting reels feed', fallbackMessage: 'Failed to get reels feed' });
@@ -601,8 +601,8 @@ exports.getUserReels = async (req, res) => {
       .where('deletedAt', '==', null)
       .where('visibility', 'in', visibilityFilter)
       .orderBy('createdAt', 'desc')
-      .limit(parseInt(limit))
-      .offset(parseInt(offset))
+      .limit(limit)
+      .offset(offset)
       .get();
 
     let videos = withoutExpired(serializeQuerySnapshot(videosQuery));
@@ -649,7 +649,7 @@ exports.getUserReels = async (req, res) => {
     res.json({
       success: true,
       data: videosWithActivity,
-      hasMore: videos.length === parseInt(limit)
+      hasMore: videos.length === limit
     });
   } catch (error) {
     sendServiceError(res, error, { log: 'Error getting user reels', fallbackMessage: 'Failed to get user reels' });

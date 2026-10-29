@@ -2,6 +2,7 @@
 // "How Are You?" check-ins. Handlers pass named fields to the service —
 // never a body spread — and the service enforces who may do what.
 const care = require('../../services/careCheckinService');
+const { clampPagination } = require('../../utils/pagination');
 const { clientFromRequest } = require('../../utils/appVersion');
 
 const { sendServiceError } = require('../../utils/serviceError');
@@ -110,7 +111,7 @@ exports.react = async (req, res) => {
 };
 exports.askDetail = async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit, 10) || 30;
+    const { limit } = clampPagination(req.query, { defaultLimit: 30, maxLimit: 200 });
     res.json({ success: true, ...(await care.askDetail({ userId: req.user.uid, askId: req.params.id, limit })) });
   } catch (error) { fail(res, error); }
 };

@@ -1278,8 +1278,7 @@ const trackConnectionView = async (req, res) => {
 const getActiveRelationships = async (req, res) => {
   try {
     const userId = req.user.firebaseDocId || req.user.uid;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = parseInt(req.query.offset) || 0;
+    const { limit, offset } = clampPagination(req.query, { defaultLimit: 10, maxLimit: 100 });
     
     console.log(`🔍 Getting active relationships (connections + following) for user ${userId} with limit ${limit}, offset ${offset}`);
     

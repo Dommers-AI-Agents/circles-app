@@ -1,5 +1,6 @@
 // backend/controllers/activityController.js
 const { admin, getFirestore } = require('../config/firebase');
+const { clampPagination } = require('../utils/pagination');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
 const { filterActivitiesForViewer, activityPrivacyFromUserDocs } = require('../services/activityPrivacy');
@@ -14,7 +15,8 @@ const db = getFirestore();
 exports.getNetworkActivities = async (req, res, next) => {
   try {
     const userId = req.user.uid;
-    const { limit = 20, offset = 0, since } = req.query;
+    const { since } = req.query;
+    const { limit, offset } = clampPagination(req.query, { defaultLimit: 20, maxLimit: 100 });
     
     // Fetching network activities for user
     
@@ -110,8 +112,8 @@ exports.getNetworkActivities = async (req, res, next) => {
     // Only ever need the newest (offset + limit) activities. Cap every query
     // with .limit(fetchCap) so a user following hundreds of actors doesn't
     // pull the entire activities collection just to render one page.
-    const startIndex = parseInt(offset) || 0;
-    const limitCount = parseInt(limit) || 20;
+    const startIndex = offset;
+    const limitCount = limit;
     // Privacy filtering happens after the fetch, so pull a wider window than
     // one page and cut to size after the gates — otherwise a viewer whose
     // network narrowed its activity would see short pages and a false end.

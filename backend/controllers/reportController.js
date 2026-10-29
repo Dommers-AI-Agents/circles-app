@@ -1,4 +1,5 @@
 const { admin, getFirestore } = require('../config/firebase');
+const { clampPagination } = require('../utils/pagination');
 const { sendServiceError } = require('../utils/serviceError');
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
 
@@ -151,7 +152,8 @@ const reportContent = async (req, res) => {
 // @access  Private/Admin
 const getReports = async (req, res) => {
   try {
-    const { status = 'pending', type, limit = 50 } = req.query;
+    const { status = 'pending', type } = req.query;
+    const { limit } = clampPagination(req.query, { defaultLimit: 50, maxLimit: 200 });
 
     // Super-users see the full moderation queue; everyone else only their own
     const reporterId = req.user.firebaseDocId || req.user.uid;
@@ -168,7 +170,7 @@ const getReports = async (req, res) => {
       query = query.where('type', '==', type);
     }
 
-    query = query.orderBy('createdAt', 'desc').limit(parseInt(limit));
+    query = query.orderBy('createdAt', 'desc').limit(limit);
 
     const snapshot = await query.get();
     const reports = snapshot.docs.map(doc => serializeDoc(doc));

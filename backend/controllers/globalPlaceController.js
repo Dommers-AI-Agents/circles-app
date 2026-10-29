@@ -833,7 +833,7 @@ async function updateGlobalPlaceStats(placeId) {
 exports.getUserUploads = async (req, res, next) => {
   try {
     const { userId } = req.params;
-    const { limit = 20, offset = 0 } = req.query;
+    const { limit, offset } = clampPagination(req.query, { defaultLimit: 20, maxLimit: 100 });
     
     console.log(`🔍 [GlobalPlace API] Getting uploads for user: ${userId}`);
     console.log(`📊 [GlobalPlace API] Limit: ${limit}, Offset: ${offset}`);
@@ -884,8 +884,8 @@ exports.getUserUploads = async (req, res, next) => {
     });
     
     // Apply pagination
-    const startIndex = parseInt(offset);
-    const endIndex = startIndex + parseInt(limit);
+    const startIndex = offset;
+    const endIndex = startIndex + limit;
     const paginatedUploads = userUploads.slice(startIndex, endIndex);
     
     const hasMore = userUploads.length > endIndex;

@@ -28,9 +28,8 @@ const db = getFirestore();
 const getDiscoverUsers = async (req, res) => {
   try {
     const userId = req.user.uid;
-    const { type = 'all', limit = 20, offset = 0 } = req.query;
-    const limitNum = parseInt(limit) || 20;
-    const offsetNum = Math.max(parseInt(offset) || 0, 0);
+    const { type = 'all' } = req.query;
+    const { limit: limitNum, offset: offsetNum } = clampPagination(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     // Current user, BOTH connection directions, and the bulk place-count map,
     // all in parallel.
