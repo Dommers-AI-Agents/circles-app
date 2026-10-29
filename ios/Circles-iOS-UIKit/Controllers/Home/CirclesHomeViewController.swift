@@ -178,7 +178,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
     
     let searchBar: UISearchBar = {
         let searchBar = UISearchBar()
-        searchBar.placeholder = HomeSearchMode.places.placeholder   // "Search anything"
+        searchBar.placeholder = HomeSearchCopy.placeholder
         searchBar.searchBarStyle = .minimal
         searchBar.backgroundColor = Constants.Colors.background
         // One ✕, not two: iOS 26 draws the bar's Cancel button as an ✕, so
@@ -666,20 +666,6 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
     /// answer can be acked after the overlay dismisses itself.
     var overlayCard: HomePromptCard?
 
-    /// Places or People — the person says which rather than the search
-    /// guessing from an ambiguous name.
-    var searchMode: HomeSearchMode { get { state.searchMode } set { state.searchMode = newValue } }
-
-    /// Sits under the search bar while searching. A visible toggle rather than
-    /// a question asked before every search: "Nick" is a person AND Nickyo's
-    /// Rodeo, and the answer is one tap away in either direction.
-    let searchModeControl: UISegmentedControl = {
-        let control = UISegmentedControl(items: HomeSearchMode.allCases.map(\.title))
-        control.selectedSegmentIndex = HomeSearchMode.places.rawValue
-        control.translatesAutoresizingMaskIntoConstraints = false
-        control.isHidden = true
-        return control
-    }()
     var lastHomePromptFetchAt: Date?
     /// When the app last left the foreground, so a return can tell a
     /// two-minute hop from a two-hour absence. nil until it happens.
@@ -1620,11 +1606,11 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         view.addGestureRecognizer(tapGesture)
 
         mapTopToPeopleRowConstraint = mapContainerView.topAnchor.constraint(equalTo: userListView.bottomAnchor)
-        // While searching, the map lifts under the mode control and runs to the
+        // While searching, the map lifts under the search bar and runs to the
         // bottom of the screen; the results sheet covers its lower part. A
         // frame change never moves the camera (no auto-zoom on search).
         mapTopSearchingConstraint = mapContainerView.topAnchor.constraint(
-            equalTo: contentView.topAnchor, constant: SearchSheetLayout.modeControlClearance)
+            equalTo: contentView.topAnchor, constant: SearchSheetLayout.searchMapTopInset)
         // ...down to the top of the collapsed sheet's handle (the constant is
         // kept current in viewDidLayoutSubviews), so the map's own corner
         // controls stay reachable when the sheet is collapsed.
@@ -1833,15 +1819,6 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         dailyCardCollapsedHeight = dailyCardContainer.heightAnchor.constraint(equalToConstant: 0)
         dailyCardCollapsedHeight?.isActive = true
         
-        view.addSubview(searchModeControl)
-        searchModeControl.addTarget(self, action: #selector(searchModeControlChanged), for: .valueChanged)
-        NSLayoutConstraint.activate([
-            searchModeControl.topAnchor.constraint(equalTo: searchBar.bottomAnchor, constant: 6),
-            searchModeControl.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
-            searchModeControl.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium)
-        ])
-        view.bringSubviewToFront(searchModeControl)
-
         installSearchResultsSheet()
         
         // Add Place: search (as always) or save the places your photos were
@@ -3959,9 +3936,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
             let location = gesture.location(in: view)
             let sheetFrame = searchResultsSheet.convert(searchResultsSheet.bounds, to: view)
             let searchBarFrame = searchBar.convert(searchBar.bounds, to: view)
-            let modeFrame = searchModeControl.convert(searchModeControl.bounds, to: view)
-            let onModeControl = !searchModeControl.isHidden && modeFrame.contains(location)
-            if !sheetFrame.contains(location) && !searchBarFrame.contains(location) && !onModeControl {
+            if !sheetFrame.contains(location) && !searchBarFrame.contains(location) {
                 collapseSearchSheet()
             }
         }

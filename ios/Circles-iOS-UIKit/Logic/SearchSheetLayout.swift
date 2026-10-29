@@ -26,8 +26,8 @@ struct SearchSheetLayout {
     /// Handle + one header + one row.
     static let minSheetHeight: CGFloat = handleHeight + headerHeight + rowHeight
     static let expandedFraction: CGFloat = 0.55
-    /// Search bar bottom → map top while searching: 6 + 32 (mode control) + 8.
-    static let modeControlClearance: CGFloat = 46
+    /// Search bar bottom → map top while searching.
+    static let searchMapTopInset: CGFloat = 8
 
     /// Handle plus every non-empty section (header + rows).
     static func contentHeight(for plan: HomeSearchPlan) -> CGFloat {

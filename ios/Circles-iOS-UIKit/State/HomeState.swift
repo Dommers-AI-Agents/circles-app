@@ -93,8 +93,6 @@ final class HomeState {
     /// pulled it down). Late async results must not re-expand it; editing the
     /// query or refocusing the bar does.
     var isSearchSheetCollapsed = false
-    /// Places or People (the control under the bar)
-    var searchMode: HomeSearchMode = .places
     /// The text the Apple candidates were fetched for
     var lastAppleQuery = ""
     /// Lookups still out / failed for the current query

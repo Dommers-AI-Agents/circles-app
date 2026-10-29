@@ -8,10 +8,10 @@ import CoreLocation
 //
 // One keystroke matches locally at once (your places, the network's, and
 // whatever is on the map — the same corpus the pins use), then ONE debounce
-// asks the remote channels the current mode shows: the network's saves, the
-// catalog and Apple Maps for Places; people for People. Answers are cached per
-// (channel, query, origin cell) so backspacing or flipping the mode costs
-// nothing, superseded requests are cancelled, and a status line says when
+// asks every remote channel: people, the network's saves, the catalog and
+// Apple Maps. All of it lands in one sheet (Places | People | Nearby, with
+// counts). Answers are cached per (channel, query, origin cell) so
+// backspacing costs nothing, superseded requests are cancelled, and a status line says when
 // lookups are still out or failed (offline used to look like "no results").
 
 // MARK: - UISearchBarDelegate
@@ -29,9 +29,8 @@ extension CirclesHomeViewController: UISearchBarDelegate {
 
         isSearching = true
         enterSearchLayout()
-        matchedWidgetsCache = searchMode == .places
-            ? WidgetSearchMatcher.matches(trimmed, in: FavWidgetRegistry.descriptors, limit: HomeSearchPlan.maxWidgetRows)
-            : []
+        matchedWidgetsCache = WidgetSearchMatcher.matches(trimmed, in: FavWidgetRegistry.descriptors,
+                                                          limit: HomeSearchPlan.maxWidgetRows)
 
         // Apple answers by meaning ("deli" finds delis), so they can't be
         // re-filtered by text: keep them while the query only grows
@@ -64,12 +63,11 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         if !isSearching {
             // Focused, nothing typed: recent searches and browse chips
             guard searchBar.isFirstResponder else {
-                return HomeSearchPlan.make(mode: searchMode, matchedPlaces: 0, suggestedPlaces: 0, people: 0)
+                return HomeSearchPlan.make(matchedPlaces: 0, suggestedPlaces: 0, people: 0)
             }
-            return HomeSearchPlan.idle(mode: searchMode, recent: recentSearches.list.queries.count)
+            return HomeSearchPlan.idle(recent: recentSearches.list.queries.count)
         }
         return HomeSearchPlan.make(
-            mode: searchMode,
             matchedPlaces: filteredPlaces.count,
             suggestedPlaces: suggestedRows.count,
             people: searchedUsers.count,
@@ -89,26 +87,6 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         Array(recentSearches.list.queries.prefix(searchPlan.recentRows))
     }
 
-    /// Switching between Places and People re-runs the current query under the
-    /// new rules — answers already fetched come from the cache.
-    @objc func searchModeControlChanged() {
-        guard let mode = HomeSearchMode(rawValue: searchModeControl.selectedSegmentIndex) else { return }
-        searchModeChanged(to: mode)
-    }
-
-    func searchModeChanged(to mode: HomeSearchMode) {
-        searchMode = mode
-        searchBar.placeholder = mode.placeholder
-        isSearchSheetCollapsed = false
-        let trimmed = (searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            mapViewController?.setSearchFilter(nil)
-            refreshSearchOverlay()
-            return
-        }
-        searchBar(searchBar, textDidChange: trimmed)
-    }
-
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         // Same as the Done button: keyboard down, the list stays open (Wes).
         recordRecentSearch()
@@ -118,9 +96,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
 
     func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
         refreshSearchOriginIfStale()
-        // The search layout from the first tap, not the first keystroke: the
-        // Places/People control used to sit over the avatar row until a
-        // letter was typed (Wes, 2026-10-09)
+        // The search layout from the first tap, not the first keystroke
         enterSearchLayout()
         searchBar.setShowsCancelButton(true, animated: true)
         // Refocusing a collapsed sheet expands it again
@@ -131,9 +107,9 @@ extension CirclesHomeViewController: UISearchBarDelegate {
 
     func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
         searchBar.setShowsCancelButton(false, animated: true)
-        // Left the bar with nothing typed: the search is over, so the
-        // Places/People control goes too (Wes, 2026-10-08: it stayed up over
-        // the Widgets tab). A real query keeps it — the results are still up.
+        // Left the bar with nothing typed: the search is over (Wes, 2026-10-08:
+        // search chrome stayed up over the Widgets tab). A real query keeps
+        // it — the results are still up.
         if (searchBar.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             resetSearch()
         }
@@ -143,15 +119,11 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         resetSearch()
     }
 
-    /// Back to no search at all: empty bar, keyboard down, places mode,
-    /// results gone, the map unfiltered. Cancel does this, and so does the
+    /// Back to no search at all: empty bar, keyboard down, results gone,
+    /// the map unfiltered. Cancel does this, and so does the
     /// Home tab — arriving "home" and finding last week's search still
     /// filtering the map is a bug, not a memory.
     func resetSearch() {
-        setSearchModeControlVisible(false)
-        searchMode = .places
-        searchModeControl.selectedSegmentIndex = HomeSearchMode.places.rawValue
-        searchBar.placeholder = HomeSearchMode.places.placeholder
         searchBar.text = ""
         searchBar.resignFirstResponder()
         endSearch(keepFocus: false)
@@ -230,11 +202,12 @@ extension CirclesHomeViewController {
     }
 
     /// The pins narrow with the text (the map debounces internally, camera
-    /// stays), but only in Places mode — filtering the map by a person's name
-    /// matches place names by accident and empties it for nothing.
+    /// stays) — but only once a place matches: a query that only names a
+    /// person ("Nick") would empty the map for nothing.
     func applySearchFilterToMap(_ query: String) {
-        mapViewController?.setSearchFilter(searchMode.filtersMap(query),
-                                           matchedPlaceIds: searchMode == .places ? appleMatchedPlaceIds : [])
+        let narrows = !filteredPlaces.isEmpty
+        mapViewController?.setSearchFilter(narrows ? query : nil,
+                                           matchedPlaceIds: narrows ? appleMatchedPlaceIds : [])
     }
 
     /// The search text currently filtering the home surface, or nil — the
@@ -347,16 +320,11 @@ extension CirclesHomeViewController {
         let origin = reference?.coordinate
         let caches = state.searchCaches
 
-        var channels: [HomeSearchChannel] = []
-        switch searchMode {
-        case .people:
-            channels = [.people]
-        case .places:
-            channels = [.network]
-            if reference != nil {
-                channels.append(.catalog)
-                if query.count >= 3 { channels.append(.apple) }   // NearbyPlaceSearch's own minimum
-            }
+        // Every channel, every query: one sheet shows them all
+        var channels: [HomeSearchChannel] = [.people, .network]
+        if reference != nil {
+            channels.append(.catalog)
+            if query.count >= 3 { channels.append(.apple) }   // NearbyPlaceSearch's own minimum
         }
 
         // Serve what the cache has; ask for the rest

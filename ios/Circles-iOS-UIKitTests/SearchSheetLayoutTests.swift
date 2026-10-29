@@ -5,7 +5,7 @@ import Testing
 /// The height rules of the home search results sheet.
 struct SearchSheetLayoutTests {
     private func plan(places: Int, nearby: Int = 0, people: Int = 0) -> HomeSearchPlan {
-        HomeSearchPlan(placeRows: places, suggestedRows: nearby, peopleRows: people, filtersMap: true)
+        HomeSearchPlan(placeRows: places, suggestedRows: nearby, peopleRows: people)
     }
 
     @Test func contentIsTheHandlePlusEachNonEmptySection() {

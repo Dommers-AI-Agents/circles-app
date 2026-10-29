@@ -15,12 +15,10 @@ extension CirclesHomeViewController: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard let touchView = touch.view else { return false }
 
-        // The bar, the Places/People control and the results sheet handle
-        // their own touches — the tap-outside recognizer must
+        // The bar and the results sheet handle their own touches — the tap-outside recognizer must
         // never fire for them (it used to hide the results when the mode
         // control was tapped, then the control re-showed them: a flicker).
         if touchView.isDescendant(of: searchBar)
-            || touchView.isDescendant(of: searchModeControl)
             || touchView.isDescendant(of: searchResultsSheet) {
             return false
         }

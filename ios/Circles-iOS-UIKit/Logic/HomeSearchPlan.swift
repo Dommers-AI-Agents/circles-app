@@ -1,33 +1,10 @@
 import Foundation
 
-/// What the home search bar is looking for.
-///
-/// Typing a name is ambiguous — "Nick" is both a person and Nickyo's Rodeo —
-/// so the person says which, and the search stops guessing. Places is the
-/// default because the home screen is a map.
-enum HomeSearchMode: Int, CaseIterable {
-    case places
-    case people
-
-    var title: String {
-        switch self {
-        case .places: return "Places"
-        case .people: return "People"
-        }
-    }
-
-    /// The text the map should filter by in this mode — nil in People mode,
-    /// which hands the map back untouched.
-    func filtersMap(_ query: String) -> String? {
-        self == .places ? query : nil
-    }
-
-    var placeholder: String {
-        switch self {
-        case .places: return "Search anything"   // places, people and widgets (Wes, 2026-10-08)
-        case .people: return "Search people"
-        }
-    }
+/// The home search bar's prompt. One search covers everything — places
+/// (yours, your network's, nearby), people and widgets — in one sheet, with
+/// a count on each section (Wes, 2026-10-29: the Places/People toggle is gone).
+enum HomeSearchCopy {
+    static let placeholder = "Search anything"   // places, people and widgets (Wes, 2026-10-08)
 }
 
 /// What the remote lookups are doing for the current query — shown as one
@@ -82,11 +59,8 @@ struct HomeSearchPlan: Equatable {
     var placeRows: Int
     var suggestedRows: Int
     var peopleRows: Int
-    /// People mode leaves the map alone: filtering pins by a person's name
-    /// matches place names by accident and empties the map for no reason.
-    var filtersMap: Bool
-    /// Widgets whose name matches ("postcard" → Postcard), at the top in
-    /// Places mode (Wes, 2026-10-08)
+    /// Widgets whose name matches ("postcard" → Postcard), at the top
+    /// (Wes, 2026-10-08)
     var widgetRows: Int = 0
     /// The lookup status line (searching / offline / failed), at the bottom
     var status: HomeSearchStatus? = nil
@@ -111,59 +85,51 @@ struct HomeSearchPlan: Equatable {
     /// Does the query have anything to show besides the status line?
     var hasResults: Bool { widgetRows + placeRows + suggestedRows + peopleRows > 0 }
 
-    static func make(mode: HomeSearchMode,
-                     matchedPlaces: Int,
+    /// The pins narrow with the query only when a place matched. A query that
+    /// only names a person ("Nick") leaves the map as it was instead of
+    /// emptying it — the person is in PEOPLE.
+    var filtersMap: Bool { placeRows > 0 }
+
+    static func make(matchedPlaces: Int,
                      suggestedPlaces: Int,
                      people: Int,
                      widgets: Int = 0,
                      status: HomeSearchStatus? = nil) -> HomeSearchPlan {
-        switch mode {
-        case .people:
-            return HomeSearchPlan(
-                placeRows: 0,
-                suggestedRows: 0,
-                peopleRows: min(max(people, 0), maxPeopleRows),
-                filtersMap: false,
-                status: status
-            )
-        case .places:
-            let matched = max(matchedPlaces, 0)
-            return HomeSearchPlan(
-                placeRows: matched,
-                // Nothing of yours matched: the nearby venues ARE the answer.
-                // Something did: a few more nearby still help ("Deli" should
-                // show the other delis, not only the one you saved), but the
-                // list stays short so your own places lead.
-                suggestedRows: min(max(suggestedPlaces, 0), matched == 0 ? maxSuggestedRows : maxExtraSuggestedRows),
-                peopleRows: 0,
-                filtersMap: true,
-                widgetRows: min(max(widgets, 0), maxWidgetRows),
-                status: status
-            )
-        }
+        let matched = max(matchedPlaces, 0)
+        return HomeSearchPlan(
+            placeRows: matched,
+            // Nothing of yours matched: the nearby venues ARE the answer.
+            // Something did: a few more nearby still help ("Deli" should
+            // show the other delis, not only the one you saved), but the
+            // list stays short so your own places lead.
+            suggestedRows: min(max(suggestedPlaces, 0), matched == 0 ? maxSuggestedRows : maxExtraSuggestedRows),
+            peopleRows: min(max(people, 0), maxPeopleRows),
+            widgetRows: min(max(widgets, 0), maxWidgetRows),
+            status: status
+        )
     }
 
-    /// The sheet under a focused, empty bar: recent searches, then browse
-    /// chips (Places mode only; People has nothing to browse).
-    static func idle(mode: HomeSearchMode, recent: Int, browse: Int = HomeSearchBrowseItem.all.count) -> HomeSearchPlan {
-        HomeSearchPlan(placeRows: 0, suggestedRows: 0, peopleRows: 0, filtersMap: false,
+    /// The sheet under a focused, empty bar: recent searches, then browse chips.
+    static func idle(recent: Int, browse: Int = HomeSearchBrowseItem.all.count) -> HomeSearchPlan {
+        HomeSearchPlan(placeRows: 0, suggestedRows: 0, peopleRows: 0,
                        recentRows: min(max(recent, 0), maxRecentRows),
-                       browseRows: mode == .places ? max(browse, 0) : 0)
+                       browseRows: max(browse, 0))
     }
 
-    /// "SUGGESTED NEARBY" when it is all there is, "MORE NEARBY" under your own matches.
-    var suggestedHeader: String { placeRows == 0 ? "SUGGESTED NEARBY" : "MORE NEARBY" }
+    // Section headers carry their counts: "PLACES (26)", "PEOPLE (2)", "NEARBY (6)"
+    var placesHeader: String { "PLACES (\(placeRows))" }
+    var peopleHeader: String { "PEOPLE (\(peopleRows))" }
+    var suggestedHeader: String { "NEARBY (\(suggestedRows))" }
+    var widgetsHeader: String { "WIDGETS (\(widgetRows))" }
 
-    var placesHeader: String { "PLACES" }
-
-    /// The sheet's handle line: "26 places · 3 nearby", "6 nearby", "2 people".
+    /// The sheet's handle line: "Places 26 | People 2 | Nearby 6".
     var handleTitle: String {
         if isIdle { return recentRows > 0 ? "Recent searches" : "Browse nearby" }
         var parts: [String] = []
-        if widgetRows > 0 { parts.append(widgetRows == 1 ? "1 widget" : "\(widgetRows) widgets") }
-        if placeRows > 0 { parts.append(placeRows == 1 ? "1 place" : "\(placeRows) places") }
-        if suggestedRows > 0 { parts.append("\(suggestedRows) nearby") }
-        if peopleRows > 0 { parts.append(peopleRows == 1 ? "1 person" : "\(peopleRows) people") }
+        if placeRows > 0 { parts.append("Places \(placeRows)") }
+        if peopleRows > 0 { parts.append("People \(peopleRows)") }
+        if suggestedRows > 0 { parts.append("Nearby \(suggestedRows)") }
+        if widgetRows > 0 { parts.append("Widgets \(widgetRows)") }
         if parts.isEmpty {
             switch status {
             case .searching: return "Searching…"
@@ -171,6 +137,6 @@ struct HomeSearchPlan: Equatable {
             default: return "No matches"
             }
         }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: " | ")
     }
 }

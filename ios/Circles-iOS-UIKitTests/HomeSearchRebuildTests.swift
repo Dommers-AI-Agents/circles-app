@@ -191,23 +191,21 @@ struct HomeSearchCorpusTests {
 }
 
 struct HomeSearchPlanIdleAndStatusTests {
-    @Test func idleShowsRecentsAndBrowseInPlacesOnly() {
-        let places = HomeSearchPlan.idle(mode: .places, recent: 9)
-        #expect(places.recentRows == HomeSearchPlan.maxRecentRows)
-        #expect(places.browseRows == HomeSearchBrowseItem.all.count)
-        #expect(places.handleTitle == "Recent searches")
-        let people = HomeSearchPlan.idle(mode: .people, recent: 0)
-        #expect(!people.hasRows)
-        #expect(HomeSearchPlan.idle(mode: .places, recent: 0).handleTitle == "Browse nearby")
+    @Test func idleShowsRecentsAndBrowse() {
+        let idle = HomeSearchPlan.idle(recent: 9)
+        #expect(idle.recentRows == HomeSearchPlan.maxRecentRows)
+        #expect(idle.browseRows == HomeSearchBrowseItem.all.count)
+        #expect(idle.handleTitle == "Recent searches")
+        #expect(HomeSearchPlan.idle(recent: 0).handleTitle == "Browse nearby")
     }
 
     @Test func statusRowIsARowAndTitlesTheEmptySheet() {
-        let searching = HomeSearchPlan.make(mode: .places, matchedPlaces: 0, suggestedPlaces: 0, people: 0, status: .searching)
+        let searching = HomeSearchPlan.make(matchedPlaces: 0, suggestedPlaces: 0, people: 0, status: .searching)
         #expect(searching.hasRows)
         #expect(!searching.hasResults)
         #expect(searching.handleTitle == "Searching…")
-        let offline = HomeSearchPlan.make(mode: .places, matchedPlaces: 2, suggestedPlaces: 0, people: 0, status: .offline)
-        #expect(offline.handleTitle == "2 places")
+        let offline = HomeSearchPlan.make(matchedPlaces: 2, suggestedPlaces: 0, people: 0, status: .offline)
+        #expect(offline.handleTitle == "Places 2")
         #expect(SearchSheetLayout.contentHeight(for: offline)
                 == SearchSheetLayout.handleHeight + SearchSheetLayout.headerHeight + 3 * SearchSheetLayout.rowHeight)
     }

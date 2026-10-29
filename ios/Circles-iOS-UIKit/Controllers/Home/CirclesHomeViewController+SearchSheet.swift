@@ -43,7 +43,7 @@ extension CirclesHomeViewController {
         searchResultsSheet.setBottomInset(searchSheetBottomInset)
         let safeBottom = view.bounds.maxY - searchSheetBottomInset
         let top = min(keyboardTop ?? view.keyboardLayoutGuide.layoutFrame.minY, safeBottom)
-        let above = searchModeControl.isHidden ? searchBar.frame.maxY : searchModeControl.frame.maxY
+        let above = searchBar.frame.maxY
         return max(top - (above + 8), 0)
     }
 
@@ -54,7 +54,6 @@ extension CirclesHomeViewController {
         guard !isSearchLayoutActive else { return }
         isSearchLayoutActive = true
         resetPlacesListToMap()
-        setSearchModeControlVisible(true)
         scrollView.setContentOffset(.zero, animated: false)
         scrollView.isScrollEnabled = false
         mapHeightConstraint?.isActive = false
@@ -83,12 +82,6 @@ extension CirclesHomeViewController {
         UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
     }
 
-    /// The mode control belongs to an active search — it appears when the
-    /// bar takes focus (with the search layout) and goes away with Cancel,
-    /// so the home screen is unchanged for anyone not searching.
-    func setSearchModeControlVisible(_ visible: Bool) {
-        searchModeControl.isHidden = !visible
-    }
 }
 
 // MARK: - Show / hide / collapse
@@ -125,7 +118,7 @@ extension CirclesHomeViewController {
         let recent = visibleRecentSearches
         let query = searchBar.text ?? ""
         return (widgets + ["|"] + places + ["|"] + nearby + ["|"] + people + ["|", status, "|"] + recent
-                + ["|", "\(plan.browseRows)", searchMode.title, query]).joined(separator: ",")
+                + ["|", "\(plan.browseRows)", query]).joined(separator: ",")
     }
 
     /// Sheet gone. When the search itself is over (every teardown path sets

@@ -7,14 +7,14 @@ import CoreLocation
 // CirclesHomeViewController. Extracted from the main controller (Wave 4).
 
 // MARK: - Search sheet sections
-// PLACES (every matched saved place, nearest first), SUGGESTED/MORE NEARBY
-// (catalog + Apple venues) and PEOPLE. HomeSearchPlan says how many rows each
-// gets for the current mode.
+// One sheet for everything (Wes, 2026-10-29): PLACES (every matched saved
+// place, nearest first), PEOPLE, then NEARBY (catalog + Apple venues), each
+// header with its count. HomeSearchPlan says how many rows each gets.
 enum SearchSection: Int, CaseIterable {
     case widgets
     case places
-    case suggested
     case people
+    case suggested
     /// One line: searching / offline / failed (tap to retry)
     case status
     /// Focused, empty bar: the person's recent searches…
@@ -262,10 +262,10 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
     func searchSectionTitle(_ section: Int) -> String? {
         let plan = searchPlan
         switch SearchSection(rawValue: section) {
-        case .widgets: return plan.widgetRows == 0 ? nil : "WIDGETS"
+        case .widgets: return plan.widgetRows == 0 ? nil : plan.widgetsHeader
         case .places: return plan.placeRows == 0 ? nil : plan.placesHeader
         case .suggested: return plan.suggestedRows == 0 ? nil : plan.suggestedHeader
-        case .people: return plan.peopleRows == 0 ? nil : "PEOPLE"
+        case .people: return plan.peopleRows == 0 ? nil : plan.peopleHeader
         case .recent: return plan.recentRows == 0 ? nil : "RECENT"
         case .browse: return plan.browseRows == 0 ? nil : "BROWSE NEARBY"
         case .status, .none: return nil
