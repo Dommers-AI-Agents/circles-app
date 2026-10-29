@@ -72,7 +72,8 @@ extension CirclesHomeViewController: UISearchBarDelegate {
             suggestedPlaces: suggestedRows.count,
             people: searchedUsers.count,
             widgets: matchedWidgetsCache.count,
-            status: state.searchStatus
+            status: state.searchStatus,
+            scope: state.searchScope
         )
     }
 
@@ -145,6 +146,18 @@ extension CirclesHomeViewController: UISearchBarDelegate {
             hideSearchResults()
         }
         updateEmptyState()
+    }
+
+    /// A handle chip was tapped: narrow the sheet to that kind; the chip
+    /// already picked (or All) shows everything again.
+    func selectSearchScope(_ scope: HomeSearchScope) {
+        let current = searchPlan.scope
+        state.searchScope = (scope == current) ? .all : scope
+        AnalyticsService.shared.logEvent("home_search_scope", parameters: ["scope": "\(state.searchScope)"])
+        refreshSearchOverlay()
+        if searchResultsTableView.numberOfSections > 0 {
+            searchResultsTableView.setContentOffset(.zero, animated: false)
+        }
     }
 
     /// Runs a recent search or a browse chip as if typed.

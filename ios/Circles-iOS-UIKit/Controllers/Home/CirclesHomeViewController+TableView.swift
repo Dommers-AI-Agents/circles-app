@@ -39,8 +39,8 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             switch SearchSection(rawValue: section) {
             case .widgets: return plan.widgetRows
             case .places: return plan.placeRows
-            case .suggested: return plan.suggestedRows
-            case .people: return plan.peopleRows
+            case .suggested: return plan.suggestedSectionRows
+            case .people: return plan.peopleSectionRows
             case .status: return plan.statusRows
             case .recent: return plan.recentRows
             case .browse: return plan.browseRows
@@ -115,6 +115,21 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 return cell
             default:
                 break
+            }
+
+            // "Show all N": the last row of a section All cut short
+            if let more = showAllRow(at: indexPath) {
+                let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
+                cell.accessoryView = nil
+                cell.accessoryType = .disclosureIndicator
+                var content = cell.defaultContentConfiguration()
+                content.text = more.title
+                content.textProperties.color = Constants.Colors.primary
+                content.textProperties.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+                content.image = UIImage(systemName: "list.bullet")
+                content.imageProperties.tintColor = Constants.Colors.primary
+                cell.contentConfiguration = content
+                return cell
             }
 
             // WIDGETS section: tap to open that widget
@@ -300,6 +315,10 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         }
 
         if tableView == searchResultsTableView {
+            if let more = showAllRow(at: indexPath) {
+                selectSearchScope(more.scope)
+                return
+            }
             switch SearchSection(rawValue: indexPath.section) {
             case .widgets:
                 let widgets = matchedWidgets
@@ -349,6 +368,19 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             case .none:
                 break
             }
+        }
+    }
+
+    /// The "Show all N people / nearby" row, when `indexPath` is one.
+    func showAllRow(at indexPath: IndexPath) -> (scope: HomeSearchScope, title: String)? {
+        let plan = searchPlan
+        switch SearchSection(rawValue: indexPath.section) {
+        case .people where plan.morePeople && indexPath.row == plan.peopleRows:
+            return (.people, "Show all \(plan.peopleTotal) people")
+        case .suggested where plan.moreNearby && indexPath.row == plan.suggestedRows:
+            return (.nearby, "Show all \(plan.suggestedTotal) nearby")
+        default:
+            return nil
         }
     }
 

@@ -55,6 +55,12 @@ struct HomeSearchBrowseItem: Equatable {
 /// Since 2026-09-24 the results live in a scrollable sheet under the map, so
 /// every matched place gets a row (nearest first) — the list and the pins show
 /// the same set, and the handle says how many.
+/// Which kind of result the sheet is narrowed to — the handle's chips
+/// (All | Places 26 | People 2 | Nearby 6), Wes 2026-10-29.
+enum HomeSearchScope: Int, CaseIterable {
+    case all, places, people, nearby, widgets
+}
+
 struct HomeSearchPlan: Equatable {
     var placeRows: Int
     var suggestedRows: Int
@@ -67,6 +73,13 @@ struct HomeSearchPlan: Equatable {
     /// Focused bar, nothing typed: recent searches and browse chips
     var recentRows: Int = 0
     var browseRows: Int = 0
+    /// The chip in effect, and how many of each kind exist (the chips and
+    /// headers count these; All shows a short list of some kinds)
+    var scope: HomeSearchScope = .all
+    var placesTotal: Int = 0
+    var peopleTotal: Int = 0
+    var suggestedTotal: Int = 0
+    var widgetsTotal: Int = 0
 
     static let maxWidgetRows = 3
     static let maxSuggestedRows = 6
@@ -78,6 +91,13 @@ struct HomeSearchPlan: Equatable {
     var statusRows: Int { status == nil ? 0 : 1 }
     var isIdle: Bool { recentRows + browseRows > 0 }
 
+    /// "Show all N" closes a section that All cut short; tapping it picks that chip
+    var morePeople: Bool { scope == .all && peopleTotal > peopleRows }
+    var moreNearby: Bool { scope == .all && suggestedTotal > suggestedRows }
+    /// Table rows per section, the "Show all" row included
+    var peopleSectionRows: Int { peopleRows + (morePeople ? 1 : 0) }
+    var suggestedSectionRows: Int { suggestedRows + (moreNearby ? 1 : 0) }
+
     var hasRows: Bool {
         widgetRows + placeRows + suggestedRows + peopleRows + statusRows + recentRows + browseRows > 0
     }
@@ -88,25 +108,41 @@ struct HomeSearchPlan: Equatable {
     /// The pins narrow with the query only when a place matched. A query that
     /// only names a person ("Nick") leaves the map as it was instead of
     /// emptying it — the person is in PEOPLE.
-    var filtersMap: Bool { placeRows > 0 }
+    var filtersMap: Bool { placesTotal > 0 }
 
+    /// - Parameter scope: the chip picked; a chip whose kind has no results
+    ///   falls back to All (the query moved on and emptied it).
     static func make(matchedPlaces: Int,
                      suggestedPlaces: Int,
                      people: Int,
                      widgets: Int = 0,
-                     status: HomeSearchStatus? = nil) -> HomeSearchPlan {
-        let matched = max(matchedPlaces, 0)
-        return HomeSearchPlan(
-            placeRows: matched,
+                     status: HomeSearchStatus? = nil,
+                     scope requested: HomeSearchScope = .all) -> HomeSearchPlan {
+        let places = max(matchedPlaces, 0)
+        let peopleCount = max(people, 0)
+        let nearby = max(suggestedPlaces, 0)
+        let widgetCount = min(max(widgets, 0), maxWidgetRows)
+        let total: [HomeSearchScope: Int] = [.places: places, .people: peopleCount, .nearby: nearby, .widgets: widgetCount]
+        let scope = (requested == .all || (total[requested] ?? 0) == 0) ? .all : requested
+
+        var plan = HomeSearchPlan(placeRows: 0, suggestedRows: 0, peopleRows: 0, status: status, scope: scope,
+                                  placesTotal: places, peopleTotal: peopleCount,
+                                  suggestedTotal: nearby, widgetsTotal: widgetCount)
+        switch scope {
+        case .all:
+            plan.placeRows = places
             // Nothing of yours matched: the nearby venues ARE the answer.
             // Something did: a few more nearby still help ("Deli" should
-            // show the other delis, not only the one you saved), but the
-            // list stays short so your own places lead.
-            suggestedRows: min(max(suggestedPlaces, 0), matched == 0 ? maxSuggestedRows : maxExtraSuggestedRows),
-            peopleRows: min(max(people, 0), maxPeopleRows),
-            widgetRows: min(max(widgets, 0), maxWidgetRows),
-            status: status
-        )
+            // show the other delis), but your own places lead.
+            plan.suggestedRows = min(nearby, places == 0 ? maxSuggestedRows : maxExtraSuggestedRows)
+            plan.peopleRows = min(peopleCount, maxPeopleRows)
+            plan.widgetRows = widgetCount
+        case .places: plan.placeRows = places
+        case .people: plan.peopleRows = peopleCount
+        case .nearby: plan.suggestedRows = nearby
+        case .widgets: plan.widgetRows = widgetCount
+        }
+        return plan
     }
 
     /// The sheet under a focused, empty bar: recent searches, then browse chips.
@@ -116,20 +152,45 @@ struct HomeSearchPlan: Equatable {
                        browseRows: max(browse, 0))
     }
 
-    // Section headers carry their counts: "PLACES (26)", "PEOPLE (2)", "NEARBY (6)"
-    var placesHeader: String { "PLACES (\(placeRows))" }
-    var peopleHeader: String { "PEOPLE (\(peopleRows))" }
-    var suggestedHeader: String { "NEARBY (\(suggestedRows))" }
-    var widgetsHeader: String { "WIDGETS (\(widgetRows))" }
+    // Section headers count everything of their kind: "PLACES (26)"
+    var placesHeader: String { "PLACES (\(placesTotal))" }
+    var peopleHeader: String { "PEOPLE (\(peopleTotal))" }
+    var suggestedHeader: String { "NEARBY (\(suggestedTotal))" }
+    var widgetsHeader: String { "WIDGETS (\(widgetsTotal))" }
 
-    /// The sheet's handle line: "Places 26 | People 2 | Nearby 6".
+    /// The handle's chips — only when there is more than one kind to pick
+    /// between; one kind needs no filter (the handle line says it instead).
+    var scopeChips: [HomeSearchScope] {
+        guard !isIdle else { return [] }
+        let kinds = HomeSearchScope.allCases.filter { $0 != .all && total(of: $0) > 0 }
+        return kinds.count >= 2 ? [.all] + kinds : []
+    }
+
+    func total(of scope: HomeSearchScope) -> Int {
+        switch scope {
+        case .all: return placesTotal + peopleTotal + suggestedTotal + widgetsTotal
+        case .places: return placesTotal
+        case .people: return peopleTotal
+        case .nearby: return suggestedTotal
+        case .widgets: return widgetsTotal
+        }
+    }
+
+    func chipTitle(_ scope: HomeSearchScope) -> String {
+        switch scope {
+        case .all: return "All"
+        case .places: return "Places \(placesTotal)"
+        case .people: return "People \(peopleTotal)"
+        case .nearby: return "Nearby \(suggestedTotal)"
+        case .widgets: return "Widgets \(widgetsTotal)"
+        }
+    }
+
+    /// The sheet's handle line when there are no chips: "Places 26",
+    /// "Searching…", "Recent searches".
     var handleTitle: String {
         if isIdle { return recentRows > 0 ? "Recent searches" : "Browse nearby" }
-        var parts: [String] = []
-        if placeRows > 0 { parts.append("Places \(placeRows)") }
-        if peopleRows > 0 { parts.append("People \(peopleRows)") }
-        if suggestedRows > 0 { parts.append("Nearby \(suggestedRows)") }
-        if widgetRows > 0 { parts.append("Widgets \(widgetRows)") }
+        let parts = HomeSearchScope.allCases.filter { $0 != .all && total(of: $0) > 0 }.map(chipTitle)
         if parts.isEmpty {
             switch status {
             case .searching: return "Searching…"

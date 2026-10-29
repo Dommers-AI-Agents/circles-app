@@ -24,11 +24,24 @@ final class SearchResultsSheetView: UIView {
     var isVisible: Bool { !isHidden && alpha > 0 }
     var onStateChange: ((SearchSheetState) -> Void)?
     var onHandleTap: (() -> Void)?
+    /// A chip in the handle was tapped (its `tag`)
+    var onChipTap: ((Int) -> Void)?
+
+    /// One filter chip in the handle ("Places 26"), selected or not.
+    struct Chip: Equatable {
+        let tag: Int
+        let title: String
+        let isSelected: Bool
+    }
 
     private let container = UIView()
     private let handle = UIView()
     private let grabber = UIView()
     private let titleLabel = UILabel()
+    /// The chips replace the title when there is something to filter by
+    private let chipScroll = UIScrollView()
+    private let chipStack = UIStackView()
+    private var renderedChips: [Chip] = []
     private let chevron = UIImageView()
     private var heightConstraint: NSLayoutConstraint!
     private var bottomCap: NSLayoutConstraint!
@@ -166,6 +179,37 @@ final class SearchResultsSheetView: UIView {
         update()
     }
 
+    /// Filter chips in the handle; none shows the plain title line instead.
+    func setChips(_ chips: [Chip]) {
+        titleLabel.isHidden = !chips.isEmpty
+        chipScroll.isHidden = chips.isEmpty
+        guard chips != renderedChips else { return }
+        renderedChips = chips
+        chipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for chip in chips {
+            let button = UIButton.pillButton(title: chip.title)
+            button.tag = chip.tag
+            button.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
+            button.contentEdgeInsets = UIEdgeInsets(top: 4, left: 12, bottom: 4, right: 12)
+            button.layer.cornerRadius = 14
+            button.backgroundColor = chip.isSelected ? Constants.Colors.primary : Constants.Colors.background
+            button.setTitleColor(chip.isSelected ? .white : Constants.Colors.label, for: .normal)
+            button.accessibilityTraits = chip.isSelected ? [.button, .selected] : .button
+            button.addTarget(self, action: #selector(chipTapped(_:)), for: .touchUpInside)
+            button.heightAnchor.constraint(equalToConstant: 28).isActive = true
+            chipStack.addArrangedSubview(button)
+        }
+        // A short row sits centred; a long one scrolls
+        layoutIfNeeded()
+        let inset = max((chipScroll.bounds.width - chipStack.bounds.width) / 2, 0)
+        chipScroll.contentInset = UIEdgeInsets(top: 0, left: inset, bottom: 0, right: 0)
+        if let index = chips.firstIndex(where: \.isSelected), index < chipStack.arrangedSubviews.count {
+            chipScroll.scrollRectToVisible(chipStack.arrangedSubviews[index].frame.insetBy(dx: -12, dy: 0), animated: false)
+        }
+    }
+
+    @objc private func chipTapped(_ sender: UIButton) { onChipTap?(sender.tag) }
+
     // MARK: - Geometry
 
     /// Finger on the list, or it is still moving. The home screen holds map
@@ -254,6 +298,17 @@ final class SearchResultsSheetView: UIView {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         handle.addSubview(titleLabel)
 
+        chipStack.axis = .horizontal
+        chipStack.spacing = 6
+        chipStack.alignment = .center
+        chipStack.translatesAutoresizingMaskIntoConstraints = false
+        chipScroll.showsHorizontalScrollIndicator = false
+        chipScroll.alwaysBounceHorizontal = false
+        chipScroll.isHidden = true
+        chipScroll.translatesAutoresizingMaskIntoConstraints = false
+        chipScroll.addSubview(chipStack)
+        handle.addSubview(chipScroll)
+
         chevron.tintColor = .secondaryLabel
         chevron.contentMode = .center
         chevron.translatesAutoresizingMaskIntoConstraints = false
@@ -281,6 +336,16 @@ final class SearchResultsSheetView: UIView {
             titleLabel.topAnchor.constraint(equalTo: grabber.bottomAnchor, constant: 8),
             titleLabel.leadingAnchor.constraint(equalTo: handle.leadingAnchor, constant: 44),
             titleLabel.trailingAnchor.constraint(equalTo: handle.trailingAnchor, constant: -44),
+
+            chipScroll.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            chipScroll.leadingAnchor.constraint(equalTo: handle.leadingAnchor, constant: 12),
+            chipScroll.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -6),
+            chipScroll.heightAnchor.constraint(equalToConstant: 30),
+            chipStack.topAnchor.constraint(equalTo: chipScroll.contentLayoutGuide.topAnchor),
+            chipStack.bottomAnchor.constraint(equalTo: chipScroll.contentLayoutGuide.bottomAnchor),
+            chipStack.leadingAnchor.constraint(equalTo: chipScroll.contentLayoutGuide.leadingAnchor),
+            chipStack.trailingAnchor.constraint(equalTo: chipScroll.contentLayoutGuide.trailingAnchor),
+            chipStack.heightAnchor.constraint(equalTo: chipScroll.frameLayoutGuide.heightAnchor),
 
             chevron.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
             chevron.trailingAnchor.constraint(equalTo: handle.trailingAnchor, constant: -16),

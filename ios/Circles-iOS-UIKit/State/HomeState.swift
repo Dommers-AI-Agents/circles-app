@@ -93,6 +93,8 @@ final class HomeState {
     /// pulled it down). Late async results must not re-expand it; editing the
     /// query or refocusing the bar does.
     var isSearchSheetCollapsed = false
+    /// The handle chip picked (All | Places | People | Nearby)
+    var searchScope: HomeSearchScope = .all
     /// The text the Apple candidates were fetched for
     var lastAppleQuery = ""
     /// Lookups still out / failed for the current query
@@ -133,6 +135,7 @@ final class HomeState {
         suggestedRows = []
         suggestedDistances = [:]
         networkSearchHits = []
+        searchScope = .all
         lastAppleQuery = ""
         pendingSearchChannels = []
         failedSearchChannels = []

@@ -15,6 +15,10 @@ extension CirclesHomeViewController {
         searchResultsSheet.onStateChange = { [weak self] state in
             self?.isSearchSheetCollapsed = (state == .collapsed)
         }
+        searchResultsSheet.onChipTap = { [weak self] tag in
+            guard let scope = HomeSearchScope(rawValue: tag) else { return }
+            self?.selectSearchScope(scope)
+        }
         searchResultsSheet.onHandleTap = { [weak self] in
             guard let self else { return }
             if self.isSearchSheetCollapsed {
@@ -103,6 +107,9 @@ extension CirclesHomeViewController {
         let plan = searchPlan
         searchResultsSheet.present(state: isSearchSheetCollapsed ? .collapsed : .expanded,
                                    availableHeight: searchSheetAvailableHeight())
+        searchResultsSheet.setChips(plan.scopeChips.map {
+            SearchResultsSheetView.Chip(tag: $0.rawValue, title: plan.chipTitle($0), isSelected: $0 == plan.scope)
+        })
         searchResultsSheet.setContent(plan: plan, title: plan.handleTitle, signature: searchRowsSignature)
     }
 
@@ -118,7 +125,7 @@ extension CirclesHomeViewController {
         let recent = visibleRecentSearches
         let query = searchBar.text ?? ""
         return (widgets + ["|"] + places + ["|"] + nearby + ["|"] + people + ["|", status, "|"] + recent
-                + ["|", "\(plan.browseRows)", query]).joined(separator: ",")
+                + ["|", "\(plan.browseRows)", "\(plan.scope)", "\(plan.morePeople)\(plan.moreNearby)", query]).joined(separator: ",")
     }
 
     /// Sheet gone. When the search itself is over (every teardown path sets
