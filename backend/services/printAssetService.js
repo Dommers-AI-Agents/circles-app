@@ -95,17 +95,30 @@ function drawFace(doc, { venue, kind, qr, qrPt, W, H, bandPt = 8 }) {
 
   if (W / H > 1.6) return drawWideFace(doc, { venue, copy, qr, qrPt, W, H, bandPt, s, pad });
 
+  // Measure the whole block first so it sits centred between the brand
+  // band and the footer: on a small tent face the stacked words and code
+  // used to hug the fold and leave the outer third of the panel empty
+  // (Wes, 2026-10-29, next to the letter tent's centred faces).
+  const brandH = doc.font('Helvetica-Bold').fontSize(15 * s).heightOfString('FavCircles', { width: W });
+  const nameH = doc.font('Helvetica-Bold').fontSize(21 * s).heightOfString(venue.venueName, { width: W - pad * 2 });
+  const leadH = doc.font('Helvetica').fontSize(13 * s).heightOfString(copy.lead, { width: W });
+  const afterH = doc.font('Helvetica-Bold').fontSize(13 * s).heightOfString(copy.after, { width: W });
+  const softH = doc.font('Helvetica').fontSize(11 * s).heightOfString(copy.afterSoft, { width: W - pad * 2 });
+  const gaps = (6 + 6 + 12 + 12 + 3) * s;
+  const footZone = 34 * s;
+  const avail = H - bandPt - footZone - pad;
+  // The code at the asked size, never past the face
+  const qrSize = Math.max(Math.min(qrPt, W - pad * 2, avail - (brandH + nameH + leadH + afterH + softH + gaps)), IN);
+  const total = brandH + nameH + leadH + qrSize + afterH + softH + gaps;
+  let y = bandPt + Math.max(12 * s, (avail - total) / 2 + pad / 2);
+
   doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(15 * s)
-    .text('FavCircles', 0, bandPt + 16 * s, { width: W, align: 'center' });
+    .text('FavCircles', 0, y, { width: W, align: 'center' });
   doc.fillColor(INK).font('Helvetica-Bold').fontSize(21 * s)
     .text(venue.venueName, pad, doc.y + 6 * s, { width: W - pad * 2, align: 'center' });
   doc.fillColor(INK_SOFT).font('Helvetica').fontSize(13 * s)
     .text(copy.lead, 0, doc.y + 6 * s, { width: W, align: 'center' });
 
-  // The code at the asked size, never past the face
-  const afterBlock = 60 * s;
-  const maxQr = Math.min(W - pad * 2, H - doc.y - 12 * s - afterBlock - 30 * s);
-  const qrSize = Math.max(Math.min(qrPt, maxQr), IN);
   const qrY = doc.y + 12 * s;
   doc.image(qr, (W - qrSize) / 2, qrY, { width: qrSize, height: qrSize });
 
