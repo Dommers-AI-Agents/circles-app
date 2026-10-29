@@ -79,6 +79,20 @@ describe('GET /api/users/contacts/discover?type=following', () => {
     expect(out.json.mock.calls[0][0].users.map((u) => u.id)).toEqual(['fan']);
   });
 
+  test('the everyone list leaves out people you are already connected with', async () => {
+    await put('users', 'me', { displayName: 'Me', following: ['followed'], followers: [] });
+    for (const id of ['stranger', 'followed', 'connected', 'asked']) {
+      await put('users', id, { displayName: id, following: [], createdAt: '2026-01-01T00:00:00.000Z' });
+    }
+    await put('connections', 'c1', { userId: 'me', connectedUserId: 'connected', status: 'accepted' });
+    await put('connections', 'c2', { userId: 'me', connectedUserId: 'asked', status: 'pending' });
+    const out = res();
+    await getDiscoverUsers({ user: { uid: 'me' }, query: { type: 'everyone' } }, out);
+    const users = out.json.mock.calls[0][0].users;
+    expect(users.map((u) => u.id)).toEqual(['stranger', 'followed', 'asked']);
+    expect(users.find((u) => u.id === 'asked').connectionStatus).toBe('pending');
+  });
+
   test('nobody followed means an empty list, not an error', async () => {
     await put('users', 'me', { displayName: 'Me' });
     const out = res();

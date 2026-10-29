@@ -66,7 +66,7 @@ class DiscoveryListViewController: BaseViewController {
             ]
         case .everyone:
             return [
-                ("everyone", "👥 People on FavCircles", "Everyone on FavCircles. People you haven't connected with come first, then the people you follow and your connections.")
+                ("everyone", "👥 People on FavCircles", "Everyone on FavCircles you aren't connected with yet. New-to-you people come first, then the people you follow.")
             ]
         }
     }

@@ -347,9 +347,11 @@ const getDiscoverUsers = async (req, res) => {
       // everyone on FavCircles, people with no places yet and people you
       // dismissed included (an X tapped by mistake shouldn't hide someone
       // for good; Wes, 2026-10-01). New-to-you people first, then people you
-      // follow but aren't connected with, then your connections; within
-      // each, biggest collections then newest sign-ups. Each row's button
-      // says where you stand. Blocked, merged and test accounts stay out.
+      // follow but aren't connected with, then people with a request open;
+      // within each, biggest collections then newest sign-ups. Each row's
+      // button says where you stand. Blocked, merged and test accounts stay
+      // out — and so do your connections: a list for finding people has no
+      // use for the ones you already have (Wes, 2026-10-29).
       const everyoneSnap = await db.collection(COLLECTIONS.USERS)
         .select('createdAt', ...HIDDEN_ACCOUNT_FIELDS).get();
       const placesOf = (id) => ((placeCounts.get(id) || {}).placesCount || 0);
@@ -363,7 +365,8 @@ const getDiscoverUsers = async (req, res) => {
       const pageIds = everyoneSnap.docs
         .filter((d) => {
           const u = d.data();
-          return d.id !== userId && !blockedSet.has(d.id) && !isHiddenAccount(u);
+          return d.id !== userId && !blockedSet.has(d.id) && !isHiddenAccount(u)
+            && connStatus.get(d.id) !== 'accepted';
         })
         .sort((a, b) => (group(a.id) - group(b.id)) || (placesOf(b.id) - placesOf(a.id)) || (joined(b) - joined(a)))
         .map((d) => d.id)
