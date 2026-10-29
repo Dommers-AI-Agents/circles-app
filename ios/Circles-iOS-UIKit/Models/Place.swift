@@ -27,6 +27,12 @@ struct Place: Codable, Identifiable {
     var reservable: Bool? = nil
     var takeout: Bool? = nil
     var curbsidePickup: Bool? = nil
+    /// What Google says it serves, whether it's open for business, and its
+    /// entrance (free fields of the same Google call); the place page's
+    /// "Good to know" line. nil = unknown.
+    var serves: PlaceServes? = nil
+    var businessStatus: String? = nil
+    var wheelchairAccessibleEntrance: Bool? = nil
     /// The saver's own 0–10 score for this place (nil = unrated / "haven't
     /// been yet"). Per-user data on the save record — distinct from `rating`,
     /// which is Google's venue average.
@@ -90,6 +96,7 @@ struct Place: Codable, Identifiable {
         case name, description, address, location, website, phone, googlePlaceId
         case photos, videos, category, customCategoryId, subcategory, rating, userRatingsTotal, userRating, notes, privateNotes, publicNotes, tags, reviews, openingHours
         case delivery, dineIn, reservable, takeout, curbsidePickup
+        case serves, businessStatus, wheelchairAccessibleEntrance
         case priceLevel, likes, likesCount, commentsCount, circleId, addedBy, addedByUser, privacy, audienceListId, createdAt, updatedAt, isNew, circleName
         case followersCount, isFollowing, followAlerts
         case myCheckInStats
@@ -191,6 +198,9 @@ struct Place: Codable, Identifiable {
         self.reservable = try? container.decodeIfPresent(Bool.self, forKey: .reservable)
         self.takeout = try? container.decodeIfPresent(Bool.self, forKey: .takeout)
         self.curbsidePickup = try? container.decodeIfPresent(Bool.self, forKey: .curbsidePickup)
+        self.serves = try? container.decodeIfPresent(PlaceServes.self, forKey: .serves)
+        self.businessStatus = try? container.decodeIfPresent(String.self, forKey: .businessStatus)
+        self.wheelchairAccessibleEntrance = try? container.decodeIfPresent(Bool.self, forKey: .wheelchairAccessibleEntrance)
         self.notes = try container.decodeIfPresent(String.self, forKey: .notes)
         self.privateNotes = try container.decodeIfPresent(String.self, forKey: .privateNotes)
         self.publicNotes = try container.decodeIfPresent(String.self, forKey: .publicNotes)

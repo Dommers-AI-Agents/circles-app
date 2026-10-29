@@ -59,8 +59,11 @@ const VENUE_TOP_FIELDS = ['name', 'address', 'location', 'category', 'subcategor
 // delivery/dineIn/reservable/takeout/curbsidePickup are Google Atmosphere
 // booleans (may be null = unknown) powering partner-action chip eligibility;
 // they ride Details calls that already bill Atmosphere for rating/price_level
+// serves/businessStatus/wheelchairAccessibleEntrance: the rest of the same
+// calls' free fields (googlePlaceFields), for the place page's "Good to know"
 const VENUE_GOOGLE_FIELDS = ['rating', 'userRatingsTotal', 'priceLevel', 'openingHours', 'website', 'phone',
-                             'delivery', 'dineIn', 'reservable', 'takeout', 'curbsidePickup'];
+                             'delivery', 'dineIn', 'reservable', 'takeout', 'curbsidePickup',
+                             'serves', 'businessStatus', 'wheelchairAccessibleEntrance'];
 
 // The shared details people read and act on (Call, Website, hours, the
 // description) come ONLY from the canonical venue. A save's own copy is a

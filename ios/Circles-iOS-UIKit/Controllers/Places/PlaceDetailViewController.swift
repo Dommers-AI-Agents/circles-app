@@ -304,6 +304,15 @@ class PlaceDetailViewController: BaseViewController {
     private let addressLabel: UILabel = PlaceDetailViewFactory.addressLabel()
     
     private let hoursLabel: UILabel = PlaceDetailViewFactory.hoursLabel()
+    /// "Good to know": what it serves and offers, from Google (2026-10-29)
+    private let goodToKnowLabel: UILabel = PlaceDetailViewFactory.hoursLabel()
+    /// Google lists the place as closed
+    private let closedNoticeLabel: UILabel = {
+        let label = PlaceDetailViewFactory.hoursLabel()
+        label.textColor = Constants.Colors.danger
+        label.font = UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .semibold)
+        return label
+    }()
 
     // About card: description + hours in one grouped card (phone/website live
     // only in the quick-action chips, not repeated as text)
@@ -740,9 +749,11 @@ class PlaceDetailViewController: BaseViewController {
         infoContainerView.addSubview(aboutCardView)
         aboutCardView.addSubview(aboutStackView)
         aboutStackView.addArrangedSubview(aboutTitleLabel)
+        aboutStackView.addArrangedSubview(closedNoticeLabel)
         aboutStackView.addArrangedSubview(userRatingLabel)
         aboutStackView.addArrangedSubview(descriptionLabel)
         aboutStackView.addArrangedSubview(hoursLabel)
+        aboutStackView.addArrangedSubview(goodToKnowLabel)
 
         // Add tap gesture recognizer for clickable URLs in description
         let descriptionTapGesture = UITapGestureRecognizer(target: self, action: #selector(descriptionLabelTapped(_:)))
@@ -1370,6 +1381,22 @@ class PlaceDetailViewController: BaseViewController {
         } else {
             hoursLabel.isHidden = true
         }
+
+        // Good to know + a closed warning, from Google's free fields
+        if let line = PlaceGoodToKnow.line(PlaceGoodToKnow.facts(place)) {
+            let text = NSMutableAttributedString(string: "Good to know  ", attributes: [
+                .font: UIFont.systemFont(ofSize: Constants.FontSize.small, weight: .semibold),
+                .foregroundColor: Constants.Colors.label])
+            text.append(NSAttributedString(string: line, attributes: [
+                .font: UIFont.systemFont(ofSize: Constants.FontSize.small),
+                .foregroundColor: Constants.Colors.gray]))
+            goodToKnowLabel.attributedText = text
+            goodToKnowLabel.isHidden = false
+        } else {
+            goodToKnowLabel.isHidden = true
+        }
+        closedNoticeLabel.text = PlaceGoodToKnow.closedNotice(place.businessStatus)
+        closedNoticeLabel.isHidden = closedNoticeLabel.text == nil
 
         updateAboutCardVisibility()
         
@@ -3786,6 +3813,7 @@ extension PlaceDetailViewController: PlaceOwnerPreviewDelegate {
     /// collapse in-stack).
     func updateAboutCardVisibility() {
         let aboutIsEmpty = descriptionLabel.isHidden && hoursLabel.isHidden && userRatingLabel.isHidden
+            && goodToKnowLabel.isHidden && closedNoticeLabel.isHidden
         aboutTitleLabel.isHidden = aboutIsEmpty
         aboutCardView.isHidden = aboutIsEmpty
         aboutTopConstraint?.constant = aboutIsEmpty ? 0 : Constants.Spacing.medium
