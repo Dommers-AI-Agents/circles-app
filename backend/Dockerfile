@@ -15,6 +15,9 @@ RUN npm ci --production
 # Copy application files
 COPY . .
 
+# Our own fonts (Gelasio: the App Clip generic card's serif headline)
+RUN mkdir -p /usr/share/fonts/favcircles && cp assets/fonts/*.ttf /usr/share/fonts/favcircles/ && fc-cache -f
+
 # Cloud Run sets PORT env variable dynamically
 # Don't hardcode the port - let Cloud Run handle it
 # EXPOSE directive removed - Cloud Run handles port exposure

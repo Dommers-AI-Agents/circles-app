@@ -24,6 +24,20 @@ describe('appClipExperienceService copy', () => {
     expect(window.subtitle.length).toBeLessThanOrEqual(svc.SUBTITLE_MAX);
   });
 
+  test('the generic join card says what FavCircles is for, never its name, and no line repeats another', async () => {
+    for (const kind of svc.KINDS) {
+      const copy = svc.copyFor({ venueName: 'FavCircles', genericJoin: true }, kind);
+      expect(copy.title).toBe('Build your map.');
+      expect(copy.subtitle).toBe('Stay connected. Catch every moment.');
+      expect(copy.title.length).toBeLessThanOrEqual(svc.TITLE_MAX);
+      expect(copy.subtitle.length).toBeLessThanOrEqual(svc.SUBTITLE_MAX);
+      expect([copy.title, copy.subtitle, copy.pill, copy.lead].join(' ')).not.toMatch(/FavCircles/);
+    }
+    const jpeg = await svc.headerImagePNG({ venueName: 'FavCircles', genericJoin: true }, 'window', null);
+    const meta = await require('sharp')(jpeg).metadata();
+    expect([meta.format, meta.width, meta.height]).toEqual(['jpeg', 1800, 1200]);
+  });
+
   test('business category follows the store\'s category, shops otherwise', () => {
     expect(svc.businessCategoryFor({ category: 'cafe' })).toBe('FOOD_AND_DRINK');
     expect(svc.businessCategoryFor({ category: 'restaurant' })).toBe('FOOD_AND_DRINK');

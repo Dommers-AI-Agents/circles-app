@@ -35,6 +35,9 @@ const H = 1200;
 // the next nightly runs (the picture alone, so no new text review).
 const HEADER_VERSION = 1;
 const SANS = "'DejaVu Sans', -apple-system, Helvetica, Arial, sans-serif";
+// The generic card's headline, in the window stickers' and coasters' serif.
+// Gelasio (assets/fonts, installed by the Dockerfile) is Georgia's open twin.
+const SERIF = "Gelasio, Georgia, 'DejaVu Serif', serif";
 
 // Apple's required businessCategory for an advanced experience, from the
 // store's own category. Food is the common case; anything unknown is a shop.
@@ -78,6 +81,18 @@ const clip = (s, max) => {
 // one is only for codes no store owns), and it republishes with the points
 // the night loyalty goes live.
 function copyFor(venue, kind, { live = true } = {}) {
+  // The generic "Join FavCircles" code (coasters, anything not one store's):
+  // no store name to show, so the card says what FavCircles is for. Each
+  // line says something new (Wes, 2026-10-30): FavCircles itself only in
+  // Apple's "Powered by" row.
+  if (venue.genericJoin) {
+    return {
+      title: 'Build your map.',
+      subtitle: 'Stay connected. Catch every moment.',
+      pill: 'Love it here? Save us.',
+      lead: 'Never forget your favorite places.'
+    };
+  }
   const name = clip(venue.venueName || 'This store', TITLE_MAX);
   if (kind === 'register' && live) {
     const points = rewardService.effectiveEarnRate(venue);
@@ -150,10 +165,53 @@ async function coverBuffer(coverUrl) {
   }
 }
 
+// A street map drawn faintly behind the generic card: a skewed grid with two
+// avenues. Seeded, so every render is the same picture.
+function streetGridSVG(opacity) {
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const lines = [];
+  for (let x = -200; x < W + 200; x += 70 + rnd() * 60) lines.push(`M${x},-50 L${x + 260},${H + 50}`);
+  for (let y = -100; y < H + 200; y += 60 + rnd() * 70) lines.push(`M-50,${y} L${W + 50},${y - 220}`);
+  return `<g stroke="#ffffff" stroke-opacity="${opacity}" fill="none">
+    <path d="${lines.join(' ')}" stroke-width="3"/>
+    <path d="M-50,760 L${W + 50},300" stroke-width="12"/>
+    <path d="M520,-50 L900,${H + 50}" stroke-width="12"/>
+  </g>`;
+}
+
+const mapPin = (x, y, scale, color) => `<g transform="translate(${x},${y}) scale(${scale})">
+    <path d="M0,-60 C-33,-60 -50,-35 -50,-12 C-50,20 0,60 0,60 C0,60 50,20 50,-12 C50,-35 33,-60 0,-60 Z" fill="${color}"/>
+    <circle cx="0" cy="-14" r="17" fill="#15171C"/></g>`;
+
+/// The generic card: charcoal like the window stickers and coasters, a faint
+/// street map, the serif hook, and a route through three saved spots on the
+/// right (clear of Apple's close button in the corner).
+function genericHeaderJPEG(copy) {
+  const [ask, answer] = copy.pill.split('? ');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2E333B"/><stop offset="1" stop-color="#111317"/></linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.42" r="0.6"><stop offset="0" stop-color="#3182CE" stop-opacity="0.18"/><stop offset="1" stop-color="#3182CE" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="${W}" height="${H}" fill="url(#g)"/>
+  ${streetGridSVG(0.045)}
+  <rect width="${W}" height="${H}" fill="url(#glow)"/>
+  <path d="M1080,1010 C1200,900 1150,760 1290,690 S1460,520 1560,430" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="4" stroke-dasharray="16 14" stroke-linecap="round"/>
+  ${mapPin(1080, 1000, 0.9, '#C8442F')}${mapPin(1300, 680, 0.9, '#D9A62E')}${mapPin(1560, 420, 1.15, '#6A8F3C')}
+  <text x="130" y="470" font-family="${SERIF}" font-weight="bold" font-size="150" fill="#ffffff">${esc(`${ask}?`)}</text>
+  <text x="130" y="650" font-family="${SERIF}" font-weight="bold" font-size="150" fill="#F6C945">${esc(answer)}</text>
+  <path d="M130,740 H560" stroke="#ffffff" stroke-opacity="0.5" stroke-width="2"/>
+  <text x="130" y="830" font-family="${SANS}" font-size="56" fill="#ffffff" fill-opacity="0.88">${esc(copy.lead)}</text>
+</svg>`;
+  return sharp(Buffer.from(svg)).jpeg({ quality: 90 }).toBuffer();
+}
+
 /// 1800×1200 JPEG: the cover photo under a dark gradient (or the brand
 /// gradient alone), the store's name, a pill with what the scan does.
 async function headerImagePNG(venue, kind, coverUrl, { live = true } = {}) {
   const copy = copyFor(venue, kind, { live });
+  if (venue.genericJoin) return genericHeaderJPEG(copy);
   const cover = await coverBuffer(coverUrl);
   const nameSize = 112;
   const nameLines = wrapName(venue.venueName || 'This store', nameSize, W - 240, 2);
