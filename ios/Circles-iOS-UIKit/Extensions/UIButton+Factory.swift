@@ -182,6 +182,16 @@ extension UIButton {
     }
     
     /// Creates an icon button
+    /// A clear button laid over a view that should open something on tap
+    /// (a menu on the circle page's privacy chip). The view underneath draws.
+    static func overlayButton() -> UIButton {
+        let button = UIButton(type: .custom)
+        button.backgroundColor = .clear
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.enableTapFeedback()
+        return button
+    }
+
     static func iconButton(systemName: String, pointSize: CGFloat = 20) -> UIButton {
         let button = UIButton(type: .system)
         let config = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .medium)

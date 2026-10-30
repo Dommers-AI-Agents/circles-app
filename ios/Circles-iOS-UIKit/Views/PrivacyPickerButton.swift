@@ -101,14 +101,13 @@ final class PrivacyPickerButton: UIView {
     }
 
     @objc private func refresh() {
-        // One inline sub-menu per section, so a demoted option sits under its
-        // own heading ("Advanced") instead of vanishing from the list.
-        let sections = PrivacyTier.menuSections(for: entity)
-        button.menu = UIMenu(children: sections.map { section in
-            UIMenu(title: section.title ?? "",
-                   options: .displayInline,
-                   children: section.options.flatMap(entries(for:)))
-        })
+        button.menu = PrivacyMenu.make(entity: entity, selected: selected, selectedListId: selectedListId) { [weak self] option, listId in
+            guard let self = self else { return }
+            self.selected = option
+            self.selectedListId = listId
+            self.refresh()
+            self.onChange?(option)
+        }
 
         var config = button.configuration
         config?.title = currentTitle
@@ -125,47 +124,12 @@ final class PrivacyPickerButton: UIView {
         }
     }
 
-    /// One entry per option, except Inner Circle, which becomes one entry per
-    /// named list — "which list" being the only useful form of the question
-    /// once there is more than one.
-    private func entries(for option: PrivacyOption) -> [UIMenuElement] {
-        guard option == .tier(.innerCircle) else { return [action(option, listId: nil, title: option.title, subtitle: option.subtitle)] }
-        let lists = InnerCircleManager.shared.usableLists
-        guard !lists.isEmpty else { return [action(option, listId: nil, title: option.title, subtitle: option.subtitle)] }
-        // Only the lists themselves: "anyone on my lists" defeats the point of
-        // having lists (Wes, 2026-10-02). An older item still on it shows
-        // "choose a list" until one is picked.
-        return lists.map { list in
-            action(option, listId: list.id, title: list.name,
-                   subtitle: list.userIds.count == 1 ? "Inner Circle · 1 person" : "Inner Circle · \(list.userIds.count) people")
-        }
-    }
-
-    private func action(_ option: PrivacyOption, listId: String?, title: String, subtitle: String) -> UIAction {
-        UIAction(title: title,
-                 subtitle: subtitle,
-                 image: UIImage(systemName: option.systemIconName),
-                 state: option == selected && listId == selectedListId ? .on : .off) { [weak self] _ in
-            guard let self = self else { return }
-            self.selected = option
-            self.selectedListId = listId
-            self.refresh()
-            self.onChange?(option)
-        }
-    }
-
     private var currentList: InnerCircleNamedList? {
         guard let selectedListId else { return nil }
         return InnerCircleManager.shared.usableLists.first { $0.id == selectedListId }
     }
 
-    private var currentTitle: String {
-        if selected == .tier(.innerCircle) {
-            if let name = currentList?.name { return name }
-            if !InnerCircleManager.shared.usableLists.isEmpty { return "Inner Circle · choose a list" }
-        }
-        return selected.title
-    }
+    private var currentTitle: String { PrivacyMenu.title(for: selected, listId: selectedListId) }
 
     private var captionText: String {
         guard let list = currentList else { return InnerCircleManager.shared.pickerCaption }
@@ -192,4 +156,52 @@ final class PrivacyPickerButton: UIView {
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
+}
+
+/// The privacy options as a menu, and the name of the current choice. One
+/// builder for the form picker above and the circle page's tap-to-change
+/// privacy chip, so the two can never offer different options.
+enum PrivacyMenu {
+    /// One inline sub-menu per section, so a demoted option sits under its own
+    /// heading ("Advanced") instead of vanishing from the list.
+    static func make(entity: PrivacyEntity, selected: PrivacyOption, selectedListId: String?,
+                     onPick: @escaping (PrivacyOption, String?) -> Void) -> UIMenu {
+        UIMenu(children: PrivacyTier.menuSections(for: entity).map { section in
+            UIMenu(title: section.title ?? "",
+                   options: .displayInline,
+                   children: section.options.flatMap { entries(for: $0, selected: selected, selectedListId: selectedListId, onPick: onPick) })
+        })
+    }
+
+    /// "Connections", or the Inner Circle list's own name.
+    static func title(for option: PrivacyOption, listId: String?) -> String {
+        if option == .tier(.innerCircle) {
+            let lists = InnerCircleManager.shared.usableLists
+            if let listId, let name = lists.first(where: { $0.id == listId })?.name { return name }
+            if !lists.isEmpty { return "Inner Circle · choose a list" }
+        }
+        return option.title
+    }
+
+    /// One entry per option, except Inner Circle, which becomes one entry per
+    /// named list — "which list" being the only useful form of the question
+    /// once there is more than one.
+    private static func entries(for option: PrivacyOption, selected: PrivacyOption, selectedListId: String?,
+                                onPick: @escaping (PrivacyOption, String?) -> Void) -> [UIMenuElement] {
+        let one = { (listId: String?, title: String, subtitle: String) -> UIAction in
+            UIAction(title: title,
+                     subtitle: subtitle,
+                     image: UIImage(systemName: option.systemIconName),
+                     state: option == selected && listId == selectedListId ? .on : .off) { _ in onPick(option, listId) }
+        }
+        guard option == .tier(.innerCircle) else { return [one(nil, option.title, option.subtitle)] }
+        let lists = InnerCircleManager.shared.usableLists
+        guard !lists.isEmpty else { return [one(nil, option.title, option.subtitle)] }
+        // Only the lists themselves: "anyone on my lists" defeats the point of
+        // having lists (Wes, 2026-10-02). An older item still on it shows
+        // "choose a list" until one is picked.
+        return lists.map { list in
+            one(list.id, list.name, list.userIds.count == 1 ? "Inner Circle · 1 person" : "Inner Circle · \(list.userIds.count) people")
+        }
+    }
 }

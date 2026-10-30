@@ -120,6 +120,24 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
+
+    /// Owner only: the privacy chip opens the privacy options in place, no
+    /// trip to Edit (Wes, 2026-10-30). The chevron says it's tappable.
+    private let privacyChevron: UIImageView = {
+        let imageView = UIImageView(image: UIImage(systemName: "chevron.down",
+                                                   withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .semibold)))
+        imageView.contentMode = .scaleAspectFit
+        imageView.tintColor = Constants.Colors.secondaryLabel
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
+    }()
+
+    private lazy var privacyButton: UIButton = {
+        let button = UIButton.overlayButton()
+        button.showsMenuAsPrimaryAction = true
+        button.accessibilityHint = "Changes who can see this circle"
+        return button
+    }()
     
     private let categoryLabel: UILabel = {
         let label = UILabel()
@@ -303,6 +321,15 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         super.viewDidLoad()
         setupUI()
         configureUI()
+
+        // The privacy menu names each Inner Circle list: load them, and
+        // rebuild the chip when they arrive or change
+        if circle.isOwner {
+            InnerCircleManager.shared.primeIfNeeded()
+            NotificationCenter.default.addObserver(forName: .innerCircleDidChange, object: nil, queue: .main) { [weak self] _ in
+                self?.refreshPrivacyChip()
+            }
+        }
         
         // Track circle viewed event
         AnalyticsService.shared.trackCircleViewed(
@@ -388,6 +415,8 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         circleInfoView.addSubview(mapPill)
         privacyView.addSubview(privacyImageView)
         privacyView.addSubview(privacyLabel)
+        privacyView.addSubview(privacyChevron)
+        privacyView.addSubview(privacyButton)
         
         contentView.addSubview(placesLabel)
         contentView.addSubview(categoryFilterButton)
@@ -471,8 +500,14 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             
             // Privacy label
             privacyLabel.leadingAnchor.constraint(equalTo: privacyImageView.trailingAnchor, constant: Constants.Spacing.small),
-            privacyLabel.trailingAnchor.constraint(equalTo: privacyView.trailingAnchor, constant: -Constants.Spacing.small),
             privacyLabel.centerYAnchor.constraint(equalTo: privacyView.centerYAnchor),
+            privacyChevron.leadingAnchor.constraint(equalTo: privacyLabel.trailingAnchor, constant: 4),
+            privacyChevron.trailingAnchor.constraint(equalTo: privacyView.trailingAnchor, constant: -Constants.Spacing.small),
+            privacyChevron.centerYAnchor.constraint(equalTo: privacyView.centerYAnchor),
+            privacyButton.topAnchor.constraint(equalTo: privacyView.topAnchor),
+            privacyButton.bottomAnchor.constraint(equalTo: privacyView.bottomAnchor),
+            privacyButton.leadingAnchor.constraint(equalTo: privacyView.leadingAnchor),
+            privacyButton.trailingAnchor.constraint(equalTo: privacyView.trailingAnchor),
             
             // Editors container
             editorsContainerView.topAnchor.constraint(equalTo: privacyView.bottomAnchor, constant: Constants.Spacing.medium),
@@ -732,11 +767,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         nameLabel.text = circle.name
         descriptionLabel.text = circle.description ?? "No description provided"
         
-        // Privacy settings. One source for the icon and the label, so this
-        // screen can't drift from the picker that set the value.
-        let privacyTier = circle.privacy.tier ?? .private
-        privacyImageView.image = UIImage(systemName: privacyTier.systemIconName)
-        privacyLabel.text = privacyTier.title
+        refreshPrivacyChip()
         refreshMapPill()
         
         // Show shared circle info if applicable
@@ -1285,6 +1316,52 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     }
     
     // MARK: - Include on my map
+
+    /// Privacy chip: one source for the icon and the label, so this screen
+    /// can't drift from the picker that set the value. The owner taps it to
+    /// change privacy right here; a tier this build doesn't know stays put.
+    private func refreshPrivacyChip() {
+        let known = circle.privacy.tier
+        let privacyTier = known ?? .private
+        let option = PrivacyOption.tier(privacyTier)
+        privacyImageView.image = UIImage(systemName: privacyTier.systemIconName)
+        privacyLabel.text = PrivacyMenu.title(for: option, listId: circle.audienceListId)
+        let editable = circle.isOwner && known != nil
+        privacyChevron.isHidden = !editable
+        privacyButton.isHidden = !editable
+        privacyButton.accessibilityLabel = "Privacy: \(privacyLabel.text ?? "")"
+        guard editable else { privacyButton.menu = nil; return }
+        privacyButton.menu = PrivacyMenu.make(entity: .circle, selected: option, selectedListId: circle.audienceListId) { [weak self] picked, listId in
+            self?.changePrivacy(to: picked, listId: listId)
+        }
+    }
+
+    private func changePrivacy(to option: PrivacyOption, listId: String?) {
+        guard case .tier(let tier) = option else { return }
+        let newPrivacy = tier.circlePrivacy
+        guard newPrivacy != circle.privacy || listId != circle.audienceListId else { return }
+        let before = (circle.privacy, circle.audienceListId)
+        // Show the choice at once; put it back if the server says no
+        circle.privacy = newPrivacy
+        circle.audienceListId = listId
+        refreshPrivacyChip()
+        CircleService.shared.updateCircle(id: circle.id, privacy: newPrivacy, audienceListId: listId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success:
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    // Lists and the home map read circle privacy too
+                    NotificationCenter.default.post(name: .refreshCircles, object: nil)
+                case .failure(let error):
+                    self.circle.privacy = before.0
+                    self.circle.audienceListId = before.1
+                    self.refreshPrivacyChip()
+                    self.showError(error)
+                }
+            }
+        }
+    }
 
     private func refreshMapPill() {
         mapPill.isHidden = !circle.isOwner

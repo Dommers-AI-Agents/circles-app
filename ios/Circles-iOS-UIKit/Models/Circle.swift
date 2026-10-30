@@ -12,9 +12,9 @@ struct Circle: Codable, Identifiable {
     let places: [String]?
     let placesCount: Int? // Efficient count of places without loading them all
     let placesWithDetails: [Place]? // Populated with full place details including who added them
-    let privacy: PrivacyLevel
+    var privacy: PrivacyLevel
     /// The named Inner Circle list this is for, when the tier is that one.
-    let audienceListId: String?
+    var audienceListId: String?
     let allowNetworkEdit: Bool? // Allow network connections to edit this circle
     var showOnMap: Bool? // Whether this circle's places appear on the home map (nil = true)
     let category: CircleCategory
