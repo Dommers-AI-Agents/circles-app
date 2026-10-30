@@ -34,9 +34,16 @@ test('no owner, no orders', async () => {
 
 // The register code is the owner demo at a store nobody has claimed yet
 // (Wes, 2026-10-29); a lapsed owner's store stays paused.
-test('a register scan earns where loyalty is live or the store is unclaimed, never at a lapsed store', async () => {
+// No points until the store's rewards are live, claimed or not (Wes,
+// 2026-10-30): an unclaimed store no longer pays them as an owner demo.
+test('a register scan earns only where loyalty is live: not at an unclaimed store, never at a lapsed one', async () => {
   await mockDb.collection('users').doc('lapsed').set({ ownerSubscriptionStatus: 'expired' });
-  expect(await registerScanEarns({ venueId: 'v3' })).toMatchObject({ earns: true, demo: true });
+  expect(await registerScanEarns({ venueId: 'v3' })).toMatchObject({ earns: false, demo: false });
+  // A super-user's demo switch runs the store like a subscriber's until it ends
+  const later = new Date(Date.now() + 3600 * 1000).toISOString();
+  const ended = new Date(Date.now() - 3600 * 1000).toISOString();
+  expect(await registerScanEarns({ venueId: 'v6', loyaltyDemoUntil: later })).toMatchObject({ earns: true, demo: false });
+  expect(await registerScanEarns({ venueId: 'v7', loyaltyDemoUntil: ended })).toMatchObject({ earns: false });
   expect(await registerScanEarns({ venueId: 'v4', ownerUserId: 'lapsed' })).toMatchObject({ earns: false, demo: false });
   expect(await registerScanEarns({ venueId: 'v5', ownerUserId: 'lapsed', loyaltyComped: true })).toMatchObject({ earns: true, demo: false });
 });
