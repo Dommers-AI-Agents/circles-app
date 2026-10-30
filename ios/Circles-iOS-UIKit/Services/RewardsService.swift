@@ -26,6 +26,13 @@ class RewardsService {
         }
     }
 
+    /// Super-user: many stores' window codes on one Avery 22805 sheet
+    func downloadStoreStickers(_ sheet: StoreStickerSheet, completion: @escaping (Result<Data, Error>) -> Void) {
+        apiService.requestData(endpoint: "rewards/stickers/print", queryParams: sheet.queryParams) { result in
+            completion(result.mapError { $0 as Error })
+        }
+    }
+
     // MARK: - Scan (window sticker or register card)
 
     /// The store a code belongs to, for the scan bubble ("Checking rewards at

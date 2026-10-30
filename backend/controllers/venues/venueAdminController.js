@@ -13,7 +13,9 @@ const { venueLoyaltyStatus } = require('../../services/ownerSubscriptionService'
 const { GLOBAL_COLLECTIONS } = require('../../models/GlobalPlace');
 const { serializeDates } = require('../../utils/wireDates');
 const { enrollPlace } = require('../../services/venueEnrollmentService');
-const { sendServiceError } = require('../../utils/serviceError');
+const { sendServiceError, ServiceError } = require('../../utils/serviceError');
+const printAssetService = require('../../services/printAssetService');
+const { getDocsById } = require('../../utils/batchGet');
 
 // @desc    Create a venue from the app; QR codes are emailed to the requester
 // @route   POST /api/rewards/venues
@@ -238,6 +240,33 @@ exports.createVenue = async (req, res) => {
   } catch (error) {
     console.error('❌ Venue creation failed:', error);
     res.status(500).json({ success: false, error: 'Failed to create venue' });
+  }
+};
+
+// @desc    One Avery 22805 sheet (or more) with a sticker per store: each
+//          store's own code, its name underneath, in the order picked.
+//          startAt (1–24) skips stickers already used on the sheet.
+// @route   GET /api/rewards/stickers/print?venueIds=a,b,c&kind=window&startAt=1
+// @access  Super user
+exports.printStoreStickers = async (req, res) => {
+  try {
+    const ids = String(req.query.venueIds || '').split(',').map(s => s.trim()).filter(Boolean);
+    const unique = [...new Set(ids)];
+    if (unique.length > printAssetService.MAX_STORE_STICKERS) {
+      throw new ServiceError(400, 'TOO_MANY_STORES', `At most ${printAssetService.MAX_STORE_STICKERS} stores at a time`);
+    }
+    const docs = await getDocsById(STICKER_COLLECTIONS.STICKER_VENUES, unique);
+    const venues = unique.filter(id => docs.has(id)).map(id => ({ venueId: id, ...docs.get(id).data() }));
+    if (venues.length < unique.length) throw new ServiceError(404, 'STORE_NOT_FOUND', 'One of those stores no longer exists');
+    const pdf = await printAssetService.renderStoreStickers(venues, {
+      kind: req.query.kind || 'window',
+      startAt: req.query.startAt || 1
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="FavCircles stickers - ${venues.length} stores - Avery 22805.pdf"`);
+    res.send(pdf);
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Store stickers', fallbackCode: 'PRINT_FAILED', fallbackMessage: 'Could not build the stickers' });
   }
 };
 

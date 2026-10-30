@@ -50,6 +50,19 @@ describe('printAssetService', () => {
       .toBe('Tommys Tavern  Tap - window stickers - Avery 22805.pdf');
   });
 
+  test('store stickers: one per store, from any start position, onto more sheets as needed', async () => {
+    const stores = Array.from({ length: 30 }, (_, i) => ({ ...venue, venueName: `Store ${i + 1}`, windowCode: `W${i}` }));
+    const pageCount = (pdf) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length;
+    expect(pageCount(await svc.renderStoreStickers(stores.slice(0, 3)))).toBe(1);
+    expect(pageCount(await svc.renderStoreStickers(stores.slice(0, 3), { startAt: 23 }))).toBe(2);
+    expect(pageCount(await svc.renderStoreStickers(stores))).toBe(2);
+    for (const bad of [{ startAt: 0 }, { startAt: 25 }, { startAt: 'x' }, { kind: 'door' }]) {
+      await expect(svc.renderStoreStickers(stores.slice(0, 1), bad)).rejects.toMatchObject({ status: 400 });
+    }
+    await expect(svc.renderStoreStickers([])).rejects.toMatchObject({ status: 400 });
+    await expect(svc.renderStoreStickers([{ ...venue, windowCode: null }])).rejects.toMatchObject({ status: 404 });
+  }, 90000);
+
   test('the email names still work', async () => {
     for (const fn of [svc.windowSignPDF, svc.registerCardPDF, svc.tableTentPDF]) {
       expect((await fn(venue)).slice(0, 4).toString()).toBe('%PDF');

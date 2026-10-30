@@ -3,12 +3,25 @@ import UIKit
 /// Super-user screen: venues enrolled in the sticker program, with their
 /// per-sticker stats. Tapping a store opens its full admin page
 /// (VenueAdminDetailViewController); from here you can also sign up a new
-/// venue and grant super-user access to other users.
+/// venue and grant super-user access to other users. The QR button picks
+/// stores for one sheet of window-code stickers (StoreStickerSheet).
 class VenueAdminViewController: BaseViewController {
 
     // MARK: - Properties
 
     private var venues: [AdminVenue] = []
+    /// Stores picked for the sticker sheet, in the order tapped
+    private var stickerPicks: [String] = []
+    /// The bar's usual buttons, put back when picking ends
+    private var normalRightItems: [UIBarButtonItem] = []
+
+    private lazy var stickersButton: UIBarButtonItem = {
+        let item = UIBarButtonItem(image: UIImage(systemName: "qrcode"), style: .plain, target: self, action: #selector(stickersTapped))
+        item.accessibilityLabel = "Print window stickers for several stores"
+        return item
+    }()
+    private lazy var printStickersButton = UIBarButtonItem(title: "Print", style: .done, target: self, action: #selector(printStickersTapped))
+    private lazy var cancelStickersButton = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(endStickerPicking))
 
     private lazy var claimsButton = UIBarButtonItem(
         image: UIImage(systemName: "tray.full"),
@@ -49,7 +62,11 @@ class VenueAdminViewController: BaseViewController {
             image: UIImage(systemName: "tag"),
             style: .plain, target: self, action: #selector(postcardSpecialsTapped))
         specialsButton.accessibilityLabel = "Postcard specials"
-        navigationItem.rightBarButtonItems = [addButton, grantButton, claimsButton, guideButton, specialsButton]
+        normalRightItems = [addButton, grantButton, claimsButton, guideButton, specialsButton]
+        navigationItem.rightBarButtonItems = normalRightItems
+        navigationItem.leftItemsSupplementBackButton = true
+        navigationItem.leftBarButtonItem = stickersButton
+        tableView.allowsMultipleSelectionDuringEditing = true
 
         tableView.dataSource = self
         tableView.delegate = self
@@ -260,13 +277,106 @@ extension VenueAdminViewController: UITableViewDataSource, UITableViewDelegate {
         navigationController?.pushViewController(PostcardSpecialsViewController(), animated: true)
     }
 
+    func tableView(_ tableView: UITableView, willSelectRowAt indexPath: IndexPath) -> IndexPath? {
+        // Online stores have no window to stick a code on
+        if tableView.isEditing, venues[indexPath.row].isVirtual == true { return nil }
+        return indexPath
+    }
+
+    func tableView(_ tableView: UITableView, didDeselectRowAt indexPath: IndexPath) {
+        guard tableView.isEditing else { return }
+        stickerPicks.removeAll { $0 == venues[indexPath.row].venueId }
+        updateStickerPickTitle()
+    }
+
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        if tableView.isEditing {
+            stickerPicks = StoreStickerSheet.toggled(stickerPicks, venues[indexPath.row].venueId)
+            updateStickerPickTitle()
+            return
+        }
         tableView.deselectRow(at: indexPath, animated: true)
         let detailVC = VenueAdminDetailViewController(venue: venues[indexPath.row])
         detailVC.onVenueChanged = { [weak self] in
             self?.loadData()
         }
         navigationController?.pushViewController(detailVC, animated: true)
+    }
+}
+
+// MARK: - Window stickers for several stores
+
+extension VenueAdminViewController {
+    @objc private func stickersTapped() {
+        stickerPicks = []
+        tableView.setEditing(true, animated: true)
+        navigationItem.leftBarButtonItem = cancelStickersButton
+        navigationItem.rightBarButtonItems = [printStickersButton]
+        updateStickerPickTitle()
+    }
+
+    @objc private func endStickerPicking() {
+        stickerPicks = []
+        tableView.setEditing(false, animated: true)
+        title = "Sticker Venues"
+        navigationItem.leftBarButtonItem = stickersButton
+        navigationItem.rightBarButtonItems = normalRightItems
+    }
+
+    private func updateStickerPickTitle() {
+        let count = stickerPicks.count
+        title = count == 0 ? "Pick Stores" : "\(count) Picked"
+        printStickersButton.isEnabled = count > 0 && count <= StoreStickerSheet.maxStores
+    }
+
+    @objc private func printStickersTapped() {
+        let count = stickerPicks.count
+        AlertPresenter.showTextInput(
+            title: "Start at sticker #",
+            message: "\(count) \(count == 1 ? "sticker" : "stickers"), one per store, on Avery 22805. 1 is the top-left sticker; start later to skip ones already used.",
+            initialText: "1",
+            keyboardType: .numberPad,
+            confirmTitle: "Print",
+            from: self
+        ) { [weak self] text in
+            guard let self, let text else { return }
+            guard let start = StoreStickerSheet.startPosition(from: text) else {
+                self.showError("Pick a sticker from 1 to \(StoreStickerSheet.perSheet).")
+                return
+            }
+            self.downloadStickers(StoreStickerSheet(venueIds: self.stickerPicks, startAt: start))
+        }
+    }
+
+    private func downloadStickers(_ sheet: StoreStickerSheet) {
+        let loading = AlertPresenter.showLoading(message: "Building your stickers…", from: self)
+        RewardsService.shared.downloadStoreStickers(sheet) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self else { return }
+                    switch result {
+                    case .failure(let error):
+                        self.showError(error)
+                    case .success(let data):
+                        self.sharePDF(data, fileName: sheet.fileName)
+                    }
+                }
+            }
+        }
+    }
+
+    /// A real file with a readable name, so Print and Save to Files show it
+    private func sharePDF(_ data: Data, fileName: String) {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            showError(error)
+            return
+        }
+        let activity = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        activity.popoverPresentationController?.barButtonItem = printStickersButton
+        present(activity, animated: true)
     }
 }
 

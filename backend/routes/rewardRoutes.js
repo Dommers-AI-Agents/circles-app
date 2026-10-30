@@ -21,6 +21,7 @@ const {
   enrollPlaceVenue,
   createVenue,
   listVenues,
+  printStoreStickers,
   getVenueAdminDetail,
   syncAppClipExperiences
 } = require('../controllers/venues/venueAdminController');
@@ -115,6 +116,7 @@ const requireSuperUser = require('../middleware/requireSuperUser');
 
 router.post('/venues', requireSuperUser, createVenueFromApp);
 router.get('/venues', requireSuperUser, listVenues);
+router.get('/stickers/print', requireSuperUser, printStoreStickers); // many stores' codes on one Avery sheet
 router.post('/superusers', requireSuperUser, setSuperUser);
 router.post('/venues/:venueId/owner', requireSuperUser, setVenueOwner);
 // Literal segment, like by-place: a super-user gets (or mints) the codes for any place

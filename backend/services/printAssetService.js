@@ -11,6 +11,9 @@
 //           'card'     4 × 6 in counter card (photo frame / acrylic stand)
 //           'stickers' a sheet of 24 1½ in square stickers (Avery 22805), the
 //                      code alone, to cover an old code on a printed sticker
+//
+// renderStoreStickers puts MANY stores on one Avery sheet, one sticker each,
+// with the store's name under its code (one window sticker per store).
 //   qr      'small' | 'medium' | 'large' → 1 / 3 / 4 in, clamped to the face
 //
 // The email flows keep calling the old three names; they map onto this.
@@ -342,22 +345,70 @@ function drawTent(doc, args, faceW, faceH, originX = 0, originY = 0) {
   foldGuide(doc, originX, fold, originX + faceW);
 }
 
-// A sheet of stickers: the code alone, in the window sticker's ink, one per
-// square. The QR size option doesn't apply; the sticker sets it.
-async function renderStickerSheet(code) {
-  const { size, cols, rows, left, top, pitchX, pitchY } = STICKER_SHEET;
-  const qr = await qrBuffer(code, Math.round(STICKER_QR / IN * 600), STICKER_INK);
-  const doc = new PDFDocument({ size: GEOMETRY.stickers.page, margin: 0 });
-  const inset = (size - STICKER_QR) / 2;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      doc.image(qr, left + c * pitchX + inset, top + r * pitchY + inset, { width: STICKER_QR, height: STICKER_QR });
+// A named sticker's code is smaller, leaving a line for the store's name
+// under it. 1.12 in still covers the old 1.06 in dots edge to edge, and the
+// sticker itself (opaque, 1½ in) covers the 6 in sticker's 1.25 in ones.
+const NAMED_STICKER_QR = 1.12 * IN;
+const STICKERS_PER_SHEET = STICKER_SHEET.cols * STICKER_SHEET.rows;
+const MAX_STORE_STICKERS = 96;
+
+// Sticker sheets: one entry per sticker ({ qr, name }), filled left to right
+// and top to bottom from position `startAt` (1–24, so a half-used sheet isn't
+// wasted), onto as many pages as it takes. The QR size option doesn't apply;
+// the sticker sets it.
+function drawStickerSheets(entries, startAt = 1) {
+  const { size, cols, left, top, pitchX, pitchY } = STICKER_SHEET;
+  const doc = new PDFDocument({ size: GEOMETRY.stickers.page, margin: 0, autoFirstPage: false });
+  let slot = STICKERS_PER_SHEET; // forces the first page
+  entries.forEach((entry, i) => {
+    if (i === 0) { doc.addPage(); slot = startAt - 1; stickerHeader(doc); }
+    else if (slot >= STICKERS_PER_SHEET) { doc.addPage(); slot = 0; stickerHeader(doc); }
+    const x = left + (slot % cols) * pitchX;
+    const y = top + Math.floor(slot / cols) * pitchY;
+    if (entry.name) {
+      const pad = (size - NAMED_STICKER_QR) / 2;
+      doc.image(entry.qr, x + pad, y + 0.06 * IN, { width: NAMED_STICKER_QR, height: NAMED_STICKER_QR });
+      const nameSize = fitSize(doc, entry.name, 'Helvetica-Bold', 7, 5, size - 0.16 * IN, 1);
+      doc.fillColor(STICKER_INK).font('Helvetica-Bold').fontSize(nameSize)
+        .text(entry.name, x + 0.08 * IN, y + 0.06 * IN + NAMED_STICKER_QR + 0.06 * IN,
+          { width: size - 0.16 * IN, align: 'center', lineBreak: false, ellipsis: true, height: nameSize * 1.3 });
+    } else {
+      const inset = (size - STICKER_QR) / 2;
+      doc.image(entry.qr, x + inset, y + inset, { width: STICKER_QR, height: STICKER_QR });
     }
-  }
+    slot += 1;
+  });
+  return pdfToBuffer(doc);
+}
+
+function stickerHeader(doc) {
   doc.fillColor(GUIDE_TEXT).font('Helvetica').fontSize(7)
     .text('Avery 22805 (1½ in square, 24 per sheet) · print at 100% / Actual size · try one on plain paper first',
       0, 0.22 * IN, { width: GEOMETRY.stickers.page[0], align: 'center', lineBreak: false });
-  return pdfToBuffer(doc);
+}
+
+// One store's code on every sticker of a sheet
+async function renderStickerSheet(code) {
+  const qr = await qrBuffer(code, Math.round(STICKER_QR / IN * 600), STICKER_INK);
+  return drawStickerSheets(Array.from({ length: STICKERS_PER_SHEET }, () => ({ qr })));
+}
+
+// Many stores, one sticker each, named, in the order given
+async function renderStoreStickers(venues, { kind = 'window', startAt = 1 } = {}) {
+  if (!KINDS.includes(kind)) throw new ServiceError(400, 'BAD_KIND', 'kind must be window or register');
+  const start = Number(startAt);
+  if (!Number.isInteger(start) || start < 1 || start > STICKERS_PER_SHEET) {
+    throw new ServiceError(400, 'BAD_START', `startAt must be 1 to ${STICKERS_PER_SHEET}`);
+  }
+  if (!venues.length) throw new ServiceError(400, 'NO_STORES', 'Pick at least one store');
+  if (venues.length > MAX_STORE_STICKERS) {
+    throw new ServiceError(400, 'TOO_MANY_STORES', `At most ${MAX_STORE_STICKERS} stores at a time`);
+  }
+  const entries = await Promise.all(venues.map(async (venue) => ({
+    qr: await qrBuffer(codeFor(kind, venue), Math.round(NAMED_STICKER_QR / IN * 600), STICKER_INK),
+    name: String(venue.venueName || '').trim() || 'Store'
+  })));
+  return drawStickerSheets(entries, start);
 }
 
 async function renderPDF(venue, rawOptions) {
@@ -414,6 +465,7 @@ const registerCardPDF = (venue) => renderPDF(venue, { kind: 'register', format: 
 const tableTentPDF = (venue) => renderPDF(venue, { kind: 'register', format: 'tent', qr: 'medium' });
 
 module.exports = {
-  renderPDF, printOptions, fileName, KINDS, FORMATS, QR_INCHES,
+  renderPDF, renderStoreStickers, printOptions, fileName, KINDS, FORMATS, QR_INCHES,
+  STICKERS_PER_SHEET, MAX_STORE_STICKERS,
   windowSignPDF, registerCardPDF, tableTentPDF
 };
