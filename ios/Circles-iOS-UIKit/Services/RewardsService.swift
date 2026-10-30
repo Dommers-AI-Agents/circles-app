@@ -708,7 +708,7 @@ class RewardsService {
         }
     }
 
-    /// Points for joining (window QR) or saving the store; 0 turns it off
+    /// Points for saving the store after a register scan; 0 turns it off
     func updateBonusPoints(venueId: String, field: String, points: Int, completion: @escaping (Result<VenueSettingsData, Error>) -> Void) {
         apiService.request(endpoint: "rewards/venues/\(venueId)", method: .patch, body: [field: points], requiresAuth: true) {
             (result: Result<RewardsEnvelope<VenueSettingsData>, APIError>) in
@@ -1484,7 +1484,6 @@ struct VenueOffersData: Codable {
 struct VenueSettingsData: Codable {
     let venueId: String
     let earnRate: Int
-    let joinPoints: Int?
     let savePoints: Int?
 }
 
@@ -1570,8 +1569,7 @@ struct AdminVenue: Codable {
     // Present in /my-venues (and full docs from /venues); optional so older
     // response shapes still decode
     let earnRate: Int?
-    /// Owner-set points for joining from the window QR and for saving the store (2026-10-30)
-    let joinPoints: Int?
+    /// Owner-set points for saving the store after a register scan (2026-10-30)
     let savePoints: Int?
     let offers: [RewardOffer]?
     let announcements: [VenueAnnouncement]?
@@ -1625,7 +1623,6 @@ struct AdminVenueDetailVenue: Codable {
     let ownerUserId: String?
     let managerUserIds: [String]?
     let earnRate: Int?
-    let joinPoints: Int?
     let savePoints: Int?
     let offers: [RewardOffer]?
     let announcements: [VenueAnnouncement]?

@@ -102,43 +102,23 @@ exports.scan = async (req, res) => {
 
     if (venue.kind === 'window') {
       rewardService.incrementVenueStats(venue.venueId, 'scans');
-      // Generic "Join FavCircles" code: no venue to reward — never award the
-      // signup bonus against the virtual doc (that stays reserved for the
-      // first REAL partner store the user scans).
-      // Independent lookups run together: a scan is waited on (2026-10-30)
-      const [alreadySaved, windowLive] = await Promise.all([
-        userHasSavedVenuePlace(userId, venue),
-        // Points only while the store's rewards are live (Wes, 2026-10-30)
-        venue.genericJoin ? false : isVenueLoyaltyActive(venue)
-      ]);
-      const signupResult = venue.genericJoin
-        ? { awarded: false, reason: 'generic_join' }
-        : (windowLive ? await rewardService.awardStickerSignup(userId, venue) : { awarded: false, reason: 'not_live' });
+      // The window QR is for getting the app, saving the store and building
+      // your map: it never pays store points (Wes, 2026-10-30: "store rewards
+      // only come from the Register QR code"). FavCoins for those actions
+      // come from the app's own rules, separately.
+      const alreadySaved = await userHasSavedVenuePlace(userId, venue);
       const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
-      const venueBalance = (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0;
-      const offers = windowLive ? activeOffers(venue) : [];
-      const earnRate = windowLive ? rewardService.effectiveEarnRate(venue) : null;
-
       return res.json({
         success: true,
         data: {
           kind: 'window',
           venue: publicVenueInfo(venue),
-          awarded: signupResult.awarded
-            ? { type: 'sticker_signup', points: signupResult.points }
-            : null,
+          awarded: null,
           alreadySaved,
           balance: rewardPoints,
-          venueBalance,
-          // Whether this store's loyalty program runs yet: the app tells the
-          // customer to ask the owner about it when it doesn't (2026-10-29)
-          loyaltyLive: windowLive,
-          // What saving the place earns (the owner's amount; 0 until live)
-          saveBonusPoints: windowLive ? rewardService.effectiveSavePoints(venue) : 0,
-          earnRate,
-          offers: offers.map(({ offerId, title, pointsCost }) => ({ offerId, title, pointsCost })),
-          nextReward: rewardProgress.nextReward(offers, venueBalance, earnRate),
-          nextRewardLine: rewardProgress.nextRewardLine(rewardProgress.nextReward(offers, venueBalance, earnRate))
+          venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0,
+          saveBonusPoints: 0,
+          offers: []
         }
       });
     }
@@ -240,10 +220,11 @@ exports.confirmStickerSave = async (req, res) => {
       });
     }
 
-    // Points for saving only while the store's rewards are live (2026-10-30)
-    const result = (await isVenueLoyaltyActive(venue))
+    // The owner's points for saving: only after a REGISTER scan at a store
+    // whose rewards are live, never from the window QR (2026-10-30)
+    const result = venue.kind === 'register' && (await isVenueLoyaltyActive(venue))
       ? await rewardService.awardStickerSave(userId, venue)
-      : { awarded: false, reason: 'not_live' };
+      : { awarded: false, reason: venue.kind === 'register' ? 'not_live' : 'window_code' };
     const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
 
     res.json({

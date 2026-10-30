@@ -502,9 +502,9 @@ class RewardsViewController: BaseViewController {
         AlertPresenter.showInfo(
             title: "How store points work",
             message: """
-            Store points are loyalty points from the shops themselves — the places with a FavCircles sticker in the window. The shops fund the rewards; points are their way of saying thanks for coming in.
+            Store points are loyalty points from the shops themselves, the ones running FavCircles Rewards. The shops fund the rewards; points are their way of saying thanks for coming in.
 
-            ⭐ Earn them by scanning a window sticker and saving the place (+50), scanning the register card when you buy something (each shop sets its own points), and redeeming the single-use codes shops pack into orders or hand out at events.
+            ⭐ Earn them by scanning the FavCircles QR code at the register when you buy something. Each shop sets its own points, and some give extra when you save the shop to your map. Shops can also hand out single-use codes in orders or at events.
 
             🎁 Spend them on the offers shops post here — redeeming creates a short-lived voucher you show at the counter. Points are true loyalty: they stay with the shop where you earned them, and each shop runs its own rewards.
 

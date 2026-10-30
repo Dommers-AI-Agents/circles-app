@@ -5,10 +5,9 @@ const subs = require('../ownerSubscriptionService');
 const rewardService = require('../rewardService');
 
 describe('owner-set points', () => {
-  test('defaults are 25 for joining and saving; the owner can change or turn them off', () => {
-    expect(rewardService.effectiveJoinPoints({})).toBe(25);
+  test('saving defaults to 25; the owner can change or turn it off', () => {
     expect(rewardService.effectiveSavePoints({})).toBe(25);
-    expect(rewardService.effectiveJoinPoints({ joinPoints: 40 })).toBe(40);
+    expect(rewardService.effectiveSavePoints({ savePoints: 40 })).toBe(40);
     expect(rewardService.effectiveSavePoints({ savePoints: 0 })).toBe(0);
     expect(rewardService.effectiveEarnRate({})).toBe(25);
   });

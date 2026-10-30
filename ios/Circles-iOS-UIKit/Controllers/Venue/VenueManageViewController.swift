@@ -25,7 +25,6 @@ class VenueManageViewController: BaseViewController {
     private var offers: [RewardOffer]
     private var announcements: [VenueAnnouncement]
     private var earnRate: Int
-    private var joinPoints: Int
     private var savePoints: Int
     private var registerCode: String
     private var contactName: String?
@@ -158,7 +157,6 @@ class VenueManageViewController: BaseViewController {
         self.offers = venue.offers ?? []
         self.announcements = venue.announcements ?? []
         self.earnRate = venue.earnRate ?? 25
-        self.joinPoints = venue.joinPoints ?? 25
         self.savePoints = venue.savePoints ?? 25
         self.registerCode = venue.registerCode
         self.contactName = venue.contactName
@@ -448,7 +446,6 @@ class VenueManageViewController: BaseViewController {
                         guard let self else { return }
                         switch result {
                         case .success(let saved):
-                            self.joinPoints = saved.joinPoints ?? self.joinPoints
                             self.savePoints = saved.savePoints ?? self.savePoints
                             self.reload()
                         case .failure(let error):
@@ -936,10 +933,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
 
         case .earnRate:
             set("Points per purchase", "\(earnRate) points each time a customer scans", "dollarsign.circle")
-        case .joinPoints:
-            set("Points for joining", joinPoints > 0 ? "\(joinPoints) points when someone joins FavCircles from your window QR" : "Off", "person.badge.plus")
         case .savePoints:
-            set("Points for saving your store", savePoints > 0 ? "\(savePoints) points when a customer saves your store" : "Off", "bookmark")
+            set("Points for saving your store", savePoints > 0 ? "\(savePoints) points when a customer saves your store after a register scan" : "Off", "bookmark")
         case .offer(let index):
             let offer = offers[index]
             let isActive = offer.active != false
@@ -1037,12 +1032,9 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
 
         case .earnRate:
             editEarnRate()
-        case .joinPoints:
-            editBonusPoints(field: "joinPoints", title: "Points for joining",
-                            message: "Points a new customer gets when they join FavCircles from your window QR code. 0 turns it off.", current: joinPoints)
         case .savePoints:
             editBonusPoints(field: "savePoints", title: "Points for saving your store",
-                            message: "Points a customer gets the first time they save your store to their map. 0 turns it off.", current: savePoints)
+                            message: "Points a customer gets the first time they save your store after scanning your register QR code. 0 turns it off.", current: savePoints)
         case .offer(let index):
             manageOffer(offers[index])
         case .addOffer:

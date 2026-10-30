@@ -206,7 +206,8 @@ final class ClipOfferViewController: UIViewController {
                 statusLabel.text = "Free to join"
             }
             // The store's own terms: what each visit earns and the first thing it buys
-            if preview.loyaltyLive == true, let rate = preview.earnRate {
+            // Points are only ever a register-code thing (2026-10-30)
+            if preview.kind == "register", preview.loyaltyLive == true, let rate = preview.earnRate {
                 var line = "Earn \(rate) points every visit"
                 if let first = preview.firstReward { line += " · \(first.pointsCost) points = \(first.title)" }
                 statusLabel.text = line

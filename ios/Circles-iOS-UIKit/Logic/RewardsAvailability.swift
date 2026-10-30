@@ -82,25 +82,6 @@ enum RewardsAvailability: Equatable {
         return StoreCardHeader(title: rewardsLive ? "Rewards at \(venueName)" : venueName, showsEarnLine: rewardsLive)
     }
 
-    /// The popup after a store code earns points (Wes, 2026-10-29: confirm
-    /// the points on their own, and at a store without the loyalty program
-    /// yet, say the points are kept and to ask the owner about it).
-    struct PointsEarned: Equatable {
-        let title: String
-        let message: String
-    }
-
-    static func pointsEarned(venueName: String, points: Int, venueBalance: Int,
-                             loyaltyLive: Bool?, nextRewardLine: String?) -> PointsEarned {
-        let title = "+\(points) points at \(venueName)! 🎉"
-        let balance = "You have \(venueBalance) \(venueBalance == 1 ? "point" : "points") here."
-        if loyaltyLive == false {
-            return PointsEarned(title: title, message: "\(balance) \(venueName) hasn't started FavCircles Rewards yet, so your points are saved here until it does. Ask the owner about it next time you're in.")
-        }
-        guard let nextRewardLine else { return PointsEarned(title: title, message: balance) }
-        return PointsEarned(title: title, message: "\(balance) \(nextRewardLine).")
-    }
-
     var details: Details? {
         if case .earn(let details) = self { return details }
         return nil

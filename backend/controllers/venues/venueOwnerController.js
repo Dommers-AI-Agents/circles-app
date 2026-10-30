@@ -564,20 +564,19 @@ exports.updateVenueInfo = async (req, res) => {
   }
 };
 
-// @desc    Adjust the store's points: per purchase (earnRate), for joining
-//          from the window QR (joinPoints) and for saving the store
-//          (savePoints). The owner controls every amount (Wes, 2026-10-30).
-// @route   PATCH /api/rewards/venues/:venueId   body: { earnRate?, joinPoints?, savePoints? }
+// @desc    Adjust the store's points: per purchase (earnRate) and for saving
+//          the store after a register scan (savePoints). The owner controls
+//          every amount (Wes, 2026-10-30).
+// @route   PATCH /api/rewards/venues/:venueId   body: { earnRate?, savePoints? }
 // @access  Venue owner (or super user)
 exports.updateVenueSettings = async (req, res) => {
   try {
-    const { earnRate, joinPoints, savePoints } = req.body || {};
+    const { earnRate, savePoints } = req.body || {};
     const errors = [];
     const update = { updatedAt: new Date().toISOString() };
     if (earnRate !== undefined) { errors.push(...validateEarnRate(earnRate)); update.earnRate = earnRate; }
-    if (joinPoints !== undefined) { errors.push(...validateBonusPoints(joinPoints, 'joinPoints')); update.joinPoints = joinPoints; }
     if (savePoints !== undefined) { errors.push(...validateBonusPoints(savePoints, 'savePoints')); update.savePoints = savePoints; }
-    if (earnRate === undefined && joinPoints === undefined && savePoints === undefined) errors.push('Nothing to change');
+    if (earnRate === undefined && savePoints === undefined) errors.push('Nothing to change');
     if (errors.length > 0) {
       return res.status(400).json({ success: false, error: errors.join('. ') });
     }
@@ -591,7 +590,6 @@ exports.updateVenueSettings = async (req, res) => {
     res.json({ success: true, data: {
       venueId: req.venue.venueId,
       earnRate: rewardService.effectiveEarnRate(next),
-      joinPoints: rewardService.effectiveJoinPoints(next),
       savePoints: rewardService.effectiveSavePoints(next)
     } });
   } catch (error) {

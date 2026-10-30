@@ -59,7 +59,6 @@ const ownerVenueInfo = (venue) => ({
   ownerUserId: venue.ownerUserId || null,
   managerUserIds: venueManagerIds(venue),
   earnRate: rewardService.effectiveEarnRate(venue),
-  joinPoints: rewardService.effectiveJoinPoints(venue),
   savePoints: rewardService.effectiveSavePoints(venue),
   offers: venue.offers || [],
   announcements: venue.announcements || [],

@@ -2,7 +2,7 @@ import UIKit
 import CoreLocation
 
 /// Drives the UX after a physical sticker QR code is scanned:
-/// - window sticker → signup points + "save this place" flow (+ save points)
+/// - window QR → "Build your map!" save prompt (never points, 2026-10-30)
 /// - register card  → visit points + offer redemption sheet → voucher screen
 ///
 /// Every scan first opens the store's place page, so the result (and the
@@ -195,51 +195,25 @@ final class StickerRewardCoordinator: NSObject {
 
     // MARK: - Window sticker (discovery / signup / save)
 
+    /// The window QR is for getting the app, saving the store and building
+    /// your map: no points and no rewards wording, ever (Wes, 2026-10-30).
+    /// Store points come only from the register QR.
     private func handleWindowScan(_ scan: RewardScanData, code: String) {
         guard let presenter = presenter else { return }
-        let balanceHere = scan.venueBalance ?? scan.balance
-        let notLiveLine = "\(scan.venue.venueName) hasn't started FavCircles Rewards yet. Ask the owner about it next time you're in."
-
-        // The save prompt, on its own after the points (if any)
-        let offerSaveAfterwards = { [weak self] in
-            guard let self, let presenter = self.presenter else { return }
-            if scan.alreadySaved == true {
-                // Points already confirmed above; without them, a short welcome back
-                guard scan.awarded == nil else { return }
-                let message = scan.loyaltyLive == false
-                    ? "\(scan.venue.venueName) is already in your circles. \(notLiveLine)"
-                    : "\(scan.venue.venueName) is already in your circles. Come back and scan the register card with a purchase to keep earning!"
-                self.showWithMyRewards(title: "Welcome back!", message: message, from: presenter)
-                return
-            }
-            var message = scan.saveBonus > 0
-                ? "Save \(scan.venue.venueName) to one of your circles so you don't forget it — and earn \(scan.saveBonus) store points."
-                : "Save \(scan.venue.venueName) to one of your circles so you don't forget it."
-            if scan.awarded == nil, scan.loyaltyLive == false { message += "\n\n\(notLiveLine)" }
-            AlertPresenter.showConfirmation(
-                title: "Don't forget \(scan.venue.venueName)!",
-                message: message,
-                confirmTitle: scan.saveBonus > 0 ? "Save & Earn" : "Save",
-                cancelTitle: "Not Now",
-                from: presenter
-            ) { [weak self] in
-                self?.startSaveFlow(venue: scan.venue, code: code)
-            }
-        }
-
-        guard let awarded = scan.awarded else {
-            offerSaveAfterwards()
+        let name = scan.venue.venueName
+        if scan.alreadySaved == true {
+            AlertPresenter.showSuccess(title: "Welcome back!", message: "\(name) is already in your circles.", from: presenter)
             return
         }
-        // The points get their own moment (they used to be the first line of
-        // the save prompt, and read as part of it)
-        let nextLine = RewardsAvailability.nextReward(scan.rewardDetails).map(RewardsAvailability.nextRewardLine)
-        let copy = RewardsAvailability.pointsEarned(venueName: scan.venue.venueName, points: awarded.points,
-                                                    venueBalance: balanceHere, loyaltyLive: scan.loyaltyLive,
-                                                    nextRewardLine: nextLine)
-        // Home points at the $ button once: where all their points live
-        OnboardingManager.shared.armRewardsHint()
-        showWithMyRewards(title: copy.title, message: copy.message, from: presenter, onOK: offerSaveAfterwards)
+        AlertPresenter.showConfirmation(
+            title: "Don't forget \(name)!",
+            message: "Build your map! Save \(name) to one of your circles and never forget it.",
+            confirmTitle: "Save",
+            cancelTitle: "Not Now",
+            from: presenter
+        ) { [weak self] in
+            self?.startSaveFlow(venue: scan.venue, code: code)
+        }
     }
 
     /// "Save this store?" after a register scan, into the circle they pick
@@ -248,8 +222,8 @@ final class StickerRewardCoordinator: NSObject {
         AlertPresenter.showConfirmation(
             title: "Save \(venue.venueName)?",
             message: bonus > 0
-                ? "Add it to one of your circles so you can find it again and share it with friends, and earn \(bonus) more points here."
-                : "Add it to one of your circles so you can find it again and share it with friends.",
+                ? "Build your map! Save \(venue.venueName) to one of your circles and earn \(bonus) more points here."
+                : "Build your map! Save \(venue.venueName) to one of your circles and never forget it.",
             confirmTitle: bonus > 0 ? "Save & Earn" : "Save",
             cancelTitle: "Not Now",
             from: presenter
@@ -334,17 +308,13 @@ final class StickerRewardCoordinator: NSObject {
                         if let awarded = save.awarded {
                             self?.showWithMyRewards(
                                 title: alreadySaved == nil
-                                    ? "Place saved! +\(awarded.points) store points"
-                                    : "Already saved! +\(awarded.points) store points",
-                                message: "You now have \(save.venueBalance ?? save.balance) points at this shop. Scan the register card with a purchase next time you visit to earn more.",
+                                    ? "Place saved! +\(awarded.points) points"
+                                    : "Already saved! +\(awarded.points) points",
+                                message: "You now have \(save.venueBalance ?? save.balance) points at \(venue.venueName).",
                                 from: presenter
                             )
                         } else if alreadySaved != nil {
-                            self?.showWithMyRewards(
-                                title: "Already saved",
-                                message: savedWhere + " Scan the register card with a purchase to keep earning.",
-                                from: presenter
-                            )
+                            AlertPresenter.showSuccess(title: "Already saved", message: savedWhere, from: presenter)
                         } else {
                             AlertPresenter.showSuccess(savedWhere, from: presenter)
                         }
@@ -367,25 +337,30 @@ final class StickerRewardCoordinator: NSObject {
             self?.offerSave(venue: scan.venue, code: code, bonus: scan.saveBonus)
         }
 
-        var title = scan.venue.venueName
-        var message = ""
-
         // Per-store loyalty: points earned here spend here — every number in
         // this flow is the balance AT this shop (fallback: old-server payload)
         let balanceHere = scan.venueBalance ?? scan.balance
 
+        // A store not on the loyalty program: no rewards wording at all (Wes,
+        // 2026-10-30: never embarrass an owner who allows the window QR but
+        // hasn't bought into rewards). The store page is open; offer the save.
+        if scan.loyaltyPaused == true {
+            offerSave()
+            return
+        }
+
+        var title = scan.venue.venueName
+        var message = ""
         if let awarded = scan.awarded {
-            title = "+\(awarded.points) store points at \(scan.venue.venueName)!"
-            message = "Thanks for coming back. You now have \(balanceHere) points here."
+            title = "+\(awarded.points) points at \(scan.venue.venueName)!"
+            // First visit here: the balance is exactly this visit's points
+            message = balanceHere <= awarded.points
+                ? "Welcome! You now have \(balanceHere) points here."
+                : "Thanks for coming back. You now have \(balanceHere) points here."
         } else if scan.alreadyEarnedToday == true {
             title = "Already earned today"
             message = "You've collected today's visit points at \(scan.venue.venueName). You have \(balanceHere) points here."
-        } else if scan.loyaltyPaused == true {
-            // Never started reads differently from ran out (2026-10-29)
-            message = scan.loyaltyState == "not_started"
-                ? "\(scan.venue.venueName) isn't running FavCircles Rewards yet. Ask the owner about it next time you're in. You have \(balanceHere) points here."
-                : "Points are paused at this store right now. You have \(balanceHere) points here."
-        } else {
+        } else if balanceHere > 0 {
             message = "You have \(balanceHere) points here."
         }
 

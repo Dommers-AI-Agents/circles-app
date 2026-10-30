@@ -383,12 +383,10 @@ class RewardService {
     if (!userDoc.exists || !this.isWithinSignupWindow(userDoc.data())) {
       return { awarded: false, reason: 'not_new_user' };
     }
-    const points = this.effectiveJoinPoints(venue);
-    if (points <= 0) return { awarded: false, reason: 'off' };
     const result = await this.awardPoints({
       userId,
       type: 'sticker_signup',
-      points,
+      points: rewardConfig.POINTS.STICKER_SIGNUP,
       idempotencyKey: `signup:${userId}`, // once per user, ever
       venueId: venue.venueId,
       venueName: venue.venueName,
@@ -488,12 +486,6 @@ class RewardService {
   }
 
   // Points per register-code (purchase) scan; legacy venues have no earnRate
-  /** Points for joining FavCircles from this store's window QR (owner-set; 0 = off). */
-  effectiveJoinPoints(venue) {
-    return Number.isInteger(venue && venue.joinPoints) && venue.joinPoints >= 0
-      ? venue.joinPoints : rewardConfig.POINTS.STICKER_SIGNUP;
-  }
-
   /** Points for saving this store to a circle (owner-set; 0 = off). */
   effectiveSavePoints(venue) {
     return Number.isInteger(venue && venue.savePoints) && venue.savePoints >= 0

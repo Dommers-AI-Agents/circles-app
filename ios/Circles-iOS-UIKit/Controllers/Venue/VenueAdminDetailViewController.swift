@@ -157,7 +157,6 @@ class VenueAdminDetailViewController: BaseViewController {
             active: d.venue.active,
             stats: listVenue.stats,
             earnRate: d.venue.earnRate,
-            joinPoints: d.venue.joinPoints,
             savePoints: d.venue.savePoints,
             offers: d.venue.offers,
             announcements: d.venue.announcements,
