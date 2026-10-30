@@ -138,7 +138,7 @@ class FollowersListViewController: BaseViewController {
                     self.tableView.reloadData()
                     self.updateEmptyState()
                 case .failure(let error):
-                    self.showError("Failed to load followers: \(error.localizedDescription)")
+                    self.showError(FriendlyError.message(for: error))
                     self.updateEmptyState()
                 }
             }
@@ -161,7 +161,7 @@ class FollowersListViewController: BaseViewController {
                     self.tableView.reloadData()
                     self.updateEmptyState()
                 case .failure(let error):
-                    self.showError("Failed to load following: \(error.localizedDescription)")
+                    self.showError(FriendlyError.message(for: error))
                     self.updateEmptyState()
                 }
             }
@@ -187,7 +187,7 @@ class FollowersListViewController: BaseViewController {
                     self.tableView.reloadData()
                     self.updateEmptyState()
                 case .failure(let error):
-                    self.showError("Failed to load connections: \(error.localizedDescription)")
+                    self.showError(FriendlyError.message(for: error))
                     self.updateEmptyState()
                 }
             }
@@ -347,7 +347,7 @@ extension FollowersListViewController: FollowerUserCellDelegate {
                 case .failure(let error):
                     // Revert the cell state on failure
                     cellToUpdate?.setFollowingState(!isFollowing)
-                    self.showError("Failed to \(isFollowing ? "unfollow" : "follow") user: \(error.localizedDescription)")
+                    self.showError(FriendlyError.message(for: error))
                 }
             }
         }

@@ -174,7 +174,7 @@ class ActivityEngagementViewController: BaseViewController {
                     self?.reactions = response.data
                     self?.updateUI()
                 case .failure(let error):
-                    self?.showErrorSafely("Failed to load reactions: \(error.localizedDescription)")
+                    self?.showErrorSafely(FriendlyError.message(for: error))
                 }
             }
         }
@@ -196,7 +196,7 @@ class ActivityEngagementViewController: BaseViewController {
                     self?.comments = response.data
                     self?.updateUI()
                 case .failure(let error):
-                    self?.showErrorSafely("Failed to load comments: \(error.localizedDescription)")
+                    self?.showErrorSafely(FriendlyError.message(for: error))
                 }
             }
         }
@@ -248,7 +248,7 @@ class ActivityEngagementViewController: BaseViewController {
                     self?.commentTextField.resignFirstResponder()
                     self?.loadComments()
                 case .failure(let error):
-                    self?.showErrorSafely("Failed to post comment: \(error.localizedDescription)")
+                    self?.showErrorSafely(FriendlyError.message(for: error))
                 }
             }
         }

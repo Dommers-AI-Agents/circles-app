@@ -81,7 +81,7 @@ final class SwarmImportCoordinator: NSObject {
                 case .success(let response):
                     self?.beginAuthSession(urlString: response.url)
                 case .failure(let error):
-                    self?.presentingViewController?.showError(error.localizedDescription)
+                    self?.presentingViewController?.showError(FriendlyError.message(for: error))
                 }
             }
         }
@@ -164,7 +164,7 @@ final class SwarmImportCoordinator: NSObject {
                         }
                         viewController.prepareAndReview(source: .swarm, lists: lists)
                     case .failure(let error):
-                        viewController.showError(error.localizedDescription)
+                        viewController.showError(FriendlyError.message(for: error))
                     }
                 }
             }

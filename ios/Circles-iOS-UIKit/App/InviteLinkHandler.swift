@@ -70,7 +70,7 @@ final class InviteLinkHandler: SceneCoordinator {
                     }
 
                 case .failure(let error):
-                    self?.showShareError(message: "Failed to validate share link: \(error.localizedDescription)")
+                    self?.showShareError(message: FriendlyError.message(for: error))
                 }
             }
         }
@@ -190,7 +190,7 @@ final class InviteLinkHandler: SceneCoordinator {
                 case .failure(let error):
                     // Show error alert
                     if let rootVC = self?.window?.rootViewController {
-                        AlertPresenter.showError(title: "Import Failed", message: error.localizedDescription, from: rootVC)
+                        AlertPresenter.showError(title: "Import Failed", message: FriendlyError.message(for: error), from: rootVC)
                     }
                 }
             }

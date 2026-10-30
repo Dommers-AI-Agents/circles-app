@@ -196,7 +196,7 @@ class VisitTrackingSettingsViewController: UITableViewController {
                         NotificationCenter.default.post(name: .visitHistoryCleared, object: nil)
                         
                     case .failure(let error):
-                        self?.showAlert(title: "Error", message: "Failed to clear history: \(error.localizedDescription)")
+                        self?.showAlert(title: "Oops", message: FriendlyError.message(for: error))
                     }
                 }
             }
@@ -219,7 +219,7 @@ class VisitTrackingSettingsViewController: UITableViewController {
                     case .success(let response):
                         self?.exportVisits(response.data)
                     case .failure(let error):
-                        self?.showAlert(title: "Error", message: "Failed to fetch visits: \(error.localizedDescription)")
+                        self?.showAlert(title: "Oops", message: FriendlyError.message(for: error))
                     }
                 }
             }
@@ -272,7 +272,7 @@ class VisitTrackingSettingsViewController: UITableViewController {
             present(activityVC, animated: true)
             
         } catch {
-            showAlert(title: "Error", message: "Failed to create export file: \(error.localizedDescription)")
+            showAlert(title: "Oops", message: FriendlyError.message(for: error))
         }
     }
     

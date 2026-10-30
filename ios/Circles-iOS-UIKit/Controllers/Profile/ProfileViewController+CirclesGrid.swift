@@ -153,7 +153,7 @@ extension ProfileViewController: UICollectionViewDelegate {
                         case .success:
                             self.didDeleteCircle(circle.id)
                         case .failure(let error):
-                            self.showError("Failed to delete circle: \(error.localizedDescription)")
+                            self.showError(FriendlyError.message(for: error))
                         }
                     }
                 }

@@ -530,7 +530,7 @@ class SettingsViewController: BaseTableViewController {
                     case .success:
                         AuthService.shared.logout()
                     case .failure(let error):
-                        self?.showError("Failed to delete account: \(error.localizedDescription)")
+                        self?.showError(FriendlyError.message(for: error))
                     }
                 }
             }

@@ -527,7 +527,7 @@ class CreateCircleViewController: UIViewController {
     @objc private func createButtonTapped() {
         // Validate required fields
         guard let name = nameTextField.text, !name.isEmpty else {
-            presentAlert(title: "Error", message: "Please enter a name for your circle")
+            presentAlert(title: "Oops", message: "Please enter a name for your circle")
             return
         }
         
@@ -644,7 +644,7 @@ class CreateCircleViewController: UIViewController {
                         if !SubscriptionManager.shared.presentPaywallIfLimitError(error, from: self, reason: .circleLimit) {
                             self.presentAlert(
                                 title: "Error",
-                                message: "Failed to create circle: \(error.localizedDescription)"
+                                message: FriendlyError.message(for: error)
                             )
                         }
                     }
@@ -691,7 +691,7 @@ class CreateCircleViewController: UIViewController {
                         if !SubscriptionManager.shared.presentPaywallIfLimitError(error, from: self, reason: .circleLimit) {
                             self.presentAlert(
                                 title: "Error",
-                                message: "Failed to create circle: \(error.localizedDescription)"
+                                message: FriendlyError.message(for: error)
                             )
                         }
                     }

@@ -12,7 +12,7 @@ extension AddPlaceViewController {
         guard !isSaving else { return }
         guard let name = nameTextField.text, !name.isEmpty,
               let rawAddress = addressTextView.text, !rawAddress.isEmpty else {
-            presentAlert(title: "Error", message: "Please provide a name and address")
+            presentAlert(title: "Oops", message: "Please provide a name and address")
             return
         }
         // The address box shows a "📍 X mi from current location" decoration —

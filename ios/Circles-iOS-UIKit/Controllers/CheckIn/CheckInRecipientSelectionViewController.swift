@@ -342,7 +342,7 @@ class CheckInRecipientSelectionViewController: BaseViewController {
                     self?.createCheckIn()
                     
                 case .failure(let error):
-                    self?.showError("Failed to create group: \(error.localizedDescription)")
+                    self?.showError(FriendlyError.message(for: error))
                 }
             }
         }
@@ -374,7 +374,7 @@ class CheckInRecipientSelectionViewController: BaseViewController {
                         }
                         
                     case .failure(let error):
-                        self?.showError("Failed to create check-in: \(error.localizedDescription)")
+                        self?.showError(FriendlyError.message(for: error))
                     }
                 }
             }

@@ -107,7 +107,7 @@ final class VenueOfferFormViewController: BaseViewController {
                     self.onSaved?(offers)
                     self.closeAndReportAlerts()
                 case .failure(let error):
-                    self.problemLabel.text = (error as? APIError)?.serverMessage ?? error.localizedDescription
+                    self.problemLabel.text = FriendlyError.message(for: error)
                     self.problemLabel.isHidden = false
                 }
             }

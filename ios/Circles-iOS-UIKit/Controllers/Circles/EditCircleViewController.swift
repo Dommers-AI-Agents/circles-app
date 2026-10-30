@@ -582,7 +582,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
     @objc private func saveTapped() {
         // Validate required fields
         guard let name = nameTextField.text, !name.isEmpty else {
-            presentAlert(title: "Error", message: "Please enter a name for your circle")
+            presentAlert(title: "Oops", message: "Please enter a name for your circle")
             return
         }
         
@@ -683,7 +683,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                             }
                         }
                     case .failure(let error):
-                        self.presentAlert(title: "Error", message: "Failed to update circle: \(error.localizedDescription)")
+                        self.presentAlert(title: "Oops", message: FriendlyError.message(for: error))
                     }
                 }
             }
@@ -723,7 +723,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                 case .failure(let error):
                     self?.presentAlert(
                         title: "Error",
-                        message: "Failed to update circle: \(error.localizedDescription)"
+                        message: FriendlyError.message(for: error)
                     )
                 }
             }
@@ -817,7 +817,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                     self?.deleteButton.setTitle("Delete Circle", for: .normal)
                     self?.presentAlert(
                         title: "Error",
-                        message: "Failed to delete circle: \(error.localizedDescription)"
+                        message: FriendlyError.message(for: error)
                     )
                 }
             }
@@ -972,7 +972,7 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                 case .failure(let error):
                     self?.presentAlert(
                         title: "Error",
-                        message: "Failed to remove editor: \(error.localizedDescription)"
+                        message: FriendlyError.message(for: error)
                     )
                 }
             }
@@ -995,7 +995,7 @@ extension EditCircleViewController: UserSearchViewControllerDelegate {
                     case .failure(let error):
                         self.presentAlert(
                             title: "Error",
-                            message: "Failed to add editor: \(error.localizedDescription)"
+                            message: FriendlyError.message(for: error)
                         )
                     }
                 }

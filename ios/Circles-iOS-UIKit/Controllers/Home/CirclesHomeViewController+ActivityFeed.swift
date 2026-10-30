@@ -109,7 +109,7 @@ extension CirclesHomeViewController {
                         let detailVC = CircleDetailViewController(circle: circle)
                         self.navigationController?.pushViewController(detailVC, animated: true)
                     case .failure(let error):
-                        AlertPresenter.showError(title: "Error", message: "Failed to load circle: \(error.localizedDescription)", from: self)
+                        AlertPresenter.showError(title: "Oops", message: FriendlyError.message(for: error), from: self)
                     }
                 }
             }
@@ -259,7 +259,7 @@ extension CirclesHomeViewController {
                     case .success(let place):
                         // We need to find the circle
                         guard let circleId = place.circleId else {
-                            AlertPresenter.showError(title: "Error", message: "Place has no associated circle", from: self)
+                            AlertPresenter.showError(title: "Oops", message: "Place has no associated circle", from: self)
                             return
                         }
                         CircleService.shared.fetchCircleById(id: circleId) { circleResult in
@@ -271,12 +271,12 @@ extension CirclesHomeViewController {
                                     self.navigationController?.pushViewController(placeDetailVC, animated: true)
                                 case .failure:
                                     // Show error
-                                    AlertPresenter.showError(title: "Error", message: "Failed to load place details", from: self)
+                                    AlertPresenter.showError(title: "Oops", message: "Failed to load place details", from: self)
                                 }
                             }
                         }
                     case .failure(let error):
-                        AlertPresenter.showError(title: "Error", message: "Failed to load place: \(error.localizedDescription)", from: self)
+                        AlertPresenter.showError(title: "Oops", message: FriendlyError.message(for: error), from: self)
                     }
                 }
             }

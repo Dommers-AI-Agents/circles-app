@@ -4245,7 +4245,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
                 case .failure(let error):
                     self.presentAlert(
                         title: "Error",
-                        message: "Failed to delete circle: \(error.localizedDescription)"
+                        message: FriendlyError.message(for: error)
                     )
                 }
             }

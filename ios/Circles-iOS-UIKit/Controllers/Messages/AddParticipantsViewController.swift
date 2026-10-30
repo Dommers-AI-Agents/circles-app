@@ -95,7 +95,7 @@ class AddParticipantsViewController: BaseViewController {
             
             DispatchQueue.main.async {
                 if let error = error {
-                    self.showError("Failed to load connections: \(error.localizedDescription)")
+                    self.showError(FriendlyError.message(for: error))
                     completion?()
                     return
                 }

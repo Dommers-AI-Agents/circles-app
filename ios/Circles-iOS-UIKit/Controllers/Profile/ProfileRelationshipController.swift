@@ -167,7 +167,7 @@ final class ProfileRelationshipController {
             case .failure(let error):
                 Logger.debug("❌ ProfileViewController: Failed to create/get conversation: \(error.localizedDescription)")
                 DispatchQueue.main.async {
-                    self.delegate?.showAlert(title: "Error", message: "Failed to start conversation: \(error.localizedDescription)")
+                    self.delegate?.showAlert(title: "Oops", message: FriendlyError.message(for: error))
                 }
             }
         }
@@ -230,7 +230,7 @@ final class ProfileRelationshipController {
                     delegate.updateButtonVisibility()
                     delegate.updateLocalFollowingCount(increment: action == "unfollow") // Reverse the action
 
-                    delegate.showAlert(title: "Error", message: "Failed to \(action) user: \(error.localizedDescription)")
+                    delegate.showAlert(title: "Oops", message: FriendlyError.message(for: error))
 
                     // Re-enable button immediately on error
                     delegate.followButton.isEnabled = true
@@ -247,7 +247,7 @@ final class ProfileRelationshipController {
         if delegate.connectionStatus == .pending && user.connectionDirection == "incoming" {
             // Find the connection to accept (check both accepted and pending connections)
             guard let connection = findConnection(user.id, currentUserId() ?? "") else {
-                delegate.showAlert(title: "Error", message: "Connection request not found")
+                delegate.showAlert(title: "Oops", message: "Connection request not found")
                 return
             }
 
@@ -266,7 +266,7 @@ final class ProfileRelationshipController {
                         // Refresh connections
                         NetworkManager.shared.loadConnections()
                     case .failure(let error):
-                        delegate.showAlert(title: "Error", message: "Failed to accept connection request: \(error.localizedDescription)")
+                        delegate.showAlert(title: "Oops", message: FriendlyError.message(for: error))
                     }
                 }
             }

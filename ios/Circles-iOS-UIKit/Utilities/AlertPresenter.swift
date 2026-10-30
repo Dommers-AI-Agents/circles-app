@@ -8,17 +8,21 @@ class AlertPresenter {
     
     /// Shows a standard error alert with OK button
     static func showError(_ error: Error, from viewController: UIViewController) {
-        showError(title: "Error", message: error.localizedDescription, from: viewController)
+        // Friendly words, never system text (FriendlyError, 2026-10-30)
+        showError(message: FriendlyError.message(for: error), from: viewController)
     }
     
     /// Shows a standard error alert with custom message
     static func showError(
-        title: String = "Error",
+        title: String = FriendlyError.title,
         message: String,
         from viewController: UIViewController,
         completion: (() -> Void)? = nil
     ) {
-        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        // A screen's own string still passes the same check: technical
+        // wording becomes the friendly line
+        let alert = UIAlertController(title: title == "Error" ? FriendlyError.title : title,
+                                      message: FriendlyError.clean(message), preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
             completion?()
         })
@@ -284,7 +288,7 @@ class AlertPresenter {
 
 // Example usage:
 // Instead of:
-// let alert = UIAlertController(title: "Error", message: error.localizedDescription, preferredStyle: .alert)
+// let alert = UIAlertController(title: "Oops", message: FriendlyError.message(for: error), preferredStyle: .alert)
 // alert.addAction(UIAlertAction(title: "OK", style: .default))
 // self.present(alert, animated: true)
 //

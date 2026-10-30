@@ -1758,7 +1758,7 @@ class PlaceDetailViewController: BaseViewController {
                     }
                     
                 case .failure(let error):
-                    self.showError("Failed to load circles: \(error.localizedDescription)")
+                    self.showError(FriendlyError.message(for: error))
                 }
             }
         }
@@ -2193,7 +2193,7 @@ class PlaceDetailViewController: BaseViewController {
                     
                 case .failure(let error):
                     Logger.error("Failed to toggle like: \(error)")
-                    self.showAlert(title: "Error", message: "Failed to update like. Please try again.")
+                    self.showAlert(title: "Oops", message: "Failed to update like. Please try again.")
                 }
             }
         }
@@ -2224,7 +2224,7 @@ class PlaceDetailViewController: BaseViewController {
                     self.isFollowingPlace = wasFollowing
                     self.placeFollowersCount += wasFollowing ? 1 : -1
                     self.updateFollowButton()
-                    self.showAlert(title: "Error", message: "Failed to update follow. Please try again.")
+                    self.showAlert(title: "Oops", message: "Failed to update follow. Please try again.")
                 }
             }
         }
@@ -2727,7 +2727,7 @@ class PlaceDetailViewController: BaseViewController {
             guard let imageData = image.jpegData(compressionQuality: 0.8) else {
                 isLoadingPhoto = false
                 editImageButton.isEnabled = true
-                showAlert(title: "Error", message: "Failed to process image")
+                showAlert(title: "Oops", message: "Failed to process image")
                 return
             }
             
@@ -2782,7 +2782,7 @@ class PlaceDetailViewController: BaseViewController {
                         }
                         
                     case .failure(let error):
-                        self?.showAlert(title: "Error", message: "Failed to upload photo: \(error.localizedDescription)")
+                        self?.showAlert(title: "Oops", message: FriendlyError.message(for: error))
                     }
                 }
             }
@@ -2938,7 +2938,7 @@ extension PlaceDetailViewController: CircleSelectionDelegate {
                         }
                         
                     case .failure(let error):
-                        self.showError("Failed to move place: \(error.localizedDescription)")
+                        self.showError(FriendlyError.message(for: error))
                     }
                 }
             }

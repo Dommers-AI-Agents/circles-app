@@ -551,7 +551,7 @@ extension VideoRecordingViewController: AVCaptureFileOutputRecordingDelegate {
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
         if let error = error {
             Logger.debug("Recording error: \(error)")
-            showAlert(title: "Recording Failed", message: error.localizedDescription)
+            showAlert(title: "Recording Failed", message: FriendlyError.message(for: error))
         } else {
             // Recording successful
             // Pass nil for place - selection happens after video processing

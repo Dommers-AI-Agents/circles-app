@@ -675,7 +675,7 @@ class ChatViewController: BaseViewController {
                         self?.showSuccess(message)
                         
                     case .failure(let error):
-                        self?.showError("Failed to update notification settings: \(error.localizedDescription)")
+                        self?.showError(FriendlyError.message(for: error))
                     }
                 }
             }

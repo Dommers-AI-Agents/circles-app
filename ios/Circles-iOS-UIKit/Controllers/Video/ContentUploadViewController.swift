@@ -354,7 +354,7 @@ class ContentUploadViewController: UIViewController {
             return
         }
         
-        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
+        let alert = UIAlertController(title: "Oops", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }
@@ -548,7 +548,7 @@ extension ContentUploadViewController: MediaCaptureServiceDelegate {
                             // Start upload immediately while user selects place
                             self?.startUploadAndShowPlaceSelection(for: .video(compressed.url))
                         case .failure(let error):
-                            self?.showErrorAlert("Failed to compress video: \(error.localizedDescription)")
+                            self?.showErrorAlert(FriendlyError.message(for: error))
                         }
                     }
                 }
@@ -927,7 +927,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                         if error.localizedDescription.lowercased().contains("quota") {
                             self?.handleQuotaError()
                         } else {
-                            self?.showErrorAlert("Upload failed: \(error.localizedDescription)")
+                            self?.showErrorAlert(FriendlyError.message(for: error))
                         }
                     }
                 }
@@ -1044,7 +1044,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                         if error.localizedDescription.lowercased().contains("quota") {
                             self?.handleQuotaError()
                         } else {
-                            self?.showErrorAlert("Failed to initiate upload: \(error.localizedDescription)")
+                            self?.showErrorAlert(FriendlyError.message(for: error))
                         }
                     }
                 }
@@ -1193,7 +1193,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                         
                     case .failure(let error):
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            self?.showErrorAlert("Upload failed: \(error.localizedDescription)")
+                            self?.showErrorAlert(FriendlyError.message(for: error))
                         }
                     }
                 }
@@ -1228,7 +1228,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             if let error = error {
                 DispatchQueue.main.async {
                     loadingAlert.dismiss(animated: true) {
-                        self?.showErrorAlert("Upload failed: \(error.localizedDescription)")
+                        self?.showErrorAlert(FriendlyError.message(for: error))
                     }
                 }
                 return
@@ -1290,7 +1290,7 @@ extension ContentUploadViewController: PlaceSearchDelegate {
                         
                     case .failure(let error):
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            self?.showErrorAlert("Upload failed: \(error.localizedDescription)")
+                            self?.showErrorAlert(FriendlyError.message(for: error))
                         }
                     }
                 }

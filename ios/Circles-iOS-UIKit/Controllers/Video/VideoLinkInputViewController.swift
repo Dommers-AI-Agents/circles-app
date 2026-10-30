@@ -453,7 +453,7 @@ class VideoLinkInputViewController: UIViewController {
                         }
                         
                     case .failure(let error):
-                        self?.showErrorAlert("Failed to add video: \(error.localizedDescription)")
+                        self?.showErrorAlert(FriendlyError.message(for: error))
                     }
                 }
             }
@@ -465,7 +465,7 @@ class VideoLinkInputViewController: UIViewController {
     }
     
     private func showErrorAlert(_ message: String) {
-        let alert = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
+        let alert = UIAlertController(title: "Oops", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
     }

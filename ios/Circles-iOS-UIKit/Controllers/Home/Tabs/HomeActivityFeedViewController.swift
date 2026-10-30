@@ -976,7 +976,7 @@ extension HomeActivityFeedViewController: ActivityFeedCellDelegate {
                     if case .httpError(404, _) = error {
                         self?.removeStaleActivity(id: activity.id)
                     } else {
-                        self?.showError("Failed to update reaction: \(error.localizedDescription)")
+                        self?.showError(FriendlyError.message(for: error))
                     }
                 }
             }

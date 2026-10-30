@@ -639,7 +639,7 @@ class RegisterViewController: BaseViewController {
                         return
                     }
                     // Stay on this step: a fresh tap mints a fresh challenge
-                    self.showError(error.localizedDescription)
+                    self.showError(FriendlyError.message(for: error))
                 }
             }
         }
@@ -728,7 +728,7 @@ class RegisterViewController: BaseViewController {
                     if case AuthError.accountExists = error {
                         self?.showWelcomeBack(email: email)
                     } else {
-                        self?.showError(error.localizedDescription)
+                        self?.showError(FriendlyError.message(for: error))
                     }
                 }
             }
@@ -797,7 +797,7 @@ class RegisterViewController: BaseViewController {
                 case .failure(let error):
                     Logger.debug("🍎 Apple Sign-In Failed with error: \(error.localizedDescription)")
 
-                    self?.showError("Apple Sign-In Failed: \(error.localizedDescription)")
+                    self?.showError(FriendlyError.message(for: error))
                 }
             }
         }

@@ -355,7 +355,7 @@ extension HomeWorkExclusionViewController: CLLocationManagerDelegate {
         // Dismiss loading
         if let presentedVC = presentedViewController {
             presentedVC.dismiss(animated: true) {
-                self.showAlert(title: "Error", message: "Failed to get location: \(error.localizedDescription)")
+                self.showAlert(title: "Oops", message: FriendlyError.message(for: error))
             }
         }
         pendingLocationType = nil
@@ -372,7 +372,7 @@ extension HomeWorkExclusionViewController: CLLocationManagerDelegate {
     
     private func handleGeocodeResult(placemarks: [CLPlacemark]?, error: Error?, location: CLLocation, type: String) {
         if let error = error {
-            showAlert(title: "Error", message: "Failed to get address: \(error.localizedDescription)")
+            showAlert(title: "Oops", message: FriendlyError.message(for: error))
             return
         }
         

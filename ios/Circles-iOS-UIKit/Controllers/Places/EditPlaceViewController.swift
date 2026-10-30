@@ -714,7 +714,7 @@ class EditPlaceViewController: BaseViewController {
 
         // Validate required fields
         guard let name = nameTextField.text, !name.isEmpty else {
-            presentAlert(title: "Error", message: "Please enter a name for the place")
+            presentAlert(title: "Oops", message: "Please enter a name for the place")
             return
         }
         
@@ -773,7 +773,7 @@ class EditPlaceViewController: BaseViewController {
                 guard let self else { return }
                 self.isSaving = false
                 self.navigationItem.rightBarButtonItem?.isEnabled = true
-                self.showError((error as? APIError)?.serverMessage ?? error.localizedDescription)
+                self.showError(FriendlyError.message(for: error))
             }
         }
         let finish: () -> Void = { [weak self] in
@@ -933,7 +933,7 @@ class EditPlaceViewController: BaseViewController {
             DispatchQueue.main.async {
                 guard let self else { return }
                 guard let placemark = placemarks?.first, error == nil else {
-                    self.presentAlert(title: "Error", message: "Could not find an address for this location.")
+                    self.presentAlert(title: "Oops", message: "Could not find an address for this location.")
                     return
                 }
                 self.updateAddressFields(with: placemark)
@@ -988,7 +988,7 @@ class EditPlaceViewController: BaseViewController {
             .joined(separator: ", ")
         
         guard !formattedAddress.isEmpty else {
-            presentAlert(title: "Error", message: "Please enter an address")
+            presentAlert(title: "Oops", message: "Please enter an address")
             return
         }
         
@@ -1160,7 +1160,7 @@ class EditPlaceViewController: BaseViewController {
                         self?.dismiss(animated: true)
                         
                     case .failure(let error):
-                        self?.presentAlert(title: "Error", message: error.localizedDescription)
+                        self?.presentAlert(title: "Oops", message: FriendlyError.message(for: error))
                     }
                 }
             }
@@ -1323,7 +1323,7 @@ extension EditPlaceViewController: CircleSelectionDelegate {
                         }
                         
                     case .failure(let error):
-                        AlertPresenter.showError(title: "Error", message: "Failed to move place: \(error.localizedDescription)", from: self)
+                        AlertPresenter.showError(title: "Oops", message: FriendlyError.message(for: error), from: self)
                     }
                 }
             }

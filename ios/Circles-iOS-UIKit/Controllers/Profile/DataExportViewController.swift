@@ -347,7 +347,7 @@ class DataExportViewController: BaseViewController {
                     self?.exportedFileURL = fileURL
                     self?.presentShareSheet(with: fileURL)
                 case .failure(let error):
-                    self?.showError("Failed to export data: \(error.localizedDescription)")
+                    self?.showError(FriendlyError.message(for: error))
                 }
             }
         }

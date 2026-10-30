@@ -420,7 +420,7 @@ final class CheckInComposeViewController: BaseViewController {
                         }
                         self.confirmCheckIn(message)
                     case .failure(let error):
-                        self.showError("Failed to check in: \(error.localizedDescription)")
+                        self.showError(FriendlyError.message(for: error))
                     }
                 }
             }

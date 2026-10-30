@@ -612,7 +612,7 @@ class EditProfileViewController: BaseViewController {
                         self?.navigationController?.popViewController(animated: true)
                     }
                 case .failure(let error):
-                    self?.showError("Failed to update profile: \(error.localizedDescription)")
+                    self?.showError(FriendlyError.message(for: error))
                 }
             }
         }

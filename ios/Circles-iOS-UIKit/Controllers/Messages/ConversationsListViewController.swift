@@ -483,7 +483,7 @@ class ConversationsListViewController: UIViewController {
         // Validate conversation has required data
         guard !conversation.id.isEmpty else {
             Logger.debug("❌ ConversationsListViewController: Invalid conversation - missing ID")
-            AlertPresenter.showError(title: "Error", message: "Unable to open conversation. Please try again.", from: self)
+            AlertPresenter.showError(title: "Oops", message: "Unable to open conversation. Please try again.", from: self)
             return
         }
         
@@ -579,7 +579,7 @@ extension ConversationsListViewController: UITableViewDelegate {
                             completion(true)
                         case .failure(let error):
                             // Show error alert
-                            AlertPresenter.showError(title: "Error", message: "Failed to delete conversation: \(error.localizedDescription)", from: self)
+                            AlertPresenter.showError(title: "Oops", message: FriendlyError.message(for: error), from: self)
                             completion(false)
                         }
                     }
@@ -685,7 +685,7 @@ extension ConversationsListViewController: SelectConnectionViewControllerDelegat
                         }
                         
                         // Show alert
-                        if let self { AlertPresenter.showError(title: "Error", message: errorMessage, from: self) }
+                        if let self { AlertPresenter.showError(title: "Oops", message: errorMessage, from: self) }
                     }
                 }
             }

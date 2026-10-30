@@ -87,7 +87,7 @@ final class MapPOIAddCoordinator {
                     case .success(let circles):
                         self?.presentCirclePicker(for: featureAnnotation, circles: circles)
                     case .failure(let error):
-                        self?.presenter.showError("Failed to load circles: \(error.localizedDescription)")
+                        self?.presenter.showError(FriendlyError.message(for: error))
                     }
                 }
             }

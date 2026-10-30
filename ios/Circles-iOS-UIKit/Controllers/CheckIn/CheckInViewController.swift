@@ -601,7 +601,7 @@ extension CheckInViewController: NearbyPlaceSearchDelegate {
 
     func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didFailWith error: Error) {
         hideLoadingState()
-        showError("Could not get place details: \(error.localizedDescription)")
+        showError(FriendlyError.message(for: error))
     }
 }
 

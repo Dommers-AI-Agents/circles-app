@@ -81,7 +81,7 @@ final class PlaceNotesEditController {
                         self.delegate?.notesEdit(self, didSave: privateNotes, updatedPlace: updatedPlace)
                     case .failure(let error):
                         // Show error alert
-                        self.presenter.showError("Failed to save notes: \(error.localizedDescription)")
+                        self.presenter.showError(FriendlyError.message(for: error))
                     }
                 }
             }

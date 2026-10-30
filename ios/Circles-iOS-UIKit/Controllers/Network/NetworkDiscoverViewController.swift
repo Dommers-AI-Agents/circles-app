@@ -160,7 +160,7 @@ final class NetworkDiscoverViewController: BaseViewController {
                     NotificationCenter.default.post(name: .connectionRequestSent, object: nil)
                 case .failure(let error):
                     self?.setPerson(user.copy(connectionStatus: user.connectionStatus ?? "none"))
-                    self?.showError((error as? APIError)?.serverMessage ?? error.localizedDescription)
+                    self?.showError(FriendlyError.message(for: error))
                 }
             }
         }

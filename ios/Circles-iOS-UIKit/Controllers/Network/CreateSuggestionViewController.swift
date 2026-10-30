@@ -197,7 +197,7 @@ class CreateSuggestionViewController: BaseViewController {
                     }
                 case .failure(let error):
                     self?.navigationItem.rightBarButtonItem?.isEnabled = true
-                    self?.showError(error.localizedDescription)
+                    self?.showError(FriendlyError.message(for: error))
                 }
             }
         }

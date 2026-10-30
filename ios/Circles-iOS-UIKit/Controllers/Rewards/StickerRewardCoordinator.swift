@@ -209,7 +209,7 @@ final class StickerRewardCoordinator: NSObject {
                 let message = scan.loyaltyLive == false
                     ? "\(scan.venue.venueName) is already in your circles. \(notLiveLine)"
                     : "\(scan.venue.venueName) is already in your circles. Come back and scan the register card with a purchase to keep earning!"
-                AlertPresenter.showSuccess(title: "Welcome back!", message: message, from: presenter)
+                self.showWithMyRewards(title: "Welcome back!", message: message, from: presenter)
                 return
             }
             var message = "Save \(scan.venue.venueName) to one of your circles so you don't forget it — and earn \(scan.saveBonus) more store points."
@@ -235,11 +235,9 @@ final class StickerRewardCoordinator: NSObject {
         let copy = RewardsAvailability.pointsEarned(venueName: scan.venue.venueName, points: awarded.points,
                                                     venueBalance: balanceHere, loyaltyLive: scan.loyaltyLive,
                                                     nextRewardLine: nextLine)
-        AlertPresenter.showSuccess(title: copy.title, message: copy.message, from: presenter) {
-            // Home points at the $ button once: where all their points live
-            OnboardingManager.shared.armRewardsHint()
-            offerSaveAfterwards()
-        }
+        // Home points at the $ button once: where all their points live
+        OnboardingManager.shared.armRewardsHint()
+        showWithMyRewards(title: copy.title, message: copy.message, from: presenter, onOK: offerSaveAfterwards)
     }
 
     /// "Save this store?" after a register scan, into the circle they pick
@@ -330,7 +328,7 @@ final class StickerRewardCoordinator: NSObject {
                     switch result {
                     case .success(let save):
                         if let awarded = save.awarded {
-                            AlertPresenter.showSuccess(
+                            self?.showWithMyRewards(
                                 title: alreadySaved == nil
                                     ? "Place saved! +\(awarded.points) store points"
                                     : "Already saved! +\(awarded.points) store points",
@@ -338,7 +336,7 @@ final class StickerRewardCoordinator: NSObject {
                                 from: presenter
                             )
                         } else if alreadySaved != nil {
-                            AlertPresenter.showSuccess(
+                            self?.showWithMyRewards(
                                 title: "Already saved",
                                 message: savedWhere + " Scan the register card with a purchase to keep earning.",
                                 from: presenter
@@ -420,6 +418,16 @@ final class StickerRewardCoordinator: NSObject {
             actions: actions,
             from: presenter
         )
+    }
+
+    /// A rewards result with two ways out: My Rewards (the Store Rewards
+    /// screen) or OK, which carries on with `onOK` (Wes, 2026-10-30: saving a
+    /// store from its QR code earns points too, so it gets the button as well)
+    private func showWithMyRewards(title: String, message: String, from presenter: UIViewController, onOK: (() -> Void)? = nil) {
+        AlertPresenter.showAlert(title: title, message: message, actions: [
+            (title: "My Rewards", style: .default, handler: { [weak self] in self?.openStoreRewards() }),
+            (title: "OK", style: .cancel, handler: { onOK?() })
+        ], from: presenter)
     }
 
     /// The Store Rewards screen (every store's points and offers), pushed on

@@ -192,7 +192,7 @@ class PasswordResetViewController: BaseViewController {
                     self?.emailTextField.text = ""
                     self?.emailTextField.resignFirstResponder()
                 case .failure(let error):
-                    self?.showError("Failed to send reset email: \(error.localizedDescription)")
+                    self?.showError(FriendlyError.message(for: error))
                 }
             }
         }

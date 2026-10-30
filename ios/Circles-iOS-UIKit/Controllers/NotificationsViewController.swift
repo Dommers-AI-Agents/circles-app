@@ -228,7 +228,7 @@ class NotificationsViewController: BaseViewController {
                 case .failure(let error):
                     Logger.debug("❌ NotificationsViewController: Failed to load notifications: \(error)")
                     Logger.debug("❌ NotificationsViewController: Error type: \(type(of: error))")
-                    self.showError("Failed to load notifications: \(error.localizedDescription)")
+                    self.showError(FriendlyError.message(for: error))
                 }
                 
                 // Always call completion to clear loading state

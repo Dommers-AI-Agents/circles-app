@@ -135,7 +135,7 @@ class ImportReviewViewController: BaseViewController {
                         case .success(let summary):
                             self.showCompletion(summary)
                         case .failure(let error):
-                            self.showError(error.localizedDescription)
+                            self.showError(FriendlyError.message(for: error))
                         }
                     }
                 }

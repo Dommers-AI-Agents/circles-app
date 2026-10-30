@@ -438,7 +438,7 @@ class DiscoveryListViewController: BaseViewController {
                     self.setConnectionStatus(user.connectionStatus, forUserId: user.id)
                     // The server's own wording ("Connection request already
                     // sent") beats a raw localizedDescription
-                    self.showError((error as? APIError)?.serverMessage ?? error.localizedDescription)
+                    self.showError(FriendlyError.message(for: error))
                 }
             }
         }

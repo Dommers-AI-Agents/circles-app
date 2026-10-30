@@ -170,7 +170,7 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
                         self?.updateTableViewHeight()
                         
                     case .failure(let error):
-                        if let self { AlertPresenter.showError(message: "Failed to delete place: \(error.localizedDescription)", from: self) }
+                        if let self { AlertPresenter.showError(message: FriendlyError.message(for: error), from: self) }
                     }
                 }
             }
@@ -249,7 +249,7 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
                         AlertPresenter.showSuccess("\(place.name) has been moved to \(targetCircle.name)", from: self)
                         
                     case .failure(let error):
-                        AlertPresenter.showError(message: "Failed to move place: \(error.localizedDescription)", from: self)
+                        AlertPresenter.showError(message: FriendlyError.message(for: error), from: self)
                     }
                 }
             }
@@ -353,7 +353,7 @@ extension CircleDetailViewController: UITableViewDelegate, UITableViewDataSource
             present(activityViewController, animated: true)
             
         } catch {
-            showError("Failed to export file: \(error.localizedDescription)")
+            showError(FriendlyError.message(for: error))
         }
     }
     

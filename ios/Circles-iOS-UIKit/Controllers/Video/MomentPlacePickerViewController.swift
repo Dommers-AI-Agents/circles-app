@@ -426,6 +426,6 @@ extension MomentPlacePickerViewController: NearbyPlaceSearchDelegate {
 
     func nearbyPlaceSearch(_ search: NearbyPlaceSearch, didFailWith error: Error) {
         setLoading(false)
-        showError(error.localizedDescription)
+        showError(FriendlyError.message(for: error))
     }
 }

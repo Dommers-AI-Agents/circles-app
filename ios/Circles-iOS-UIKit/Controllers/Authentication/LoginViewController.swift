@@ -675,7 +675,7 @@ class LoginViewController: BaseViewController {
                 case .failure(let error):
                     Logger.debug("🍎 Apple Sign-In Failed with error: \(error.localizedDescription)")
 
-                    self?.showError("Apple Sign-In Failed: \(error.localizedDescription)")
+                    self?.showError(FriendlyError.message(for: error))
                 }
             }
         }
@@ -696,7 +696,7 @@ class LoginViewController: BaseViewController {
                     AnalyticsService.shared.trackLogin(method: "google")
                 case .failure(let error):
                     Logger.debug("🔍 Google Sign-In failed with error: \(error.localizedDescription)")
-                    self?.showError("Google Sign-In Failed: \(error.localizedDescription)")
+                    self?.showError(FriendlyError.message(for: error))
                 }
             }
         }
@@ -717,7 +717,7 @@ class LoginViewController: BaseViewController {
                     AnalyticsService.shared.trackLogin(method: "facebook")
                 case .failure(let error):
                     Logger.debug("📘 Facebook Sign-In failed with error: \(error.localizedDescription)")
-                    self?.showError("Facebook Sign-In Failed: \(error.localizedDescription)")
+                    self?.showError(FriendlyError.message(for: error))
                 }
             }
         }

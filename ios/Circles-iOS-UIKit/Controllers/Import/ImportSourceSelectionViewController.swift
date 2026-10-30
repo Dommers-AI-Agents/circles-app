@@ -159,7 +159,7 @@ class ImportSourceSelectionViewController: BaseViewController {
                     }
                 }
             } catch {
-                showError(error.localizedDescription)
+                showError(FriendlyError.message(for: error))
                 return
             }
         }
@@ -233,7 +233,7 @@ class ImportSourceSelectionViewController: BaseViewController {
             SubscriptionManager.shared.showPaywall(from: self, reason: .importFeature)
             return
         }
-        showError(error.localizedDescription)
+        showError(FriendlyError.message(for: error))
     }
 
     // MARK: - Swarm (Foursquare OAuth)

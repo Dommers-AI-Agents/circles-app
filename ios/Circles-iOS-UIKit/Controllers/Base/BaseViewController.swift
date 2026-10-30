@@ -195,8 +195,8 @@ class BaseViewController: UIViewController {
         }
         
         AlertPresenter.showConfirmation(
-            title: "Error",
-            message: error.localizedDescription,
+            title: FriendlyError.title,
+            message: FriendlyError.message(for: error),
             confirmTitle: "Retry",
             cancelTitle: "Cancel",
             from: self,

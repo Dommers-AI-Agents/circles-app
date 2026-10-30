@@ -324,7 +324,7 @@ class ChangePasswordViewController: BaseViewController {
                         self.navigationController?.popViewController(animated: true)
                     }
                 case .failure(let error):
-                    self.showError(error.localizedDescription)
+                    self.showError(FriendlyError.message(for: error))
                 }
             }
         }

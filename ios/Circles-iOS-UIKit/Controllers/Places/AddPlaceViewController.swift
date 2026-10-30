@@ -1977,7 +1977,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     func presentPlaceCreationError(_ error: Error) {
         let message = error.localizedDescription
         guard message.localizedCaseInsensitiveContains("premium") else {
-            presentAlert(title: "Error", message: message)
+            presentAlert(title: "Oops", message: message)
             return
         }
 

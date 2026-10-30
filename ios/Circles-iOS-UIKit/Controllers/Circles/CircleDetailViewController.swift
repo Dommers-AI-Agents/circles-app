@@ -1613,7 +1613,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                 case .failure(let error):
                     Logger.debug("Failed to like place: \(error)")
                     // Show error alert
-                    if let self { AlertPresenter.showError(title: "Error", message: "Failed to like place. Please try again.", from: self) }
+                    if let self { AlertPresenter.showError(title: "Oops", message: "Failed to like place. Please try again.", from: self) }
                 }
             }
         }
@@ -1718,7 +1718,7 @@ extension CircleDetailViewController: PlaceSearchDelegate {
                         // appearing in the list are the feedback
 
                     case .failure(let error):
-                        AlertPresenter.showError(title: "Error", message: "Failed to add place: \(error.localizedDescription)", from: self)
+                        AlertPresenter.showError(title: "Oops", message: FriendlyError.message(for: error), from: self)
                     }
                 }
             }
