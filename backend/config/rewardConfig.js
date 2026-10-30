@@ -30,5 +30,9 @@ module.exports = {
   // Venue sticker codes: 6 uppercase alphanumeric chars (same alphabet as referral codes)
   CODE_LENGTH: 6,
 
-  APP_STORE_URL: 'https://apps.apple.com/us/app/favcircles/id6746807095'
+  APP_STORE_URL: 'https://apps.apple.com/us/app/favcircles/id6746807095',
+
+  // The generic "Join FavCircles" App Clip code (scripts/create-generic-join-venue.js):
+  // printed on coasters and anything not tied to one store
+  GENERIC_JOIN_CODE: 'JOINUS'
 };

@@ -22,6 +22,7 @@ const {
   createVenue,
   listVenues,
   printStoreStickers,
+  printCoasterStickers,
   getVenueAdminDetail,
   syncAppClipExperiences
 } = require('../controllers/venues/venueAdminController');
@@ -117,6 +118,7 @@ const requireSuperUser = require('../middleware/requireSuperUser');
 router.post('/venues', requireSuperUser, createVenueFromApp);
 router.get('/venues', requireSuperUser, listVenues);
 router.get('/stickers/print', requireSuperUser, printStoreStickers); // many stores' codes on one Avery sheet
+router.get('/stickers/coasters', requireSuperUser, printCoasterStickers); // the generic App Clip code, 2 per coaster
 router.post('/superusers', requireSuperUser, setSuperUser);
 router.post('/venues/:venueId/owner', requireSuperUser, setVenueOwner);
 // Literal segment, like by-place: a super-user gets (or mints) the codes for any place

@@ -3,8 +3,9 @@ import UIKit
 /// Super-user screen: venues enrolled in the sticker program, with their
 /// per-sticker stats. Tapping a store opens its full admin page
 /// (VenueAdminDetailViewController); from here you can also sign up a new
-/// venue and grant super-user access to other users. The QR button picks
-/// stores for one sheet of window-code stickers (StoreStickerSheet).
+/// venue and grant super-user access to other users. The QR button prints
+/// sticker sheets: window codes for picked stores (StoreStickerSheet) or the
+/// generic App Clip code for coasters (CoasterStickerSheet).
 class VenueAdminViewController: BaseViewController {
 
     // MARK: - Properties
@@ -17,7 +18,7 @@ class VenueAdminViewController: BaseViewController {
 
     private lazy var stickersButton: UIBarButtonItem = {
         let item = UIBarButtonItem(image: UIImage(systemName: "qrcode"), style: .plain, target: self, action: #selector(stickersTapped))
-        item.accessibilityLabel = "Print window stickers for several stores"
+        item.accessibilityLabel = "Print sticker sheets"
         return item
     }()
     private lazy var printStickersButton = UIBarButtonItem(title: "Print", style: .done, target: self, action: #selector(printStickersTapped))
@@ -308,6 +309,19 @@ extension VenueAdminViewController: UITableViewDataSource, UITableViewDelegate {
 
 extension VenueAdminViewController {
     @objc private func stickersTapped() {
+        AlertPresenter.showActionSheet(
+            title: "Print stickers",
+            message: "Stickers cover the old App Store code on printed window stickers and coasters.",
+            actions: [
+                ("Window stickers for several stores…", .default, { [weak self] in self?.startStickerPicking() }),
+                ("Coaster stickers (2 per coaster)…", .default, { [weak self] in self?.askCoasterCount() })
+            ],
+            from: self,
+            barButtonItem: stickersButton
+        )
+    }
+
+    private func startStickerPicking() {
         stickerPicks = []
         tableView.setEditing(true, animated: true)
         navigationItem.leftBarButtonItem = cancelStickersButton
@@ -365,6 +379,56 @@ extension VenueAdminViewController {
         }
     }
 
+    // MARK: Coasters
+
+    private func askCoasterCount() {
+        AlertPresenter.showTextInput(
+            title: "How many coasters?",
+            message: "Each coaster gets two ¾ in stickers (one per side) with the FavCircles App Clip code, on Avery 94102. One sheet covers \(CoasterStickerSheet.defaultCoasters) coasters.",
+            initialText: String(CoasterStickerSheet.defaultCoasters),
+            keyboardType: .numberPad,
+            confirmTitle: "Next",
+            from: self
+        ) { [weak self] text in
+            guard let self, let text else { return }
+            guard let coasters = CoasterStickerSheet.coasterCount(from: text) else {
+                self.showError("Enter 1 to \(CoasterStickerSheet.maxCoasters) coasters.")
+                return
+            }
+            self.askCoasterStart(coasters: coasters)
+        }
+    }
+
+    private func askCoasterStart(coasters: Int) {
+        AlertPresenter.showTextInput(
+            title: "Start at sticker #",
+            message: "1 is the top-left sticker; start later to skip ones already used.",
+            initialText: "1",
+            keyboardType: .numberPad,
+            confirmTitle: "Print",
+            from: self
+        ) { [weak self] text in
+            guard let self, let text else { return }
+            guard let start = CoasterStickerSheet.startPosition(from: text) else {
+                self.showError("Pick a sticker from 1 to \(CoasterStickerSheet.perSheet).")
+                return
+            }
+            let sheet = CoasterStickerSheet(coasters: coasters, startAt: start)
+            let loading = AlertPresenter.showLoading(message: "Building your stickers…", from: self)
+            RewardsService.shared.downloadCoasterStickers(sheet) { [weak self] result in
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) {
+                        guard let self else { return }
+                        switch result {
+                        case .failure(let error): self.showError(error)
+                        case .success(let data): self.sharePDF(data, fileName: sheet.fileName)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// A real file with a readable name, so Print and Save to Files show it
     private func sharePDF(_ data: Data, fileName: String) {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
@@ -375,7 +439,7 @@ extension VenueAdminViewController {
             return
         }
         let activity = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-        activity.popoverPresentationController?.barButtonItem = printStickersButton
+        activity.popoverPresentationController?.barButtonItem = tableView.isEditing ? printStickersButton : stickersButton
         present(activity, animated: true)
     }
 }

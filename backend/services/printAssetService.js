@@ -26,6 +26,7 @@ const { ServiceError } = require('../utils/serviceError');
 const path = require('path');
 const rewardProgress = require('./rewardProgress');
 const { coverJPEG } = require('./storeCoverPhoto');
+const rewardConfig = require('../config/rewardConfig');
 
 // The FavCircles palette (the App Clip card's): navy and blue, the yellow
 // call-to-action pill, warm white
@@ -59,16 +60,28 @@ const GEOMETRY = {
   stickers: { page: [8.5 * IN, 11 * IN] }
 };
 
-// Avery 22805: 1½ in squares, 4 across and 6 down, ½ in top and side
-// margins, 2 in across and 1.7 in down from one sticker to the next.
-// Made to cover the App Store code on the round FavCircles window
-// stickers (Wes, 2026-10-30): that code's dots are 1.06 in (5½ in
-// sticker) or 1.25 in (6 in), inside a white frame 1.30 / 1.54 in, and
-// 1½ in clears the words above and the footer below on both.
-const STICKER_SHEET = { size: 1.5 * IN, cols: 4, rows: 6, left: 0.5 * IN, top: 0.5 * IN, pitchX: 2 * IN, pitchY: 1.7 * IN };
+// Label stock, measured from Avery's own blank templates (not third-party
+// spec pages, which had 22805's side margin and pitch wrong).
+//   avery22805  1½ in squares, 4 × 6. Covers the App Store code on the round
+//               FavCircles window stickers (Wes, 2026-10-30): that code's dots
+//               are 1.06 in (5½ in sticker) or 1.25 in (6 in), inside a white
+//               frame 1.30 / 1.54 in; 1½ in clears the words above and the
+//               footer below on both.
+//   avery94102  ¾ in squares, 8 × 10. Covers the App Store code on the 4 in
+//               coasters: a 0.65 in white frame, 0.57 in of dots, with text
+//               close above it on the front.
+const STICKER_SHEETS = {
+  avery22805: { label: 'Avery 22805 (1½ in square, 24 per sheet)', size: 1.5 * IN, cols: 4, rows: 6,
+    left: 0.78125 * IN, top: 0.5 * IN, pitchX: 1.8125 * IN, pitchY: 1.7 * IN },
+  avery94102: { label: 'Avery 94102 (¾ in square, 80 per sheet)', size: 0.75 * IN, cols: 8, rows: 10,
+    left: 0.375 * IN, top: 0.625 * IN, pitchX: 1 * IN, pitchY: 1 * IN }
+};
+const STICKER_SHEET = STICKER_SHEETS.avery22805;
 // The code inside each sticker: ⅛ in of white all round, so a sheet fed
 // slightly off still keeps every dot on its sticker
 const STICKER_QR = 1.25 * IN;
+// On a coaster sticker, 0.06 in of white all round
+const COASTER_QR = 0.63 * IN;
 const STICKER_INK = '#1B1E24';
 
 // Copy per kind (Wes, 2026-10-30: signs owners love to put out and customers
@@ -352,17 +365,18 @@ const NAMED_STICKER_QR = 1.12 * IN;
 const STICKERS_PER_SHEET = STICKER_SHEET.cols * STICKER_SHEET.rows;
 const MAX_STORE_STICKERS = 96;
 
-// Sticker sheets: one entry per sticker ({ qr, name }), filled left to right
-// and top to bottom from position `startAt` (1–24, so a half-used sheet isn't
-// wasted), onto as many pages as it takes. The QR size option doesn't apply;
-// the sticker sets it.
-function drawStickerSheets(entries, startAt = 1) {
-  const { size, cols, left, top, pitchX, pitchY } = STICKER_SHEET;
+// Sticker sheets: one entry per sticker ({ qr, name, qrSize }), filled left
+// to right and top to bottom from position `startAt` (so a half-used sheet
+// isn't wasted), onto as many pages as it takes. The QR size option doesn't
+// apply; the sticker sets it.
+function drawStickerSheets(entries, startAt = 1, sheet = STICKER_SHEET) {
+  const { size, cols, rows, left, top, pitchX, pitchY } = sheet;
+  const perSheet = cols * rows;
   const doc = new PDFDocument({ size: GEOMETRY.stickers.page, margin: 0, autoFirstPage: false });
-  let slot = STICKERS_PER_SHEET; // forces the first page
+  let slot = 0;
   entries.forEach((entry, i) => {
-    if (i === 0) { doc.addPage(); slot = startAt - 1; stickerHeader(doc); }
-    else if (slot >= STICKERS_PER_SHEET) { doc.addPage(); slot = 0; stickerHeader(doc); }
+    if (i === 0) { doc.addPage(); slot = startAt - 1; stickerHeader(doc, sheet); }
+    else if (slot >= perSheet) { doc.addPage(); slot = 0; stickerHeader(doc, sheet); }
     const x = left + (slot % cols) * pitchX;
     const y = top + Math.floor(slot / cols) * pitchY;
     if (entry.name) {
@@ -373,17 +387,18 @@ function drawStickerSheets(entries, startAt = 1) {
         .text(entry.name, x + 0.08 * IN, y + 0.06 * IN + NAMED_STICKER_QR + 0.06 * IN,
           { width: size - 0.16 * IN, align: 'center', lineBreak: false, ellipsis: true, height: nameSize * 1.3 });
     } else {
-      const inset = (size - STICKER_QR) / 2;
-      doc.image(entry.qr, x + inset, y + inset, { width: STICKER_QR, height: STICKER_QR });
+      const qrSize = entry.qrSize || STICKER_QR;
+      const inset = (size - qrSize) / 2;
+      doc.image(entry.qr, x + inset, y + inset, { width: qrSize, height: qrSize });
     }
     slot += 1;
   });
   return pdfToBuffer(doc);
 }
 
-function stickerHeader(doc) {
+function stickerHeader(doc, sheet) {
   doc.fillColor(GUIDE_TEXT).font('Helvetica').fontSize(7)
-    .text('Avery 22805 (1½ in square, 24 per sheet) · print at 100% / Actual size · try one on plain paper first',
+    .text(`${sheet.label} · print at 100% / Actual size · try one on plain paper first`,
       0, 0.22 * IN, { width: GEOMETRY.stickers.page[0], align: 'center', lineBreak: false });
 }
 
@@ -391,6 +406,26 @@ function stickerHeader(doc) {
 async function renderStickerSheet(code) {
   const qr = await qrBuffer(code, Math.round(STICKER_QR / IN * 600), STICKER_INK);
   return drawStickerSheets(Array.from({ length: STICKERS_PER_SHEET }, () => ({ qr })));
+}
+
+// Coasters: the generic "Join FavCircles" App Clip code, two stickers per
+// coaster (one for each side), on ¾ in Avery 94102 squares
+const COASTER_SHEET = STICKER_SHEETS.avery94102;
+const COASTER_STICKERS_PER_SHEET = COASTER_SHEET.cols * COASTER_SHEET.rows;
+const MAX_COASTERS = 1000;
+
+async function renderCoasterStickers({ coasters = COASTER_STICKERS_PER_SHEET / 2, startAt = 1 } = {}) {
+  const count = Number(coasters);
+  if (!Number.isInteger(count) || count < 1 || count > MAX_COASTERS) {
+    throw new ServiceError(400, 'BAD_COUNT', `coasters must be 1 to ${MAX_COASTERS}`);
+  }
+  const start = Number(startAt);
+  if (!Number.isInteger(start) || start < 1 || start > COASTER_STICKERS_PER_SHEET) {
+    throw new ServiceError(400, 'BAD_START', `startAt must be 1 to ${COASTER_STICKERS_PER_SHEET}`);
+  }
+  const qr = await qrBuffer(rewardConfig.GENERIC_JOIN_CODE, Math.round(COASTER_QR / IN * 1200), STICKER_INK);
+  const entries = Array.from({ length: count * 2 }, () => ({ qr, qrSize: COASTER_QR }));
+  return drawStickerSheets(entries, start, COASTER_SHEET);
 }
 
 // Many stores, one sticker each, named, in the order given
@@ -465,7 +500,7 @@ const registerCardPDF = (venue) => renderPDF(venue, { kind: 'register', format: 
 const tableTentPDF = (venue) => renderPDF(venue, { kind: 'register', format: 'tent', qr: 'medium' });
 
 module.exports = {
-  renderPDF, renderStoreStickers, printOptions, fileName, KINDS, FORMATS, QR_INCHES,
-  STICKERS_PER_SHEET, MAX_STORE_STICKERS,
+  renderPDF, renderStoreStickers, renderCoasterStickers, printOptions, fileName, KINDS, FORMATS, QR_INCHES,
+  STICKERS_PER_SHEET, MAX_STORE_STICKERS, COASTER_STICKERS_PER_SHEET, MAX_COASTERS, STICKER_SHEETS,
   windowSignPDF, registerCardPDF, tableTentPDF
 };

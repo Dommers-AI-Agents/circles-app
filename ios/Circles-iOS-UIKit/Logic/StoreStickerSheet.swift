@@ -38,3 +38,41 @@ struct StoreStickerSheet: Equatable {
         "FavCircles stickers - \(venueIds.count) \(venueIds.count == 1 ? "store" : "stores") - Avery 22805.pdf"
     }
 }
+
+/// Coaster stickers: the generic "Join FavCircles" App Clip code on ¾ in
+/// Avery 94102 squares, two per coaster (one for each side)
+/// (`GET rewards/stickers/coasters`).
+struct CoasterStickerSheet: Equatable {
+    static let perSheet = 80
+    static let maxCoasters = 1000
+    /// One full sheet
+    static let defaultCoasters = perSheet / 2
+
+    var coasters: Int = defaultCoasters
+    /// 1 is the top-left sticker; later positions skip stickers already used
+    var startAt: Int = 1
+
+    var queryParams: [String: String] {
+        ["coasters": String(coasters), "startAt": String(startAt)]
+    }
+
+    var stickerCount: Int { coasters * 2 }
+
+    var sheetCount: Int { (startAt - 1 + stickerCount + Self.perSheet - 1) / Self.perSheet }
+
+    static func coasterCount(from text: String?) -> Int? {
+        guard let value = Int((text ?? "").trimmingCharacters(in: .whitespaces)),
+              (1...maxCoasters).contains(value) else { return nil }
+        return value
+    }
+
+    static func startPosition(from text: String?) -> Int? {
+        guard let value = Int((text ?? "").trimmingCharacters(in: .whitespaces)),
+              (1...perSheet).contains(value) else { return nil }
+        return value
+    }
+
+    var fileName: String {
+        "FavCircles coaster stickers - \(coasters) \(coasters == 1 ? "coaster" : "coasters") - Avery 94102.pdf"
+    }
+}

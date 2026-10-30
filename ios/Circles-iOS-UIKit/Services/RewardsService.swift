@@ -26,6 +26,13 @@ class RewardsService {
         }
     }
 
+    /// Super-user: the generic App Clip code for coasters, two per coaster
+    func downloadCoasterStickers(_ sheet: CoasterStickerSheet, completion: @escaping (Result<Data, Error>) -> Void) {
+        apiService.requestData(endpoint: "rewards/stickers/coasters", queryParams: sheet.queryParams) { result in
+            completion(result.mapError { $0 as Error })
+        }
+    }
+
     /// Super-user: many stores' window codes on one Avery 22805 sheet
     func downloadStoreStickers(_ sheet: StoreStickerSheet, completion: @escaping (Result<Data, Error>) -> Void) {
         apiService.requestData(endpoint: "rewards/stickers/print", queryParams: sheet.queryParams) { result in

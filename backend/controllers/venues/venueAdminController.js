@@ -270,6 +270,22 @@ exports.printStoreStickers = async (req, res) => {
   }
 };
 
+// @desc    Coaster stickers: the generic "Join FavCircles" App Clip code on
+//          ¾ in Avery 94102 squares, two per coaster (one each side)
+// @route   GET /api/rewards/stickers/coasters?coasters=40&startAt=1
+// @access  Super user
+exports.printCoasterStickers = async (req, res) => {
+  try {
+    const coasters = req.query.coasters || printAssetService.COASTER_STICKERS_PER_SHEET / 2;
+    const pdf = await printAssetService.renderCoasterStickers({ coasters, startAt: req.query.startAt || 1 });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="FavCircles coaster stickers - ${Number(coasters)} coasters - Avery 94102.pdf"`);
+    res.send(pdf);
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Coaster stickers', fallbackCode: 'PRINT_FAILED', fallbackMessage: 'Could not build the coaster stickers' });
+  }
+};
+
 // @desc    List sticker venues with their stats
 // @route   GET /api/rewards/admin/venues
 // @access  Admin

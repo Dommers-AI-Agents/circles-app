@@ -1,3 +1,4 @@
+jest.mock('../../config/rewardConfig', () => ({ GENERIC_JOIN_CODE: 'JOINUS' }));
 jest.mock('../rewardService', () => ({
   stickerUrl: (code) => `https://api.favcircles.com/s/${code}`,
   effectiveEarnRate: () => 10
@@ -62,6 +63,28 @@ describe('printAssetService', () => {
     await expect(svc.renderStoreStickers([])).rejects.toMatchObject({ status: 400 });
     await expect(svc.renderStoreStickers([{ ...venue, windowCode: null }])).rejects.toMatchObject({ status: 404 });
   }, 90000);
+
+  test('coaster stickers: two per coaster, 80 to a sheet, from any start position', async () => {
+    const pageCount = (pdf) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length;
+    expect(pageCount(await svc.renderCoasterStickers())).toBe(1); // 40 coasters = one sheet
+    expect(pageCount(await svc.renderCoasterStickers({ coasters: 41 }))).toBe(2);
+    expect(pageCount(await svc.renderCoasterStickers({ coasters: 1, startAt: 80 }))).toBe(2);
+    for (const bad of [{ coasters: 0 }, { coasters: 1001 }, { coasters: 'x' }, { startAt: 0 }, { startAt: 81 }]) {
+      await expect(svc.renderCoasterStickers(bad)).rejects.toMatchObject({ status: 400 });
+    }
+  }, 90000);
+
+  test('sticker sheets match Avery\'s templates', () => {
+    const { avery22805: big, avery94102: small } = svc.STICKER_SHEETS;
+    // Every sheet's columns and rows fit the letter page with equal side margins
+    for (const s of [big, small]) {
+      expect(s.left * 2 + (s.cols - 1) * s.pitchX + s.size).toBeCloseTo(612, 1);
+      expect(s.top + (s.rows - 1) * s.pitchY + s.size).toBeLessThanOrEqual(792);
+    }
+    expect([big.left, big.pitchX]).toEqual([56.25, 130.5]);
+    expect(big.pitchY).toBeCloseTo(122.4, 6);
+    expect([small.left, small.top, small.pitchX]).toEqual([27, 45, 72]);
+  });
 
   test('the email names still work', async () => {
     for (const fn of [svc.windowSignPDF, svc.registerCardPDF, svc.tableTentPDF]) {
