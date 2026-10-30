@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Dommers-AI-Agents/favcircles-widgets",
       "state" : {
-        "revision" : "dab2e1384ded87064b82f39edfcb633bbe9391bf",
-        "version" : "0.53.7"
+        "revision" : "01270eb266be620a0bf1dc3ef389787ab417c5d6",
+        "version" : "0.54.0"
       }
     },
     {

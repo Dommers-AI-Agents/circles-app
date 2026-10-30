@@ -558,6 +558,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             RunLiveActivityController.shared.endStaleActivities()
             // Event lock-screen displays outlive the app: keep their push tokens reaching the server
             EventLiveActivityController.shared.resumeWatchingTokens()
+            // The workout's lock-screen display back in step with the saved workout
+            Task { await WorkoutLiveActivityController.shared.reconcile() }
         }
 
         // Check for any pending notifications or updates

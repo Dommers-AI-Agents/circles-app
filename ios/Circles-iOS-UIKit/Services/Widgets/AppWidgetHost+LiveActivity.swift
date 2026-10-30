@@ -9,6 +9,13 @@ extension AppWidgetHost {
 }
 
 extension AppWidgetHost {
+    func workoutLiveActivity(_ update: WidgetWorkoutLiveUpdate?) {
+        guard #available(iOS 16.2, *) else { return }   // older iOS: no lock-screen display
+        Task { @MainActor in WorkoutLiveActivityController.shared.apply(update) }
+    }
+}
+
+extension AppWidgetHost {
     func startEventLiveActivity(_ event: WidgetEventLiveStart) async -> Bool {
         guard #available(iOS 16.2, *) else { return false }
         return await MainActor.run { EventLiveActivityController.shared.start(event) }

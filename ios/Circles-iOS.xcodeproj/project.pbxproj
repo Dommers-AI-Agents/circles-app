@@ -122,6 +122,7 @@
 			membershipExceptions = (
 				LiveActivities/EventLiveActivity.swift,
 				LiveActivities/RunLiveActivity.swift,
+				LiveActivities/WorkoutLiveActivity.swift,
 				Models/WidgetSnapshotModels.swift,
 			);
 			target = FAB5000000000000000000A3 /* Circles-Widget */;
@@ -1235,7 +1236,7 @@
 			repositoryURL = "https://github.com/Dommers-AI-Agents/favcircles-widgets";
 			requirement = {
 				kind = upToNextMinorVersion;
-				minimumVersion = 0.53.7;
+				minimumVersion = 0.54.0;
 			};
 		};
 		FAB6000000000000000000D0 /* XCRemoteSwiftPackageReference "stripe-ios-spm" */ = {

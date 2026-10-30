@@ -125,6 +125,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // everyone else. Also the hook for an iOS relaunch on a region event.
         DwellCheckInMonitor.shared.start()
         Logger.debug("📍 Visit Detection Service initialized")
+        // The workout lock screen's Done button can cold-launch the app in the
+        // background: its handler has to be in place before the intent runs
+        if #available(iOS 16.2, *) { WorkoutLiveActivityController.install() }
         
         // Set up Apple ID credential state observer
         NotificationCenter.default.addObserver(
