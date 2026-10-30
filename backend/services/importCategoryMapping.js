@@ -88,7 +88,29 @@ const GOOGLE_TYPE_TO_CATEGORY = {
   insurance_agency: 'finance'
 };
 
-function categoryFromGoogleTypes(types = []) {
+// Types that say what a place IS, whatever Google lists first: a supermarket
+// with a bakery counter is a supermarket, a dine-in cinema with a bar is a
+// cinema (ShopRite → "bakery", Cinergy → "bar" in the 2026-10-29 refresh).
+// Checked in this order before Google's own order.
+const ANCHOR_TYPES = [
+  ['movie_theater', 'entertainment'], ['bowling_alley', 'entertainment'], ['stadium', 'entertainment'],
+  ['amusement_park', 'entertainment'], ['casino', 'entertainment'], ['aquarium', 'entertainment'], ['zoo', 'entertainment'],
+  ['museum', 'attraction'], ['art_gallery', 'attraction'],
+  ['gym', 'fitness'],
+  ['hospital', 'healthcare'], ['dentist', 'healthcare'], ['doctor', 'healthcare'], ['veterinary_care', 'healthcare'],
+  ['gas_station', 'transport'], ['airport', 'transport'],
+  ['supermarket', 'retail'], ['grocery_or_supermarket', 'retail'], ['convenience_store', 'retail'],
+  ['department_store', 'retail'], ['shopping_mall', 'retail']
+];
+
+// 'lodging' sits on every bar and restaurant inside a hotel (Sandbar Rooftop),
+// so it only anchors when the name says so; otherwise Google's order decides.
+const LODGING_NAME = /\b(inn|lodge|hotel|resort|motel|suites|b&b|bed and breakfast)\b/i;
+
+function categoryFromGoogleTypes(types = [], name = '') {
+  const set = new Set(types || []);
+  for (const [type, category] of ANCHOR_TYPES) if (set.has(type)) return category;
+  if (set.has('lodging') && LODGING_NAME.test(String(name || '')) && !/\b(grill|bar|kitchen|restaurant)\b/i.test(String(name || ''))) return 'hotel';
   for (const type of types) {
     if (GOOGLE_TYPE_TO_CATEGORY[type]) return GOOGLE_TYPE_TO_CATEGORY[type];
   }

@@ -38,8 +38,9 @@ describe('categories from Google', () => {
     const real = { name: "Frenchy's Sip and Shop", types: ['bar', 'establishment', 'food', 'point_of_interest'], serves_wine: true, serves_beer: true, dine_in: true };
     expect(classifyFromGoogle(sig(real))).toMatchObject({ category: 'restaurant', subcategory: 'Wine bar & shop' });
   });
-  test('a bar that serves dinner is a restaurant & bar; a plain bar stays a bar', () => {
-    expect(refineCategory({ category: 'bar', googleTypes: ['bar'], serves: { dinner: true, beer: true }, name: "Murphy's" })).toEqual({ category: 'restaurant', subcategory: 'Bar' });
+  test("a bar Google also types restaurant is a restaurant & bar; serving dinner alone doesn't make one", () => {
+    expect(refineCategory({ category: 'bar', googleTypes: ['bar', 'restaurant'], serves: { beer: true }, name: "Murphy's" })).toEqual({ category: 'restaurant', subcategory: 'Bar' });
+    expect(refineCategory({ category: 'bar', googleTypes: ['bar'], serves: { dinner: true, beer: true }, name: "Murphy's" })).toEqual({ category: 'bar', subcategory: null });
     expect(refineCategory({ category: 'bar', googleTypes: ['bar'], serves: { beer: true }, name: 'The Dive' })).toEqual({ category: 'bar', subcategory: null });
   });
   test('second labels: brewery, nightclub, bakery', () => {
@@ -67,5 +68,23 @@ describe('categories from Google', () => {
     // and a specific type still wins: Community Matters Cafe was saved as a restaurant
     expect(googleReclassification({ name: 'Community Matters Cafe', category: 'restaurant', categorySource: 'client' },
       { googleTypes: ['cafe', 'establishment', 'food'] })).toMatchObject({ category: 'cafe' });
+  });
+
+  test('the 2026-10-29 refresh mistakes stay fixed', () => {
+    const c = (types, serves = {}, name = 'X') => classifyFromGoogle({ googleTypes: types, serves, name });
+    expect(c(['bakery', 'establishment', 'food', 'grocery_or_supermarket', 'point_of_interest', 'store', 'supermarket']).category).toBe('retail');
+    expect(c(['bar', 'establishment', 'movie_theater', 'point_of_interest']).category).toBe('entertainment');
+    expect(c(['bar', 'bowling_alley', 'restaurant', 'food']).category).toBe('entertainment');
+    expect(c(['convenience_store', 'establishment', 'food', 'gas_station', 'point_of_interest', 'store']).category).toBe('transport');
+    // a bar that serves dinner is still a bar; Google's restaurant type makes it a restaurant
+    expect(c(['bar', 'establishment', 'point_of_interest'], { dinner: true }, 'Tell Your Friends')).toMatchObject({ category: 'bar', subcategory: null });
+    expect(c(['bar', 'establishment', 'food', 'point_of_interest', 'restaurant'], { dinner: true }, 'Comstock Saloon')).toMatchObject({ category: 'restaurant', subcategory: 'Bar' });
+    // no Nightclub or "& shop" from types Google puts on everything
+    expect(c(['bar', 'cafe', 'establishment', 'food', 'night_club', 'point_of_interest', 'restaurant', 'store'], {}, '32 Shea')).toMatchObject({ category: 'restaurant', subcategory: 'Bar' });
+  });
+
+  test("a bar inside a hotel is a bar; an inn is a hotel", () => {
+    expect(classifyFromGoogle({ googleTypes: ['bar', 'establishment', 'lodging', 'point_of_interest'], name: 'Sandbar Rooftop' }).category).toBe('bar');
+    expect(classifyFromGoogle({ googleTypes: ['restaurant', 'lodging', 'food', 'establishment'], name: 'Castle Hill Inn' }).category).toBe('hotel');
   });
 });

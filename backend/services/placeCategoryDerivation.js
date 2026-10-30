@@ -112,7 +112,7 @@ function deriveCategory(signals = {}) {
 
   // Tier 1a: Google primary type (most authoritative when present)
   if (googlePrimaryType) {
-    const fromPrimary = categoryFromGoogleTypes([googlePrimaryType]);
+    const fromPrimary = categoryFromGoogleTypes([googlePrimaryType], name);
     if (fromPrimary !== 'other') {
       return { category: fromPrimary, source: 'google', confidence: 0.95 };
     }
@@ -120,7 +120,7 @@ function deriveCategory(signals = {}) {
 
   // Tier 1b: Google types array (first recognized entry wins)
   if (Array.isArray(googleTypes) && googleTypes.length) {
-    const fromTypes = categoryFromGoogleTypes(googleTypes);
+    const fromTypes = categoryFromGoogleTypes(googleTypes, name);
     if (fromTypes !== 'other') {
       return { category: fromTypes, source: 'google', confidence: 0.9 };
     }
@@ -187,7 +187,6 @@ function categoryUpgradeForOther(venueData = {}, saveData = {}) {
 // 'food' is Google's own "serves food" type: on a bar it means a kitchen
 // (Frenchy's Sip and Shop: bar + food, dine-in)
 const MEAL_TYPES = new Set(['restaurant', 'meal_takeaway', 'meal_delivery', 'food']);
-const SHOP_TYPES = new Set(['store', 'liquor_store', 'clothing_store', 'home_goods_store', 'gift_shop', 'book_store', 'shopping_mall']);
 
 /**
  * One word isn't enough for many places. Google types come in the order it
@@ -201,28 +200,29 @@ function refineCategory({ category, googleTypes = [], serves = {}, dineIn = null
   const types = new Set(googleTypes || []);
   const s = serves || {};
   const nm = String(name || '');
-  const hasBar = types.has('bar') || types.has('night_club');
-  const servesMeals = s.breakfast === true || s.brunch === true || s.lunch === true || s.dinner === true;
-  const mealPlace = [...MEAL_TYPES].some((t) => types.has(t)) || servesMeals;
-  const shop = [...SHOP_TYPES].some((t) => types.has(t)) || /\b(shop|market|provisions|boutique|bottle shop)\b/i.test(nm);
+  const hasBar = types.has('bar');
+  // Google's own restaurant/food type, not "serves dinner": plenty of bars
+  // serve a little food and are still bars (Tell Your Friends, 2026-10-29)
+  const mealPlace = [...MEAL_TYPES].some((t) => types.has(t));
+  // "& shop" from the name only: Google tags most restaurants 'store'
+  const shop = /\b(shop|market|provisions|boutique|bottle shop)\b/i.test(nm);
 
   const barKind = () => {
-    if (/wine|vino|enoteca|cellar/i.test(nm) || (s.wine === true && (s.beer !== true || /\bsip\b/i.test(nm)))) return 'Wine bar';
+    if (/wine|vino|\bvin\b|enoteca|cellar/i.test(nm) || (s.wine === true && (s.beer !== true || /\bsip\b/i.test(nm)))) return 'Wine bar';
     if (/brew(ery|ing|pub)|taproom/i.test(nm)) return 'Brewery';
-    if (types.has('night_club')) return 'Nightclub';
     return 'Bar';
   };
   const withShop = (label) => (shop ? `${label} & shop` : label);
 
   let cat = category;
   let sub = null;
-  if (cat === 'bar' && (mealPlace || (dineIn === true && servesMeals))) {
+  if (cat === 'bar' && mealPlace) {
     cat = 'restaurant';
     sub = withShop(barKind());
   } else if (cat === 'restaurant' && hasBar) {
     sub = withShop(barKind());
   } else if (cat === 'bar') {
-    const kind = barKind();
+    const kind = types.has('night_club') ? 'Nightclub' : barKind();
     sub = kind === 'Bar' ? (shop ? 'Bar & shop' : null) : withShop(kind);
   } else if (cat === 'cafe' && types.has('bakery')) {
     sub = 'Bakery';
@@ -241,11 +241,11 @@ function refineCategory({ category, googleTypes = [], serves = {}, dineIn = null
 const WEAK_GOOGLE_TYPES = new Set(['store', 'food', 'point_of_interest', 'establishment']);
 
 function classifyFromGoogle({ googlePrimaryType, googleTypes, serves, dineIn, name } = {}) {
-  const derived = deriveCategory({ googlePrimaryType, googleTypes });
+  const derived = deriveCategory({ googlePrimaryType, googleTypes, name });
   if (derived.source !== 'google') return null;
   const refined = refineCategory({ category: derived.category, googleTypes, serves, dineIn, name });
   const specific = (googleTypes || []).filter((t) => !WEAK_GOOGLE_TYPES.has(t));
-  const strong = !!googlePrimaryType || categoryFromGoogleTypes(specific) !== 'other';
+  const strong = !!googlePrimaryType || categoryFromGoogleTypes(specific, name) !== 'other';
   return { ...refined, source: 'google', confidence: strong ? derived.confidence : 0.5, strong };
 }
 
