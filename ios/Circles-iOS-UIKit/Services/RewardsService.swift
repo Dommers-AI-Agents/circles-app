@@ -958,6 +958,9 @@ struct RewardsEnvelope<T: Codable>: Codable {
 }
 
 struct RewardScanData: Codable {
+    /// Where the store is saved (window scans), for "Show me"
+    struct SavedPlace: Codable { let placeId: String; let circleId: String? }
+    let savedPlace: SavedPlace?
     let kind: String // "window" | "register"
     let venue: RewardVenue
     let awarded: RewardAward?

@@ -202,7 +202,15 @@ final class StickerRewardCoordinator: NSObject {
         guard let presenter = presenter else { return }
         let name = scan.venue.venueName
         if scan.alreadySaved == true {
-            AlertPresenter.showSuccess(title: "Welcome back!", message: "\(name) is already in your circles.", from: presenter)
+            var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = []
+            // Show me: the circle it's saved in, scrolled to it (2026-10-30)
+            if let saved = scan.savedPlace, let circleId = saved.circleId {
+                actions.append((title: "Show me", style: .default, handler: { [weak self] in
+                    self?.openSavedCircle(circleId: circleId, placeId: saved.placeId)
+                }))
+            }
+            actions.append((title: "OK", style: .cancel, handler: {}))
+            AlertPresenter.showAlert(title: "Welcome back!", message: "\(name) is already in your circles.", actions: actions, from: presenter)
             return
         }
         AlertPresenter.showConfirmation(
@@ -407,6 +415,26 @@ final class StickerRewardCoordinator: NSObject {
             (title: "My Rewards", style: .default, handler: { [weak self] in self?.openStoreRewards() }),
             (title: "OK", style: .cancel, handler: { onOK?() })
         ], from: presenter)
+    }
+
+    /// The circle a store is saved in, scrolled to the store and flashed
+    private func openSavedCircle(circleId: String, placeId: String) {
+        CircleService.shared.fetchCircleById(id: circleId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, case .success(let circle) = result else {
+                    if case .failure(let error) = result, let presenter = self?.presenter { AlertPresenter.showError(error, from: presenter) }
+                    return
+                }
+                let detail = CircleDetailViewController(circle: circle)
+                detail.highlightPlaceId = placeId
+                let tabNav = (self.presenter as? UITabBarController)?.selectedViewController as? UINavigationController
+                if let nav = tabNav ?? self.presenter?.navigationController ?? (self.presenter as? UINavigationController) {
+                    nav.pushViewController(detail, animated: true)
+                } else if let presenter = self.presenter {
+                    presenter.present(UINavigationController(rootViewController: detail), animated: true)
+                }
+            }
+        }
     }
 
     /// The Store Rewards screen (every store's points and offers), pushed on

@@ -106,7 +106,9 @@ exports.scan = async (req, res) => {
       // your map: it never pays store points (Wes, 2026-10-30: "store rewards
       // only come from the Register QR code"). FavCoins for those actions
       // come from the app's own rules, separately.
-      const alreadySaved = await userHasSavedVenuePlace(userId, venue);
+      // Which circle it's saved in, for the app's "Show me" (2026-10-30)
+      const savedDoc = await findOwnSaveOfStore({ userId, venue });
+      const alreadySaved = !!savedDoc;
       const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
       return res.json({
         success: true,
@@ -115,6 +117,7 @@ exports.scan = async (req, res) => {
           venue: publicVenueInfo(venue),
           awarded: null,
           alreadySaved,
+          savedPlace: savedDoc ? { placeId: savedDoc.id, circleId: savedDoc.data().circleId || null } : null,
           balance: rewardPoints,
           venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0,
           saveBonusPoints: 0,

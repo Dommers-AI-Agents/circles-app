@@ -9,6 +9,8 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     var circle: Circle
     var places: [Place] = []
     var filteredPlaces: [Place] = []
+    /// Scroll to this place and flash it once its row exists ("Show me" after a store QR scan)
+    var highlightPlaceId: String?
     private var annotationPlaceMap: [ObjectIdentifier: Place] = [:]
     private let locationManager = CLLocationManager()
     private var userLocation: CLLocation?
@@ -1651,9 +1653,32 @@ extension CircleDetailViewController: CirclePlacesLoaderDelegate {
         DispatchQueue.main.async { [weak self] in
             self?.tableView.layoutIfNeeded()
             self?.updateTableViewHeight()
+            self?.revealHighlightedPlace()
         }
 
         addAnnotationsToMap()
+    }
+
+    /// "Show me": bring the place's row into view and flash it, once
+    private func revealHighlightedPlace() {
+        guard let id = highlightPlaceId,
+              let row = filteredPlaces.firstIndex(where: { $0.id == id || $0.globalPlaceId == id }) else { return }
+        highlightPlaceId = nil
+        let indexPath = IndexPath(row: row, section: 0)
+        view.layoutIfNeeded()
+        let rect = tableView.convert(tableView.rectForRow(at: indexPath), to: scrollView)
+        scrollView.scrollRectToVisible(rect.insetBy(dx: 0, dy: -80), animated: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+            guard let cell = self?.tableView.cellForRow(at: indexPath) else { return }
+            let original = cell.contentView.backgroundColor
+            UIView.animate(withDuration: 0.25, animations: {
+                cell.contentView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.18)
+            }, completion: { _ in
+                UIView.animate(withDuration: 0.8, delay: 0.9, options: [], animations: {
+                    cell.contentView.backgroundColor = original
+                })
+            })
+        }
     }
 }
 
