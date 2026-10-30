@@ -9,7 +9,7 @@
 //           'tent'     letter sheet folded in half the long way (faces 11 × 4¼ in)
 //           'smallTent' 4 × 5½ in two-face tent cut from a letter sheet
 //           'card'     4 × 6 in counter card (photo frame / acrylic stand)
-//   qr      'small' | 'medium' | 'large' → 2 / 3 / 4 in, clamped to the face
+//   qr      'small' | 'medium' | 'large' → 1 / 3 / 4 in, clamped to the face
 //
 // The email flows keep calling the old three names; they map onto this.
 
@@ -38,7 +38,8 @@ const APP_ICON = path.join(__dirname, '..', 'assets', 'brand', 'app-icon-256.png
 
 const KINDS = ['window', 'register'];
 const FORMATS = ['sign', 'tent', 'smallTent', 'card'];
-const QR_INCHES = { small: 2, medium: 3, large: 4 };
+// small: 1 in (Wes, 2026-10-30: a table tent wants a small code and a big photo)
+const QR_INCHES = { small: 1, medium: 3, large: 4 };
 
 // Page / face geometry per format, in points
 // Home printers can't print the outer ~¼ in of a letter page, which cut
@@ -71,7 +72,7 @@ function copyFor(kind, venue) {
     pill: 'Love it here? Save us!',
     scan: 'Point your phone camera here',
     reward: null,
-    steps: ['Scan', 'Save us', 'Share us'],
+    steps: ['Scan', 'Save us', 'Get rewards'],
     foot: 'Your map of favorite places · favcircles.com'
   };
 }
@@ -225,8 +226,10 @@ function drawPerks(doc, copy, x, y, w, s) {
 
 function drawFooter(doc, text, x, y, w, h, s) {
   doc.rect(x, y, w, h).fill(NAVY);
-  doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(Math.min(9.5 * s, h * 0.42))
-    .text(text, x, y + h / 2 - Math.min(9.5 * s, h * 0.42) / 2, { width: w, align: 'center', lineBreak: false });
+  // As large as the bar and the width allow (bigger, Wes 2026-10-30)
+  const size = fitSize(doc, text, 'Helvetica-Bold', Math.min(14 * s, h * 0.5), 7, w - 16 * s, 1);
+  doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(size)
+    .text(text, x, y + h / 2 - size / 2, { width: w, align: 'center', lineBreak: false });
 }
 
 // --- the faces ---------------------------------------------------------------
@@ -241,11 +244,11 @@ function drawFace(doc, { venue, kind, qr, qrPt, W, H, cover }) {
   if (W / H > 1.6) return drawWideFace(doc, { venue, copy, qr, qrPt, W, H, cover, s });
 
   doc.rect(0, 0, W, H).fill(CREAM);
-  const heroH = H * 0.3;
+  const heroH = H * 0.4;
   drawHero(doc, { venue, cover, x: 0, y: 0, w: W, h: heroH, s });
   const pillH = drawPill(doc, copy.pill, W / 2, heroH, s, W - 36 * s);
 
-  const footH = 24 * s;
+  const footH = 34 * s;
   const scanSize = 12 * s;
   const perksH = copy.steps ? 38 * s : 26 * s;
   const top = heroH + pillH / 2 + 16 * s;
@@ -273,8 +276,8 @@ function drawWideFace(doc, { venue, copy, qr, qrPt, W, H, cover, s: faceScale })
   // the words at a size that reads across a table
   const s = Math.max(faceScale, (H / (4.25 * IN)) * 1.35);
   doc.rect(0, 0, W, H).fill(CREAM);
-  const footH = 16 * s;
-  const heroW = W * 0.33;
+  const footH = 24 * s;
+  const heroW = W * 0.4;
   drawHero(doc, { venue, cover, x: 0, y: 0, w: heroW, h: H - footH, s: s * 0.75 });
 
   const qrSize = Math.max(Math.min(qrPt, H - footH - 56 * s), IN);
@@ -333,7 +336,7 @@ async function renderPDF(venue, rawOptions) {
   const [faceW, faceH] = geo.face || geo.page;
   // The hero's shape on this format's face, fetched at ~300 dpi
   const wide = faceW / faceH > 1.6;
-  const heroPt = wide ? [faceW * 0.33, faceH] : [faceW, faceH * 0.3];
+  const heroPt = wide ? [faceW * 0.4, faceH] : [faceW, faceH * 0.4];
   const cover = await coverJPEG(venue, Math.min(2400, heroPt[0] / IN * 300), Math.min(2400, heroPt[1] / IN * 300));
   const doc = new PDFDocument({ size: geo.page, margin: 0 });
   const args = { venue, kind, qr, qrPt, cover };

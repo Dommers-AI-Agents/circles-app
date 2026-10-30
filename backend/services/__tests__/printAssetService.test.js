@@ -19,8 +19,8 @@ describe('printAssetService', () => {
     }
   }, 60000);
 
-  test('QR size options are 2, 3 and 4 inches', () => {
-    expect(svc.printOptions({ qr: 'small' }).qrInches).toBe(2);
+  test('QR size options are 1, 3 and 4 inches', () => {
+    expect(svc.printOptions({ qr: 'small' }).qrInches).toBe(1);
     expect(svc.printOptions({ qr: 'medium' }).qrInches).toBe(3);
     expect(svc.printOptions({ qr: 'large' }).qrInches).toBe(4);
     expect(svc.printOptions({}).qr).toBe('small');
@@ -40,7 +40,7 @@ describe('printAssetService', () => {
 
   test('file names say what they are', () => {
     expect(svc.fileName(venue, { kind: 'window', format: 'smallTent', qr: 'small' }))
-      .toBe('Tommys Tavern  Tap - window small table tent - 2in QR.pdf');
+      .toBe('Tommys Tavern  Tap - window small table tent - 1in QR.pdf');
   });
 
   test('the email names still work', async () => {

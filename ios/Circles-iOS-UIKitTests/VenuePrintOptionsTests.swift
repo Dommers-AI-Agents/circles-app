@@ -7,11 +7,11 @@ struct VenuePrintOptionsTests {
         #expect(options.queryParams == ["kind": "register", "format": "smallTent", "qr": "large"])
     }
 
-    @Test func defaultsAreASmallTentWithATwoInchCode() {
+    @Test func defaultsAreASmallTentWithAOneInchCode() {
         let options = VenuePrintOptions(kind: .window)
         #expect(options.format == .smallTent)
         #expect(options.qrSize == .small)
-        #expect(options.effectiveQRInches == 2)
+        #expect(options.effectiveQRInches == 1)
     }
 
     @Test func theCodeNeverOutgrowsTheFace() {
@@ -25,7 +25,7 @@ struct VenuePrintOptionsTests {
 
     @Test func fileNamesAreReadableAndSafe() {
         let options = VenuePrintOptions(kind: .window, format: .tent, qrSize: .small)
-        #expect(options.fileName(storeName: "Tommy's Tavern + Tap") == "Tommys Tavern  Tap - window table tent - 2in QR.pdf")
-        #expect(options.fileName(storeName: "   ") == "store - window table tent - 2in QR.pdf")
+        #expect(options.fileName(storeName: "Tommy's Tavern + Tap") == "Tommys Tavern  Tap - window table tent - 1in QR.pdf")
+        #expect(options.fileName(storeName: "   ") == "store - window table tent - 1in QR.pdf")
     }
 }

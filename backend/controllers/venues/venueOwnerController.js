@@ -625,7 +625,7 @@ exports.rotateRegisterCode = async (req, res) => {
 //          (scan-to-save, free tier) or register (earn points, Business tier);
 //          format=sign (letter), tent (letter folded in half), smallTent
 //          (4 x 5.5 in cut-out), card (4 x 6 in); qr=small|medium|large puts
-//          the code at 2 / 3 / 4 in so it never has to fill the whole page.
+//          the code at 1 / 3 / 4 in so it never has to fill the whole page.
 // @route   GET /api/rewards/venues/:venueId/print?kind=&format=&qr=
 // @access  Private (owner or manager)
 exports.getPrintAsset = async (req, res) => {
