@@ -4,7 +4,7 @@ const { FakeFirestore } = require('../../__fixtures__/fakeFirestore');
 const mockDb = new FakeFirestore({ namespaced: true });
 jest.mock('../../config/firebase', () => ({ getFirestore: () => mockDb }));
 
-const { isVenueBusinessLive, isVenueLoyaltyActive, registerScanEarns } = require('../ownerSubscriptionService');
+const { isVenueBusinessLive, isVenueLoyaltyActive, registerScanEarns, loyaltyNeverStarted } = require('../ownerSubscriptionService');
 
 const future = new Date(Date.now() + 30 * 86400000).toISOString();
 
@@ -39,4 +39,12 @@ test('a register scan earns where loyalty is live or the store is unclaimed, nev
   expect(await registerScanEarns({ venueId: 'v3' })).toMatchObject({ earns: true, demo: true });
   expect(await registerScanEarns({ venueId: 'v4', ownerUserId: 'lapsed' })).toMatchObject({ earns: false, demo: false });
   expect(await registerScanEarns({ venueId: 'v5', ownerUserId: 'lapsed', loyaltyComped: true })).toMatchObject({ earns: true, demo: false });
+});
+
+test('a claimed store that never subscribed has not started; one whose plan ran out is paused', async () => {
+  await mockDb.collection('users').doc('never').set({ displayName: 'Claimed, never paid' });
+  await mockDb.collection('users').doc('ranout').set({ ownerSubscriptionStatus: 'expired', ownerSubscriptionExpiryDate: '2026-01-01T00:00:00.000Z' });
+  expect(await loyaltyNeverStarted({ venueId: 'a', ownerUserId: 'never' })).toBe(true);
+  expect(await loyaltyNeverStarted({ venueId: 'b', ownerUserId: 'ranout' })).toBe(false);
+  expect(await loyaltyNeverStarted({ venueId: 'c', ownerUserId: 'never', loyaltyComped: true })).toBe(false);
 });

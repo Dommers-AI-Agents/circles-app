@@ -21,6 +21,9 @@ struct VenuePreview: Decodable {
     /// The store's own terms (2026-10-29): points per visit and the first
     /// reward on its menu, only while its loyalty program is live
     let loyaltyLive: Bool?
+    /// "signup" (a window code's one-time bonus) or "visit" (a register
+    /// code's points for this visit); with signupBonusPoints = what it awards
+    let scanPointsKind: String?
     let earnRate: Int?
     let offers: [ClipOffer]?
     let firstReward: ClipOffer?

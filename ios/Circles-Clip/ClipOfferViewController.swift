@@ -192,8 +192,19 @@ final class ClipOfferViewController: UIViewController {
             statusLabel.text = "Free to join · \(preview.favCoinBonus) FavCoins to get you started"
         } else {
             titleLabel.text = preview.venueName
-            pointsPill.text = "  🎁  \(preview.signupBonusPoints) free points  "
-            subtitleLabel.text = "Join FavCircles right here and your points are waiting at the counter."
+            // Only what this code actually awards (2026-10-29: register codes
+            // promised the window code's 100-point signup bonus)
+            if preview.signupBonusPoints > 0 && preview.scanPointsKind == "visit" {
+                pointsPill.text = "  🎁  \(preview.signupBonusPoints) points this visit  "
+                subtitleLabel.text = "Join FavCircles right here and collect your points for this visit."
+            } else if preview.signupBonusPoints > 0 {
+                pointsPill.text = "  🎁  \(preview.signupBonusPoints) free points  "
+                subtitleLabel.text = "Join FavCircles right here and your points are waiting at the counter."
+            } else {
+                pointsPill.text = "  📍  Save this spot  "
+                subtitleLabel.text = "Join FavCircles right here to keep \(preview.venueName) on your map and see what friends think."
+                statusLabel.text = "Free to join"
+            }
             // The store's own terms: what each visit earns and the first thing it buys
             if preview.loyaltyLive == true, let rate = preview.earnRate {
                 var line = "Earn \(rate) points every visit"

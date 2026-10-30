@@ -347,7 +347,10 @@ final class StickerRewardCoordinator: NSObject {
             title = "Already earned today"
             message = "You've collected today's visit points at \(scan.venue.venueName). You have \(balanceHere) points here."
         } else if scan.loyaltyPaused == true {
-            message = "Points are paused at this store right now. You have \(balanceHere) points here."
+            // Never started reads differently from ran out (2026-10-29)
+            message = scan.loyaltyState == "not_started"
+                ? "\(scan.venue.venueName) isn't running FavCircles Rewards yet. Ask the owner about it next time you're in. You have \(balanceHere) points here."
+                : "Points are paused at this store right now. You have \(balanceHere) points here."
         } else {
             message = "You have \(balanceHere) points here."
         }

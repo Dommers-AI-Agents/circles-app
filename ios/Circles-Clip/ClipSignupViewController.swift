@@ -46,7 +46,9 @@ final class ClipSignupViewController: UIViewController {
         let headerLabel = UILabel()
         headerLabel.text = preview.isGeneric
             ? "Join FavCircles"
-            : "Get \(preview.signupBonusPoints) points at \(preview.venueName)"
+            : (preview.signupBonusPoints > 0
+                ? "Get \(preview.signupBonusPoints) points at \(preview.venueName)"
+                : "Save \(preview.venueName)")
         headerLabel.font = .systemFont(ofSize: 20, weight: .semibold)
         headerLabel.numberOfLines = 0
 

@@ -10,7 +10,7 @@ const rewardProgress = require('../../services/rewardProgress');
 const nearbyEventsService = require('../../services/nearbyEventsService');
 const { listLiveVenues } = require('../../services/liveVenues');
 const rewardConfig = require('../../config/rewardConfig');
-const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, registerScanEarns, isVenueBusinessLive } = require('../../services/ownerSubscriptionService');
+const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, registerScanEarns, loyaltyNeverStarted, isVenueBusinessLive } = require('../../services/ownerSubscriptionService');
 const db = getFirestore();
 const { isVenueTeamMember, isBrowsableBy, publicVenueInfo, activeOffers } = require('../../services/venueHelpers.js');
 const { findOwnSaveOfStore } = require('../../services/ownSaveOfVenue');
@@ -136,6 +136,8 @@ exports.scan = async (req, res) => {
           venue: publicVenueInfo(venue),
           awarded: null,
           loyaltyPaused: true,
+          // 'not_started' (owner never subscribed) or 'paused' (it ran out)
+          loyaltyState: (await loyaltyNeverStarted(venue)) ? 'not_started' : 'paused',
           alreadySaved,
           balance: rewardPoints,
           venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0,

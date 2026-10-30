@@ -57,6 +57,9 @@ exports.getVenuePreview = async (req, res) => {
       ? (await registerScanEarns(venue)).earns
       : await isVenueLoyaltyActive(venue);
     const offers = loyaltyLive ? rewardProgress.rewardLadder(activeOffers(venue)) : [];
+    const scanPoints = venue.kind === 'register'
+      ? (loyaltyLive ? rewardService.effectiveEarnRate(venue) : 0)
+      : rewardConfig.POINTS.STICKER_SIGNUP;
     return res.json({
       success: true,
       data: {
@@ -65,7 +68,12 @@ exports.getVenuePreview = async (req, res) => {
         placeAddress: venue.placeAddress || null,
         category: venue.category || null,
         kind: venue.kind, // 'window' | 'register'
-        signupBonusPoints: rewardConfig.POINTS.STICKER_SIGNUP,
+        // What THIS code awards (Wes, 2026-10-29): the signup bonus comes
+        // only from a window code; a register code gives that visit's points
+        // where it earns, else nothing. The clip used to promise 100 for both.
+        signupBonusPoints: scanPoints,
+        scanPoints,
+        scanPointsKind: venue.kind === 'register' ? 'visit' : 'signup',
         loyaltyLive,
         earnRate: loyaltyLive ? rewardService.effectiveEarnRate(venue) : null,
         offers,

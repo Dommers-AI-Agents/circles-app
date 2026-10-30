@@ -118,6 +118,23 @@ const isVenueLoyaltyActive = async (venue) => (await venueLoyaltyStatus(venue)).
  * to the store owners with their own store"). A lapsed owner's store stays
  * paused. `demo` marks the unclaimed case for integrity logging.
  */
+/**
+ * For a claimed store whose program isn't live: did it ever run? A store
+ * whose owner never subscribed (and was never comped) hasn't started; one
+ * whose subscription ran out is paused. The app words the two differently.
+ */
+const loyaltyNeverStarted = async (venue) => {
+  if (!venue || !venue.ownerUserId) return true;
+  if (venue.loyaltyComped === true || venue.loyaltyCompedUntil) return false;
+  try {
+    const owner = await db.collection(COLLECTIONS.USERS).doc(venue.ownerUserId).get();
+    const u = owner.exists ? owner.data() : {};
+    return !u.ownerSubscriptionStatus && !u.ownerSubscriptionExpiryDate && u.ownerManuallyVerified !== true;
+  } catch (error) {
+    return false; // when unsure, the existing "paused" wording
+  }
+};
+
 const registerScanEarns = async (venue) => {
   const status = await venueLoyaltyStatus(venue);
   if (status.active) return { earns: true, demo: false, status };
@@ -145,5 +162,6 @@ module.exports = {
   venueLoyaltyStatus,
   isVenueLoyaltyActive,
   registerScanEarns,
+  loyaltyNeverStarted,
   isVenueBusinessLive
 };

@@ -916,6 +916,8 @@ struct RewardScanData: Codable {
     let alreadyEarnedToday: Bool?
     /// Register scans while the store's Business plan has lapsed earn nothing
     let loyaltyPaused: Bool?
+    /// With loyaltyPaused: "not_started" (the owner never subscribed) or "paused"
+    let loyaltyState: String?
     let balance: Int
     /// Points held at the scanned venue — the spendable balance there
     let venueBalance: Int?
