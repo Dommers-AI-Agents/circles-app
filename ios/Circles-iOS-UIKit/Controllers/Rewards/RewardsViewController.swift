@@ -58,7 +58,7 @@ class RewardsViewController: BaseViewController {
     private let balanceCaptionLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "store points → get rewards"
+        label.text = "points to spend on rewards at local stores"
         label.font = UIFont.systemFont(ofSize: 16)
         label.textColor = .white.withAlphaComponent(0.9)
         label.textAlignment = .center
@@ -436,7 +436,7 @@ class RewardsViewController: BaseViewController {
         guard !balances.isEmpty else { return }
 
         let header = UILabel()
-        header.text = "Your points by store"
+        header.text = "Your rewards by store"
         header.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
         header.textColor = .label
         storeBalancesStack.addArrangedSubview(header)
@@ -572,7 +572,7 @@ class RewardsViewController: BaseViewController {
 
         if data.events.isEmpty {
             activityStack.addArrangedSubview(makeEmptyLabel(
-                "No store points yet — scan a FavCircles sticker to get started!"
+                "No store rewards yet. Scan a store's FavCircles QR code to get started!"
             ))
             return
         }

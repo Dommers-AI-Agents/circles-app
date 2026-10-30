@@ -1166,7 +1166,7 @@ class HelpContentProvider {
                 • Earned by showing up: sticker scans, register scans after a purchase, order-card codes
                 • True loyalty: points stay with the shop where you earned them — each store runs its own program
                 • Spent in the app on that shop's offers, via a voucher at the counter
-                • Live on the Store Points tab of the $ screen
+                • Live on the Store Rewards tab of the $ screen
 
                 **FavCoins:**
                 • Come from FavCircles — earned by building the app's world

@@ -46,7 +46,7 @@ final class DuoAppStoreCaptureUITests: XCTestCase {
             let close = app.buttons.matching(NSPredicate(format: "label == 'xmark.circle.fill' OR label == 'Close'")).firstMatch
             if close.waitForExistence(timeout: 3) { close.tap() } else { app.swipeDown() }
         case "store-points":
-            let b = app.buttons["Store Points"].firstMatch
+            let b = app.buttons["Store Rewards"].firstMatch
             if b.waitForExistence(timeout: 5) { b.tap() }
         case "privacy":
             let me = app.buttons["Me"].firstMatch

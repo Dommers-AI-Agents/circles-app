@@ -19,7 +19,8 @@ final class RewardsHubViewController: BaseViewController {
     private var currentChild: UIViewController?
 
     private lazy var segmentedControl: UISegmentedControl = {
-        let control = UISegmentedControl(items: ["Piggy Bank", "Store Points"])
+        // "Store Rewards" (Wes, 2026-10-30): the rewards are the point; points are the tally
+        let control = UISegmentedControl(items: ["Piggy Bank", "Store Rewards"])
         control.selectedSegmentIndex = 0
         control.addTarget(self, action: #selector(tabChanged), for: .valueChanged)
         control.translatesAutoresizingMaskIntoConstraints = false
@@ -103,7 +104,7 @@ final class RewardsHubViewController: BaseViewController {
         currentChild = next
 
         // Title complements the segment instead of duplicating it.
-        title = (tab == .rewards) ? "Store Points" : "FavCoins"
+        title = (tab == .rewards) ? "Store Rewards" : "FavCoins"
     }
 }
 
