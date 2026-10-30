@@ -180,7 +180,7 @@ final class StickerRewardCoordinator: NSObject {
                 AlertPresenter.showSuccess(title: "Welcome back!", message: message, from: presenter)
                 return
             }
-            var message = "Save \(scan.venue.venueName) to one of your circles so you don't forget it — and earn 50 more store points."
+            var message = "Save \(scan.venue.venueName) to one of your circles so you don't forget it — and earn \(scan.saveBonus) more store points."
             if scan.awarded == nil, scan.loyaltyLive == false { message += "\n\n\(notLiveLine)" }
             AlertPresenter.showConfirmation(
                 title: "Don't forget \(scan.venue.venueName)!",
@@ -211,11 +211,11 @@ final class StickerRewardCoordinator: NSObject {
     }
 
     /// "Save this store?" after a register scan, into the circle they pick
-    private func offerSave(venue: RewardVenue, code: String) {
+    private func offerSave(venue: RewardVenue, code: String, bonus: Int) {
         guard let presenter = presenter else { return }
         AlertPresenter.showConfirmation(
             title: "Save \(venue.venueName)?",
-            message: "Add it to one of your circles so you can find it again and share it with friends, and earn 50 more points here.",
+            message: "Add it to one of your circles so you can find it again and share it with friends, and earn \(bonus) more points here.",
             confirmTitle: "Save & Earn",
             cancelTitle: "Not Now",
             from: presenter
@@ -330,7 +330,7 @@ final class StickerRewardCoordinator: NSObject {
         // After the points, offer to save the store if it isn't saved yet
         let offerSave: () -> Void = { [weak self] in
             guard scan.alreadySaved == false else { return }
-            self?.offerSave(venue: scan.venue, code: code)
+            self?.offerSave(venue: scan.venue, code: code, bonus: scan.saveBonus)
         }
 
         var title = scan.venue.venueName

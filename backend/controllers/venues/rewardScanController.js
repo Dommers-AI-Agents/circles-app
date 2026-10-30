@@ -111,6 +111,8 @@ exports.scan = async (req, res) => {
           // Whether this store's loyalty program runs yet: the app tells the
           // customer to ask the owner about it when it doesn't (2026-10-29)
           loyaltyLive: windowLive,
+          // What saving the place earns, so the app never hard-codes it
+          saveBonusPoints: rewardConfig.POINTS.STICKER_SAVE,
           earnRate,
           offers: offers.map(({ offerId, title, pointsCost }) => ({ offerId, title, pointsCost })),
           nextReward: rewardProgress.nextReward(offers, venueBalance, earnRate),
@@ -172,6 +174,7 @@ exports.scan = async (req, res) => {
         alreadySaved,
         balance: rewardPoints,
         venueBalance,
+        saveBonusPoints: rewardConfig.POINTS.STICKER_SAVE,
         earnRate,
         offers,
         // The store's own terms: how far this balance is from the next reward

@@ -4,7 +4,7 @@
 
 module.exports = {
   POINTS: {
-    STICKER_SIGNUP: 100,   // new user signed up after scanning a window sticker
+    STICKER_SIGNUP: 25,    // new user signed up after scanning a window sticker (was 100; Wes, 2026-10-29)
     STICKER_SAVE: 50,      // user saved the sticker venue's place to a circle
     VENUE_VISIT: 25        // default points per register-code (purchase) scan;
                            // venues override with their own earnRate
