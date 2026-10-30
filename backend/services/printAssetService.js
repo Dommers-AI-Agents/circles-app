@@ -41,10 +41,14 @@ const FORMATS = ['sign', 'tent', 'smallTent', 'card'];
 const QR_INCHES = { small: 2, medium: 3, large: 4 };
 
 // Page / face geometry per format, in points
+// Home printers can't print the outer ~¼ in of a letter page, which cut
+// off the small tent's footer (Wes, 2026-10-30). Letter formats keep every
+// face SAFE inside the page edge; the fold stays on the sheet's centre line.
+const SAFE = 0.3 * IN;
 const GEOMETRY = {
-  sign: { page: [8.5 * IN, 11 * IN] },
-  tent: { page: [11 * IN, 8.5 * IN], face: [11 * IN, 4.25 * IN] },
-  smallTent: { page: [8.5 * IN, 11 * IN], face: [4 * IN, 5.5 * IN] },
+  sign: { page: [8.5 * IN, 11 * IN], face: [8.5 * IN - 2 * SAFE, 11 * IN - 2 * SAFE] },
+  tent: { page: [11 * IN, 8.5 * IN], face: [11 * IN - 2 * SAFE, 4.25 * IN - SAFE] },
+  smallTent: { page: [8.5 * IN, 11 * IN], face: [4 * IN, 5.5 * IN - SAFE] },
   card: { page: [4 * IN, 6 * IN] }
 };
 
@@ -310,11 +314,14 @@ function cutGuide(doc, x1, y1, x2, y2) {
 
 // Two identical faces, the top one drawn upside down so both stand upright
 // once the sheet is folded along the line between them.
-function drawTent(doc, args, faceW, faceH, originX = 0) {
-  doc.save(); doc.translate(originX, faceH); drawFace(doc, { ...args, W: faceW, H: faceH }); doc.restore();
-  doc.save(); doc.rotate(180, { origin: [originX + faceW / 2, faceH / 2] });
-  doc.translate(originX, 0); drawFace(doc, { ...args, W: faceW, H: faceH }); doc.restore();
-  foldGuide(doc, originX, faceH, originX + faceW);
+// The fold is at y = originY + faceH (the sheet's centre line); the top face
+// starts originY below the page edge, the bottom one ends originY above it.
+function drawTent(doc, args, faceW, faceH, originX = 0, originY = 0) {
+  const fold = originY + faceH;
+  doc.save(); doc.translate(originX, fold); drawFace(doc, { ...args, W: faceW, H: faceH }); doc.restore();
+  doc.save(); doc.rotate(180, { origin: [originX + faceW / 2, originY + faceH / 2] });
+  doc.translate(originX, originY); drawFace(doc, { ...args, W: faceW, H: faceH }); doc.restore();
+  foldGuide(doc, originX, fold, originX + faceW);
 }
 
 async function renderPDF(venue, rawOptions) {
@@ -332,19 +339,19 @@ async function renderPDF(venue, rawOptions) {
   const args = { venue, kind, qr, qrPt, cover };
 
   if (format === 'sign') {
-    const [W, H] = geo.page;
-    drawFace(doc, { ...args, W, H });
+    const [W, H] = geo.face;
+    doc.save(); doc.translate(SAFE, SAFE); drawFace(doc, { ...args, W, H }); doc.restore();
   } else if (format === 'card') {
     const [W, H] = geo.page;
     drawFace(doc, { ...args, W, H });
   } else if (format === 'tent') {
     const [faceW, faceH] = geo.face;
-    drawTent(doc, args, faceW, faceH);
-  } else { // smallTent: a 4 × 11 in strip centred on the sheet, cut out, fold in the middle
+    drawTent(doc, args, faceW, faceH, SAFE, SAFE);
+  } else { // smallTent: a 4 in wide strip centred on the sheet, cut out, fold in the middle
     const [pageW, pageH] = geo.page;
     const [faceW, faceH] = geo.face;
     const x = (pageW - faceW) / 2;
-    drawTent(doc, args, faceW, faceH, x);
+    drawTent(doc, args, faceW, faceH, x, SAFE);
     cutGuide(doc, x, 0, x, pageH); cutGuide(doc, x + faceW, 0, x + faceW, pageH);
     doc.fillColor(GUIDE_TEXT).font('Helvetica').fontSize(7)
       .text('cut along the dotted lines', x + faceW + 6, pageH / 2 - 4, { width: pageW - x - faceW - 8 });
