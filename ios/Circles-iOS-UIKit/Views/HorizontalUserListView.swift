@@ -258,7 +258,9 @@ class HorizontalUserListView: UIView {
         // pagination state stays untouched; the in-flight first-page load
         // REPLACES this set when it lands. The old 0.5s arm timer added half
         // a second of guaranteed spinner to every launch on this init path.
-        let cachedConnections = NetworkManager.shared.connections
+        // In the order the row last showed, not the cache's stale ranking
+        let cachedConnections = PeopleRowOrder.apply(PeopleRowOrder.saved(for: AuthService.shared.getUserId()),
+                                                     to: NetworkManager.shared.connections) { $0.connectedUser?.id }
         if !cachedConnections.isEmpty {
             Logger.debug("💾 HorizontalUserListView: Painting \(cachedConnections.count) cached connections while refreshing")
             connections = cachedConnections
@@ -860,6 +862,10 @@ class HorizontalUserListView: UIView {
                         
                         self.allLoadedConnections = uniqueConnections
                         self.connections = uniqueConnections
+                        // The next launch paints in this order (before pinning,
+                        // which is about this session's selection)
+                        PeopleRowOrder.save(uniqueConnections.compactMap { $0.connectedUser?.id },
+                                            for: AuthService.shared.getUserId())
                         self.applySelectionPinning()
                         
                         // Update pagination state for first page (set, not +=: a
@@ -1011,8 +1017,16 @@ class HorizontalUserListView: UIView {
         
         Logger.debug("🔍 HorizontalUserListView: Using \(initialConnections.count) preloaded connections")
         
-        // Use the shared display logic - allow empty state since these are preloaded connections
-        displayConnections(initialConnections, alreadySorted: false, allowEmptyState: true)
+        // Use the shared display logic - allow empty state since these are preloaded connections.
+        // Remembered order first: the cached scores are stale, and re-ranking
+        // on them painted an order the server's answer then reshuffled.
+        let saved = PeopleRowOrder.saved(for: AuthService.shared.getUserId())
+        if saved.isEmpty {
+            displayConnections(initialConnections, alreadySorted: false, allowEmptyState: true)
+        } else {
+            displayConnections(PeopleRowOrder.apply(saved, to: initialConnections) { $0.connectedUser?.id },
+                               alreadySorted: true, allowEmptyState: true)
+        }
     }
     
     func clearActivityForConnection(_ connectionId: String) {
