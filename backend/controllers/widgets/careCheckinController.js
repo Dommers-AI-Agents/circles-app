@@ -59,6 +59,21 @@ exports.answer = async (req, res) => {
   catch (e) { fail(res, e); }
 };
 
+// The parent's phone can show a question on the Lock Screen (push-to-start
+// token, iOS 17.2+) — and, once one shows, that question's own token so an
+// answer anywhere takes it down.
+exports.registerLiveStartToken = async (req, res) => {
+  const { token, fcmToken } = req.body || {};
+  try { res.json({ success: true, ...(await care.registerLiveStartToken(req.user.uid, { token, fcmToken })) }); }
+  catch (e) { fail(res, e); }
+};
+
+exports.registerAskLiveToken = async (req, res) => {
+  const { token, fcmToken } = req.body || {};
+  try { res.json({ success: true, ...(await care.registerAskLiveToken(req.user.uid, req.params.id, { token, fcmToken })) }); }
+  catch (e) { fail(res, e); }
+};
+
 // @route POST /api/tasks/care-checkins (Cloud Scheduler, every 15 minutes)
 exports.runDue = async (req, res) => {
   try {

@@ -227,6 +227,8 @@ router.post('/care/plans/:id/watchers/:watcherId/invite', messageLimiter, care.r
 router.delete('/care/plans/:id/watchers/:watcherId', care.removeWatcher);
 router.get('/care/asks', care.listAsks);
 router.post('/care/asks/:id/answer', care.answer);
+router.post('/care/live-activity', care.registerLiveStartToken);
+router.post('/care/asks/:id/live-activity', care.registerAskLiveToken);
 // Family support on an answer: reactions, and responses to a heads-up
 router.post('/care/asks/:id/react', care.react);
 router.post('/care/asks/:id/respond', care.respondToAlert);

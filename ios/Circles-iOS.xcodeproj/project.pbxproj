@@ -120,6 +120,7 @@
 		FAB5000000000000000000AF /* Exceptions for "Circles-iOS-UIKit" folder in "Circles-Widget" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				LiveActivities/CareQuestionLiveActivity.swift,
 				LiveActivities/EventLiveActivity.swift,
 				LiveActivities/RunLiveActivity.swift,
 				LiveActivities/WorkoutLiveActivity.swift,

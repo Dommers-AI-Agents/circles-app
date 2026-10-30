@@ -41,7 +41,7 @@ module.exports = {
    * silence alerts for questions unanswered past their due time.
    */
   async runDue({ now = new Date() } = {}) {
-    const summary = { plans: 0, asked: 0, silence: 0, undelivered: 0, errors: 0 };
+    const summary = { plans: 0, asked: 0, reminded: 0, silence: 0, undelivered: 0, errors: 0 };
     const snap = await this.plans.where('status', '==', 'active').get();
     for (const doc of snap.docs) {
       const plan = { id: doc.id, ...doc.data() };
@@ -52,6 +52,12 @@ module.exports = {
         summary.errors += 1;
         console.error(`[care] ask failed for ${plan.id}: ${error.message}`);
       }
+    }
+    try {
+      summary.reminded += await this.remindUnanswered(now);
+    } catch (error) {
+      summary.errors += 1;
+      console.error(`[care] reminder sweep failed: ${error.message}`);
     }
     try {
       const alerts = await this.raiseSilenceAlerts(now);
@@ -105,6 +111,8 @@ module.exports = {
         data: { planId: plan.id, askId, questionText: question.text, kind: meta.kind }
       });
       await this.asks.doc(askId).update({ pushDelivered: !!(result && result.success), pushError: result && result.error ? String(result.error) : null });
+      // And on the Lock Screen until answered (phones that can show it)
+      await this.startAskLiveActivity(plan, { id: askId, ...ask });
       sent += 1;
     }
     if (sent > 0) {

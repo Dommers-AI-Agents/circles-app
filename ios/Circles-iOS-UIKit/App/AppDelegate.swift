@@ -198,6 +198,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         
         // Configure notification categories for rich interactions
         configureNotificationCategories()
+
+        // How Are You? questions on the Lock Screen: registers for push-to-start
+        // and collects the token of a display the server just started (which
+        // launches the app in the background for exactly that)
+        if #available(iOS 17.2, *) {
+            Task { @MainActor in CareLiveActivityController.shared.start() }
+        }
         
         // Don't request permissions automatically - wait for user context
         // The app will prompt at appropriate times using NotificationPromptManager

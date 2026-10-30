@@ -558,6 +558,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             RunLiveActivityController.shared.endStaleActivities()
             // Event lock-screen displays outlive the app: keep their push tokens reaching the server
             EventLiveActivityController.shared.resumeWatchingTokens()
+            // Signed in since launch: the How Are You? push-to-start token reaches the server
+            if #available(iOS 17.2, *) { CareLiveActivityController.shared.uploadStartTokenIfNeeded() }
             // The workout's lock-screen display back in step with the saved workout
             Task { await WorkoutLiveActivityController.shared.reconcile() }
         }

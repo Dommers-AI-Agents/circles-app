@@ -182,5 +182,6 @@ struct CirclesWidgetBundle: WidgetBundle {
         RunLiveActivityWidget()
         EventLiveActivityWidget()
         WorkoutLiveActivityWidget()
+        CareQuestionLiveActivityWidget()
     }
 }

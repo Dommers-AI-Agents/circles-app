@@ -295,16 +295,9 @@ final class NotificationActionHandler {
     }
 
     private func handleCareAnswer(askId: String, body: [String: Any], completion: @escaping () -> Void) {
-        APIService.shared.request(
-            endpoint: "widgets/care/asks/\(askId)/answer",
-            method: .post,
-            body: body
-        ) { (result: Result<EmptyResponse, APIError>) in
+        CareAnswerService.send(askId: askId, body: body) { ok in
             DispatchQueue.main.async {
-                if case .failure(let error) = result {
-                    Logger.debug("❌ Care answer failed: \(error)")
-                    NotificationCenter.default.post(name: .navigateToHomeWidget, object: "howareyou")
-                }
+                if !ok { NotificationCenter.default.post(name: .navigateToHomeWidget, object: "howareyou") }
                 completion()
             }
         }

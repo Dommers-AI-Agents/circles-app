@@ -411,6 +411,8 @@ class CareCheckinService {
       return this.presentAsk(ask);
     }
     const alert = bank.isAlertAnswer(question, resolved);
+    // Off the Lock Screen, showing what they said for a moment
+    this.endAskLiveActivity(ask, { answerText: resolved.answerText }).catch(() => {});
     const patch = {
       status: 'answered', answer: resolved.answer, answerValue: resolved.answerValue, answerScore: resolved.answerScore,
       answerText: resolved.answerText, alert, note: clean(note, NOTE_MAX), answeredAt: nowIso()
@@ -523,6 +525,9 @@ class CareCheckinService {
 
 Object.assign(CareCheckinService.prototype, require('./careCheckin/membership'), require('./careCheckin/scheduler'),
   require('./careCheckin/support').mixin);
+// Getters (liveStartTokens) need their descriptors copied, not their values
+Object.defineProperties(CareCheckinService.prototype,
+  Object.getOwnPropertyDescriptors(require('./careCheckin/liveActivity').mixin));
 module.exports = Object.assign(new CareCheckinService(), {
   CareError, DEFAULT_QUESTIONS, DEFAULT_TIMES, ANSWERS, TYPES, DUE_AFTER_MS, RICH_ASKS_MIN_CLIENT, localDateKey, friendlyTime
 });

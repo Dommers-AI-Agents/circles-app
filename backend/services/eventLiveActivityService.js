@@ -11,10 +11,10 @@
 
 const { getFirestore } = require('../config/firebase');
 const { nowIso } = require('../utils/ids');
+const liveActivityPush = require('./liveActivityPush');
 
 const db = () => getFirestore();
 const REFRESH_DELAY_MS = 10 * 1000;
-const APNS_TOPIC = `${process.env.IOS_BUNDLE_ID || 'com.favcircles.circles'}.push-type.liveactivity`;
 const pending = new Map(); // eventId → timer
 
 const tokensCol = (eventId) => db().collection('events').doc(String(eventId)).collection('liveTokens');
@@ -109,34 +109,16 @@ async function endForEvent(eventId) {
   return pushUpdate(eventId, { end: true });
 }
 
-/** One Live Activity push through FCM v1. Returns true, false, or 'gone'. */
-async function sendLiveActivity({ fcmToken, token, state, end, urgent }) {
-  const admin = require('firebase-admin');
-  const projectId = process.env.FIREBASE_PROJECT_ID || admin.app().options.projectId;
-  const access = await admin.app().options.credential.getAccessToken();
+/** The event display's update/end, kept to what it always sent. */
+function sendLiveActivity({ fcmToken, token, state, end, urgent }) {
   const now = Math.floor(Date.now() / 1000);
-  const aps = { timestamp: now, event: end ? 'end' : 'update', 'content-state': state };
-  if (end) aps['dismissal-date'] = now + 4 * 60 * 60; // the recap line stays a while
-  else aps['stale-date'] = now + 6 * 60 * 60;
-  const res = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${access.access_token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: {
-        token: fcmToken,
-        apns: {
-          live_activity_token: token,
-          headers: { 'apns-push-type': 'liveactivity', 'apns-topic': APNS_TOPIC, 'apns-priority': urgent || end ? '10' : '5' },
-          payload: { aps }
-        }
-      }
-    })
+  return liveActivityPush.sendLiveActivity({
+    fcmToken, token, state, urgent,
+    event: end ? 'end' : 'update',
+    // The recap line stays a while after the end; a live one goes stale
+    dismissalDate: end ? now + 4 * 60 * 60 : undefined,
+    staleDate: end ? undefined : now + 6 * 60 * 60
   });
-  if (res.ok) return true;
-  const body = await res.text().catch(() => '');
-  if (res.status === 404 || /UNREGISTERED|NOT_FOUND/.test(body)) return 'gone';
-  console.error(`🔒 live activity push ${res.status}: ${body.slice(0, 200)}`);
-  return false;
 }
 
 module.exports = { register, unregister, refreshSoon, endForEvent, pushUpdate, contentState };
