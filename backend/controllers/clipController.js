@@ -59,7 +59,7 @@ exports.getVenuePreview = async (req, res) => {
     const offers = loyaltyLive ? rewardProgress.rewardLadder(activeOffers(venue)) : [];
     const scanPoints = venue.kind === 'register'
       ? (loyaltyLive ? rewardService.effectiveEarnRate(venue) : 0)
-      : rewardConfig.POINTS.STICKER_SIGNUP;
+      : (loyaltyLive ? rewardService.effectiveJoinPoints(venue) : 0);
     return res.json({
       success: true,
       data: {

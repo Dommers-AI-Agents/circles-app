@@ -98,11 +98,19 @@ const isCompActive = (venue) => {
   return new Date(venue.loyaltyCompedUntil) > new Date();
 };
 
+/**
+ * A super-user's demo (Wes, 2026-10-30: "turn on and off the loyalty program
+ * for any store so I can properly demo it"): the store runs exactly like a
+ * subscriber's until `loyaltyDemoUntil`, then switches itself off.
+ */
+const isDemoActive = (venue) => !!(venue && venue.loyaltyDemoUntil && new Date(venue.loyaltyDemoUntil) > new Date());
+
 // Whether a venue's loyalty program (register scans, offers, redemptions) is
 // live, and WHY — the reason drives integrity logging at award time.
-// reason ∈ 'comp' | 'owner_premium' | 'lapsed' | 'no_owner' | 'none'
+// reason ∈ 'demo' | 'comp' | 'owner_premium' | 'lapsed' | 'no_owner' | 'none'
 const venueLoyaltyStatus = async (venue) => {
   if (!venue) return { active: false, reason: 'none' };
+  if (isDemoActive(venue)) return { active: true, reason: 'demo' };
   if (isCompActive(venue)) return { active: true, reason: 'comp' };
   if (!venue.ownerUserId) return { active: false, reason: 'no_owner' };
   const premium = await isOwnerPremiumById(venue.ownerUserId, venue.venueId || venue.id, venue);
@@ -135,10 +143,12 @@ const loyaltyNeverStarted = async (venue) => {
   }
 };
 
+// No points until the store's rewards are live, claimed or not (Wes,
+// 2026-10-30: an unclaimed store used to pay visit points as an owner demo,
+// while a claimed store without Business paid none). `demo` stays false.
 const registerScanEarns = async (venue) => {
   const status = await venueLoyaltyStatus(venue);
   if (status.active) return { earns: true, demo: false, status };
-  if (status.reason === 'no_owner') return { earns: true, demo: true, status };
   return { earns: false, demo: false, status };
 };
 
@@ -159,6 +169,7 @@ module.exports = {
   isOwnerPremiumForVenue,
   isOwnerPremiumById,
   isCompActive,
+  isDemoActive,
   venueLoyaltyStatus,
   isVenueLoyaltyActive,
   registerScanEarns,

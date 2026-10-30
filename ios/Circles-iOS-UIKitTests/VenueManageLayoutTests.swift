@@ -64,7 +64,7 @@ struct VenueManageLayoutTests {
 
     @Test func offersAndAnnouncementsListThenAdd() {
         let facts = L.Facts(offerCount: 2, announcementCount: 1)
-        #expect(rows(facts, .loyalty) == [.earnRate, .offer(0), .offer(1), .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes])
+        #expect(rows(facts, .loyalty) == [.earnRate, .joinPoints, .savePoints, .offer(0), .offer(1), .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes])
         #expect(rows(facts, .announcements) == [.announcement(0), .addAnnouncement])
     }
 

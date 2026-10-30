@@ -25,6 +25,8 @@ class VenueManageViewController: BaseViewController {
     private var offers: [RewardOffer]
     private var announcements: [VenueAnnouncement]
     private var earnRate: Int
+    private var joinPoints: Int
+    private var savePoints: Int
     private var registerCode: String
     private var contactName: String?
     private var contactEmail: String?
@@ -156,6 +158,8 @@ class VenueManageViewController: BaseViewController {
         self.offers = venue.offers ?? []
         self.announcements = venue.announcements ?? []
         self.earnRate = venue.earnRate ?? 25
+        self.joinPoints = venue.joinPoints ?? 25
+        self.savePoints = venue.savePoints ?? 25
         self.registerCode = venue.registerCode
         self.contactName = venue.contactName
         self.contactEmail = venue.contactEmail
@@ -423,6 +427,29 @@ class VenueManageViewController: BaseViewController {
                         switch result {
                         case .success(let newRate):
                             self.earnRate = newRate
+                            self.reload()
+                        case .failure(let error):
+                            self.showError(error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Joining / saving points: the owner sets them (Wes, 2026-10-30)
+    private func editBonusPoints(field: String, title: String, message: String, current: Int) {
+        showTextInput(title: title, message: message, placeholder: "e.g. 25", initialText: "\(current)", keyboardType: .numberPad) { [weak self] value in
+            guard let self, let text = value?.trimmingCharacters(in: .whitespacesAndNewlines), let points = Int(text), points >= 0 else { return }
+            let loading = AlertPresenter.showLoading(message: "Updating\u{2026}", from: self)
+            RewardsService.shared.updateBonusPoints(venueId: self.venueId, field: field, points: points) { [weak self] result in
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) {
+                        guard let self else { return }
+                        switch result {
+                        case .success(let saved):
+                            self.joinPoints = saved.joinPoints ?? self.joinPoints
+                            self.savePoints = saved.savePoints ?? self.savePoints
                             self.reload()
                         case .failure(let error):
                             self.showError(error)
@@ -909,6 +936,10 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
 
         case .earnRate:
             set("Points per purchase", "\(earnRate) points each time a customer scans", "dollarsign.circle")
+        case .joinPoints:
+            set("Points for joining", joinPoints > 0 ? "\(joinPoints) points when someone joins FavCircles from your window QR" : "Off", "person.badge.plus")
+        case .savePoints:
+            set("Points for saving your store", savePoints > 0 ? "\(savePoints) points when a customer saves your store" : "Off", "bookmark")
         case .offer(let index):
             let offer = offers[index]
             let isActive = offer.active != false
@@ -1006,6 +1037,12 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
 
         case .earnRate:
             editEarnRate()
+        case .joinPoints:
+            editBonusPoints(field: "joinPoints", title: "Points for joining",
+                            message: "Points a new customer gets when they join FavCircles from your window QR code. 0 turns it off.", current: joinPoints)
+        case .savePoints:
+            editBonusPoints(field: "savePoints", title: "Points for saving your store",
+                            message: "Points a customer gets the first time they save your store to their map. 0 turns it off.", current: savePoints)
         case .offer(let index):
             manageOffer(offers[index])
         case .addOffer:

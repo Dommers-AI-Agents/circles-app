@@ -701,6 +701,26 @@ class RewardsService {
         }
     }
 
+    /// Points for joining (window QR) or saving the store; 0 turns it off
+    func updateBonusPoints(venueId: String, field: String, points: Int, completion: @escaping (Result<VenueSettingsData, Error>) -> Void) {
+        apiService.request(endpoint: "rewards/venues/\(venueId)", method: .patch, body: [field: points], requiresAuth: true) {
+            (result: Result<RewardsEnvelope<VenueSettingsData>, APIError>) in
+            switch result {
+            case .success(let response): completion(.success(response.data))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
+
+    /// Super-user demo rewards on or off (the store runs like a subscriber's for 7 days)
+    func setLoyaltyDemo(venueId: String, on: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
+        struct DemoData: Codable { let demoUntil: String? }
+        apiService.request(endpoint: "rewards/venues/\(venueId)/demo", method: .put, body: ["on": on], requiresAuth: true) {
+            (result: Result<RewardsEnvelope<DemoData>, APIError>) in
+            completion(result.map { _ in () }.mapError { $0 as Error })
+        }
+    }
+
     func updateEarnRate(venueId: String, earnRate: Int, completion: @escaping (Result<Int, Error>) -> Void) {
         apiService.request(
             endpoint: "rewards/venues/\(venueId)",
@@ -935,7 +955,8 @@ struct RewardScanData: Codable {
     let loyaltyState: String?
     /// Store points for saving the place (server setting; 50 from older servers)
     let saveBonusPoints: Int?
-    var saveBonus: Int { saveBonusPoints ?? 50 }
+    /// The owner's points for saving the store; 0 while the store's rewards aren't live
+    var saveBonus: Int { saveBonusPoints ?? 0 }
     let balance: Int
     /// Points held at the scanned venue — the spendable balance there
     let venueBalance: Int?
@@ -1456,6 +1477,8 @@ struct VenueOffersData: Codable {
 struct VenueSettingsData: Codable {
     let venueId: String
     let earnRate: Int
+    let joinPoints: Int?
+    let savePoints: Int?
 }
 
 /// What the App Clip card sync did: which code URLs were (re)published, or why it skipped.
@@ -1540,6 +1563,9 @@ struct AdminVenue: Codable {
     // Present in /my-venues (and full docs from /venues); optional so older
     // response shapes still decode
     let earnRate: Int?
+    /// Owner-set points for joining from the window QR and for saving the store (2026-10-30)
+    let joinPoints: Int?
+    let savePoints: Int?
     let offers: [RewardOffer]?
     let announcements: [VenueAnnouncement]?
     // Place identity, for jumping from the manage hub to the public place page
@@ -1592,6 +1618,8 @@ struct AdminVenueDetailVenue: Codable {
     let ownerUserId: String?
     let managerUserIds: [String]?
     let earnRate: Int?
+    let joinPoints: Int?
+    let savePoints: Int?
     let offers: [RewardOffer]?
     let announcements: [VenueAnnouncement]?
     let active: Bool?
@@ -1605,6 +1633,8 @@ struct AdminVenueLoyalty: Codable {
     let comped: Bool?
     let compedUntil: String?
     let compReason: String?
+    /// A super-user demo runs until then (nil = off)
+    var demoUntil: String? = nil
 }
 
 struct AdminVenueAccount: Codable {

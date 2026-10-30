@@ -219,6 +219,14 @@ const validateEarnRate = (earnRate) => {
   return [];
 };
 
+// Joining / saving points: the owner may turn them off (0)
+const validateBonusPoints = (value, field) => {
+  if (!Number.isInteger(value) || value < 0 || value > rewardConfig.EARN_RATE_MAX) {
+    return [`${field} must be a whole number from 0 to ${rewardConfig.EARN_RATE_MAX}`];
+  }
+  return [];
+};
+
 const validateStickerVenue = (data) => {
   const errors = [];
   if (!data.venueName || !data.venueName.trim()) {
@@ -316,6 +324,7 @@ const validateRedemptionCodeBatch = (body) => {
 const sanitizeKeyPart = (part) => String(part).replace(/[/.]/g, '_');
 
 module.exports = {
+  validateBonusPoints,
   STICKER_COLLECTIONS,
   REWARD_EVENT_TYPES,
   CLAIM_STATUSES,

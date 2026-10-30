@@ -4,7 +4,7 @@
 const { getFirestore } = require('../../config/firebase');
 const { getAcceptedConnectionSnapshots } = require('../../utils/networkAccess');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
-const { validateEarnRate, STICKER_COLLECTIONS } = require('../../models/StickerModels');
+const { validateEarnRate, validateBonusPoints, STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const venueDetails = require('../../services/venueDetailsService');
 const rewardService = require('../../services/rewardService');
 const emailService = require('../../services/emailService');
@@ -564,23 +564,36 @@ exports.updateVenueInfo = async (req, res) => {
   }
 };
 
-// @desc    Adjust venue settings (points per purchase)
-// @route   PATCH /api/rewards/venues/:venueId
+// @desc    Adjust the store's points: per purchase (earnRate), for joining
+//          from the window QR (joinPoints) and for saving the store
+//          (savePoints). The owner controls every amount (Wes, 2026-10-30).
+// @route   PATCH /api/rewards/venues/:venueId   body: { earnRate?, joinPoints?, savePoints? }
 // @access  Venue owner (or super user)
 exports.updateVenueSettings = async (req, res) => {
   try {
-    const { earnRate } = req.body;
-    const errors = validateEarnRate(earnRate);
+    const { earnRate, joinPoints, savePoints } = req.body || {};
+    const errors = [];
+    const update = { updatedAt: new Date().toISOString() };
+    if (earnRate !== undefined) { errors.push(...validateEarnRate(earnRate)); update.earnRate = earnRate; }
+    if (joinPoints !== undefined) { errors.push(...validateBonusPoints(joinPoints, 'joinPoints')); update.joinPoints = joinPoints; }
+    if (savePoints !== undefined) { errors.push(...validateBonusPoints(savePoints, 'savePoints')); update.savePoints = savePoints; }
+    if (earnRate === undefined && joinPoints === undefined && savePoints === undefined) errors.push('Nothing to change');
     if (errors.length > 0) {
       return res.status(400).json({ success: false, error: errors.join('. ') });
     }
 
     await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
       .doc(req.venue.venueId)
-      .update({ earnRate, updatedAt: new Date().toISOString() });
-    appClipExperiences.syncVenueQuiet({ ...req.venue, earnRate }, { kinds: ['register'] });   // the card quotes the points
+      .update(update);
+    const next = { ...req.venue, ...update };
+    if (earnRate !== undefined) appClipExperiences.syncVenueQuiet(next, { kinds: ['register'] });   // the card quotes the points
 
-    res.json({ success: true, data: { venueId: req.venue.venueId, earnRate } });
+    res.json({ success: true, data: {
+      venueId: req.venue.venueId,
+      earnRate: rewardService.effectiveEarnRate(next),
+      joinPoints: rewardService.effectiveJoinPoints(next),
+      savePoints: rewardService.effectiveSavePoints(next)
+    } });
   } catch (error) {
     console.error('❌ Failed to update venue settings:', error);
     res.status(500).json({ success: false, error: 'Failed to update venue settings' });

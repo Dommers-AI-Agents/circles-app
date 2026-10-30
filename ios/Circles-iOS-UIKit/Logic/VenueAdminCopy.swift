@@ -34,6 +34,10 @@ enum VenueAdminCopy {
         timeZone: TimeZone = .current
     ) -> LoyaltyLine {
         switch loyalty.reason {
+        case "demo":
+            let until = parseDate(loyalty.demoUntil).map { formatDate($0, locale: locale, timeZone: timeZone) }
+            return LoyaltyLine(symbol: "play.circle.fill", tone: .good, title: "Loyalty live · demo",
+                               detail: "Demo rewards are on\(until.map { " until \($0)" } ?? ""): scans pay points and offers redeem as if the store subscribed. It switches off by itself.")
         case "comp":
             let until = parseDate(loyalty.compedUntil).map { formatDate($0, locale: locale, timeZone: timeZone) }
             var detail = until.map { "Free until \($0)." } ?? "Free with no end date."

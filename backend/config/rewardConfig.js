@@ -4,8 +4,10 @@
 
 module.exports = {
   POINTS: {
-    STICKER_SIGNUP: 25,    // new user signed up after scanning a window sticker (was 100; Wes, 2026-10-29)
-    STICKER_SAVE: 50,      // user saved the sticker venue's place to a circle
+    // The store owner sets every amount (Wes, 2026-10-30: "The store owner
+    // needs to control points"); these are the defaults until they do.
+    STICKER_SIGNUP: 25,    // joining FavCircles from the store's window QR (venue.joinPoints)
+    STICKER_SAVE: 25,      // saving the store to a circle (venue.savePoints; was a fixed 50)
     VENUE_VISIT: 25        // default points per register-code (purchase) scan;
                            // venues override with their own earnRate
     // SHARE_CONVERSION retired 2026-08-10: not tied to a shop, so it has no

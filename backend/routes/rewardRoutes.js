@@ -121,6 +121,7 @@ router.post('/venues/:venueId/owner', requireSuperUser, setVenueOwner);
 router.post('/venues/from-place/:placeId', requireSuperUser, enrollPlaceVenue);
 // One store's full admin picture (requireVenueOwner just loads req.venue here)
 router.get('/venues/:venueId/admin', requireSuperUser, requireVenueOwner, getVenueAdminDetail);
+router.put('/venues/:venueId/demo', requireSuperUser, requireVenueOwner, require('../controllers/venues/venueAdminController').setLoyaltyDemo); // super-user demo rewards
 router.get('/claims', requireSuperUser, listClaims);
 router.post('/claims/:claimId/approve', requireSuperUser, approveClaim);
 router.post('/claims/:claimId/deny', requireSuperUser, denyClaim);

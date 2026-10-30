@@ -22,6 +22,8 @@ class VenueAdminDetailViewController: BaseViewController {
 
     private enum Row {
         case loyalty
+        /// Super-user demo rewards (2026-10-30)
+        case demo
         case statGrid
         case appClip(String)
         case fullDashboard
@@ -89,6 +91,22 @@ class VenueAdminDetailViewController: BaseViewController {
         tableView.refreshControl = refreshControl
     }
 
+    @objc private func demoToggled(_ sender: UISwitch) {
+        sender.isEnabled = false
+        RewardsService.shared.setLoyaltyDemo(venueId: listVenue.venueId, on: sender.isOn) { [weak self] result in
+            DispatchQueue.main.async {
+                sender.isEnabled = true
+                guard let self else { return }
+                if case .failure(let error) = result {
+                    sender.setOn(!sender.isOn, animated: true)
+                    self.showError(error)
+                    return
+                }
+                self.loadData()
+            }
+        }
+    }
+
     override func loadData(completion: (() -> Void)? = nil) {
         RewardsService.shared.getAdminVenueDetail(venueId: listVenue.venueId) { [weak self] result in
             DispatchQueue.main.async {
@@ -139,6 +157,8 @@ class VenueAdminDetailViewController: BaseViewController {
             active: d.venue.active,
             stats: listVenue.stats,
             earnRate: d.venue.earnRate,
+            joinPoints: d.venue.joinPoints,
+            savePoints: d.venue.savePoints,
             offers: d.venue.offers,
             announcements: d.venue.announcements,
             googlePlaceId: d.venue.googlePlaceId,
@@ -228,7 +248,7 @@ class VenueAdminDetailViewController: BaseViewController {
     private func rows(in section: Section) -> [Row] {
         switch section {
         case .loyalty:
-            return detail == nil ? [] : [.loyalty]
+            return detail == nil ? [] : [.loyalty, .demo]
         case .performance:
             guard let d = detail else { return [] }
             var rows: [Row] = [.statGrid]
@@ -480,6 +500,7 @@ extension VenueAdminDetailViewController: UITableViewDataSource, UITableViewDele
 
         default:
             let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
+            cell.accessoryView = nil   // only the demo row carries a switch; reused cells mustn't
             cell.contentConfiguration = configuration(for: row, cell: cell)
             cell.accessoryType = isTappable(row) ? .disclosureIndicator : .none
             cell.selectionStyle = isTappable(row) ? .default : .none
@@ -489,7 +510,7 @@ extension VenueAdminDetailViewController: UITableViewDataSource, UITableViewDele
 
     private func isTappable(_ row: Row) -> Bool {
         switch row {
-        case .loyalty, .appClip: return false
+        case .loyalty, .appClip, .demo: return false
         case .contact: return detail?.venue.contactEmail != nil
         default: return true
         }
@@ -515,6 +536,18 @@ extension VenueAdminDetailViewController: UITableViewDataSource, UITableViewDele
             case .warning: config.imageProperties.tintColor = Constants.Colors.warning
             case .neutral: config.imageProperties.tintColor = Constants.Colors.secondaryLabel
             }
+
+        case .demo:
+            let on = detail?.loyalty.demoUntil != nil
+            config.text = "Demo rewards"
+            config.secondaryText = on
+                ? "On: the store runs like a subscriber's. Switches off by itself after 7 days."
+                : "Turn on to demo points and offers for this store, as if it subscribed, for 7 days."
+            config.image = UIImage(systemName: "play.circle")
+            let toggle = UISwitch()
+            toggle.isOn = on
+            toggle.addTarget(self, action: #selector(demoToggled(_:)), for: .valueChanged)
+            cell.accessoryView = toggle
 
         case .appClip(let text):
             config = UIListContentConfiguration.cell()
@@ -642,7 +675,7 @@ extension VenueAdminDetailViewController: UITableViewDataSource, UITableViewDele
         case .singleUseCodes:
             navigationController?.pushViewController(
                 VenueCodesViewController(venueId: venueId, venueName: venueName), animated: true)
-        case .loyalty, .appClip:
+        case .loyalty, .appClip, .demo:
             break
         }
     }

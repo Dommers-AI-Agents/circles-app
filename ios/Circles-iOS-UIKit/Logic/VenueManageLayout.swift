@@ -46,6 +46,9 @@ enum VenueManageLayout {
         case gallery
         // Loyalty program
         case earnRate
+        /// Owner-set points for joining from the window QR / saving the store (2026-10-30)
+        case joinPoints
+        case savePoints
         case offer(Int)
         case addOffer
         case showRegisterCard
@@ -101,6 +104,7 @@ enum VenueManageLayout {
         if !facts.hasPlace { placePage.append(.gallery) }
 
         var loyalty: [Row] = [.earnRate]
+        if physical { loyalty += [.joinPoints, .savePoints] }
         loyalty += (0..<facts.offerCount).map { Row.offer($0) }
         loyalty.append(.addOffer)
         if physical { loyalty += [.showRegisterCard, .replaceRegisterCard] }
@@ -132,7 +136,7 @@ enum VenueManageLayout {
         switch row {
         case .savers, .followers, .activity,
              .menu, .fullMenu, .orders, .onlineOrdering, .orderPage, .gallery,
-             .earnRate, .offer, .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes,
+             .earnRate, .joinPoints, .savePoints, .offer, .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes,
              .announcement, .addAnnouncement:
             return true
         default:

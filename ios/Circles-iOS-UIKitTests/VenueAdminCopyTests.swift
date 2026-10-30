@@ -88,4 +88,12 @@ struct VenueAdminCopyTests {
         #expect(VenueAdminCopy.cleanAddress("  ") == nil)
         #expect(VenueAdminCopy.cleanAddress(nil) == nil)
     }
+
+    @Test func demoRewardsSaySoAndWhenTheyEnd() {
+        var l = AdminVenueLoyalty(active: true, reason: "demo", comped: false, compedUntil: nil, compReason: nil)
+        l.demoUntil = "2026-11-06T17:00:00.000Z"
+        let line = VenueAdminCopy.loyalty(l, owner: nil, locale: Locale(identifier: "en_US"), timeZone: TimeZone(identifier: "UTC")!)
+        #expect(line.title == "Loyalty live · demo")
+        #expect(line.detail.contains("switches off by itself"))
+    }
 }

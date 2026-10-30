@@ -212,12 +212,14 @@ final class StickerRewardCoordinator: NSObject {
                 self.showWithMyRewards(title: "Welcome back!", message: message, from: presenter)
                 return
             }
-            var message = "Save \(scan.venue.venueName) to one of your circles so you don't forget it — and earn \(scan.saveBonus) more store points."
+            var message = scan.saveBonus > 0
+                ? "Save \(scan.venue.venueName) to one of your circles so you don't forget it — and earn \(scan.saveBonus) store points."
+                : "Save \(scan.venue.venueName) to one of your circles so you don't forget it."
             if scan.awarded == nil, scan.loyaltyLive == false { message += "\n\n\(notLiveLine)" }
             AlertPresenter.showConfirmation(
                 title: "Don't forget \(scan.venue.venueName)!",
                 message: message,
-                confirmTitle: "Save & Earn",
+                confirmTitle: scan.saveBonus > 0 ? "Save & Earn" : "Save",
                 cancelTitle: "Not Now",
                 from: presenter
             ) { [weak self] in
@@ -245,8 +247,10 @@ final class StickerRewardCoordinator: NSObject {
         guard let presenter = presenter else { return }
         AlertPresenter.showConfirmation(
             title: "Save \(venue.venueName)?",
-            message: "Add it to one of your circles so you can find it again and share it with friends, and earn \(bonus) more points here.",
-            confirmTitle: "Save & Earn",
+            message: bonus > 0
+                ? "Add it to one of your circles so you can find it again and share it with friends, and earn \(bonus) more points here."
+                : "Add it to one of your circles so you can find it again and share it with friends.",
+            confirmTitle: bonus > 0 ? "Save & Earn" : "Save",
             cancelTitle: "Not Now",
             from: presenter
         ) { [weak self] in

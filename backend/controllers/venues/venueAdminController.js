@@ -286,6 +286,26 @@ const accountRow = async (userId) => {
 //          pending claims, all counters and this month's, storefront size.
 // @route   GET /api/rewards/venues/:venueId/admin
 // @access  Super user (requireVenueOwner loads req.venue)
+// @route PUT /api/rewards/venues/:venueId/demo   body: { on: boolean, days?: number }   (super user)
+// Demo rewards: the store runs like a subscriber's (scans pay the owner's
+// points, offers redeem, the App Clip card shows points) for `days` (default
+// 7, at most 30), then switches itself off (Wes, 2026-10-30).
+exports.setLoyaltyDemo = async (req, res) => {
+  try {
+    const on = req.body && req.body.on === true;
+    const days = Math.min(30, Math.max(1, parseInt((req.body || {}).days, 10) || 7));
+    const until = on ? new Date(Date.now() + days * 86400000).toISOString() : null;
+    const update = { loyaltyDemoUntil: until, loyaltyDemoBy: on ? req.user.uid : null, updatedAt: new Date().toISOString() };
+    await db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(req.venue.venueId).update(update);
+    console.info(`[loyalty-integrity] demo ${on ? `on until ${until}` : 'off'} venue=${req.venue.venueId} by=${req.user.uid}`);
+    appClipExperiences.syncVenueQuiet({ ...req.venue, ...update }, { live: on });   // the card shows points while live
+    res.json({ success: true, data: { demoUntil: until } });
+  } catch (error) {
+    console.error('❌ Failed to set loyalty demo:', error);
+    res.status(500).json({ success: false, error: 'Failed to set demo' });
+  }
+};
+
 exports.getVenueAdminDetail = async (req, res) => {
   try {
     const venue = req.venue;
@@ -339,6 +359,7 @@ exports.getVenueAdminDetail = async (req, res) => {
       loyalty: {
         active: loyalty.active,
         reason: loyalty.reason,
+        demoUntil: venue.loyaltyDemoUntil && new Date(venue.loyaltyDemoUntil) > new Date() ? venue.loyaltyDemoUntil : null,
         comped: venue.loyaltyComped === true,
         compedUntil: venue.loyaltyCompedUntil || null,
         compReason: venue.loyaltyCompReason || null

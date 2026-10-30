@@ -106,15 +106,14 @@ exports.scan = async (req, res) => {
       // signup bonus against the virtual doc (that stays reserved for the
       // first REAL partner store the user scans).
       // Independent lookups run together: a scan is waited on (2026-10-30)
-      const [signupResult, alreadySaved, windowLive] = await Promise.all([
-        venue.genericJoin
-          ? { awarded: false, reason: 'generic_join' }
-          : rewardService.awardStickerSignup(userId, venue),
+      const [alreadySaved, windowLive] = await Promise.all([
         userHasSavedVenuePlace(userId, venue),
-        // What points buy HERE, so the welcome is in the store's own terms
-        // (Wes, 2026-10-29) — only while the store's loyalty is live
+        // Points only while the store's rewards are live (Wes, 2026-10-30)
         venue.genericJoin ? false : isVenueLoyaltyActive(venue)
       ]);
+      const signupResult = venue.genericJoin
+        ? { awarded: false, reason: 'generic_join' }
+        : (windowLive ? await rewardService.awardStickerSignup(userId, venue) : { awarded: false, reason: 'not_live' });
       const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
       const venueBalance = (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0;
       const offers = windowLive ? activeOffers(venue) : [];
@@ -134,8 +133,8 @@ exports.scan = async (req, res) => {
           // Whether this store's loyalty program runs yet: the app tells the
           // customer to ask the owner about it when it doesn't (2026-10-29)
           loyaltyLive: windowLive,
-          // What saving the place earns, so the app never hard-codes it
-          saveBonusPoints: rewardConfig.POINTS.STICKER_SAVE,
+          // What saving the place earns (the owner's amount; 0 until live)
+          saveBonusPoints: windowLive ? rewardService.effectiveSavePoints(venue) : 0,
           earnRate,
           offers: offers.map(({ offerId, title, pointsCost }) => ({ offerId, title, pointsCost })),
           nextReward: rewardProgress.nextReward(offers, venueBalance, earnRate),
@@ -165,6 +164,8 @@ exports.scan = async (req, res) => {
           loyaltyPaused: true,
           // 'not_started' (owner never subscribed) or 'paused' (it ran out)
           loyaltyState: (await loyaltyNeverStarted(venue)) ? 'not_started' : 'paused',
+          loyaltyLive: false,
+          saveBonusPoints: 0,
           alreadySaved,
           balance: rewardPoints,
           venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0,
@@ -199,7 +200,8 @@ exports.scan = async (req, res) => {
         alreadySaved,
         balance: rewardPoints,
         venueBalance,
-        saveBonusPoints: rewardConfig.POINTS.STICKER_SAVE,
+        loyaltyLive: true,
+        saveBonusPoints: rewardService.effectiveSavePoints(venue),
         earnRate,
         offers,
         // The store's own terms: how far this balance is from the next reward
@@ -238,7 +240,10 @@ exports.confirmStickerSave = async (req, res) => {
       });
     }
 
-    const result = await rewardService.awardStickerSave(userId, venue);
+    // Points for saving only while the store's rewards are live (2026-10-30)
+    const result = (await isVenueLoyaltyActive(venue))
+      ? await rewardService.awardStickerSave(userId, venue)
+      : { awarded: false, reason: 'not_live' };
     const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
 
     res.json({
