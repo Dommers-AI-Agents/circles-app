@@ -6,6 +6,8 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
     func placeVenueViewDidTapManage(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
     func placeVenueViewDidTapUpgrade(_ view: PlaceVenueRewardsView)
     func placeVenueViewDidTapStats(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
+    /// A customer tapped the rewards part of the card: this store's rewards page
+    func placeVenueViewDidTapRewards(_ view: PlaceVenueRewardsView)
     /// Owner bar: the store's Orders screen
     func placeVenueViewDidTapOrders(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
     /// Owner bar: flip between the owner's view and the customer's
@@ -123,7 +125,14 @@ class PlaceVenueRewardsView: UIView {
         let nextRewardLine: String? = (!isOwner && rewardsLive)
             ? RewardsAvailability(data).details.flatMap(RewardsAvailability.nextReward).map(RewardsAvailability.nextRewardLine)
             : nil
-        containerStack.addArrangedSubview(makeHeader(venue, header: header, isOwner: isOwner, balanceHere: balanceHere, nextRewardLine: nextRewardLine))
+        // A customer's rewards rows (header, posts, offers) open this store's
+        // rewards page (Wes, 2026-10-30); Redeem and the other buttons keep
+        // their own taps.
+        let opensRewards = !isOwner && rewardsLive
+        let headerRow = makeHeader(venue, header: header, isOwner: isOwner, balanceHere: balanceHere,
+                                   nextRewardLine: nextRewardLine, showsChevron: opensRewards)
+        if opensRewards { attachRewardsTap(to: headerRow) }
+        containerStack.addArrangedSubview(headerRow)
         // The money buttons sit right under the name — Reserve / Order are
         // the reason most people open a store's page at all.
         if let actions = storefront?.actions, let row = makeActionButtonsRow(actions) {
@@ -142,7 +151,7 @@ class PlaceVenueRewardsView: UIView {
         let announcements = (data.announcements ?? []).filter { !$0.isExpired }
         announcements.forEach { announcement in
             let row = makeAnnouncementRow(announcement)
-            if isOwner { attachManageTap(to: row, venue: venue) }
+            if isOwner { attachManageTap(to: row, venue: venue) } else if opensRewards { attachRewardsTap(to: row) }
             containerStack.addArrangedSubview(row)
         }
 
@@ -151,11 +160,11 @@ class PlaceVenueRewardsView: UIView {
             containerStack.addArrangedSubview(makeSeparator())
         }
         offers.forEach { offer in
-            containerStack.addArrangedSubview(
-                // Per-store loyalty: offers here are paid with points earned
-                // HERE (venueBalance); the account total is display only.
-                makeOfferRow(offer, venue: venue, balance: data.venueBalance ?? data.balance ?? 0, isOwner: isOwner)
-            )
+            // Per-store loyalty: offers here are paid with points earned
+            // HERE (venueBalance); the account total is display only.
+            let row = makeOfferRow(offer, venue: venue, balance: data.venueBalance ?? data.balance ?? 0, isOwner: isOwner)
+            if opensRewards { attachRewardsTap(to: row) }
+            containerStack.addArrangedSubview(row)
         }
 
         if let storefront = data.storefront {
@@ -189,7 +198,7 @@ class PlaceVenueRewardsView: UIView {
 
     // MARK: - Rows
 
-    private func makeHeader(_ venue: PlaceVenue, header: RewardsAvailability.StoreCardHeader, isOwner: Bool = false, balanceHere: Int? = nil, nextRewardLine: String? = nil) -> UIView {
+    private func makeHeader(_ venue: PlaceVenue, header: RewardsAvailability.StoreCardHeader, isOwner: Bool = false, balanceHere: Int? = nil, nextRewardLine: String? = nil, showsChevron: Bool = false) -> UIView {
         let row = UIView()
         row.translatesAutoresizingMaskIntoConstraints = false
 
@@ -244,15 +253,31 @@ class PlaceVenueRewardsView: UIView {
         row.addSubview(titleLabel)
         row.addSubview(earnLabel)
 
+        // Says the header opens the store's rewards page
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right",
+                                                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold)))
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+        chevron.tintColor = .tertiaryLabel
+        chevron.isHidden = !showsChevron
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+        row.addSubview(chevron)
+        if showsChevron {
+            row.accessibilityTraits.insert(.button)
+            row.accessibilityHint = "Opens your rewards at this store"
+        }
+
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: row.leadingAnchor),
             icon.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 20),
             icon.heightAnchor.constraint(equalToConstant: 20),
 
+            chevron.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+            chevron.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+
             titleLabel.topAnchor.constraint(equalTo: row.topAnchor),
             titleLabel.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
-            titleLabel.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+            titleLabel.trailingAnchor.constraint(equalTo: showsChevron ? chevron.leadingAnchor : row.trailingAnchor, constant: showsChevron ? -6 : 0),
 
             earnLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
             earnLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
@@ -441,6 +466,18 @@ class PlaceVenueRewardsView: UIView {
     private func attachManageTap(to row: UIView, venue: PlaceVenue) {
         row.isUserInteractionEnabled = true
         row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(manageRowTapped)))
+    }
+
+    private func attachRewardsTap(to row: UIView) {
+        row.isUserInteractionEnabled = true
+        let tap = UITapGestureRecognizer(target: self, action: #selector(rewardsRowTapped))
+        // A Redeem button inside the row keeps its own tap
+        tap.cancelsTouchesInView = false
+        row.addGestureRecognizer(tap)
+    }
+
+    @objc private func rewardsRowTapped() {
+        delegate?.placeVenueViewDidTapRewards(self)
     }
 
     @objc private func manageRowTapped() {

@@ -3585,6 +3585,11 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         openVenueManagement(venue)
     }
 
+    /// The rewards card's rows: the same store rewards page as Get Rewards
+    func placeVenueViewDidTapRewards(_ view: PlaceVenueRewardsView) {
+        getRewardsTapped()
+    }
+
     func placeVenueViewDidTapStats(_ view: PlaceVenueRewardsView, venue: PlaceVenue) {
         let dashboardVC = VenueDashboardViewController(venueId: venue.venueId, venueName: venue.venueName)
         navigationController?.pushViewController(dashboardVC, animated: true)
