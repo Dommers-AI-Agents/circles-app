@@ -467,6 +467,25 @@ extension CheckInComposeViewController {
     /// collect them — the check-in itself earns nothing; the register scan
     /// is the proof of purchase — and offers the Get Rewards page.
     fileprivate func confirmCheckIn(_ message: String) {
+        // The store's rewards are fetched when this screen opens; a quick
+        // check-in could beat that fetch and skip the reminder (Wes,
+        // 2026-10-30: check-ins at a rewards store must say to scan the
+        // register code). Ask now if it hasn't answered yet.
+        guard venueRewards != nil else {
+            RewardsService.shared.getVenueByPlace(placeId: place.globalPlaceId ?? place.id,
+                                                  googlePlaceId: place.googlePlaceId) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if case .success(let data) = result { self.venueRewards = data }
+                    self.showCheckInConfirmation(message)
+                }
+            }
+            return
+        }
+        showCheckInConfirmation(message)
+    }
+
+    private func showCheckInConfirmation(_ message: String) {
         let host = navigationController ?? self
         guard let details = RewardsAvailability(venueRewards).details,
               let rewards = GetRewardsViewController(place: place, data: venueRewards) else {
