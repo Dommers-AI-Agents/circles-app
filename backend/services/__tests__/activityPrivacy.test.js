@@ -209,6 +209,19 @@ describe('item gates, moved here verbatim', () => {
     expect(ap.passesItemGates(plain, FOLLOWER, ctxFor(FOLLOWER), circles)).toBe(true);
   });
 
+  test('a check-in is not hidden by the private circle its venue is saved in', () => {
+    const inPrivateCircle = row('check_in', { circleId: 'secret', metadata: {} });
+    const privateCircles = new Map([['secret', { owner: ACTOR, privacy: 'private', sharedWith: [] }]]);
+    expect(ap.passesItemGates(inPrivateCircle, FRIEND, ctxFor(FRIEND), privateCircles)).toBe(true);
+    // Unknown circle (deleted, or not fetched): still the check-in's own call
+    expect(ap.passesItemGates(inPrivateCircle, FRIEND, ctxFor(FRIEND), new Map())).toBe(true);
+    // The grid still limits it: by default check-ins reach connections only
+    const visible = ap.filterActivitiesForViewer({ activities: [inPrivateCircle], viewerId: STRANGER, viewerCtx: ctxFor(STRANGER), circlesById: privateCircles, settingsByActor: new Map() });
+    expect(visible).toEqual([]);
+    const toFriend = ap.filterActivitiesForViewer({ activities: [inPrivateCircle], viewerId: FRIEND, viewerCtx: ctxFor(FRIEND), circlesById: privateCircles, settingsByActor: new Map() });
+    expect(toFriend.map((a) => a.id)).toEqual(['check_in-1']);
+  });
+
   test('a place row honours placePrivacy and its list', () => {
     const privatePlace = row('place_added', { circleId: 'pub', metadata: { placePrivacy: 'private' } });
     expect(ap.passesItemGates(privatePlace, FRIEND, ctxFor(FRIEND), circles)).toBe(false);

@@ -200,6 +200,12 @@ const passesItemGates = (activity, viewerId, viewerCtx, circlesById) => {
     return !!(viewerCtx.innerCircleGrantors && viewerCtx.innerCircleGrantors.has(actor));
   }
 
+  // Every other check-in: its audience rides on the row and the grid's
+  // check-ins row decides who sees it. Never the circle the venue happens to
+  // be saved in — Sal's check-ins at a place filed in his private "Eateries"
+  // circle vanished from everyone's feed although he posted them (2026-10-30).
+  if (activity.type === 'check_in') return true;
+
   // A shared workout or posted run: its own audience, never wider than connections
   if (activity.type === 'workout_shared' || activity.type === 'run_shared') {
     const actor = normalizeUserId(activity.actorId);
