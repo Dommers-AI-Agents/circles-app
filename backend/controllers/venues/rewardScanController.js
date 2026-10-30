@@ -66,6 +66,26 @@ const fetchVenuePhotoUrls = async (venues) => {
 // @desc    Redeem a scanned sticker code (window or register)
 // @route   POST /api/rewards/scan
 // @access  Private
+// @route GET /api/rewards/code-name/:code
+// The store a code belongs to, for the app's "Checking rewards at <store>…"
+// bubble while the scan itself runs. One indexed lookup, cached briefly.
+const codeNameCache = new Map();
+exports.codeName = async (req, res) => {
+  try {
+    const code = String(req.params.code || '').trim().toUpperCase();
+    const hit = codeNameCache.get(code);
+    if (hit && hit.at > Date.now() - 10 * 60 * 1000) return res.json({ success: true, data: { venueName: hit.name } });
+    const venue = await rewardService.findVenueByCode(code);
+    if (!venue || venue.active === false) return res.status(404).json({ success: false, error: 'Unknown code' });
+    const name = venue.genericJoin ? null : (venue.venueName || venue.placeName || null);
+    if (codeNameCache.size > 2000) codeNameCache.clear();
+    codeNameCache.set(code, { name, at: Date.now() });
+    res.json({ success: true, data: { venueName: name } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Lookup failed' });
+  }
+};
+
 exports.scan = async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -85,15 +105,18 @@ exports.scan = async (req, res) => {
       // Generic "Join FavCircles" code: no venue to reward — never award the
       // signup bonus against the virtual doc (that stays reserved for the
       // first REAL partner store the user scans).
-      const signupResult = venue.genericJoin
-        ? { awarded: false, reason: 'generic_join' }
-        : await rewardService.awardStickerSignup(userId, venue);
-      const alreadySaved = await userHasSavedVenuePlace(userId, venue);
-      const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
+      // Independent lookups run together: a scan is waited on (2026-10-30)
+      const [signupResult, alreadySaved, windowLive] = await Promise.all([
+        venue.genericJoin
+          ? { awarded: false, reason: 'generic_join' }
+          : rewardService.awardStickerSignup(userId, venue),
+        userHasSavedVenuePlace(userId, venue),
+        // What points buy HERE, so the welcome is in the store's own terms
+        // (Wes, 2026-10-29) — only while the store's loyalty is live
+        venue.genericJoin ? false : isVenueLoyaltyActive(venue)
+      ]);
+      const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
       const venueBalance = (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0;
-      // What points buy HERE, so the welcome is in the store's own terms
-      // (Wes, 2026-10-29) — only while the store's loyalty is live
-      const windowLive = !venue.genericJoin && await isVenueLoyaltyActive(venue);
       const offers = windowLive ? activeOffers(venue) : [];
       const earnRate = windowLive ? rewardService.effectiveEarnRate(venue) : null;
 
@@ -125,12 +148,14 @@ exports.scan = async (req, res) => {
     // gate — points come from the venue's owner-configured earn rate).
     // Loyalty pauses gracefully when the owner's business subscription lapses —
     // never a scary error at the register.
-    const { earns, demo, status: loyalty } = await registerScanEarns(venue);
-    // The app offers to save the store after a register scan when it isn't saved yet
-    const alreadySaved = await userHasSavedVenuePlace(userId, venue);
+    // Both at once; the app offers to save the store when it isn't saved yet
+    const [{ earns, demo, status: loyalty }, alreadySaved] = await Promise.all([
+      registerScanEarns(venue),
+      userHasSavedVenuePlace(userId, venue)
+    ]);
     if (!earns) {
       console.warn(`[loyalty-integrity] register scan paused venue=${venue.venueId} reason=${loyalty.reason}`);
-      const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
+      const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
       return res.json({
         success: true,
         data: {
@@ -158,7 +183,7 @@ exports.scan = async (req, res) => {
 
     const visitResult = await rewardService.awardVenueVisit(userId, venue);
 
-    const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
+    const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
     const venueBalance = (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0;
     const offers = activeOffers(venue);
     const earnRate = rewardService.effectiveEarnRate(venue);

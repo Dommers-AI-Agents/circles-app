@@ -207,12 +207,15 @@ class RewardService {
     if (!normalized) return null;
 
     const venues = this.db.collection(STICKER_COLLECTIONS.STICKER_VENUES);
-    const windowHit = await venues.where('windowCode', '==', normalized).limit(1).get();
+    // Both lookups at once: a scan is waited on at the counter (2026-10-30)
+    const [windowHit, registerHit] = await Promise.all([
+      venues.where('windowCode', '==', normalized).limit(1).get(),
+      venues.where('registerCode', '==', normalized).limit(1).get()
+    ]);
     if (!windowHit.empty) {
       const doc = windowHit.docs[0];
       return { venueId: doc.id, kind: 'window', ...doc.data() };
     }
-    const registerHit = await venues.where('registerCode', '==', normalized).limit(1).get();
     if (!registerHit.empty) {
       const doc = registerHit.docs[0];
       return { venueId: doc.id, kind: 'register', ...doc.data() };
@@ -340,13 +343,15 @@ class RewardService {
     return saved;
   }
 
-  async getBalance(userId) {
+  /** `withEvents: false` skips the history query (a scan only needs balances). */
+  async getBalance(userId, { withEvents = true } = {}) {
     const userDoc = await this.db.collection(COLLECTIONS.USERS).doc(userId).get();
     const userData = userDoc.exists ? userDoc.data() : {};
     const rewardPoints = userData.rewardPoints || 0;
     const venueBalances = this.venueBalancesFrom(userData);
 
     let events = [];
+    if (!withEvents) return { rewardPoints, venueBalances, events };
     try {
       const snapshot = await this.db
         .collection(STICKER_COLLECTIONS.REWARD_EVENTS)

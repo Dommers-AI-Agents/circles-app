@@ -28,6 +28,21 @@ class RewardsService {
 
     // MARK: - Scan (window sticker or register card)
 
+    /// The store a code belongs to, for the scan bubble ("Checking rewards at
+    /// Pasta & Provisions…"). Remembered per code, so a repeat scan names the
+    /// store at once; nil when unknown.
+    func storeName(forCode code: String, completion: @escaping (String?) -> Void) {
+        let key = "storeNameForCode." + code.uppercased()
+        if let cached = UserDefaults.standard.string(forKey: key) { completion(cached); return }
+        struct NameData: Codable { let venueName: String? }
+        apiService.request(endpoint: "rewards/code-name/\(code.uppercased())", method: .get, requiresAuth: true) {
+            (result: Result<RewardsEnvelope<NameData>, APIError>) in
+            let name = (try? result.get())?.data.venueName
+            if let name { UserDefaults.standard.set(name, forKey: key) }
+            completion(name)
+        }
+    }
+
     func scan(code: String, completion: @escaping (Result<RewardScanData, Error>) -> Void) {
         let body: [String: Any] = ["code": code]
 

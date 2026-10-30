@@ -89,6 +89,7 @@ router.get('/admin/venues', adminAuth, listVenues);
 // Authenticated user endpoints
 router.use(protect);
 router.get('/me', getMe);
+router.get('/code-name/:code', require('../controllers/venues/rewardScanController').codeName); // the scan bubble's store name
 router.post('/scan', scan);
 router.post('/sticker-save', confirmStickerSave);
 router.get('/balance', getBalance);

@@ -41,10 +41,19 @@ final class StickerRewardCoordinator: NSObject {
             RewardsService.shared.savePendingStickerCode(code)
             return
         }
-        let loading = AlertPresenter.showLoading(message: "Checking sticker...", from: presenter)
+        // "Checking rewards…", then the store's name as soon as it's known
+        // (a quick lookup alongside the scan; remembered for repeat scans)
+        let loading = AlertPresenter.showLoading(message: "Checking rewards\u{2026}", from: presenter)
+        RewardsService.shared.storeName(forCode: code) { name in
+            guard let name else { return }
+            DispatchQueue.main.async { loading.message = "Checking rewards at \(name)\u{2026}" }
+        }
 
-        RewardsService.shared.scan(code: code) { [weak self] result in
+        scanWithRetry(code: code) { [weak self] result in
             DispatchQueue.main.async {
+                if case .success(let scan) = result {
+                    UserDefaults.standard.set(scan.venue.venueName, forKey: "storeNameForCode." + code.uppercased())
+                }
                 loading.dismiss(animated: true) {
                     switch result {
                     case .success(let scan):
@@ -64,6 +73,29 @@ final class StickerRewardCoordinator: NSObject {
                 }
             }
         }
+    }
+
+    /// A scan that hits a dropped or slow connection tries once more before
+    /// saying so: the server records a visit once a day and a signup once,
+    /// so a second try is safe and answers "already earned today" if the
+    /// first one landed (2026-10-30: a scan that succeeded on the server
+    /// showed "Can't reach FavCircles" on the phone).
+    private func scanWithRetry(code: String, completion: @escaping (Result<RewardScanData, Error>) -> Void) {
+        RewardsService.shared.scan(code: code) { result in
+            if case .failure(let error) = result, Self.isConnectivity(error) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    RewardsService.shared.scan(code: code, completion: completion)
+                }
+                return
+            }
+            completion(result)
+        }
+    }
+
+    private static func isConnectivity(_ error: Error) -> Bool {
+        if let api = error as? APIError, case .noInternet = api { return true }
+        let ns = error as NSError
+        return ns.domain == NSURLErrorDomain
     }
 
     // MARK: - Store page
