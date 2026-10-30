@@ -363,7 +363,12 @@ final class StickerRewardCoordinator: NSObject {
             if let next = RewardsAvailability.nextReward(scan.rewardDetails) {
                 message += "\n\n\(RewardsAvailability.nextRewardLine(next))"
             }
-            AlertPresenter.showSuccess(title: title, message: message, from: presenter, completion: offerSave)
+            // OK, or straight to their rewards (Wes, 2026-10-30). The save
+            // offer follows OK only: My Rewards leaves the store page.
+            AlertPresenter.showAlert(title: title, message: message, actions: [
+                (title: "My Rewards", style: .default, handler: { [weak self] in self?.openStoreRewards() }),
+                (title: "OK", style: .cancel, handler: offerSave)
+            ], from: presenter)
             return
         }
 
@@ -374,6 +379,7 @@ final class StickerRewardCoordinator: NSObject {
                 self?.redeemOffer(offer, venue: scan.venue)
             })
         }
+        actions.append((title: "My Rewards", style: .default, handler: { [weak self] in self?.openStoreRewards() }))
         actions.append((title: "Not now", style: .default, handler: offerSave))
 
         AlertPresenter.showActionSheet(
@@ -382,6 +388,21 @@ final class StickerRewardCoordinator: NSObject {
             actions: actions,
             from: presenter
         )
+    }
+
+    /// The Store Rewards screen (every store's points and offers), pushed on
+    /// the screen the scan result showed over
+    private func openStoreRewards() {
+        let hub = RewardsHubViewController()
+        hub.initialTab = .rewards
+        // Usually the tab bar: push onto the current tab, after the store page,
+        // so Back returns to the store
+        let tabNav = (presenter as? UITabBarController)?.selectedViewController as? UINavigationController
+        if let nav = tabNav ?? presenter?.navigationController ?? (presenter as? UINavigationController) {
+            nav.pushViewController(hub, animated: true)
+        } else if let presenter {
+            presenter.present(UINavigationController(rootViewController: hub), animated: true)
+        }
     }
 
     private func redeemOffer(_ offer: RewardOffer, venue: RewardVenue) {
