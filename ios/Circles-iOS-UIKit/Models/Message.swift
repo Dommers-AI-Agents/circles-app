@@ -188,11 +188,11 @@ struct Message: Codable, Identifiable {
             }
             return "📷 Photo"
         case .location:
-            return "📍 Location"
+            return "📌 Location"
         case .circleShare:
-            return "🔵 Shared a circle"
+            return content.flatMap { $0.isEmpty ? nil : $0 } ?? "⭕️ Shared a circle"
         case .placeShare:
-            return "📍 Shared a place"
+            return content.flatMap { $0.isEmpty ? nil : $0 } ?? "📍 Shared a place"
         case .connectionRequest:
             return "🤝 Connection request"
         case .checkIn:

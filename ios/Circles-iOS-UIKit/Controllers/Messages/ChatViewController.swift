@@ -1,4 +1,6 @@
 import UIKit
+import MapKit
+import CoreLocation
 
 // MARK: - MessageCellDelegate
 protocol MessageCellDelegate: AnyObject {
@@ -9,6 +11,8 @@ protocol MessageCellDelegate: AnyObject {
     func didTapDrink(id: String)
     /// A Coach Mane card a friend sent was tapped: open Motivation on it.
     func didTapMotivation(lineId: String)
+    /// A shared place, circle or location was tapped.
+    func didTapShareCard(_ card: MessageShareCard)
 }
 
 class ChatViewController: BaseViewController {
@@ -594,7 +598,14 @@ class ChatViewController: BaseViewController {
     }
     
     @objc private func showConversationInfo() {
-        // TODO: Show conversation info/settings
+        guard let conversation else { return }
+        // Newest first; the chat holds its messages newest first already
+        let shared = messages.filter { !$0.isDeleted }.compactMap { MessageShareCard(type: $0.type, metadata: $0.metadata) }
+        let info = ConversationInfoViewController(conversation: conversation, shared: shared)
+        info.onOpenShare = { [weak self] card in self?.openShareTarget(card) }
+        info.onOpenProfile = { [weak self] userId in self?.didTapProfileImage(for: userId) }
+        info.onNotificationsChanged = { [weak self] enabled in self?.notificationsDidChange(enabled) }
+        navigationController?.pushViewController(info, animated: true)
     }
     
     @objc private func openGroupSettings() {
@@ -635,18 +646,88 @@ class ChatViewController: BaseViewController {
         tableView.scrollToRow(at: indexPath, at: .bottom, animated: animated)
     }
     
+    // MARK: - Sharing (the "+" menu; 2026-10-30, these were empty stubs)
+
+    private func sendShare(_ share: MessageShareCard.Outgoing) {
+        guard let conversationId = conversation?.id else { return }
+        MessagingService.shared.sendMessage(conversationId: conversationId, type: share.type,
+                                            content: share.content, metadata: share.metadata) { [weak self] result in
+            if case .failure(let error) = result {
+                DispatchQueue.main.async { self?.showError(error) }
+            }
+        }
+    }
+
+    /// One of your circles, in profile order
     private func shareCircle() {
-        // TODO: Implement circle sharing
+        let loading = AlertPresenter.showLoading(message: "Loading your circles...", from: self)
+        CircleService.shared.fetchUserCircles { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self else { return }
+                    switch result {
+                    case .success(let circles) where !circles.isEmpty:
+                        let picker = CirclePickerViewController(circles: circles)
+                        picker.pickerTitle = "Share a Circle"
+                        picker.onCircleSelected = { [weak self, weak picker] circle in
+                            picker?.dismiss(animated: true)
+                            self?.sendShare(MessageShareCard.circle(id: circle.id, name: circle.name,
+                                                                    placeCount: circle.placesCount ?? circle.places?.count,
+                                                                    coverURL: circle.coverImage))
+                        }
+                        self.present(UINavigationController(rootViewController: picker), animated: true)
+                    case .success:
+                        self.showError("You don't have any circles to share yet.")
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
     }
-    
+
+    /// One of your saves, or any place from Apple Maps search
     private func sharePlace() {
-        // TODO: Implement place sharing
+        let search = PlaceSearchViewController()
+        search.delegate = self
+        present(UINavigationController(rootViewController: search), animated: true)
     }
-    
+
+    /// Where you are right now, with its street address when one is found
     private func shareLocation() {
-        // TODO: Implement location sharing
+        let loading = AlertPresenter.showLoading(message: "Finding your location...", from: self)
+        LocationService.shared.getCurrentLocation(timeout: 10) { [weak self] location in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self else { return }
+                    guard let location else {
+                        self.showError("Couldn't find your location. Check that FavCircles can use it in Settings.")
+                        return
+                    }
+                    CLGeocoder().reverseGeocodeLocation(location) { [weak self] placemarks, _ in
+                        DispatchQueue.main.async {
+                            guard let self else { return }
+                            let mark = placemarks?.first
+                            let address = [mark?.name, mark?.locality].compactMap { $0 }.joined(separator: ", ")
+                            self.showConfirmation(title: "Share your location?",
+                                                  message: address.isEmpty ? "Your current location goes into this chat." : address,
+                                                  confirmTitle: "Share") { [weak self] in
+                                self?.sendShare(MessageShareCard.location(location.coordinate, address: address))
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
     
+    /// The info screen's Notifications switch took: keep this chat's copy in step
+    private func notificationsDidChange(_ enabled: Bool) {
+        if let currentUserId = AuthService.shared.getUserId() {
+            conversation?.notificationSettings?[currentUserId] = enabled
+        }
+    }
+
     @objc private func toggleNotifications() {
         guard let conversationId = conversation?.id else { return }
         
@@ -897,6 +978,8 @@ class MessageCell: UITableViewCell {
     private var mediaWidthConstraint: NSLayoutConstraint!
     private var mediaTopConstraint: NSLayoutConstraint!
     private var currentImageURL: String?
+    private var currentShareCard: MessageShareCard?
+    private static let snapshotCache = NSCache<NSString, UIImage>()
     private var currentDrinkId: String?
     private var currentMotivationLineId: String?
     
@@ -1111,6 +1194,11 @@ class MessageCell: UITableViewCell {
     
     /// Shows the photo for image/postcard messages; collapses for text.
     private func configureMedia(for message: Message) {
+        currentShareCard = nil
+        if !message.isDeleted, let card = MessageShareCard(type: message.type, metadata: message.metadata) {
+            configureShareCard(card)
+            return
+        }
         guard let urlString = message.displayImageURL else {
             mediaImageView.isHidden = true
             mediaImageView.image = nil
@@ -1161,7 +1249,74 @@ class MessageCell: UITableViewCell {
         }
     }
 
+    /// A shared place, circle or location: its photo (or a map), the name
+    /// and address under it, tappable
+    private func configureShareCard(_ card: MessageShareCard) {
+        currentShareCard = card
+        currentImageURL = nil
+        currentDrinkId = nil
+        currentMotivationLineId = nil
+        messageLabel.text = card.caption
+        mediaImageView.isHidden = false
+        mediaHeightConstraint.constant = 150
+        mediaWidthConstraint.isActive = true
+        mediaTopConstraint.constant = 6
+        mediaImageView.image = nil
+        if let url = card.imageURL {
+            ImageService.shared.loadImage(from: url) { [weak self] image in
+                DispatchQueue.main.async {
+                    guard let self, self.currentShareCard == card else { return }
+                    self.mediaImageView.image = image
+                }
+            }
+        } else if let coordinate = card.mapCoordinate {
+            loadMapSnapshot(coordinate, for: card)
+        } else {
+            // A circle with no cover: a branded tile, so the card is still something to tap
+            mediaImageView.image = Self.placeholderTile(symbol: "circle.circle.fill")
+        }
+    }
+
+    private static func placeholderTile(symbol: String) -> UIImage {
+        let size = CGSize(width: 240, height: 150)
+        return UIGraphicsImageRenderer(size: size).image { ctx in
+            Constants.Colors.primary.setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+            let icon = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 54, weight: .semibold))?
+                .withTintColor(.white, renderingMode: .alwaysOriginal)
+            icon?.draw(at: CGPoint(x: (size.width - (icon?.size.width ?? 0)) / 2, y: (size.height - (icon?.size.height ?? 0)) / 2))
+        }
+    }
+
+    private func loadMapSnapshot(_ coordinate: CLLocationCoordinate2D, for card: MessageShareCard) {
+        let key = "\(coordinate.latitude),\(coordinate.longitude)" as NSString
+        if let cached = Self.snapshotCache.object(forKey: key) { mediaImageView.image = cached; return }
+        let options = MKMapSnapshotter.Options()
+        options.region = MKCoordinateRegion(center: coordinate, latitudinalMeters: 500, longitudinalMeters: 500)
+        options.size = CGSize(width: 240, height: 150)
+        options.traitCollection = traitCollection
+        MKMapSnapshotter(options: options).start { [weak self] snapshot, _ in
+            guard let snapshot else { return }
+            // The pin in the middle
+            let image = UIGraphicsImageRenderer(size: options.size).image { _ in
+                snapshot.image.draw(at: .zero)
+                let pin = UIImage(systemName: "mappin.circle.fill")?.withTintColor(.systemRed, renderingMode: .alwaysOriginal)
+                let point = snapshot.point(for: coordinate)
+                pin?.draw(in: CGRect(x: point.x - 14, y: point.y - 14, width: 28, height: 28))
+            }
+            Self.snapshotCache.setObject(image, forKey: key)
+            DispatchQueue.main.async {
+                guard let self, self.currentShareCard == card else { return }
+                self.mediaImageView.image = image
+            }
+        }
+    }
+
     @objc private func mediaTapped() {
+        if let currentShareCard {
+            delegate?.didTapShareCard(currentShareCard)
+            return
+        }
         if let currentDrinkId {
             delegate?.didTapDrink(id: currentDrinkId)
             return
@@ -1182,7 +1337,75 @@ class MessageCell: UITableViewCell {
 }
 
 // MARK: - MessageCellDelegate
+extension ChatViewController: PlaceSearchDelegate {
+    func didSelectExistingPlace(_ place: Place) {
+        presentedViewController?.dismiss(animated: true)
+        sendShare(MessageShareCard.place(id: place.globalPlaceId ?? place.id, name: place.name, address: place.address,
+                                         photoURL: place.photos?.first, coordinate: place.location?.clLocation?.coordinate))
+    }
+
+    func didSelectPlace(name: String, address: String, coordinate: CLLocationCoordinate2D, phone: String?,
+                        website: String?, category: String?, description: String?) {
+        presentedViewController?.dismiss(animated: true)
+        sendShare(MessageShareCard.place(id: nil, name: name, address: address, photoURL: nil, coordinate: coordinate))
+    }
+}
+
 extension ChatViewController: MessageCellDelegate {
+    func didTapShareCard(_ card: MessageShareCard) {
+        openShareTarget(card)
+    }
+
+    /// Opens what a share card points at; the info screen uses it too.
+    func openShareTarget(_ card: MessageShareCard) {
+        switch card.target {
+        case .place(let id?, _):
+            let loading = AlertPresenter.showLoading(message: "Opening...", from: self)
+            PlaceService.shared.fetchPlaceById(id: id) { [weak self] result in
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) {
+                        guard let self else { return }
+                        switch result {
+                        case .success(let place):
+                            self.navigationController?.pushViewController(PlaceDetailViewController(place: place), animated: true)
+                        case .failure:
+                            // Gone or not visible to you: Maps still knows where it is
+                            if case .place(_, let coordinate?) = card.target { self.openInMaps(coordinate, name: card.title) }
+                            else { self.showError("This place isn't available anymore.") }
+                        }
+                    }
+                }
+            }
+        case .place(nil, let coordinate?):
+            openInMaps(coordinate, name: card.title)
+        case .place(nil, nil):
+            break
+        case .circle(let id):
+            let loading = AlertPresenter.showLoading(message: "Opening...", from: self)
+            CircleService.shared.fetchCircleById(id: id) { [weak self] result in
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) {
+                        guard let self else { return }
+                        switch result {
+                        case .success(let circle):
+                            self.navigationController?.pushViewController(CircleDetailViewController(circle: circle), animated: true)
+                        case .failure:
+                            self.showError("You can't open this circle. It may be private or no longer shared.")
+                        }
+                    }
+                }
+            }
+        case .location(let coordinate):
+            openInMaps(coordinate, name: card.title)
+        }
+    }
+
+    private func openInMaps(_ coordinate: CLLocationCoordinate2D, name: String) {
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+        item.name = name
+        item.openInMaps(launchOptions: [MKLaunchOptionsMapCenterKey: NSValue(mkCoordinate: coordinate)])
+    }
+
     func didTapDrink(id: String) {
         // Home → Widgets → Make Me a Drink, opened on this recipe
         NotificationCenter.default.post(name: .navigateToHomeWidget, object: "drink", userInfo: ["drinkId": id])
