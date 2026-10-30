@@ -553,7 +553,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         rewardCodes.redeemPendingStickerCodeIfNeeded()
         // Signed out: the scan's "Rewards Waiting!" prompt, if a system alert held it back
         if rewardCodes.rewardsPromptOwed { rewardCodes.presentRewardsWaitingPrompt() }
-        // A run's lock-screen display left over from a run the app lost (killed mid-run)
+        // A run saved before the app closed carries on (GPS, clock, its lock
+        // screen display), as a workout does; a display with no run behind it goes
+        if let userId = KeychainService.shared.getUserId(), !userId.isEmpty {
+            RunSession.shared.restoreIfNeeded(host: AppWidgetHost(userId: userId))
+        }
         if #available(iOS 16.2, *) {
             RunLiveActivityController.shared.endStaleActivities()
             // Event lock-screen displays outlive the app: keep their push tokens reaching the server

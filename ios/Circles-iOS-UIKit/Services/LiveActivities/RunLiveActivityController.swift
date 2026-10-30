@@ -11,7 +11,12 @@ import FavWidgetsCore
 final class RunLiveActivityController {
     static let shared = RunLiveActivityController()
 
-    private var activity: ActivityKit.Activity<RunActivityAttributes>?
+    /// The display on the lock screen, whoever started it: after the app
+    /// closed mid-run and reopened, the run is restored and keeps updating the
+    /// display it already had instead of starting a second one.
+    private var activity: ActivityKit.Activity<RunActivityAttributes>? {
+        ActivityKit.Activity<RunActivityAttributes>.activities.first { $0.activityState == .active }
+    }
     private var observer: NSObjectProtocol?
 
     private init() {
@@ -26,25 +31,25 @@ final class RunLiveActivityController {
             distance: update.distance, unit: update.unit, pace: update.pace,
             movingSeconds: update.movingSeconds, clockStart: update.clockStart, isPaused: update.isPaused)
         let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(60 * 60))
-        if let activity, activity.activityState == .active {
+        if let activity {
             Task { await activity.update(content) }
             return
         }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         do {
-            activity = try ActivityKit.Activity.request(attributes: RunActivityAttributes(), content: content, pushType: nil)
+            _ = try ActivityKit.Activity.request(attributes: RunActivityAttributes(), content: content, pushType: nil)
         } catch {
             Logger.debug("🏃 Live Activity not started: \(error.localizedDescription)")
         }
     }
 
     private func end() {
-        guard let activity else { return }
-        self.activity = nil
-        Task { await activity.end(nil, dismissalPolicy: .immediate) }
+        for a in ActivityKit.Activity<RunActivityAttributes>.activities {
+            Task { await a.end(nil, dismissalPolicy: .immediate) }
+        }
     }
 
-    /// A run that outlived the app (killed mid-run) leaves nothing on the lock screen.
+    /// A display with no run behind it (finished elsewhere, or too old to resume) leaves the lock screen.
     func endStaleActivities() {
         guard !RunSession.shared.isActive else { return }
         for a in ActivityKit.Activity<RunActivityAttributes>.activities {
