@@ -23,7 +23,8 @@ describe('printAssetService', () => {
     expect(svc.printOptions({ qr: 'small' }).qrInches).toBe(2);
     expect(svc.printOptions({ qr: 'medium' }).qrInches).toBe(3);
     expect(svc.printOptions({ qr: 'large' }).qrInches).toBe(4);
-    expect(svc.printOptions({}).qr).toBe('medium');
+    expect(svc.printOptions({}).qr).toBe('small');
+    expect(svc.printOptions({}).format).toBe('smallTent');
   });
 
   test('bad options are refused with a 400', () => {

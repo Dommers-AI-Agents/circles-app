@@ -7,11 +7,11 @@ struct VenuePrintOptionsTests {
         #expect(options.queryParams == ["kind": "register", "format": "smallTent", "qr": "large"])
     }
 
-    @Test func defaultsAreASignWithAThreeInchCode() {
+    @Test func defaultsAreASmallTentWithATwoInchCode() {
         let options = VenuePrintOptions(kind: .window)
-        #expect(options.format == .sign)
-        #expect(options.qrSize == .medium)
-        #expect(options.effectiveQRInches == 3)
+        #expect(options.format == .smallTent)
+        #expect(options.qrSize == .small)
+        #expect(options.effectiveQRInches == 2)
     }
 
     @Test func theCodeNeverOutgrowsTheFace() {

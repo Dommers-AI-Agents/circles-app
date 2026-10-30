@@ -69,8 +69,9 @@ enum VenuePrintQRSize: String, CaseIterable {
 
 struct VenuePrintOptions: Equatable {
     var kind: VenuePrintKind
-    var format: VenuePrintFormat = .sign
-    var qrSize: VenuePrintQRSize = .medium
+    // The small table tent with a 2 in code unless they pick otherwise (Wes, 2026-10-30)
+    var format: VenuePrintFormat = .smallTent
+    var qrSize: VenuePrintQRSize = .small
 
     var queryParams: [String: String] {
         ["kind": kind.rawValue, "format": format.rawValue, "qr": qrSize.rawValue]

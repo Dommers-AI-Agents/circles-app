@@ -79,7 +79,8 @@ function codeFor(kind, venue) {
 }
 
 // Validates and normalises the options the endpoint and the emails pass in.
-function printOptions({ kind = 'window', format = 'sign', qr = 'medium' } = {}) {
+// Defaults: the small table tent with a 2 in code (Wes, 2026-10-30)
+function printOptions({ kind = 'window', format = 'smallTent', qr = 'small' } = {}) {
   if (!KINDS.includes(kind)) throw new ServiceError(400, 'BAD_KIND', 'kind must be window or register');
   if (!FORMATS.includes(format)) throw new ServiceError(400, 'BAD_FORMAT', 'format must be sign, tent, smallTent or card');
   if (!QR_INCHES[qr]) throw new ServiceError(400, 'BAD_QR_SIZE', 'qr must be small, medium or large');
