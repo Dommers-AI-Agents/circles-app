@@ -295,11 +295,11 @@ function drawWideFace(doc, { venue, copy, qr, qrPt, W, H, cover, s: faceScale })
   return qrSize;
 }
 
-function foldGuide(doc, x1, y, x2, labelW, labelX = 0) {
+// The fold line only: a label on the face printed over the store's photo
+// (Wes, 2026-10-30). Where the sheet has a margin, the label goes there.
+function foldGuide(doc, x1, y, x2) {
   doc.moveTo(x1, y).lineTo(x2, y)
     .dash(6, { space: 6 }).strokeColor(GUIDE).lineWidth(0.5).stroke().undash();
-  doc.fillColor(GUIDE_TEXT).font('Helvetica').fontSize(7)
-    .text('fold here — stands as a tent', labelX, y + 11, { width: labelW, align: 'center' });
 }
 
 function cutGuide(doc, x1, y1, x2, y2) {
@@ -313,7 +313,7 @@ function drawTent(doc, args, faceW, faceH, originX = 0) {
   doc.save(); doc.translate(originX, faceH); drawFace(doc, { ...args, W: faceW, H: faceH }); doc.restore();
   doc.save(); doc.rotate(180, { origin: [originX + faceW / 2, faceH / 2] });
   doc.translate(originX, 0); drawFace(doc, { ...args, W: faceW, H: faceH }); doc.restore();
-  foldGuide(doc, originX, faceH, originX + faceW, faceW, originX);
+  foldGuide(doc, originX, faceH, originX + faceW);
 }
 
 async function renderPDF(venue, rawOptions) {
@@ -347,6 +347,10 @@ async function renderPDF(venue, rawOptions) {
     cutGuide(doc, x, 0, x, pageH); cutGuide(doc, x + faceW, 0, x + faceW, pageH);
     doc.fillColor(GUIDE_TEXT).font('Helvetica').fontSize(7)
       .text('cut along the dotted lines', x + faceW + 6, pageH / 2 - 4, { width: pageW - x - faceW - 8 });
+    // The fold, labelled in the margin beside it rather than on the face
+    doc.moveTo(x - 14, pageH / 2).lineTo(x - 4, pageH / 2).strokeColor(GUIDE).lineWidth(0.5).stroke();
+    doc.fillColor(GUIDE_TEXT).font('Helvetica').fontSize(7)
+      .text('fold here', 4, pageH / 2 - 3.5, { width: x - 22, align: 'right' });
   }
   return pdfToBuffer(doc);
 }
