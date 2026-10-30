@@ -22,6 +22,9 @@ enum VenuePrintFormat: String, CaseIterable {
     case tent
     case smallTent
     case card
+    /// A sheet of 1½ in square stickers (Avery 22805), the code alone: covers
+    /// the old App Store code on a printed FavCircles window sticker
+    case stickers
 
     var title: String {
         switch self {
@@ -29,6 +32,7 @@ enum VenuePrintFormat: String, CaseIterable {
         case .tent: return "Table tent"
         case .smallTent: return "Small tent"
         case .card: return "Counter card"
+        case .stickers: return "Stickers"
         }
     }
 
@@ -39,6 +43,7 @@ enum VenuePrintFormat: String, CaseIterable {
         case .tent: return "One letter page. Fold it in half along the dashed line and it stands on its own (11 × 4¼ in faces)."
         case .smallTent: return "One letter page. Cut along the dotted lines, fold in the middle: a 4 × 5½ in tent for a table or the register."
         case .card: return "A 4 × 6 in card. Fits a photo frame or an acrylic stand. On letter paper, cut it out."
+        case .stickers: return "24 stickers on an Avery 22805 sheet (1½ in squares). Print at Actual size; try one on plain paper first. One covers the code on a FavCircles window sticker."
         }
     }
 
@@ -49,8 +54,14 @@ enum VenuePrintFormat: String, CaseIterable {
         case .tent: return 3.5
         case .smallTent: return 3
         case .card: return 3.5
+        case .stickers: return Self.stickerQRInches
         }
     }
+
+    /// The sticker sets the code's size; the size choice doesn't apply
+    var hasQRSizeChoice: Bool { self != .stickers }
+
+    static let stickerQRInches = 1.25
 }
 
 enum VenuePrintQRSize: String, CaseIterable {
@@ -78,11 +89,14 @@ struct VenuePrintOptions: Equatable {
     }
 
     /// The code's printed size once the face has had its say
-    var effectiveQRInches: Double { min(qrSize.inches, format.maxQRInches) }
+    var effectiveQRInches: Double {
+        format.hasQRSizeChoice ? min(qrSize.inches, format.maxQRInches) : VenuePrintFormat.stickerQRInches
+    }
 
     /// One line for the sheet: paper plus the code's real printed size
     var summary: String {
         let inches = effectiveQRInches
+        guard format.hasQRSizeChoice else { return format.paperNote }
         let size = inches == inches.rounded() ? "\(Int(inches))" : String(format: "%.1f", inches)
         let clamped = inches < qrSize.inches ? " (the most this layout fits)" : ""
         return "\(format.paperNote) The code prints \(size) in wide\(clamped)."
@@ -95,6 +109,7 @@ struct VenuePrintOptions: Equatable {
             .map { Character($0) }
         let name = String(safe).trimmingCharacters(in: .whitespaces)
         let kindWord = kind == .window ? "window" : "register"
+        if format == .stickers { return "\(name.isEmpty ? "store" : name) - \(kindWord) stickers - Avery 22805.pdf" }
         return "\(name.isEmpty ? "store" : name) - \(kindWord) \(format.title.lowercased()) - \(Int(qrSize.inches))in QR.pdf"
     }
 }

@@ -23,6 +23,16 @@ struct VenuePrintOptionsTests {
         #expect(!fits.summary.contains("the most"))
     }
 
+    @Test func stickersAreOneSheetWithTheirOwnCodeSize() {
+        let options = VenuePrintOptions(kind: .window, format: .stickers, qrSize: .large)
+        #expect(options.queryParams["format"] == "stickers")
+        #expect(!options.format.hasQRSizeChoice)
+        #expect(options.effectiveQRInches == 1.25)
+        #expect(options.summary.contains("Avery 22805"))
+        #expect(!options.summary.contains("the most this layout fits"))
+        #expect(options.fileName(storeName: "Tommy's Tavern + Tap") == "Tommys Tavern  Tap - window stickers - Avery 22805.pdf")
+    }
+
     @Test func fileNamesAreReadableAndSafe() {
         let options = VenuePrintOptions(kind: .window, format: .tent, qrSize: .small)
         #expect(options.fileName(storeName: "Tommy's Tavern + Tap") == "Tommys Tavern  Tap - window table tent - 1in QR.pdf")

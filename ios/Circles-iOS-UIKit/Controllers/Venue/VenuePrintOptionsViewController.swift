@@ -1,7 +1,7 @@
 import UIKit
 
 /// "Print a sign or tent": pick the shape (sign, table tent, small tent,
-/// counter card) and the code's printed size, then hand the PDF to the share
+/// counter card, sticker sheet) and the code's printed size, then hand the PDF to the share
 /// sheet, where Print, AirDrop, Mail and Save to Files all live.
 final class VenuePrintOptionsViewController: BaseViewController {
 
@@ -35,6 +35,8 @@ final class VenuePrintOptionsViewController: BaseViewController {
 
     private lazy var formatControl: UISegmentedControl = {
         let control = UISegmentedControl(items: VenuePrintFormat.allCases.map(\.title))
+        // Five shapes: each segment as wide as its word, so none truncates
+        control.apportionsSegmentWidthsByContent = true
         control.selectedSegmentIndex = VenuePrintFormat.allCases.firstIndex(of: options.format) ?? 0
         control.addTarget(self, action: #selector(formatChanged), for: .valueChanged)
         control.translatesAutoresizingMaskIntoConstraints = false
@@ -114,6 +116,10 @@ final class VenuePrintOptionsViewController: BaseViewController {
 
     private func refreshSummary() {
         summaryLabel.text = options.summary
+        // A sticker sheet has one code size; the size row would only mislead
+        let sized = options.format.hasQRSizeChoice
+        sizeHeading.isHidden = !sized
+        sizeControl.isHidden = !sized
     }
 
     @objc private func cancelTapped() {

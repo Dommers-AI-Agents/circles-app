@@ -637,7 +637,8 @@ exports.rotateRegisterCode = async (req, res) => {
 // @desc    A print-ready PDF of one of the store's QR codes. kind=window
 //          (scan-to-save, free tier) or register (earn points, Business tier);
 //          format=sign (letter), tent (letter folded in half), smallTent
-//          (4 x 5.5 in cut-out), card (4 x 6 in); qr=small|medium|large puts
+//          (4 x 5.5 in cut-out), card (4 x 6 in), stickers (24 on an Avery
+//          22805 sheet; qr ignored); qr=small|medium|large puts
 //          the code at 1 / 3 / 4 in so it never has to fill the whole page.
 // @route   GET /api/rewards/venues/:venueId/print?kind=&format=&qr=
 // @access  Private (owner or manager)

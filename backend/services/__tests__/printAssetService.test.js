@@ -9,7 +9,7 @@ const mediaBox = (pdf) => pdf.toString('latin1').match(/MediaBox \[0 0 ([\d.]+) 
 
 describe('printAssetService', () => {
   test('every kind × format renders a PDF at the right page size', async () => {
-    const pages = { sign: [612, 792], tent: [792, 612], smallTent: [612, 792], card: [288, 432] };
+    const pages = { sign: [612, 792], tent: [792, 612], smallTent: [612, 792], card: [288, 432], stickers: [612, 792] };
     for (const kind of svc.KINDS) {
       for (const format of svc.FORMATS) {
         const pdf = await svc.renderPDF(venue, { kind, format, qr: 'medium' });
@@ -41,6 +41,13 @@ describe('printAssetService', () => {
   test('file names say what they are', () => {
     expect(svc.fileName(venue, { kind: 'window', format: 'smallTent', qr: 'small' }))
       .toBe('Tommys Tavern  Tap - window small table tent - 1in QR.pdf');
+  });
+
+  test('stickers: 24 codes on one Avery 22805 sheet, named for the stock', async () => {
+    const pdf = await svc.renderPDF(venue, { kind: 'window', format: 'stickers' });
+    expect(mediaBox(pdf)).toEqual([612, 792]);
+    expect(svc.fileName(venue, { kind: 'window', format: 'stickers' }))
+      .toBe('Tommys Tavern  Tap - window stickers - Avery 22805.pdf');
   });
 
   test('the email names still work', async () => {

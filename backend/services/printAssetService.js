@@ -9,6 +9,8 @@
 //           'tent'     letter sheet folded in half the long way (faces 11 × 4¼ in)
 //           'smallTent' 4 × 5½ in two-face tent cut from a letter sheet
 //           'card'     4 × 6 in counter card (photo frame / acrylic stand)
+//           'stickers' a sheet of 24 1½ in square stickers (Avery 22805), the
+//                      code alone, to cover an old code on a printed sticker
 //   qr      'small' | 'medium' | 'large' → 1 / 3 / 4 in, clamped to the face
 //
 // The email flows keep calling the old three names; they map onto this.
@@ -37,7 +39,7 @@ const IN = 72;
 const APP_ICON = path.join(__dirname, '..', 'assets', 'brand', 'app-icon-256.png');
 
 const KINDS = ['window', 'register'];
-const FORMATS = ['sign', 'tent', 'smallTent', 'card'];
+const FORMATS = ['sign', 'tent', 'smallTent', 'card', 'stickers'];
 // small: 1 in (Wes, 2026-10-30: a table tent wants a small code and a big photo)
 const QR_INCHES = { small: 1, medium: 3, large: 4 };
 
@@ -50,8 +52,21 @@ const GEOMETRY = {
   sign: { page: [8.5 * IN, 11 * IN], face: [8.5 * IN - 2 * SAFE, 11 * IN - 2 * SAFE] },
   tent: { page: [11 * IN, 8.5 * IN], face: [11 * IN - 2 * SAFE, 4.25 * IN - SAFE] },
   smallTent: { page: [8.5 * IN, 11 * IN], face: [4 * IN, 5.5 * IN - SAFE] },
-  card: { page: [4 * IN, 6 * IN] }
+  card: { page: [4 * IN, 6 * IN] },
+  stickers: { page: [8.5 * IN, 11 * IN] }
 };
+
+// Avery 22805: 1½ in squares, 4 across and 6 down, ½ in top and side
+// margins, 2 in across and 1.7 in down from one sticker to the next.
+// Made to cover the App Store code on the round FavCircles window
+// stickers (Wes, 2026-10-30): that code's dots are 1.06 in (5½ in
+// sticker) or 1.25 in (6 in), inside a white frame 1.30 / 1.54 in, and
+// 1½ in clears the words above and the footer below on both.
+const STICKER_SHEET = { size: 1.5 * IN, cols: 4, rows: 6, left: 0.5 * IN, top: 0.5 * IN, pitchX: 2 * IN, pitchY: 1.7 * IN };
+// The code inside each sticker: ⅛ in of white all round, so a sheet fed
+// slightly off still keeps every dot on its sticker
+const STICKER_QR = 1.25 * IN;
+const STICKER_INK = '#1B1E24';
 
 // Copy per kind (Wes, 2026-10-30: signs owners love to put out and customers
 // find attractive). The window code never promises points; the register code
@@ -87,7 +102,7 @@ function codeFor(kind, venue) {
 // Defaults: the small table tent with a 2 in code (Wes, 2026-10-30)
 function printOptions({ kind = 'window', format = 'smallTent', qr = 'small' } = {}) {
   if (!KINDS.includes(kind)) throw new ServiceError(400, 'BAD_KIND', 'kind must be window or register');
-  if (!FORMATS.includes(format)) throw new ServiceError(400, 'BAD_FORMAT', 'format must be sign, tent, smallTent or card');
+  if (!FORMATS.includes(format)) throw new ServiceError(400, 'BAD_FORMAT', 'format must be sign, tent, smallTent, card or stickers');
   if (!QR_INCHES[qr]) throw new ServiceError(400, 'BAD_QR_SIZE', 'qr must be small, medium or large');
   return { kind, format, qr, qrInches: QR_INCHES[qr] };
 }
@@ -100,9 +115,9 @@ const pdfToBuffer = (doc) => new Promise((resolve, reject) => {
   doc.end();
 });
 
-const qrBuffer = (code, sizePx) => QRCode.toBuffer(
+const qrBuffer = (code, sizePx, dark = '#000000') => QRCode.toBuffer(
   rewardService.stickerUrl(code),
-  { width: sizePx, margin: 1, errorCorrectionLevel: 'M' }
+  { width: sizePx, margin: 1, errorCorrectionLevel: 'M', color: { dark, light: '#FFFFFF' } }
 );
 
 // --- drawing helpers ------------------------------------------------------
@@ -327,9 +342,28 @@ function drawTent(doc, args, faceW, faceH, originX = 0, originY = 0) {
   foldGuide(doc, originX, fold, originX + faceW);
 }
 
+// A sheet of stickers: the code alone, in the window sticker's ink, one per
+// square. The QR size option doesn't apply; the sticker sets it.
+async function renderStickerSheet(code) {
+  const { size, cols, rows, left, top, pitchX, pitchY } = STICKER_SHEET;
+  const qr = await qrBuffer(code, Math.round(STICKER_QR / IN * 600), STICKER_INK);
+  const doc = new PDFDocument({ size: GEOMETRY.stickers.page, margin: 0 });
+  const inset = (size - STICKER_QR) / 2;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      doc.image(qr, left + c * pitchX + inset, top + r * pitchY + inset, { width: STICKER_QR, height: STICKER_QR });
+    }
+  }
+  doc.fillColor(GUIDE_TEXT).font('Helvetica').fontSize(7)
+    .text('Avery 22805 (1½ in square, 24 per sheet) · print at 100% / Actual size · try one on plain paper first',
+      0, 0.22 * IN, { width: GEOMETRY.stickers.page[0], align: 'center', lineBreak: false });
+  return pdfToBuffer(doc);
+}
+
 async function renderPDF(venue, rawOptions) {
   const { kind, format, qrInches } = printOptions(rawOptions);
   const code = codeFor(kind, venue);
+  if (format === 'stickers') return renderStickerSheet(code);
   const qr = await qrBuffer(code, Math.max(600, Math.round(qrInches * 300)));
   const qrPt = qrInches * IN;
   const geo = GEOMETRY[format];
@@ -366,10 +400,11 @@ async function renderPDF(venue, rawOptions) {
   return pdfToBuffer(doc);
 }
 
-const formatLabel = { sign: 'sign', tent: 'table tent', smallTent: 'small table tent', card: 'counter card 4x6' };
+const formatLabel = { sign: 'sign', tent: 'table tent', smallTent: 'small table tent', card: 'counter card 4x6', stickers: 'stickers' };
 const fileName = (venue, options) => {
   const { kind, format, qr } = printOptions(options);
   const safeName = String(venue.venueName || 'store').replace(/[^\w -]/g, '').trim() || 'store';
+  if (format === 'stickers') return `${safeName} - ${kind} stickers - Avery 22805.pdf`;
   return `${safeName} - ${kind} ${formatLabel[format]} - ${QR_INCHES[qr]}in QR.pdf`;
 };
 
