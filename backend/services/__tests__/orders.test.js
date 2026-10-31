@@ -187,3 +187,18 @@ describe('the order flow', () => {
     expect(await orders.newCount(null, { db: mockDb })).toBe(0);
   });
 });
+
+describe('the store\'s queue names customers as they are now', () => {
+  test('an app customer who renamed shows the new name; a web guest keeps the typed one', async () => {
+    const placed = await orders.place({ customerId: 'cust', venueId: 'v1', items: [{ itemId: 'm', qty: 1 }], pickup: 'asap' });
+    await mockDb.collection('orders').doc('web1').set({ venueId: 'v1', customerId: null, customerName: 'Typed Guest', channel: 'web',
+      status: rules.STATUS.PLACED, lines: [], createdAt: new Date().toISOString() });
+    await mockDb.collection('orders').doc('gone1').set({ venueId: 'v1', customerId: 'gone', customerName: 'Old Name', channel: 'app',
+      status: rules.STATUS.PLACED, lines: [], createdAt: new Date().toISOString() });
+    await mockDb.collection('users').doc('cust').set({ displayName: 'Ana Maria' });
+    const queue = await orders.forVenue('v1', { db: mockDb });
+    const byId = Object.fromEntries(queue.map((o) => [o.orderId, o.customerName]));
+    expect(byId).toEqual({ [placed.orderId]: 'Ana Maria', web1: 'Typed Guest', gone1: 'Old Name' });
+    expect((await orders.get(placed.orderId, 'owner')).customerName).toBe('Ana Maria');
+  });
+});

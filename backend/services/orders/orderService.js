@@ -16,6 +16,7 @@ const dailyBudget = require('../dailyBudget');
 const { sendInBackground } = require('../notifyQuiet');
 const { escapeHtml } = require('../../utils/text');
 const rules = require('./orderRules');
+const { fetchUsersById, nameOf } = require('../userLookup');
 
 const ORDERS = 'orders';
 const { STATUS, OPEN, LIMITS } = rules;
@@ -34,16 +35,18 @@ async function loadVenue(db, venueId) {
  * string on the wire: web guests (services/orders/webOrderService) are
  * stored with null and sent as 'guest', because the app decodes the
  * store's order list strictly. `forTeam` adds the guest's phone/email, the
- * store's to call; never shown to anyone else.
+ * store's to call; never shown to anyone else. `users` (fetchUsersById over
+ * customerIds) names an app customer as they are now; a web guest keeps the
+ * name they typed, and a deleted account its stored one.
  */
-const view = (id, o, { forTeam = false } = {}) => ({
+const view = (id, o, { forTeam = false, users = null } = {}) => ({
   orderId: id,
   test: o.test === true,
   venueId: o.venueId,
   venueName: o.venueName,
   globalPlaceId: o.globalPlaceId || null,
   customerId: o.customerId || 'guest',
-  customerName: o.customerName,
+  customerName: (o.customerId && users && nameOf(users.get(String(o.customerId)))) || o.customerName,
   channel: o.channel || 'app',
   ...(forTeam && o.customer ? { customer: { name: o.customer.name || o.customerName, phone: o.customer.phone || null, email: o.customer.email || null } } : {}),
   lines: o.lines,
@@ -176,7 +179,8 @@ async function get(orderId, viewerId, { db = getFirestore() } = {}) {
   const onTeam = (o.team || []).some((id) => isSameUser(id, viewerId));
   const allowed = isSameUser(o.customerId, viewerId) || onTeam;
   if (!allowed) throw new ServiceError(404, 'order_not_found', 'That order wasn’t found.');
-  return view(doc.id, o, { forTeam: onTeam });
+  const users = onTeam && o.customerId ? await fetchUsersById([o.customerId]) : null;
+  return view(doc.id, o, { forTeam: onTeam, users });
 }
 
 async function cancel(orderId, customerId, { db = getFirestore() } = {}) {
@@ -217,7 +221,9 @@ async function forVenue(venueId, { db = getFirestore(), open = true } = {}) {
   let q = db.collection(ORDERS).where('venueId', '==', venueId);
   q = open ? q.where('status', 'in', [...OPEN]) : q.orderBy('createdAt', 'desc').limit(50);
   const snap = await q.get();
-  const list = snap.docs.map((d) => view(d.id, d.data(), { forTeam: true }));
+  // The customers' current names, one batched read for the queue
+  const users = await fetchUsersById(snap.docs.map((d) => d.data().customerId));
+  const list = snap.docs.map((d) => view(d.id, d.data(), { forTeam: true, users }));
   // Oldest waiting first: the counter works through them in order
   return open ? list.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))) : list;
 }
