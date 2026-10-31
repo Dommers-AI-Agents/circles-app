@@ -5,7 +5,7 @@ import StoreKit
 // the code, then show what they earned here, how to keep earning and what the
 // store's points buy (Wes, 2026-10-31), over the store's photo. Hands the
 // session to the full app and offers it via SKOverlay.
-final class ClipSuccessViewController: UIViewController {
+final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
 
     private let session: ClipSession
     private let isNewSignIn: Bool
@@ -26,6 +26,7 @@ final class ClipSuccessViewController: UIViewController {
     private let signOutButton = ClipTheme.linkButton("")
     private let spinner = UIActivityIndicatorView(style: .large)
     private var overlayPresented = false
+    private var stackBottom: NSLayoutConstraint?
 
     init(session: ClipSession, isNewSignIn: Bool, invocation: ClipInvocation, code: String, preview: VenuePreview) {
         self.session = session
@@ -106,6 +107,9 @@ final class ClipSuccessViewController: UIViewController {
         spinner.startAnimating()
         view.addSubview(spinner)
 
+        let bottom = stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8)
+        stackBottom = bottom
+        bottom.isActive = true
         NSLayoutConstraint.activate([
             backdrop.topAnchor.constraint(equalTo: view.topAnchor),
             backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -118,7 +122,6 @@ final class ClipSuccessViewController: UIViewController {
             panelStack.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor, constant: -16),
             panelStack.leadingAnchor.constraint(equalTo: panel.contentView.leadingAnchor, constant: 18),
             panelStack.trailingAnchor.constraint(equalTo: panel.contentView.trailingAnchor, constant: -18),
-            stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
             stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 26),
             stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -26),
             stack.topAnchor.constraint(greaterThanOrEqualTo: brandHeader.bottomAnchor, constant: 16),
@@ -337,7 +340,33 @@ final class ClipSuccessViewController: UIViewController {
                   let scene = self.view.window?.windowScene else { return }
             self.overlayPresented = true
             let config = SKOverlay.AppClipConfiguration(position: .bottom)
-            SKOverlay(configuration: config).present(in: scene)
+            let overlay = SKOverlay(configuration: config)
+            overlay.delegate = self
+            overlay.present(in: scene)
         }
+    }
+
+    // MARK: - SKOverlayDelegate
+
+    // Apple's banner slides up over the bottom of the screen: lift the
+    // content above it so the button and Sign out stay tappable (Wes,
+    // 2026-10-31: the banner covered them)
+    nonisolated func storeOverlayWillStartPresentation(_ overlay: SKOverlay, transitionContext: SKOverlay.TransitionContext) {
+        let end = transitionContext.endFrame
+        Task { @MainActor in self.liftContent(above: end) }
+    }
+
+    nonisolated func storeOverlayWillStartDismissal(_ overlay: SKOverlay, transitionContext: SKOverlay.TransitionContext) {
+        Task { @MainActor in self.liftContent(above: nil) }
+    }
+
+    private func liftContent(above overlayFrame: CGRect?) {
+        var lift: CGFloat = 0
+        if let overlayFrame, let window = view.window {
+            let inView = view.convert(overlayFrame, from: window)
+            lift = max(0, view.bounds.maxY - view.safeAreaInsets.bottom - inView.minY)
+        }
+        stackBottom?.constant = -8 - lift
+        UIView.animate(withDuration: 0.3) { self.view.layoutIfNeeded() }
     }
 }

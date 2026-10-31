@@ -309,9 +309,9 @@ final class ClipBackdropView: UIView {
     private func drawRoute() {
         guard showsRoute else { return }
         let w = bounds.width, h = bounds.height
-        let a = CGPoint(x: w * 0.36, y: h * 0.45)
-        let b = CGPoint(x: w * 0.62, y: h * 0.33)
-        let c = CGPoint(x: w * 0.82, y: h * 0.21)
+        let a = CGPoint(x: w * 0.40, y: h * 0.32)
+        let b = CGPoint(x: w * 0.63, y: h * 0.27)
+        let c = CGPoint(x: w * 0.84, y: h * 0.21)
         let path = UIBezierPath()
         path.move(to: a)
         path.addCurve(to: b, controlPoint1: CGPoint(x: a.x + w * 0.08, y: a.y - h * 0.02), controlPoint2: CGPoint(x: b.x - w * 0.12, y: b.y + h * 0.05))
