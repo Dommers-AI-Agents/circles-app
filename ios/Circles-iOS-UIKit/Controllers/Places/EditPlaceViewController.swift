@@ -685,6 +685,13 @@ class EditPlaceViewController: BaseViewController {
         // Set privacy. A value this build doesn't recognise disables the
         // control instead of showing a narrower one we'd then save back.
         privacyPicker.select(place.privacy.option, listId: place.audienceListId)
+        // "Same as circle" names the circle's actual level
+        if let circleId = place.circleId, !circleId.isEmpty {
+            CircleService.shared.fetchCircleById(id: circleId) { [weak self] result in
+                guard case .success(let circle) = result else { return }
+                DispatchQueue.main.async { self?.privacyPicker.inheritedTier = PrivacyTier(rawValue: circle.privacy.rawValue) }
+            }
+        }
         
         // The only note on a save is the private one; shared thoughts are comments
         notesTextView.text = place.privateNotes

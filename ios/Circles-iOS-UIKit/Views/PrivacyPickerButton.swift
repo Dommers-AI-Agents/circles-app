@@ -19,6 +19,9 @@ final class PrivacyPickerButton: UIView {
     var onEditInnerCircle: (() -> Void)?
 
     private(set) var selected: PrivacyOption
+    /// The circle's own level, so "same as circle" can say what it is:
+    /// "Connections · same as circle" (Wes, 2026-10-31)
+    var inheritedTier: PrivacyTier? { didSet { refresh() } }
     /// The named Inner Circle list behind the selection, when one was chosen.
     private(set) var selectedListId: String?
     private let entity: PrivacyEntity
@@ -111,7 +114,7 @@ final class PrivacyPickerButton: UIView {
 
         var config = button.configuration
         config?.title = currentTitle
-        config?.image = UIImage(systemName: selected.systemIconName)
+        config?.image = UIImage(systemName: selected == .inheritCircle ? (inheritedTier?.systemIconName ?? selected.systemIconName) : selected.systemIconName)
         config?.imagePadding = 8
         button.configuration = config
 
@@ -129,7 +132,10 @@ final class PrivacyPickerButton: UIView {
         return InnerCircleManager.shared.usableLists.first { $0.id == selectedListId }
     }
 
-    private var currentTitle: String { PrivacyMenu.title(for: selected, listId: selectedListId) }
+    private var currentTitle: String {
+        if selected == .inheritCircle, let tier = inheritedTier { return "\(tier.title) \u{00B7} same as circle" }
+        return PrivacyMenu.title(for: selected, listId: selectedListId)
+    }
 
     private var captionText: String {
         guard let list = currentList else { return InnerCircleManager.shared.pickerCaption }
