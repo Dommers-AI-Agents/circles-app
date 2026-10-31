@@ -658,7 +658,21 @@ exports.resolveImportedPlace = async (req, res) => {
     if (typeof applePoiCategory === 'string' && applePoiCategory) {
       updateData.applePoiCategory = applePoiCategory;
     }
+
+    // Already linked to a canonical venue: the venue's location and address
+    // are the one source (venueDetailsService), never a copy on this save
+    const venueFix = place.globalPlaceId
+      ? await resolvedVenueFix(place.globalPlaceId, req.user, updateData).catch((e) => {
+        console.error(`⚠️ resolve: venue check failed for ${req.params.id}:`, e.message);
+        return null;
+      })
+      : null;
+    if (venueFix && venueFix.useVenue) Object.assign(updateData, venueFix.useVenue);
     await placeRef.update(updateData);
+    if (venueFix && venueFix.apply) {
+      await require('../../services/venueDetailsService').applyVenueDetails(place.globalPlaceId, venueFix.apply)
+        .catch((e) => console.error(`⚠️ resolve: venue update failed for ${place.globalPlaceId}:`, e.message));
+    }
 
     // Now that it has a location, link the canonical venue (fills the cached
     // category/city fields too). Best-effort.
@@ -727,6 +741,35 @@ exports.resolveImportedPlace = async (req, res) => {
     sendServiceError(res, error, { log: '❌ resolveImportedPlace failed', fallbackMessage: 'Failed to resolve place' });
   }
 };
+
+/**
+ * Resolving an import that is already linked to a canonical venue. A venue
+ * that already has a map point keeps it, and this save's cache takes the
+ * venue's location/address (`useVenue`). A venue with no map point gets the
+ * resolved one through THE write path (`apply`: canonical, every save, the
+ * store) — when the venue is unclaimed (no store) or the caller is its team
+ * or a super-user; the save's own owner resolving an unclaimed import is the
+ * long-standing rule. A claimed store with no map point is left to its team.
+ */
+async function resolvedVenueFix(globalPlaceId, user, updateData) {
+  const venueDetails = require('../../services/venueDetailsService');
+  const doc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(String(globalPlaceId)).get();
+  if (!doc.exists || doc.data().deletedAt) return null;
+  const venue = doc.data();
+  if (venueDetails.validLocation(venue.location)) {
+    const [lng, lat] = venue.location.coordinates;
+    const useVenue = { location: { type: 'Point', coordinates: [lng, lat] }, geohash: venue.geohash || geofire.geohashForLocation([lat, lng]) };
+    if (venue.address && venue.address !== 'Address pending') useVenue.address = venue.address;
+    else if (updateData.address) useVenue.address = updateData.address;
+    return { useVenue };
+  }
+  const store = await require('../../services/placePhotoService').venueForPlace(doc.id, venue).catch(() => null);
+  const mayEdit = !store || await venueDetails.canEditDetails(user, doc.id, venue);
+  if (!mayEdit) return null;
+  const apply = { location: updateData.location };
+  if (updateData.address && (!venue.address || venue.address === 'Address pending')) apply.address = updateData.address;
+  return { apply };
+}
 
 // @desc    Migrate Google API photo URLs to Firebase Storage
 // @route   POST /api/places/migrate-photos
