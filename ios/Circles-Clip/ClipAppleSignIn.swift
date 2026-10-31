@@ -56,11 +56,9 @@ extension ClipAppleSignIn: ASAuthorizationControllerDelegate {
 
     func authorizationController(controller: ASAuthorizationController,
                                  didCompleteWithError error: Error) {
-        // User cancellation isn't an error worth surfacing
-        if let authError = error as? ASAuthorizationError, authError.code == .canceled {
-            completion = nil
-            return
-        }
+        // Always answer, cancel included: the offer screen switches its
+        // buttons back on here (closing Apple's sheet froze them, Wes
+        // 2026-10-31) and shows no alert for a cancel
         completion?(.failure(error))
         completion = nil
     }
