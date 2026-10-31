@@ -157,12 +157,14 @@ class KeychainService {
         var authProvider: String
         var handledStickerCode: String?
         var pendingStickerCode: String?
+        var welcome: ClipWelcome?
     }
 
     struct ClipAdoptionResult {
         let adopted: Bool
         let handledStickerCode: String?  // clip already redeemed this code — don't redeem again
         let pendingStickerCode: String?  // clip failed to redeem — run the pending-code flow
+        var welcome: ClipWelcome? = nil  // the store's page + welcome to show first
     }
 
     /// Call once early in launch, before auth state is read.
@@ -198,7 +200,8 @@ class KeychainService {
         Logger.debug("🔐 KeychainService: adopted App Clip credentials")
         return ClipAdoptionResult(adopted: true,
                                   handledStickerCode: payload.handledStickerCode,
-                                  pendingStickerCode: payload.pendingStickerCode)
+                                  pendingStickerCode: payload.pendingStickerCode,
+                                  welcome: payload.welcome)
     }
 
     // MARK: - Private Helper Methods

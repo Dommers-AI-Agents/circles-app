@@ -1,72 +1,31 @@
 import UIKit
 import AuthenticationServices
 
-// Brand look shared by the clip screens. Deliberately commits to one design
-// (blue gradient, white text) in both light and dark mode — matching the /s/
-// web landing page — instead of following the system theme.
-enum ClipTheme {
-    static let brandBlue = UIColor(red: 0.2, green: 0.51, blue: 0.81, alpha: 1.0)   // #3182CE
-    static let brandDeep = UIColor(red: 0.09, green: 0.23, blue: 0.42, alpha: 1.0)  // deep navy
-
-    static func installGradient(on view: UIView) -> CAGradientLayer {
-        let gradient = CAGradientLayer()
-        gradient.colors = [brandDeep.cgColor, brandBlue.cgColor]
-        gradient.startPoint = CGPoint(x: 0.1, y: 0)
-        gradient.endPoint = CGPoint(x: 0.9, y: 1)
-        gradient.frame = view.bounds
-        view.layer.insertSublayer(gradient, at: 0)
-        return gradient
-    }
-
-    static func brandMarkView(side: CGFloat) -> UIImageView {
-        let imageView = UIImageView(image: UIImage(named: "BrandMark"))
-        imageView.contentMode = .scaleAspectFill
-        imageView.layer.cornerRadius = side * 0.22 // app-icon curvature
-        imageView.layer.masksToBounds = true
-        imageView.layer.borderWidth = 1
-        imageView.layer.borderColor = UIColor.white.withAlphaComponent(0.35).cgColor
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        imageView.widthAnchor.constraint(equalToConstant: side).isActive = true
-        imageView.heightAnchor.constraint(equalToConstant: side).isActive = true
-        return imageView
-    }
-
-    // Staggered entrance: fade + rise, one element after another
-    static func animateIn(_ views: [UIView], baseDelay: TimeInterval = 0.05) {
-        for (index, view) in views.enumerated() {
-            view.alpha = 0
-            view.transform = CGAffineTransform(translationX: 0, y: 18)
-            UIView.animate(withDuration: 0.55,
-                           delay: baseDelay + Double(index) * 0.09,
-                           usingSpringWithDamping: 0.82,
-                           initialSpringVelocity: 0.4,
-                           options: [.curveEaseOut]) {
-                view.alpha = 1
-                view.transform = .identity
-            }
-        }
-    }
-}
-
+// The first screen: the store's photo full screen with the card's hook
+// ("Love it here? / Save us." or "Earn 25 points / every visit."), the
+// store's name, and Continue with Apple or email. A customer the clip
+// already knows skips straight to their points (ClipSuccessViewController).
 final class ClipOfferViewController: UIViewController {
 
-    private let code: String?
+    private let invocation: ClipInvocation
+    private var code: String? { invocation.code }
     private var preview: VenuePreview?
     private let appleSignIn = ClipAppleSignIn()
 
-    private var gradient: CAGradientLayer?
+    private let backdrop = ClipBackdropView()
     private let spinner = UIActivityIndicatorView(style: .large)
     private let contentStack = UIStackView()
-    private let brandMark = ClipTheme.brandMarkView(side: 84)
-    private let titleLabel = UILabel()
-    private let pointsPill = UILabel()
-    private let subtitleLabel = UILabel()
-    private let appleButton = ASAuthorizationAppleIDButton(type: .signUp, style: .white)
-    private let emailButton = UIButton(type: .system)
-    private let statusLabel = UILabel()
+    private let brandMark = ClipTheme.brandMarkView(side: 40)
+    private let hookLabel = ClipTheme.label(ClipTheme.serif(46))
+    private let nameLabel = ClipTheme.label(.systemFont(ofSize: 22, weight: .semibold))
+    private let subtitleLabel = ClipTheme.label(.systemFont(ofSize: 17), color: UIColor.white.withAlphaComponent(0.88))
+    private let rewardLabel = ClipTheme.label(.systemFont(ofSize: 15, weight: .semibold), color: ClipTheme.gold)
+    private let appleButton = ASAuthorizationAppleIDButton(type: .continue, style: .white)
+    private let emailButton = ClipTheme.glassButton("Continue with email")
+    private let statusLabel = ClipTheme.label(.systemFont(ofSize: 14), color: UIColor.white.withAlphaComponent(0.7))
 
-    init(code: String?) {
-        self.code = code
+    init(invocation: ClipInvocation) {
+        self.invocation = invocation
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -76,7 +35,7 @@ final class ClipOfferViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        gradient = ClipTheme.installGradient(on: view)
+        view.backgroundColor = ClipTheme.ink
         navigationController?.setNavigationBarHidden(true, animated: false)
         setupUI()
 
@@ -87,66 +46,45 @@ final class ClipOfferViewController: UIViewController {
         }
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        gradient?.frame = view.bounds
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
     }
 
     private func setupUI() {
+        view.addSubview(backdrop)
+
         contentStack.axis = .vertical
-        contentStack.alignment = .center
-        contentStack.spacing = 14
+        contentStack.alignment = .fill
+        contentStack.spacing = 10
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(contentStack)
 
-        titleLabel.font = .systemFont(ofSize: 32, weight: .bold)
-        titleLabel.textColor = .white
-        titleLabel.textAlignment = .center
-        titleLabel.numberOfLines = 0
+        brandMark.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(brandMark)
 
-        pointsPill.font = .systemFont(ofSize: 17, weight: .semibold)
-        pointsPill.textColor = ClipTheme.brandDeep
-        pointsPill.backgroundColor = UIColor(red: 1.0, green: 0.84, blue: 0.25, alpha: 1.0) // gold
-        pointsPill.textAlignment = .center
-        pointsPill.layer.cornerRadius = 19
-        pointsPill.layer.masksToBounds = true
-        pointsPill.translatesAutoresizingMaskIntoConstraints = false
-        pointsPill.heightAnchor.constraint(equalToConstant: 38).isActive = true
-
-        subtitleLabel.font = .systemFont(ofSize: 17)
-        subtitleLabel.textColor = UIColor.white.withAlphaComponent(0.9)
-        subtitleLabel.textAlignment = .center
-        subtitleLabel.numberOfLines = 0
+        hookLabel.adjustsFontSizeToFitWidth = true
+        hookLabel.minimumScaleFactor = 0.7
+        [hookLabel, nameLabel, subtitleLabel, rewardLabel, statusLabel].forEach(ClipTheme.lift)
+        statusLabel.textAlignment = .center
 
         appleButton.addTarget(self, action: #selector(appleTapped), for: .touchUpInside)
         appleButton.translatesAutoresizingMaskIntoConstraints = false
-        appleButton.heightAnchor.constraint(equalToConstant: 52).isActive = true
-        appleButton.layer.cornerRadius = 12
-
-        emailButton.setTitle("Sign up with email", for: .normal)
-        emailButton.setTitleColor(ClipTheme.brandDeep, for: .normal)
-        emailButton.titleLabel?.font = .systemFont(ofSize: 18, weight: .semibold)
-        emailButton.backgroundColor = .white
-        emailButton.layer.cornerRadius = 12
-        emailButton.translatesAutoresizingMaskIntoConstraints = false
-        emailButton.heightAnchor.constraint(equalToConstant: 52).isActive = true
+        appleButton.heightAnchor.constraint(equalToConstant: 54).isActive = true
+        appleButton.cornerRadius = 14
         emailButton.addTarget(self, action: #selector(emailTapped), for: .touchUpInside)
 
-        statusLabel.font = .systemFont(ofSize: 14)
-        statusLabel.textColor = UIColor.white.withAlphaComponent(0.7)
-        statusLabel.textAlignment = .center
-        statusLabel.numberOfLines = 0
-        statusLabel.text = "Free to join · Points you can spend at the counter"
-
-        [brandMark, titleLabel, pointsPill, subtitleLabel, appleButton, emailButton, statusLabel].forEach {
+        [hookLabel, nameLabel, subtitleLabel, rewardLabel, appleButton, emailButton, statusLabel].forEach {
             contentStack.addArrangedSubview($0)
         }
-        contentStack.setCustomSpacing(22, after: brandMark)
-        contentStack.setCustomSpacing(18, after: pointsPill)
-        contentStack.setCustomSpacing(30, after: subtitleLabel)
-        contentStack.setCustomSpacing(14, after: appleButton)
-        contentStack.setCustomSpacing(18, after: emailButton)
+        contentStack.setCustomSpacing(14, after: hookLabel)
+        contentStack.setCustomSpacing(6, after: nameLabel)
+        contentStack.setCustomSpacing(12, after: subtitleLabel)
+        contentStack.setCustomSpacing(26, after: rewardLabel)
+        contentStack.setCustomSpacing(12, after: appleButton)
+        contentStack.setCustomSpacing(14, after: emailButton)
         contentStack.isHidden = true
+        brandMark.isHidden = true
 
         spinner.color = .white
         spinner.translatesAutoresizingMaskIntoConstraints = false
@@ -154,12 +92,16 @@ final class ClipOfferViewController: UIViewController {
         view.addSubview(spinner)
 
         NSLayoutConstraint.activate([
-            contentStack.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerYAnchor, constant: -16),
-            contentStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 30),
-            contentStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -30),
-            appleButton.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            emailButton.widthAnchor.constraint(equalTo: contentStack.widthAnchor),
-            pointsPill.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
+            backdrop.topAnchor.constraint(equalTo: view.topAnchor),
+            backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            brandMark.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            brandMark.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            contentStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18),
+            contentStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 26),
+            contentStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -26),
+            contentStack.topAnchor.constraint(greaterThanOrEqualTo: brandMark.bottomAnchor, constant: 16),
             spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
@@ -172,7 +114,21 @@ final class ClipOfferViewController: UIViewController {
             do {
                 let preview = try await ClipAPIClient.shared.venuePreview(code: code)
                 self.preview = preview
-                self.showOffer(preview)
+                self.backdrop.loadPhoto(from: preview.coverUrl.flatMap(URL.init(string:)))
+                // Someone the clip already knows: straight to their points
+                #if DEBUG
+                // Screenshots without tapping: CLIP_PREVIEW=signup opens the email step
+                if ProcessInfo.processInfo.environment["CLIP_PREVIEW"] == "signup" {
+                    self.showOffer(preview)
+                    self.emailTapped()
+                    return
+                }
+                #endif
+                if let session = ClipSession.current {
+                    self.showSuccess(session: session, isNewSignIn: false, animated: false)
+                } else {
+                    self.showOffer(preview)
+                }
             } catch {
                 self.showLoadError(error, code: code)
             }
@@ -182,51 +138,50 @@ final class ClipOfferViewController: UIViewController {
     private func showOffer(_ preview: VenuePreview) {
         spinner.stopAnimating()
         contentStack.isHidden = false
-        if preview.isGeneric {
-            // Generic "Join FavCircles" sticker — no store attached. Reward is
-            // FavCoins (app-wide currency); store points come only from scanning
-            // a specific store.
-            titleLabel.text = "Join FavCircles"
-            pointsPill.text = "  🎁  \(preview.favCoinBonus) FavCoins inside  "
-            subtitleLabel.text = "Save your favorite places and earn rewards at partner stores."
-            statusLabel.text = "Free to join · \(preview.favCoinBonus) FavCoins to get you started"
+        brandMark.isHidden = false
+        // The card's hook, then the store's name (said once each)
+        let earnsHere = preview.kind == "register" && preview.loyaltyLive == true
+        if earnsHere, let rate = preview.earnRate {
+            hookLabel.attributedText = ClipTheme.hookText("Earn \(rate) points", "every visit.", size: 46)
         } else {
-            titleLabel.text = preview.venueName
-            // Only what this code actually awards (2026-10-29: register codes
-            // promised the window code's 100-point signup bonus)
-            if preview.signupBonusPoints > 0 && preview.scanPointsKind == "visit" {
-                pointsPill.text = "  🎁  \(preview.signupBonusPoints) points this visit  "
-                subtitleLabel.text = "Join FavCircles right here and collect your points for this visit."
-            } else if preview.signupBonusPoints > 0 {
-                pointsPill.text = "  🎁  \(preview.signupBonusPoints) free points  "
-                subtitleLabel.text = "Join FavCircles right here and your points are waiting at the counter."
-            } else {
-                pointsPill.text = "  📍  Save this spot  "
-                subtitleLabel.text = "Join FavCircles right here to keep \(preview.venueName) on your map and see what friends think."
-                statusLabel.text = "Free to join"
-            }
-            // The store's own terms: what each visit earns and the first thing it buys
-            // Points are only ever a register-code thing (2026-10-30)
-            if preview.kind == "register", preview.loyaltyLive == true, let rate = preview.earnRate {
-                var line = "Earn \(rate) points every visit"
-                if let first = preview.firstReward { line += " · \(first.pointsCost) points = \(first.title)" }
-                statusLabel.text = line
-            }
+            hookLabel.attributedText = ClipTheme.hookText("Love it here?", preview.isGeneric ? "Save it." : "Save us.", size: 46)
         }
-        ClipTheme.animateIn([brandMark, titleLabel, pointsPill, subtitleLabel, appleButton, emailButton, statusLabel])
+
+        if preview.isGeneric {
+            // Generic "Join FavCircles" code: no store, FavCoins instead of store points
+            nameLabel.isHidden = true
+            subtitleLabel.text = "Keep your favorite places on your map and earn rewards wherever you go."
+            rewardLabel.text = "\(preview.favCoinBonus) FavCoins to get you started"
+            statusLabel.text = "Free to join"
+        } else {
+            nameLabel.text = preview.venueName
+            if earnsHere {
+                subtitleLabel.text = "Join FavCircles and collect your points for this visit."
+                rewardLabel.text = preview.firstReward.map { "\($0.pointsCost) points = \($0.title)" }
+                rewardLabel.isHidden = preview.firstReward == nil
+            } else {
+                subtitleLabel.text = "Join FavCircles to keep \(preview.venueName) on your map and earn rewards."
+                rewardLabel.isHidden = true
+            }
+            statusLabel.text = "Free to join"
+        }
+        ClipTheme.animateIn([brandMark, hookLabel, nameLabel, subtitleLabel, rewardLabel, appleButton, emailButton, statusLabel])
     }
 
     private func showNoCodeState() {
         spinner.stopAnimating()
         contentStack.isHidden = false
-        titleLabel.text = "FavCircles"
-        pointsPill.isHidden = true
-        subtitleLabel.text = "Scan a FavCircles sticker at a participating store to sign up and earn rewards."
+        brandMark.isHidden = false
+        hookLabel.attributedText = ClipTheme.hookText("Love it here?", "Save it.", size: 46)
+        nameLabel.isHidden = true
+        rewardLabel.isHidden = true
+        subtitleLabel.text = "Scan a FavCircles code at a participating store to join and earn rewards."
         appleButton.isHidden = true
-        emailButton.setTitle("Get the full app", for: .normal)
+        emailButton.configuration?.attributedTitle = AttributedString("Get the full app", attributes: AttributeContainer([.font: UIFont.systemFont(ofSize: 18, weight: .semibold)]))
         emailButton.removeTarget(self, action: #selector(emailTapped), for: .touchUpInside)
         emailButton.addTarget(self, action: #selector(appStoreTapped), for: .touchUpInside)
-        ClipTheme.animateIn([brandMark, titleLabel, subtitleLabel, emailButton, statusLabel])
+        statusLabel.text = nil
+        ClipTheme.animateIn([brandMark, hookLabel, subtitleLabel, emailButton])
     }
 
     private func showLoadError(_ error: Error, code: String) {
@@ -253,8 +208,10 @@ final class ClipOfferViewController: UIViewController {
             self.setButtons(enabled: true)
             switch result {
             case .success(let credential):
-                self.completeAppleSignup(credential)
+                self.completeAppleSignIn(credential)
             case .failure(let error):
+                // Closing Apple's sheet isn't an error worth an alert
+                if (error as? ASAuthorizationError)?.code == .canceled { return }
                 self.showAuthError(error)
             }
         }
@@ -262,7 +219,9 @@ final class ClipOfferViewController: UIViewController {
 
     @objc private func emailTapped() {
         guard let preview = preview else { return }
-        let signupVC = ClipSignupViewController(code: code, preview: preview)
+        let signupVC = ClipSignupViewController(code: code, preview: preview) { [weak self] response in
+            self?.signedIn(response, provider: "email")
+        }
         navigationController?.pushViewController(signupVC, animated: true)
     }
 
@@ -270,7 +229,7 @@ final class ClipOfferViewController: UIViewController {
         openAppStore()
     }
 
-    private func completeAppleSignup(_ credential: ClipAppleSignIn.Credential) {
+    private func completeAppleSignIn(_ credential: ClipAppleSignIn.Credential) {
         setButtons(enabled: false)
         Task { @MainActor in
             do {
@@ -280,7 +239,7 @@ final class ClipOfferViewController: UIViewController {
                     email: credential.email,
                     stickerCode: code
                 )
-                self.advanceToSuccess(response: response, provider: "apple")
+                self.signedIn(response, provider: "apple")
             } catch {
                 self.setButtons(enabled: true)
                 self.showAuthError(error)
@@ -288,17 +247,25 @@ final class ClipOfferViewController: UIViewController {
         }
     }
 
-    func advanceToSuccess(response: ClipAuthResponse, provider: String) {
+    /// Remember them in the clip, then on to their points
+    func signedIn(_ response: ClipAuthResponse, provider: String) {
+        let session = ClipSession(response: response, provider: provider)
+        session.save()
+        showSuccess(session: session, isNewSignIn: true, animated: true)
+    }
+
+    private func showSuccess(session: ClipSession, isNewSignIn: Bool, animated: Bool) {
         guard let preview = preview, let code = code else { return }
-        let successVC = ClipSuccessViewController(authResponse: response,
-                                                 provider: provider,
+        let successVC = ClipSuccessViewController(session: session,
+                                                 isNewSignIn: isNewSignIn,
+                                                 invocation: invocation,
                                                  code: code,
                                                  preview: preview)
-        navigationController?.setViewControllers([successVC], animated: true)
+        navigationController?.setViewControllers([successVC], animated: animated)
     }
 
     private func showAuthError(_ error: Error) {
-        let alert = UIAlertController(title: "Sign-up failed",
+        let alert = UIAlertController(title: "Couldn't sign you in",
                                       message: error.localizedDescription,
                                       preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))

@@ -30,6 +30,11 @@ final class RewardCodeHandler: SceneCoordinator {
             // invocation URL replay on first launch doesn't re-run the reward UX
             UserDefaults.standard.set(handledCode, forKey: Self.clipHandledStickerCodeKey)
         }
+        if let welcome = result.welcome {
+            // Their first look at the app is that store's page with what they
+            // earned and what the points buy (Wes, 2026-10-31)
+            ClipWelcome.stash(welcome)
+        }
         if let pendingCode = result.pendingStickerCode {
             // The clip's scan call failed — the normal pending-code flow
             // (redeemPendingStickerCodeIfNeeded) completes the award
@@ -181,8 +186,13 @@ final class RewardCodeHandler: SceneCoordinator {
     func redeemPendingStickerCodeIfNeeded() {
         // Splash or onboarding still up: the post-launch pass picks it up
         guard AuthService.shared.isLoggedIn,
-              window?.rootViewController is CirclesTabBarController,
-              let code = RewardsService.shared.getPendingStickerCode() else { return }
+              window?.rootViewController is CirclesTabBarController else { return }
+        if let welcome = ClipWelcome.takeStashed() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                StickerRewardCoordinator.shared.showClipWelcome(welcome)
+            }
+        }
+        guard let code = RewardsService.shared.getPendingStickerCode() else { return }
 
         RewardsService.shared.clearPendingStickerCode()
 

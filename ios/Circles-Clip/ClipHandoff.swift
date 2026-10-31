@@ -23,6 +23,21 @@ enum ClipHandoff {
         var authProvider: String
         var handledStickerCode: String?  // clip redeemed this code — full app must NOT redeem again
         var pendingStickerCode: String?  // clip failed to redeem — full app should run the pending flow
+        var welcome: Welcome?            // the store and what they earned, for the app's first launch
+    }
+
+    /// What the full app's first launch shows: the store's page with a
+    /// welcome — points earned, how to keep earning, what the points buy
+    struct Welcome: Codable {
+        let code: String
+        let kind: String?
+        let venue: ClipVenue
+        let awardedPoints: Int?
+        let venueBalance: Int?
+        let earnRate: Int?
+        let offers: [ClipOffer]
+        let nextRewardLine: String?
+        let alreadySaved: Bool?
     }
 
     static var fileURL: URL? {
@@ -31,25 +46,24 @@ enum ClipHandoff {
             .appendingPathComponent(fileName)
     }
 
-    static func storeAuthHandoff(response: ClipAuthResponse, provider: String) {
-        // Same fallback lifetime the app uses when expiresIn is missing (30d)
-        let lifetime = response.expiresIn ?? 30 * 24 * 60 * 60
-        let expiration = Date().addingTimeInterval(TimeInterval(lifetime))
+    static func storeAuthHandoff(session: ClipSession) {
         let payload = Payload(
-            authToken: response.token,
-            refreshToken: response.refreshToken,
-            tokenExpiration: ISO8601DateFormatter().string(from: expiration),
-            userId: response.user.id,
-            authProvider: provider,
+            authToken: session.token,
+            refreshToken: session.refreshToken,
+            tokenExpiration: ISO8601DateFormatter().string(from: session.expiresAt),
+            userId: session.userId,
+            authProvider: session.provider,
             handledStickerCode: nil,
-            pendingStickerCode: nil
+            pendingStickerCode: nil,
+            welcome: nil
         )
         write(payload)
     }
 
-    static func markStickerHandled(_ code: String) {
+    static func markStickerHandled(_ code: String, welcome: Welcome? = nil) {
         guard var payload = read() else { return }
         payload.handledStickerCode = code
+        payload.welcome = welcome
         payload.pendingStickerCode = nil
         write(payload)
     }

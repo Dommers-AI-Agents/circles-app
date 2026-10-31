@@ -2,17 +2,20 @@ import Foundation
 
 // Trimmed fork of the app's APIService (Services/APIService.swift) — plain
 // URLSession + Codable, none of the retry/dedup/rate-limit machinery. The clip
-// makes exactly four calls: venue preview, register, Apple sign-in, sticker scan.
+// calls: venue preview, email code start/verify, Apple sign-in, sticker scan,
+// and its notification token.
 enum ClipAPIError: LocalizedError {
     case network(Error)
     case server(String)
     case decoding
+    case unauthorized
 
     var errorDescription: String? {
         switch self {
         case .network: return "Couldn't reach FavCircles. Check your connection and try again."
         case .server(let message): return message
         case .decoding: return "Something went wrong. Please try again."
+        case .unauthorized: return "Please sign in again."
         }
     }
 }
@@ -37,17 +40,20 @@ final class ClipAPIClient {
         return response.data
     }
 
-    func register(email: String, password: String, displayName: String, stickerCode: String?) async throws -> ClipAuthResponse {
-        var body: [String: Any] = [
-            "email": email,
-            "password": password,
-            "displayName": displayName
-        ]
-        if let stickerCode = stickerCode {
+    /// Emails a 6-digit code (no password anywhere in the clip)
+    func startEmailCode(email: String) async throws -> EmailCodeStartResponse {
+        try await request(path: "auth/email-code/start", method: "POST", body: ["email": email])
+    }
+
+    /// The code → a session: signs in, or creates the account when `displayName` is given
+    func verifyEmailCode(email: String, code: String, displayName: String?, stickerCode: String?) async throws -> ClipAuthResponse {
+        var body: [String: Any] = ["email": email, "code": code]
+        if let displayName, !displayName.isEmpty { body["displayName"] = displayName }
+        if let stickerCode {
             body["signupSource"] = "app_clip"
             body["stickerCode"] = stickerCode
         }
-        return try await request(path: "auth/register", method: "POST", body: body)
+        return try await request(path: "auth/email-code/verify", method: "POST", body: body)
     }
 
     // Apple identity token → backend JWT. Mirrors the body AuthService.loginWithSocialProvider
@@ -63,13 +69,27 @@ final class ClipAPIClient {
         return try await request(path: "auth/firebase", method: "POST", body: body)
     }
 
-    func redeemSticker(code: String, token: String) async throws -> ScanResult {
+    /// `atStore`: Apple's location check (nil when it couldn't tell)
+    func redeemSticker(code: String, token: String, atStore: Bool?) async throws -> ScanResult {
+        var body: [String: Any] = ["code": code]
+        if let atStore { body["atStore"] = atStore }
         let response: ScanResponse = try await request(
             path: "rewards/scan", method: "POST",
-            body: ["code": code],
+            body: body,
             bearerToken: token
         )
         return response.data
+    }
+
+    /// The clip's notification token: one reminder within Apple's 8-hour
+    /// window if they haven't installed the app yet (server decides)
+    func registerDevice(token deviceToken: String, code: String?, bearer: String) async throws {
+        var body: [String: Any] = ["token": deviceToken]
+        if let code { body["code"] = code }
+        #if DEBUG
+        body["environment"] = "development" // Xcode builds get sandbox tokens
+        #endif
+        let _: ClipSimpleResponse = try await request(path: "clip/device", method: "POST", body: body, bearerToken: bearer)
     }
 
     // MARK: - Core
@@ -98,6 +118,7 @@ final class ClipAPIClient {
 
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200...299).contains(statusCode) else {
+            if statusCode == 401 { throw ClipAPIError.unauthorized }
             if let errorBody = try? JSONDecoder().decode(ClipErrorBody.self, from: data),
                let message = errorBody.error ?? errorBody.message {
                 throw ClipAPIError.server(message)

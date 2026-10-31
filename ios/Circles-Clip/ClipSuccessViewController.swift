@@ -1,28 +1,35 @@
 import UIKit
 import StoreKit
 
-// Final clip screen: persist the credential mailbox, redeem the sticker code,
-// celebrate the points (confetti + count-up), and push the full-app install
-// via SKOverlay.
+// After sign-in, and on every later scan by someone the clip knows: redeem
+// the code, then show what they earned here, how to keep earning and what the
+// store's points buy (Wes, 2026-10-31), over the store's photo. Hands the
+// session to the full app and offers it via SKOverlay.
 final class ClipSuccessViewController: UIViewController {
 
-    private let authResponse: ClipAuthResponse
-    private let provider: String
+    private let session: ClipSession
+    private let isNewSignIn: Bool
+    private let invocation: ClipInvocation
     private let code: String
     private let preview: VenuePreview
 
-    private var gradient: CAGradientLayer?
+    private let backdrop = ClipBackdropView()
+    private let brandMark = ClipTheme.brandMarkView(side: 40)
     private let stack = UIStackView()
-    private let emojiLabel = UILabel()
-    private let titleLabel = UILabel()
-    private let detailLabel = UILabel()
+    private let hookLabel = ClipTheme.label(ClipTheme.serif(46))
+    private let nameLabel = ClipTheme.label(.systemFont(ofSize: 22, weight: .semibold))
+    private let detailLabel = ClipTheme.label(.systemFont(ofSize: 17), color: UIColor.white.withAlphaComponent(0.9))
+    private let panel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+    private let panelStack = UIStackView()
+    private let getAppButton = ClipTheme.primaryButton("Get the FavCircles app")
+    private let signOutButton = ClipTheme.linkButton("")
     private let spinner = UIActivityIndicatorView(style: .large)
     private var overlayPresented = false
-    private var countUpTimer: Timer?
 
-    init(authResponse: ClipAuthResponse, provider: String, code: String, preview: VenuePreview) {
-        self.authResponse = authResponse
-        self.provider = provider
+    init(session: ClipSession, isNewSignIn: Bool, invocation: ClipInvocation, code: String, preview: VenuePreview) {
+        self.session = session
+        self.isNewSignIn = isNewSignIn
+        self.invocation = invocation
         self.code = code
         self.preview = preview
         super.init(nibName: nil, bundle: nil)
@@ -34,13 +41,15 @@ final class ClipSuccessViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        gradient = ClipTheme.installGradient(on: view)
+        view.backgroundColor = ClipTheme.ink
         navigationController?.setNavigationBarHidden(true, animated: false)
         setupUI()
+        backdrop.loadPhoto(from: preview.coverUrl.flatMap(URL.init(string:)))
 
         // Hand the session to the full app FIRST — even if the scan call fails,
         // the install lands logged in.
-        ClipHandoff.storeAuthHandoff(response: authResponse, provider: provider)
+        ClipHandoff.storeAuthHandoff(session: session)
+        ClipNotifications.shared.register(session: session, code: code)
 
         if preview.isGeneric {
             // Generic join: nothing to redeem — the welcome gifts are claimed in
@@ -53,54 +62,97 @@ final class ClipSuccessViewController: UIViewController {
         }
     }
 
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        gradient?.frame = view.bounds
-    }
-
-    deinit {
-        countUpTimer?.invalidate()
-    }
-
     private func setupUI() {
+        view.addSubview(backdrop)
+        view.addSubview(brandMark)
+
         stack.axis = .vertical
-        stack.alignment = .center
-        stack.spacing = 14
+        stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
 
-        emojiLabel.font = .systemFont(ofSize: 76)
-        titleLabel.font = .systemFont(ofSize: 34, weight: .bold)
-        titleLabel.textColor = .white
-        titleLabel.textAlignment = .center
-        titleLabel.numberOfLines = 0
-        detailLabel.font = .systemFont(ofSize: 17)
-        detailLabel.textColor = UIColor.white.withAlphaComponent(0.9)
-        detailLabel.textAlignment = .center
-        detailLabel.numberOfLines = 0
+        hookLabel.adjustsFontSizeToFitWidth = true
+        hookLabel.minimumScaleFactor = 0.7
+        [hookLabel, nameLabel, detailLabel].forEach(ClipTheme.lift)
+
+        panel.layer.cornerRadius = 18
+        panel.layer.masksToBounds = true
+        panel.layer.borderWidth = 1
+        panel.layer.borderColor = UIColor.white.withAlphaComponent(0.18).cgColor
+        panelStack.axis = .vertical
+        panelStack.spacing = 10
+        panelStack.translatesAutoresizingMaskIntoConstraints = false
+        panel.contentView.addSubview(panelStack)
+        panel.isHidden = true
+
+        getAppButton.addTarget(self, action: #selector(getAppTapped), for: .touchUpInside)
+        let firstName = session.displayName?.split(separator: " ").first.map(String.init)
+        signOutButton.configuration?.attributedTitle = AttributedString(
+            firstName.map { "Not \($0)? Sign out" } ?? "Not you? Sign out",
+            attributes: AttributeContainer([.font: UIFont.systemFont(ofSize: 15, weight: .medium)]))
+        signOutButton.addTarget(self, action: #selector(signOutTapped), for: .touchUpInside)
+
+        [hookLabel, nameLabel, detailLabel, panel, getAppButton, signOutButton].forEach { stack.addArrangedSubview($0) }
+        stack.setCustomSpacing(14, after: hookLabel)
+        stack.setCustomSpacing(6, after: nameLabel)
+        stack.setCustomSpacing(18, after: detailLabel)
+        stack.setCustomSpacing(18, after: panel)
+        stack.setCustomSpacing(4, after: getAppButton)
+        stack.isHidden = true
 
         spinner.color = .white
+        spinner.translatesAutoresizingMaskIntoConstraints = false
         spinner.startAnimating()
-
-        [emojiLabel, titleLabel, detailLabel, spinner].forEach { stack.addArrangedSubview($0) }
-        emojiLabel.isHidden = true
+        view.addSubview(spinner)
 
         NSLayoutConstraint.activate([
-            stack.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerYAnchor, constant: -50),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 30),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -30)
+            backdrop.topAnchor.constraint(equalTo: view.topAnchor),
+            backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            brandMark.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            brandMark.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            panelStack.topAnchor.constraint(equalTo: panel.contentView.topAnchor, constant: 16),
+            panelStack.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor, constant: -16),
+            panelStack.leadingAnchor.constraint(equalTo: panel.contentView.leadingAnchor, constant: 18),
+            panelStack.trailingAnchor.constraint(equalTo: panel.contentView.trailingAnchor, constant: -18),
+            stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
+            stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 26),
+            stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -26),
+            stack.topAnchor.constraint(greaterThanOrEqualTo: brandMark.bottomAnchor, constant: 16),
+            spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
-
-        titleLabel.text = "Creating your rewards…"
     }
+
+    // MARK: - Redeem
 
     private func redeem() {
         Task { @MainActor in
+            // Register codes: Apple can confirm the phone is at the store
+            // (no prompt). Only a clear "not here" withholds the visit points.
+            var atStore: Bool?
+            if preview.kind == "register", preview.loyaltyLive == true {
+                atStore = await invocation.confirmAtStore(latitude: preview.location?.latitude,
+                                                          longitude: preview.location?.longitude)
+            }
             do {
-                let result = try await ClipAPIClient.shared.redeemSticker(code: code, token: authResponse.token)
+                let result = try await ClipAPIClient.shared.redeemSticker(code: code, token: session.token, atStore: atStore)
                 // Scan handled in-clip — tell the full app not to redeem it again
-                ClipHandoff.markStickerHandled(code)
-                showAwarded(result)
+                ClipHandoff.markStickerHandled(code, welcome: result.venue.map { venue in
+                    ClipHandoff.Welcome(code: code, kind: result.kind, venue: venue,
+                                        awardedPoints: result.awarded?.points,
+                                        venueBalance: result.venueBalance,
+                                        earnRate: result.earnRate ?? preview.earnRate,
+                                        offers: preview.offers ?? [],
+                                        nextRewardLine: result.nextRewardLine,
+                                        alreadySaved: result.alreadySaved)
+                })
+                show(result)
+            } catch ClipAPIError.unauthorized {
+                // The remembered session ran out: sign in again
+                ClipSession.clear()
+                navigationController?.setViewControllers([ClipOfferViewController(invocation: invocation)], animated: true)
             } catch {
                 // Let the full app's existing pending-sticker flow finish the award
                 ClipHandoff.markStickerPending(code)
@@ -109,94 +161,131 @@ final class ClipSuccessViewController: UIViewController {
         }
     }
 
-    private func showAwarded(_ result: ScanResult) {
-        spinner.stopAnimating()
-        spinner.isHidden = true
-        emojiLabel.isHidden = false
-        emojiLabel.text = "🎉"
+    // MARK: - Results
+
+    private func show(_ result: ScanResult) {
+        let name = preview.venueName
+        let earnsHere = preview.kind == "register" && preview.loyaltyLive == true
+        let balance = result.venueBalance ?? 0
+        let hello = isNewSignIn ? "You're in." : "Welcome back."
+        nameLabel.text = name
 
         if let award = result.awarded {
-            // In the store's own terms when it has a menu of rewards
-            detailLabel.text = result.nextRewardLine.map { "\($0). Get the full FavCircles app to keep earning at \(preview.venueName)." }
-                ?? "Spend them at \(preview.venueName). Get the full FavCircles app to browse offers, save places, and keep earning."
-            celebrate(points: award.points)
+            hookLabel.attributedText = ClipTheme.hookText(hello, "+\(award.points) points.", size: 46)
+            detailLabel.text = "You have \(balance) points at \(name)."
+        } else if result.notAtStore == true {
+            hookLabel.attributedText = ClipTheme.hookText("Almost.", "Scan it at the counter.", size: 46)
+            detailLabel.text = "Visit points are for scans at \(name). Scan the code at the register on your next visit."
+        } else if result.alreadyEarnedToday == true {
+            hookLabel.attributedText = ClipTheme.hookText("Welcome back.", "See you next visit.", size: 46)
+            detailLabel.text = "You've collected today's points here. You have \(balance) points at \(name)."
         } else {
-            // Idempotent replay or outside the signup window — still a win state
-            titleLabel.text = "You're in!"
-            let balance = result.venueBalance ?? 0
-            detailLabel.text = balance > 0
-                ? "You have \(balance) points at \(preview.venueName).\(result.nextRewardLine.map { " \($0)." } ?? "") Get the full app to spend them."
-                : "Welcome to FavCircles! Get the full app to start earning at \(preview.venueName)."
-            popEmoji()
-            presentInstallOverlay(afterDelay: 1.2)
+            // Window code, or a store whose rewards aren't live: nothing to pay out
+            hookLabel.attributedText = ClipTheme.hookText(hello, "One step left.", size: 46)
+            detailLabel.text = "Get the FavCircles app to save \(name) to your map. It opens right on \(name)'s page."
         }
+
+        if earnsHere {
+            fillRewardsPanel(balance: balance, earnRate: result.earnRate ?? preview.earnRate, nextLine: result.nextRewardLine)
+        }
+        reveal(celebrate: result.awarded != nil)
+    }
+
+    /// How to keep earning, and what the points buy here
+    private func fillRewardsPanel(balance: Int, earnRate: Int?, nextLine: String?) {
+        panelStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let heading = ClipTheme.label(.systemFont(ofSize: 13, weight: .bold), color: ClipTheme.gold)
+        heading.text = "KEEP EARNING"
+        panelStack.addArrangedSubview(heading)
+        if let earnRate {
+            let how = ClipTheme.label(.systemFont(ofSize: 16, weight: .medium))
+            how.text = "Every visit earns \(earnRate) points. Scan the code at the register."
+            panelStack.addArrangedSubview(how)
+        }
+        let offers = (preview.offers ?? []).sorted { $0.pointsCost < $1.pointsCost }.prefix(4)
+        if !offers.isEmpty {
+            let rewards = ClipTheme.label(.systemFont(ofSize: 13, weight: .bold), color: ClipTheme.gold)
+            rewards.text = "REWARDS HERE"
+            panelStack.setCustomSpacing(16, after: panelStack.arrangedSubviews.last!)
+            panelStack.addArrangedSubview(rewards)
+            for offer in offers {
+                panelStack.addArrangedSubview(rewardRow(offer, balance: balance))
+            }
+        }
+        if let nextLine {
+            let next = ClipTheme.label(.systemFont(ofSize: 14), color: UIColor.white.withAlphaComponent(0.8))
+            next.text = nextLine
+            panelStack.addArrangedSubview(next)
+        }
+        panel.isHidden = false
+    }
+
+    /// "Free croissant · 100 points" with a bar showing how close they are
+    private func rewardRow(_ offer: ClipOffer, balance: Int) -> UIView {
+        let title = ClipTheme.label(.systemFont(ofSize: 16, weight: .semibold), lines: 1)
+        title.text = offer.title
+        let cost = ClipTheme.label(.systemFont(ofSize: 15, weight: .medium), color: UIColor.white.withAlphaComponent(0.8), lines: 1)
+        let ready = balance >= offer.pointsCost
+        cost.text = ready ? "Ready ✓" : "\(offer.pointsCost) pts"
+        cost.textColor = ready ? ClipTheme.gold : UIColor.white.withAlphaComponent(0.8)
+        cost.setContentHuggingPriority(.required, for: .horizontal)
+        let line = UIStackView(arrangedSubviews: [title, cost])
+        line.spacing = 8
+
+        let bar = UIProgressView(progressViewStyle: .bar)
+        bar.progressTintColor = ClipTheme.gold
+        bar.trackTintColor = UIColor.white.withAlphaComponent(0.18)
+        bar.progress = Float(min(1, Double(balance) / Double(max(offer.pointsCost, 1))))
+        bar.layer.cornerRadius = 2
+        bar.clipsToBounds = true
+        bar.heightAnchor.constraint(equalToConstant: 4).isActive = true
+
+        let row = UIStackView(arrangedSubviews: [line, bar])
+        row.axis = .vertical
+        row.spacing = 6
+        return row
     }
 
     private func showGenericWelcome() {
-        spinner.stopAnimating()
-        spinner.isHidden = true
-        emojiLabel.isHidden = false
-        emojiLabel.text = "🎉"
-        titleLabel.text = "You earned \(preview.favCoinBonus) FavCoins!"
-        detailLabel.text = "Add your first place for 25 more. Get the full FavCircles app to claim them and start earning at partner stores."
-        popEmoji()
-        rainConfetti()
-        presentInstallOverlay(afterDelay: 1.6)
+        hookLabel.attributedText = ClipTheme.hookText(isNewSignIn ? "You're in." : "Welcome back.", "+\(preview.favCoinBonus) FavCoins.", size: 46)
+        nameLabel.isHidden = true
+        detailLabel.text = "Get the FavCircles app to claim them, then add your first place for 25 more."
+        reveal(celebrate: isNewSignIn)
     }
 
     private func showPending() {
-        spinner.stopAnimating()
-        spinner.isHidden = true
-        emojiLabel.isHidden = false
-        emojiLabel.text = "✅"
-        titleLabel.text = "Account created!"
+        hookLabel.attributedText = ClipTheme.hookText("You're in.", "Almost done.", size: 46)
+        nameLabel.text = preview.venueName
         detailLabel.text = preview.signupBonusPoints > 0
-            ? "Your \(preview.signupBonusPoints) points at \(preview.venueName) are on the way — open the full app to collect them."
-            : "Open the full app to keep \(preview.venueName) on your map."
-        popEmoji()
-        presentInstallOverlay(afterDelay: 1.2)
+            ? "Your \(preview.signupBonusPoints) points at \(preview.venueName) are on the way. Open the FavCircles app to collect them."
+            : "Open the FavCircles app to keep \(preview.venueName) on your map."
+        reveal(celebrate: false)
+    }
+
+    private func reveal(celebrate: Bool) {
+        spinner.stopAnimating()
+        stack.isHidden = false
+        ClipTheme.animateIn([brandMark, hookLabel, nameLabel, detailLabel, panel, getAppButton, signOutButton])
+        if celebrate {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            rainConfetti()
+        }
+        presentInstallOverlay(afterDelay: celebrate ? 2.2 : 1.4)
+    }
+
+    // MARK: - Actions
+
+    @objc private func getAppTapped() {
+        overlayPresented = false
+        presentInstallOverlay(afterDelay: 0)
+    }
+
+    @objc private func signOutTapped() {
+        ClipSession.clear()
+        navigationController?.setViewControllers([ClipOfferViewController(invocation: invocation)], animated: true)
     }
 
     // MARK: - Celebration
-
-    private func celebrate(points: Int) {
-        popEmoji()
-        rainConfetti()
-
-        // Count up 0 → points in sync with the confetti
-        var shown = 0
-        let stepDuration = 0.9 / Double(max(points, 1))
-        titleLabel.text = "You earned 0 points!"
-        countUpTimer = Timer.scheduledTimer(withTimeInterval: stepDuration, repeats: true) { [weak self] timer in
-            guard let self = self else { timer.invalidate(); return }
-            shown += max(1, points / 60)
-            if shown >= points {
-                shown = points
-                timer.invalidate()
-                // Little bounce on landing
-                UIView.animate(withDuration: 0.12, animations: {
-                    self.titleLabel.transform = CGAffineTransform(scaleX: 1.12, y: 1.12)
-                }) { _ in
-                    UIView.animate(withDuration: 0.2) { self.titleLabel.transform = .identity }
-                }
-            }
-            self.titleLabel.text = "You earned \(shown) points!"
-        }
-
-        presentInstallOverlay(afterDelay: 1.6)
-    }
-
-    private func popEmoji() {
-        emojiLabel.transform = CGAffineTransform(scaleX: 0.2, y: 0.2)
-        emojiLabel.alpha = 0
-        UIView.animate(withDuration: 0.6,
-                       delay: 0,
-                       usingSpringWithDamping: 0.55,
-                       initialSpringVelocity: 0.8) {
-            self.emojiLabel.transform = .identity
-            self.emojiLabel.alpha = 1
-        }
-    }
 
     private func rainConfetti() {
         let emitter = CAEmitterLayer()
@@ -204,14 +293,7 @@ final class ClipSuccessViewController: UIViewController {
         emitter.emitterShape = .line
         emitter.emitterSize = CGSize(width: view.bounds.width, height: 1)
 
-        let colors: [UIColor] = [
-            UIColor(red: 1.0, green: 0.84, blue: 0.25, alpha: 1),  // gold
-            .white,
-            UIColor(red: 0.31, green: 0.82, blue: 0.77, alpha: 1), // teal accent
-            UIColor(red: 1.0, green: 0.45, blue: 0.55, alpha: 1),  // pink
-            UIColor(red: 0.55, green: 0.78, blue: 1.0, alpha: 1)   // light blue
-        ]
-
+        let colors: [UIColor] = [ClipTheme.gold, .white, ClipTheme.pinRed, ClipTheme.pinGreen, ClipTheme.pinGold]
         emitter.emitterCells = colors.map { color in
             let cell = CAEmitterCell()
             cell.contents = Self.confettiImage(color: color).cgImage
@@ -228,16 +310,11 @@ final class ClipSuccessViewController: UIViewController {
             cell.yAcceleration = 90
             return cell
         }
-
         view.layer.addSublayer(emitter)
 
         // Burst, then let the last pieces fall and clean up
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-            emitter.birthRate = 0
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
-            emitter.removeFromSuperlayer()
-        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { emitter.birthRate = 0 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { emitter.removeFromSuperlayer() }
     }
 
     private static func confettiImage(color: UIColor) -> UIImage {

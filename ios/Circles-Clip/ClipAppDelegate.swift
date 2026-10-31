@@ -1,7 +1,7 @@
 import UIKit
 
 // App Clip entry point. The clip is deliberately tiny: UIKit + URLSession +
-// AuthenticationServices + StoreKit only — no Firebase, no Google, no Facebook.
+// AuthenticationServices + StoreKit + AppClip only — no Firebase, no Google, no Facebook.
 // Shared app code is duplicated (trimmed), never cross-linked, to keep the
 // bundle far under the 15MB App Clip budget.
 @main
@@ -18,5 +18,13 @@ class ClipAppDelegate: UIResponder, UIApplicationDelegate {
         let configuration = UISceneConfiguration(name: "Default", sessionRole: connectingSceneSession.role)
         configuration.delegateClass = ClipSceneDelegate.self
         return configuration
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        ClipNotifications.shared.didRegister(deviceToken: deviceToken)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        print("📎 Clip notifications unavailable: \(error.localizedDescription)")
     }
 }

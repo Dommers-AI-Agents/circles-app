@@ -1,3 +1,4 @@
+import AppClip
 import UIKit
 
 class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -14,9 +15,8 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         // The invocation URL rides in on an NSUserActivity — from the camera /
         // App Clip code at launch (connectionOptions) or later via continueUserActivity.
-        var code = connectionOptions.userActivities
-            .compactMap { Self.stickerCode(from: $0) }
-            .first
+        let activity = connectionOptions.userActivities.first { Self.stickerCode(from: $0) != nil }
+        var code = activity.flatMap(Self.stickerCode(from:))
 
         #if DEBUG
         // Xcode injects _XCAppClipURL as a user activity, but `simctl launch`
@@ -27,24 +27,20 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
             code = Self.stickerCode(fromPath: testURL.path)
         }
         #endif
-        window.rootViewController = Self.rootViewController(for: code)
+        window.rootViewController = Self.rootViewController(for: ClipInvocation(code: code, payload: activity?.appClipActivationPayload))
         window.makeKeyAndVisible()
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
         guard let code = Self.stickerCode(from: userActivity) else { return }
-        window?.rootViewController = Self.rootViewController(for: code)
+        window?.rootViewController = Self.rootViewController(for: ClipInvocation(code: code, payload: userActivity.appClipActivationPayload))
     }
 
-    private static func rootViewController(for code: String?) -> UIViewController {
-        let root: UIViewController
-        if let code = code {
-            root = ClipOfferViewController(code: code)
-        } else {
-            // Launched without a sticker URL (e.g. from TestFlight's clip row).
-            root = ClipOfferViewController(code: nil)
-        }
-        let nav = UINavigationController(rootViewController: root)
+    /// Always the offer screen: it loads the store, then skips straight to
+    /// the customer's points when the clip already knows them. Launched
+    /// without a code (TestFlight's clip row), it says how to use the clip.
+    private static func rootViewController(for invocation: ClipInvocation) -> UIViewController {
+        let nav = UINavigationController(rootViewController: ClipOfferViewController(invocation: invocation))
         nav.navigationBar.prefersLargeTitles = false
         return nav
     }

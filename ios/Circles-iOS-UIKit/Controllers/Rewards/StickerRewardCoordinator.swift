@@ -98,6 +98,25 @@ final class StickerRewardCoordinator: NSObject {
         return ns.domain == NSURLErrorDomain
     }
 
+    // MARK: - First launch after the App Clip
+
+    /// The store they scanned in the App Clip: its page, with a welcome over
+    /// it (points earned, how to keep earning, what the points buy)
+    func showClipWelcome(_ welcome: ClipWelcome) {
+        showStorePage(for: welcome.venue) { [weak self] in
+            guard let presenter = self?.presenter else { return }
+            let sheet = ClipWelcomeViewController(welcome: welcome)
+            sheet.onSave = { [weak self] in self?.startSaveFlow(venue: welcome.venue, code: welcome.code) }
+            sheet.onSeeRewards = { [weak self] in self?.openStoreRewards() }
+            if let controller = sheet.sheetPresentationController {
+                controller.detents = [.medium(), .large()]
+                controller.prefersGrabberVisible = true
+                controller.preferredCornerRadius = 24
+            }
+            presenter.present(sheet, animated: true)
+        }
+    }
+
     // MARK: - Store page
 
     /// Opens the store's place page on the current tab (unless it's already
