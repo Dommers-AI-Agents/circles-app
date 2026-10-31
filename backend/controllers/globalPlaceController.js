@@ -28,6 +28,18 @@ const db = getFirestore();
 const { resolveGlobalPlace, createGlobalPlaceFromLegacy } = require('../services/globalPlaceResolver');
 const { normalizePrivacy, PRIVACY } = require('../services/visibility');
 const { isSameUser } = require('../services/idService');
+const { fetchUsersById, withCurrentUser, nameOf, photoOf } = require('../services/userLookup');
+
+// A photo/video's uploader as they are NOW (the stored uploadedByName is the
+// name at upload time; kept for a deleted account). Rows without a stored
+// name (imports) are left as they are.
+const UPLOADER = { id: 'uploadedBy', name: 'uploadedByName' };
+const withCurrentUploader = (media, users) =>
+  (media && typeof media === 'object' && 'uploadedByName' in media ? withCurrentUser(media, users, UPLOADER) : media);
+const mediaUploaderIds = (placeData) => [
+  ...(Array.isArray(placeData.photos) ? placeData.photos : []),
+  ...(Array.isArray(placeData.videos) ? placeData.videos : [])
+].map((m) => m && m.uploadedBy);
 const placePhotos = require('../services/placePhotoService');
 const { sendServiceError } = require('../utils/serviceError');
 const globalPlaceSearch = require('../services/globalPlaceSearch');
@@ -222,33 +234,23 @@ exports.getGlobalPlace = async (req, res, next) => {
       }
     }
     
+    // Everyone the page names — reviewers and photo/video uploaders — as
+    // they are now, in one batched read
+    const reviews = Array.isArray(placeData.publicReviews) ? placeData.publicReviews : [];
+    const people = await fetchUsersById([...reviews.map(review => review.userId), ...mediaUploaderIds(placeData)]);
+    if (Array.isArray(placeData.photos)) placeData.photos = placeData.photos.map(m => withCurrentUploader(m, people));
+    if (Array.isArray(placeData.videos)) placeData.videos = placeData.videos.map(m => withCurrentUploader(m, people));
+
     // Populate user information for public reviews
-    if (placeData.publicReviews && placeData.publicReviews.length > 0) {
-      const userIds = [...new Set(placeData.publicReviews.map(review => review.userId))];
-      
-      // Get user information for reviewers
-      // Every reviewer, in one batched read (was the first 10 only)
-      const reviewerIds = userIds.filter(Boolean);
-      const reviewerDocs = reviewerIds.length > 0
-        ? await db.getAll(...reviewerIds.map(id => db.collection('users').doc(String(id))))
-        : [];
-      
-      const usersMap = {};
-      reviewerDocs.filter(doc => doc.exists).forEach(doc => {
-        const userData = doc.data();
-        usersMap[doc.id] = {
-          id: doc.id,
-          displayName: userData.displayName,
-          profilePicture: userData.profilePicture
+    if (reviews.length > 0) {
+      placeData.publicReviews = reviews.map(review => {
+        const card = people.get(String(review.userId || ''));
+        return {
+          ...review,
+          userName: nameOf(card) || review.userName || 'Unknown User',
+          userPhoto: photoOf(card) || review.userPhoto
         };
       });
-      
-      // Populate user info in reviews
-      placeData.publicReviews = placeData.publicReviews.map(review => ({
-        ...review,
-        userName: usersMap[review.userId]?.displayName || review.userName || 'Unknown User',
-        userPhoto: usersMap[review.userId]?.profilePicture || review.userPhoto
-      }));
     }
     
     console.log(`🚀 [GlobalPlace API] Sending response for "${placeData.name}"`);
@@ -922,7 +924,8 @@ exports.getPhotosDebug = async (req, res, next) => {
     }
     
     const placeData = placeDoc.data();
-    const photos = placeData.photos || [];
+    const users = await fetchUsersById(mediaUploaderIds(placeData));
+    const photos = (placeData.photos || []).map(m => withCurrentUploader(m, users));
     
     console.log(`🔍 [PhotosDebug] Place ${placeId} (${placeData.name}) has ${photos.length} photos:`);
     photos.forEach((photo, index) => {

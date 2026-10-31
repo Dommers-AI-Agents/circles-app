@@ -18,6 +18,7 @@ const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { ServiceError } = require('../../utils/serviceError');
 const { clean } = require('../../utils/text');
 const { isHiddenAccount } = require('../hiddenAccounts');
+const { nameOf, photoOf } = require('../userLookup');
 
 const NAME_MAX = 40;
 const BREED_MAX = 60;
@@ -165,13 +166,16 @@ function toClientDog(id, dog, owner = null) {
   };
 }
 
-function toClientPost(id, post, viewerId, { iPetted = false } = {}) {
+// `author` = the author's user record (authorsOf), when the caller read it:
+// the post then shows who they are NOW; without it, the name/photo stored on
+// the post (Wes, 2026-10-31: one source for people).
+function toClientPost(id, post, viewerId, { iPetted = false, author = null } = {}) {
   const video = post.kind === 'video';
   return {
     id,
     authorId: post.authorId,
-    authorName: post.authorName || 'Someone',
-    authorPhotoUrl: post.authorPhotoUrl || null,
+    authorName: nameOf(author) || post.authorName || 'Someone',
+    authorPhotoUrl: photoOf(author) || post.authorPhotoUrl || null,
     caption: post.caption || '',
     dogs: (post.dogs || []).map((d) => ({ id: d.id, name: d.name, breed: d.breed || null })),
     kind: video ? 'video' : 'photo',
@@ -189,11 +193,11 @@ function toClientPost(id, post, viewerId, { iPetted = false } = {}) {
   };
 }
 
-const toClientComment = (id, comment, viewerId) => ({
+const toClientComment = (id, comment, viewerId, author = null) => ({
   id,
   authorId: comment.authorId,
-  authorName: comment.authorName || 'Someone',
-  authorPhotoUrl: comment.authorPhotoUrl || null,
+  authorName: nameOf(author) || comment.authorName || 'Someone',
+  authorPhotoUrl: photoOf(author) || comment.authorPhotoUrl || null,
   text: comment.text || '',
   createdAt: comment.createdAt,
   mine: comment.authorId === viewerId
@@ -237,7 +241,8 @@ async function present(docs, viewerId, viewer) {
   const blocked = blockedSet(viewer);
   const visible = rows.filter((r) => canSeePost(r.data, viewerId, { blocked, authors }));
   const petted = await pettedBy(visible.map((r) => r.id), viewerId);
-  return visible.map((r) => toClientPost(r.id, r.data, viewerId, { iPetted: petted.has(r.id) }));
+  // The authors read for the visibility check name them as they are now
+  return visible.map((r) => toClientPost(r.id, r.data, viewerId, { iPetted: petted.has(r.id), author: authors.get(r.data.authorId) }));
 }
 
 async function loadPost(postId) {

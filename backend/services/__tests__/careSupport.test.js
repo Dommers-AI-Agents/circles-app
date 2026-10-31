@@ -26,6 +26,9 @@ describe('family support on an answer', () => {
   });
 });
 
+// Current names by user id (CareCheckinService.familyCards reads users)
+let mockCards = new Map();
+
 // A small stand-in for CareCheckinService: the mixin only needs these.
 function fakeService({ asks, plan }) {
   const roles = (p, u) => (u === p.ownerId ? 'owner' : u === p.parentId ? 'parent'
@@ -45,7 +48,8 @@ function fakeService({ asks, plan }) {
   }) };
   svc.requirePlan = async () => plan;
   svc.recentAsks = async () => Object.entries(asks).map(([id, a]) => ({ id, ...a })).sort((a, b) => b.askedAt.localeCompare(a.askedAt));
-  svc.presentAsk = (a) => ({ askId: a.id, status: a.status, answerText: a.answerText, ...support.presentSupport(a) });
+  svc.presentAsk = (a, users) => ({ askId: a.id, status: a.status, answerText: a.answerText, ...support.presentSupport(a, users) });
+  svc.familyCards = async () => mockCards;
   svc.notify = (to, payload) => svc.pushes.push({ to, ...payload });
   Object.assign(svc, support.mixin);
   return svc;
@@ -127,5 +131,30 @@ describe('reaction words follow the answer (Wes, 2026-10-18)', () => {
       for (const ask of [pain(1), pain(4), pain(9), { kind: 'text' }]) expect(support.reactionWords(kind, ask)).toBeTruthy();
     }
     expect(title('glad', { kind: 'text', answerText: 'Busy day' })).toBe('🙏 Wesley: Thanks for letting me know');
+  });
+});
+
+describe('people on an answer are named as they are now', () => {
+  afterEach(() => { mockCards = new Map(); });
+
+  test('presentSupport prefers the current name; a deleted account keeps the stored one', () => {
+    const users = new Map([['sal', { displayName: 'Salvatore S' }]]);
+    const out = support.presentSupport({
+      reactions: { sal: { kind: 'love', name: 'Sal', at: '1' }, gone: { kind: 'glad', name: 'Ghost', at: '2' } },
+      responses: { sal: { action: 'calling', name: 'Sal', at: '3' } },
+      comments: [{ id: 'c', userId: 'sal', name: 'Sal', text: 'hi', at: '4' }]
+    }, users);
+    expect(out.reactions.map(r => r.name)).toEqual(['Salvatore S', 'Ghost']);
+    expect(out.responses[0].name).toBe('Salvatore S');
+    expect(out.comments[0].name).toBe('Salvatore S');
+  });
+
+  test('askDetail names the parent as they are now', async () => {
+    mockCards = new Map([['sal', { displayName: 'Salvatore S' }]]);
+    const plan = { id: 'p1', ownerId: 'wes', parentId: 'sal', parentName: 'Sal Sgroi', watchers: [] };
+    const svc = fakeService({ asks: { a1: { planId: 'p1', status: 'answered', askedAt: '1', comments: [{ id: 'c', userId: 'sal', name: 'Sal', text: 'x', at: '1' }] } }, plan });
+    const out = await svc.askDetail({ userId: 'wes', askId: 'a1' });
+    expect(out.parentName).toBe('Salvatore S');
+    expect(out.ask.comments[0].name).toBe('Salvatore S');
   });
 });

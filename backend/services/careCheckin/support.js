@@ -5,6 +5,7 @@
 // handled. Methods are mixed into CareCheckinService; the copy is pure.
 const { FieldPath } = require('firebase-admin/firestore');
 const { CareError, nowIso } = require('./shared');
+const { nameOf } = require('../userLookup');
 
 const REACTIONS = {
   love: { emoji: '❤️', label: 'Love you' },
@@ -28,20 +29,23 @@ const COMMENTS_PER_ANSWER = 50;
 /** How far back a question's history looks (asks across all questions). */
 const HISTORY_SCAN = 300;
 
-/** Pure: the support on one answer, as every viewer sees it (oldest first). */
-function presentSupport(ask) {
+/** Pure: the support on one answer, as every viewer sees it (oldest first).
+ *  `users` (fetchUsersById) names each person as they are now; the name
+ *  stored on the reaction/response/comment stands for a deleted account. */
+function presentSupport(ask, users = new Map()) {
   const byTime = (a, b) => String(a.at || '').localeCompare(String(b.at || ''));
+  const who = (userId, stored) => nameOf(users.get(String(userId || ''))) || stored || 'Family';
   const reactions = Object.entries(ask.reactions || {})
     .filter(([, r]) => r && REACTIONS[r.kind])
-    .map(([userId, r]) => ({ userId, name: r.name || 'Family', kind: r.kind, at: r.at || null }))
+    .map(([userId, r]) => ({ userId, name: who(userId, r.name), kind: r.kind, at: r.at || null }))
     .sort(byTime);
   const responses = Object.entries(ask.responses || {})
     .filter(([, r]) => r && RESPONSES[r.action])
-    .map(([userId, r]) => ({ userId, name: r.name || 'Family', action: r.action, at: r.at || null }))
+    .map(([userId, r]) => ({ userId, name: who(userId, r.name), action: r.action, at: r.at || null }))
     .sort(byTime);
   const comments = (Array.isArray(ask.comments) ? ask.comments : [])
     .filter((c) => c && c.text)
-    .map((c) => ({ id: c.id, userId: c.userId, name: c.name || 'Family', text: c.text, at: c.at || null }))
+    .map((c) => ({ id: c.id, userId: c.userId, name: who(c.userId, c.name), text: c.text, at: c.at || null }))
     .sort(byTime);
   return { reactions, responses, comments };
 }
@@ -133,7 +137,7 @@ module.exports = {
         const { title, body } = reactionPush(name, kind, ask);
         this.notify(plan.parentId, { type: PUSH_REACTION, title, body, data: { planId: plan.id, askId: ask.id } });
       }
-      return this.presentAsk({ ...ask, reactions });
+      return this.presentAsk({ ...ask, reactions }, await this.familyCards(plan));
     },
 
     /** A heads-up answer: someone says they've got it. */
@@ -168,7 +172,7 @@ module.exports = {
           });
         }
       }
-      return this.presentAsk({ ...ask, responses });
+      return this.presentAsk({ ...ask, responses }, await this.familyCards(plan));
     },
 
     /**
@@ -181,12 +185,13 @@ module.exports = {
       const ask = { id: doc.id, ...doc.data() };
       const plan = await this.requirePlan(ask.planId);
       if (!this.constructor.canRead(plan, userId)) throw new CareError(403, 'not_yours', 'Not your check-in.');
-      const recent = await this.recentAsks(plan.id, HISTORY_SCAN);
+      const [recent, users] = await Promise.all([this.recentAsks(plan.id, HISTORY_SCAN), this.familyCards(plan)]);
       const history = recent
         .filter((a) => a.id !== ask.id && sameQuestion(a, ask) && a.status !== 'open')
         .slice(0, Math.min(Math.max(limit, 1), 60))
-        .map((a) => this.presentAsk(a));
-      return { ask: this.presentAsk(ask), history, parentName: plan.parentName || null,
+        .map((a) => this.presentAsk(a, users));
+      return { ask: this.presentAsk(ask, users), history,
+               parentName: nameOf(users.get(String(plan.parentId || ''))) || plan.parentName || null,
                role: this.constructor.roleOf(plan, userId) };
     },
 
@@ -214,7 +219,7 @@ module.exports = {
       for (const id of recipients) {
         this.notify(id, { type: PUSH_COMMENT, title: title.slice(0, 120), body, data: { planId: plan.id, askId: ask.id } });
       }
-      return this.presentAsk({ ...ask, comments });
+      return this.presentAsk({ ...ask, comments }, await this.familyCards(plan));
     },
 
     /** The parent's own switch: no pushes when family reacts (they still see them). */

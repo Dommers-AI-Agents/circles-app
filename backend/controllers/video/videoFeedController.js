@@ -784,6 +784,12 @@ exports.getPublicVideoDetails = async (req, res) => {
       });
     }
 
+    // The uploader as they are now. Moments store only userId — nothing
+    // writes video.userName, so this read "Circles User" for everyone.
+    // (Required here, not at the top, to keep this fix to this handler.)
+    const { fetchUsersById, nameOf, photoOf } = require('../../services/userLookup');
+    const uploader = (await fetchUsersById([video.userId])).get(String(video.userId || ''));
+
     // Only return public or non-sensitive information
     const publicVideo = {
       id: video.id,
@@ -793,8 +799,8 @@ exports.getPublicVideoDetails = async (req, res) => {
       placeName: video.placeName,
       placeId: video.placeId,
       placeAddress: video.placeAddress,
-      userName: video.userName || 'Circles User',
-      userPhoto: video.userPhoto,
+      userName: nameOf(uploader) || video.userName || 'Circles User',
+      userPhoto: photoOf(uploader) || video.userPhoto,
       createdAt: video.createdAt,
       likeCount: video.likeCount || 0,
       commentCount: video.commentCount || 0,

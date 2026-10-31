@@ -14,6 +14,15 @@ const {
 } = require('../models/FirestoreModels');
 const notificationService = require('../services/notificationService');
 const sseService = require('../services/sseService');
+const { fetchUsersById, withCurrentUser } = require('../services/userLookup');
+
+// Comments and reactions store the person's name/photo as written; show who
+// they are now (one batched users read per response).
+const PERSON = { id: 'userId', name: 'userName', photo: 'userPhoto' };
+async function withCurrentPeople(rows) {
+  const users = await fetchUsersById(rows.map((r) => r.userId));
+  return rows.map((r) => withCurrentUser(r, users, PERSON));
+}
 
 const db = getFirestore();
 
@@ -215,7 +224,7 @@ exports.getReactions = async (req, res) => {
       .orderBy('createdAt', 'desc')
       .get();
     
-    const reactions = serializeQuerySnapshot(reactionsQuery);
+    const reactions = await withCurrentPeople(serializeQuerySnapshot(reactionsQuery));
     
     // Group reactions by emoji
     const reactionGroups = {};
@@ -258,7 +267,7 @@ exports.getReactionDetails = async (req, res) => {
       .orderBy('createdAt', 'desc')
       .get();
     
-    const reactions = serializeQuerySnapshot(reactionsQuery);
+    const reactions = await withCurrentPeople(serializeQuerySnapshot(reactionsQuery));
     
     // Transform reactions to include full user details
     const detailedReactions = reactions.map(reaction => ({
@@ -428,7 +437,7 @@ exports.getComments = async (req, res) => {
       .orderBy('createdAt', 'desc')
       .get();
     
-    const comments = serializeQuerySnapshot(commentsQuery);
+    const comments = await withCurrentPeople(serializeQuerySnapshot(commentsQuery));
     
     res.json({
       success: true,

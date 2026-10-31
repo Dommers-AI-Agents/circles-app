@@ -15,6 +15,7 @@ const { clean } = require('../utils/text');
 const { normalizeUserId } = require('./idService');
 const { getConnectedUserIds } = require('../utils/networkAccess');
 const notifyQuiet = require('./notifyQuiet');
+const { fetchUsersById, nameOf, photoOf } = require('./userLookup');
 
 const db = () => getFirestore();
 const runsCol = () => db().collection('sharedRuns');
@@ -95,11 +96,24 @@ const isStaleLive = (data, now = Date.now()) => data.status === 'live' && now - 
 const isAbandoned = (data, now = Date.now()) => isStaleLive(data, now) && !(data.distanceM > 0)
   && !(data.invitedIds || []).length && !(data.watcherIds || []).length;
 
-const toClientRun = (id, data, viewerId, now = Date.now()) => ({
+// The runner, watchers and cheerers are named as they are NOW: `users` comes
+// from fetchUsersById (presentRun / listWatching); without it, or for a
+// deleted account, the names stored on the run stand (Wes, 2026-10-31).
+const NO_USERS = new Map();
+const cardOf = (users, uid) => (users && uid ? users.get(String(uid)) : null);
+const SHOWN_CHEERS = 30;
+/** Every person a run response names. */
+const runPeopleIds = (data) => [
+  data.ownerId,
+  ...(data.watcherIds || []),
+  ...(data.cheers || []).slice(-SHOWN_CHEERS).map(c => c && c.fromId)
+];
+
+const toClientRun = (id, data, viewerId, now = Date.now(), users = NO_USERS) => ({
   id,
   ownerId: data.ownerId,
-  ownerName: data.ownerName,
-  ownerAvatarUrl: data.ownerAvatarUrl || null,
+  ownerName: nameOf(cardOf(users, data.ownerId)) || data.ownerName,
+  ownerAvatarUrl: photoOf(cardOf(users, data.ownerId)) || data.ownerAvatarUrl || null,
   isMine: data.ownerId === viewerId,
   // live | finished (a stale live run reads as finished)
   status: isStaleLive(data, now) ? 'finished' : data.status,
@@ -116,13 +130,20 @@ const toClientRun = (id, data, viewerId, now = Date.now()) => ({
   route: data.route || '',
   position: data.position || null,
   calories: data.calories || null,
-  watchers: (data.watcherIds || []).map(w => ({ id: w, name: (data.watcherNames || {})[w] || 'Watcher' })),
+  watchers: (data.watcherIds || []).map(w => ({ id: w, name: nameOf(cardOf(users, w)) || (data.watcherNames || {})[w] || 'Watcher' })),
   invitedCount: (data.invitedIds || []).filter(w => !(data.watcherIds || []).includes(w)).length,
-  cheers: (data.cheers || []).slice(-30),
+  cheers: (data.cheers || []).slice(-SHOWN_CHEERS).map(c => {
+    const current = c && nameOf(cardOf(users, c.fromId));
+    return current ? { ...c, fromName: current } : c;
+  }),
   shareUrl: `${LINK_BASE}${data.token}`,
   postedAt: data.postedAt || null,
   watching: (data.watcherIds || []).includes(viewerId)
 });
+
+/** toClientRun with current names: one batched users read. */
+const presentRun = async (id, data, viewerId) =>
+  toClientRun(id, data, viewerId, Date.now(), await fetchUsersById(runPeopleIds(data)));
 
 // ---------------------------------------------------------------------------
 // Live
@@ -148,7 +169,7 @@ async function startLive(uid, { unit, startedAt, clientKey } = {}) {
     const existing = await runsCol().where('ownerId', '==', uid).where('clientKey', '==', key).limit(1).get();
     if (!existing.empty) {
       const doc = existing.docs[0];
-      return { run: toClientRun(doc.id, doc.data(), uid) };
+      return { run: await presentRun(doc.id, doc.data(), uid) };
     }
   }
   const me = await userName(uid);
@@ -163,7 +184,7 @@ async function startLive(uid, { unit, startedAt, clientKey } = {}) {
     createdAt: now, updatedAt: now
   };
   const ref = await runsCol().add(data);
-  return { run: toClientRun(ref.id, data, uid) };
+  return { run: await presentRun(ref.id, data, uid) };
 }
 
 async function invite(id, uid, { userIds } = {}) {
@@ -190,7 +211,7 @@ async function invite(id, uid, { userIds } = {}) {
 /** Follow along (invited, or anyone holding the link). */
 async function watch(id, uid, { token } = {}) {
   const { ref, data } = token ? await loadByToken(token) : await load(id);
-  if (data.ownerId === uid) return { run: toClientRun(ref.id, data, uid) };
+  if (data.ownerId === uid) return { run: await presentRun(ref.id, data, uid) };
   if (!token && !(data.invitedIds || []).includes(uid) && !(data.watcherIds || []).includes(uid)) {
     throw new ServiceError(403, 'not_invited', 'Ask the runner for an invite to watch');
   }
@@ -214,7 +235,7 @@ async function watch(id, uid, { token } = {}) {
     }
   }
   const fresh = { ...data, watcherIds: [...new Set([...(data.watcherIds || []), uid])], watcherNames: { ...(data.watcherNames || {}), [uid]: me.name } };
-  return { run: toClientRun(ref.id, fresh, uid) };
+  return { run: await presentRun(ref.id, fresh, uid) };
 }
 
 async function loadByToken(token) {
@@ -226,7 +247,7 @@ async function loadByToken(token) {
 
 async function getRun(id, uid) {
   const { ref, data } = await loadViewable(id, uid);
-  return { run: toClientRun(ref.id, data, uid) };
+  return { run: await presentRun(ref.id, data, uid) };
 }
 
 /** The runner's phone, every ~30 s and at each split: new splits push to watchers. */
@@ -260,7 +281,7 @@ async function progress(id, uid, body = {}) {
 async function finish(id, uid, body = {}) {
   const { ref, data } = await load(id);
   if (data.ownerId !== uid) throw new ServiceError(403, 'not_owner', 'Not your run');
-  if (data.status === 'finished') return { run: toClientRun(ref.id, data, uid) };
+  if (data.status === 'finished') return { run: await presentRun(ref.id, data, uid) };
   const now = nowIso();
   const update = {
     status: 'finished', finishedAt: now, updatedAt: now, isPaused: false,
@@ -275,7 +296,7 @@ async function finish(id, uid, body = {}) {
   for (const w of data.watcherIds || []) {
     notifyQuiet.sendInBackground(w, { type: 'run_live_finished', ...msg, data: { runId: ref.id } }, 'run_live_finished');
   }
-  return { run: toClientRun(ref.id, { ...data, ...update }, uid) };
+  return { run: await presentRun(ref.id, { ...data, ...update }, uid) };
 }
 
 /** The runner discarded it: watchers are told, the doc goes. */
@@ -316,8 +337,12 @@ async function listWatching(uid) {
   ]);
   const seen = new Map();
   for (const d of [...watching.docs, ...invited.docs, ...mine.docs]) seen.set(d.id, d);
+  const shown = [...seen.values()].filter(d => !isAbandoned(d.data()));
+  // One users read for every runner, watcher and cheerer in the list
+  const users = await fetchUsersById(shown.flatMap(d => runPeopleIds(d.data())));
+  const now = Date.now();
   return {
-    runs: [...seen.values()].filter(d => !isAbandoned(d.data())).map(d => toClientRun(d.id, d.data(), uid))
+    runs: shown.map(d => toClientRun(d.id, d.data(), uid, now, users))
       .sort((a, b) => (a.status === 'live' ? 0 : 1) - (b.status === 'live' ? 0 : 1)
         || String(b.startedAt).localeCompare(String(a.startedAt)))
   };
@@ -370,7 +395,8 @@ async function postToActivity(uid, { runId, summary = {}, audience, audienceList
 /** For the /app/run/<token> web page: who and whether it's live (no route, no position). */
 async function publicPreview(token) {
   const { data } = await loadByToken(token);
-  return { ownerName: data.ownerName, live: data.status === 'live' };
+  const users = await fetchUsersById([data.ownerId]);
+  return { ownerName: nameOf(cardOf(users, data.ownerId)) || data.ownerName, live: data.status === 'live' };
 }
 
 /** A posted run, for someone who tapped the feed row (the feed already gated it). */
@@ -379,11 +405,11 @@ async function getPostedRun(id, uid, viewerCanSee) {
   if (!canView(data, uid) && !(data.postedAt && await viewerCanSee(data))) {
     throw new ServiceError(403, 'not_visible', "This run isn't shared with you");
   }
-  return { run: toClientRun(ref.id, data, uid) };
+  return { run: await presentRun(ref.id, data, uid) };
 }
 
 module.exports = {
   startLive, invite, watch, getRun, progress, finish, cancel, cheer, listWatching, postToActivity, getPostedRun, publicPreview,
   // pure (tested)
-  splitMessage, finishMessage, toClientRun, canView, CHEERS, isStaleLive, isAbandoned
+  splitMessage, finishMessage, toClientRun, presentRun, canView, CHEERS, isStaleLive, isAbandoned
 };

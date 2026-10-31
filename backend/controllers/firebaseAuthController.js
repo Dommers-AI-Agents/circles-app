@@ -1096,6 +1096,18 @@ exports.updateProfile = async (req, res, next) => {
     if (displayName !== undefined) updateData.displayName = displayName;
     if (firstName !== undefined) updateData.firstName = firstName;
     if (lastName !== undefined) updateData.lastName = lastName;
+    if (displayName !== undefined || firstName !== undefined || lastName !== undefined) {
+      // A rename here must be findable by name search too, exactly as
+      // PUT /users/me does: searchTokens/searchName/displayNameLowercase come
+      // from the one tokenizer (services/userSearchService), built from all
+      // three name fields. This legacy path used to leave the old name in search.
+      const current = (await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get()).data() || {};
+      Object.assign(updateData, require('../services/userSearchService').userSearchFields({
+        displayName: displayName !== undefined ? displayName : current.displayName,
+        firstName: firstName !== undefined ? firstName : current.firstName,
+        lastName: lastName !== undefined ? lastName : current.lastName
+      }));
+    }
     if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
     if (bio !== undefined) updateData.bio = bio;
     if (location !== undefined) updateData.location = location;

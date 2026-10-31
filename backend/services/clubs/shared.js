@@ -15,6 +15,7 @@ const { ServiceError } = require('../../utils/serviceError');
 const { clean } = require('../../utils/text');
 const { localDateKey, zonedTimeToUtc, FALLBACK_ZONE } = require('../../utils/localClock');
 const { atLeast } = require('../../utils/appVersion');
+const { fetchUsersById, nameOf, photoOf } = require('../userLookup');
 
 const NAME_MAX = 40;
 const DESCRIPTION_MAX = 500;
@@ -235,25 +236,40 @@ function scheduleLine(schedule) {
 
 const memberInfo = (club, uid) => (club.members && club.members[uid]) || {};
 
-const toClientMember = (club, uid) => ({
+// People are named as they are NOW: the mappers take a `users` map from
+// fetchUsersById (see clubPeople) and fall back to the name/photo stored on
+// the club, post or RSVP when the account is gone (Wes, 2026-10-31).
+const NO_USERS = new Map();
+const cardOf = (users, uid) => (users && uid ? users.get(String(uid)) : null);
+const currentName = (users, uid, stored) => nameOf(cardOf(users, uid)) || stored;
+const currentPhoto = (users, uid, stored) => photoOf(cardOf(users, uid)) || stored;
+/** One batched users read for every person a response names. */
+const clubPeople = (ids) => fetchUsersById(ids);
+const ownerNameOf = (club, users = NO_USERS) => currentName(users, club.ownerId, club.ownerName);
+
+const toClientMember = (club, uid, users = NO_USERS) => ({
   userId: uid,
-  name: memberInfo(club, uid).name || 'Member',
-  avatarUrl: memberInfo(club, uid).avatarUrl || null,
+  name: currentName(users, uid, memberInfo(club, uid).name) || 'Member',
+  avatarUrl: currentPhoto(users, uid, memberInfo(club, uid).avatarUrl) || null,
   role: roleOf(club, uid),
   joinedAt: memberInfo(club, uid).joinedAt || null
 });
 
 const ROLE_ORDER = { owner: 0, organizer: 1, member: 2 };
-const toClientMembers = (club) => (club.memberIds || [])
-  .map((uid) => toClientMember(club, uid))
+const toClientMembers = (club, users = NO_USERS) => (club.memberIds || [])
+  .map((uid) => toClientMember(club, uid, users))
   .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.name.localeCompare(b.name));
 
 /** One occurrence with its RSVPs (rsvp = the clubRsvps doc data, or null). */
-function toClientOccurrence(occ, rsvp, club, viewerId) {
+function toClientOccurrence(occ, rsvp, club, viewerId, users = NO_USERS) {
   const going = Object.entries((rsvp && rsvp.going) || {})
     .filter(([uid]) => isMember(club, uid))
     .sort((a, b) => String(a[1].at || '').localeCompare(String(b[1].at || '')))
-    .map(([uid, g]) => ({ userId: uid, name: g.name || memberInfo(club, uid).name || 'Member', avatarUrl: g.avatarUrl || memberInfo(club, uid).avatarUrl || null }));
+    .map(([uid, g]) => ({
+      userId: uid,
+      name: currentName(users, uid, g.name || memberInfo(club, uid).name) || 'Member',
+      avatarUrl: currentPhoto(users, uid, g.avatarUrl || memberInfo(club, uid).avatarUrl) || null
+    }));
   const not = Object.keys((rsvp && rsvp.not) || {}).filter((uid) => isMember(club, uid));
   return {
     key: occ.key,
@@ -280,7 +296,7 @@ const toClientSummary = (id, club, viewerId, next = null) => ({
 });
 
 /** Post shape: reactions summed by emoji, mine flagged. */
-function toClientPost(id, post, club, viewerId) {
+function toClientPost(id, post, club, viewerId, users = NO_USERS) {
   const counts = new Map();
   for (const [uid, emoji] of Object.entries(post.reactions || {})) {
     const row = counts.get(emoji) || { emoji, count: 0, mine: false };
@@ -292,8 +308,8 @@ function toClientPost(id, post, club, viewerId) {
     id,
     kind: post.kind,
     authorId: post.authorId,
-    authorName: post.authorName || 'Member',
-    authorAvatar: post.authorAvatar || null,
+    authorName: currentName(users, post.authorId, post.authorName) || 'Member',
+    authorAvatar: currentPhoto(users, post.authorId, post.authorAvatar) || null,
     text: post.text || '',
     photoUrl: post.photoUrl || null,
     createdAt: post.createdAt,
@@ -303,11 +319,11 @@ function toClientPost(id, post, club, viewerId) {
   };
 }
 
-const toClientReply = (id, reply, club, viewerId) => ({
+const toClientReply = (id, reply, club, viewerId, users = NO_USERS) => ({
   id,
   authorId: reply.authorId,
-  authorName: reply.authorName || 'Member',
-  authorAvatar: reply.authorAvatar || null,
+  authorName: currentName(users, reply.authorId, reply.authorName) || 'Member',
+  authorAvatar: currentPhoto(users, reply.authorId, reply.authorAvatar) || null,
   text: reply.text || '',
   createdAt: reply.createdAt,
   canDelete: reply.authorId === viewerId || isOrganizer(club, viewerId)
@@ -365,5 +381,6 @@ module.exports = {
   isMember, isOrganizer, roleOf, isMuted, pushTargets, canOpenClubs,
   upcomingOccurrences, occurrenceLine, scheduleLine, time12,
   toClientMember, toClientMembers, toClientOccurrence, toClientSummary, toClientPost, toClientReply,
+  clubPeople, ownerNameOf,
   userSummary, loadClub, loadAsMember, loadAsOrganizer, loadByToken, rsvpsFor
 };

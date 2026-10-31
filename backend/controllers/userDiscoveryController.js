@@ -7,6 +7,7 @@ const { COLLECTIONS } = require('../models/FirestoreModels');
 const geofire = require('geofire-common');
 const { getPlaceCountMap } = require('../services/userStatsCache');
 const { isHiddenAccount, HIDDEN_ACCOUNT_FIELDS } = require('../services/hiddenAccounts');
+const { nameOf, photoOf } = require('../services/userLookup');
 const { getSuggestionsFor } = require('../services/suggestionEngine');
 const { coarseDistanceKm } = require('../services/publicProjection');
 const { clampPagination } = require('../utils/pagination');
@@ -257,21 +258,25 @@ const getDiscoverUsers = async (req, res) => {
       if (precomputed && precomputed.length > 0) {
         let fresh = precomputed.filter((s) => isSuggestable(s.userId) && !hasActiveConnection(s.userId));
         // Stored suggestions may predate an account being marked as a test
-        // account: check the ones this page could show
+        // account: check the ones this page could show. The same read gives
+        // each person's CURRENT name and photo — the suggestion doc's copy is
+        // from whenever the nightly job ran (one source for people).
         const pageCandidates = fresh.slice(0, offsetNum + limitNum + 11);
+        const current = new Map();
         if (pageCandidates.length > 0) {
           const docs = await db.getAll(
             ...pageCandidates.map((x) => db.collection(COLLECTIONS.USERS).doc(x.userId)),
-            { fieldMask: HIDDEN_ACCOUNT_FIELDS }
+            { fieldMask: [...HIDDEN_ACCOUNT_FIELDS, 'displayName', 'profilePicture', 'photoURL', 'photoUrl'] }
           );
           const hidden = new Set(docs.filter((d) => !d.exists || isHiddenAccount(d.data())).map((d) => d.id));
+          docs.forEach((d) => { if (d.exists) current.set(d.id, d.data()); });
           fresh = fresh.filter((x) => !hidden.has(x.userId));
         }
         users = fresh.slice(0, offsetNum + limitNum + 1).map((s) => ({
           id: s.userId,
           _id: s.userId,
-          displayName: s.displayName,
-          profilePicture: s.profilePicture,
+          displayName: nameOf(current.get(s.userId)) || s.displayName,
+          profilePicture: photoOf(current.get(s.userId)) || s.profilePicture,
           isVerified: s.isVerified,
           placesCount: s.placesCount,
           circlesCount: s.circlesCount,

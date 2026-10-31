@@ -19,21 +19,29 @@ const { COLLECTIONS } = require('../../models/FirestoreModels');
 // Reads
 // ---------------------------------------------------------------------------
 
-async function latestPosts(clubId, kind, n, club, uid) {
+async function latestPosts(clubId, kind, n) {
   const snap = await s.postsCol().where('clubId', '==', clubId).where('kind', '==', kind)
     .orderBy('createdAt', 'desc').limit(n).get();
-  return snap.docs.map((d) => s.toClientPost(d.id, d.data(), club, uid));
+  return snap.docs;
 }
 
-/** Everything the club page shows. */
+/** Everything the club page shows. Everyone on it is named as they are now
+ *  (one batched users read: owner, members, post authors). */
 async function clubDetail(id, data, uid, now = new Date()) {
   const occurrences = s.upcomingOccurrences(data, now);
-  const [rsvps, bulletin, boardPreview] = await Promise.all([
+  const [rsvps, bulletinDocs, boardDocs] = await Promise.all([
     s.rsvpsFor(id, occurrences),
-    latestPosts(id, 'bulletin', 3, data, uid),
-    latestPosts(id, 'board', 3, data, uid)
+    latestPosts(id, 'bulletin', 3),
+    latestPosts(id, 'board', 3)
   ]);
-  const upcoming = occurrences.map((o) => s.toClientOccurrence(o, rsvps.get(o.key), data, uid));
+  const users = await s.clubPeople([
+    data.ownerId, ...(data.memberIds || []),
+    ...[...bulletinDocs, ...boardDocs].map((d) => d.data().authorId)
+  ]);
+  const post = (d) => s.toClientPost(d.id, d.data(), data, uid, users);
+  const bulletin = bulletinDocs.map(post);
+  const boardPreview = boardDocs.map(post);
+  const upcoming = occurrences.map((o) => s.toClientOccurrence(o, rsvps.get(o.key), data, uid, users));
   const from = now.getTime() - 60 * 60 * 1000;
   return {
     ...s.toClientSummary(id, data, uid, upcoming[0] || null),
@@ -41,7 +49,7 @@ async function clubDetail(id, data, uid, now = new Date()) {
     homeSpot: data.homeSpot || null,
     timezone: s.cleanTimezone(data.timezone),
     ownerId: data.ownerId,
-    ownerName: data.ownerName,
+    ownerName: s.ownerNameOf(data, users),
     joinOpen: data.joinOpen !== false,
     inviteLink: `${s.LINK_BASE}${data.inviteToken}`,
     scheduleLine: s.scheduleLine(data.schedule),
@@ -49,7 +57,7 @@ async function clubDetail(id, data, uid, now = new Date()) {
     events: (data.events || []).filter((e) => Date.parse(e.startsAt) >= from)
       .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
       .map((e) => ({ id: e.id, title: e.title, startsAt: e.startsAt, spot: e.spot || null, notes: e.notes || '' })),
-    members: s.toClientMembers(data),
+    members: s.toClientMembers(data, users),
     upcoming,
     bulletin,
     boardPreview
@@ -65,8 +73,10 @@ async function listClubs(uid, now = new Date()) {
   const wanted = clubs.map((d, i) => (nexts[i] ? s.rsvpsCol().doc(`${d.id}_${nexts[i].key}`) : null)).filter(Boolean);
   const rsvpDocs = wanted.length ? await s.db().getAll(...wanted) : [];
   const rsvpById = new Map(rsvpDocs.map((d) => [d.id, d.exists ? d.data() : null]));
+  // Who's going to each next meetup, as they are now (one read for the list)
+  const users = await s.clubPeople([...rsvpById.values()].flatMap((r) => Object.keys((r && r.going) || {})));
   const summaries = clubs.map((d, i) => {
-    const next = nexts[i] ? s.toClientOccurrence(nexts[i], rsvpById.get(`${d.id}_${nexts[i].key}`), d.data(), uid) : null;
+    const next = nexts[i] ? s.toClientOccurrence(nexts[i], rsvpById.get(`${d.id}_${nexts[i].key}`), d.data(), uid, users) : null;
     return s.toClientSummary(d.id, d.data(), uid, next);
   });
   return summaries.sort((a, b) => {
@@ -90,7 +100,7 @@ async function previewByToken(token, uid) {
     emoji: data.emoji,
     kind: data.kind || 'other',
     description: data.description || '',
-    ownerName: data.ownerName,
+    ownerName: s.ownerNameOf(data, await s.clubPeople([data.ownerId])),
     memberCount: (data.memberIds || []).length,
     joinOpen: data.joinOpen !== false,
     alreadyMember: s.isMember(data, uid),
@@ -106,7 +116,7 @@ async function publicPreview(token) {
     emoji: data.emoji,
     kind: data.kind || 'other',
     description: data.description || '',
-    ownerName: data.ownerName,
+    ownerName: s.ownerNameOf(data, await s.clubPeople([data.ownerId])),
     memberCount: (data.memberIds || []).length,
     joinOpen: data.joinOpen !== false,
     scheduleLine: s.scheduleLine(data.schedule),

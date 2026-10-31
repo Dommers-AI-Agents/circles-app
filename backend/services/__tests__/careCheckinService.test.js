@@ -426,6 +426,19 @@ describe('reads', () => {
     await expect(care.listAsks({ userId: 'stranger', planId: PLAN })).rejects.toMatchObject({ code: 'not_yours' });
   });
 
+  test('plans name the owner, parent and family as they are now; a deleted account keeps the stored name', async () => {
+    await activePlan({ watchers: [{ userId: SIBLING, name: 'Kate', status: 'active' }, { userId: 'gone', name: 'Ghost', status: 'active' }],
+      watcherIds: [SIBLING, 'gone'] });
+    await mockDb.collection(COLLECTIONS.USERS).doc(CHILD).set({ displayName: 'Wes Sgroi' });
+    await mockDb.collection(COLLECTIONS.USERS).doc(PARENT).set({ displayName: 'Mama' });
+    await mockDb.collection(COLLECTIONS.USERS).doc(SIBLING).set({ displayName: 'Katie' });
+    const { asOwner: [plan] } = await care.listPlans(CHILD);
+    expect(plan).toMatchObject({ ownerName: 'Wes Sgroi', parentName: 'Mama' });
+    expect(plan.watchers.map(w => w.name)).toEqual(['Katie', 'Ghost']);
+    // The stored copies are untouched (snapshots for pushes already sent)
+    expect(plans().get(PLAN)).toMatchObject({ ownerName: 'Wes', parentName: 'Mom' });
+  });
+
   test('helpers', () => {
     expect(care.friendlyTime('08:30')).toBe('8:30 AM');
     expect(care.friendlyTime('13:05')).toBe('1:05 PM');

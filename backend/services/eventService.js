@@ -27,6 +27,7 @@ const { newId, nowIso } = require('../utils/ids');
 const { clean } = require('../utils/text');
 const notifyQuiet = require('./notifyQuiet');
 const { atLeast } = require('../utils/appVersion');
+const { fetchUsersById, nameOf, photoOf } = require('./userLookup');
 
 /**
  * Events invites go to 1.3.8 and newer (Wes, 2026-10-08: 1.3.7 users update
@@ -129,13 +130,34 @@ const parsePlace = (body) => {
   };
 };
 
+// People on an event (host, members, invitees, the roll-call starter, photo
+// uploaders, place taggers) are named as they are NOW: the mappers take a
+// `users` map from fetchUsersById and fall back to the name/photo stored on
+// the event when the account is gone (Wes, 2026-10-31: one source).
+const NO_USERS = new Map();
+const cardOf = (users, uid) => (users && uid ? users.get(String(uid)) : null);
+
+/** Every person an event's own response names. */
+const eventPeopleIds = (data) => [
+  data.hostId,
+  ...(data.memberIds || []),
+  ...(data.pendingInviteIds || []),
+  data.rollCall && data.rollCall.startedBy
+];
+
+/** toClientEvent with current names/photos: one batched users read. */
+const presentEvent = async (id, data, viewerId) =>
+  toClientEvent(id, data, viewerId, await fetchUsersById(eventPeopleIds(data)));
+
+const hostNameOf = (data, users) => nameOf(cardOf(users, data.hostId)) || data.hostName;
+
 /** What a member sees. Never includes tokens of other people's lists. */
-const toClientEvent = (id, data, viewerId) => ({
+const toClientEvent = (id, data, viewerId, users = NO_USERS) => ({
   id,
   name: data.name,
   emoji: data.emoji || DEFAULT_EMOJI,
   hostId: data.hostId,
-  hostName: data.hostName,
+  hostName: hostNameOf(data, users),
   isHost: data.hostId === viewerId,
   joinOpen: data.joinOpen !== false,
   createdAt: data.createdAt,
@@ -143,14 +165,14 @@ const toClientEvent = (id, data, viewerId) => ({
   placeCount: data.placeCount || 0,
   members: (data.memberIds || []).map(uid => ({
     id: uid,
-    name: (data.members && data.members[uid] && data.members[uid].name) || 'Member',
-    avatarUrl: (data.members && data.members[uid] && data.members[uid].avatarUrl) || null,
+    name: nameOf(cardOf(users, uid)) || (data.members && data.members[uid] && data.members[uid].name) || 'Member',
+    avatarUrl: photoOf(cardOf(users, uid)) || (data.members && data.members[uid] && data.members[uid].avatarUrl) || null,
     isHost: uid === data.hostId
   })),
   // Invited (in-app) and not joined yet — so the inviter sees it went out
   invited: (data.pendingInviteIds || []).filter(uid => !(data.memberIds || []).includes(uid)).map(uid => ({
     id: uid,
-    name: (data.invited && data.invited[uid] && data.invited[uid].name) || 'Invited'
+    name: nameOf(cardOf(users, uid)) || (data.invited && data.invited[uid] && data.invited[uid].name) || 'Invited'
   })),
   inviteUrl: `${LINK_BASE}${data.inviteToken}`,
   // Archived: hidden from the viewer's list, album intact. By the
@@ -161,19 +183,19 @@ const toClientEvent = (id, data, viewerId) => ({
   // Ended events stay for their members with a recap (2026-10-06)
   endedAt: data.endedAt || null,
   challenges: (data.challenges || []).map(c => ({ id: c.id, text: c.text, emoji: c.emoji || '📸' })),
-  rollCall: toClientRollCall(data, viewerId)
+  rollCall: toClientRollCall(data, viewerId, users)
 });
 
 /** The roll call in progress, if any: who's said "here", and where (only
  *  for those who chose to share it, and only inside the event). */
-const toClientRollCall = (data, viewerId) => {
+const toClientRollCall = (data, viewerId, users = NO_USERS) => {
   const rc = data.rollCall;
   if (!rc || !rc.id || rc.closedAt) return null;
   const here = rc.here || {};
   return {
     id: rc.id,
     startedAt: rc.startedAt,
-    startedByName: rc.startedByName || data.hostName,
+    startedByName: nameOf(cardOf(users, rc.startedBy)) || rc.startedByName || hostNameOf(data, users),
     hereIds: Object.keys(here).filter(uid => (data.memberIds || []).includes(uid)),
     imHere: !!here[viewerId],
     locations: Object.entries(rc.locations || {})
@@ -182,7 +204,7 @@ const toClientRollCall = (data, viewerId) => {
   };
 };
 
-const toClientPhoto = (doc, viewerId, hostId, places = []) => {
+const toClientPhoto = (doc, viewerId, hostId, places = [], users = NO_USERS) => {
   const d = doc.data();
   const likes = Array.isArray(d.likes) ? d.likes : [];
   const hasSpot = Number.isFinite(d.lat) && Number.isFinite(d.lng);
@@ -192,7 +214,7 @@ const toClientPhoto = (doc, viewerId, hostId, places = []) => {
     imageUrl: d.imageUrl,
     thumbUrl: d.thumbUrl || null,
     uploaderId: d.uploaderId,
-    uploaderName: d.uploaderName,
+    uploaderName: nameOf(cardOf(users, d.uploaderId)) || d.uploaderName,
     caption: d.caption || '',
     challengeId: d.challengeId || null,
     createdAt: d.createdAt,
@@ -212,7 +234,7 @@ const toClientPhoto = (doc, viewerId, hostId, places = []) => {
   };
 };
 
-const toClientPlace = (doc, viewerId) => {
+const toClientPlace = (doc, viewerId, users = NO_USERS) => {
   const d = doc.data();
   const savedBy = Array.isArray(d.savedBy) ? d.savedBy : [];
   return {
@@ -223,7 +245,7 @@ const toClientPlace = (doc, viewerId) => {
     lng: d.lng,
     category: d.category || 'other',
     taggedById: d.taggedById,
-    taggedByName: d.taggedByName,
+    taggedByName: nameOf(cardOf(users, d.taggedById)) || d.taggedByName,
     createdAt: d.createdAt,
     savedCount: savedBy.length,
     savedByMe: savedBy.includes(viewerId)
@@ -282,9 +304,11 @@ async function listEvents(uid, { hideArchived = false } = {}) {
     .orderBy('createdAt', 'desc')
     .limit(MAX_EVENTS_LISTED)
     .get();
-  return snap.docs
-    .filter(d => !d.data().deletedAt)
-    .map(d => toClientEvent(d.id, d.data(), uid))
+  const live = snap.docs.filter(d => !d.data().deletedAt);
+  // One users read for every person across the whole list
+  const users = await fetchUsersById(live.flatMap(d => eventPeopleIds(d.data())));
+  return live
+    .map(d => toClientEvent(d.id, d.data(), uid, users))
     .filter(e => !(hideArchived && e.archived));
 }
 
@@ -296,17 +320,22 @@ async function getEvent(eventId, uid) {
   ]);
   // A connection made since the last visit joins the viewer's event list
   syncInnerListFor(ref, data, uid).catch(err => console.error('🚌 inner list sync failed:', err.message));
-  const event = toClientEvent(ref.id, data, uid);
+  const placeRows = places.docs.map(d => ({ id: d.id, ...d.data() }));
+  const users = await fetchUsersById([
+    ...eventPeopleIds(data),
+    ...photos.docs.map(d => d.data().uploaderId),
+    ...placeRows.map(p => p.taggedById)
+  ]);
+  const event = toClientEvent(ref.id, data, uid, users);
   // The coordinator sees who pushes can't reach (notifications off, or no
   // device), so they know to text those people about roll call etc.
   if (data.hostId === uid) event.pushOffMemberIds = await pushOffMembers(data, uid);
-  const placeRows = places.docs.map(d => ({ id: d.id, ...d.data() }));
   const videos = require('./eventVideoService');
   return {
     event,
     // A video still uploading isn't shown to anyone
-    photos: photos.docs.filter(d => videos.isVisible(d.data())).map(d => toClientPhoto(d, uid, data.hostId, placeRows)),
-    places: places.docs.map(d => toClientPlace(d, uid)),
+    photos: photos.docs.filter(d => videos.isVisible(d.data())).map(d => toClientPhoto(d, uid, data.hostId, placeRows, users)),
+    places: places.docs.map(d => toClientPlace(d, uid, users)),
     // What this viewer may add, so the picker can say so before uploading
     videoLimits: await videos.viewerVideoLimits(ref.id, uid).catch(() => null)
   };
@@ -324,11 +353,12 @@ async function pushOffMembers(data, viewerId) {
 /** The join screen's preview (any signed-in person holding the link). */
 async function previewByToken(token, uid) {
   const { id, data } = await loadByToken(token);
+  const users = await fetchUsersById([data.hostId]);
   return {
     id,
     name: data.name,
     emoji: data.emoji || DEFAULT_EMOJI,
-    hostName: data.hostName,
+    hostName: hostNameOf(data, users),
     memberCount: (data.memberIds || []).length,
     joinOpen: data.joinOpen !== false,
     alreadyMember: isMember(data, uid)
@@ -338,10 +368,11 @@ async function previewByToken(token, uid) {
 /** Public page data for /app/event/<token> (no auth, no member names). */
 async function publicPreview(token) {
   const { data } = await loadByToken(token);
+  const users = await fetchUsersById([data.hostId]);
   return {
     name: data.name,
     emoji: data.emoji || DEFAULT_EMOJI,
-    hostName: data.hostName,
+    hostName: hostNameOf(data, users),
     memberCount: (data.memberIds || []).length,
     joinOpen: data.joinOpen !== false
   };
@@ -421,7 +452,7 @@ async function joinByToken(token, uid) {
     }
     syncAllInnerLists(ref.id).catch(err => console.error('🚌 inner list sync failed:', err.message));
   }
-  return { event: toClientEvent(ref.id, result.data, uid), joined: result.joined, coinCredited };
+  return { event: await presentEvent(ref.id, result.data, uid), joined: result.joined, coinCredited };
 }
 
 /** In-app invites to the coordinator's or a member's connections. */
@@ -458,7 +489,7 @@ async function inviteConnections(eventId, uid, userIds) {
     }, 'event_invite');
   });
   const fresh = (await ref.get()).data();
-  return { invited: invitees.length, event: toClientEvent(ref.id, fresh, uid) };
+  return { invited: invitees.length, event: await presentEvent(ref.id, fresh, uid) };
 }
 
 async function leaveEvent(eventId, uid) {
@@ -508,7 +539,7 @@ async function updateEvent(eventId, hostUid, { name, emoji, joinOpen } = {}) {
   if (update.emoji && update.emoji !== data.emoji) {
     syncEventCircleCovers(ref.id, update.emoji).catch(err => console.error('🚌 cover swap failed:', err.message));
   }
-  return toClientEvent(ref.id, next, hostUid);
+  return await presentEvent(ref.id, next, hostUid);
 }
 
 /** A fresh link (the old one stops working) — the coordinator's undo for a leaked link. */
@@ -517,7 +548,7 @@ async function resetInviteLink(eventId, hostUid) {
   if (data.hostId !== hostUid) throw new ServiceError(403, 'not_host', 'Only the coordinator can reset the link');
   const inviteToken = newToken();
   await ref.update({ inviteToken, updatedAt: nowIso() });
-  return toClientEvent(ref.id, { ...data, inviteToken }, hostUid);
+  return await presentEvent(ref.id, { ...data, inviteToken }, hostUid);
 }
 
 /** Archive: out of the list, nothing deleted. forEveryone is coordinator-only. */
@@ -527,11 +558,11 @@ async function archiveEvent(eventId, uid, { forEveryone = false } = {}) {
   if (forEveryone) {
     if (data.hostId !== uid) throw new ServiceError(403, 'not_host', 'Only the coordinator can archive it for everyone');
     await ref.update({ archivedAt: now, joinOpen: false, updatedAt: now });
-    return toClientEvent(ref.id, { ...data, archivedAt: now, joinOpen: false }, uid);
+    return await presentEvent(ref.id, { ...data, archivedAt: now, joinOpen: false }, uid);
   }
   await ref.update(memberPath(uid, 'archivedAt'), now);
   const members = { ...(data.members || {}), [uid]: { ...((data.members || {})[uid] || {}), archivedAt: now } };
-  return toClientEvent(ref.id, { ...data, members }, uid);
+  return await presentEvent(ref.id, { ...data, members }, uid);
 }
 
 /** Back in the list. The coordinator's unarchive restores it for everyone (joining stays closed until reopened). */
@@ -544,7 +575,7 @@ async function unarchiveEvent(eventId, uid) {
   if (members[uid]) { members[uid] = { ...members[uid] }; delete members[uid].archivedAt; }
   const next = { ...data, members };
   if (data.hostId === uid) delete next.archivedAt;
-  return toClientEvent(ref.id, next, uid);
+  return await presentEvent(ref.id, next, uid);
 }
 
 async function endEvent(eventId, hostUid) {
@@ -764,15 +795,17 @@ async function deletePhoto(eventId, uid, photoId) {
 async function togglePhotoLike(eventId, uid, photoId) {
   const { ref, data } = await loadAsMember(eventId, uid);
   const photoRef = photosCol().doc(String(photoId));
-  return db().runTransaction(async (tx) => {
+  const out = await db().runTransaction(async (tx) => {
     const doc = await tx.get(photoRef);
     if (!doc.exists || doc.data().eventId !== ref.id) throw new ServiceError(404, 'not_found', 'That photo is gone');
     const likes = Array.isArray(doc.data().likes) ? doc.data().likes : [];
     const liked = likes.includes(uid);
     const next = liked ? likes.filter(id => id !== uid) : [...likes, uid];
     tx.update(photoRef, { likes: next });
-    return toClientPhoto({ id: doc.id, data: () => ({ ...doc.data(), likes: next }) }, uid, data.hostId);
+    return { doc, likes: next };
   });
+  const users = await fetchUsersById([out.doc.data().uploaderId]);
+  return toClientPhoto({ id: out.doc.id, data: () => ({ ...out.doc.data(), likes: out.likes }) }, uid, data.hostId, [], users);
 }
 
 // ---------------------------------------------------------------------------
@@ -785,7 +818,7 @@ async function tagPlace(eventId, uid, body) {
   // Same spot tagged twice (two people at the same bar): keep one row
   const existing = await placesCol().where('eventId', '==', ref.id).where('name', '==', place.name).limit(5).get();
   const dupe = existing.docs.find(d => Math.abs(d.data().lat - place.lat) < 0.0005 && Math.abs(d.data().lng - place.lng) < 0.0005);
-  if (dupe) return toClientPlace(dupe, uid);
+  if (dupe) return toClientPlace(dupe, uid, await fetchUsersById([dupe.data().taggedById]));
   const me = (data.members && data.members[uid]) || {};
   const row = { eventId: ref.id, ...place, taggedById: uid, taggedByName: me.name || 'Member', savedBy: [], createdAt: nowIso() };
   const docRef = await placesCol().add(row);
@@ -874,7 +907,8 @@ async function savePlaceToMyCircle(eventId, user, eventPlaceId) {
   }
   await placeRef.update({ savedBy: FieldValue.arrayUnion(uid) });
   return {
-    place: toClientPlace({ id: doc.id, data: () => ({ ...p, savedBy: [...new Set([...(p.savedBy || []), uid])] }) }, uid),
+    place: toClientPlace({ id: doc.id, data: () => ({ ...p, savedBy: [...new Set([...(p.savedBy || []), uid])] }) }, uid,
+      await fetchUsersById([p.taggedById])),
     circleId: alreadySaved ? (payload.existingCircleId || circleId) : circleId,
     alreadySaved,
     afterResponse: saved ? result.afterResponse : undefined
@@ -891,7 +925,7 @@ module.exports = {
   addPhotos, deletePhoto, togglePhotoLike, tagPlace, savePlaceToMyCircle,
   // pure (tested)
   pickFreshPhotos, FINGERPRINT_RE, fingerprintDistance, FINGERPRINT_MAX_DISTANCE,
-  cleanEventName, cleanEmoji, parsePlace, toClientEvent, listMembersFor, isMember,
+  cleanEventName, cleanEmoji, parsePlace, toClientEvent, presentEvent, eventPeopleIds, listMembersFor, isMember,
   parsePhotoCapture, distanceMeters, nearestTaggedPlace, toClientPhoto, PHOTO_PLACE_RADIUS_M,
   DEFAULT_NAME, LINK_BASE, TOKEN_RE
 };

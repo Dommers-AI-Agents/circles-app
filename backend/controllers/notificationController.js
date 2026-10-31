@@ -3,8 +3,39 @@ const { getFirestore } = require('../config/firebase');
 const { clampPagination } = require('../utils/pagination');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models/FirestoreModels');
 const { computeBadgeCount } = require('../services/badgeService');
+const { fetchUsersById, nameOf, photoOf } = require('../services/userLookup');
 
 const db = getFirestore();
+
+// A bell row keeps who sent it as an id (data.fromUserId / data.senderId) plus
+// the name and photo as they were then. Show the sender as they are NOW; the
+// title/body text stays as written (a snapshot of the moment). One batched
+// users read per page; a deleted account keeps the stored values.
+const SENDER_FIELDS = [
+  { id: 'fromUserId', name: 'fromUserName', photo: 'fromUserPhoto' },
+  { id: 'senderId', name: 'senderName', photo: 'senderPhoto' }
+];
+
+async function withCurrentSenders(notifications) {
+  const ids = [];
+  for (const n of notifications) {
+    for (const f of SENDER_FIELDS) if (n.data && n.data[f.id]) ids.push(n.data[f.id]);
+  }
+  if (ids.length === 0) return notifications;
+  const users = await fetchUsersById(ids);
+  return notifications.map((n) => {
+    if (!n.data) return n;
+    let data = n.data;
+    for (const f of SENDER_FIELDS) {
+      // Only rows that carry a name show one: the shape stays as written.
+      if (!data[f.id] || !(f.name in data)) continue;
+      const card = users.get(String(data[f.id]));
+      if (!card) continue;
+      data = { ...data, [f.name]: nameOf(card) || data[f.name], [f.photo]: photoOf(card) || data[f.photo] || null };
+    }
+    return data === n.data ? n : { ...n, data };
+  });
+}
 
 // @desc    Get user's notifications
 // @route   GET /api/notifications
@@ -52,7 +83,7 @@ exports.getNotifications = async (req, res, next) => {
     });
     
     // Apply pagination manually
-    const paginatedNotifications = filteredNotifications.slice(startIndex, endIndex);
+    const paginatedNotifications = await withCurrentSenders(filteredNotifications.slice(startIndex, endIndex));
 
     // More available if the filtered set extends past this page, or the fetch
     // window filled (older notifications exist beyond the window).

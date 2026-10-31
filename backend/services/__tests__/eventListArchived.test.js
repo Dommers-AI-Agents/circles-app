@@ -7,7 +7,7 @@ const docs = [
   { id: 'gone', data: () => ({ name: 'Gone', hostId: 'wes', memberIds: ['brit'], deletedAt: '2026-10-01', createdAt: '2026-10-01' }) }
 ];
 const query = { where: () => query, orderBy: () => query, limit: () => query, get: async () => ({ docs }) };
-jest.mock('../../config/firebase', () => ({ getFirestore: () => ({ collection: () => query }) }));
+jest.mock('../../config/firebase', () => ({ getFirestore: () => ({ collection: () => ({ ...query, doc: (id) => ({ id }) }), getAll: async () => [] }) }));
 jest.mock('../notifyQuiet', () => ({ sendInBackground: () => {} }));
 const svc = require('../eventService');
 

@@ -27,6 +27,15 @@ describe('own activity: categories and rows', () => {
     const item = shape.presentItem({ id: 'a2', type: 'video_uploaded', targetType: 'video', targetId: 'v1', targetName: 'Stadium', timestamp: ts('2026-09-25T20:00:00Z'), metadata: { videoThumbnail: 'https://x/t.jpg', contentType: 'video' } }, { likeCount: 14, commentCount: 3 });
     expect(item).toMatchObject({ category: 'moments', thumbnailUrl: 'https://x/t.jpg', likeCount: 14, commentCount: 3, isPrivate: false });
   });
+
+  test('a followed-someone row names the person as they are now when the caller has their card', () => {
+    const row = { id: 'a3', type: 'user_followed', targetType: 'user', targetId: 'sal', targetName: 'Salvatore', timestamp: ts('2026-09-25T20:00:00Z') };
+    expect(shape.presentItem(row, { targetUser: { id: 'sal', displayName: 'Sal Sgroi' } }).targetName).toBe('Sal Sgroi');
+    // Account gone (no card): the stored name stands
+    expect(shape.presentItem(row).targetName).toBe('Salvatore');
+    // Only person rows: a place row never takes a card's name
+    expect(shape.presentItem({ ...row, targetType: 'place' }, { targetUser: { displayName: 'X' } }).targetName).toBe('Salvatore');
+  });
 });
 
 describe('own activity: the month summary', () => {
