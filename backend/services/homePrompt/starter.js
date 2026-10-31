@@ -17,7 +17,7 @@ const { DEFAULT_FOLLOW_EMAILS, defaultFollowIds, chosenFollowCount } = require('
 const { needsNewerBuild } = require('../homeCards');
 /** The first build with "Build my map from my photos" (after 1.3.9). */
 const PHOTO_MAP_MIN_VERSION = '1.3.10';
-const DEFAULT_CIRCLE_NAMES = new Set(['Want to Try', 'Favorite Local Spots', 'Vacation']);
+const { isStarterCircle } = require('../systemCircles');
 
 /**
  * Pure (tested): the next step for `progress`, or null when they've done
@@ -102,7 +102,7 @@ module.exports = {
       ]);
       const realPlaces = placesSnap.docs.map(d => d.data()).filter(p => !p.isSamplePlace && !p.deletedAt).length;
       const ownCircles = circlesSnap.docs.map(d => d.data())
-        .filter(c => !c.deletedAt && !c.isDefaultCircle && !DEFAULT_CIRCLE_NAMES.has(c.name)).length;
+        .filter(c => !c.deletedAt && !isStarterCircle(c)).length;
       const followingOthers = chosenFollowCount(ctx.user.following, defaults);
       const photoMapAvailable = !ctx.user.photoMapBuiltAt && !!ctx.appVersion
         && !needsNewerBuild(PHOTO_MAP_MIN_VERSION, ctx.appVersion);

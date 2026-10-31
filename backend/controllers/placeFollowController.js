@@ -11,36 +11,21 @@ const {
   serializeDoc
 } = require('../models/FirestoreModels');
 const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
+const systemCircles = require('../services/systemCircles');
 const { resolveGlobalPlace, ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
 const { setAlerts, PlaceAlertError } = require('../services/placeAlerts');
 
 const db = getFirestore();
 
-const FOLLOW_CIRCLE_NAME = 'Places I Follow';
+const FOLLOW_CIRCLE_NAME = systemCircles.KINDS.followedPlaces.name;
 
-// Find or create the user's "Places I Follow" circle. Mirrors
-// findOrCreateCheckInCircle (checkInController.js) — flag query first, then
-// adopt-by-name so a stripped-flag copy can never spawn duplicates.
+// Find or create the user's "Places I Follow" circle — found by its flag
+// (services/systemCircles), so renaming it never spawns a second one; a
+// legacy name-only copy is adopted and stamped.
 async function findOrCreateFollowCircle(userId) {
-  const flaggedSnapshot = await db.collection(COLLECTIONS.CIRCLES)
-    .where('owner', '==', userId)
-    .where('isFollowedPlacesCircle', '==', true)
-    .get();
-  const flagged = flaggedSnapshot.docs.find(doc => !doc.data().deletedAt);
-  if (flagged) {
-    return serializeDoc(flagged);
-  }
-
-  const byNameSnapshot = await db.collection(COLLECTIONS.CIRCLES)
-    .where('owner', '==', userId)
-    .where('name', '==', FOLLOW_CIRCLE_NAME)
-    .get();
-  const candidates = byNameSnapshot.docs.filter(doc => !doc.data().deletedAt);
-  if (candidates.length > 0) {
-    candidates.sort((a, b) => (a.data().createdAt || '').localeCompare(b.data().createdAt || ''));
-    const keeper = candidates[0];
-    await keeper.ref.update({ isFollowedPlacesCircle: true, updatedAt: new Date().toISOString() });
-    return serializeDoc(await keeper.ref.get());
+  const found = await systemCircles.findOwned(userId, 'followedPlaces', { db });
+  if (found) {
+    return serializeDoc(await db.collection(COLLECTIONS.CIRCLES).doc(found.id).get());
   }
 
   // System circle: created outside the subscription circle cap on purpose,
@@ -49,11 +34,10 @@ async function findOrCreateFollowCircle(userId) {
     name: FOLLOW_CIRCLE_NAME,
     description: 'Stores and places I follow',
     privacy: 'public',
-    isFollowedPlacesCircle: true,
     isSystemCircle: true,
     icon: '🔔'
   }, userId);
-  const circleRef = await db.collection(COLLECTIONS.CIRCLES).add(circle);
+  const circleRef = await db.collection(COLLECTIONS.CIRCLES).add({ ...circle, ...systemCircles.flagFields('followedPlaces') });
   console.log(`✅ Created "${FOLLOW_CIRCLE_NAME}" circle for user ${userId}`);
   return serializeDoc(await circleRef.get());
 }

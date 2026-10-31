@@ -4,6 +4,7 @@
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS, createCircle, createPlace } = require('../models/FirestoreModels');
 const { DEFAULT_CIRCLES, getRandomLocalPlace } = require('../data/popularPlaces');
+const systemCircles = require('./systemCircles');
 
 const db = getFirestore();
 
@@ -75,6 +76,9 @@ class OnboardingService {
           
           // Mark as default circle for potential future features
           circleData.isDefaultCircle = true;
+          // The ones features look up later carry their flag (createCircle
+          // drops unknown keys, so it goes on after)
+          if (circleTemplate.systemKind) Object.assign(circleData, systemCircles.flagFields(circleTemplate.systemKind));
           
           transaction.set(circleRef, circleData);
           circleRefs.push(circleRef);
@@ -85,7 +89,7 @@ class OnboardingService {
         
         // Find the "Favorite Local Spots" circle to add sample place
         const favoriteLocalSpotsIndex = DEFAULT_CIRCLES.findIndex(
-          circle => circle.name === "Favorite Local Spots"
+          circle => circle.systemKind === 'favoriteLocal'
         );
         
         if (favoriteLocalSpotsIndex !== -1 && resolvedSamplePlace && resolvedSamplePlace.coordinates) {
@@ -201,9 +205,11 @@ class OnboardingService {
       // need a composite index)
       const circles = await db.collection(COLLECTIONS.CIRCLES)
         .where('owner', '==', userId).get();
-      const fav = circles.docs.find(c =>
-        c.data().isDefaultCircle && c.data().name === 'Favorite Local Spots');
-      if (!fav || (fav.data().places || []).length > 0) return { seeded: false };
+      // Found by its flag (a renamed one still counts); a legacy unflagged
+      // starter is matched by name and stamped
+      const fav = await systemCircles.pickAndHeal(
+        circles.docs.map(c => ({ id: c.id, ...c.data() })), 'favoriteLocal', { db });
+      if (!fav || (fav.places || []).length > 0) return { seeded: false };
 
       const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
       const userDoc = await userRef.get();
@@ -231,7 +237,7 @@ class OnboardingService {
       }, fav.id, userId);
       placeData.isSamplePlace = true;
       await placeRef.set(placeData);
-      await fav.ref.update({
+      await db.collection(COLLECTIONS.CIRCLES).doc(fav.id).update({
         places: FieldValue.arrayUnion(placeRef.id),
         placesCount: FieldValue.increment(1),
         updatedAt: new Date().toISOString()
@@ -493,13 +499,9 @@ class OnboardingService {
       }
       
       // Find "Want to Try" circle
-      let wantToTryCircle = null;
-      circlesSnapshot.docs.forEach(doc => {
-        const circle = doc.data();
-        if (circle.name === "Want to Try") {
-          wantToTryCircle = { id: doc.id, ...circle };
-        }
-      });
+      // Found by its flag; a legacy unflagged starter by name, then stamped
+      const wantToTryCircle = await systemCircles.pickAndHeal(
+        circlesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })), 'wantToTry', { db });
       
       if (!wantToTryCircle) {
         console.log('⚠️ Want to Try circle not found');

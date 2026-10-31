@@ -15,6 +15,7 @@ const {
   serializeQuerySnapshot 
 } = require('../models/FirestoreModels');
 const { createActivity } = require('../services/activity/createActivity');
+const systemCircles = require('../services/systemCircles');
 const { recordPrivateCheckIn } = require('../services/ownActivity/record');
 const notificationService = require('../services/notificationService');
 const { isCheckInVisibleTo } = require('../services/checkInVisibility');
@@ -53,51 +54,24 @@ const db = getFirestore();
 // Helper function to find or create user's check-in circle
 async function findOrCreateCheckInCircle(userId) {
   try {
-    // Look for existing check-in circle
-    const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
-      .where('owner', '==', userId)
-      .where('isCheckInCircle', '==', true)
-      .get();
-
-    const flagged = circlesSnapshot.docs.find(doc => !doc.data().deletedAt);
-    if (flagged) {
-      return serializeDoc(flagged);
-    }
-
-    // Legacy check-in circles were created before createCircle persisted the
-    // isCheckInCircle flag, so the query above can't see them — adopt an
-    // existing "Check-in Places" circle by name instead of creating a duplicate
-    const byNameSnapshot = await db.collection(COLLECTIONS.CIRCLES)
-      .where('owner', '==', userId)
-      .where('name', '==', 'Check-in Places')
-      .get();
-
-    const candidates = byNameSnapshot.docs.filter(doc => !doc.data().deletedAt);
-    if (candidates.length > 0) {
-      // Prefer the copy that already has places, then the oldest
-      candidates.sort((a, b) => {
-        const placesDiff = (b.data().places || []).length - (a.data().places || []).length;
-        if (placesDiff !== 0) return placesDiff;
-        return (a.data().createdAt || '').localeCompare(b.data().createdAt || '');
-      });
-      const keeper = candidates[0];
-      await keeper.ref.update({ isCheckInCircle: true, updatedAt: new Date().toISOString() });
-      const keeperDoc = await keeper.ref.get();
-      console.log(`✅ Adopted legacy Check-in Places circle ${keeper.id} for user ${userId}`);
-      return serializeDoc(keeperDoc);
+    // Found by its flag (services/systemCircles) — a renamed one still
+    // counts. Legacy copies made before the flag was persisted are adopted
+    // by name (fullest, then oldest) and stamped, never duplicated.
+    const found = await systemCircles.findOwned(userId, 'checkIns', { db });
+    if (found) {
+      return serializeDoc(await db.collection(COLLECTIONS.CIRCLES).doc(found.id).get());
     }
 
     // Create new check-in circle
     const checkInCircleData = {
-      name: 'Check-in Places',
+      name: systemCircles.KINDS.checkIns.name,
       description: 'Places I\'ve checked into',
       privacy: 'public', // Public by default for discovery
-      isCheckInCircle: true,
       icon: '📍',
       color: '#4CAF50'
     };
     
-    const circle = createCircle(checkInCircleData, userId);
+    const circle = { ...createCircle(checkInCircleData, userId), ...systemCircles.flagFields('checkIns') };
     const circleRef = await db.collection(COLLECTIONS.CIRCLES).add(circle);
     const circleDoc = await circleRef.get();
     
