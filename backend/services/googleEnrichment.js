@@ -7,7 +7,6 @@
 // "use the same process we have for manually adding a place".
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
-const { buildSearchTokens } = require('../models/GlobalPlace');
 
 const googleMapsClient = new Client({});
 
@@ -192,18 +191,12 @@ async function enrichSaveFromGoogle(placeData) {
         if (canonicalDoc) {
           const { createAttributedPhoto } = require('../models/GlobalPlace');
           const upgradedName = googleData.name || canonicalData.name;
+          // Google's own numbers and ids: the canonical record only
           const canonicalUpdates = {
             googlePlaceId: googleData.googlePlaceId,
-            name: upgradedName,
-            nameLower: (upgradedName || '').toLowerCase(),
-            searchTokens: buildSearchTokens(upgradedName),
-            address: googleData.address || canonicalData.address,
             'googleData.rating': googleData.rating ?? null,
             'googleData.userRatingsTotal': googleData.userRatingsTotal ?? null,
             'googleData.priceLevel': googleData.priceLevel ?? null,
-            'googleData.website': googleData.website || null,
-            'googleData.phone': googleData.phoneNumber || null,
-            'googleData.openingHours': googleData.openingHours || null,
             'googleData.delivery': googleData.delivery ?? null,
             'googleData.dineIn': googleData.dineIn ?? null,
             'googleData.reservable': googleData.reservable ?? null,
@@ -211,24 +204,36 @@ async function enrichSaveFromGoogle(placeData) {
             'googleData.curbsidePickup': googleData.curbsidePickup ?? null,
             updatedAt: new Date().toISOString()
           };
+          // Google-format hours ({ day, hours } text) — never over hours the
+          // store's owner set (venueDetailsService stamps hoursSource 'owner')
+          const ownerHours = (canonicalData.googleData || {}).hoursSource === 'owner';
+          if (googleData.openingHours && !ownerHours) canonicalUpdates['googleData.openingHours'] = googleData.openingHours;
           if (googleData.description && !canonicalData.description) {
             canonicalUpdates.description = googleData.description;
             canonicalUpdates.descriptionSource = 'google_editorial';
           }
-          if (googleData.photos && googleData.photos.length > 0 &&
-              !require('./placePhotoService').hasVisiblePhotos(canonicalData.photos)) {
-            canonicalUpdates.photos = googleData.photos.map(url => createAttributedPhoto({
-              url,
-              uploadedBy: null,
-              uploadedByName: null,
-              source: 'google_places'
-            }));
-          }
           await canonicalDoc.ref.update(canonicalUpdates);
+          // Shared details (name, address, phone, website) through the ONE
+          // write path, so every save's cache and the store record follow.
+          // Only what Google actually returned — a blank never erases.
+          const shared = {};
+          if (googleData.name) shared.name = googleData.name;
+          if (googleData.address) shared.address = googleData.address;
+          if (googleData.phoneNumber) shared.phone = googleData.phoneNumber;
+          if (googleData.website) shared.website = googleData.website;
+          let appliedName = canonicalData.name;
+          if (Object.keys(shared).length > 0) {
+            try {
+              await require('./venueDetailsService').applyVenueDetails(canonicalDoc.id, shared);
+              appliedName = upgradedName;
+            } catch (e) {
+              console.warn(`⚠️ Google details not applied to ${canonicalDoc.id}:`, e.message);
+            }
+          }
           console.log(`⬆️ Upgraded bare canonical ${canonicalDoc.id} with Google enrichment`);
           // Types/serves_* kept, category from Google unless manually chosen
           await require('./venueGoogleSignals').applyGoogleDetails(canonicalDoc.id, null, {
-            venue: { ...canonicalData, ...canonicalUpdates }, signals: googleData.googleSignals, name: upgradedName })
+            venue: { ...canonicalData, ...canonicalUpdates, name: appliedName }, signals: googleData.googleSignals, name: upgradedName })
             .catch((e) => console.warn('⚠️ Google signals not applied:', e.message));
         }
       }

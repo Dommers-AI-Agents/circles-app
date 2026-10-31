@@ -3,7 +3,6 @@
 // placeVenueMaintenanceController (split out of firebasePlaceController.js).
 
 const { getFirestore } = require('../config/firebase');
-const { COLLECTIONS } = require('../models/FirestoreModels');
 const { GLOBAL_COLLECTIONS, buildSearchTokens, geohashForLocation } = require('../models/GlobalPlace');
 const { sanitizeVenueDescription } = require('../utils/venueDescriptionSanitizer');
 const { VENUE_TOP_FIELDS, VENUE_GOOGLE_FIELDS } = require('../services/placeReadService');
@@ -39,42 +38,31 @@ const buildGlobalVenueUpdates = (updateData) => {
   return updates;
 };
 
-// Push venue-field changes to the canonical record and keep the denormalized
-// query cache (name/address/location/geohash/category) in sync on the venue's
-// other saved copies. Runs on venue EDITS only — rare and bounded.
+// Push venue-level changes to the canonical record. Shared details (name,
+// address, location, category, description, phone, website, hours) go
+// through THE write path — venueDetailsService.applyVenueDetails — so every
+// save's cache and the store record follow; Google's numbers and service
+// flags (rating, review count, delivery, …) are written to the canonical
+// record here. Callers decide who may: both strip client detail fields first
+// (PUT /places/:id routes them through updateVenueDetails; a Google refresh
+// sends only ratings/flags). Best-effort: never throws.
 const propagateVenueUpdates = async (placeId, globalPlaceId, updateData) => {
   if (!globalPlaceId) return;
-  const globalUpdates = buildGlobalVenueUpdates(updateData);
-  if (Object.keys(globalUpdates).length === 0) return;
-  const now = new Date().toISOString();
+  const venueDetails = require('./venueDetailsService');
+  const details = venueDetails.pickDetailFields(updateData);
+  const rest = { ...updateData };
+  [...venueDetails.DETAIL_FIELDS, 'geohash'].forEach((field) => delete rest[field]);
 
-  await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId)
-    .update({ ...globalUpdates, updatedAt: now })
-    .catch(err => console.error('⚠️ Failed to update canonical venue:', err.message));
-
-  const CACHE_FIELDS = ['name', 'address', 'location', 'geohash', 'category'];
-  const cacheUpdates = {};
-  CACHE_FIELDS.forEach(field => {
-    if (updateData[field] !== undefined) cacheUpdates[field] = updateData[field];
-  });
-  if (Object.keys(cacheUpdates).length === 0) return;
-
-  try {
-    const siblings = await db.collection(COLLECTIONS.PLACES)
-      .where('globalPlaceId', '==', globalPlaceId)
-      .get();
-    const batch = db.batch();
-    let pending = 0;
-    siblings.docs.forEach(doc => {
-      if (doc.id !== placeId) {
-        batch.update(doc.ref, { ...cacheUpdates, updatedAt: now });
-        pending++;
-      }
-    });
-    if (pending > 0) await batch.commit();
-  } catch (err) {
-    console.error('⚠️ Failed to sync venue cache to copies:', err.message);
+  if (Object.keys(details).length > 0) {
+    await venueDetails.applyVenueDetails(globalPlaceId, details)
+      .catch(err => console.error('⚠️ Failed to update venue details:', err.message));
   }
+
+  const globalUpdates = buildGlobalVenueUpdates(rest);
+  if (Object.keys(globalUpdates).length === 0) return;
+  await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId)
+    .update({ ...globalUpdates, updatedAt: new Date().toISOString() })
+    .catch(err => console.error('⚠️ Failed to update canonical venue:', err.message));
 };
 
 module.exports = {

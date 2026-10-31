@@ -357,14 +357,17 @@ exports.approveClaim = async (req, res) => {
         return res.status(404).json({ success: false, error: 'The claimed place no longer exists' });
       }
       const { location, category } = placeFields;
+      // Name and address from the place as it is NOW (the claim holds a copy
+      // from the day it was filed); the copy only fills what the place lacks
+      const storeName = placeFields.venueName || claim.placeName || claim.venueName;
 
       const ownerEmail = claim.contactEmail || claim.userEmail || null;
       const venue = await rewardService.createVenue({
-        venueName: claim.placeName || claim.venueName,
-        placeName: claim.placeName || claim.venueName,
-        placeAddress: claim.placeAddress || null,
-        googlePlaceId: claim.googlePlaceId || null,
-        globalPlaceId: claim.globalPlaceId || null,
+        venueName: storeName,
+        placeName: storeName,
+        placeAddress: placeFields.placeAddress || claim.placeAddress || null,
+        googlePlaceId: claim.googlePlaceId || placeFields.googlePlaceId || null,
+        globalPlaceId: claim.globalPlaceId || placeFields.globalPlaceId || null,
         location,
         category: category || 'restaurant',
         contactName: claim.contactName || claim.userDisplayName || null,
@@ -402,7 +405,7 @@ exports.approveClaim = async (req, res) => {
       // Tell the new owner (in-app + push) — approval otherwise happens silently.
       try {
         const notificationService = require('../../services/notificationService');
-        await notificationService.notifyStoreClaimApproved(claim, claimRef.id, venue.venueId);
+        await notificationService.notifyStoreClaimApproved({ ...claim, venueName: storeName, placeName: storeName }, claimRef.id, venue.venueId);
       } catch (notifyError) {
         console.error('⚠️ Claim-approved notification failed:', notifyError.message);
       }
@@ -412,7 +415,7 @@ exports.approveClaim = async (req, res) => {
         emailService.sendClaimApprovedEmail(
           ownerEmail,
           claim.contactName || claim.userDisplayName || null,
-          claim.placeName || claim.venueName || null
+          storeName || null
         ).catch((e) => console.error('⚠️ Claim-approved email failed:', e.message));
       }
 
@@ -475,11 +478,13 @@ exports.approveClaim = async (req, res) => {
       ownerEmail: claim.userEmail || venueDoc.data().ownerEmail
     });
     await claimRef.update({ status: 'approved', resolvedBy: req.user.uid, resolvedAt: now, updatedAt: now });
+    // The store as it is called now, not as it was when the claim was filed
+    const currentName = venueDoc.data().venueName || venueDoc.data().placeName || claim.venueName || claim.placeName || null;
 
     // Tell the new owner (in-app + push) — approval otherwise happens silently.
     try {
       const notificationService = require('../../services/notificationService');
-      await notificationService.notifyStoreClaimApproved(claim, claimRef.id, claim.venueId);
+      await notificationService.notifyStoreClaimApproved({ ...claim, venueName: currentName, placeName: currentName }, claimRef.id, claim.venueId);
     } catch (notifyError) {
       console.error('⚠️ Claim-approved notification failed:', notifyError.message);
     }
@@ -490,7 +495,7 @@ exports.approveClaim = async (req, res) => {
       emailService.sendClaimApprovedEmail(
         approvedEmail,
         claim.contactName || claim.userDisplayName || null,
-        claim.venueName || claim.placeName || null
+        currentName
       ).catch((e) => console.error('⚠️ Claim-approved email failed:', e.message));
     }
 

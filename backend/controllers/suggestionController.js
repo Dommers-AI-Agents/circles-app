@@ -153,6 +153,37 @@ const createNewSuggestion = async (req, res) => {
   }
 };
 
+/**
+ * Each suggestion's place card (placeDetails, a copy of the sender's save
+ * taken when it was sent) with the venue's CURRENT name and address, and its
+ * cover photo when the copy has none — the venue record is the one source
+ * (services/placeLookup). The sender's own photos and notes stay. One batched
+ * read per response. mentionedPlaces are spans of the sender's own message
+ * text, so their names stay as written.
+ */
+const withCurrentSuggestionPlaces = async (suggestions) => {
+  const { fetchVenuesById, fetchVenuesForSaves, withCurrentPlace } = require('../services/placeLookup');
+  const cards = suggestions.map((s) => s && s.placeDetails).filter(Boolean);
+  if (cards.length === 0) return suggestions;
+  try {
+    const linked = cards.filter((c) => c.globalPlaceId).map((c) => c.globalPlaceId);
+    const unlinked = cards.filter((c) => !c.globalPlaceId && c.id).map((c) => c.id);
+    const [byVenue, bySave] = await Promise.all([fetchVenuesById(linked), fetchVenuesForSaves(unlinked)]);
+    return suggestions.map((s) => {
+      const card = s && s.placeDetails;
+      if (!card) return s;
+      const venue = card.globalPlaceId ? byVenue.get(String(card.globalPlaceId)) : bySave.get(String(card.id || ''));
+      if (!venue) return s;
+      const placeDetails = withCurrentPlace(card, venue, { name: 'name', address: 'address' });
+      if ((!Array.isArray(card.photos) || card.photos.length === 0) && venue.photo) placeDetails.photos = [venue.photo];
+      return { ...s, placeDetails };
+    });
+  } catch (error) {
+    console.error('⚠️ Suggestion place lookup failed:', error.message);
+    return suggestions;
+  }
+};
+
 // @desc    Get suggestions from user's network
 // @route   GET /api/suggestions/network
 // @access  Private
@@ -221,7 +252,7 @@ const getNetworkSuggestions = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: suggestions
+      data: await withCurrentSuggestionPlaces(suggestions)
     });
 
   } catch (error) {
@@ -258,7 +289,7 @@ const getReceivedSuggestions = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: suggestions,
+      data: await withCurrentSuggestionPlaces(suggestions),
       count: suggestions.length
     });
   } catch (error) {
@@ -640,7 +671,7 @@ const getSuggestionsByUser = async (req, res) => {
     
     res.status(200).json({
       success: true,
-      data: suggestions
+      data: await withCurrentSuggestionPlaces(suggestions)
     });
     
   } catch (error) {
@@ -649,6 +680,7 @@ const getSuggestionsByUser = async (req, res) => {
 };
 
 module.exports = {
+  withCurrentSuggestionPlaces,
   createNewSuggestion,
   getNetworkSuggestions,
   getReceivedSuggestions,

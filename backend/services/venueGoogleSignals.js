@@ -9,13 +9,25 @@ const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
 const { googleSignals, venueSignalUpdates } = require('./googlePlaceFields');
 const { googleReclassification } = require('./placeCategoryDerivation');
 
-/** The venue's category onto its save docs (the map and list queries filter on those). */
-async function syncCategoryToSaves(globalPlaceId, category, now, { db = getFirestore() } = {}) {
+/**
+ * A system category change (Google types, the nightly sweep, the LLM tier)
+ * reaches every copy: each save's cache (the map and list queries filter on
+ * those) and the venue's store record. The ONE category fan-out for writers
+ * that keep their own categorySource/categoryBefore bookkeeping on the
+ * canonical record — human edits go through venueDetailsService instead.
+ * `venue` (the canonical record) lets the store be found by Google id too.
+ * Returns how many saves were updated.
+ */
+async function syncCategoryToSaves(globalPlaceId, category, now, { db = getFirestore(), venue = null } = {}) {
   const siblings = await db.collection('places').where('globalPlaceId', '==', globalPlaceId).get();
-  if (siblings.empty) return 0;
-  const batch = db.batch();
-  siblings.docs.forEach((doc) => batch.update(doc.ref, { category, updatedAt: now }));
-  await batch.commit();
+  for (let i = 0; i < siblings.docs.length; i += 400) {
+    const batch = db.batch();
+    siblings.docs.slice(i, i + 400).forEach((doc) => batch.update(doc.ref, { category, updatedAt: now }));
+    await batch.commit();
+  }
+  // Lazy: venueDetailsService pulls in photo/permission modules
+  await require('./venueDetailsService').syncStoreFromVenue(globalPlaceId, venue, { category }, now)
+    .catch((e) => console.error('⚠️ [GlobalPlace] store category sync failed:', e.message));
   return siblings.size;
 }
 
@@ -52,7 +64,7 @@ async function applyGoogleDetails(globalPlaceId, details, { db = getFirestore(),
   const { updates, reclass } = signals ? updatesForSignals(data, signals, name) : updatesFor(data, details);
   await ref.update({ ...updates, ...extra, updatedAt: now });
   if (reclass && reclass.category !== (data.category || 'other')) {
-    await syncCategoryToSaves(globalPlaceId, reclass.category, now, { db });
+    await syncCategoryToSaves(globalPlaceId, reclass.category, now, { db, venue: data });
     console.log(`🏷️ [GlobalPlace] "${data.name}" ${globalPlaceId}: ${data.category} → ${reclass.category}${reclass.subcategory ? ` · ${reclass.subcategory}` : ''} (google)`);
   }
   return reclass;

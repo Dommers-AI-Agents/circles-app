@@ -55,6 +55,7 @@ const cleanHours = (openingHours) => {
   }).sort((a, b) => a.day - b.day);
 };
 
+/** A real map point ([lng, lat], not the -180/-180 "unknown" marker). Pure. */
 const validLocation = (location) => {
   const c = location && Array.isArray(location.coordinates) ? location.coordinates : null;
   if (!c || c.length !== 2) return false;
@@ -250,18 +251,29 @@ async function applyVenueDetails(globalPlaceId, fields, { doc: given = null } = 
     }
   }
 
-  const storeUpdates = storeUpdatesFor(venue);
-  if (Object.keys(storeUpdates).length > 0) {
-    const store = await placePhotos.venueForPlace(doc.id, doc.data()).catch(() => null);
-    if (store && store.venueId) {
-      await db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(store.venueId)
-        .update({ ...storeUpdates, updatedAt: now })
-        .catch((e) => console.error('⚠️ [venue-details] store sync failed:', e.message));
-    }
-  }
+  await syncStoreFromVenue(doc.id, doc.data(), venue, now);
 
   const g = (await ref.get()).data();
   return detailsOf(doc.id, g);
+}
+
+/**
+ * The store record (stickerVenues) follows a venue change. Used by
+ * applyVenueDetails and by the system writers that keep their own canonical
+ * bookkeeping (Google/LLM category changes: services/venueGoogleSignals
+ * syncCategoryToSaves) — so a store never keeps a stale name, address or
+ * category. `venueData` = the canonical record (to find its store by Google
+ * id); `venueUpdates` = the fields that changed. Never throws.
+ */
+async function syncStoreFromVenue(globalPlaceId, venueData, venueUpdates, now = new Date().toISOString()) {
+  const storeUpdates = storeUpdatesFor(venueUpdates || {});
+  if (Object.keys(storeUpdates).length === 0) return false;
+  const store = await placePhotos.venueForPlace(globalPlaceId, venueData).catch(() => null);
+  if (!store || !store.venueId) return false;
+  await db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(store.venueId)
+    .update({ ...storeUpdates, updatedAt: now })
+    .catch((e) => console.error('⚠️ [venue-details] store sync failed:', e.message));
+  return true;
 }
 
 const detailsOf = (globalPlaceId, g) => ({
@@ -282,12 +294,14 @@ module.exports = {
   VALID_CATEGORIES,
   NOT_ALLOWED_MESSAGE,
   cleanHours,
+  validLocation,
   buildDetailUpdates,
   pickDetailFields,
   changedDetailFields,
   canEditDetails,
   updateVenueDetails,
   applyVenueDetails,
+  syncStoreFromVenue,
   storeUpdatesFor,
   detailsOf
 };
