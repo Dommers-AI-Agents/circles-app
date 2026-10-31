@@ -20,7 +20,6 @@ const asc = require('./appStoreConnect/ascClient');
 const rewardService = require('./rewardService');
 const { getFirestore } = require('../config/firebase');
 const { STICKER_COLLECTIONS } = require('../models/StickerModels');
-const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
 const placePhotos = require('./placePhotoService');
 const rewardProgress = require('./rewardProgress');
 
@@ -344,13 +343,7 @@ async function removeExperience(id) {
 
 // --- the sync -------------------------------------------------------------
 
-async function coverUrlFor(venue) {
-  if (!venue.globalPlaceId) return null;
-  const doc = await getFirestore().collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(venue.globalPlaceId).get();
-  if (!doc.exists) return null;
-  const data = doc.data();
-  return data.coverPhotoUrl || placePhotos.coverUrl(data.photos || []) || null;
-}
+const coverUrlFor = (venue) => placePhotos.venueCoverUrl(venue);
 
 function fingerprintFor(venue, kind, code, coverUrl, { live = true } = {}) {
   const rewarding = kind === 'register' && live;

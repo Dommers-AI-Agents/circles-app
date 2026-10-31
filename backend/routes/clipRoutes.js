@@ -18,5 +18,6 @@ const clipPreviewLimiter = rateLimit({
 
 router.get('/venue/:code', clipPreviewLimiter, clipController.getVenuePreview);
 router.post('/install-converted', protect, clipController.installConverted);
+router.post('/device', protect, clipController.registerDevice);
 
 module.exports = router;

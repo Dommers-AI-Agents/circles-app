@@ -93,6 +93,18 @@ const coverUrl = (photos) => {
 };
 
 /**
+ * A store's cover picture (App Clip card and clip screen): the owner-chosen
+ * cover, else the first photo everyone can see, else null.
+ */
+async function venueCoverUrl(venue) {
+  if (!venue || !venue.globalPlaceId) return null;
+  const doc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(venue.globalPlaceId).get();
+  if (!doc.exists) return null;
+  const data = doc.data();
+  return data.coverPhotoUrl || coverUrl(data.photos || []) || null;
+}
+
+/**
  * New array order: `orderedIds` first, in that order; every other entry
  * (unlisted, private, removed) keeps its relative place after them. Unknown
  * ids are ignored; nothing is dropped.
@@ -381,7 +393,7 @@ async function saveIdsForPlace(globalPlaceId, placeData) {
 
 module.exports = {
   // rules
-  urlOf, isRemoved, canSee, visiblePhotos, hasVisiblePhotos, hiddenUrls, coverUrl, reordered, movedToFront, permissionsFor,
+  urlOf, isRemoved, canSee, visiblePhotos, hasVisiblePhotos, hiddenUrls, coverUrl, venueCoverUrl, reordered, movedToFront, permissionsFor,
   // data
   effectivelyPrivate, saveIsPrivate, venueForPlace, rightsFor, uploaderSaveIsPrivate, mutatePhotos, reorder, setCover, remove, setLiked, append, adoptSavePhotos, saveIdsForPlace
 };

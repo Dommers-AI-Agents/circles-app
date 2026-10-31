@@ -8,6 +8,17 @@
 
 const rewardService = require('../services/rewardService');
 const rewardConfig = require('../config/rewardConfig');
+const placePhotos = require('../services/placePhotoService');
+const { sendServiceError } = require('../utils/serviceError');
+
+// {latitude, longitude} or null, whichever shape the venue stored
+const clipLocation = (location) => {
+  if (!location) return null;
+  const latitude = Number(location.latitude ?? location.lat ?? location._latitude);
+  const longitude = Number(location.longitude ?? location.lng ?? location._longitude);
+  return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
+};
+exports.clipLocation = clipLocation;
 
 // GET /api/clip/venue/:code — public offer-screen data for the clip.
 // Counts a clipScan (top of the clip funnel). Preview refetches on clip
@@ -42,7 +53,9 @@ exports.getVenuePreview = async (req, res) => {
           kind: 'window',
           generic: true,
           signupBonusPoints: 0,          // no store points for a generic join
-          signupBonusCoins: piggyConfig.COINS.CLIP_SIGNUP // FavCoins instead
+          signupBonusCoins: piggyConfig.COINS.CLIP_SIGNUP, // FavCoins instead
+          coverUrl: null,
+          location: null
         }
       });
     }
@@ -57,6 +70,10 @@ exports.getVenuePreview = async (req, res) => {
     const loyaltyLive = venue.kind === 'register' ? (await registerScanEarns(venue)).earns : false;
     const offers = loyaltyLive ? rewardProgress.rewardLadder(activeOffers(venue)) : [];
     const scanPoints = loyaltyLive ? rewardService.effectiveEarnRate(venue) : 0;
+    // The clip's backdrop is the store's own photo (the same cover as its
+    // App Clip card), and Apple's location confirmation checks the scan
+    // against where the store is. Both are public on the store's page anyway.
+    const coverUrl = await placePhotos.venueCoverUrl(venue).catch(() => null);
     return res.json({
       success: true,
       data: {
@@ -74,7 +91,9 @@ exports.getVenuePreview = async (req, res) => {
         loyaltyLive,
         earnRate: loyaltyLive ? rewardService.effectiveEarnRate(venue) : null,
         offers,
-        firstReward: offers[0] || null
+        firstReward: offers[0] || null,
+        coverUrl,
+        location: clipLocation(venue.location)
       }
     });
   } catch (error) {
@@ -94,5 +113,17 @@ exports.installConverted = async (req, res) => {
   } catch (error) {
     console.error('⚠️ Clip install conversion failed:', error.message);
     return res.status(500).json({ success: false, error: 'Something went wrong' });
+  }
+};
+
+// POST /api/clip/device {token, code, environment?} — the clip's APNs token,
+// for its one reminder two hours later (services/clipReminderService).
+// environment: 'development' for a debug build, else production.
+exports.registerDevice = async (req, res) => {
+  try {
+    const result = await require('../services/clipReminderService').registerDevice(req.user.uid, req.body || {});
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    return sendServiceError(res, error, { log: '⚠️ Clip device registration failed', fallbackMessage: 'Something went wrong' });
   }
 };

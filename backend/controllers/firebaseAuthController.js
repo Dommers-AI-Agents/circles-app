@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const { normalizeUserId, logNormalization } = require('../services/idService');
 const OnboardingService = require('../services/onboardingService');
 const { firebaseApiKey } = require('../config/config');
+const { finishNewAccount } = require('../services/newAccountService');
 
 const db = getFirestore();
 const auth = getAuth();
@@ -720,75 +721,13 @@ exports.register = async (req, res, next) => {
     if (result.isNew) {
       user = result.userData;
 
-      // Complete onboarding for new user (synchronously). App Clip signups
-      // defer onboarding (fire-and-forget) so the in-store first impression
-      // isn't blocked on the sample-place lookup; the clip never renders
-      // circlesCount/placesCount, so returning 0 there is fine.
-      const userId = normalizeUserId(user.id || user.uid);
-      let circlesCount = 0;
-      let placesCount = 0;
-
-      const isClipSignup = req.body.signupSource === 'app_clip'
-        && /^[A-Za-z0-9]{6}$/.test(String(req.body.stickerCode || ''));
-      if (isClipSignup) {
-        // Analytics only — points still flow through /api/rewards/scan
-        await require('../services/rewardService')
-          .attributeClipSignup(userId, req.body.stickerCode);
-      }
-
-      try {
-        console.log(`🎯 Starting onboarding for new user ${userId}...`);
-        // Pass the user's city (from geocoded zipcode) so the onboarding
-        // sample place is local to them instead of the generic fallback
-        const userCity = (user.location || '').split(',')[0].trim();
-        const onboardingResult = isClipSignup
-          ? { success: false }
-          : await OnboardingService.completeUserOnboarding(
-              userId,
-              userCity ? { city: userCity } : null
-            );
-        if (isClipSignup) {
-          OnboardingService.completeUserOnboarding(
-            userId,
-            userCity ? { city: userCity } : null
-          ).catch(err => console.error(`❌ Deferred clip onboarding failed for ${userId}:`, err));
-        } else {
-          console.log(`✅ Onboarding completed for user ${userId}${userCity ? ` (city: ${userCity})` : ''}`);
-        }
-
-        // Bot-pattern watch (alerts the admin, never blocks)
-        require('../services/signupMonitor').recordSignup({ ip: req.ip, email: user.email, provider: 'password', userId });
-        // Welcome email (fire-and-forget; never blocks signup)
-        if (user.email) {
-          const emailService = require('../services/emailService');
-          emailService.sendWelcomeEmail(user.email, user.displayName)
-            .catch(err => console.error('Welcome email failed:', err.message));
-        }
-
-        // After onboarding, fetch the created circles to get accurate counts
-        if (onboardingResult.success) {
-          const circlesSnapshot = await db.collection(COLLECTIONS.CIRCLES)
-            .where('owner', '==', userId)
-            .get();
-          
-          circlesCount = circlesSnapshot.size;
-          
-          // Count total places across all circles
-          circlesSnapshot.forEach(doc => {
-            const circleData = doc.data();
-            placesCount += circleData.placesCount || 0;
-          });
-          
-          console.log(`📊 New user stats: ${circlesCount} circles, ${placesCount} places`);
-        }
-      } catch (error) {
-        console.error(`❌ Onboarding failed for user ${userId}:`, error);
-        // Don't fail the registration if onboarding fails
-      }
-      
-      // Add counts to user object
-      user.circlesCount = circlesCount;
-      user.placesCount = placesCount;
+      // Clip attribution, onboarding, signup watch, welcome email
+      const counts = await finishNewAccount(
+        { ...user, id: normalizeUserId(user.id || user.uid) },
+        { ip: req.ip, provider: 'password', signupSource: req.body.signupSource, stickerCode: req.body.stickerCode }
+      );
+      user.circlesCount = counts.circlesCount;
+      user.placesCount = counts.placesCount;
     } else {
       const userDoc = await result.userRef.get();
       user = serializeDoc(userDoc);

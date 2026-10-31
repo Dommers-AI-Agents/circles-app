@@ -34,6 +34,10 @@ router.post('/passkey/login-verify', validatePasskeyLoginVerify, passkey.passkey
 // Add a passkey to the CURRENT signed-in account (Settings enrollment flow)
 router.post('/passkey/add-options', protect, passkey.passkeyAddOptions);
 router.post('/passkey/add-verify', protect, passkey.passkeyAddVerify);
+// Sign in or up with a 6-digit emailed code (the App Clip's email path)
+const emailCode = require('../controllers/users/emailCodeAuthController');
+router.post('/email-code/start', emailCode.startEmailCode);
+router.post('/email-code/verify', emailCode.verifyEmailCode);
 router.post('/refresh-token', refreshToken);
 router.post('/forgot-password', forgotPassword);
 

@@ -1150,6 +1150,27 @@ Rewards redeemed: ${safeStats.redemptions}`;
     throw lastError;
   }
 
+  // A one-time sign-in code (App Clip email sign-in). The code is in the
+  // body only: sendEmail logs the subject.
+  async sendLoginCodeEmail(toEmail, code) {
+    const subject = 'Your FavCircles sign-in code';
+    const html = `
+      <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;padding:20px">
+        <h2 style="color:#1B1E24;margin-bottom:8px">Your code is ${escapeHtml(code)}</h2>
+        <p style="font-size:32px;letter-spacing:8px;font-weight:700;margin:24px 0">${escapeHtml(code)}</p>
+        <p>It expires in 10 minutes.</p>
+        <p style="color:#888;font-size:13px">If you didn't ask for this, ignore this email.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+        <p style="color:#aaa;font-size:12px">FavCircles · Save the places you love</p>
+      </div>`;
+    const text = `Your code is ${code}. It expires in 10 minutes.
+
+If you didn't ask for this, ignore this email.
+
+FavCircles · Save the places you love`;
+    return this.sendEmail({ to: toEmail, subject, html, text });
+  }
+
   async sendEmail({ to, subject: rawSubject, html, text, attachments, headers, userTriggered = false }) {
     const subject = oneLine(rawSubject);
     if (userTriggered && userMailDisabled()) {

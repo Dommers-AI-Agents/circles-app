@@ -165,7 +165,16 @@ exports.scan = async (req, res) => {
       console.info(`[loyalty-integrity] comped award venue=${venue.venueId} until=${venue.loyaltyCompedUntil || 'open-ended'} reason=${venue.loyaltyCompReason || 'unspecified'}`);
     }
 
-    const visitResult = await rewardService.awardVenueVisit(userId, venue);
+    // Apple's App Clip location confirmation said the phone is not at the
+    // store (`atStore: false`; missing = couldn't tell or not the clip):
+    // no visit points, the rest of the answer as usual
+    const notAtStore = req.body.atStore === false;
+    if (notAtStore) {
+      console.warn(`[loyalty-integrity] register scan away from the store venue=${venue.venueId} user=${userId}`);
+    }
+    const visitResult = notAtStore
+      ? { awarded: false, reason: 'not_at_store' }
+      : await rewardService.awardVenueVisit(userId, venue);
 
     const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
     const venueBalance = (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0;
@@ -180,6 +189,7 @@ exports.scan = async (req, res) => {
           ? { type: 'venue_visit', points: visitResult.points }
           : null,
         alreadyEarnedToday: visitResult.reason === 'already_today',
+        ...(notAtStore ? { notAtStore: true } : {}),
         alreadySaved,
         balance: rewardPoints,
         venueBalance,
