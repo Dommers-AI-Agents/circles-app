@@ -22,6 +22,7 @@ const { getFirestore } = require('../config/firebase');
 const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
 const { categoryUpgradeForOther, googleReclassification } = require('./placeCategoryDerivation');
 const classifier = require('./categoryClassifier');
+const { syncCategoryToSaves } = require('./venueGoogleSignals');
 
 const db = getFirestore();
 
@@ -41,14 +42,10 @@ const signalsOf = (d) => ({
 });
 
 // Sync a venue's category down to its `places` cache copies — those are what
-// the geo/list/browse queries actually filter on.
-async function syncCacheToPlaces(globalPlaceId, category, now) {
-  const siblings = await db.collection('places').where('globalPlaceId', '==', globalPlaceId).get();
-  if (siblings.empty) return 0;
-  const batch = db.batch();
-  siblings.docs.forEach(doc => batch.update(doc.ref, { category, updatedAt: now }));
-  await batch.commit();
-  return siblings.size;
+// the geo/list/browse queries actually filter on — and its store record, via
+// the one category fan-out (venueGoogleSignals.syncCategoryToSaves).
+async function syncCacheToPlaces(globalPlaceId, category, now, venue = null) {
+  return syncCategoryToSaves(globalPlaceId, category, now, { db, venue });
 }
 
 /**
@@ -112,7 +109,7 @@ async function runCategorySweep({
     }
     try {
       await doc.ref.update({ ...upgrade, needsCategoryReview: false, updatedAt: now });
-      report.cacheSynced += await syncCacheToPlaces(doc.id, upgrade.category, now);
+      report.cacheSynced += await syncCacheToPlaces(doc.id, upgrade.category, now, doc.data());
     } catch (e) {
       report.failed++;
       console.error(`   ❌ [categorySweep] free tier ${doc.id}: ${e.message}`);
@@ -137,7 +134,7 @@ async function runCategorySweep({
     if (dryRun) continue;
     try {
       await doc.ref.update({ ...reclass, updatedAt: now });
-      if (reclass.category !== d.category) report.cacheSynced += await syncCacheToPlaces(doc.id, reclass.category, now);
+      if (reclass.category !== d.category) report.cacheSynced += await syncCacheToPlaces(doc.id, reclass.category, now, d);
     } catch (e) {
       report.failed++;
       console.error(`   ❌ [categorySweep] google tier ${doc.id}: ${e.message}`);
@@ -213,7 +210,7 @@ async function runCategorySweep({
           updatedAt: now
         });
         report.resolved++;
-        report.cacheSynced += await syncCacheToPlaces(doc.id, r.category, now);
+        report.cacheSynced += await syncCacheToPlaces(doc.id, r.category, now, prior);
       } else {
         // The model couldn't place it either. Stamp classifiedAt anyway so we
         // never pay for this venue twice.
