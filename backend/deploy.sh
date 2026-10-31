@@ -162,7 +162,8 @@ for var in POSTCARD_MAIL_ENABLED POSTCARD_PRICE_CENTS_US \
            PROXIMITY_BANNERS_ENABLED \
            VENUE_SIMILAR_NAME_MATCH \
            TICKETMASTER_API_KEY \
-           CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_AI_TOKEN; do
+           CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_AI_TOKEN \
+           APNS_KEY_ID APNS_KEY_P8_B64 APNS_TEAM_ID; do
     value="${!var}"
     if [ ! -z "$value" ]; then
         ENV_VARS="$ENV_VARS,$var=$value"

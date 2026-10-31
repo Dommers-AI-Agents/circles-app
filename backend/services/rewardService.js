@@ -463,6 +463,34 @@ class RewardService {
   //     no store was scanned — store points would be meaningless.
   //   - a real enrolled store code: NO FavCoins here; they earn 100 store points
   //     via the authenticated POST /api/rewards/scan (awardStickerSignup).
+  /// A new clip account's starting location from the store it joined at:
+  /// lastKnownLocation from the store's coordinates, and zipcode + "City, ST"
+  /// from the ZIP in its address. Nothing for the generic code or an online-only brand.
+  async homeFromStore(venue) {
+    if (venue.genericJoin || venue.isVirtual === true) return {};
+    const home = {};
+    const loc = venue.location || {};
+    const latitude = Number(loc.lat ?? loc.latitude);
+    const longitude = Number(loc.lng ?? loc.longitude);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude) && !(latitude === 0 && longitude === 0)) {
+      home.lastKnownLocation = { latitude, longitude, updatedAt: new Date().toISOString(), source: 'store_scan' };
+    }
+    // The last 5-digit run in the address is the ZIP ("…, Charlotte, NC 28203")
+    const zips = String(venue.placeAddress || '').match(/\b\d{5}(?=(?:-\d{4})?\b)/g);
+    const zipcode = zips && zips[zips.length - 1];
+    if (zipcode) {
+      try {
+        const { geocodeZipcode } = require('./zipcodeService');
+        const geo = await geocodeZipcode(zipcode);
+        home.zipcode = zipcode;
+        if (geo && geo.city && geo.state) home.location = `${geo.city}, ${geo.state}`;
+      } catch (error) {
+        console.warn('⚠️ Clip signup: store ZIP lookup failed:', error.message);
+      }
+    }
+    return home;
+  }
+
   async attributeClipSignup(userId, stickerCode) {
     try {
       const venue = await this.findVenueByCode(stickerCode);
@@ -474,6 +502,10 @@ class RewardService {
       if (venue && venue.active !== false) {
         update.acquisitionVenueId = venue.venueId;
         update.acquisitionVenueName = venue.venueName;
+        // Their home starts where they joined (Wes, 2026-10-31): the store's
+        // spot and ZIP, so the map, Locals and the starter place open there
+        // and no ZIP prompt. The app's first location fix replaces the spot.
+        Object.assign(update, await this.homeFromStore(venue));
       }
       await this.db.collection(COLLECTIONS.USERS).doc(userId).update(update);
       if (update.acquisitionVenueId) {
