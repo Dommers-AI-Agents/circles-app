@@ -10,6 +10,9 @@ protocol ActivityFeedCellDelegate: AnyObject {
     func didTapComments(activity: Activity)
     func didTapReactionButton(activity: Activity, emoji: String)
     func didLongPressReactionButton(activity: Activity, sourceView: UIView)
+    /// The heart on a group row: one reaction for every activity in it
+    func didTapGroupReactionButton(activities: [Activity], emoji: String)
+    func didLongPressGroupReactionButton(activities: [Activity], sourceView: UIView)
 }
 
 class ActivityFeedCell: UITableViewCell {
@@ -201,6 +204,8 @@ class ActivityFeedCell: UITableViewCell {
         // Add button actions
         reactionButton.addTarget(self, action: #selector(reactionButtonTapped), for: .touchUpInside)
         commentButton.addTarget(self, action: #selector(commentButtonTapped), for: .touchUpInside)
+        // Once, here: adding it on every configure stacked a recognizer per reuse
+        reactionPillsContainer.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(reactionPillsTapped)))
         
         // Add long press gesture to reaction button
         let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(reactionButtonLongPressed(_:)))
@@ -493,8 +498,8 @@ class ActivityFeedCell: UITableViewCell {
     }
 
     /// Renders a collapsed burst of same-actor activities as one summary row,
-    /// e.g. "Wesley liked 5 places and uploaded 2 photos (7) ▾". Reactions and
-    /// comments belong to individual activities, so that chrome is hidden here.
+    /// e.g. "Wesley liked 5 places and uploaded 2 photos (7) ▾". The heart
+    /// reacts to the whole group (2026-10-31); comments stay per activity.
     func configure(withGroup activities: [Activity], isExpanded: Bool) {
         guard let first = activities.first else { return }
         currentActivity = first
@@ -567,8 +572,34 @@ class ActivityFeedCell: UITableViewCell {
             placeImageView.isHidden = true
         }
         commentLabel.isHidden = true
-        interactionButtonsContainer.isHidden = true
-        reactionPillsContainer.isHidden = true
+        configureGroupReactions(for: activities)
+    }
+
+    /// Heart + chips for a group row, from its activities' own reactions
+    private func configureGroupReactions(for activities: [Activity]) {
+        interactionButtonsContainer.isHidden = false
+        commentButton.isHidden = true
+        commentCountLabel.isHidden = true
+
+        let mine = ActivityGroupReaction.groupReaction(activities.map(\.userReaction))
+        if let mine, let style = ReactionStyle(emoji: mine) {
+            reactionButton.setImage(UIImage(systemName: "heart.fill"), for: .normal)
+            reactionButton.tintColor = style.backgroundColor
+        } else {
+            reactionButton.setImage(UIImage(systemName: "heart"), for: .normal)
+            reactionButton.tintColor = Constants.Colors.secondaryLabel
+        }
+        reactionButton.accessibilityLabel = mine == nil ? "Like all \(activities.count)" : "Unlike all \(activities.count)"
+
+        reactionPillsContainer.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let summary = ActivityGroupReaction.summary(activities.map(\.reactionSummary))
+        reactionPillsContainer.isHidden = summary.isEmpty
+        for reaction in summary.prefix(3) {
+            let pill = ReactionPillView(configuration: ReactionPillConfiguration(
+                emoji: reaction.emoji, count: reaction.count, isUserReaction: reaction.emoji == mine))
+            pill.translatesAutoresizingMaskIntoConstraints = false
+            reactionPillsContainer.addArrangedSubview(pill)
+        }
     }
     
     // MARK: - Actions
@@ -606,6 +637,11 @@ class ActivityFeedCell: UITableViewCell {
     }
     
     @objc private func reactionButtonTapped() {
+        if let group = currentGroup {
+            delegate?.didTapGroupReactionButton(activities: group, emoji: "👍")
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
         guard let activity = currentActivity else { return }
         
         // Use thumbs up as default reaction (LinkedIn-style "like")
@@ -660,19 +696,27 @@ class ActivityFeedCell: UITableViewCell {
             reactionPillsContainer.addArrangedSubview(moreLabel)
         }
         
-        // Add tap gesture to reaction pills
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(reactionPillsTapped))
-        reactionPillsContainer.addGestureRecognizer(tapGesture)
     }
     
     @objc private func reactionPillsTapped() {
+        // A group's chips summarise several activities; who reacted lives on
+        // each one (expand the group to see them)
+        if let group = currentGroup {
+            delegate?.didTapActivityGroup(activities: group)
+            return
+        }
         guard let activity = currentActivity else { return }
         delegate?.didTapReactions(activity: activity)
     }
     
     @objc private func reactionButtonLongPressed(_ gesture: UILongPressGestureRecognizer) {
-        guard gesture.state == .began,
-              let activity = currentActivity else { return }
+        guard gesture.state == .began else { return }
+        if let group = currentGroup {
+            delegate?.didLongPressGroupReactionButton(activities: group, sourceView: reactionButton)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            return
+        }
+        guard let activity = currentActivity else { return }
         
         // Notify delegate to show reaction picker
         delegate?.didLongPressReactionButton(activity: activity, sourceView: reactionButton)
@@ -691,6 +735,7 @@ class ActivityFeedCell: UITableViewCell {
         currentPlaceImageLoadId = nil
         currentGroup = nil
         setGroupChildStyle(false)
+        commentButton.isHidden = false
         
         // Reset UI elements to default state
         avatarImageView.image = UIImage(systemName: "person.circle.fill")

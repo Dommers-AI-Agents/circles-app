@@ -178,6 +178,26 @@ exports.addReaction = async (req, res) => {
   }
 };
 
+// One reaction for a whole feed group row: every activity in it, one
+// notification (services/activityGroupReactionService)
+// @route POST /api/activities/reactions/group  { activityIds, emoji, remove }
+exports.reactToGroup = async (req, res) => {
+  try {
+    const { activityIds, emoji, remove } = req.body || {};
+    const result = await require('../services/activityGroupReactionService').reactToGroup({
+      userId: req.user.uid, activityIds, emoji, remove: remove === true
+    });
+    if (result.actorId) {
+      result.results.forEach(({ activityId, emoji: e }) => {
+        sseService.notifyUser(result.actorId, 'activity_reaction', { activityId, userId: req.user.uid, emoji: e });
+      });
+    }
+    res.json({ success: true, results: result.results, piggyBank: result.piggyBank });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Error reacting to activity group', fallbackMessage: 'Failed to react' });
+  }
+};
+
 // Remove a reaction from an activity
 exports.removeReaction = async (req, res) => {
   try {

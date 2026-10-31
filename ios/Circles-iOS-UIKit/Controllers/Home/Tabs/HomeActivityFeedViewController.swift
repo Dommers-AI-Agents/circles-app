@@ -48,6 +48,9 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
 
     /// The activity a long-pressed reaction picker is for
     private var currentReactionActivity: Activity?
+    /// The group row whose heart was long-pressed (the picker's choice goes
+    /// to every activity in it)
+    private var currentReactionGroup: [Activity]?
 
     /// Guards against the same moment-open firing twice. A single activity-row
     /// tap can trigger BOTH `tableView(_:didSelectRowAt:)` (→ `navigateToVideo`)
@@ -525,7 +528,7 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
     /// Applies a reaction toggle to the in-memory feed and reloads the table
     /// without touching scroll position; the next natural feed load brings
     /// the server-computed counts.
-    private func applyLocalReaction(activityId: String, emoji: String?) {
+    private func applyLocalReaction(activityId: String, emoji: String?, reload: Bool = true) {
         guard let index = activities.firstIndex(where: { $0.id == activityId }) else { return }
         let current = activities[index]
 
@@ -558,7 +561,7 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
             reactionCount: count,
             reactionSummary: summary.isEmpty ? nil : summary
         )
-        tableView.reloadData()
+        if reload { tableView.reloadData() }
     }
 
     // MARK: - Moment navigation
@@ -983,6 +986,71 @@ extension HomeActivityFeedViewController: ActivityFeedCellDelegate {
         }
     }
 
+    private struct GroupReactionResponse: Decodable {
+        struct Result: Decodable {
+            let activityId: String
+            let emoji: String?
+        }
+        let success: Bool
+        let results: [Result]
+        let piggyBank: PiggyBankCredit?
+    }
+
+    /// The heart on a group row (Wes, 2026-10-31): one reaction for every
+    /// activity in the burst, one notification to its owner. Tapping the
+    /// emoji the group already shows takes it off all of them.
+    func didTapGroupReactionButton(activities group: [Activity], emoji: String) {
+        // The rows' latest state (a member may have been reacted to since)
+        let current = group.map { member in activities.first { $0.id == member.id } ?? member }
+        let removing = ActivityGroupReaction.removes(memberReactions: current.map(\.userReaction), tapped: emoji)
+        var body: [String: Any] = ["activityIds": current.map(\.id), "emoji": emoji]
+        if removing { body["remove"] = true }
+
+        APIService.shared.request(
+            endpoint: "activities/reactions/group",
+            method: .post,
+            body: body
+        ) { [weak self] (result: Result<GroupReactionResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let response):
+                    let landed = Set(response.results.map(\.activityId))
+                    for member in current where landed.contains(member.id) {
+                        // Members that already had this emoji stay as they are
+                        if !removing && member.userReaction == emoji { continue }
+                        if removing && member.userReaction == nil { continue }
+                        self.applyLocalReaction(activityId: member.id, emoji: removing ? nil : emoji, reload: false)
+                    }
+                    // Members gone server-side drop out of the feed
+                    for member in current where !landed.contains(member.id) {
+                        self.activities.removeAll { $0.id == member.id }
+                    }
+                    self.tableView.reloadData()
+                    if !removing { PiggyBankDepositView.play(credit: response.piggyBank) }
+                case .failure(let error):
+                    if case .httpError(404, _) = error {
+                        let ids = Set(current.map(\.id))
+                        self.activities.removeAll { ids.contains($0.id) }
+                        self.tableView.reloadData()
+                    } else {
+                        self.showError(FriendlyError.message(for: error))
+                    }
+                }
+            }
+        }
+    }
+
+    func didLongPressGroupReactionButton(activities group: [Activity], sourceView: UIView) {
+        let reactionPicker = ReactionPickerView()
+        reactionPicker.delegate = self
+        reactionPicker.translatesAutoresizingMaskIntoConstraints = false
+        host?.attachFullScreenOverlay(reactionPicker)
+        currentReactionActivity = nil
+        currentReactionGroup = group
+        reactionPicker.show(from: sourceView)
+    }
+
     func didLongPressReactionButton(activity: Activity, sourceView: UIView) {
         let reactionPicker = ReactionPickerView()
         reactionPicker.delegate = self
@@ -993,6 +1061,7 @@ extension HomeActivityFeedViewController: ActivityFeedCellDelegate {
         host?.attachFullScreenOverlay(reactionPicker)
 
         currentReactionActivity = activity
+        currentReactionGroup = nil
         reactionPicker.show(from: sourceView)
     }
 }
@@ -1001,12 +1070,17 @@ extension HomeActivityFeedViewController: ActivityFeedCellDelegate {
 
 extension HomeActivityFeedViewController: ReactionPickerDelegate {
     func reactionPicker(_ picker: ReactionPickerView, didSelectReaction reaction: ReactionStyle) {
-        guard let activity = currentReactionActivity else { return }
-        didTapReactionButton(activity: activity, emoji: reaction.rawValue)
+        if let group = currentReactionGroup {
+            didTapGroupReactionButton(activities: group, emoji: reaction.rawValue)
+        } else if let activity = currentReactionActivity {
+            didTapReactionButton(activity: activity, emoji: reaction.rawValue)
+        }
         currentReactionActivity = nil
+        currentReactionGroup = nil
     }
 
     func reactionPickerDidDismiss(_ picker: ReactionPickerView) {
         currentReactionActivity = nil
+        currentReactionGroup = nil
     }
 }

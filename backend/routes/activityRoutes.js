@@ -16,6 +16,7 @@ router.put('/network/activities/mark-read', protect, activityController.markActi
 router.delete('/activities/:activityId', protect, activityController.deleteActivity);
 
 // Activity reactions
+router.post('/activities/reactions/group', protect, activityInteractionController.reactToGroup);
 router.post('/activities/:activityId/reactions', protect, activityInteractionController.addReaction);
 router.post('/activities/:activityId/reactions/remove', protect, activityInteractionController.removeReaction);
 router.delete('/activities/:activityId/reactions', protect, activityInteractionController.removeReaction);
