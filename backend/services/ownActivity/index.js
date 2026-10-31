@@ -10,6 +10,7 @@ const { COLLECTIONS } = require('../../models/FirestoreModels');
 const shape = require('./shape');
 const { fetchCirclesById } = require('../circleLookup');
 const { withCurrentCircle } = require('../activityFeedOverlay');
+const { fetchUsersById } = require('../userLookup');
 
 /** The page's circles as they are now (one batched read): circle rows show the current name and cover. */
 async function circlesFor(rows) {
@@ -57,10 +58,13 @@ class OwnActivityService {
     const cutByWant = kept.length === want && docs.indexOf(docs.find((d) => d.id === lastKept.id)) < docs.length - 1;
     const cursorDoc = cutByWant ? lastKept : lastScanned;
     const hasMore = snap.size === SCAN_LIMIT || cutByWant;
-    const [extras, circles] = await Promise.all([this.momentExtras(kept), circlesFor(kept)]);
+    // Rows about a person ("Followed Sal") show their current name
+    const userIds = kept.filter((d) => d.targetType === 'user').map((d) => d.targetId);
+    const [extras, circles, users] = await Promise.all([this.momentExtras(kept), circlesFor(kept), fetchUsersById(userIds)]);
     return {
       filter: f,
-      items: kept.map((d) => shape.presentItem(withCurrentCircle(d, circles), extras.get(d.targetId) || {})),
+      items: kept.map((d) => shape.presentItem(withCurrentCircle(d, circles),
+        { ...(extras.get(d.targetId) || {}), targetUser: d.targetType === 'user' ? users.get(d.targetId) : undefined })),
       nextCursor: hasMore && cursorDoc ? isoOf(cursorDoc.timestamp || cursorDoc.createdAt) : null,
       hasMore
     };

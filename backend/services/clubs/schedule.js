@@ -86,7 +86,8 @@ async function rsvp(clubId, uid, { key, status } = {}, now = new Date()) {
     tx.set(ref, next);
     return next;
   });
-  return { occurrence: s.toClientOccurrence(occ, fresh, data, uid) };
+  // Who's going, as they are now
+  return { occurrence: s.toClientOccurrence(occ, fresh, data, uid, await s.clubPeople(Object.keys(fresh.going || {}))) };
 }
 
 module.exports = { addMeetup, updateMeetup, deleteMeetup, addEvent, deleteEvent, rsvp };

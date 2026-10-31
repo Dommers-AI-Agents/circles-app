@@ -77,7 +77,7 @@ module.exports = {
         data: { planId, watcherId: candidate }
       });
     }
-    return this.presentPlan(merged, { viewerId: userId });
+    return this.presentPlanNow(merged, { viewerId: userId });
   },
 
   // Join by naming the PARENT rather than the plan. A sibling who tries to set
@@ -151,7 +151,7 @@ module.exports = {
         data: { planId, watcherId: target }
       });
     }
-    return this.presentPlan(merged, { viewerId: userId });
+    return this.presentPlanNow(merged, { viewerId: userId });
   },
 
   // The owner sends an invitation again (a missed push, a phone that was off).
@@ -178,7 +178,7 @@ module.exports = {
     });
     const { delivered, emailed } = await this.invite(target, this.constructor.watcherInviteMessage(plan, planId));
     return {
-      plan: this.presentPlan({ ...plan, watchers }, { viewerId: userId }),
+      plan: await this.presentPlanNow({ ...plan, watchers }, { viewerId: userId }),
       delivered,
       emailed
     };
@@ -210,6 +210,6 @@ module.exports = {
         data: { planId }
       });
     }
-    return this.presentPlan(merged, { viewerId: userId });
+    return this.presentPlanNow(merged, { viewerId: userId });
   },
 };

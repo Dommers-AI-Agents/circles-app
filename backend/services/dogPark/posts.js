@@ -65,7 +65,8 @@ async function getPost(uid, postId) {
   const viewer = await s.loadUser(uid);
   const post = await s.loadVisiblePost(postId, uid, viewer);
   const petted = await s.pettedBy([post.id], uid);
-  return { post: s.toClientPost(post.id, post.data, uid, { iPetted: petted.has(post.id) }) };
+  const author = (await s.authorsOf([post.data])).get(post.data.authorId);
+  return { post: s.toClientPost(post.id, post.data, uid, { iPetted: petted.has(post.id), author }) };
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +96,7 @@ async function createPhotoPost(uid, body = {}, { isAllowedImageUrl = require('..
   };
   const ref = await s.postsCol().add(post);
   await profiles.bumpPostCounts(dogs, 1);
-  return { post: s.toClientPost(ref.id, post, uid) };
+  return { post: s.toClientPost(ref.id, post, uid, { author: (await s.authorsOf([post])).get(post.authorId) }) };
 }
 
 const bucket = () => require('firebase-admin/storage').getStorage().bucket();
@@ -146,7 +147,7 @@ async function finishVideo(uid, videoId, body = {}) {
   const row = post.data;
   if (row.kind !== 'video' || row.authorId !== uid) throw new ServiceError(404, 'not_found', 'That video is gone');
   // A retry after success answers with the post as it stands
-  if (row.status !== 'uploading') return { post: s.toClientPost(post.id, row, uid) };
+  if (row.status !== 'uploading') return { post: s.toClientPost(post.id, row, uid, { author: (await s.authorsOf([row])).get(row.authorId) }) };
   if (Date.now() - (Date.parse(row.createdAt) || 0) >= UPLOAD_TTL_MS) {
     throw new ServiceError(409, 'upload_expired', 'This upload took too long. Please add the video again.');
   }
@@ -173,7 +174,7 @@ async function finishVideo(uid, videoId, body = {}) {
   };
   await post.ref.update(ready);
   await profiles.bumpPostCounts(dogs, 1);
-  return { post: s.toClientPost(post.id, { ...row, ...ready }, uid) };
+  return { post: s.toClientPost(post.id, { ...row, ...ready }, uid, { author: (await s.authorsOf([row])).get(row.authorId) }) };
 }
 
 /** Comments, pets, files and the dog counts go with the post. */
@@ -225,7 +226,7 @@ async function togglePet(uid, postId) {
     return { data: { ...data, petCount }, petted };
   });
   if (result.petted) await maybePetPush(post, result.data, uid, viewer);
-  return { post: s.toClientPost(post.id, result.data, uid, { iPetted: result.petted }) };
+  return { post: s.toClientPost(post.id, result.data, uid, { iPetted: result.petted, author: (await s.authorsOf([result.data])).get(result.data.authorId) }) };
 }
 
 /** Which push a new pet earns, or null. Pure. */
@@ -266,7 +267,7 @@ async function listComments(uid, postId) {
   return {
     comments: rows
       .filter((r) => r.data.authorId === uid || (!blocked.has(r.data.authorId) && !s.isHiddenAuthor(authors.get(r.data.authorId))))
-      .map((r) => s.toClientComment(r.id, r.data, uid))
+      .map((r) => s.toClientComment(r.id, r.data, uid, authors.get(r.data.authorId)))
   };
 }
 
@@ -290,10 +291,10 @@ async function addComment(uid, postId, { text } = {}) {
       data: { postId: post.id }
     }, 'dog_comment');
   }
-  const petted = await s.pettedBy([post.id], uid);
+  const [petted, people] = await Promise.all([s.pettedBy([post.id], uid), s.authorsOf([comment, fresh])]);
   return {
-    comment: s.toClientComment(ref.id, comment, uid),
-    post: s.toClientPost(post.id, fresh, uid, { iPetted: petted.has(post.id) })
+    comment: s.toClientComment(ref.id, comment, uid, people.get(comment.authorId)),
+    post: s.toClientPost(post.id, fresh, uid, { iPetted: petted.has(post.id), author: people.get(fresh.authorId) })
   };
 }
 

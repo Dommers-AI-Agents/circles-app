@@ -22,7 +22,9 @@ async function listPosts(clubId, uid, { kind = 'board', before = null } = {}) {
   if (before && Number.isFinite(Date.parse(before))) query = query.where('createdAt', '<', new Date(Date.parse(before)).toISOString());
   const snap = await query.orderBy('createdAt', 'desc').limit(s.POSTS_PAGE + 1).get();
   const docs = snap.docs.slice(0, s.POSTS_PAGE);
-  return { posts: docs.map((d) => s.toClientPost(d.id, d.data(), data, uid)), hasMore: snap.docs.length > s.POSTS_PAGE };
+  // Authors as they are now (one read for the page)
+  const users = await s.clubPeople(docs.map((d) => d.data().authorId));
+  return { posts: docs.map((d) => s.toClientPost(d.id, d.data(), data, uid, users)), hasMore: snap.docs.length > s.POSTS_PAGE };
 }
 
 async function createPost(clubId, uid, body = {}) {
@@ -49,7 +51,7 @@ async function createPost(clubId, uid, body = {}) {
       }, 'club_bulletin');
     }
   }
-  return { post: s.toClientPost(ref.id, post, data, uid) };
+  return { post: s.toClientPost(ref.id, post, data, uid, await s.clubPeople([post.authorId])) };
 }
 
 async function loadPost(clubId, postId) {
@@ -83,14 +85,15 @@ async function react(clubId, uid, postId, { emoji } = {}) {
     tx.update(post.ref, { reactions });
     return { ...cur, reactions };
   });
-  return { post: s.toClientPost(post.ref.id, fresh, data, uid) };
+  return { post: s.toClientPost(post.ref.id, fresh, data, uid, await s.clubPeople([fresh.authorId])) };
 }
 
 async function listReplies(clubId, uid, postId) {
   const { id, data } = await s.loadAsMember(clubId, uid);
   const post = await loadPost(id, postId);
   const snap = await s.repliesCol().where('postId', '==', post.ref.id).orderBy('createdAt', 'asc').limit(s.REPLIES_MAX).get();
-  return { replies: snap.docs.map((d) => s.toClientReply(d.id, d.data(), data, uid)) };
+  const users = await s.clubPeople(snap.docs.map((d) => d.data().authorId));
+  return { replies: snap.docs.map((d) => s.toClientReply(d.id, d.data(), data, uid, users)) };
 }
 
 async function addReply(clubId, uid, postId, { text } = {}) {
@@ -115,7 +118,8 @@ async function addReply(clubId, uid, postId, { text } = {}) {
       data: { clubId: id, postId: post.ref.id }
     }, 'club_reply');
   }
-  return { reply: s.toClientReply(ref.id, reply, data, uid), post: s.toClientPost(post.ref.id, fresh, data, uid) };
+  const users = await s.clubPeople([reply.authorId, fresh.authorId]);
+  return { reply: s.toClientReply(ref.id, reply, data, uid, users), post: s.toClientPost(post.ref.id, fresh, data, uid, users) };
 }
 
 async function deleteReply(clubId, uid, postId, replyId) {
