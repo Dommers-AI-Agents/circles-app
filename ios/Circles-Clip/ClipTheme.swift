@@ -63,13 +63,15 @@ enum ClipTheme {
         return imageView
     }
 
-    /// The icon with "FavCircles" and what it's for, top left of each screen
+    /// The icon with "FavCircles", what it's for and the road line, top left of each screen
     static func brandHeader(mark: UIImageView) -> UIStackView {
         let name = label(.systemFont(ofSize: 17, weight: .bold), lines: 1)
         name.text = "FavCircles"
         let tagline = label(.systemFont(ofSize: 13, weight: .medium), color: UIColor.white.withAlphaComponent(0.85))
         tagline.text = "Save your favorite places. Build your own map."
-        let words = UIStackView(arrangedSubviews: [name, tagline])
+        let road = label(serif(13).withTraits(.traitItalic), color: gold)
+        road.text = "It's your road, the road less traveled. Save it."
+        let words = UIStackView(arrangedSubviews: [name, tagline, road])
         words.axis = .vertical
         words.spacing = 1
         let header = UIStackView(arrangedSubviews: [mark, words])
@@ -77,7 +79,7 @@ enum ClipTheme {
         header.alignment = .center
         header.spacing = 10
         header.translatesAutoresizingMaskIntoConstraints = false
-        [name, tagline].forEach(lift)
+        [name, tagline, road].forEach(lift)
         return header
     }
 
@@ -155,6 +157,13 @@ enum ClipTheme {
                 view.transform = .identity
             }
         }
+    }
+}
+
+private extension UIFont {
+    func withTraits(_ traits: UIFontDescriptor.SymbolicTraits) -> UIFont {
+        guard let descriptor = fontDescriptor.withSymbolicTraits(fontDescriptor.symbolicTraits.union(traits)) else { return self }
+        return UIFont(descriptor: descriptor, size: pointSize)
     }
 }
 
