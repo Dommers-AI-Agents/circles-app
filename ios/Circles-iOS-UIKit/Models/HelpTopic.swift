@@ -343,7 +343,7 @@ class HelpContentProvider {
 
                 **A real postcard in the mail:**
                 • We print it on a 4×6 card and mail it anywhere in the US
-                • The price is shown before you pay (usually $3.99), with Apple Pay or a card
+                • The price is shown before you pay, with Apple Pay or a card
                 • You can cancel before it prints, within an hour of sending
                 • It typically arrives in 4 to 6 business days. Follow it in the Postcard widget, from printing to delivered
 
