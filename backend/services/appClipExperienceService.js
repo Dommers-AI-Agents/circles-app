@@ -33,7 +33,7 @@ const W = 1800;
 const H = 1200;
 // Bump when the header's look changes: every store's card republishes over
 // the next nightly runs (the picture alone, so no new text review).
-const HEADER_VERSION = 2;
+const HEADER_VERSION = 3;
 const SANS = "'DejaVu Sans', -apple-system, Helvetica, Arial, sans-serif";
 // The generic card's headline, in the window stickers' and coasters' serif.
 // Gelasio (assets/fonts, installed by the Dockerfile) is Georgia's open twin.
@@ -186,7 +186,8 @@ const charcoalSVG = `<defs>
 /// 1800×1200 JPEG. The generic card: charcoal like the window stickers and
 /// coasters, a faint street map, the hook, and a route through three saved
 /// spots on the right (clear of Apple's close button in the corner). A
-/// store's card: its cover photo darkened on the left under the hook, or the
+/// store's card: its cover photo filling the card, bright, lightly shaded on
+/// the left with a soft shadow under the hook (Wes, 2026-10-31), or the
 /// charcoal map when it has no photo. The store's name is the card's title,
 /// so it isn't in the picture.
 async function headerImagePNG(venue, kind, coverUrl, { live = true } = {}) {
@@ -196,14 +197,15 @@ async function headerImagePNG(venue, kind, coverUrl, { live = true } = {}) {
   const cover = venue.genericJoin ? null : await coverBuffer(coverUrl);
   const backdrop = cover
     ? `<defs><linearGradient id="shade" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#111317" stop-opacity="0.9"/><stop offset="0.55" stop-color="#111317" stop-opacity="0.65"/><stop offset="1" stop-color="#111317" stop-opacity="0.2"/>
-    </linearGradient></defs>
+      <stop offset="0" stop-color="#111317" stop-opacity="0.62"/><stop offset="0.6" stop-color="#111317" stop-opacity="0.18"/><stop offset="1" stop-color="#111317" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="lift" x="-10%" y="-30%" width="120%" height="160%"><feDropShadow dx="0" dy="4" stdDeviation="14" flood-color="#000" flood-opacity="0.75"/></filter></defs>
   <rect width="${W}" height="${H}" fill="url(#shade)"/>`
     : `${charcoalSVG}
   ${venue.genericJoin ? route : ''}`;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   ${backdrop}
-  ${hookSVG(copy)}
+  <g${cover ? ' filter="url(#lift)"' : ''}>${hookSVG(copy)}</g>
 </svg>`;
   const base = cover ? sharp(cover) : sharp({ create: { width: W, height: H, channels: 3, background: '#1B1E24' } });
   return base.composite([{ input: Buffer.from(svg) }]).jpeg({ quality: 88 }).toBuffer();
