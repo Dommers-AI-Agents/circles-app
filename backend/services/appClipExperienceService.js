@@ -33,7 +33,7 @@ const W = 1800;
 const H = 1200;
 // Bump when the header's look changes: every store's card republishes over
 // the next nightly runs (the picture alone, so no new text review).
-const HEADER_VERSION = 1;
+const HEADER_VERSION = 2;
 const SANS = "'DejaVu Sans', -apple-system, Helvetica, Arial, sans-serif";
 // The generic card's headline, in the window stickers' and coasters' serif.
 // Gelasio (assets/fonts, installed by the Dockerfile) is Georgia's open twin.
@@ -81,51 +81,31 @@ const clip = (s, max) => {
 // one is only for codes no store owns), and it republishes with the points
 // the night loyalty goes live.
 function copyFor(venue, kind, { live = true } = {}) {
-  // The generic "Join FavCircles" code (coasters, anything not one store's):
-  // no store name to show, so the card says what FavCircles is for. Each
-  // line says something new (Wes, 2026-10-30): FavCircles itself only in
-  // Apple's "Powered by" row.
+  // Each line says something new (Wes, 2026-10-30): the picture carries the
+  // hook, the title the store's name, the subtitle why to keep it; FavCircles
+  // itself only in Apple's "Powered by" row. `hook` is the picture's two
+  // serif lines, `lead` an optional line under them.
+  const subtitle = 'Stay connected. Catch every moment.';
+  const saveUs = ['Love it here?', 'Save us.'];
+  // The generic "Join FavCircles" code (coasters, anything not one store's)
   if (venue.genericJoin) {
-    return {
-      title: 'Build your map.',
-      subtitle: 'Stay connected. Catch every moment.',
-      pill: 'Love it here? Save us.',
-      lead: 'Never forget your favorite places.'
-    };
+    return { title: 'Build your map.', subtitle, hook: saveUs, lead: 'Never forget your favorite places.' };
   }
-  const name = clip(venue.venueName || 'This store', TITLE_MAX);
+  const title = clip(venue.venueName || 'This store', TITLE_MAX);
   if (kind === 'register' && live) {
     const points = rewardService.effectiveEarnRate(venue);
-    // The store's first reward rides in the picture, never the words: Apple
-    // lets a published card's picture change, but new words mean a new card
-    // (and a review), and owners edit offers often.
+    // The store's first reward rides in the picture, never the words: owners
+    // edit offers often and a picture change needs no new words.
     const first = rewardProgress.firstReward(venue.offers);
     return {
-      title: name,
-      subtitle: clip(`Earn ${points} points every visit. Save it to your map.`, SUBTITLE_MAX),
-      pill: `Earn ${points} points every visit`,
-      lead: first ? clip(rewardProgress.firstRewardLine(first), 44) : 'Scan at the register, collect points, redeem them here.'
+      title,
+      subtitle,
+      hook: [`Earn ${points} points`, 'every visit.'],
+      lead: first ? clip(rewardProgress.firstRewardLine(first), 44) : null
     };
   }
-  if (kind === 'register') {
-    // Before loyalty is live. Its own words (unchanged since 2026-10-29), so
-    // a window-copy change never recreates these cards and resets Apple's
-    // pickup of them
-    return {
-      title: name,
-      subtitle: clip('Save this spot to your map and share it with friends.', SUBTITLE_MAX),
-      pill: 'Save this spot',
-      lead: 'Keep it on your map and see what friends think.'
-    };
-  }
-  // The window sticker, in the sign's own voice (Wes, 2026-10-29). Apple's
-  // subtitle limit is 56 characters, hence "&".
-  return {
-    title: name,
-    subtitle: clip('Love it here? Save us to your map & share with friends.', SUBTITLE_MAX),
-    pill: 'Love it here? Save us.',
-    lead: 'Keep us on your map and share us with friends.'
-  };
+  // The window sticker, and the register code before loyalty is live
+  return { title, subtitle, hook: saveUs, lead: null };
 }
 
 // --- the header image ---------------------------------------------------
@@ -184,62 +164,49 @@ const mapPin = (x, y, scale, color) => `<g transform="translate(${x},${y}) scale
     <path d="M0,-60 C-33,-60 -50,-35 -50,-12 C-50,20 0,60 0,60 C0,60 50,20 50,-12 C50,-35 33,-60 0,-60 Z" fill="${color}"/>
     <circle cx="0" cy="-14" r="17" fill="#15171C"/></g>`;
 
-/// The generic card: charcoal like the window stickers and coasters, a faint
-/// street map, the serif hook, and a route through three saved spots on the
-/// right (clear of Apple's close button in the corner).
-function genericHeaderJPEG(copy) {
-  const [ask, answer] = copy.pill.split('? ');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <defs>
+// The hook in the App Clip cards' serif: white first line, gold second, and
+// an optional lead under a rule. Vertically centred either way.
+function hookSVG(copy) {
+  const [ask, answer] = copy.hook;
+  const top = copy.lead ? 470 : 540;
+  return `<text x="130" y="${top}" font-family="${SERIF}" font-weight="bold" font-size="150" fill="#ffffff">${esc(ask)}</text>
+  <text x="130" y="${top + 180}" font-family="${SERIF}" font-weight="bold" font-size="150" fill="#F6C945">${esc(answer)}</text>${copy.lead ? `
+  <path d="M130,${top + 270} H560" stroke="#ffffff" stroke-opacity="0.5" stroke-width="2"/>
+  <text x="130" y="${top + 360}" font-family="${SANS}" font-size="56" fill="#ffffff" fill-opacity="0.88">${esc(copy.lead)}</text>` : ''}`;
+}
+
+const charcoalSVG = `<defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2E333B"/><stop offset="1" stop-color="#111317"/></linearGradient>
     <radialGradient id="glow" cx="0.78" cy="0.42" r="0.6"><stop offset="0" stop-color="#3182CE" stop-opacity="0.18"/><stop offset="1" stop-color="#3182CE" stop-opacity="0"/></radialGradient>
   </defs>
   <rect width="${W}" height="${H}" fill="url(#g)"/>
   ${streetGridSVG(0.045)}
-  <rect width="${W}" height="${H}" fill="url(#glow)"/>
-  <path d="M1080,1010 C1200,900 1150,760 1290,690 S1460,520 1560,430" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="4" stroke-dasharray="16 14" stroke-linecap="round"/>
-  ${mapPin(1080, 1000, 0.9, '#C8442F')}${mapPin(1300, 680, 0.9, '#D9A62E')}${mapPin(1560, 420, 1.15, '#6A8F3C')}
-  <text x="130" y="470" font-family="${SERIF}" font-weight="bold" font-size="150" fill="#ffffff">${esc(`${ask}?`)}</text>
-  <text x="130" y="650" font-family="${SERIF}" font-weight="bold" font-size="150" fill="#F6C945">${esc(answer)}</text>
-  <path d="M130,740 H560" stroke="#ffffff" stroke-opacity="0.5" stroke-width="2"/>
-  <text x="130" y="830" font-family="${SANS}" font-size="56" fill="#ffffff" fill-opacity="0.88">${esc(copy.lead)}</text>
-</svg>`;
-  return sharp(Buffer.from(svg)).jpeg({ quality: 90 }).toBuffer();
-}
+  <rect width="${W}" height="${H}" fill="url(#glow)"/>`;
 
-/// 1800×1200 JPEG: the cover photo under a dark gradient (or the brand
-/// gradient alone), the store's name, a pill with what the scan does.
+/// 1800×1200 JPEG. The generic card: charcoal like the window stickers and
+/// coasters, a faint street map, the hook, and a route through three saved
+/// spots on the right (clear of Apple's close button in the corner). A
+/// store's card: its cover photo darkened on the left under the hook, or the
+/// charcoal map when it has no photo. The store's name is the card's title,
+/// so it isn't in the picture.
 async function headerImagePNG(venue, kind, coverUrl, { live = true } = {}) {
   const copy = copyFor(venue, kind, { live });
-  if (venue.genericJoin) return genericHeaderJPEG(copy);
-  const cover = await coverBuffer(coverUrl);
-  const nameSize = 112;
-  const nameLines = wrapName(venue.venueName || 'This store', nameSize, W - 240, 2);
-  const nameTop = 420 - (nameLines.length - 1) * 60;
-  const pillW = Math.min(W - 240, Math.round(copy.pill.length * 30 + 140));
-  const pillY = nameTop + nameLines.length * 130 + 20;
+  const route = `<path d="M1080,1010 C1200,900 1150,760 1290,690 S1460,520 1560,430" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="4" stroke-dasharray="16 14" stroke-linecap="round"/>
+  ${mapPin(1080, 1000, 0.9, '#C8442F')}${mapPin(1300, 680, 0.9, '#D9A62E')}${mapPin(1560, 420, 1.15, '#6A8F3C')}`;
+  const cover = venue.genericJoin ? null : await coverBuffer(coverUrl);
+  const backdrop = cover
+    ? `<defs><linearGradient id="shade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#111317" stop-opacity="0.9"/><stop offset="0.55" stop-color="#111317" stop-opacity="0.65"/><stop offset="1" stop-color="#111317" stop-opacity="0.2"/>
+    </linearGradient></defs>
+  <rect width="${W}" height="${H}" fill="url(#shade)"/>`
+    : `${charcoalSVG}
+  ${venue.genericJoin ? route : ''}`;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <defs>
-    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2B6CB0"/><stop offset="1" stop-color="#4299E1"/>
-    </linearGradient>
-    <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0A1428" stop-opacity="0.35"/><stop offset="1" stop-color="#0A1428" stop-opacity="0.88"/>
-    </linearGradient>
-  </defs>
-  ${cover ? '' : `<rect width="${W}" height="${H}" fill="url(#brand)"/>
-  <circle cx="1560" cy="180" r="260" fill="#ffffff" fill-opacity="0.08"/>
-  <circle cx="220" cy="1080" r="320" fill="#ffffff" fill-opacity="0.07"/>`}
-  ${cover ? `<rect width="${W}" height="${H}" fill="url(#shade)"/>` : ''}
-  <text x="120" y="200" font-family="${SANS}" font-weight="bold" font-size="54" fill="#ffffff" fill-opacity="0.92">FavCircles</text>
-  ${nameLines.map((line, i) => `<text x="120" y="${nameTop + i * 130}" font-family="${SANS}" font-weight="bold" font-size="${nameSize}" fill="#ffffff">${esc(line)}</text>`).join('\n  ')}
-  <rect x="120" y="${pillY}" width="${pillW}" height="110" rx="55" fill="#F6C945"/>
-  <text x="${120 + pillW / 2}" y="${pillY + 74}" text-anchor="middle" font-family="${SANS}" font-weight="bold" font-size="52" fill="#1A202C">${esc(copy.pill)}</text>
-  <text x="120" y="${pillY + 200}" font-family="${SANS}" font-size="46" fill="#ffffff" fill-opacity="0.9">${esc(copy.lead)}</text>
+  ${backdrop}
+  ${hookSVG(copy)}
 </svg>`;
-  const overlay = Buffer.from(svg);
-  const base = cover ? sharp(cover) : sharp({ create: { width: W, height: H, channels: 3, background: '#2B6CB0' } });
-  return base.composite([{ input: overlay }]).jpeg({ quality: 88 }).toBuffer();
+  const base = cover ? sharp(cover) : sharp({ create: { width: W, height: H, channels: 3, background: '#1B1E24' } });
+  return base.composite([{ input: Buffer.from(svg) }]).jpeg({ quality: 88 }).toBuffer();
 }
 
 // --- App Store Connect ----------------------------------------------------
@@ -390,7 +357,7 @@ function fingerprintFor(venue, kind, code, coverUrl, { live = true } = {}) {
   const reward = first ? `${first.pointsCost}:${first.title}` : '';
   // The card's words too: a copy change republishes without a version bump
   const copy = copyFor(venue, kind, { live });
-  const words = [copy.subtitle, copy.pill, copy.lead].join('/');
+  const words = [copy.subtitle, ...copy.hook, copy.lead || ''].join('/');
   return crypto.createHash('md5').update([venue.venueName, points, reward, words, coverUrl || '', kind, code, `v${HEADER_VERSION}`].join('|')).digest('hex');
 }
 

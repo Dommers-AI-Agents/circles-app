@@ -15,13 +15,22 @@ describe('appClipExperienceService copy', () => {
     expect(svc.copyFor({ venueName: 'Tommy\'s Tavern + Tap' }, 'window').title).toBe('Tommy\'s Tavern + Tap');
   });
 
-  test('register says the points, window says save it; both within 56 characters', () => {
-    const register = svc.copyFor({ venueName: 'X', earnRate: 25 }, 'register');
-    expect(register.subtitle).toBe('Earn 25 points every visit. Save it to your map.');
-    const window = svc.copyFor({ venueName: 'X' }, 'window');
-    expect(window.subtitle).toBe('Love it here? Save us to your map & share with friends.');
-    expect(register.subtitle.length).toBeLessThanOrEqual(svc.SUBTITLE_MAX);
-    expect(window.subtitle.length).toBeLessThanOrEqual(svc.SUBTITLE_MAX);
+  test('a store card says each thing once: hook in the picture, name in the title, why in the subtitle', async () => {
+    const register = svc.copyFor({ venueName: 'Test Bakery', earnRate: 25 }, 'register');
+    expect(register.hook).toEqual(['Earn 25 points', 'every visit.']);
+    const window = svc.copyFor({ venueName: 'Test Bakery' }, 'window');
+    expect(window.hook).toEqual(['Love it here?', 'Save us.']);
+    for (const copy of [register, window]) {
+      expect(copy.title).toBe('Test Bakery');
+      expect(copy.subtitle).toBe('Stay connected. Catch every moment.');
+      expect(copy.subtitle.length).toBeLessThanOrEqual(svc.SUBTITLE_MAX);
+      const picture = [...copy.hook, copy.lead || ''].join(' ');
+      expect(picture).not.toMatch(/FavCircles|Test Bakery/);
+      expect(copy.subtitle).not.toMatch(/save|love|points/i);
+    }
+    const jpeg = await svc.headerImagePNG({ venueName: 'Test Bakery' }, 'window', null);
+    const meta = await require('sharp')(jpeg).metadata();
+    expect([meta.format, meta.width, meta.height]).toEqual(['jpeg', 1800, 1200]);
   });
 
   test('the generic join card says what FavCircles is for, never its name, and no line repeats another', async () => {
@@ -31,7 +40,7 @@ describe('appClipExperienceService copy', () => {
       expect(copy.subtitle).toBe('Stay connected. Catch every moment.');
       expect(copy.title.length).toBeLessThanOrEqual(svc.TITLE_MAX);
       expect(copy.subtitle.length).toBeLessThanOrEqual(svc.SUBTITLE_MAX);
-      expect([copy.title, copy.subtitle, copy.pill, copy.lead].join(' ')).not.toMatch(/FavCircles/);
+      expect([copy.title, copy.subtitle, ...copy.hook, copy.lead].join(' ')).not.toMatch(/FavCircles/);
     }
     const jpeg = await svc.headerImagePNG({ venueName: 'FavCircles', genericJoin: true }, 'window', null);
     const meta = await require('sharp')(jpeg).metadata();
@@ -50,7 +59,7 @@ describe('appClipExperienceService copy', () => {
     const notLive = svc.copyFor({ venueName: 'Pasta & Provisions', earnRate: 25 }, 'register', { live: false });
     expect(notLive.title).toBe('Pasta & Provisions');
     expect(notLive.subtitle).not.toMatch(/points|earn/i);
-    expect(notLive.pill).toBe('Save this spot');
+    expect(notLive.hook).toEqual(['Love it here?', 'Save us.']);
     // The night loyalty goes live the fingerprint moves, so the card republishes with the points
     const base = { venueName: 'Pasta & Provisions', earnRate: 25 };
     expect(svc.fingerprintFor(base, 'register', 'C1', null, { live: false }))
@@ -64,8 +73,9 @@ describe('appClipExperienceService copy', () => {
     const venue = { venueName: 'X', earnRate: 25, offers: [{ title: 'Free lunch', pointsCost: 300 }, { title: 'Free coffee', pointsCost: 100 }] };
     const copy = svc.copyFor(venue, 'register');
     expect(copy.lead).toBe('100 points = Free coffee');
-    expect(copy.subtitle).toBe('Earn 25 points every visit. Save it to your map.');
-    expect(copy.pill).toBe('Earn 25 points every visit');
+    expect(copy.subtitle).toBe('Stay connected. Catch every moment.');
+    expect(copy.hook).toEqual(['Earn 25 points', 'every visit.']);
+    expect(svc.copyFor({ ...venue, offers: [] }, 'register').lead).toBeNull();
     // A changed offer republishes the picture
     const f = svc.fingerprintFor(venue, 'register', 'C1', null);
     expect(svc.fingerprintFor({ ...venue, offers: [{ title: 'Free coffee', pointsCost: 120 }] }, 'register', 'C1', null)).not.toBe(f);
