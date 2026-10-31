@@ -18,6 +18,7 @@ const { createActivity } = require('../services/activity/createActivity');
 const { recordPrivateCheckIn } = require('../services/ownActivity/record');
 const notificationService = require('../services/notificationService');
 const { isCheckInVisibleTo } = require('../services/checkInVisibility');
+const { fetchUsersById, withCurrentUser } = require('../services/userLookup');
 
 const { buildViewerContext } = require('../services/viewerContext');
 const { allowedAudiences, qualifyingAudiences, loadActivityPrivacyByActor } = require('../services/activityPrivacy');
@@ -40,8 +41,27 @@ const visibleCheckIns = async (docs, userId) => {
     }
     out.push(serializeDoc(doc));
   }
-  return out;
+  return withCurrentCheckInPeople(out);
 };
+
+/// Who checked in and who answered, as they are NOW: the name/photo stored on
+/// the check-in (and on each response) is only a fallback for a deleted
+/// account. One batched users read per list.
+const PERSON = { id: 'userId', name: 'userName', photo: 'userPhoto' };
+async function withCurrentCheckInPeople(checkIns) {
+  const ids = [];
+  for (const c of checkIns) {
+    ids.push(c.userId);
+    for (const r of Array.isArray(c.responses) ? c.responses : []) ids.push(r && r.userId);
+  }
+  const users = await fetchUsersById(ids);
+  if (users.size === 0) return checkIns;
+  return checkIns.map((c) => {
+    const row = withCurrentUser(c, users, PERSON);
+    if (!Array.isArray(c.responses)) return row;
+    return { ...row, responses: c.responses.map((r) => withCurrentUser(r, users, PERSON)) };
+  });
+}
 const sseService = require('../services/sseService');
 const { indexSavedPlace } = require('../services/circleLocationSummary');
 const { ensureGlobalPlaceLink, findCanonicalByNameAndLocation } = require('../services/globalPlaceResolver');
@@ -633,7 +653,7 @@ exports.getMyActiveCheckIns = async (req, res) => {
       .orderBy('createdAt', 'desc')
       .get();
     
-    const checkIns = serializeQuerySnapshot(checkInsQuery);
+    const checkIns = await withCurrentCheckInPeople(serializeQuerySnapshot(checkInsQuery));
     
     res.json({
       success: true,
