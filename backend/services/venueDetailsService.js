@@ -193,12 +193,17 @@ async function updateVenueDetails({ globalPlaceId, user, fields }) {
       await batch.commit();
     }
   }
-  // The store's copy of the place name (the rewards brand name stays the owner's own)
+  // The store goes by the place's name everywhere: its Store page, Manage
+  // Store, rewards and codes read `venueName`, so it follows the rename too.
+  // (It used to stay as a separate "brand name" nobody could edit, and the
+  // store screens kept the old name — Sal's Bakery, 2026-10-31.) The store's
+  // web address (slug) is stored once and does not change, so printed QR
+  // codes and links keep working.
   if (venue.name) {
     const store = await placePhotos.venueForPlace(doc.id, doc.data()).catch(() => null);
     if (store && store.venueId) {
       await db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(store.venueId)
-        .update({ placeName: venue.name, updatedAt: now })
+        .update({ placeName: venue.name, venueName: venue.name, updatedAt: now })
         .catch((e) => console.error('⚠️ [venue-details] store name sync failed:', e.message));
     }
   }
