@@ -7,6 +7,7 @@
 // of server.js verbatim (2026-10-29), mounted at the same point in the stack.
 const express = require('express');
 const path = require('path');
+const { APP_STORE_URL } = require('../config/rewardConfig');
 
 const router = express.Router();
 
@@ -26,7 +27,7 @@ router.get('/connect/:userId', async (req, res) => {
     if (v) qs.set(key, v);
   }
   const appQuery = qs.toString() ? `?${qs.toString()}` : '';
-  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+  const appStoreUrl = APP_STORE_URL;
 
   // Personalize the page and its link preview (OpenGraph) with the inviter's
   // name. Best-effort: any failure falls back to a generic invite.
@@ -80,7 +81,7 @@ router.get('/circle/:circleId', (req, res) => {
 router.get('/place/:placeId', async (req, res) => {
   const placeId = String(req.params.placeId).replace(/[^a-zA-Z0-9_-]/g, '');
   const ref = String(req.query.ref || '').replace(/[^a-zA-Z0-9._-]/g, '');
-  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+  const appStoreUrl = APP_STORE_URL;
 
   // Personalize the page + link preview with the place's details. Best-effort:
   // failures fall back to a generic page.
@@ -148,7 +149,7 @@ router.get('/app/map', (req, res) => {
 // opens the profile in-app when installed, App Store fallback otherwise.
 router.get('/user/:userId', async (req, res) => {
   const userId = String(req.params.userId).replace(/[^a-zA-Z0-9._-]/g, '');
-  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+  const appStoreUrl = APP_STORE_URL;
 
   let name = null;
   let photoUrl = null;
@@ -196,7 +197,7 @@ ${photoUrl ? `<meta property="og:image" content="${esc(photoUrl)}">` : ''}
 // are shared precisely with people who don't have FavCircles yet.
 router.get('/app/widget/:id', async (req, res) => {
   const id = String(req.params.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
-  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+  const appStoreUrl = APP_STORE_URL;
   const { widgetCopy } = require('../config/widgetCatalog');
   const copy = widgetCopy(id);
 
@@ -251,7 +252,7 @@ ${image ? `<meta property="og:image" content="${image}">` : ''}
 // directly; everyone else gets the tab's pitch and the App Store.
 router.get('/app/tab/:slug', (req, res) => {
   const slug = String(req.params.slug).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32).toLowerCase();
-  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+  const appStoreUrl = APP_STORE_URL;
   const { tabCopy } = require('../config/homeTabCatalog');
   const copy = tabCopy(slug);
 
@@ -308,7 +309,7 @@ router.get('/share/quote/:id/card.png', async (req, res) => {
 
 router.get('/app/quote/:id', async (req, res) => {
   const id = String(req.params.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
-  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+  const appStoreUrl = APP_STORE_URL;
   const iconUrl = 'https://favcircles.com/app-icon.png';
 
   let quote = null;
@@ -402,7 +403,7 @@ router.get('/app/run/:token', async (req, res) => {
   try { preview = await require('../services/runShareService').publicPreview(token); } catch (e) { /* unknown link */ }
   const who = preview ? escapeHtml(preview.ownerName) : 'Someone';
   const line = preview && preview.live ? `${who} is out for a run right now` : `${who} shared a run with you`;
-  const appStoreUrl = 'https://apps.apple.com/app/id6746807095';
+  const appStoreUrl = APP_STORE_URL;
   res.status(preview ? 200 : 404).send(`<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>Watch the run · FavCircles</title>
@@ -420,7 +421,7 @@ router.get('/app/run/:token', async (req, res) => {
 // No og:image: the sender's share sheet hands Messages the card image itself.
 router.get('/app/workout/:token', async (req, res) => {
   const token = String(req.params.token).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
-  const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+  const appStoreUrl = APP_STORE_URL;
   const iconUrl = 'https://favcircles.com/app-icon.png';
   let post = null;
   let author = null;

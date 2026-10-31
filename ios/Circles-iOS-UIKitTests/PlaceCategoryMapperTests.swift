@@ -10,9 +10,10 @@ struct PlaceCategoryMapperTests {
     @Test func restaurantsWinOverEverythingElse() {
         #expect(map(["restaurant", "cafe", "bar"]) == .init(category: .restaurant, subcategory: nil))
         #expect(map(["food", "meal_takeaway"]) == .init(category: .restaurant, subcategory: "Fast Food"))
-        #expect(map(["restaurant", "bakery"]) == .init(category: .restaurant, subcategory: "Bakery"))
-        // Fast food beats bakery when both appear
-        #expect(map(["restaurant", "bakery", "meal_delivery"]).subcategory == "Fast Food")
+        // A bakery is a Café, as the server files it, even when also tagged a restaurant
+        #expect(map(["restaurant", "bakery"]) == .init(category: .cafe, subcategory: "Bakery"))
+        #expect(map(["bakery"]) == .init(category: .cafe, subcategory: "Bakery"))
+        #expect(map(["restaurant", "meal_delivery"]) == .init(category: .restaurant, subcategory: "Fast Food"))
     }
 
     @Test func subcategoriesComeFromTheMoreSpecificType() {

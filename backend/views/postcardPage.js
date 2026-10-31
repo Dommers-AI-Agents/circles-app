@@ -4,7 +4,7 @@
 // note, and the pitch underneath. Was inline HTML in server.js.
 const { escapeHtml: esc } = require('../utils/text');
 
-const APP_STORE_URL = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+const { APP_STORE_URL } = require('../config/rewardConfig');
 
 function renderNotFound() {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Postcard not found</title></head>

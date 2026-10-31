@@ -121,11 +121,12 @@ struct SubscriptionProduct {
         }
     }
     
-    var savingsPercentage: Int? {
-        guard isAnnual else { return nil }
-        
+    /// What the annual plan saves against paying monthly for a year, from
+    /// the App Store's own monthly price (never a price written into the app).
+    func savingsPercentage(monthlyPrice: Decimal?) -> Int? {
+        guard isAnnual, let monthlyPrice, monthlyPrice > 0 else { return nil }
+
         // Calculate savings: (monthly * 12 - annual) / (monthly * 12) * 100
-        let monthlyPrice: Decimal = 2.99
         let annualizedMonthly = monthlyPrice * 12
         let annualPrice = price
         
@@ -148,17 +149,15 @@ struct SubscriptionProduct {
     }
     
     var badgeText: String? {
-        if isAnnual && savingsPercentage != nil {
-            return "BEST VALUE"
-        }
-        return nil
+        isAnnual ? "BEST VALUE" : nil
     }
 }
 
 // Premium features configuration
 struct PremiumFeatures {
-    static let maxFreeCircles = 6
-    static let maxFreePlacesPerCircle = 15
+    /// From the server's one source (ClientConfigService); built-in values only offline
+    static var maxFreeCircles: Int { ClientConfigService.shared.config.freeLimits.maxCircles }
+    static var maxFreePlacesPerCircle: Int { ClientConfigService.shared.config.freeLimits.maxPlacesPerCircle }
     
     struct Feature {
         let title: String

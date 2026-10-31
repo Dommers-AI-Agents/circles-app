@@ -173,8 +173,8 @@ class RewardsViewController: BaseViewController {
 
         label.text = """
         📍 Spot a FavCircles sticker at a place you love
-        📲 Scan it and save the place to a circle (+50 pts)
-        🧾 Scan the register card when you buy something — each shop sets its own points
+        📲 Scan it to open the store and save it to a circle
+        🧾 Scan the register card when you buy something — each shop sets its own points, plus a bonus for saving the shop
         🎟 Type in the code from a shop's order card or booth handout
         🏬 Points stay with the shop: earn them at a store, spend them on that store's offers
         🎁 Redeem points for offers right at the counter

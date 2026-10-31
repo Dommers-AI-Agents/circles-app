@@ -7,7 +7,7 @@
 // appear here — members only.
 const { escapeHtml: esc } = require('../utils/text');
 
-const APP_STORE_URL = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+const { APP_STORE_URL } = require('../config/rewardConfig');
 
 function renderClubInvite(token, preview) {
   const t = esc(token);

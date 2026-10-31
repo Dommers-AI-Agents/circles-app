@@ -7,7 +7,7 @@
 const { escapeHtml } = require('../../utils/text');
 
 const BASE = 'https://api.favcircles.com';
-const APP_STORE = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+const { APP_STORE_URL: APP_STORE } = require('../../config/rewardConfig');
 const NAVY = '#0E2A47';
 const ACCENT = '#2F6FED';
 const TEXT = '#1d2733';

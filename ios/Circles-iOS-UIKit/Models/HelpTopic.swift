@@ -953,8 +953,8 @@ class HelpContentProvider {
                 FavCircles gives your store its own loyalty program — store points your customers earn with you and spend on the offers you choose to run.
 
                 **The loop:**
-                1. A customer scans the FavCircles sticker in your window and saves your place (+50 points)
-                2. After a purchase, they scan the register card at your counter — you set how many points that pays
+                1. A customer scans the FavCircles sticker in your window to find your store and save it to a circle
+                2. After a purchase, they scan the register card at your counter — you set how many points that pays, and a bonus for saving your store
                 3. Points add up across visits — and they stay with your store: points earned with you can only be spent on your offers, never at a competitor
                 4. They redeem points on an offer you posted — "Free coffee — 100 points"
                 5. The app shows them a 5-minute voucher; they show it at the counter, you hand over the reward

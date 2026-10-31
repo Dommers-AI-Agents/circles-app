@@ -478,7 +478,8 @@ class PaywallViewController: BaseViewController {
         priceLabel.translatesAutoresizingMaskIntoConstraints = false
         
         let detailLabel = UILabel()
-        if let pricePerMonth = product.pricePerMonth, let savings = product.savingsPercentage {
+        let monthlyPrice = products.first { $0.product.id == SubscriptionProduct.monthlyProductId }?.price
+        if let pricePerMonth = product.pricePerMonth, let savings = product.savingsPercentage(monthlyPrice: monthlyPrice) {
             detailLabel.text = "\(pricePerMonth) • Save \(savings)%"
             detailLabel.textColor = Constants.Colors.primary
         } else {

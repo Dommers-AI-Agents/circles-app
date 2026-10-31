@@ -283,6 +283,8 @@ app.use('/api/email', require('./routes/emailPreferenceRoutes')); // one-click u
 // production (security audit 2026-10-01). Local/dev only.
 if (process.env.NODE_ENV !== 'production') app.use('/api/email', emailTestRoutes);
 app.use('/api/contact', require('./routes/contactRoutes')); // Website contact form (public)
+// Business values the app shows (limits, amounts, App Store link) — one source (public)
+app.get('/api/config/client', require('./controllers/clientConfigController').getClientConfig);
 app.use('/api/diagnostics', require('./routes/diagnosticRoutes'));
 app.use('/api/tasks', taskRoutes);
 app.use('/api/trash', require('./routes/trashRoutes'));

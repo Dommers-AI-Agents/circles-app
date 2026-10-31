@@ -1,5 +1,7 @@
 // backend/services/emailService.js
 const flags = require('../config/flags');
+const { APP_STORE_URL } = require('../config/rewardConfig');
+const { COINS } = require('../config/piggyBankConfig');
 let nodemailer;
 try {
   nodemailer = require('nodemailer');
@@ -379,7 +381,7 @@ class EmailService {
     const esc = escapeHtml;
     const where = placeName ? `${placeName}${placeCity ? `, ${placeCity}` : ''}` : null;
     const subject = where ? `📮 A postcard from ${where} — from ${senderName}` : `📮 ${senderName} sent you a postcard`;
-    const appStoreUrl = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+    const appStoreUrl = APP_STORE_URL;
     const html = `<!DOCTYPE html><html><body style="margin:0;background:#0f1b2d;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#fff">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:32px 16px">
 <table role="presentation" width="600" style="max-width:600px" cellspacing="0" cellpadding="0">
@@ -410,7 +412,7 @@ ${message ? `<tr><td align="center" style="font-size:19px;line-height:1.5;paddin
 
   // Website email-capture flow: visitor left their email on favcircles.com
   // with the FavCoins promise. Walks them from download → signup (SAME email)
-  // → first place = 25 FavCoins → piggy bank → Cactus wallet claim.
+  // → first place = FavCoins (COINS.FIRST_PLACE_ADDED) → piggy bank → Cactus wallet claim.
   async sendWebsiteLeadEmail(toEmail) {
     try {
       const subject = 'Your FavCoins are waiting 🌵';
@@ -425,9 +427,9 @@ ${message ? `<tr><td align="center" style="font-size:19px;line-height:1.5;paddin
             Here's how to get your first ones:
           </p>
           <ol style="font-size: 15px; line-height: 1.8; padding-left: 20px;">
-            <li><a href="https://apps.apple.com/us/app/favcircles/id6746807095" style="color: #667eea; font-weight: 600;">Download FavCircles</a> from the App Store.</li>
+            <li><a href="${APP_STORE_URL}" style="color: #667eea; font-weight: 600;">Download FavCircles</a> from the App Store.</li>
             <li>Create your account with <strong>this email address</strong> (${escapeHtml(toEmail)}).</li>
-            <li>Add your first favorite place — <strong>25 FavCoins</strong> drop straight into your piggy bank. 🐷</li>
+            <li>Add your first favorite place — <strong>${COINS.FIRST_PLACE_ADDED} FavCoins</strong> drop straight into your piggy bank. 🐷</li>
           </ol>
           <h2 style="font-size: 17px; margin-top: 24px;">Where your FavCoins live</h2>
           <p style="font-size: 15px; line-height: 1.6;">
@@ -452,9 +454,9 @@ ${message ? `<tr><td align="center" style="font-size:19px;line-height:1.5;paddin
 
 Thanks for your interest in FavCircles. FavCoins are rewards you earn for sharing the places you love — real coins on the Cactus blockchain that you can claim to your own wallet.
 
-1. Download FavCircles: https://apps.apple.com/us/app/favcircles/id6746807095
+1. Download FavCircles: ${APP_STORE_URL}
 2. Create your account with this email address (${toEmail}).
-3. Add your first favorite place — 25 FavCoins drop straight into your piggy bank.
+3. Add your first favorite place — ${COINS.FIRST_PLACE_ADDED} FavCoins drop straight into your piggy bank.
 
 Where your FavCoins live: tap the $ button on the home screen to open your piggy bank. Coins drop in as you add places, connect with friends, share moments, and check in.
 
@@ -840,7 +842,7 @@ The upgrade lives on your place page in the app. Questions, or need a window sti
     try {
       // The connect link opens the app and auto-connects when installed,
       // otherwise it redirects to the App Store
-      const joinUrl = inviteLink || 'https://apps.apple.com/us/app/favcircles/id6746807095';
+      const joinUrl = inviteLink || APP_STORE_URL;
       const subject = `${inviterName} invited you to join Circles`;
 
       const greeting = recipientName ? `Hi ${recipientName},` : 'Hi there,';

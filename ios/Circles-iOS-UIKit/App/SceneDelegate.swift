@@ -553,6 +553,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         rewardCodes.redeemPendingStickerCodeIfNeeded()
         // Signed out: the scan's "Rewards Waiting!" prompt, if a system alert held it back
         if rewardCodes.rewardsPromptOwed { rewardCodes.presentRewardsWaitingPrompt() }
+        // Limits, amounts and links the screens show, from the server's one source
+        ClientConfigService.shared.refreshIfStale()
         // A run saved before the app closed carries on (GPS, clock, its lock
         // screen display), as a workout does; a display with no run behind it goes
         if let userId = KeychainService.shared.getUserId(), !userId.isEmpty {

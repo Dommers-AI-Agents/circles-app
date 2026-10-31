@@ -291,9 +291,8 @@ class UpdateService {
             }
         } else {
             // Open App Store
-            if let bundleId = Bundle.main.bundleIdentifier,
-               let url = URL(string: "https://apps.apple.com/us/app/favcircles/id6746807095") {
-                UIApplication.shared.open(url)
+            if Bundle.main.bundleIdentifier != nil {
+                UIApplication.shared.open(ShareLinks.appStoreURL)
             }
         }
     }

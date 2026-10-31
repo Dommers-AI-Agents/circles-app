@@ -10,12 +10,16 @@ enum PlaceCategoryMapper {
 
     /// First matching rule wins, in this order.
     static func mapping(forGoogleTypes types: [String]) -> Mapping {
+        // A bakery is a Café, as the server files it (importCategoryMapping
+        // `bakery: 'cafe'`), even when Google also tags it a restaurant — the
+        // app used to file the same place under Restaurant (2026-10-31 audit).
+        if types.contains("bakery") {
+            return Mapping(category: .cafe, subcategory: "Bakery")
+        }
         if types.contains("restaurant") || types.contains("food") {
             // Try to set subcategory based on more specific types
             if types.contains("meal_takeaway") || types.contains("meal_delivery") {
                 return Mapping(category: .restaurant, subcategory: "Fast Food")
-            } else if types.contains("bakery") {
-                return Mapping(category: .restaurant, subcategory: "Bakery")
             }
             return Mapping(category: .restaurant, subcategory: nil)
         } else if types.contains("cafe") {

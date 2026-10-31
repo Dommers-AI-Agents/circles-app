@@ -5,7 +5,7 @@
 // code, so the menu rides in a JSON data block and the script is a file.
 const { escapeHtml: esc } = require('../utils/text');
 
-const APP_STORE_URL = 'https://apps.apple.com/us/app/favcircles/id6746807095';
+const { APP_STORE_URL } = require('../config/rewardConfig');
 const API_BASE = 'https://api.favcircles.com';
 
 // JSON inside <script type="application/json">: no '<' at all, so nothing in

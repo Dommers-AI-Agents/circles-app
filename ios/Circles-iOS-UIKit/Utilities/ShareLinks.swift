@@ -47,5 +47,8 @@ enum ShareLinks {
         return URL(string: "\(orderBase)/\(slug)") ?? URL(string: orderBase)!
     }
 
-    static var appStoreURL: URL { URL(string: appStore)! }
+    /// The server's App Store link (ClientConfigService), the built-in one offline
+    static var appStoreURL: URL {
+        URL(string: ClientConfigService.shared.config.appStoreUrl) ?? URL(string: appStore)!
+    }
 }
