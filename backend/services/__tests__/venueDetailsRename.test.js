@@ -37,3 +37,14 @@ test('a change that is not the name leaves the store name alone', async () => {
   await updateVenueDetails({ globalPlaceId: 'g1', user: { uid: 'owner' }, fields: { description: 'Fresh bread daily' } });
   expect(mockDb.rows('stickerVenues').get('v1').venueName).toBe('Test Bakery (Demo)');
 });
+
+test("a customer's points list shows the store's current name, not the one saved when they earned", async () => {
+  const rewardService = require('../rewardService');
+  await put('users', 'cust', { rewardPoints: 50, rewardPointsByVenue: { v1: { points: 50, venueName: 'Test Bakery (Demo)' } } });
+  await updateVenueDetails({ globalPlaceId: 'g1', user: { uid: 'owner' }, fields: { name: "Sal's Bakery (Demo)" } });
+  const userData = mockDb.rows('users').get('cust');
+  expect(await rewardService.venueBalancesWithNames(userData)).toEqual([{ venueId: 'v1', venueName: "Sal's Bakery (Demo)", points: 50 }]);
+  // A store that no longer exists keeps the saved name
+  const gone = { rewardPointsByVenue: { vX: { points: 5, venueName: 'Old Shop' } } };
+  expect(await rewardService.venueBalancesWithNames(gone)).toEqual([{ venueId: 'vX', venueName: 'Old Shop', points: 5 }]);
+});

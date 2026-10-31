@@ -302,6 +302,24 @@ class RewardService {
       .sort((a, b) => b.points - a.points);
   }
 
+  /**
+   * venueBalancesFrom with each store's CURRENT name. The name stored with a
+   * balance is a copy written when the points were earned, so after a store
+   * is renamed it is stale until the next award; the store record is the
+   * one the rename updates (Wes, 2026-10-31: one name, everywhere).
+   */
+  async venueBalancesWithNames(userData) {
+    const balances = this.venueBalancesFrom(userData);
+    if (balances.length === 0) return balances;
+    const docs = await Promise.all(balances.map((b) =>
+      this.db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(b.venueId).get().catch(() => null)));
+    return balances.map((b, i) => {
+      const venue = docs[i] && docs[i].exists ? docs[i].data() : null;
+      const name = venue && (venue.venueName || venue.placeName);
+      return name ? { ...b, venueName: name } : b;
+    });
+  }
+
   venuePointsFrom(userData, venueId) {
     const bucket = userData && userData.rewardPointsByVenue
       && userData.rewardPointsByVenue[venueId];
@@ -348,7 +366,7 @@ class RewardService {
     const userDoc = await this.db.collection(COLLECTIONS.USERS).doc(userId).get();
     const userData = userDoc.exists ? userDoc.data() : {};
     const rewardPoints = userData.rewardPoints || 0;
-    const venueBalances = this.venueBalancesFrom(userData);
+    const venueBalances = await this.venueBalancesWithNames(userData);
 
     let events = [];
     if (!withEvents) return { rewardPoints, venueBalances, events };

@@ -356,7 +356,7 @@ exports.getOffers = async (req, res) => {
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
     const userData = userDoc.exists ? userDoc.data() : {};
     const balance = userData.rewardPoints || 0;
-    const venueBalances = rewardService.venueBalancesFrom(userData);
+    const venueBalances = await rewardService.venueBalancesWithNames(userData);
 
     res.json({
       success: true,
