@@ -99,4 +99,15 @@ describe('GET /api/users/contacts/discover?type=following', () => {
     await getDiscoverUsers({ user: { uid: 'me' }, query: { type: 'following' } }, out);
     expect(out.json.mock.calls[0][0]).toMatchObject({ success: true, users: [], hasMore: false });
   });
+
+  test('people you may know (stored suggestions) show the person\'s current name and photo', async () => {
+    require('../../services/suggestionEngine').getSuggestionsFor.mockResolvedValueOnce([
+      { userId: 'sal', displayName: 'Salvatore', profilePicture: 'https://x/old.jpg', signal: 'fof', reason: 'Followed by Wes' }
+    ]);
+    await put('users', 'me', { displayName: 'Me', following: [], followers: [] });
+    await put('users', 'sal', { displayName: 'Sal Sgroi', profilePicture: 'https://x/new.jpg' });
+    const out = res();
+    await getDiscoverUsers({ user: { uid: 'me' }, query: { type: 'friendsOfFriends' } }, out);
+    expect(out.json.mock.calls[0][0].users[0]).toMatchObject({ id: 'sal', displayName: 'Sal Sgroi', profilePicture: 'https://x/new.jpg' });
+  });
 });
