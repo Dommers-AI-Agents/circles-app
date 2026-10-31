@@ -9,7 +9,9 @@ const { ServiceError } = require('../../utils/serviceError');
 const { clean } = require('../../utils/text');
 const { COLLECTIONS, createCircle } = require('../../models/FirestoreModels');
 
-const CIRCLE_NAME = 'Dog spots';
+const systemCircles = require('../systemCircles');
+
+const CIRCLE_NAME = systemCircles.KINDS.dogSpots.name;
 const CIRCLE_EMOJI = '🐶';
 
 /** A place from the request. Pure. */
@@ -25,20 +27,27 @@ function parsePlace(body) {
   return { name, address: clean(b.address, 200) || '', lat, lng, category: clean(b.category, 40) || 'other' };
 }
 
-/** The person's Dog spots circle: the flagged one, else made now (outside the circle cap, like the check-in circle). */
-async function findOrCreateCircle(uid) {
-  const circles = s.db().collection(COLLECTIONS.CIRCLES);
-  const snap = await circles.where('owner', '==', uid).where('isDogSpotsCircle', '==', true).limit(3).get();
-  const alive = snap.docs.find((d) => !d.data().deletedAt);
-  if (alive) return alive.id;
+/**
+ * The person's Dog spots circle as { id, name } (its CURRENT name): found by
+ * its flag (services/systemCircles), else made now (outside the circle cap,
+ * like the check-in circle).
+ */
+async function dogSpotsCircle(uid) {
+  const found = await systemCircles.findOwned(uid, 'dogSpots', { db: s.db() });
+  if (found) return { id: found.id, name: found.name || CIRCLE_NAME };
   const circle = createCircle({
     name: CIRCLE_NAME,
     description: 'Dog parks, patios and everywhere dogs are welcome',
     privacy: 'public',
     icon: CIRCLE_EMOJI
   }, uid);
-  const ref = await circles.add({ ...circle, icon: CIRCLE_EMOJI, isDogSpotsCircle: true });
-  return ref.id;
+  const ref = await s.db().collection(COLLECTIONS.CIRCLES).add({ ...circle, icon: CIRCLE_EMOJI, ...systemCircles.flagFields('dogSpots') });
+  return { id: ref.id, name: CIRCLE_NAME };
+}
+
+/** The Dog spots circle's id (found or made). */
+async function findOrCreateCircle(uid) {
+  return (await dogSpotsCircle(uid)).id;
 }
 
 /**
@@ -52,7 +61,7 @@ async function savePlace(user, body) {
   const uid = user && user.uid;
   await s.loadUser(uid);
   const place = parsePlace(body);
-  const circleId = await findOrCreateCircle(uid);
+  const { id: circleId, name: circleName } = await dogSpotsCircle(uid);
   const result = await require('../placeSaveService').savePlace(user, {
     circleId,
     name: place.name,
@@ -66,14 +75,14 @@ async function savePlace(user, body) {
   });
   const payload = result.payload || {};
   if (result.status === 201 && payload.place) {
-    return { placeId: payload.place.id, circleId, circleName: CIRCLE_NAME, alreadySaved: false, afterResponse: result.afterResponse };
+    return { placeId: payload.place.id, circleId, circleName, alreadySaved: false, afterResponse: result.afterResponse };
   }
   if (payload.code === 'DUPLICATE_PLACE' && payload.existingPlaceId) {
     const inDogSpots = !payload.existingCircleId || payload.existingCircleId === circleId;
     return {
       placeId: payload.existingPlaceId,
       circleId: payload.existingCircleId || circleId,
-      circleName: inDogSpots ? CIRCLE_NAME : (payload.existingCircleName || null),
+      circleName: inDogSpots ? circleName : (payload.existingCircleName || null),
       alreadySaved: true
     };
   }

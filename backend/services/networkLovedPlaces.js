@@ -19,6 +19,7 @@ const { canViewCircle, isPlaceVisibleToViewer } = require('./visibility');
 const { excludedUserIds } = require('./moderationService');
 const { isSameUser, normalizeUserId } = require('./idService');
 const placePhotos = require('./placePhotoService');
+const { isAppMadeCollection } = require('./systemCircles');
 
 const db = getFirestore();
 const MIN_SAVERS = 2;
@@ -29,7 +30,7 @@ const cache = new Map();
 const SAVE_FIELDS = ['globalPlaceId', 'addedBy', 'circleId', 'privacy', 'sharedWith', 'audienceListId', 'deletedAt', 'createdAt'];
 
 /** A circle that isn't someone's own curation. Pure. */
-const isSystemCircle = (circle) => !!circle && (circle.isCheckInCircle === true || circle.name === 'Places I Follow');
+const isSystemCircle = (circle) => isAppMadeCollection(circle);
 
 /**
  * Visible saves → one row per venue: distinct savers, newest save, ranked by

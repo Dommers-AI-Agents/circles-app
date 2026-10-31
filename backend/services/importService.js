@@ -15,6 +15,7 @@ const {
   validateCircle
 } = require('../models/FirestoreModels');
 const { categoryFromGoogleTypes, categoryFromMapstrTags } = require('./importCategoryMapping');
+const systemCircles = require('./systemCircles');
 
 const db = getFirestore();
 
@@ -40,7 +41,7 @@ const IMPORT_CIRCLE_NAMES = {
   google_maps: 'Google Imports',
   mapstr: 'Mapstr Imports',
   swarm: 'Swarm Imports',
-  photos: 'Places from my photos'
+  photos: systemCircles.KINDS.photoPlaces.name
 };
 
 // User-visible tag stamped on every imported place (filter/sweep handle)
@@ -240,7 +241,14 @@ async function loadOwnedCircles(userId) {
   const circles = [];
   snapshot.forEach(doc => {
     const data = doc.data();
-    circles.push({ id: doc.id, name: data.name, placesCount: data.placesCount || 0, deletedAt: data.deletedAt || null });
+    circles.push({
+      id: doc.id, name: data.name, placesCount: data.placesCount || 0, deletedAt: data.deletedAt || null,
+      createdAt: data.createdAt || null,
+      // What services/systemCircles reads to find "Places from my photos" by flag
+      systemKind: data.systemKind || null, isImportCircle: data.isImportCircle === true, importSource: data.importSource || null,
+      isCheckInCircle: data.isCheckInCircle === true, isFollowedPlacesCircle: data.isFollowedPlacesCircle === true,
+      isDogSpotsCircle: data.isDogSpotsCircle === true, isDefaultCircle: data.isDefaultCircle === true
+    });
   });
   return circles;
 }
@@ -297,6 +305,12 @@ async function prepareImport(userId, payload) {
   const isListImport = LIST_SOURCES.has(payload.source);
   let importCircleName = IMPORT_CIRCLE_NAMES[payload.source];
   let importCircle = importCircleName ? (circlesByName.get(normalizeText(importCircleName)) || null) : null;
+  if (payload.source === 'photos') {
+    // The photo circle is found by its flag, so a renamed one still counts
+    const hit = systemCircles.pick(ownedCircles, 'photoPlaces');
+    importCircle = hit ? hit.circle : null;
+    importCircleName = importCircle ? importCircle.name : importCircleName;
+  }
   if (isListImport) {
     const target = resolveListTargetCircle(payload.lists[0], ownedCircles);
     if (target.error) return { error: target.error };
@@ -430,6 +444,12 @@ async function executeImport(userId, payload) {
   let existingImportCircle = importCircleName
     ? ownedCircles.find(c => normalizeText(c.name) === normalizeText(importCircleName))
     : null;
+  if (payload.source === 'photos' && (!payload.target || !payload.target.kind || payload.target.kind === 'photos')) {
+    // "Places from my photos" is found by its flag (services/systemCircles):
+    // renaming it keeps it the photo circle; a legacy one is stamped
+    existingImportCircle = await systemCircles.pickAndHeal(ownedCircles, 'photoPlaces', { db });
+    if (existingImportCircle) importCircleName = existingImportCircle.name;
+  }
   if (isListImport) {
     const target = resolveListTargetCircle(payload.lists[0], ownedCircles);
     if (target.error) return { error: target.error };
@@ -527,6 +547,7 @@ async function executeImport(userId, payload) {
     // createCircle drops unknown keys — stamp import markers after
     circleData.isImportCircle = true;
     circleData.importSource = payload.source;
+    if (payload.source === 'photos') Object.assign(circleData, systemCircles.flagFields('photoPlaces'));
     circleRef = await db.collection(COLLECTIONS.CIRCLES).add(circleData);
     createdImportCircleThisRun = true;
   }

@@ -6,7 +6,21 @@ const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../models
 const { filterActivitiesForViewer, activityPrivacyFromUserDocs } = require('../services/activityPrivacy');
 const { makeViewerContext } = require('../services/viewerContext');
 const { getInnerCircleGrantorLists } = require('../utils/networkAccess');
+const { fetchUsersById } = require('../services/userLookup');
+const { withCurrentCircle, withCurrentReactors } = require('../services/activityFeedOverlay');
 const db = getFirestore();
+
+/** Existing docs for these ids, read by reference in chunks of 100. */
+async function getAllInChunks(ids, collection) {
+  const unique = [...new Set(ids.filter(Boolean).map(String))];
+  const out = [];
+  for (let i = 0; i < unique.length; i += 100) {
+    const refs = unique.slice(i, i + 100).map(id => db.collection(collection).doc(id));
+    const docs = await db.getAll(...refs);
+    docs.forEach(doc => { if (doc && doc.exists) out.push(doc); });
+  }
+  return out;
+}
 
 
 // @desc    Get network activities for the current user
@@ -160,26 +174,15 @@ exports.getNetworkActivities = async (req, res, next) => {
     const actorIds = [...new Set(activities.map(a => a.actorId))];
     console.log('🚀 Batch fetching', actorIds.length, 'unique actors');
     
-    const actorBatches = [];
-    for (let i = 0; i < actorIds.length; i += 10) {
-      actorBatches.push(actorIds.slice(i, i + 10));
-    }
-    
-    const actorResults = await Promise.all(
-      actorBatches.map(batch => 
-        db.collection(COLLECTIONS.USERS)
-          .where('__name__', 'in', batch)
-          .get()
-      )
-    );
-    
+    // One batched read by reference (db.getAll, in chunks), like the shared
+    // lookups (services/userLookup) — no 10-id `in` cap.
+    const actorDocs = await getAllInChunks(actorIds.filter(id => typeof id === 'string' && id && !id.startsWith('place_')), COLLECTIONS.USERS);
+
     const actorsMap = new Map();
     const rawActors = new Map();
-    actorResults.forEach(snapshot => {
-      snapshot.docs.forEach(doc => {
-        rawActors.set(doc.id, doc.data());
-        actorsMap.set(doc.id, projectPublicUser(serializeDoc(doc)));
-      });
+    actorDocs.forEach(doc => {
+      rawActors.set(doc.id, doc.data());
+      actorsMap.set(doc.id, projectPublicUser(serializeDoc(doc)));
     });
     // Each actor's "who can see my activity" grid, read off the docs we
     // already have — never off the projected card, which must not carry it.
@@ -222,24 +225,11 @@ exports.getNetworkActivities = async (req, res, next) => {
     
     console.log('🚀 Batch fetching', circleIds.length, 'unique circles for privacy checks');
     
-    const circleBatches = [];
-    for (let i = 0; i < circleIds.length; i += 10) {
-      circleBatches.push(circleIds.slice(i, i + 10));
-    }
-    
-    const circleResults = await Promise.all(
-      circleBatches.map(batch => 
-        db.collection(COLLECTIONS.CIRCLES)
-          .where('__name__', 'in', batch)
-          .get()
-      )
-    );
-    
+    // Raw docs: the privacy gate needs every field (privacy, sharedWith,
+    // editors, audienceListId), and the rows are re-labelled from them below.
     const circlesMap = new Map();
-    circleResults.forEach(snapshot => {
-      snapshot.docs.forEach(doc => {
-        circlesMap.set(doc.id, doc.data());
-      });
+    (await getAllInChunks(circleIds, COLLECTIONS.CIRCLES)).forEach(doc => {
+      circlesMap.set(doc.id, doc.data());
     });
     
     // OPTIMIZATION 3: Batch fetch reactions for all activities
@@ -308,8 +298,19 @@ exports.getNetworkActivities = async (req, res, next) => {
       });
     });
     
+    // The reacting people as they are now (stored userName/userPhoto are
+    // only a fallback for a deleted account): one batched read for the page.
+    const reactorIds = new Set();
+    reactionSummariesMap.forEach(byEmoji => byEmoji.forEach(summary => {
+      summary.users.forEach(u => { if (u.id) reactorIds.add(u.id); });
+    }));
+    const reactors = await fetchUsersById(reactorIds);
+
     // Process activities with cached data
-    const enrichedActivities = activities.map(activity => {
+    const enrichedActivities = activities.map(stored => {
+      // The circle's current name (and, for circle rows, its cover) over the
+      // copy written with the row — kept only when the circle is gone
+      const activity = withCurrentCircle(stored, circlesMap);
       const activityId = activity._id || activity.id;
       
       // Convert timestamp
@@ -333,9 +334,9 @@ exports.getNetworkActivities = async (req, res, next) => {
       // Add reaction summary (top reactions)
       const activityReactions = reactionSummariesMap.get(activityId);
       if (activityReactions && activityReactions.size > 0) {
-        activity.reactionSummary = Array.from(activityReactions.values())
+        activity.reactionSummary = withCurrentReactors(Array.from(activityReactions.values())
           .sort((a, b) => b.count - a.count)
-          .slice(0, 3); // Top 3 reaction types
+          .slice(0, 3), reactors); // Top 3 reaction types
       } else {
         activity.reactionSummary = [];
       }

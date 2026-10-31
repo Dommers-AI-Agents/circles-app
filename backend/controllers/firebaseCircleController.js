@@ -4,6 +4,7 @@ const { getConnectionPairSnapshots } = require('../utils/networkAccess');
 const { getAcceptedConnectionSnapshots } = require('../utils/networkAccess');
 const circleAdvisor = require('../services/circleAdvisor');
 const circleAdvisorQuota = require('../services/circleAdvisorQuota');
+const systemCircles = require('../services/systemCircles');
 const { 
   COLLECTIONS, 
   createCircle, 
@@ -1717,7 +1718,7 @@ exports.getCircleAdvice = async (req, res, next) => {
         topCategories: top(bucket.categories, 3),
         topCities: top(bucket.cities, 3),
         // App-created circles must never be folded into anything.
-        isSystem: !!circle.isCheckInCircle || circle.name === 'Places I Follow'
+        isSystem: systemCircles.isAppMadeCollection(circle)
       };
     });
 

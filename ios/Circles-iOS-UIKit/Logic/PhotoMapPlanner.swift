@@ -81,10 +81,13 @@ enum PhotoMapPlanner {
         return "+\(amount) FavCoins for building your map"
     }
 
-    static func doneLine(added: Int) -> String {
-        added == 0
+    /// `circleName` is the circle's current name from the server's reply
+    /// (a renamed photo circle keeps its name).
+    static func doneLine(added: Int, circleName: String? = nil) -> String {
+        let name = circleName ?? SystemCircleKind.photoPlaces.defaultName
+        return added == 0
             ? "No new places this time. Everything in your photos is already on your map, or wasn't a business."
-            : "Added \(added) place\(added == 1 ? "" : "s") to \u{201C}Places from my photos.\u{201D}"
+            : "Added \(added) place\(added == 1 ? "" : "s") to \u{201C}\(name).\u{201D}"
     }
 }
 

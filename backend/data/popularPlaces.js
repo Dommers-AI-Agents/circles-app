@@ -1,5 +1,6 @@
 // backend/data/popularPlaces.js
 // Curated list of popular places for user onboarding
+const { KINDS } = require('../services/systemCircles');
 
 const POPULAR_PLACES = {
   // Major US Cities
@@ -147,15 +148,19 @@ const POPULAR_PLACES = {
 
 // Default circles to create for new users — all public so a follow alone
 // lets someone view the places a new user saves into them
+// systemKind marks the ones features find later (services/systemCircles);
+// their names come from there too. Vacation is a plain starter circle.
 const DEFAULT_CIRCLES = [
   {
-    name: "Want to Try",
+    name: KINDS.wantToTry.name,
+    systemKind: 'wantToTry',
     description: "Places you're excited to visit soon",
     privacy: "public",
     category: "other"
   },
   {
-    name: "Favorite Local Spots", 
+    name: KINDS.favoriteLocal.name,
+    systemKind: 'favoriteLocal',
     description: "Your go-to places in your area",
     privacy: "public",
     category: "food"

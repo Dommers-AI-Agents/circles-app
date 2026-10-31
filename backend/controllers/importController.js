@@ -17,6 +17,7 @@ const IMPORT_TOKENS_COLLECTION = 'importTokens';
 const SWARM_APP_REDIRECT = 'circles://import/swarm';
 
 const PHOTO_PLACES_PER_REQUEST = 25;
+const PHOTO_CIRCLE_NAME = require('../services/systemCircles').KINDS.photoPlaces.name;
 
 /** Where photo places go: "Places from my photos", one of theirs, or a new circle. */
 function normalizePhotoTarget(raw) {
@@ -62,7 +63,7 @@ exports.importFromPhotos = async (req, res) => {
     const result = await importService.executeImport(req.user.uid, {
       source: 'photos',
       target,
-      lists: [{ name: target.kind === 'new' ? target.name : 'Places from my photos', places: accepted }]
+      lists: [{ name: target.kind === 'new' ? target.name : PHOTO_CIRCLE_NAME, places: accepted }]
     });
     if (result.error) {
       return res.status(result.status || (result.upgradeRequired ? 403 : 400))
@@ -93,7 +94,8 @@ exports.importFromPhotos = async (req, res) => {
         skippedDuplicates: list.skippedDuplicates,
         failed: list.failed.length,
         circleId: list.circleId,
-        circleName: list.circleName || 'Places from my photos',
+        // The circle's current name (a renamed photo circle keeps its name)
+        circleName: list.circleName || PHOTO_CIRCLE_NAME,
         remainingFree,
         maxFree: allowance.max === Infinity ? null : allowance.max,
         coins,
