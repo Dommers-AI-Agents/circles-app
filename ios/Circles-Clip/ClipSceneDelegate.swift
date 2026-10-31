@@ -19,6 +19,10 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
         var code = activity.flatMap(Self.stickerCode(from:))
 
         #if DEBUG
+        // Testing from the start: CLIP_RESET=1 forgets the signed-in customer
+        if ProcessInfo.processInfo.environment["CLIP_RESET"] == "1" {
+            ClipSession.clear()
+        }
         // Xcode injects _XCAppClipURL as a user activity, but `simctl launch`
         // only sets the raw env var — honor it directly so CLI testing works.
         if code == nil,
