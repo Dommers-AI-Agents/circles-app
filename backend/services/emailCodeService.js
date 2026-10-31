@@ -4,6 +4,15 @@
 // the code" (Wes, 2026-10-31). Proving you can read the inbox is the proof
 // of ownership, so it signs in an existing account too.
 //
+// Instant sign-up (Wes, 2026-10-31: "I want it to be instant"): a NEW email
+// gets an account straight away, marked emailUnverified, and confirms the
+// email later with a code. An email that already has an account never gets a
+// session this way — it gets a code instead (VERIFY_REQUIRED). When someone
+// later proves they own an unverified account's email by another route (a
+// code sign-in, Sign in with Apple), the sessions minted before are voided
+// (sessionsValidAfter, checked in middleware/firebaseAuth) so whoever made
+// the account without proof can't keep a way in.
+//
 // One doc per email in `emailLoginCodes` (keyed by a hash of the email, so
 // the collection holds no addresses): the code's HMAC, its expiry, the wrong
 // tries so far and the recent starts. A new start replaces the code.
@@ -14,6 +23,8 @@ const { maskEmail } = require('../utils/text');
 const CODE_TTL_MS = 10 * 60 * 1000;
 const MAX_TRIES = 5;
 const MAX_STARTS_PER_HOUR = 5;
+const MAX_INSTANT_PER_IP_HOUR = 10;
+const INSTANT_COLLECTION = 'emailInstantSignups';
 const HOUR_MS = 60 * 60 * 1000;
 const COLLECTION = 'emailLoginCodes';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -23,6 +34,27 @@ const emailKey = (email) => crypto.createHash('sha256').update(email).digest('he
 const codeHash = (secret, email, code) =>
   crypto.createHmac('sha256', secret).update(`${email}:${code}`).digest('hex');
 const sameHash = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+/**
+ * A tidy display name from an email's local part: "jane.doe+clip2@x" →
+ * "Jane Doe", "jsmith88@x" → "Jsmith". "Friend" when nothing usable is left.
+ */
+const nameFromEmail = (email) => {
+  const local = String(email || '').split('@')[0].split('+')[0];
+  const words = local.replace(/[0-9]+/g, ' ').split(/[._\-\s]+/).filter(Boolean);
+  const name = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ').slice(0, 50).trim();
+  return name.length >= 2 ? name : 'Friend';
+};
+
+/**
+ * What a proven owner's sign-in writes onto an account made without proof:
+ * the email is now confirmed, and every session from before is void.
+ * Empty for an account whose email was already confirmed.
+ */
+const claimForVerifiedOwner = (userData, nowMs = Date.now()) =>
+  (userData && userData.emailUnverified === true)
+    ? { emailUnverified: false, sessionsValidAfter: nowMs }
+    : {};
+
 const newCode = () => String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 
 function checkedEmail(raw) {
@@ -89,6 +121,21 @@ function createEmailCodeService(deps) {
       throw new ServiceError(400, 'NAME_REQUIRED', 'Please tell us your name (2–50 characters).');
     }
 
+    await checkCode(email, code);
+
+    if (existing) {
+      await refuseDisabled(existing.id);
+      const data = existing.data();
+      // Their first proof of the inbox for an instant account: confirm it
+      const claim = claimForVerifiedOwner(data, now());
+      if (claim.emailUnverified === false) await confirmAccount(existing.id, claim);
+      return { user: { id: existing.id, ...data, ...claim }, isNew: false, confirmedNow: claim.emailUnverified === false };
+    }
+    return { user: await createAccount(email, name), isNew: true };
+  }
+
+  /** Checks a code for `email` (counts a wrong try; consumes it when right). */
+  async function checkCode(email, code) {
     const ref = deps.db.collection(COLLECTION).doc(emailKey(email));
     const typed = String(code || '').replace(/\D/g, '');
     // Firestore drops a transaction's writes when its callback throws, so
@@ -113,11 +160,76 @@ function createEmailCodeService(deps) {
     if (outcome === 'locked') throw new ServiceError(429, 'TOO_MANY_TRIES', 'Too many wrong codes. Ask for a new one.');
     if (outcome === 'wrong') throw new ServiceError(400, 'CODE_INVALID', "That code isn't right. Check the email and try again.");
 
-    if (existing) {
-      await refuseDisabled(existing.id);
-      return { user: { id: existing.id, ...existing.data() }, isNew: false };
+  }
+
+  /** Marks an account's email confirmed; `claim` may also void old sessions. */
+  async function confirmAccount(uid, claim = { emailUnverified: false }) {
+    await users().doc(uid).update(claim);
+    await deps.auth.updateUser(uid, { emailVerified: true }).catch((error) =>
+      console.warn('⚠️ Email confirmed but Auth emailVerified not set:', error.message));
+  }
+
+  /**
+   * The signed-in user confirms their own email with a code (sent by start):
+   * clears emailUnverified, keeps their sessions. Returns { confirmedNow }.
+   */
+  async function confirm({ userId, email: rawEmail, code }) {
+    const email = checkedEmail(rawEmail);
+    await checkCode(email, code);
+    const doc = await users().doc(userId).get();
+    const was = doc.exists && doc.data().emailUnverified === true;
+    if (was) await confirmAccount(userId);
+    return { confirmedNow: was };
+  }
+
+  /**
+   * Instant sign-up: a new email gets an account now (emailUnverified). An
+   * email with any account gets a code instead, never a session.
+   */
+  async function instant({ email: rawEmail, displayName, ip }) {
+    const email = checkedEmail(rawEmail);
+    const existing = (await findUser(email)) || (await deps.auth.getUserByEmail(email).catch(() => null));
+    if (existing) return verifyRequired(email);
+
+    // A per-IP cap so one person can't mint accounts by the hundred
+    const ipRef = deps.db.collection(INSTANT_COLLECTION).doc(emailKey(`ip:${ip || 'unknown'}`));
+    const allowed = await deps.db.runTransaction(async (tx) => {
+      const doc = await tx.get(ipRef);
+      const recent = ((doc.exists && doc.data().at) || []).filter((t) => t > now() - HOUR_MS);
+      if (recent.length >= MAX_INSTANT_PER_IP_HOUR) return false;
+      tx.set(ipRef, { at: [...recent, now()] });
+      return true;
+    });
+    if (!allowed) throw new ServiceError(429, 'TOO_MANY_SIGNUPS', 'Too many new accounts from here. Please try again later.');
+
+    const typed = String(displayName || '').trim();
+    const name = typed.length >= 2 && typed.length <= 50 ? typed : nameFromEmail(email);
+    let record;
+    try {
+      record = await deps.auth.createUser({ email, emailVerified: false, displayName: name });
+    } catch (error) {
+      // Lost a race with another sign-up for this email: same as existing
+      if (error.code === 'auth/email-already-exists') return verifyRequired(email);
+      throw error;
     }
-    return { user: await createAccount(email, name), isNew: true };
+    const userData = {
+      ...deps.buildUser({
+        uid: record.uid,
+        email,
+        displayName: name,
+        profilePicture: null,
+        linkedProviders: { emailInstant: record.uid }
+      }),
+      emailUnverified: true
+    };
+    await users().doc(record.uid).create(userData);
+    console.log(`⚡ Instant sign-up for ${maskEmail(email)}`);
+    return { id: record.uid, ...userData };
+  }
+
+  async function verifyRequired(email) {
+    await start(email); // may refuse with TOO_MANY_CODES
+    throw new ServiceError(409, 'VERIFY_REQUIRED', 'Welcome back! We sent a code to your email.');
   }
 
   async function refuseDisabled(uid) {
@@ -151,7 +263,7 @@ function createEmailCodeService(deps) {
     return { id: record.uid, ...userData };
   }
 
-  return { start, verify };
+  return { start, verify, confirm, instant };
 }
 
 let shared = null;
@@ -171,4 +283,4 @@ function emailCodeService() {
   return shared;
 }
 
-module.exports = { createEmailCodeService, emailCodeService, CODE_TTL_MS, MAX_TRIES, MAX_STARTS_PER_HOUR, emailKey };
+module.exports = { createEmailCodeService, emailCodeService, claimForVerifiedOwner, nameFromEmail, CODE_TTL_MS, MAX_TRIES, MAX_STARTS_PER_HOUR, MAX_INSTANT_PER_IP_HOUR, emailKey };

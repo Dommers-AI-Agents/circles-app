@@ -38,6 +38,8 @@ router.post('/passkey/add-verify', protect, passkey.passkeyAddVerify);
 const emailCode = require('../controllers/users/emailCodeAuthController');
 router.post('/email-code/start', emailCode.startEmailCode);
 router.post('/email-code/verify', emailCode.verifyEmailCode);
+router.post('/email-code/confirm', protect, emailCode.confirmEmailCode);
+router.post('/email-instant', emailCode.instantSignup);
 router.post('/refresh-token', refreshToken);
 router.post('/forgot-password', forgotPassword);
 

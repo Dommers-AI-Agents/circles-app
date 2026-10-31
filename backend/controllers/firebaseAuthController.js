@@ -256,6 +256,11 @@ exports.firebaseAuth = async (req, res, next) => {
         linkedProviders[provider] = uid;
         updateData.linkedProviders = linkedProviders;
         
+        // Only a provider-verified email gets here (see above). If this
+        // account was an instant sign-up nobody confirmed, this person just
+        // proved they own the address: confirm it and void the sessions made
+        // before, so whoever created it can't keep a way in
+        Object.assign(updateData, require('../services/emailCodeService').claimForVerifiedOwner(existingUser));
         // Handle alternate emails - especially for Apple Sign In with private relay
         if (provider === 'apple' && email) {
           const alternateEmails = existingUser.alternateEmails || [];
@@ -1002,7 +1007,9 @@ exports.getMe = async (req, res, next) => {
         followersCount: user.followersCount || 0,
         followingCount: user.followingCount || 0,
         createdAt: user.createdAt,
-        activityPrivacy: require('../services/activityPrivacy').normalizeActivityPrivacy(user.activityPrivacy)
+        activityPrivacy: require('../services/activityPrivacy').normalizeActivityPrivacy(user.activityPrivacy),
+        // Instant App Clip account, email not confirmed yet: the app asks for the code
+        emailUnverified: user.emailUnverified === true
       }
     });
   } catch (error) {

@@ -19,7 +19,7 @@ const isClipSignup = ({ signupSource, stickerCode } = {}) =>
  * Returns { circlesCount, placesCount } (0 for clip signups: the clip never
  * renders them and their onboarding runs in the background).
  */
-async function finishNewAccount(user, { ip, provider, signupSource, stickerCode } = {}) {
+async function finishNewAccount(user, { ip, provider, signupSource, stickerCode, client, sendWelcome = true } = {}) {
   const userId = user.id;
   const clip = isClipSignup({ signupSource, stickerCode });
   if (clip) {
@@ -47,8 +47,9 @@ async function finishNewAccount(user, { ip, provider, signupSource, stickerCode 
 
     // Bot-pattern watch (alerts the admin, never blocks)
     require('./signupMonitor').recordSignup({ ip, email: user.email, provider, userId });
-    // Welcome email (fire-and-forget; never blocks signup)
-    if (user.email) {
+    // Welcome email (fire-and-forget; never blocks signup). Not for an
+    // instant account nobody has confirmed yet: it goes when they confirm.
+    if (user.email && sendWelcome) {
       require('./emailService').sendWelcomeEmail(user.email, user.displayName)
         .catch((err) => console.error('Welcome email failed:', err.message));
     }
@@ -76,7 +77,10 @@ const authUserPayload = (user, id) => ({
   followingCount: user.followingCount || 0,
   circlesCount: user.circlesCount || 0,
   placesCount: user.placesCount || 0,
-  createdAt: user.createdAt
+  createdAt: user.createdAt,
+  // An instant App Clip account whose email isn't confirmed yet: the app
+  // asks for the emailed code (POST /auth/email-code/confirm)
+  emailUnverified: user.emailUnverified === true
 });
 
 module.exports = { isClipSignup, finishNewAccount, authUserPayload };

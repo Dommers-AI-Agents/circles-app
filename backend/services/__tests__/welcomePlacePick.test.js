@@ -62,3 +62,29 @@ test('near the new user, else near Charlotte (the default), else anywhere', () =
   // Nothing in Charlotte either: anywhere
   expect(pickWelcomePlace([shore], pub).id).toBe('shore');
 });
+
+describe('rotation (Wes, 2026-10-31)', () => {
+  const { pickWelcomePlace: pick } = require('../welcomePlacePick');
+  const circles = new Set(['c1']);
+  const at = { type: 'Point', coordinates: [-80.84, 35.22] };
+  const fav = (id, rating, photo = true) => ({ id, name: `Place ${id}`, circleId: 'c1', userRating: rating, photos: photo ? ['p'] : [], location: at, category: 'restaurant' });
+
+  test('every favorite rated 8+ with a photo is in the pool, not just the top score', () => {
+    const places = [fav('a', 10), fav('b', 8), fav('c', 7), fav('d', 9, false)];
+    const seen = new Set();
+    for (const r of [0, 0.5, 0.99]) seen.add(pick(places, circles, { random: () => r }).id);
+    expect([...seen].sort()).toEqual(['a', 'b']);
+  });
+
+  test('the least-sent go first', () => {
+    const places = [fav('a', 10), fav('b', 9), fav('c', 8)];
+    const sentCounts = new Map([['a', 5], ['b', 1], ['c', 1]]);
+    const picks = new Set([0, 0.99].map((r) => pick(places, circles, { sentCounts, random: () => r }).id));
+    expect([...picks].sort()).toEqual(['b', 'c']);
+  });
+
+  test('no 8+ with a photo: falls back to the best score', () => {
+    const places = [fav('a', 6), fav('b', 5)];
+    expect(pick(places, circles, { random: () => 0 }).id).toBe('a');
+  });
+});

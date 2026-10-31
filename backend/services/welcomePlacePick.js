@@ -56,11 +56,13 @@ const distanceKm = ([lat1, lng1], [lat2, lng2]) => {
  *   location. Places within 80 km of it first; then within 80 km of
  *   Charlotte, the default location (config/defaultLocation.js), which is
  *   also where an unknown location starts; then anywhere
+ * @param {Map<string, number>} [options.sentCounts]  how many times each
+ *   place has gone out as a welcome suggestion; the least-sent go first
  * @param {() => number} [options.random]  injectable for tests
  * @returns {object|null} the place to suggest, or null when none qualifies
  *   (better no welcome suggestion than a bad one)
  */
-const pickWelcomePlace = (places, publicCircleIds, { near = null, random = Math.random } = {}) => {
+const pickWelcomePlace = (places, publicCircleIds, { near = null, sentCounts = new Map(), random = Math.random } = {}) => {
   let eligible = places.filter(p => p && p.name && !p.deletedAt
     && publicCircleIds.has(p.circleId)
     && OPEN_PLACE_TIERS.has(p.privacy)
@@ -77,14 +79,22 @@ const pickWelcomePlace = (places, publicCircleIds, { near = null, random = Math.
     if (nearby.length) { eligible = nearby; break; }
   }
   if (eligible.length === 0) return null;
-  // His own rating first (0–10), then a photo, then a place to discover
-  const score = p => (Number(p.userRating) || 0) * 10
-    + ((p.photos && p.photos.length) ? 30 : 0)
-    + (DISCOVERY_CATEGORIES.has(String(p.category || '').toLowerCase()) ? 10 : 0);
-  // Many saves tie at the top (rated 10 with a photo): pick one of those at
-  // random so new users don't all get the same place
-  const top = Math.max(...eligible.map(score));
-  const best = eligible.filter(p => score(p) === top);
+  // Every real favorite with a photo (rated 8+), so the welcome rotates
+  // across many places instead of the same top few (Wes, 2026-10-31: new
+  // users kept getting The Blind Pig). None → the best-scoring ones.
+  let pool = eligible.filter(p => (Number(p.userRating) || 0) >= 8 && p.photos && p.photos.length);
+  if (pool.length === 0) {
+    // His own rating first (0–10), then a photo, then a place to discover
+    const score = p => (Number(p.userRating) || 0) * 10
+      + ((p.photos && p.photos.length) ? 30 : 0)
+      + (DISCOVERY_CATEGORIES.has(String(p.category || '').toLowerCase()) ? 10 : 0);
+    const top = Math.max(...eligible.map(score));
+    pool = eligible.filter(p => score(p) === top);
+  }
+  // The least-sent first, then one of those at random
+  const sent = (p) => sentCounts.get(p.id) || 0;
+  const fewest = Math.min(...pool.map(sent));
+  const best = pool.filter(p => sent(p) === fewest);
   return best[Math.floor(random() * best.length)] || best[0];
 };
 

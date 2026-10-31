@@ -439,14 +439,18 @@ class OnboardingService {
       // he has one there: a place in a public circle, not a want-to-go save or a bare street address
       // (services/welcomePlacePick.js). None qualifies → no suggestion.
       const { pickWelcomePlace } = require('./welcomePlacePick');
-      const [placesSnap, circlesSnap] = await Promise.all([
+      const [placesSnap, circlesSnap, sentSnap] = await Promise.all([
         db.collection(COLLECTIONS.PLACES).where('addedBy', '==', wesId).get(),
-        db.collection(COLLECTIONS.CIRCLES).where('owner', '==', wesId).where('privacy', '==', 'public').get()
+        db.collection(COLLECTIONS.CIRCLES).where('owner', '==', wesId).where('privacy', '==', 'public').get(),
+        // His last 200 suggestions: how often each place went out as a welcome
+        db.collection(COLLECTIONS.SUGGESTIONS).where('userId', '==', wesId)
+          .orderBy('createdAt', 'desc').limit(200).select('placeId', 'message', 'welcome').get()
+          .catch((error) => { console.warn('🎁 Welcome rotation counts unavailable:', error.message); return { docs: [] }; })
       ]);
       const place = pickWelcomePlace(
         placesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
         new Set(circlesSnap.docs.map(d => d.id)),
-        { near }
+        { near, sentCounts }
       );
       if (!place) return;
 
@@ -464,6 +468,12 @@ class OnboardingService {
 
       const ref = await db.collection(COLLECTIONS.SUGGESTIONS).add(suggestionData);
       const suggestion = { _id: ref.id, id: ref.id, ...suggestionData };
+      const sentCounts = new Map();
+      for (const doc of sentSnap.docs) {
+        const d = doc.data();
+        if (d.welcome !== true && !String(d.message || '').startsWith('Welcome to FavCircles!')) continue;
+        if (d.placeId) sentCounts.set(d.placeId, (sentCounts.get(d.placeId) || 0) + 1);
+      }
 
       await notificationService.notifyDirectedSuggestion(suggestion, userId)
         .catch(err => console.error('🎁 Welcome suggestion notification failed:', err.message));
@@ -483,6 +493,7 @@ class OnboardingService {
       console.log(`🎯 Adding more sample content for user: ${userId}`);
       
       const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
+      suggestionData.welcome = true; // counted by the rotation above
       const userDoc = await userRef.get();
       
       if (!userDoc.exists) {

@@ -57,6 +57,16 @@ const buildReqUser = (decoded, userData, finalUserId) => ({
   email: userData.email || decoded.email
 });
 
+// A session minted before the account's sessionsValidAfter is void: set when
+// someone proves they own the email of an account made without proof (an
+// App Clip instant sign-up), so whoever made it can't keep a way in
+// (services/emailCodeService.claimForVerifiedOwner).
+const sessionRevoked = (decoded, userData) =>
+  !!userData.sessionsValidAfter && Number(decoded.iat || 0) < Math.floor(Number(userData.sessionsValidAfter) / 1000);
+const revokedResponse = (res) => res.status(401).json({
+  success: false, code: 'session_revoked', message: 'Please sign in again.'
+});
+
 // Protect routes - require valid JWT token
 exports.protect = async (req, res, next) => {
   try {
@@ -98,6 +108,7 @@ exports.protect = async (req, res, next) => {
               message: 'This account has been suspended for violating our community guidelines. Contact support@favcircles.com to appeal.'
             });
           }
+          if (sessionRevoked(decoded, cached.userData)) return revokedResponse(res);
           req.user = buildReqUser(decoded, cached.userData, cached.finalUserId);
           stampLastActive(cached.finalUserId);
           return next();
@@ -168,6 +179,7 @@ exports.protect = async (req, res, next) => {
         });
       }
 
+      if (sessionRevoked(decoded, userData)) return revokedResponse(res);
       userCache.set(decoded.uid, { userData, finalUserId, expires: Date.now() + USER_CACHE_TTL_MS });
       req.user = buildReqUser(decoded, userData, finalUserId);
       stampLastActive(finalUserId);
