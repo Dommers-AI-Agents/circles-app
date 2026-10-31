@@ -8,10 +8,11 @@ const { mintSessionToken, getTokenExpiresInSeconds } = require('../../services/s
 const { normalizeUserId } = require('../../services/idService');
 const { sendServiceError } = require('../../utils/serviceError');
 
-// Welcome email once the address is proven (fire-and-forget)
-const sendWelcome = (user) => {
+// Welcome email once the address is proven (fire-and-forget); store
+// sign-ups get the store welcome from their scan instead
+const sendWelcome = (user, userId) => {
   if (!user.email) return;
-  require('../../services/emailService').sendWelcomeEmail(user.email, user.displayName)
+  require('../../services/storeWelcomeEmailService').sendGenericWelcome(userId, user.email, user.displayName)
     .catch((err) => console.error('Welcome email failed:', err.message));
 };
 
@@ -56,7 +57,7 @@ exports.verifyEmailCode = async (req, res) => {
       });
       Object.assign(user, counts);
     } else if (confirmedNow) {
-      sendWelcome(user);
+      sendWelcome(user, id);
     }
     res.status(isNew ? 201 : 200).json(sessionResponse(user, id, { newAccount: isNew }));
   } catch (error) {
@@ -95,7 +96,7 @@ exports.confirmEmailCode = async (req, res) => {
     });
     if (confirmedNow) {
       require('../../middleware/firebaseAuth').invalidateUserCache(req.user.uid);
-      sendWelcome(req.user);
+      sendWelcome(req.user, req.user.uid);
     }
     res.status(200).json({ success: true, emailUnverified: false });
   } catch (error) {

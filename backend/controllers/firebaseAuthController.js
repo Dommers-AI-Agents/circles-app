@@ -519,8 +519,7 @@ exports.firebaseAuth = async (req, res, next) => {
           require('../services/signupMonitor').recordSignup({ ip: req.ip, email: user.email, provider, userId: simpleUid });
           // Welcome email (fire-and-forget; never blocks signup)
           if (user.email) {
-            const emailService = require('../services/emailService');
-            emailService.sendWelcomeEmail(user.email, user.displayName)
+            require('../services/storeWelcomeEmailService').sendGenericWelcome(simpleUid, user.email, user.displayName)
               .catch(err => console.error('Welcome email failed:', err.message));
           }
         } catch (error) {

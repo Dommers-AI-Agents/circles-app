@@ -502,6 +502,9 @@ class RewardService {
       if (venue && venue.active !== false) {
         update.acquisitionVenueId = venue.venueId;
         update.acquisitionVenueName = venue.venueName;
+        // The generic code's accounts get the generic welcome email; a
+        // store's get the store welcome (storeWelcomeEmailService)
+        update.acquisitionGeneric = venue.genericJoin === true;
         // Their home starts where they joined (Wes, 2026-10-31): the store's
         // spot and ZIP, so the map, Locals and the starter place open there
         // and no ZIP prompt. The app's first location fix replaces the spot.

@@ -52,7 +52,7 @@ async function finishNewAccount(user, { ip, provider, signupSource, stickerCode,
     // Welcome email (fire-and-forget; never blocks signup). Not for an
     // instant account nobody has confirmed yet: it goes when they confirm.
     if (user.email && sendWelcome) {
-      require('./emailService').sendWelcomeEmail(user.email, user.displayName)
+      require('./storeWelcomeEmailService').sendGenericWelcome(userId, user.email, user.displayName)
         .catch((err) => console.error('Welcome email failed:', err.message));
     }
   } catch (error) {

@@ -14,6 +14,12 @@ const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, regist
 const db = getFirestore();
 const { isVenueTeamMember, isBrowsableBy, publicVenueInfo, activeOffers } = require('../../services/venueHelpers.js');
 const { findOwnSaveOfStore } = require('../../services/ownSaveOfVenue');
+// The store welcome email goes out after the first scan at the store they
+// joined at (once; fire-and-forget, never slows the scan)
+const welcomeAfterScan = (userId, venue, awardedPoints, balance) => {
+  require('../../services/storeWelcomeEmailService')
+    .maybeSendAfterScan(userId, venue, { awardedPoints, balance }).catch(() => {});
+};
 
 // Did this user already save the store's place? One rule, shared with Add
 // Place's duplicate check (services/ownSaveOfVenue), so a scan never offers a
@@ -110,6 +116,7 @@ exports.scan = async (req, res) => {
       const savedDoc = await findOwnSaveOfStore({ userId, venue });
       const alreadySaved = !!savedDoc;
       const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
+      welcomeAfterScan(userId, venue, 0, 0);
       return res.json({
         success: true,
         data: {
@@ -138,6 +145,7 @@ exports.scan = async (req, res) => {
     if (!earns) {
       console.warn(`[loyalty-integrity] register scan paused venue=${venue.venueId} reason=${loyalty.reason}`);
       const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
+      welcomeAfterScan(userId, venue, 0, 0);
       return res.json({
         success: true,
         data: {
@@ -180,6 +188,7 @@ exports.scan = async (req, res) => {
     const venueBalance = (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0;
     const offers = activeOffers(venue);
     const earnRate = rewardService.effectiveEarnRate(venue);
+    welcomeAfterScan(userId, venue, visitResult.awarded ? visitResult.points : 0, venueBalance);
     return res.json({
       success: true,
       data: {

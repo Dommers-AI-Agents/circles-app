@@ -451,6 +451,9 @@ class OnboardingService {
       const claimed = await db.runTransaction(async (tx) => {
         const fresh = await tx.get(userRef);
         if (!fresh.exists || fresh.data().welcomeSuggestionAt) return false;
+        // Joined at a store: their first email is that store's welcome, not
+        // one of Wes's places (Wes, 2026-10-31)
+        if (require('./storeWelcomeEmailService').isStoreSignup(fresh.data())) return false;
         tx.update(userRef, { welcomeSuggestionAt: new Date().toISOString() });
         return true;
       });
