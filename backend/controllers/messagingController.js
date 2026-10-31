@@ -17,6 +17,7 @@ const { normalizeUserId, isSameUser } = require('../services/idService');
 const sseService = require('../services/sseService');
 const { sendServiceError } = require('../utils/serviceError');
 const { clean } = require('../utils/text');
+const { fetchUsersById, nameOf } = require('../services/userLookup');
 const {
   vetParticipants,
   checkMessageContent,
@@ -57,20 +58,6 @@ const getConversations = async (req, res) => {
         const timeB = b.lastMessageTime || b.createdAt || '0';
         return timeB.localeCompare(timeA); // Descending order
       });
-
-    // Older group conversations predate lastMessageSenderName. Resolve it once
-    // per distinct sender across the whole list rather than once per row.
-    const senderNameCache = new Map();
-    const resolveSenderName = async (senderId) => {
-      if (!senderId) return null;
-      if (!senderNameCache.has(senderId)) {
-        senderNameCache.set(senderId, (async () => {
-          const doc = await db.collection(COLLECTIONS.USERS).doc(senderId).get();
-          return doc.exists ? (doc.data().displayName || null) : null;
-        })());
-      }
-      return senderNameCache.get(senderId);
-    };
 
     // Populate participant details for each conversation
     const populatedConversations = await Promise.all(
@@ -159,13 +146,21 @@ const getConversations = async (req, res) => {
           }
         }
 
-        if (conversation.type === 'group' && conversation.lastMessageSenderId && !conversation.lastMessageSenderName) {
-          conversation.lastMessageSenderName = await resolveSenderName(conversation.lastMessageSenderId);
-        }
-
         return conversation;
       })
     );
+
+    // The last sender's name comes from their user record now, not the copy
+    // written when the message was sent (renames used to stick on the list).
+    // One batched read for every sender in the list; a deleted account keeps
+    // the stored name.
+    const senders = await fetchUsersById(populatedConversations.map((c) => c.lastMessageSenderId));
+    for (const conversation of populatedConversations) {
+      if (!conversation.lastMessageSenderId) continue;
+      if (conversation.type !== 'group' && !('lastMessageSenderName' in conversation)) continue;
+      const current = nameOf(senders.get(String(conversation.lastMessageSenderId)));
+      conversation.lastMessageSenderName = current || conversation.lastMessageSenderName || null;
+    }
 
     res.status(200).json({
       success: true,
