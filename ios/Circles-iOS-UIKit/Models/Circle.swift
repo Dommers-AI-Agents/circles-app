@@ -47,6 +47,14 @@ struct Circle: Codable, Identifiable {
     // Circle Groups support
     let groupId: String? // ID of the group this circle belongs to (nil if not grouped)
     let orderInGroup: Int? // Order of this circle within its group
+
+    /// Which app-made circle this is ("followedPlaces", "checkIns",
+    /// "favoriteLocal", "wantToTry", "dogSpots", "photoPlaces"), set by the
+    /// server; nil for the person's own circles and for legacy docs not yet
+    /// stamped. Find system circles with `SystemCircles`, never by name.
+    var systemKind: String?
+    /// One of the starter circles onboarding made.
+    var isDefaultCircle: Bool?
     
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -58,6 +66,7 @@ struct Circle: Codable, Identifiable {
         case likes, likesCount, commentsCount
         case createdAt, updatedAt, isNew, hasNewPlaces, newPlacesCount, locked
         case groupId, orderInGroup
+        case systemKind, isDefaultCircle
     }
     
     init(from decoder: Decoder) throws {
@@ -111,6 +120,8 @@ struct Circle: Codable, Identifiable {
         locked = try container.decodeIfPresent(Bool.self, forKey: .locked)
         groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
         orderInGroup = try container.decodeIfPresent(Int.self, forKey: .orderInGroup)
+        systemKind = try? container.decodeIfPresent(String.self, forKey: .systemKind)
+        isDefaultCircle = try? container.decodeIfPresent(Bool.self, forKey: .isDefaultCircle)
     }
     
     // Add manual init for creating circles in code

@@ -172,7 +172,7 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
             }
         ]
         // Own circles in profile order (never alphabetized)
-        let mine = circles.filter { IDNormalizer.isSameUser($0.owner, uid) && $0.name != "Places from my photos" }
+        let mine = circles.filter { IDNormalizer.isSameUser($0.owner, uid) && !SystemCircles.isKind(.photoPlaces, $0) }
         if !mine.isEmpty {
             actions.append(UIMenu(title: "Your circles", options: .displayInline, children: mine.map { circle in
                 let on: Bool = { if case .circle(let id, _) = target { return id == circle.id } else { return false } }()

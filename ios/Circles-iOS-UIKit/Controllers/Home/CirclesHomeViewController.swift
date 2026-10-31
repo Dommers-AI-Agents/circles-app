@@ -3050,7 +3050,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
     /// Opens the lightweight "add 3 places" flow, seeding the default circles
     /// first if the account has none yet.
     @objc func openQuickStartAddPlaces() {
-        if let circle = circles.first(where: { $0.name == "Favorite Local Spots" }) ?? circles.first {
+        if let circle = SystemCircles.first(.favoriteLocal, in: circles) ?? circles.first {
             presentQuickStart(with: circle)
             return
         }
@@ -3067,7 +3067,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
                     DispatchQueue.main.async {
                         if case .success(let fetched) = circlesResult, !fetched.isEmpty {
                             self.circles = fetched
-                            let target = fetched.first(where: { $0.name == "Favorite Local Spots" }) ?? fetched[0]
+                            let target = SystemCircles.first(.favoriteLocal, in: fetched) ?? fetched[0]
                             self.presentQuickStart(with: target)
                         } else {
                             self.promptCreateFirstCircle()
@@ -3136,7 +3136,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
                             guard let self = self else { return }
                             if case .success(let fetched) = circlesResult, !fetched.isEmpty {
                                 self.circles = fetched
-                                let target = fetched.first(where: { $0.name == "Favorite Local Spots" }) ?? fetched[0]
+                                let target = SystemCircles.first(.favoriteLocal, in: fetched) ?? fetched[0]
                                 let addPlaceVC = AddPlaceViewController(circleId: target.id, circles: fetched)
                                 self.navigationController?.pushViewController(addPlaceVC, animated: true)
                             } else {
@@ -3371,10 +3371,10 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         let seenKey = "legacyPrivacyNudgeShown_\(userId)"
         guard !UserDefaults.standard.bool(forKey: seenKey) else { return }
 
-        let defaultNames: Set<String> = ["Favorite Local Spots", "Want to Try", "Vacation"]
+        // Starter circles by flag (renamed ones too); names only for legacy docs
         let nonPublicDefaults = circles.filter {
             IDNormalizer.isSameUser($0.owner, userId) &&
-            defaultNames.contains($0.name) &&
+            SystemCircles.isStarter($0) &&
             $0.privacy != .public
         }
         // Only nudge accounts from the pre-public era — someone who chose
