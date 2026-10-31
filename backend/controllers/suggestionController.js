@@ -282,7 +282,8 @@ const getReceivedSuggestions = async (req, res) => {
       const suggestion = serializeDoc(doc);
       const authorDoc = await db.collection(COLLECTIONS.USERS).doc(suggestion.userId).get();
       if (authorDoc.exists) {
-        suggestion.userDetails = serializeDoc(authorDoc);
+        // Public card only — never the sender's email (2026-10-31 audit)
+        suggestion.userDetails = projectPublicUser(serializeDoc(authorDoc));
       }
       suggestions.push(suggestion);
     }

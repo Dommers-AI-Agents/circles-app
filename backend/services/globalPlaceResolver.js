@@ -523,24 +523,13 @@ async function ensureGlobalPlaceLink(placeDoc) {
   }
 }
 
-// The venue's other saved copies carry a denormalized `category` for list /
-// geo / browse queries; keep them in step with an upgraded canonical category.
-// Fire-and-forget: the current save is stamped inline by the caller.
+// The venue's saved copies and its store record carry `category`; keep them
+// in step with an upgraded canonical category through the one category
+// fan-out (venueGoogleSignals.syncCategoryToSaves — it reaches the store too,
+// which this used to skip; 2026-10-31 audit). Fire-and-forget: the current
+// save is stamped inline by the caller (an extra identical write is harmless).
 function syncCategoryToOtherSaves(globalPlaceId, currentPlaceId, category) {
-  db.collection('places')
-    .where('globalPlaceId', '==', globalPlaceId)
-    .get()
-    .then(siblings => {
-      const batch = db.batch();
-      let pending = 0;
-      siblings.docs.forEach(doc => {
-        if (doc.id !== currentPlaceId && doc.data().category !== category) {
-          batch.update(doc.ref, { category, updatedAt: new Date().toISOString() });
-          pending++;
-        }
-      });
-      return pending > 0 ? batch.commit() : null;
-    })
+  require('./venueGoogleSignals').syncCategoryToSaves(globalPlaceId, category, new Date().toISOString(), { db })
     .catch(e => console.warn(`⚠️ [GlobalPlace] Could not sync category to copies of ${globalPlaceId}:`, e.message));
 }
 
