@@ -158,6 +158,8 @@ class KeychainService {
         var handledStickerCode: String?
         var pendingStickerCode: String?
         var welcome: ClipWelcome?
+        var accountEmail: String?
+        var emailUnverified: Bool?
     }
 
     struct ClipAdoptionResult {
@@ -165,6 +167,7 @@ class KeychainService {
         let handledStickerCode: String?  // clip already redeemed this code — don't redeem again
         let pendingStickerCode: String?  // clip failed to redeem — run the pending-code flow
         var welcome: ClipWelcome? = nil  // the store's page + welcome to show first
+        var unconfirmedEmail: String? = nil  // signed up in the clip with just this email
     }
 
     /// Call once early in launch, before auth state is read.
@@ -201,7 +204,8 @@ class KeychainService {
         return ClipAdoptionResult(adopted: true,
                                   handledStickerCode: payload.handledStickerCode,
                                   pendingStickerCode: payload.pendingStickerCode,
-                                  welcome: payload.welcome)
+                                  welcome: payload.welcome,
+                                  unconfirmedEmail: payload.emailUnverified == true ? payload.accountEmail : nil)
     }
 
     // MARK: - Private Helper Methods

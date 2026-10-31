@@ -1,9 +1,10 @@
 import UIKit
 
-// Email sign-in without a password (Wes, 2026-10-31): the email, then the
-// 6-digit code we email them. The same two steps sign in an existing account
-// or create a new one (then we also ask their name). The look is the App
-// Store header's: charcoal, a faint street map, the route through three pins.
+// Email sign-in, instant (Wes, 2026-10-31): a new customer types only their
+// email and is in — no password, no code; the app asks them later to confirm
+// it or set up Face ID. An email that already has an account needs the
+// 6-digit code we email (never a session on an email alone). The look is the
+// App Store header's: charcoal, a faint street map, the route through pins.
 final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
 
     private enum Step { case email, code }
@@ -24,7 +25,7 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
     private let nameField = ClipTheme.field(placeholder: "Your name", contentType: .name)
     private let codeField = ClipTheme.field(placeholder: "6-digit code", contentType: .oneTimeCode)
     private let errorLabel = ClipTheme.label(.systemFont(ofSize: 15, weight: .medium), color: UIColor(red: 1, green: 0.62, blue: 0.58, alpha: 1))
-    private let submitButton = ClipTheme.primaryButton("Send code")
+    private let submitButton = ClipTheme.primaryButton("Continue")
     private let resendButton = ClipTheme.linkButton("Send a new code")
     private let changeEmailButton = ClipTheme.linkButton("Use a different email")
     private var stackBottom: NSLayoutConstraint?
@@ -140,12 +141,12 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
         hookLabel.attributedText = preview.isGeneric
             ? ClipTheme.hookText("The Road less traveled", "is yours. Save it.", size: 40)
             : ClipTheme.hookText("Welcome in.", "Save \(preview.venueName).", size: 40)
-        detailLabel.text = "Enter your email and we'll send you a 6-digit code. No password needed."
+        detailLabel.text = "Just your email. No password, nothing to confirm right now."
         emailField.isHidden = false
         nameField.isHidden = true
         codeField.isHidden = true
         resendButton.superview?.isHidden = true
-        setSubmitTitle("Send code")
+        setSubmitTitle("Continue")
         hideError()
         if animated {
             ClipTheme.animateIn([hookLabel, detailLabel, emailField, submitButton])
@@ -158,7 +159,7 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
         hookLabel.attributedText = ClipTheme.hookText("Check your email.", "Enter your code.", size: 40)
         detailLabel.text = newAccount
             ? "We sent a code to \(email). Add your name so friends know it's you."
-            : "We sent a code to \(email). Welcome back!"
+            : "Welcome back! You already have an account, so we sent a code to \(email)."
         emailField.isHidden = true
         nameField.isHidden = !newAccount
         codeField.isHidden = false
@@ -182,7 +183,7 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
 
     @objc private func submitTapped() {
         switch step {
-        case .email: sendCode()
+        case .email: continueWithEmail()
         case .code: verify()
         }
     }
@@ -204,27 +205,41 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
         }
     }
 
-    private func sendCode() {
+    /// New email: straight in. Known email: the server emails a code and we ask for it.
+    private func continueWithEmail() {
         let typed = (emailField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if step == .email {
-            guard typed.range(of: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", options: .regularExpression) != nil else {
-                showError("Please enter a valid email address.")
-                return
-            }
-            email = typed
+        guard typed.range(of: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", options: .regularExpression) != nil else {
+            showError("Please enter a valid email address.")
+            return
         }
+        email = typed
         setBusy(true)
         Task { @MainActor in
             do {
-                let started = try await ClipAPIClient.shared.startEmailCode(email: email)
+                let response = try await ClipAPIClient.shared.emailInstant(email: email, stickerCode: code)
+                view.endEditing(true)
+                onSignedIn(response)
+            } catch ClipAPIError.coded("VERIFY_REQUIRED", _) {
+                // They already have an account: the code is on its way
                 setBusy(false)
-                newAccount = started.newAccount == true
-                if step == .email {
-                    showCodeStep()
-                } else {
-                    detailLabel.text = "We sent a new code to \(email)."
-                    hideError()
-                }
+                newAccount = false
+                showCodeStep()
+            } catch {
+                setBusy(false)
+                showError(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Resend: a fresh code to the same email
+    private func sendCode() {
+        setBusy(true)
+        Task { @MainActor in
+            do {
+                _ = try await ClipAPIClient.shared.startEmailCode(email: email)
+                setBusy(false)
+                detailLabel.text = "We sent a new code to \(email)."
+                hideError()
             } catch {
                 setBusy(false)
                 showError(error.localizedDescription)
@@ -265,7 +280,7 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
     // MARK: - UITextFieldDelegate
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        if textField === emailField { sendCode() }
+        if textField === emailField { continueWithEmail() }
         if textField === nameField { codeField.becomeFirstResponder() }
         return true
     }

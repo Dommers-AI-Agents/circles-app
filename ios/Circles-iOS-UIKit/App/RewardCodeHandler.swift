@@ -30,6 +30,11 @@ final class RewardCodeHandler: SceneCoordinator {
             // invocation URL replay on first launch doesn't re-run the reward UX
             UserDefaults.standard.set(handledCode, forKey: Self.clipHandledStickerCodeKey)
         }
+        if let email = result.unconfirmedEmail {
+            // Signed up in the clip with just an email: ask them to keep the
+            // account (Face ID or confirm the email) once they're in
+            AccountSafetyPrompt.stash(email: email)
+        }
         if let welcome = result.welcome {
             // Their first look at the app is that store's page with what they
             // earned and what the points buy (Wes, 2026-10-31)
@@ -190,6 +195,11 @@ final class RewardCodeHandler: SceneCoordinator {
         if let welcome = ClipWelcome.takeStashed() {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 StickerRewardCoordinator.shared.showClipWelcome(welcome)
+            }
+        } else if let email = AccountSafetyPrompt.stashedEmail, let top = topViewController() {
+            // No store welcome (the generic code): ask on its own
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                AccountSafetyPrompt.present(email: email, from: top)
             }
         }
         guard let code = RewardsService.shared.getPendingStickerCode() else { return }

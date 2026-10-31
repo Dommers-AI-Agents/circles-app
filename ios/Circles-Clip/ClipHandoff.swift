@@ -24,6 +24,8 @@ enum ClipHandoff {
         var handledStickerCode: String?  // clip redeemed this code — full app must NOT redeem again
         var pendingStickerCode: String?  // clip failed to redeem — full app should run the pending flow
         var welcome: Welcome?            // the store and what they earned, for the app's first launch
+        var accountEmail: String?        // with emailUnverified: the app asks to confirm it or set up Face ID
+        var emailUnverified: Bool?
     }
 
     /// What the full app's first launch shows: the store's page with a
@@ -55,7 +57,9 @@ enum ClipHandoff {
             authProvider: session.provider,
             handledStickerCode: nil,
             pendingStickerCode: nil,
-            welcome: nil
+            welcome: nil,
+            accountEmail: session.email,
+            emailUnverified: session.emailUnverified
         )
         write(payload)
     }

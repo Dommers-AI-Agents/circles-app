@@ -12,6 +12,9 @@ struct ClipSession: Codable {
     let userId: String
     let displayName: String?
     let provider: String
+    let email: String?
+    /// Signed up with just an email: the app asks them to confirm it or set up Face ID
+    let emailUnverified: Bool?
 
     private static let service = "com.favcircles.clip.session"
     private static let account = "current"
@@ -26,6 +29,8 @@ struct ClipSession: Codable {
         userId = response.user.id
         displayName = response.user.displayName
         self.provider = provider
+        email = response.user.email
+        emailUnverified = response.isEmailUnverified
     }
 
     /// The saved session, if any and not expired

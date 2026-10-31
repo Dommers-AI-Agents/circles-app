@@ -7,6 +7,8 @@ import Foundation
 enum ClipAPIError: LocalizedError {
     case network(Error)
     case server(String)
+    /// The server's error code with its message (VERIFY_REQUIRED, CODE_INVALID…)
+    case coded(String, String)
     case decoding
     case unauthorized
 
@@ -14,6 +16,7 @@ enum ClipAPIError: LocalizedError {
         switch self {
         case .network: return "Couldn't reach FavCircles. Check your connection and try again."
         case .server(let message): return message
+        case .coded(_, let message): return message
         case .decoding: return "Something went wrong. Please try again."
         case .unauthorized: return "Please sign in again."
         }
@@ -38,6 +41,18 @@ final class ClipAPIClient {
     func venuePreview(code: String) async throws -> VenuePreview {
         let response: VenuePreviewResponse = try await request(path: "clip/venue/\(code)", method: "GET")
         return response.data
+    }
+
+    /// Just an email, straight in (Wes, 2026-10-31): a new email gets an
+    /// account on the spot, confirmed later in the app. An email that already
+    /// has an account answers VERIFY_REQUIRED and the server emails the code.
+    func emailInstant(email: String, stickerCode: String?) async throws -> ClipAuthResponse {
+        var body: [String: Any] = ["email": email]
+        if let stickerCode {
+            body["signupSource"] = "app_clip"
+            body["stickerCode"] = stickerCode
+        }
+        return try await request(path: "auth/email-instant", method: "POST", body: body)
     }
 
     /// Emails a 6-digit code (no password anywhere in the clip)
@@ -120,7 +135,8 @@ final class ClipAPIClient {
         guard (200...299).contains(statusCode) else {
             if statusCode == 401 { throw ClipAPIError.unauthorized }
             if let errorBody = try? JSONDecoder().decode(ClipErrorBody.self, from: data),
-               let message = errorBody.error ?? errorBody.message {
+               let message = errorBody.message ?? errorBody.error {
+                if let code = errorBody.code { throw ClipAPIError.coded(code, message) }
                 throw ClipAPIError.server(message)
             }
             throw ClipAPIError.server("Something went wrong (\(statusCode)). Please try again.")

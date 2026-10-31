@@ -80,18 +80,24 @@ struct ClipAuthResponse: Decodable {
     let refreshToken: String?
     let expiresIn: Int?
     let user: ClipUser
+    /// An instant sign-up: the email isn't confirmed yet (the app asks later)
+    let emailUnverified: Bool?
+
+    var isEmailUnverified: Bool { emailUnverified == true || user.emailUnverified == true }
 }
 
 struct ClipUser: Decodable {
     let id: String
     let displayName: String?
     let email: String?
+    let emailUnverified: Bool?
 
     // The auth endpoints serialize the user with Mongo-style "_id"
     enum CodingKeys: String, CodingKey {
         case id = "_id"
         case displayName
         case email
+        case emailUnverified
     }
 }
 
@@ -129,6 +135,7 @@ struct ScanAward: Decodable {
 struct ClipErrorBody: Decodable {
     let error: String?
     let message: String?
+    let code: String?
 }
 
 struct ClipSimpleResponse: Decodable {
