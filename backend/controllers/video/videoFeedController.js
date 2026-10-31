@@ -15,6 +15,7 @@ const { buildViewerContext, makeViewerContext } = require('../../services/viewer
 const { getInnerCircleGrantorIds, getInnerCircleGrantorLists } = require('../../utils/networkAccess');
 const { isModerationHidden, isPubliclyViewableMoment } = require('../../services/publicProjection');
 const { clampPagination } = require('../../utils/pagination');
+const { withCurrentMomentPlaces } = require('../../services/placeLookup');
 
 // Uncapped ?limit / ?offset let one request read (and bill) a whole feed;
 // Firestore charges for every doc an offset skips (security audit 2026-10-01).
@@ -27,7 +28,7 @@ exports.getPlaceVideos = async (req, res) => {
     // Signed in, and each moment's own audience — this used to return every
     // moment at a place to anyone, unauthenticated
     const visible = await momentsVisibleTo(await readyMomentsAt([req.params.placeId]), req.user.uid);
-    res.json({ success: true, ...page(visible, req) });
+    res.json({ success: true, ...(await page(visible, req)) });
   } catch (error) {
     sendServiceError(res, error, { log: 'Error getting place videos', fallbackMessage: 'Failed to get place videos' });
   }
@@ -134,7 +135,7 @@ exports.getUserVideos = async (req, res) => {
     });
     
     // Add user details to videos
-    const videosWithUsers = videos.map(video => ({
+    const videosWithUsers = (await withCurrentMomentPlaces(videos)).map(video => ({
       ...video,
       user: usersMap[video.userId] || null
     }));
@@ -223,7 +224,7 @@ exports.getVideoFeed = async (req, res) => {
     });
     
     // Add user details to videos
-    const videosWithUsers = videos.map(video => ({
+    const videosWithUsers = (await withCurrentMomentPlaces(videos)).map(video => ({
       ...video,
       user: usersMap[video.userId] || null
     }));
@@ -366,10 +367,11 @@ exports.getVideoDetails = async (req, res) => {
     
     // Return all URLs correctly without overwriting
     // The iOS app expects both videoUrl and previewUrl to be present
-    const response = {
+    // The place line shows the venue's current name/address (placeLookup)
+    const [response] = await withCurrentMomentPlaces([{
       ...serializeDoc(videoDoc)
       // Don't override videoUrl - keep both URLs intact
-    };
+    }]);
     
     // Get user details
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(videoData.userId).get();
@@ -559,7 +561,7 @@ exports.getReelsFeed = async (req, res) => {
     });
 
     // Add user details, like status, and activity data to videos
-    const videosWithUsers = paginatedVideos.map(video => {
+    const videosWithUsers = (await withCurrentMomentPlaces(paginatedVideos)).map(video => {
       const activity = activitiesMap[video.id];
       return {
         ...video,
@@ -635,7 +637,7 @@ exports.getUserReels = async (req, res) => {
     const activitiesMap = await fetchActivityDataForVideos(videos, currentUserId);
     
     // Add activity data to videos
-    const videosWithActivity = videos.map(video => {
+    const videosWithActivity = (await withCurrentMomentPlaces(videos)).map(video => {
       const activity = activitiesMap[video.id];
       return {
         ...video,
@@ -719,15 +721,16 @@ const readyMomentsAt = async (placeIds) => {
   return withoutExpired([...byId.values()]).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
 };
 
-const page = (items, req) => {
+// One page of moments, each with its venue's current name/address
+const page = async (items, req) => {
   const { limit, offset } = clampPagination(req.query, FEED_PAGINATION); // security audit 2026-10-01
-  return { data: items.slice(offset, offset + limit), hasMore: items.length > offset + limit };
+  return { data: await withCurrentMomentPlaces(items.slice(offset, offset + limit)), hasMore: items.length > offset + limit };
 };
 
 exports.getPlaceReels = async (req, res) => {
   try {
     const visible = await momentsVisibleTo(await readyMomentsAt([req.params.placeId]), req.user.uid);
-    res.json({ success: true, ...page(visible, req) });
+    res.json({ success: true, ...(await page(visible, req)) });
   } catch (error) {
     sendServiceError(res, error, { log: 'Error getting place reels', fallbackMessage: 'Failed to get place reels' });
   }
@@ -747,7 +750,7 @@ exports.getVenueMoments = async (req, res) => {
       ? await saveIdsForPlace(globalPlaceDoc.id, globalPlaceDoc.data())
       : [req.params.globalPlaceId];
     const visible = await momentsVisibleTo(await readyMomentsAt(placeIds), req.user.uid);
-    res.json({ success: true, ...page(visible, req) });
+    res.json({ success: true, ...(await page(visible, req)) });
   } catch (error) {
     sendServiceError(res, error, { log: 'Error getting venue moments', fallbackMessage: 'Failed to get moments for this place' });
   }

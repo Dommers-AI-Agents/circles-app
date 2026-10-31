@@ -10,6 +10,7 @@ const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { momentMeta, renderMoment } = require('../../views/momentPage');
 const { composePreview, fetchImage } = require('../../services/momentPreview');
 const { isPubliclyViewableMoment } = require('../../services/publicProjection');
+const { withCurrentMomentPlaces } = require('../../services/placeLookup');
 const db = getFirestore();
 
 const PAGE_TEMPLATE = path.join(__dirname, '..', '..', 'public', 'video-share.html');
@@ -26,7 +27,10 @@ const loadPublicMoment = async (videoId) => {
   const video = doc.data();
   // A disappearing moment that ran out reads as gone ("no longer available")
   if (require('../../services/momentExpiry').isExpired(video)) return null;
-  return isPubliclyViewableMoment(video) ? video : null;
+  if (!isPubliclyViewableMoment(video)) return null;
+  // The place line says what the place is called NOW, not at upload
+  const [current] = await withCurrentMomentPlaces([video]);
+  return current;
 };
 
 // @route GET /share/video/:videoId (public)
@@ -124,7 +128,8 @@ exports.generateVideoShareLink = async (req, res) => {
       });
     }
     
-    const video = videoDoc.data();
+    // The place's current name, not the one stored at upload
+    const [video] = await withCurrentMomentPlaces([videoDoc.data()]);
     
     // Generate share URL. circles-app.com is hosted on Vercel and never
     // routed /share/* to this backend — links must use a host that actually
