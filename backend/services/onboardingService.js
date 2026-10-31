@@ -20,13 +20,27 @@ const DEFAULT_CONNECT_EMAILS = [
   'sgroiwes@gmail.com'       // Wes
 ];
 
+// First build whose first run asks for the place you love most
+const FIRST_FAVORITE_MIN_APP = { version: '1.4.4' };
+
 class OnboardingService {
   
   /**
    * Complete onboarding for a new user
    * Creates default circles and adds a sample place
    */
-  static async completeUserOnboarding(userId, userLocation = null) {
+  /**
+   * Builds that open with "the one place you love most" (Wes, 2026-10-31)
+   * start the map with the person's own place: no stranger's sample beside
+   * it. Older builds keep the sample. ONBOARDING_FIRST_FAVORITE=false turns
+   * the step (and this) off.
+   */
+  static firstFavoriteReplacesSample(client) {
+    if (process.env.ONBOARDING_FIRST_FAVORITE === 'false') return false;
+    return require('../utils/appVersion').atLeast(client, FIRST_FAVORITE_MIN_APP);
+  }
+
+  static async completeUserOnboarding(userId, userLocation = null, { skipSamplePlace = false } = {}) {
     try {
       console.log(`🎯 Starting onboarding for user: ${userId}`);
       
@@ -54,7 +68,8 @@ class OnboardingService {
       // Search that used to run first was the priciest SKU in the project
       // (~$32/1k) spent on a throwaway sample place.
       const userCity = (userData.location || '').split(',')[0].trim() || userLocation?.city || null;
-      const resolvedSamplePlace = getRandomLocalPlace(userCity ? { city: userCity } : userLocation);
+      const resolvedSamplePlace = skipSamplePlace ? null
+        : getRandomLocalPlace(userCity ? { city: userCity } : userLocation);
       if (resolvedSamplePlace) {
         console.log(`📍 Onboarding: Using curated sample place "${resolvedSamplePlace.name}"`);
       } else {
@@ -210,6 +225,12 @@ class OnboardingService {
       const fav = await systemCircles.pickAndHeal(
         circles.docs.map(c => ({ id: c.id, ...c.data() })), 'favoriteLocal', { db });
       if (!fav || (fav.places || []).length > 0) return { seeded: false };
+
+      // Someone who already saved a place of their own (the first-favorite
+      // step, 2026-10-31) never gets a stranger's sample beside it
+      const ownSaves = await db.collection(COLLECTIONS.PLACES)
+        .where('addedBy', '==', userId).limit(20).get();
+      if (ownSaves.docs.some(d => d.data().isSamplePlace !== true)) return { seeded: false };
 
       const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
       const userDoc = await userRef.get();
@@ -447,6 +468,12 @@ class OnboardingService {
           .orderBy('createdAt', 'desc').limit(200).select('placeId', 'message', 'welcome').get()
           .catch((error) => { console.warn('🎁 Welcome rotation counts unavailable:', error.message); return { docs: [] }; })
       ]);
+      const sentCounts = new Map();
+      for (const doc of sentSnap.docs) {
+        const d = doc.data();
+        if (d.welcome !== true && !String(d.message || '').startsWith('Welcome to FavCircles!')) continue;
+        if (d.placeId) sentCounts.set(d.placeId, (sentCounts.get(d.placeId) || 0) + 1);
+      }
       const place = pickWelcomePlace(
         placesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
         new Set(circlesSnap.docs.map(d => d.id)),
@@ -466,14 +493,9 @@ class OnboardingService {
         recipientName: userData.displayName || null
       }, wesId);
 
+      suggestionData.welcome = true; // counted by the rotation above
       const ref = await db.collection(COLLECTIONS.SUGGESTIONS).add(suggestionData);
       const suggestion = { _id: ref.id, id: ref.id, ...suggestionData };
-      const sentCounts = new Map();
-      for (const doc of sentSnap.docs) {
-        const d = doc.data();
-        if (d.welcome !== true && !String(d.message || '').startsWith('Welcome to FavCircles!')) continue;
-        if (d.placeId) sentCounts.set(d.placeId, (sentCounts.get(d.placeId) || 0) + 1);
-      }
 
       await notificationService.notifyDirectedSuggestion(suggestion, userId)
         .catch(err => console.error('🎁 Welcome suggestion notification failed:', err.message));
@@ -493,7 +515,6 @@ class OnboardingService {
       console.log(`🎯 Adding more sample content for user: ${userId}`);
       
       const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
-      suggestionData.welcome = true; // counted by the rotation above
       const userDoc = await userRef.get();
       
       if (!userDoc.exists) {

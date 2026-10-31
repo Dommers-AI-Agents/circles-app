@@ -108,8 +108,11 @@ exports.recordAppOpen = async (req, res, next) => {
     // Deferred starter place: users who signed up without location got three
     // empty circles — seed the sample now that we know where they are.
     // Fire-and-forget after the response.
-    if (hasCoords) {
-      require('../../services/onboardingService')
+    // Builds with the first-favorite step skip it: the location can arrive
+    // while they're still picking their own place
+    const onboardingService = require('../../services/onboardingService');
+    if (hasCoords && !onboardingService.firstFavoriteReplacesSample({ version: appVersion, build })) {
+      onboardingService
         .seedSamplePlaceIfMissing(userId, { latitude, longitude })
         .catch(() => {});
     }

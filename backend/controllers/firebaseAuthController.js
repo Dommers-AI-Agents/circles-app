@@ -21,6 +21,7 @@ exports.getTokenExpiresInSeconds = getTokenExpiresInSeconds;
 // Zipcode → city/state resolution lives in services/zipcodeService (shared
 // with profile updates so zipcode and location can never disagree)
 const { geocodeZipcode } = require('../services/zipcodeService');
+const { clientFromRequest } = require('../utils/appVersion');
 
 // Helper function to exchange LinkedIn authorization code for access token
 async function exchangeLinkedInCode(code) {
@@ -255,12 +256,12 @@ exports.firebaseAuth = async (req, res, next) => {
         const linkedProviders = existingUser.linkedProviders || {};
         linkedProviders[provider] = uid;
         updateData.linkedProviders = linkedProviders;
-        
         // Only a provider-verified email gets here (see above). If this
         // account was an instant sign-up nobody confirmed, this person just
         // proved they own the address: confirm it and void the sessions made
         // before, so whoever created it can't keep a way in
         Object.assign(updateData, require('../services/emailCodeService').claimForVerifiedOwner(existingUser));
+        
         // Handle alternate emails - especially for Apple Sign In with private relay
         if (provider === 'apple' && email) {
           const alternateEmails = existingUser.alternateEmails || [];
@@ -508,7 +509,8 @@ exports.firebaseAuth = async (req, res, next) => {
           } else {
             await OnboardingService.completeUserOnboarding(
               simpleUid,
-              userCity ? { city: userCity } : null
+              userCity ? { city: userCity } : null,
+              { skipSamplePlace: OnboardingService.firstFavoriteReplacesSample(clientFromRequest(req)) }
             );
             console.log(`✅ Onboarding completed for user ${simpleUid}${userCity ? ` (city: ${userCity})` : ''}`);
           }
@@ -729,7 +731,8 @@ exports.register = async (req, res, next) => {
       // Clip attribution, onboarding, signup watch, welcome email
       const counts = await finishNewAccount(
         { ...user, id: normalizeUserId(user.id || user.uid) },
-        { ip: req.ip, provider: 'password', signupSource: req.body.signupSource, stickerCode: req.body.stickerCode }
+        { ip: req.ip, provider: 'password', signupSource: req.body.signupSource, stickerCode: req.body.stickerCode,
+          client: clientFromRequest(req) }
       );
       user.circlesCount = counts.circlesCount;
       user.placesCount = counts.placesCount;

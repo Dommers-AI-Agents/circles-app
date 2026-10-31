@@ -37,7 +37,9 @@ async function finishNewAccount(user, { ip, provider, signupSource, stickerCode,
       OnboardingService.completeUserOnboarding(userId, cityArg)
         .catch((err) => console.error(`❌ Deferred clip onboarding failed for ${userId}:`, err));
     } else {
-      const onboarding = await OnboardingService.completeUserOnboarding(userId, cityArg);
+      const onboarding = await OnboardingService.completeUserOnboarding(userId, cityArg, {
+        skipSamplePlace: OnboardingService.firstFavoriteReplacesSample(client)
+      });
       if (onboarding.success) {
         const circles = await getFirestore().collection(COLLECTIONS.CIRCLES).where('owner', '==', userId).get();
         circlesCount = circles.size;

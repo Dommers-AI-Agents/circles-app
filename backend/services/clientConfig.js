@@ -35,6 +35,12 @@ function buildClientConfig() {
       firstPlaceAdded: finite(coins.FIRST_PLACE_ADDED),
       drinkReceived: finite(coins.DRINK_RECEIVED),
       eventJoined: finite(coins.EVENT_JOINED)
+    },
+    // First-run steps the app can be told to skip without a build
+    // (ONBOARDING_FIRST_FAVORITE=false turns the "place you love most"
+    // step off; Wes, 2026-10-31)
+    onboarding: {
+      firstFavorite: process.env.ONBOARDING_FIRST_FAVORITE !== 'false'
     }
   };
 }
