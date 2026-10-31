@@ -209,4 +209,16 @@ describe('public moment surfaces', () => {
     await getVideoShareInfo({ params: { videoId: 'pub' } }, info);
     expect(info.json.mock.calls[0][0].data.placeName).toBe('Secret Spot');
   });
+
+  test('the public moment names its uploader as they are now (it always said "Circles User")', async () => {
+    await put('users', 'owner', { displayName: 'Sal Sgroi', profilePicture: 'https://x/sal.jpg' });
+    const details = res();
+    await getPublicVideoDetails({ params: { videoId: 'pub' } }, details);
+    expect(details.json.mock.calls[0][0].data).toMatchObject({ userName: 'Sal Sgroi', userPhoto: 'https://x/sal.jpg' });
+    // Uploader's account gone: the old fallback
+    await put('placeVideos', 'orphan', { userId: 'nobody', uploadStatus: 'ready', deletedAt: null, visibility: 'public' });
+    const orphan = res();
+    await getPublicVideoDetails({ params: { videoId: 'orphan' } }, orphan);
+    expect(orphan.json.mock.calls[0][0].data.userName).toBe('Circles User');
+  });
 });
