@@ -11,6 +11,7 @@ const { ServiceError } = require('../utils/serviceError');
 const { newId, nowIso } = require('../utils/ids');
 const { clean } = require('../utils/text');
 const notifyQuiet = require('./notifyQuiet');
+const users = require('./userLookup');
 
 const db = () => getFirestore();
 
@@ -28,6 +29,10 @@ const PING_COOLDOWN_MS = 5 * 60 * 1000;
 const wallCol = (eventId) => ev.eventsCol().doc(eventId).collection('wall');
 const songsCol = (eventId) => ev.eventsCol().doc(eventId).collection('songs');
 const nameOf = (data, uid) => (data.members && data.members[uid] && data.members[uid].name) || 'Member';
+// Who wrote / added / took it, as they are NOW (stored name = fallback for a
+// deleted account). `people` comes from userLookup.fetchUsersById.
+const NO_PEOPLE = new Map();
+const currentName = (people, uid, stored) => users.nameOf(people.get(String(uid || ''))) || stored;
 const emojiOf = (data) => data.emoji || ev.DEFAULT_EMOJI;
 const liveRefresh = (eventId) => require('./eventLiveActivityService').refreshSoon(eventId);
 
@@ -39,13 +44,13 @@ const notEnded = (data) => {
 // Shout-out wall
 // ---------------------------------------------------------------------------
 
-const toClientPost = (doc, viewerId, hostId) => {
+const toClientPost = (doc, viewerId, hostId, people = NO_PEOPLE) => {
   const d = doc.data();
   const reactions = d.reactions || {};
   return {
     id: doc.id,
     authorId: d.authorId,
-    authorName: d.authorName,
+    authorName: currentName(people, d.authorId, d.authorName),
     text: d.text,
     createdAt: d.createdAt,
     reactions: REACTIONS.map(e => ({ emoji: e, count: (reactions[e] || []).length, mine: (reactions[e] || []).includes(viewerId) }))
@@ -57,7 +62,8 @@ const toClientPost = (doc, viewerId, hostId) => {
 async function listWall(eventId, uid) {
   const { ref, data } = await ev.loadAsMember(eventId, uid);
   const snap = await wallCol(ref.id).orderBy('createdAt', 'desc').limit(WALL_PAGE).get();
-  return { posts: snap.docs.map(d => toClientPost(d, uid, data.hostId)), reactions: REACTIONS };
+  const people = await users.fetchUsersById(snap.docs.map(d => d.data().authorId));
+  return { posts: snap.docs.map(d => toClientPost(d, uid, data.hostId, people)), reactions: REACTIONS };
 }
 
 async function postToWall(eventId, uid, { text } = {}) {
@@ -87,22 +93,23 @@ async function reactToWallPost(eventId, uid, postId, { emoji } = {}) {
   if (!REACTIONS.includes(emoji)) throw new ServiceError(400, 'bad_reaction', 'Pick one of the reactions');
   const { ref, data } = await ev.loadAsMember(eventId, uid);
   const postRef = wallCol(ref.id).doc(String(postId));
-  return db().runTransaction(async (tx) => {
+  const out = await db().runTransaction(async (tx) => {
     const doc = await tx.get(postRef);
     if (!doc.exists) throw new ServiceError(404, 'not_found', 'That shout-out is gone');
     const current = (doc.data().reactions || {})[emoji] || [];
     const next = current.includes(uid) ? current.filter(id => id !== uid) : [...current, uid];
     tx.update(postRef, new FieldPath('reactions', emoji), next);
-    const reactions = { ...(doc.data().reactions || {}), [emoji]: next };
-    return { post: toClientPost({ id: doc.id, data: () => ({ ...doc.data(), reactions }) }, uid, data.hostId) };
+    return { doc, reactions: { ...(doc.data().reactions || {}), [emoji]: next } };
   });
+  const people = await users.fetchUsersById([out.doc.data().authorId]);
+  return { post: toClientPost({ id: out.doc.id, data: () => ({ ...out.doc.data(), reactions: out.reactions }) }, uid, data.hostId, people) };
 }
 
 // ---------------------------------------------------------------------------
 // Song requests
 // ---------------------------------------------------------------------------
 
-const toClientSong = (doc, viewerId, hostId) => {
+const toClientSong = (doc, viewerId, hostId, people = NO_PEOPLE) => {
   const d = doc.data();
   const votes = Array.isArray(d.votes) ? d.votes : [];
   return {
@@ -110,7 +117,7 @@ const toClientSong = (doc, viewerId, hostId) => {
     title: d.title,
     artist: d.artist || null,
     addedById: d.addedById,
-    addedByName: d.addedByName,
+    addedByName: currentName(people, d.addedById, d.addedByName),
     votes: votes.length,
     votedByMe: votes.includes(viewerId),
     played: !!d.playedAt,
@@ -126,7 +133,8 @@ const sortSongs = (songs) => [...songs].sort((a, b) =>
 async function listSongs(eventId, uid) {
   const { ref, data } = await ev.loadAsMember(eventId, uid);
   const snap = await songsCol(ref.id).orderBy('createdAt', 'desc').limit(SONGS_PAGE).get();
-  return { songs: sortSongs(snap.docs.map(d => toClientSong(d, uid, data.hostId))) };
+  const people = await users.fetchUsersById(snap.docs.map(d => d.data().addedById));
+  return { songs: sortSongs(snap.docs.map(d => toClientSong(d, uid, data.hostId, people))) };
 }
 
 async function requestSong(eventId, uid, { title, artist } = {}) {
@@ -152,10 +160,11 @@ async function voteSong(eventId, uid, songId) {
     const votes = doc.data().votes || [];
     const next = votes.includes(uid) ? votes.filter(id => id !== uid) : [...votes, uid];
     tx.update(songRef, { votes: next });
-    return toClientSong({ id: doc.id, data: () => ({ ...doc.data(), votes: next }) }, uid, data.hostId);
+    return { doc, votes: next };
   });
   liveRefresh(ref.id);
-  return { song: out };
+  const people = await users.fetchUsersById([out.doc.data().addedById]);
+  return { song: toClientSong({ id: out.doc.id, data: () => ({ ...out.doc.data(), votes: out.votes }) }, uid, data.hostId, people) };
 }
 
 /** Played (or not) — the adder or the coordinator (the DJ). */
@@ -167,7 +176,8 @@ async function markSongPlayed(eventId, uid, songId, { played = true } = {}) {
   if (doc.data().addedById !== uid && data.hostId !== uid) throw new ServiceError(403, 'not_allowed', 'Only the coordinator or whoever added it');
   await songRef.update({ playedAt: played ? nowIso() : FieldValue.delete() });
   liveRefresh(ref.id);
-  return { song: toClientSong({ id: doc.id, data: () => ({ ...doc.data(), playedAt: played ? nowIso() : null }) }, uid, data.hostId) };
+  const people = await users.fetchUsersById([doc.data().addedById]);
+  return { song: toClientSong({ id: doc.id, data: () => ({ ...doc.data(), playedAt: played ? nowIso() : null }) }, uid, data.hostId, people) };
 }
 
 async function deleteSong(eventId, uid, songId) {
@@ -239,7 +249,7 @@ async function startRollCall(eventId, uid) {
     }, 'event_rollcall');
   }
   liveRefresh(ref.id);
-  return { event: ev.toClientEvent(ref.id, { ...data, rollCall }, uid) };
+  return { event: await ev.presentEvent(ref.id, { ...data, rollCall }, uid) };
 }
 
 /** "I'm here", optionally with where (shown only to the event, cleared at the end). */
@@ -256,7 +266,7 @@ async function answerRollCall(eventId, uid, { lat, lng } = {}) {
   liveRefresh(ref.id);
   const next = { ...rc, here: { ...(rc.here || {}), [uid]: now },
     locations: hasSpot ? { ...(rc.locations || {}), [uid]: { lat: Number(lat), lng: Number(lng), at: now } } : (rc.locations || {}) };
-  return { event: ev.toClientEvent(ref.id, { ...data, rollCall: next }, uid) };
+  return { event: await ev.presentEvent(ref.id, { ...data, rollCall: next }, uid) };
 }
 
 /** The coordinator nudges whoever hasn't answered (or one person). */
@@ -298,8 +308,11 @@ async function closeRollCall(eventId, uid) {
 // After-party recap
 // ---------------------------------------------------------------------------
 
-/** Pure (tested): what the recap shows, from the event, its photos, places and wall. */
-function buildRecap({ id, data, photos, places, posts, songs }) {
+/** Pure (tested): what the recap shows, from the event, its photos, places and
+ *  wall. `people` (fetchUsersById) names everyone as they are now. */
+function buildRecap({ id, data, photos, places, posts, songs, people = NO_PEOPLE }) {
+  const memberName = (uid) => currentName(people, uid, (data.members && data.members[uid] && data.members[uid].name) || 'Member');
+  const uploaderName = (p) => currentName(people, p.uploaderId, p.uploaderName);
   const byLikes = [...photos].sort((a, b) => (b.likes || []).length - (a.likes || []).length
     || String(a.createdAt).localeCompare(String(b.createdAt)));
   const uploads = {};
@@ -316,16 +329,16 @@ function buildRecap({ id, data, photos, places, posts, songs }) {
     startedAt: firstAt,
     endedAt: data.endedAt || null,
     memberCount: (data.memberIds || []).length,
-    memberNames: (data.memberIds || []).map(uid => (data.members && data.members[uid] && data.members[uid].name) || 'Member'),
+    memberNames: (data.memberIds || []).map(memberName),
     photoCount: photos.length,
     placeCount: places.length,
-    topPhotos: byLikes.slice(0, 6).map(p => ({ imageUrl: p.imageUrl, thumbUrl: p.thumbUrl || null, uploaderName: p.uploaderName, likes: (p.likes || []).length })),
+    topPhotos: byLikes.slice(0, 6).map(p => ({ imageUrl: p.imageUrl, thumbUrl: p.thumbUrl || null, uploaderName: uploaderName(p), likes: (p.likes || []).length })),
     photoOfTheNight: byLikes[0] && (byLikes[0].likes || []).length > 0
-      ? { imageUrl: byLikes[0].imageUrl, uploaderName: byLikes[0].uploaderName, likes: byLikes[0].likes.length } : null,
-    topPhotographer: topUploader ? { name: (photos.find(p => p.uploaderId === topUploader[0]) || {}).uploaderName || 'Member', photos: topUploader[1] } : null,
+      ? { imageUrl: byLikes[0].imageUrl, uploaderName: uploaderName(byLikes[0]), likes: byLikes[0].likes.length } : null,
+    topPhotographer: topUploader ? { name: currentName(people, topUploader[0], (photos.find(p => p.uploaderId === topUploader[0]) || {}).uploaderName) || 'Member', photos: topUploader[1] } : null,
     places: places.map(p => ({ name: p.name, lat: p.lat, lng: p.lng })),
     challenges: { total: (data.challenges || []).length, done: [...challengeDone].filter(cid => (data.challenges || []).some(c => c.id === cid)).length },
-    topShoutout: topPost && reactionCount(topPost) > 0 ? { text: topPost.text, authorName: topPost.authorName } : null,
+    topShoutout: topPost && reactionCount(topPost) > 0 ? { text: topPost.text, authorName: currentName(people, topPost.authorId, topPost.authorName) } : null,
     topSong: topSong ? { title: topSong.title, artist: topSong.artist || null, votes: (topSong.votes || []).length } : null
   };
 }
@@ -339,13 +352,16 @@ async function getRecap(eventId, uid) {
     wallCol(ref.id).orderBy('createdAt', 'desc').limit(200).get(),
     songsCol(ref.id).orderBy('createdAt', 'desc').limit(200).get()
   ]);
-  return { recap: buildRecap({
-    id: ref.id, data,
+  const rows = {
     photos: photos.docs.map(d => d.data()).filter(row => row.status !== 'uploading'),
     places: places.docs.map(d => d.data()),
     posts: posts.docs.map(d => d.data()),
     songs: songs.docs.map(d => d.data())
-  }) };
+  };
+  const people = await users.fetchUsersById([
+    ...(data.memberIds || []), ...rows.photos.map(p => p.uploaderId), ...rows.posts.map(p => p.authorId)
+  ]);
+  return { recap: buildRecap({ id: ref.id, data, ...rows, people }) };
 }
 
 module.exports = {
