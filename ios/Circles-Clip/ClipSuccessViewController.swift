@@ -277,9 +277,13 @@ final class ClipSuccessViewController: UIViewController {
 
     // MARK: - Actions
 
+    /// Straight to the App Store page. The banner (SKOverlay) can't be shown
+    /// twice, and shows nothing for a clip that didn't come from the App
+    /// Store, so the button never relies on it (Wes, 2026-10-31).
     @objc private func getAppTapped() {
-        overlayPresented = false
-        presentInstallOverlay(afterDelay: 0)
+        if let url = URL(string: "https://apps.apple.com/us/app/favcircles/id6746807095") {
+            UIApplication.shared.open(url)
+        }
     }
 
     @objc private func signOutTapped() {
