@@ -72,3 +72,16 @@ test('refresh of a merged-away account answers as the survivor', async () => {
   const { payload } = await call(controller.refreshToken, { refreshToken: old });
   expect(jwt.verify(payload.token, 'test-secret').uid).toBe('keeper');
 });
+
+test('a rename through the legacy PUT /auth/me is findable by name search, like PUT /users/me', async () => {
+  await users().doc('u1').set({ displayName: 'Salvatore', firstName: 'Sal', lastName: 'Old', searchTokens: ['salvatore', 'sal', 'old'] });
+  let payload;
+  const res = { status() { return this; }, json(p) { payload = p; return this; } };
+  await controller.updateProfile({ user: { uid: 'u1' }, body: { displayName: 'Wes Sgroi' } }, res, (e) => { throw e; });
+  expect(payload.success).toBe(true);
+  const stored = (await users().doc('u1').get()).data();
+  const { userSearchFields } = require('../../services/userSearchService');
+  expect(stored).toMatchObject(userSearchFields({ displayName: 'Wes Sgroi', firstName: 'Sal', lastName: 'Old' }));
+  expect(stored.searchTokens).toEqual(expect.arrayContaining(['wes', 'sgroi']));
+  expect(stored.searchTokens).not.toContain('salvatore');
+});
