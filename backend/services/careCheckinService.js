@@ -8,6 +8,13 @@ const planner = require('./careCheckin/questionPlanner');
 const { atLeast } = require('../utils/appVersion');
 const emailService = require('./emailService');
 const { escapeHtml } = require('../utils/text');
+const { fetchUsersById, nameOf } = require('./userLookup');
+
+// The owner, parent and family on a plan are named as they are NOW (Wes,
+// 2026-10-31: one source for people): presenters take a `users` map from
+// fetchUsersById and fall back to the names stored on the plan.
+const NO_USERS = new Map();
+const currentName = (users, uid, stored) => nameOf(users && uid ? users.get(String(uid)) : null) || stored;
 
 // Where an emailed invitation's button goes: the How Are You? widget, which
 // holds the invitation card (AASA /app/* opens the app; without it, the
@@ -50,6 +57,21 @@ class CareCheckinService {
     return [plan.ownerId, ...CareCheckinService.activeWatcherIds(plan)];
   }
 
+  /** Everyone a plan (and its answers' reactions/comments) names. */
+  static planPeopleIds(plan) {
+    return [plan.ownerId, plan.parentId, ...(plan.watchers || []).map((w) => w && w.userId)];
+  }
+
+  /** One batched users read for these plans' people. */
+  async familyCards(...plans) {
+    return fetchUsersById(plans.flatMap((p) => CareCheckinService.planPeopleIds(p || {})));
+  }
+
+  /** presentPlan with current names (one batched read). */
+  async presentPlanNow(plan, opts = {}) {
+    return this.presentPlan(plan, { ...opts, users: await this.familyCards(plan) });
+  }
+
   static canRead(plan, userId) {
     return ['owner', 'parent', 'watcher'].includes(CareCheckinService.roleOf(plan, userId));
   }
@@ -57,18 +79,18 @@ class CareCheckinService {
 
   // MARK: - Presentation
 
-  presentPlan(plan, { asks = [], viewerId } = {}) {
+  presentPlan(plan, { asks = [], viewerId, users = NO_USERS } = {}) {
     const open = asks.filter((a) => a.status === 'open').sort((a, b) => (a.askedAt < b.askedAt ? 1 : -1));
     const answered = asks.filter((a) => a.status === 'answered').sort((a, b) => (a.answeredAt < b.answeredAt ? 1 : -1));
     return {
       planId: plan.id,
       role: CareCheckinService.roleOf(plan, viewerId),
       ownerId: plan.ownerId,
-      ownerName: plan.ownerName || '',
+      ownerName: currentName(users, plan.ownerId, plan.ownerName) || '',
       // The parent hushed pushes about family reactions (they still see them)
       reactionPushesOff: plan.reactionPushesOff === true,
       parentId: plan.parentId,
-      parentName: plan.parentName || '',
+      parentName: currentName(users, plan.parentId, plan.parentName) || '',
       status: plan.status,
       questions: (plan.questions || []).map((q) => CareCheckinService.presentQuestion(q)),
       usesDefaultQuestions: !(plan.questions || []).length,
@@ -91,11 +113,11 @@ class CareCheckinService {
       lastAskedAt: plan.lastAskedAt || null,
       lastAnsweredAt: plan.lastAnsweredAt || null,
       watchers: (plan.watchers || []).map((w) => ({
-        userId: w.userId, name: w.name || 'Someone', status: w.status,
+        userId: w.userId, name: currentName(users, w.userId, w.name) || 'Someone', status: w.status,
         invitedBy: w.invitedBy || null, invitedAt: w.invitedAt || null, acceptedAt: w.acceptedAt || null
       })),
-      openAsk: open[0] ? this.presentAsk({ id: open[0].id, ...open[0] }) : null,
-      lastAnswer: answered[0] ? this.presentAsk({ id: answered[0].id, ...answered[0] }) : null,
+      openAsk: open[0] ? this.presentAsk({ id: open[0].id, ...open[0] }, users) : null,
+      lastAnswer: answered[0] ? this.presentAsk({ id: answered[0].id, ...answered[0] }, users) : null,
       answers: ANSWERS
     };
   }
@@ -110,7 +132,7 @@ class CareCheckinService {
     return out;
   }
 
-  presentAsk(ask) {
+  presentAsk(ask, users = NO_USERS) {
     const kind = bank.KINDS.includes(ask.kind) ? ask.kind : 'mood';
     return {
       askId: ask.id,
@@ -137,7 +159,7 @@ class CareCheckinService {
       answeredAt: ask.answeredAt || null,
       pushDelivered: ask.pushDelivered !== false,
       // Family support on this answer (reactions; responses to a heads-up)
-      ...require('./careCheckin/support').presentSupport(ask)
+      ...require('./careCheckin/support').presentSupport(ask, users)
     };
   }
 
@@ -157,10 +179,11 @@ class CareCheckinService {
       .filter((d) => (seen.has(d.id) ? false : seen.add(d.id)))
       .map((d) => ({ id: d.id, ...d.data() }))
       .filter((p) => p.status !== 'ended');
+    const users = await this.familyCards(...rows);
     const withAsks = await Promise.all(rows.map(async (plan) => {
       // Someone invited or still asking sees the arrangement, never the answers.
       const asks = CareCheckinService.canRead(plan, userId) ? await this.recentAsks(plan.id, 6) : [];
-      return this.presentPlan(plan, { asks, viewerId: userId });
+      return this.presentPlan(plan, { asks, viewerId: userId, users });
     }));
     withAsks.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     return {
@@ -187,8 +210,8 @@ class CareCheckinService {
   async listAsks({ userId, planId, limit = 60, before = null }) {
     const plan = await this.requirePlan(planId);
     if (!CareCheckinService.canRead(plan, userId)) throw new CareError(403, 'not_yours', 'Not your check-in.');
-    const page = await this.recentAsks(planId, limit + 1, before);
-    return { asks: page.slice(0, limit).map((a) => this.presentAsk(a)), hasMore: page.length > limit };
+    const [page, users] = await Promise.all([this.recentAsks(planId, limit + 1, before), this.familyCards(plan)]);
+    return { asks: page.slice(0, limit).map((a) => this.presentAsk(a, users)), hasMore: page.length > limit };
   }
 
   async requirePlan(planId) {
@@ -248,7 +271,7 @@ class CareCheckinService {
     };
     await this.plans.doc(planId).set(plan);
     this.invite(parent, CareCheckinService.inviteMessage(ownerName, planId)).catch(() => {});
-    return this.presentPlan({ id: planId, ...plan }, { viewerId: ownerId });
+    return this.presentPlanNow({ id: planId, ...plan }, { viewerId: ownerId });
   }
 
   /** What the family member the owner invited receives; sent again on resend. */
@@ -295,7 +318,7 @@ class CareCheckinService {
     });
     const { delivered, emailed } = await this.invite(plan.parentId, CareCheckinService.inviteMessage(plan.ownerName || 'Someone', planId));
     return {
-      plan: this.presentPlan({ ...plan, ...patch }, { viewerId: userId }),
+      plan: await this.presentPlanNow({ ...plan, ...patch }, { viewerId: userId }),
       delivered,
       emailed
     };
@@ -348,7 +371,7 @@ class CareCheckinService {
     }
     await this.plans.doc(planId).update(patch);
     const merged = { ...plan, ...patch };
-    return this.presentPlan(merged, { asks: await this.recentAsks(planId, 6), viewerId: userId });
+    return this.presentPlanNow(merged, { asks: await this.recentAsks(planId, 6), viewerId: userId });
   }
 
   async endPlan({ userId, planId }) {
@@ -389,7 +412,7 @@ class CareCheckinService {
         data: { planId }
       });
     }
-    return this.presentPlan(merged, { viewerId: userId });
+    return this.presentPlanNow(merged, { viewerId: userId });
   }
 
   /**
