@@ -21,13 +21,14 @@ const SHARE_BASE = () => process.env.SHARE_LINK_BASE_URL || 'https://api.favcirc
 // moment's audience and moderation, so a private (or reported-and-hidden)
 // moment's place name and thumbnail went out to all of them (security audit
 // 2026-10-01). Anything not public, live and un-moderated reads as missing.
-const loadPublicMoment = async (videoId) => {
+const loadPublicMoment = async (videoId, { withPlace = true } = {}) => {
   const doc = await db.collection(COLLECTIONS.PLACE_VIDEOS).doc(videoId).get();
   if (!doc.exists) return null;
   const video = doc.data();
   // A disappearing moment that ran out reads as gone ("no longer available")
   if (require('../../services/momentExpiry').isExpired(video)) return null;
   if (!isPubliclyViewableMoment(video)) return null;
+  if (!withPlace) return video;
   // The place line says what the place is called NOW, not at upload
   const [current] = await withCurrentMomentPlaces([video]);
   return current;
@@ -61,7 +62,7 @@ exports.renderSharePage = async (req, res) => {
 exports.sharePreviewImage = async (req, res) => {
   const { videoId } = req.params;
   try {
-    const video = await loadPublicMoment(videoId);
+    const video = await loadPublicMoment(videoId, { withPlace: false }); // image only: no place line
     if (!video || !video.thumbnailUrl) return res.redirect(302, `${SHARE_BASE()}/images/circles-preview.png`);
     const source = await fetchImage(video.thumbnailUrl);
     const jpeg = await composePreview(source, { play: (video.contentType || 'video') !== 'photo' });
