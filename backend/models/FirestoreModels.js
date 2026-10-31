@@ -487,11 +487,8 @@ const validatePlace = (placeData) => {
     errors.push('Place category is required');
   }
   
-  const validCategories = ['restaurant', 'cafe', 'bar', 'hotel', 'retail', 'service', 
-                          'attraction', 'entertainment', 'healthcare', 'fitness', 
-                          'education', 'outdoor', 'transport', 'finance', 'home', 
-                          'work', 'other'];
-  if (placeData.category && !validCategories.includes(placeData.category)) {
+  // The one category list: config/placeCategories.js
+  if (placeData.category && !require('../config/placeCategories').isPlaceCategory(placeData.category)) {
     errors.push('Invalid place category');
   }
   

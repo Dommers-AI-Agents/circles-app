@@ -20,7 +20,7 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 const CATEGORY_WORDS = {
   restaurant: 'Restaurant', cafe: 'Café', bar: 'Bar', retail: 'Shop', entertainment: 'Entertainment',
-  outdoor: 'Outdoors', education: 'School', health: 'Health', hotel: 'Hotel', other: 'Place'
+  outdoor: 'Outdoors', education: 'School', healthcare: 'Health', hotel: 'Hotel', other: 'Place'
 };
 const categoryWord = (c) => CATEGORY_WORDS[c] || (c ? c.charAt(0).toUpperCase() + c.slice(1) : 'Place');
 
@@ -242,4 +242,4 @@ function subjectFor(stats, fmtCoins) {
   return bits.length ? `Your FavCircles week: ${bits.join(' · ')}` : 'Your FavCircles week';
 }
 
-module.exports = { renderWeeklyEmail, subjectFor, weekRange };
+module.exports = { renderWeeklyEmail, subjectFor, weekRange, CATEGORY_WORDS };

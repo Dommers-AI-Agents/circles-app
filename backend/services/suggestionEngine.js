@@ -622,4 +622,4 @@ const getSuggestionsFor = async (userId) => {
 };
 
 // areaMatch / areaCandidates are exported for the scale tests only.
-module.exports = { buildAllSuggestions, getSuggestionsFor, suggestFor, buildIndexes, areaMatch, areaCandidates };
+module.exports = { buildAllSuggestions, getSuggestionsFor, suggestFor, buildIndexes, areaMatch, areaCandidates, CATEGORY_LABELS };

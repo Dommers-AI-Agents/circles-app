@@ -36,6 +36,14 @@ const about = {};
 for (const g of data.groups) for (const w of g.widgets) about[w.id] = { name: w.name, tagline: w.tagline, features: w.features };
 fs.writeFileSync(appCopy, JSON.stringify(about, null, 1) + '\n');
 
+// So does the server's shared-widget landing page (/app/widget/:id) and the
+// weekly email: backend/config/widgetCatalog.generated.json, commit it too
+// (Wes, 2026-10-31: one source — the server list had drifted, 4 widgets short)
+const serverCopy = path.resolve(root, '../backend/config/widgetCatalog.generated.json');
+const catalog = {};
+for (const g of data.groups) for (const w of g.widgets) catalog[w.id] = { title: w.name, blurb: w.tagline, emoji: w.emoji };
+fs.writeFileSync(serverCopy, JSON.stringify(catalog, null, 1) + '\n');
+
 const total = ids.length;
 const card = (w) => `
           <article class="widget" id="${esc(w.id)}">

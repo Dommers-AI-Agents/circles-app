@@ -17,15 +17,13 @@ const {
 } = require('./importCategoryMapping');
 
 // The full place-category enum (mirrors validatePlace in models/FirestoreModels).
-const ALL_CATEGORIES = [
-  'restaurant', 'cafe', 'bar', 'hotel', 'retail', 'service', 'attraction',
-  'entertainment', 'healthcare', 'fitness', 'education', 'outdoor', 'transport',
-  'finance', 'home', 'work', 'other'
-];
+// The one list lives in config/placeCategories.js
+const { PLACE_CATEGORY_IDS, AUTO_CATEGORY_IDS } = require('../config/placeCategories');
+const ALL_CATEGORIES = [...PLACE_CATEGORY_IDS];
 
 // Categories that may be auto-assigned. 'home'/'work' are user-designated only
 // (never inferred), so the deterministic tiers and the LLM tier never pick them.
-const AUTO_CATEGORIES = ALL_CATEGORIES.filter(c => c !== 'home' && c !== 'work');
+const AUTO_CATEGORIES = [...AUTO_CATEGORY_IDS];
 
 // Apple MapKit POI categories -> app category. Keyed on MKPointOfInterestCategory
 // rawValues (e.g. "MKPOICategoryRestaurant"). Populated only when the client

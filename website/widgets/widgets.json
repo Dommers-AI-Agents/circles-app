@@ -71,7 +71,7 @@
           "features": ["Save your spot in one tap, with an optional photo and note (level, row, landmark)", "Walking directions back to your car", "A meter reminder before time runs out, and another when it expires", "Private: the photo stays on your phone"] },
         { "id": "packages", "emoji": "📦", "name": "Packages", "tagline": "Every tracking number in one place.",
           "features": ["Paste or scan a shipping label; the carrier is detected for you (USPS, UPS, FedEx, Amazon, DHL, OnTrac)", "Open each carrier's tracking page in a tap", "A reminder the morning a package is expected", "Private: only you see your packages"] },
-        { "id": "newcontacts", "emoji": "📇", "name": "New Contacts", "tagline": "The last 50 people you added to your phone.",
+        { "id": "newcontacts", "emoji": "📇", "name": "Recent Contacts", "tagline": "The last 50 people you added to your phone.",
           "features": ["Newest first, so you can find the person you met last night without remembering their name", "Call, text or open their contact card in a tap", "Contacts added together are grouped as an import", "Stays on your phone: nothing is uploaded"] }
       ]
     }

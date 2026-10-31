@@ -33,7 +33,6 @@ const CATEGORY_PLURAL = {
   attraction: 'attractions',
   entertainment: 'entertainment spots',
   fitness: 'fitness spots',
-  beauty: 'beauty spots',
   healthcare: 'health spots',
   education: 'schools',
   service: 'services',
@@ -309,3 +308,4 @@ module.exports = new MapDigestService();
 // Shared with the product-update email's "your map" section.
 module.exports.distanceKm = distanceKm;
 module.exports.cityFromAddress = cityFromAddress;
+module.exports.CATEGORY_PLURAL = CATEGORY_PLURAL;

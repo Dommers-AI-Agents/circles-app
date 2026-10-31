@@ -1,0 +1,132 @@
+{
+ "events": {
+  "title": "Events",
+  "blurb": "Party bus, trip or night out: photos and videos only your group sees.",
+  "emoji": "🎉"
+ },
+ "clubs": {
+  "title": "Clubs",
+  "blurb": "Run clubs, walk groups, book clubs: who's in, when you meet, and what's new.",
+  "emoji": "👟"
+ },
+ "dogs": {
+  "title": "Can I Pet Dat Dog",
+  "blurb": "For dog people: show off your pup, a funny dog thing every day, and a park full of good dogs.",
+  "emoji": "🐶"
+ },
+ "howareyou": {
+  "title": "How Are You?",
+  "blurb": "Check on Mom or Dad a few times a day.",
+  "emoji": "💬"
+ },
+ "postcard": {
+  "title": "Postcard",
+  "blurb": "A real postcard from your trip photo.",
+  "emoji": "📮"
+ },
+ "fridgemail": {
+  "title": "Fridge Mail",
+  "blurb": "Kids' drawings, mailed to Grandma every week.",
+  "emoji": "🎨"
+ },
+ "billsplit": {
+  "title": "Bill Split",
+  "blurb": "Split the check and the tip in seconds.",
+  "emoji": "🧾"
+ },
+ "nextbar": {
+  "title": "NextBar",
+  "blurb": "Your next bar, picked from where your friends actually go.",
+  "emoji": "🍸"
+ },
+ "whattoeat": {
+  "title": "What to Eat",
+  "blurb": "Can't decide? One tap picks for you.",
+  "emoji": "🍜"
+ },
+ "drink": {
+  "title": "Make Me a Drink",
+  "blurb": "A cocktail to order tonight, and how to make any classic.",
+  "emoji": "🍹"
+ },
+ "workouts": {
+  "title": "Workouts",
+  "blurb": "Log sets, reps and personal records.",
+  "emoji": "🏋️"
+ },
+ "run": {
+  "title": "FavRun",
+  "blurb": "Track your runs on a map.",
+  "emoji": "🏃"
+ },
+ "motivation": {
+  "title": "Coach Mane",
+  "blurb": "A coach who won't let you skip.",
+  "emoji": "📣"
+ },
+ "water": {
+  "title": "Water",
+  "blurb": "One tap per glass.",
+  "emoji": "💧"
+ },
+ "habits": {
+  "title": "Habits",
+  "blurb": "Daily check-ins and streaks.",
+  "emoji": "✅"
+ },
+ "calories": {
+  "title": "Calories",
+  "blurb": "Quick-add meals and macros.",
+  "emoji": "🥗"
+ },
+ "heartbeat": {
+  "title": "Heartbeat",
+  "blurb": "Your pulse, from the camera or a strap.",
+  "emoji": "❤️"
+ },
+ "meds": {
+  "title": "Medications",
+  "blurb": "A reminder for every dose, and one tap to log it.",
+  "emoji": "💊"
+ },
+ "sleep": {
+  "title": "Sleep Score",
+  "blurb": "How well you slept, scored every morning from Apple Health.",
+  "emoji": "😴"
+ },
+ "weather": {
+  "title": "Weather",
+  "blurb": "Right now, the next hours and 10 days.",
+  "emoji": "🌤️"
+ },
+ "stocks": {
+  "title": "Stocks",
+  "blurb": "Indexes, rates, crypto and the stocks you follow.",
+  "emoji": "📈"
+ },
+ "quotes": {
+  "title": "Quotes",
+  "blurb": "Good lines at the times you pick.",
+  "emoji": "💭"
+ },
+ "sleepsounds": {
+  "title": "Sleep Sounds",
+  "blurb": "Rain, ocean, fire: mix and drift off.",
+  "emoji": "🌙"
+ },
+ "parking": {
+  "title": "Parking",
+  "blurb": "Remember where you parked.",
+  "emoji": "🅿️"
+ },
+ "packages": {
+  "title": "Packages",
+  "blurb": "Every tracking number in one place.",
+  "emoji": "📦"
+ },
+ "newcontacts": {
+  "title": "Recent Contacts",
+  "blurb": "The last 50 people you added to your phone.",
+  "emoji": "📇"
+ }
+}

@@ -1,36 +1,14 @@
 /**
- * Copy for the shared-widget landing page (`/app/widget/:id`).
+ * Copy for the shared-widget landing page (`/app/widget/:id`) and the weekly
+ * email. GENERATED from website/widgets/widgets.json (the one source, which
+ * also feeds the website and the app's "i" sheet) by
+ * `node website/tools/build-widgets-page.js` — don't edit by hand.
  *
- * Mirrors the descriptors in the favcircles-widgets package. It is a mirror,
- * not the source of truth, and it does not have to be complete: an id with no
- * row here still gets a working page and a working App Store fallback, just
- * generic wording. So a new widget ships without touching the backend, and
- * adding a row later only improves the link preview.
+ * An id with no row still gets a working page and App Store fallback with
+ * generic wording, so a widget the server hasn't heard of yet never breaks.
  */
-const WIDGETS = {
-  billsplit: { title: 'Bill Split', blurb: 'Split the check and the tip with friends in seconds.', emoji: '🧾' },
-  drink: { title: 'Make Me a Drink', blurb: 'Cocktail recipes from what you have, with a surprise-me shake.', emoji: '🍹' },
-  calories: { title: 'Calories', blurb: 'Log meals and macros in a couple of taps.', emoji: '🥗' },
-  fridgemail: { title: 'Fridge Mail', blurb: "Your kids' drawings, printed and mailed to Grandma every week.", emoji: '🎨' },
-  habits: { title: 'Habits', blurb: 'Keep daily habits with one-tap check-ins and streaks.', emoji: '✅' },
-  heartbeat: { title: 'Heartbeat', blurb: 'Measure your heart rate directly from your phone camera.', emoji: '❤️' },
-  howareyou: { title: 'How Are You?', blurb: 'Check on Mom or Dad a few times a day — they answer with one tap from their Lock Screen.', emoji: '💬' },
-  motivation: { title: 'Coach Mane', blurb: 'A coach in your pocket who will not let you skip leg day.', emoji: '📣' },
-  newcontacts: { title: 'Recent Contacts', blurb: 'See the last 50 people you added to your phone, newest first.', emoji: '📇' },
-  nextbar: { title: 'NextBar', blurb: 'Your next bar, picked from the places your friends actually go.', emoji: '🍸' },
-  dogs: { title: 'Can I Pet Dat Dog', blurb: 'Your dog\'s card, health records and favorite spots, a funny dog every day, and the Dog Park: photos and videos of good dogs to pet.', emoji: '🐶' },
-  clubs: { title: 'Clubs', blurb: 'Run clubs, walk groups, book clubs: members, weekly meetups with RSVPs, a bulletin and a message board.', emoji: '👟' },
-  events: { title: 'Events', blurb: 'Start an event (a party bus, a trip, a night out): everyone joins with one link and shares photos and videos only the group can see.', emoji: '🎉' },
-  postcard: { title: 'Postcard', blurb: 'Send a real postcard from a trip photo, printed and mailed for you.', emoji: '📮' },
-  run: { title: 'FavRun', blurb: 'Track your runs with GPS: route map, pace, splits and personal bests, right on your Lock Screen.', emoji: '🏃' },
-  quotes: { title: 'Quotes', blurb: 'A good line a few times a day, on the topics you pick.', emoji: '💭' },
-  sleepsounds: { title: 'Sleep Sounds', blurb: 'Mix rain, ocean and fire into a sleep sound that fades out on its own.', emoji: '🌙' },
-  stocks: { title: 'Stocks', blurb: 'Follow your stocks, indexes, rates and crypto at a glance.', emoji: '📈' },
-  whattoeat: { title: 'What to Eat', blurb: "Can't decide? Spin for a craving and find where to get it nearby.", emoji: '🍜' },
-  weather: { title: 'Weather', blurb: 'The weather where you are, hour by hour and 10 days out.', emoji: '🌤️' },
-  water: { title: 'Water', blurb: 'Track your water through the day and get a nudge when you fall behind.', emoji: '💧' },
-  workouts: { title: 'Workouts', blurb: 'Log sets, reps and PRs, and see your progress over time.', emoji: '🏋️' }
-};
+const WIDGETS = require('./widgetCatalog.generated.json');
+
 
 const GENERIC = { title: 'A widget', blurb: 'One of the mini-apps inside FavCircles', emoji: '✨' };
 

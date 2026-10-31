@@ -27,8 +27,9 @@ const placePhotos = require('./placePhotoService');
 const db = getFirestore();
 
 const DETAIL_FIELDS = ['name', 'address', 'location', 'category', 'subcategory', 'description', 'phone', 'website', 'openingHours'];
-const VALID_CATEGORIES = ['restaurant', 'cafe', 'bar', 'hotel', 'retail', 'service', 'attraction',
-  'entertainment', 'healthcare', 'fitness', 'education', 'outdoor', 'transport', 'finance', 'other'];
+// The one category list (config/placeCategories.js); home and work are
+// each person's own, never a venue's shared category
+const VALID_CATEGORIES = [...require('../config/placeCategories').AUTO_CATEGORY_IDS];
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 
 const NOT_ALLOWED_MESSAGE = "Only the store's owner or an admin can change this place's details. If something's wrong, use Report a problem on the place page.";
