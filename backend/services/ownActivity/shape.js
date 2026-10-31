@@ -45,7 +45,9 @@ const toIso = (value) => {
 
 /**
  * One timeline row as the app renders it. `extras` carries what the row
- * itself doesn't hold (a moment's like and comment counts).
+ * itself doesn't hold (a moment's like and comment counts; `targetUser`, the
+ * current public card of the person a user_followed-style row is about, so a
+ * rename shows — the stored targetName stays for a deleted account).
  */
 function presentItem(doc, extras = {}) {
   const m = doc.metadata || {};
@@ -57,7 +59,7 @@ function presentItem(doc, extras = {}) {
     timestamp: toIso(doc.timestamp || doc.createdAt),
     targetType: doc.targetType || null,
     targetId: doc.targetId || null,
-    targetName: doc.targetName || null,
+    targetName: (doc.targetType === 'user' && extras.targetUser && extras.targetUser.displayName) || doc.targetName || null,
     circleName: doc.circleName || null,
     placeId: m.placeId || (doc.targetType === 'place' ? doc.targetId : null) || null,
     globalPlaceId: m.globalPlaceId || null,
