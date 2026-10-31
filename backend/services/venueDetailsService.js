@@ -178,8 +178,63 @@ async function updateVenueDetails({ globalPlaceId, user, fields }) {
   if (!(await canEditDetails(user, doc.id, doc.data()))) {
     throw new ServiceError(403, 'DETAILS_LOCKED', NOT_ALLOWED_MESSAGE);
   }
+  return applyVenueDetails(doc.id, fields, { doc });
+}
+
+/**
+ * What the store record (stickerVenues) mirrors from the venue: its name
+ * under both names it has, address, map point and category. Pure (tested).
+ * The store goes by the place's name everywhere — the Store page, Manage
+ * Store, rewards, codes, Specials, store events, the App Clip and the web
+ * order page all read the store record (Sal's Bakery, 2026-10-31). The
+ * store's web address (slug) is NOT here: it is stored once, so printed QR
+ * codes and links keep working after a rename.
+ */
+const storeUpdatesFor = (venue) => {
+  const out = {};
+  if (venue.name) { out.placeName = venue.name; out.venueName = venue.name; }
+  if (venue.address) out.placeAddress = venue.address;
+  if (venue.location && Array.isArray(venue.location.coordinates)) {
+    const [lng, lat] = venue.location.coordinates;
+    out.location = { lat, lng };
+  }
+  if (venue.category) out.category = venue.category;
+  return out;
+};
+
+/** City lens fields re-derived after an address or location change (pure). */
+const derivedLocationFields = (current, venue) => {
+  if (!venue.address && !venue.location) return {};
+  const { deriveLocation } = require('./placeLocationDerivation');
+  const loc = deriveLocation({
+    address: venue.address || current.address,
+    location: venue.location || current.location,
+    neighborhood: current.neighborhood
+  });
+  if (!loc.placed) return {};
+  return {
+    state: loc.state, stateCode: loc.stateCode, city: loc.city, cityKey: loc.cityKey,
+    neighborhood: loc.neighborhood, country: loc.country, countryCode: loc.countryCode
+  };
+};
+
+/**
+ * THE write path for a venue's shared details: the canonical record, every
+ * save's query cache, and the store record — all in step. No permission
+ * check: callers decide who may (updateVenueDetails for people; Google
+ * enrichment, category sweeps and import resolution for the system).
+ * Throws ServiceError 400 for bad values or nothing to change.
+ */
+async function applyVenueDetails(globalPlaceId, fields, { doc: given = null } = {}) {
+  const ref = db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(String(globalPlaceId || ''));
+  const doc = given || (globalPlaceId ? await ref.get() : null);
+  if (!doc || !doc.exists || doc.data().deletedAt) throw new ServiceError(404, 'PLACE_NOT_FOUND', 'Place not found.');
   const { venue, cache } = buildDetailUpdates(pickDetailFields(fields));
   if (Object.keys(venue).length === 0) throw new ServiceError(400, 'NOTHING_TO_UPDATE', 'Nothing to change.');
+
+  const located = derivedLocationFields(doc.data(), venue);
+  Object.assign(venue, located);
+  Object.assign(cache, located);
 
   const now = new Date().toISOString();
   await ref.update({ ...venue, updatedAt: now });
@@ -193,18 +248,14 @@ async function updateVenueDetails({ globalPlaceId, user, fields }) {
       await batch.commit();
     }
   }
-  // The store goes by the place's name everywhere: its Store page, Manage
-  // Store, rewards and codes read `venueName`, so it follows the rename too.
-  // (It used to stay as a separate "brand name" nobody could edit, and the
-  // store screens kept the old name — Sal's Bakery, 2026-10-31.) The store's
-  // web address (slug) is stored once and does not change, so printed QR
-  // codes and links keep working.
-  if (venue.name) {
+
+  const storeUpdates = storeUpdatesFor(venue);
+  if (Object.keys(storeUpdates).length > 0) {
     const store = await placePhotos.venueForPlace(doc.id, doc.data()).catch(() => null);
     if (store && store.venueId) {
       await db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(store.venueId)
-        .update({ placeName: venue.name, venueName: venue.name, updatedAt: now })
-        .catch((e) => console.error('⚠️ [venue-details] store name sync failed:', e.message));
+        .update({ ...storeUpdates, updatedAt: now })
+        .catch((e) => console.error('⚠️ [venue-details] store sync failed:', e.message));
     }
   }
 
@@ -235,5 +286,7 @@ module.exports = {
   changedDetailFields,
   canEditDetails,
   updateVenueDetails,
+  applyVenueDetails,
+  storeUpdatesFor,
   detailsOf
 };
