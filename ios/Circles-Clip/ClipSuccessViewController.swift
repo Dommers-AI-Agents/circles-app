@@ -15,6 +15,7 @@ final class ClipSuccessViewController: UIViewController {
 
     private let backdrop = ClipBackdropView()
     private let brandMark = ClipTheme.brandMarkView(side: 40)
+    private lazy var brandHeader = ClipTheme.brandHeader(mark: brandMark)
     private let stack = UIStackView()
     private let hookLabel = ClipTheme.label(ClipTheme.serif(46))
     private let nameLabel = ClipTheme.label(.systemFont(ofSize: 22, weight: .semibold))
@@ -64,7 +65,7 @@ final class ClipSuccessViewController: UIViewController {
 
     private func setupUI() {
         view.addSubview(backdrop)
-        view.addSubview(brandMark)
+        view.addSubview(brandHeader)
 
         stack.axis = .vertical
         stack.spacing = 10
@@ -110,8 +111,9 @@ final class ClipSuccessViewController: UIViewController {
             backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            brandMark.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
-            brandMark.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            brandHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            brandHeader.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            brandHeader.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             panelStack.topAnchor.constraint(equalTo: panel.contentView.topAnchor, constant: 16),
             panelStack.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor, constant: -16),
             panelStack.leadingAnchor.constraint(equalTo: panel.contentView.leadingAnchor, constant: 18),
@@ -119,7 +121,7 @@ final class ClipSuccessViewController: UIViewController {
             stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
             stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 26),
             stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -26),
-            stack.topAnchor.constraint(greaterThanOrEqualTo: brandMark.bottomAnchor, constant: 16),
+            stack.topAnchor.constraint(greaterThanOrEqualTo: brandHeader.bottomAnchor, constant: 16),
             spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
@@ -265,7 +267,7 @@ final class ClipSuccessViewController: UIViewController {
     private func reveal(celebrate: Bool) {
         spinner.stopAnimating()
         stack.isHidden = false
-        ClipTheme.animateIn([brandMark, hookLabel, nameLabel, detailLabel, panel, getAppButton, signOutButton])
+        ClipTheme.animateIn([brandHeader, hookLabel, nameLabel, detailLabel, panel, getAppButton, signOutButton])
         if celebrate {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             rainConfetti()

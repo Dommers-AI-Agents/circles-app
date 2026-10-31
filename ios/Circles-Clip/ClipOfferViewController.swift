@@ -13,9 +13,10 @@ final class ClipOfferViewController: UIViewController {
     private let appleSignIn = ClipAppleSignIn()
 
     private let backdrop = ClipBackdropView()
+    private let brandMark = ClipTheme.brandMarkView(side: 40)
+    private lazy var brandHeader = ClipTheme.brandHeader(mark: brandMark)
     private let spinner = UIActivityIndicatorView(style: .large)
     private let contentStack = UIStackView()
-    private let brandMark = ClipTheme.brandMarkView(side: 40)
     private let hookLabel = ClipTheme.label(ClipTheme.serif(46))
     private let nameLabel = ClipTheme.label(.systemFont(ofSize: 22, weight: .semibold))
     private let subtitleLabel = ClipTheme.label(.systemFont(ofSize: 17), color: UIColor.white.withAlphaComponent(0.88))
@@ -60,8 +61,7 @@ final class ClipOfferViewController: UIViewController {
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(contentStack)
 
-        brandMark.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(brandMark)
+                view.addSubview(brandHeader)
 
         hookLabel.adjustsFontSizeToFitWidth = true
         hookLabel.minimumScaleFactor = 0.7
@@ -84,7 +84,7 @@ final class ClipOfferViewController: UIViewController {
         contentStack.setCustomSpacing(12, after: appleButton)
         contentStack.setCustomSpacing(14, after: emailButton)
         contentStack.isHidden = true
-        brandMark.isHidden = true
+        brandHeader.isHidden = true
 
         spinner.color = .white
         spinner.translatesAutoresizingMaskIntoConstraints = false
@@ -96,12 +96,13 @@ final class ClipOfferViewController: UIViewController {
             backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            brandMark.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
-            brandMark.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            brandHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            brandHeader.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
+            brandHeader.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             contentStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18),
             contentStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 26),
             contentStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -26),
-            contentStack.topAnchor.constraint(greaterThanOrEqualTo: brandMark.bottomAnchor, constant: 16),
+            contentStack.topAnchor.constraint(greaterThanOrEqualTo: brandHeader.bottomAnchor, constant: 16),
             spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
@@ -138,7 +139,7 @@ final class ClipOfferViewController: UIViewController {
     private func showOffer(_ preview: VenuePreview) {
         spinner.stopAnimating()
         contentStack.isHidden = false
-        brandMark.isHidden = false
+        brandHeader.isHidden = false
         // The card's hook, then the store's name (said once each)
         let earnsHere = preview.kind == "register" && preview.loyaltyLive == true
         if earnsHere, let rate = preview.earnRate {
@@ -165,13 +166,13 @@ final class ClipOfferViewController: UIViewController {
             }
             statusLabel.text = "Free to join"
         }
-        ClipTheme.animateIn([brandMark, hookLabel, nameLabel, subtitleLabel, rewardLabel, appleButton, emailButton, statusLabel])
+        ClipTheme.animateIn([brandHeader, hookLabel, nameLabel, subtitleLabel, rewardLabel, appleButton, emailButton, statusLabel])
     }
 
     private func showNoCodeState() {
         spinner.stopAnimating()
         contentStack.isHidden = false
-        brandMark.isHidden = false
+        brandHeader.isHidden = false
         hookLabel.attributedText = ClipTheme.hookText("Love it here?", "Save it.", size: 46)
         nameLabel.isHidden = true
         rewardLabel.isHidden = true
@@ -181,7 +182,7 @@ final class ClipOfferViewController: UIViewController {
         emailButton.removeTarget(self, action: #selector(emailTapped), for: .touchUpInside)
         emailButton.addTarget(self, action: #selector(appStoreTapped), for: .touchUpInside)
         statusLabel.text = nil
-        ClipTheme.animateIn([brandMark, hookLabel, subtitleLabel, emailButton])
+        ClipTheme.animateIn([brandHeader, hookLabel, subtitleLabel, emailButton])
     }
 
     private func showLoadError(_ error: Error, code: String) {

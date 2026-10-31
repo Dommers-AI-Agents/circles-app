@@ -63,6 +63,24 @@ enum ClipTheme {
         return imageView
     }
 
+    /// The icon with "FavCircles" and what it's for, top left of each screen
+    static func brandHeader(mark: UIImageView) -> UIStackView {
+        let name = label(.systemFont(ofSize: 17, weight: .bold), lines: 1)
+        name.text = "FavCircles"
+        let tagline = label(.systemFont(ofSize: 13, weight: .medium), color: UIColor.white.withAlphaComponent(0.85))
+        tagline.text = "Save your favorite places. Build your own map."
+        let words = UIStackView(arrangedSubviews: [name, tagline])
+        words.axis = .vertical
+        words.spacing = 1
+        let header = UIStackView(arrangedSubviews: [mark, words])
+        header.axis = .horizontal
+        header.alignment = .center
+        header.spacing = 10
+        header.translatesAutoresizingMaskIntoConstraints = false
+        [name, tagline].forEach(lift)
+        return header
+    }
+
     /// Gold call to action with dark words
     static func primaryButton(_ title: String) -> UIButton {
         var config = UIButton.Configuration.filled()
@@ -185,11 +203,12 @@ final class ClipBackdropView: UIView {
         photoView.alpha = 0
         addSubview(photoView)
 
-        // Light at the top so the photo stays bright, darker toward the words
-        shade.colors = [UIColor.black.withAlphaComponent(0.05).cgColor,
+        // A little dark behind the header, bright in the middle, darker toward the words
+        shade.colors = [UIColor.black.withAlphaComponent(0.45).cgColor,
+                        UIColor.black.withAlphaComponent(0.05).cgColor,
                         UIColor.black.withAlphaComponent(0.25).cgColor,
                         UIColor(white: 0.04, alpha: 0.82).cgColor]
-        shade.locations = [0, 0.4, 1]
+        shade.locations = [0, 0.16, 0.45, 1]
         shade.opacity = 0
         layer.addSublayer(shade)
 
@@ -281,9 +300,9 @@ final class ClipBackdropView: UIView {
     private func drawRoute() {
         guard showsRoute else { return }
         let w = bounds.width, h = bounds.height
-        let a = CGPoint(x: w * 0.36, y: h * 0.40)
-        let b = CGPoint(x: w * 0.62, y: h * 0.27)
-        let c = CGPoint(x: w * 0.82, y: h * 0.13)
+        let a = CGPoint(x: w * 0.36, y: h * 0.45)
+        let b = CGPoint(x: w * 0.62, y: h * 0.33)
+        let c = CGPoint(x: w * 0.82, y: h * 0.21)
         let path = UIBezierPath()
         path.move(to: a)
         path.addCurve(to: b, controlPoint1: CGPoint(x: a.x + w * 0.08, y: a.y - h * 0.02), controlPoint2: CGPoint(x: b.x - w * 0.12, y: b.y + h * 0.05))
