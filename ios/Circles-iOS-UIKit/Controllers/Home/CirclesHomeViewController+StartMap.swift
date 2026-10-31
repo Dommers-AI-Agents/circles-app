@@ -10,16 +10,33 @@ extension CirclesHomeViewController {
         userOwnPlaces.contains { $0.isSamplePlace != true }
     }
 
+    /// After the first-favorite step (2026-10-31): "You saved X. Add two
+    /// more places you love." until they reach the quick-start goal. Only
+    /// for people who saved a first favorite on this install.
+    private var personalStartMapCopy: (title: String, body: String)? {
+        guard let me = AuthService.shared.currentUser,
+              let name = UserDefaults.standard.string(forKey: FirstFavoriteViewController.savedNameKey(me.id)) else { return nil }
+        let count = userOwnPlaces.filter { $0.isSamplePlace != true }.count
+        return FirstFavoriteCopy.homeCard(firstPlaceName: name, ownPlaceCount: count, goal: QuickStartAddPlacesViewController.goal)
+    }
+
     func updateStartMapCard() {
+        let personal = personalStartMapCopy
         let show = state.circlesLoaded && state.ownPlacesLoaded && !isLoadingPlaces && !isSearching && !startMapCardDismissed
-            && AuthService.shared.currentUser != nil && !hasOwnRealPlace
+            && AuthService.shared.currentUser != nil && (!hasOwnRealPlace || personal != nil)
         if show {
             if startMapCard == nil { installStartMapCard() }
+            (startMapCard?.viewWithTag(Self.startMapTitleTag) as? UILabel)?.text = personal?.title ?? "Start your map 🗺️"
+            (startMapCard?.viewWithTag(Self.startMapBodyTag) as? UILabel)?.text = personal?.body
+                ?? "Save a few places you love — they become your personal map for friends to explore."
             startMapCard?.isHidden = false
         } else {
             startMapCard?.isHidden = true
         }
     }
+
+    private static let startMapTitleTag = 7301
+    private static let startMapBodyTag = 7302
 
     private func installStartMapCard() {
         let card = UIView()
@@ -33,10 +50,12 @@ extension CirclesHomeViewController {
 
         let title = UILabel()
         title.text = "Start your map 🗺️"
+        title.tag = Self.startMapTitleTag
         title.font = .systemFont(ofSize: 17, weight: .bold)
         title.textColor = Constants.Colors.label
         let body = UILabel()
         body.text = "Save a few places you love — they become your personal map for friends to explore."
+        body.tag = Self.startMapBodyTag
         body.font = .systemFont(ofSize: 14)
         body.textColor = Constants.Colors.secondaryLabel
         body.numberOfLines = 0

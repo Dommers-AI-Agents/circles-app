@@ -41,6 +41,12 @@ final class WelcomeConnectionsViewController: BaseViewController {
 
     private static func seenKey(for userId: String) -> String { "welcomeConnectionsShown_\(userId)" }
 
+    /// Another first-session step already introduced their people (the
+    /// first-favorite result screen), so this sheet stays away
+    static func markShown(for userId: String) {
+        UserDefaults.standard.set(true, forKey: seenKey(for: userId))
+    }
+
     /// Presents over `presenter` when the account is young (<48h) and this
     /// account hasn't seen it. Requests waiting (if any) lead the sheet.
     @discardableResult

@@ -23,11 +23,18 @@ struct ClientConfig: Codable, Equatable {
         var eventJoined: Double?
     }
 
+    /// First-run switches (Wes, 2026-10-31): the server can turn a step off
+    /// without a build. Missing = on.
+    struct Onboarding: Codable, Equatable {
+        var firstFavorite: Bool?
+    }
+
     var version: Int
     var appStoreUrl: String
     var freeLimits: FreeLimits
     var storeRewardDefaults: StoreRewardDefaults
     var favCoins: FavCoins
+    var onboarding: Onboarding?
 
     /// Offline fallback only — the server is the source.
     static let builtIn = ClientConfig(
@@ -36,7 +43,8 @@ struct ClientConfig: Codable, Equatable {
         freeLimits: FreeLimits(maxCircles: 6, maxPlacesPerCircle: 15, photoPlaces: 25,
                                eventVideoMaxSeconds: 15, eventVideosPerEvent: 5),
         storeRewardDefaults: StoreRewardDefaults(pointsPerPurchase: 25, pointsForSaving: 25),
-        favCoins: FavCoins(firstPlaceAdded: 25, drinkReceived: 1, eventJoined: 1))
+        favCoins: FavCoins(firstPlaceAdded: 25, drinkReceived: 1, eventJoined: 1),
+        onboarding: Onboarding(firstFavorite: true))
 }
 
 final class ClientConfigService {

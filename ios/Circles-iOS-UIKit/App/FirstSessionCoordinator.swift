@@ -19,12 +19,14 @@ final class FirstSessionCoordinator: SceneCoordinator {
     func armFirstSessionChain() {
         OnboardingManager.shared.isFirstSessionFlowActive = true
         UserDefaults.standard.set(false, forKey: "pendingWelcomeCarousel")
+        AnalyticsService.shared.logEvent(AnalyticsService.Events.onboardingStarted, parameters: [:])
         Logger.info("First-session chain armed (no carousel)")
 
         // Failsafe: if any link's completion never fires, isFirstSessionFlowActive
         // sticks and silently suppresses the tour for the whole session. Force
         // the terminal step after 25s; reschedule once if a chain modal is
-        // legitimately holding the screen.
+        // legitimately holding the screen (up to ~15 minutes: picking a favorite
+        // place can take a while).
         DispatchQueue.main.asyncAfter(deadline: .now() + 25) { [weak self] in
             self?.firstSessionFailsafeFired()
         }
@@ -34,8 +36,8 @@ final class FirstSessionCoordinator: SceneCoordinator {
     private func firstSessionFailsafeFired() {
         guard OnboardingManager.shared.isFirstSessionFlowActive else { return }
         // A chain screen still up (people / location / notifications) means
-        // they're reading, not stuck: keep waiting, up to ~5 minutes
-        if window?.rootViewController?.presentedViewController != nil, firstSessionFailsafeReschedules < 12 {
+        // they're reading, not stuck: keep waiting, up to ~15 minutes
+        if window?.rootViewController?.presentedViewController != nil, firstSessionFailsafeReschedules < 36 {
             firstSessionFailsafeReschedules += 1
             DispatchQueue.main.asyncAfter(deadline: .now() + 25) { [weak self] in
                 self?.firstSessionFailsafeFired()
@@ -73,14 +75,50 @@ final class FirstSessionCoordinator: SceneCoordinator {
         if NameOnboardingViewController.isNeeded {
             let nameVC = NameOnboardingViewController()
             nameVC.onCompletion = { [weak self] in
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self?.presentFirstPeopleSheet(over: tabBarController) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self?.presentFirstFavorite(over: tabBarController) }
             }
             nameVC.modalPresentationStyle = .fullScreen
             var presenter: UIViewController = tabBarController
             while let presented = presenter.presentedViewController { presenter = presented }
             presenter.present(nameVC, animated: true)
         } else {
+            presentFirstFavorite(over: tabBarController)
+        }
+    }
+
+    /// The place they saved as their first favorite, for the steps after it
+    private var firstFavoriteName: String?
+
+    /// Step 2 (Wes, 2026-10-31): "What's the one place near you that you
+    /// love most?" Saved → "Your place, your people" already showed the
+    /// people, so location follows; skipped → today's people sheet.
+    private func presentFirstFavorite(over tabBarController: CirclesTabBarController) {
+        guard FirstFavoriteViewController.isNeeded else {
             presentFirstPeopleSheet(over: tabBarController)
+            return
+        }
+        // Requests waiting show on the people step; have them ready
+        ensurePendingConnectionsLoaded { [weak self] in
+            guard let self else { return }
+            let favoriteVC = FirstFavoriteViewController()
+            favoriteVC.onCompletion = { [weak self] placeName in
+                guard let self else { return }
+                if let placeName {
+                    self.firstFavoriteName = placeName
+                    // They met their people on the result screen
+                    if let me = AuthService.shared.currentUser {
+                        WelcomeConnectionsViewController.markShown(for: me.id)
+                    }
+                    self.continueOnboardingAfterContacts()
+                } else {
+                    self.presentFirstPeopleSheet(over: tabBarController)
+                }
+            }
+            let nav = UINavigationController(rootViewController: favoriteVC)
+            nav.modalPresentationStyle = .fullScreen
+            var presenter: UIViewController = tabBarController
+            while let presented = presenter.presentedViewController { presenter = presented }
+            presenter.present(nav, animated: true)
         }
     }
 
@@ -105,6 +143,10 @@ final class FirstSessionCoordinator: SceneCoordinator {
     private func finishFirstSessionChain() {
         let wasActive = OnboardingManager.shared.isFirstSessionFlowActive
         OnboardingManager.shared.isFirstSessionFlowActive = false
+        if wasActive {
+            AnalyticsService.shared.logEvent(AnalyticsService.Events.onboardingCompleted,
+                                             parameters: ["first_favorite": firstFavoriteName != nil])
+        }
         guard wasActive,
               let tabBarController = window?.rootViewController as? CirclesTabBarController,
               let navController = tabBarController.viewControllers?.first as? UINavigationController,
@@ -152,6 +194,7 @@ final class FirstSessionCoordinator: SceneCoordinator {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             let photoVC = PhotoMapOnboardingViewController()
+            photoVC.favoritePlaceName = self?.firstFavoriteName
             photoVC.onCompletion = { [weak self] in self?.continueOnboardingAfterPhotoMap() }
             let nav = UINavigationController(rootViewController: photoVC)
             nav.modalPresentationStyle = .fullScreen

@@ -122,8 +122,13 @@ class QuickStartAddPlacesViewController: BaseViewController {
     private lazy var doneButton = UIButton.primaryButton(title: "Skip for now")
 
     // MARK: - Init
-    init(targetCircle: Circle) {
+    /// Places already on their map count toward the goal and fill the
+    /// first slots ("You saved X. Add two more places you love.")
+    private let alreadySaved: [(name: String, category: PlaceCategory)]
+
+    init(targetCircle: Circle, alreadySaved: [(name: String, category: PlaceCategory)] = []) {
         self.targetCircle = targetCircle
+        self.alreadySaved = alreadySaved
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -145,6 +150,14 @@ class QuickStartAddPlacesViewController: BaseViewController {
         searchField.addTarget(self, action: #selector(searchTextChanged), for: .editingChanged)
         resultsTableView.delegate = self
         resultsTableView.dataSource = self
+        if !alreadySaved.isEmpty {
+            for (index, place) in alreadySaved.prefix(slotViews.count).enumerated() {
+                slotViews[index].fill(name: place.name, category: place.category)
+            }
+            added = Array(alreadySaved)
+            let remaining = Self.goal - added.count
+            titleLabel.text = "Add \(remaining) more place\(remaining == 1 ? "" : "s") you love"
+        }
         updateDoneButton()
     }
 
@@ -510,6 +523,11 @@ final class QuickStartResultCell: UITableViewCell {
     }
 
     @objc private func addTapped() { onAdd?() }
+
+    /// The pill's word ("Add" by default; the first-favorite step says "Love it")
+    func setActionTitle(_ title: String) {
+        addButton.setTitle(title, for: .normal)
+    }
 }
 
 // MARK: - Progress slot

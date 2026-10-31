@@ -3079,7 +3079,12 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
     }
 
     func presentQuickStart(with circle: Circle) {
-        let quickStartVC = QuickStartAddPlacesViewController(targetCircle: circle)
+        // Places they already have fill the first slots (their first
+        // favorite from onboarding counts toward the three)
+        let mine = userOwnPlaces.filter { $0.isSamplePlace != true }
+            .prefix(QuickStartAddPlacesViewController.goal - 1)
+            .map { (name: $0.name, category: $0.category) }
+        let quickStartVC = QuickStartAddPlacesViewController(targetCircle: circle, alreadySaved: Array(mine))
         let navController = UINavigationController(rootViewController: quickStartVC)
         navController.modalPresentationStyle = .pageSheet
         present(navController, animated: true)

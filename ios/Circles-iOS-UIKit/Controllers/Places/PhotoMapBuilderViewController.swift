@@ -134,8 +134,11 @@ final class PhotoMapBuilderViewController: BaseViewController {
 /// "Build your map from your photos" / Not now.
 final class PhotoMapOnboardingViewController: PermissionPrimerViewController {
     override var symbolName: String { "photo.stack.fill" }
-    override var headline: String { "Fill your map from your photos" }
-    override var subheadline: String { "The places you've already been are in your camera roll. We'll put them on your map." }
+    /// The place they just saved as their first favorite, when they did:
+    /// the offer is about more places like it (2026-10-31)
+    var favoritePlaceName: String?
+    override var headline: String { FirstFavoriteCopy.photoMapHeadline(placeName: favoritePlaceName) }
+    override var subheadline: String { FirstFavoriteCopy.photoMapSubheadline(placeName: favoritePlaceName) }
     override var reasons: [Reason] {
         [Reason(symbol: "mappin.and.ellipse", title: "Places near you first",
                 detail: "Coffee shops, restaurants, parks: the spots you've photographed around home."),
