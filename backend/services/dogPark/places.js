@@ -55,7 +55,9 @@ async function findOrCreateCircle(uid) {
  * the same path as Add Place: duplicate check across ALL your circles, Google
  * details for a venue new to FavCircles, the venue link, photos, FavCoins,
  * activity. Already saved anywhere → that save comes back, nothing new.
- * Returns { placeId, circleId, circleName, alreadySaved, afterResponse? }.
+ * Returns { placeId, circleId, circleName, inDogSpots, alreadySaved, afterResponse? }.
+ * `inDogSpots` says whether it sits in the dog spots circle — the widget used
+ * to compare circleName to "Dog spots", which a rename broke (2026-10-31).
  */
 async function savePlace(user, body) {
   const uid = user && user.uid;
@@ -75,7 +77,7 @@ async function savePlace(user, body) {
   });
   const payload = result.payload || {};
   if (result.status === 201 && payload.place) {
-    return { placeId: payload.place.id, circleId, circleName, alreadySaved: false, afterResponse: result.afterResponse };
+    return { placeId: payload.place.id, circleId, circleName, inDogSpots: true, alreadySaved: false, afterResponse: result.afterResponse };
   }
   if (payload.code === 'DUPLICATE_PLACE' && payload.existingPlaceId) {
     const inDogSpots = !payload.existingCircleId || payload.existingCircleId === circleId;
@@ -83,6 +85,7 @@ async function savePlace(user, body) {
       placeId: payload.existingPlaceId,
       circleId: payload.existingCircleId || circleId,
       circleName: inDogSpots ? circleName : (payload.existingCircleName || null),
+      inDogSpots,
       alreadySaved: true
     };
   }

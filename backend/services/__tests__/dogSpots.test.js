@@ -40,7 +40,7 @@ it('saves through the core save into Dog spots, asking for Google details', asyn
 
 it('already saved in another circle: hands back that save, makes no second one', async () => {
   mockNext = () => ({ status: 400, payload: { code: 'DUPLICATE_PLACE', existingPlaceId: 'old', existingCircleId: 'charlotte', existingCircleName: 'Charlotte' } });
-  expect(await places.savePlace(WES, SKIPTOWN)).toEqual({ placeId: 'old', circleId: 'charlotte', circleName: 'Charlotte', alreadySaved: true });
+  expect(await places.savePlace(WES, SKIPTOWN)).toEqual({ placeId: 'old', circleId: 'charlotte', circleName: 'Charlotte', inDogSpots: false, alreadySaved: true });
 });
 
 it('already in Dog spots: says so', async () => {
