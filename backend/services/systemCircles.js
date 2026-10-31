@@ -124,10 +124,12 @@ function pick(circles, kind) {
   return legacy.length ? { circle: legacy[0], needsStamp: true } : null;
 }
 
-/** The single write that makes a matched doc carry its flag. */
+/**
+ * The single write that makes a matched doc carry its flag. Leaves updatedAt
+ * alone: it isn't the person's edit, and some lists sort by updatedAt.
+ */
 async function stamp(circleId, kind, db = getFirestore()) {
-  await db.collection(COLLECTIONS.CIRCLES).doc(circleId)
-    .update({ ...flagFields(kind), updatedAt: new Date().toISOString() });
+  await db.collection(COLLECTIONS.CIRCLES).doc(circleId).update(flagFields(kind));
 }
 
 /**
