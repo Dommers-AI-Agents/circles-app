@@ -311,13 +311,26 @@ class RewardService {
   async venueBalancesWithNames(userData) {
     const balances = this.venueBalancesFrom(userData);
     if (balances.length === 0) return balances;
-    const docs = await Promise.all(balances.map((b) =>
-      this.db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(b.venueId).get().catch(() => null)));
-    return balances.map((b, i) => {
-      const venue = docs[i] && docs[i].exists ? docs[i].data() : null;
+    return this.withCurrentStoreNames(balances);
+  }
+
+  /**
+   * Rows carrying { venueId, venueName } with each store's CURRENT name from
+   * its store record (one read per distinct store). A stored name stays only
+   * when the store is gone. Returns new rows.
+   */
+  async withCurrentStoreNames(rows) {
+    const ids = [...new Set(rows.map((r) => r && r.venueId).filter(Boolean).map(String))];
+    if (ids.length === 0) return rows;
+    const docs = await Promise.all(ids.map((id) =>
+      this.db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(id).get().catch(() => null)));
+    const names = new Map();
+    docs.forEach((doc, i) => {
+      const venue = doc && doc.exists ? doc.data() : null;
       const name = venue && (venue.venueName || venue.placeName);
-      return name ? { ...b, venueName: name } : b;
+      if (name) names.set(ids[i], name);
     });
+    return rows.map((r) => (r && names.has(String(r.venueId)) ? { ...r, venueName: names.get(String(r.venueId)) } : r));
   }
 
   venuePointsFrom(userData, venueId) {
@@ -366,10 +379,10 @@ class RewardService {
     const userDoc = await this.db.collection(COLLECTIONS.USERS).doc(userId).get();
     const userData = userDoc.exists ? userDoc.data() : {};
     const rewardPoints = userData.rewardPoints || 0;
-    const venueBalances = await this.venueBalancesWithNames(userData);
+    const balances = this.venueBalancesFrom(userData);
 
     let events = [];
-    if (!withEvents) return { rewardPoints, venueBalances, events };
+    if (!withEvents) return { rewardPoints, venueBalances: await this.withCurrentStoreNames(balances), events };
     try {
       const snapshot = await this.db
         .collection(STICKER_COLLECTIONS.REWARD_EVENTS)
@@ -383,7 +396,11 @@ class RewardService {
       console.error('⚠️ Failed to load reward history:', error.message);
     }
 
-    return { rewardPoints, venueBalances, events };
+    // Balances and history rows name the store as it is called NOW (the
+    // event's venueName is a copy from when the points were earned); one
+    // read per distinct store covers both
+    const named = await this.withCurrentStoreNames([...balances, ...events]);
+    return { rewardPoints, venueBalances: named.slice(0, balances.length), events: named.slice(balances.length) };
   }
 
   // ---------- Earning rules ----------
