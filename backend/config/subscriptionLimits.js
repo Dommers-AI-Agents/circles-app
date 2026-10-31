@@ -67,12 +67,13 @@ const getTierForStatus = (subscriptionStatus) => {
 
 // Error messages for limit violations
 const LIMIT_ERROR_MESSAGES = {
-  CIRCLE_LIMIT: 'Free users can create up to 6 circles. Upgrade to Premium for unlimited circles!',
-  PLACE_LIMIT: 'Free users can add up to 15 places per circle. Upgrade to Premium for unlimited places!',
+  // The numbers come from the limits above, so changing a limit changes the message
+  CIRCLE_LIMIT: `Free users can create up to ${SUBSCRIPTION_LIMITS.FREE.MAX_CIRCLES} circles. Upgrade to Premium for unlimited circles!`,
+  PLACE_LIMIT: `Free users can add up to ${SUBSCRIPTION_LIMITS.FREE.MAX_PLACES_PER_CIRCLE} places per circle. Upgrade to Premium for unlimited places!`,
   EXPORT_LIMIT: 'Export functionality is available to Premium members only.',
   IMPORT_LIMIT: 'Importing places from other apps is available to Premium members only.',
   WATERMARK_LIMIT: 'Share without watermarks with Premium membership.',
-  PHOTO_PLACES_LIMIT: 'Your first 25 places from your photos are free. Add the rest with Premium.'
+  PHOTO_PLACES_LIMIT: `Your first ${SUBSCRIPTION_LIMITS.FREE.PHOTO_PLACES} places from your photos are free. Add the rest with Premium.`
 };
 
 module.exports = {

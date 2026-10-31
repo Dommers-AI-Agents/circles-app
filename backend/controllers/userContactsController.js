@@ -228,11 +228,8 @@ const syncContacts = async (req, res) => {
 // Get suggested users (users with most places saved)
 // Core users who are always suggested first — the most content-rich accounts,
 // so a brand-new user immediately has great places to discover
-const CORE_SUGGESTED_EMAILS = [
-  'sgroiwes@gmail.com',      // Wes
-  'brittanyvans@gmail.com',  // Brittany
-  'salasgroi@gmail.com'      // Sal
-];
+// The founder list lives in services/defaultAccounts.js (one file)
+const { CORE_SUGGESTED_EMAILS } = require('../services/defaultAccounts');
 
 const getSuggestedUsers = async (req, res) => {
   try {

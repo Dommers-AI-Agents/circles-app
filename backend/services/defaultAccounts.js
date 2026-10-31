@@ -9,6 +9,16 @@ const DEFAULT_FOLLOW_EMAILS = [
   'brittanyvans@gmail.com'   // Brittany
 ];
 
+/**
+ * Suggested first to every new user ("People you may know" seed): the
+ * default accounts plus the other content-rich founders. Kept here so the
+ * founder accounts are listed in ONE file (2026-10-31 audit).
+ */
+const CORE_SUGGESTED_EMAILS = [
+  ...DEFAULT_FOLLOW_EMAILS,
+  'salasgroi@gmail.com'      // Sal
+];
+
 let cached = null;
 
 /** Their user ids (cached once found; a miss is never remembered). */
@@ -25,4 +35,4 @@ function chosenFollowCount(following, defaultIds) {
   return (Array.isArray(following) ? following : []).filter(id => !defaultIds.has(id)).length;
 }
 
-module.exports = { DEFAULT_FOLLOW_EMAILS, defaultFollowIds, chosenFollowCount, _reset: () => { cached = null; } };
+module.exports = { DEFAULT_FOLLOW_EMAILS, CORE_SUGGESTED_EMAILS, defaultFollowIds, chosenFollowCount, _reset: () => { cached = null; } };
