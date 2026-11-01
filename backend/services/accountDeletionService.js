@@ -7,7 +7,9 @@
 // else:
 //   - their saves, circles, comments, check-ins, moments, activities,
 //     reward points and FavCoin entries, suggestions sent or received,
-//     notifications, connections, blocks, passkeys, widget documents;
+//     notifications, connections, blocks, passkeys, widget documents,
+//     Apple Wallet store cards (App Attest keys are unlinked: they belong
+//     to the phone's install);
 //   - their messages (the conversations stay for the other people);
 //   - their likes, follows, Inner Circle entries and circle shares in other
 //     people's documents;
@@ -187,6 +189,17 @@ async function deleteAccount(uid, { db = getFirestore(), auth = getAuth(), stora
   await deleteAll('dogCommentsOnTheirPosts', db.collection(COLLECTIONS.DOG_COMMENTS).where('postAuthorId', '==', uid));
   await deleteAll('dogPosts', db.collection(COLLECTIONS.DOG_POSTS).where('authorId', '==', uid));
   await deleteAll('dogDailySends', db.collection(COLLECTIONS.DOG_DAILY_SENDS).where('userId', '==', uid));
+
+  // 3e. Apple Wallet store cards (with the devices registered for their
+  // updates) and this account's App Attest keys (2026-11-01)
+  const passes = await db.collection('walletPasses').where('userId', '==', uid).get();
+  for (const pass of passes.docs) {
+    await deleteAll('walletPassRegistrations', db.collection('walletPassRegistrations').where('serial', '==', pass.id));
+  }
+  await deleteAll('walletPasses', db.collection('walletPasses').where('userId', '==', uid));
+  // An App Attest key belongs to the phone's install, not the person: the
+  // next account signed in there keeps using it, so only the link goes
+  await updateAll('appAttestKeys', db.collection('appAttestKeys').where('userId', '==', uid), () => ({ userId: null }));
 
   // 4. Files: their photos on shared venue records, video files, profile picture
   const contributed = await db.collection('globalPlaces').where('userContributions.contributors', 'array-contains', uid).get();
