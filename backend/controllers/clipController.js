@@ -38,7 +38,7 @@ exports.getVenuePreview = async (req, res) => {
 
     rewardService.incrementVenueStats(venue.venueId, 'clipScans');
     // An NFC sticker's tap (/s/<code>?t=<tag>): the clip passes the tag
-    if (req.query.t) nfcStickers.recordTap(venue, code, String(req.query.t));
+    if (req.query?.t) nfcStickers.recordTap(venue, code, String(req.query.t));
 
     // Generic "Join FavCircles" code (window-sticker QR with no store attached):
     // the clip shows a welcome signup instead of a store offer, and no store

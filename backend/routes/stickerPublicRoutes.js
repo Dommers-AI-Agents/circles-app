@@ -25,7 +25,7 @@ router.get('/:code', async (req, res) => {
       // (Installed-app scans are counted by POST /api/rewards/scan.)
       rewardService.incrementVenueStats(venue.venueId, 'scans');
       // An NFC sticker (?t=<tag>) opened without the app, e.g. on Android
-      if (req.query.t) nfcStickers.recordTap(venue, code, String(req.query.t));
+      if (req.query?.t) nfcStickers.recordTap(venue, code, String(req.query.t));
     }
   } catch (error) {
     console.error('⚠️ Sticker landing lookup failed:', error.message);
