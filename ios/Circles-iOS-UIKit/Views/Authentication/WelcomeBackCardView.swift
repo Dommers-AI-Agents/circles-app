@@ -6,6 +6,14 @@ import UIKit
 final class WelcomeBackCardView: UIView {
     var onContinue: (() -> Void)?
     var onNotYou: (() -> Void)?
+    var onOtherOptions: (() -> Void)?
+
+    /// "Other ways to sign in" goes away once the rest of the screen shows
+    var showsOtherOptionsLink: Bool {
+        get { !otherOptions.isHidden }
+        set { otherOptions.isHidden = !newValue }
+    }
+    private let otherOptions = UIButton.captionLinkButton()
 
     private let avatarView: UIImageView = {
         let view = UIImageView(image: UIImage(systemName: "person.crop.circle.fill"))
@@ -53,10 +61,16 @@ final class WelcomeBackCardView: UIView {
         notYou.accessibilityIdentifier = "welcomeBackNotYou"
         notYou.addTarget(self, action: #selector(notYouTapped), for: .touchUpInside)
 
-        let stack = UIStackView(arrangedSubviews: [header, continueButton, notYou])
+        otherOptions.setTitle("Other ways to sign in", for: .normal)
+        otherOptions.contentHorizontalAlignment = .center
+        otherOptions.accessibilityIdentifier = "welcomeBackOtherOptions"
+        otherOptions.addTarget(self, action: #selector(otherOptionsTapped), for: .touchUpInside)
+
+        let stack = UIStackView(arrangedSubviews: [header, continueButton, otherOptions, notYou])
         stack.axis = .vertical
         stack.spacing = 14
         stack.setCustomSpacing(6, after: continueButton)
+        stack.setCustomSpacing(0, after: otherOptions)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -102,4 +116,5 @@ final class WelcomeBackCardView: UIView {
 
     @objc private func continueTapped() { onContinue?() }
     @objc private func notYouTapped() { onNotYou?() }
+    @objc private func otherOptionsTapped() { onOtherOptions?() }
 }

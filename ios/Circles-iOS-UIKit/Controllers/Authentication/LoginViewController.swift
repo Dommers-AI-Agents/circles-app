@@ -468,6 +468,8 @@ class LoginViewController: BaseViewController {
         loginButton.isHidden = isEmail
         forgotPasswordButton.isHidden = isEmail
         passkeyLoginButton.isHidden = isEmail || passkeyConfirmedEmail == nil
+        // The card's Continue fell through to a password: show the form
+        if !isEmail { revealOtherSignInOptions() }
     }
 
     @objc private func emailEditingChanged() {
@@ -573,16 +575,39 @@ class LoginViewController: BaseViewController {
         let card = WelcomeBackCardView(hint: hint)
         card.onContinue = { [weak self] in self?.continueAsLastSignIn() }
         card.onNotYou = { [weak self] in self?.forgetLastSignIn() }
+        card.onOtherOptions = { [weak self] in self?.revealOtherSignInOptions() }
         buttonsStackView.insertArrangedSubview(card, at: 0)
         buttonsStackView.setCustomSpacing(20, after: card)
         welcomeBackCard = card
-        // A returning person doesn't need the new-account pitch first
+        // The card is the one choice (Wes, 2026-11-01: a Google card above a
+        // prefilled email + Continue read as two different ways in). The rest
+        // of the screen waits behind "Other ways to sign in" / "Not you?".
         createAccountButton.isHidden = true
         createAccountCaptionLabel.isHidden = true
+        otherSignInViews.forEach { $0.isHidden = true }
+        emailTextField.text = nil
+        passwordTextField.text = nil
+    }
+
+    /// Everything below the card: the email form and the Google/Apple buttons
+    private var otherSignInViews: [UIView] {
+        [alreadyHaveAccountLabel, emailTextField, continueButton, orDividerLabel,
+         googleSignInButton, appleSignInContainerView]
+    }
+
+    private func revealOtherSignInOptions() {
+        guard welcomeBackCard?.showsOtherOptionsLink == true else { return }
+        welcomeBackCard?.showsOtherOptionsLink = false
         alreadyHaveAccountLabel.text = "— or sign in another way —"
-        if let email = hint.email, !hint.isHiddenEmail {
-            emailTextField.text = email
+        UIView.animate(withDuration: 0.25) {
+            self.otherSignInViews.forEach { $0.isHidden = false }
+            self.applyStepVisibilityOnly()
         }
+    }
+
+    /// applyStep without the reveal (avoids recursing from the reveal)
+    private func applyStepVisibilityOnly() {
+        continueButton.isHidden = step != .email
     }
 
     private func continueAsLastSignIn() {
@@ -595,11 +620,16 @@ class LoginViewController: BaseViewController {
         case .passkey:
             dismissKeyboard()
             passkeyConfirmedEmail = hint.email
+            emailTextField.text = hint.email   // for the password fallback
             performPasskeySignIn(email: hint.email, preferImmediate: true, fallbackToPassword: hint.email != nil)
         case .password, .other:
             // Same as typing the email and tapping Continue: Face ID when the
             // account has it, the password (AutoFill offers the saved one) when not
-            if let email = hint.email, !hint.isHiddenEmail { emailTextField.text = email }
+            guard let email = hint.email, !hint.isHiddenEmail else {
+                revealOtherSignInOptions()
+                return
+            }
+            emailTextField.text = email
             continueTapped()
         }
     }
@@ -611,6 +641,8 @@ class LoginViewController: BaseViewController {
             self.welcomeBackCard?.isHidden = true
             self.createAccountButton.isHidden = false
             self.createAccountCaptionLabel.isHidden = false
+            self.otherSignInViews.forEach { $0.isHidden = false }
+            self.continueButton.isHidden = false
         } completion: { _ in
             self.welcomeBackCard?.removeFromSuperview()
             self.welcomeBackCard = nil

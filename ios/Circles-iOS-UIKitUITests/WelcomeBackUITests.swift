@@ -34,7 +34,16 @@ final class WelcomeBackUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Last time you used Google · sam.rivera@gmail.com"].exists)
         XCTAssertEqual(app.buttons["welcomeBackContinue"].label, "Continue with Google")
         XCTAssertFalse(app.buttons["Create an Account"].isHittable, "a returning person skips the new-account pitch")
+        // The card is the only choice until they ask for another
+        XCTAssertFalse(app.buttons["Sign in with Google"].exists, "no second Google button")
+        XCTAssertFalse(app.textFields.firstMatch.exists, "no email form under the card")
         snapshot("welcome-back-google")
+
+        app.buttons["welcomeBackOtherOptions"].tap()
+        XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 5), "Other ways shows the form")
+        XCTAssertTrue(app.buttons["Sign in with Google"].exists)
+        XCTAssertFalse(app.buttons["welcomeBackOtherOptions"].exists)
+        snapshot("other-ways")
 
         app.buttons["welcomeBackNotYou"].tap()
         XCTAssertTrue(app.staticTexts["Welcome back, Sam"].waitForNonExistence(timeout: 5), "Not you? removes the card")
