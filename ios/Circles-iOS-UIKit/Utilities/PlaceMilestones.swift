@@ -52,6 +52,8 @@ enum PlaceMilestones {
         let celebrated = UserDefaults.standard.integer(forKey: key)
         guard reached.threshold > celebrated else { return false }
         UserDefaults.standard.set(reached.threshold, forKey: key)
+        // Not in the middle of the first run (Wes, 2026-11-01)
+        if OnboardingManager.shared.isFirstSessionFlowActive { return false }
 
         // Give the add-place flow a beat to finish dismissing its own UI
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {

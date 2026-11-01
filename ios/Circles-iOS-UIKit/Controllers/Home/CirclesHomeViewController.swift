@@ -997,6 +997,9 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         // Check if onboarding needs to be retried
         checkAndRetryOnboardingIfNeeded()
 
+        // Back from "Show me" or the tour video: carry on with the tour
+        resumeHomeTourIfPaused()
+
         // A store code just earned points: point at $ once (2026-10-29)
         maybeShowRewardsHint()
 
@@ -1210,85 +1213,120 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
     }
 
     /// The home tour: shows the first incomplete step; each Next completes the
-    /// step and calls back here, so the four bubbles chain until done (the
-    /// last completeStep fires completeOnboarding automatically). Skip on any
-    /// bubble ends the whole tour.
+    /// step and calls back here, so the bubbles chain until done. The four
+    /// basics, then "That's the basics. Keep going?" for the rest of the app
+    /// (Wes, 2026-11-01). Every bubble after the first has Back; a step with
+    /// somewhere to go has "Show me"; the first and the Keep going card offer
+    /// the video. Skip (or Done) ends the tour.
     func runHomeTour() {
         guard OnboardingManager.shared.shouldShowTutorial else { return }
         guard let step = TutorialStep.allCases.first(where: { !OnboardingManager.shared.hasCompletedStep($0) }) else { return }
 
-        let advance: () -> Void = { [weak self] in
-            // Small beat between bubbles so the dismiss/present don't overlap
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                self?.runHomeTour()
+        if !step.isBasic && !OnboardingManager.shared.tourKeepGoing {
+            OnboardingManager.shared.showKeepGoingCard(
+                in: self,
+                onKeepGoing: { [weak self] in self?.runHomeTourAfterBeat() },
+                onVideo: { [weak self] in self?.playTourVideo() })
+            return
+        }
+
+        let index = TutorialStep.allCases.firstIndex(of: step) ?? 0
+        let previous = index > 0 ? TutorialStep.allCases[index - 1] : nil
+        let onBack: (() -> Void)? = previous.map { previous in
+            { [weak self] in
+                OnboardingManager.shared.uncompleteStep(previous)
+                self?.runHomeTourAfterBeat()
             }
         }
 
+        // Where the bubble points, and whether the header must be in view
+        let target: UIView?
+        let arrow: BubbleView.ArrowDirection
+        var segment: HomeContentSegment?
         switch step {
-        case .addPlaces:
-            // Button sits at the screen top — bubble goes BELOW it (arrow .top);
-            // above it would clamp over the status bar, unreadable
+        case .addPlaces: target = quickAddPlaceButton; arrow = .top
+        case .followUsers: target = userListView; arrow = .top
+        case .viewActivity: target = contentSegmentedControl; arrow = .bottom; segment = .activity
+        case .seeWidgets: target = contentSegmentedControl; arrow = .bottom
+        case .moments: target = contentSegmentedControl; arrow = .bottom; segment = .moments
+        case .locals: target = contentSegmentedControl; arrow = .bottom; segment = .specials
+        case .checkIn: target = nil; arrow = .top
+        case .rewards: target = rewardsBarButton?.customView; arrow = .top
+        case .profile: target = tabBarController?.tabBar; arrow = .bottom
+        }
+
+        if target === contentSegmentedControl {
+            // The segments can sit below the fold on small phones: reveal first
+            let rect = contentSegmentedControl.convert(contentSegmentedControl.bounds, to: scrollView).insetBy(dx: 0, dy: -80)
+            scrollView.scrollRectToVisible(rect, animated: true)
+        } else {
             scrollView.setContentOffset(CGPoint(x: 0, y: -scrollView.adjustedContentInset.top), animated: true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                guard let self = self else { return }
-                // A modal may have appeared during the settle delay — never
-                // show a bubble underneath one (stray taps hit its buttons)
-                guard self.presentedViewController == nil else {
-                    self.runHomeTourWhenSettled()
-                    return
-                }
-                OnboardingManager.shared.showTutorialStep(
-                    .addPlaces, targetView: self.quickAddPlaceButton, in: self,
-                    arrowDirection: .top, onAdvance: advance)
+        }
+        if let segment { showHomeTab(segment) }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self else { return }
+            // A modal may have appeared during the settle delay — never
+            // show a bubble underneath one (stray taps hit its buttons)
+            guard self.presentedViewController == nil else {
+                self.runHomeTourWhenSettled()
+                return
             }
-        case .followUsers:
-            scrollView.setContentOffset(CGPoint(x: 0, y: -scrollView.adjustedContentInset.top), animated: true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                guard let self = self else { return }
-                // A modal may have appeared during the settle delay — never
-                // show a bubble underneath one (stray taps hit its buttons)
-                guard self.presentedViewController == nil else {
-                    self.runHomeTourWhenSettled()
-                    return
-                }
-                OnboardingManager.shared.showTutorialStep(
-                    .followUsers, targetView: self.userListView, in: self,
-                    arrowDirection: .top, onAdvance: advance)
-            }
-        case .viewActivity:
-            // The activity segment can sit below the fold on small phones —
-            // reveal it first, then point (bubble above it, arrow .bottom)
-            let target = contentSegmentedControl.convert(contentSegmentedControl.bounds, to: scrollView)
-                .insetBy(dx: 0, dy: -80)
-            scrollView.scrollRectToVisible(target, animated: true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-                guard let self = self else { return }
-                // A modal may have appeared during the settle delay — never
-                // show a bubble underneath one (stray taps hit its buttons)
-                guard self.presentedViewController == nil else {
-                    self.runHomeTourWhenSettled()
-                    return
-                }
-                OnboardingManager.shared.showTutorialStep(
-                    .viewActivity, targetView: self.contentSegmentedControl, in: self,
-                    arrowDirection: .bottom, onAdvance: advance)
-            }
-        case .seeWidgets:
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                guard let self = self else { return }
-                // A modal may have appeared during the settle delay — never
-                // show a bubble underneath one (stray taps hit its buttons)
-                guard self.presentedViewController == nil else {
-                    self.runHomeTourWhenSettled()
-                    return
-                }
-                OnboardingManager.shared.showTutorialStep(
-                    .seeWidgets, targetView: self.contentSegmentedControl, in: self,
-                    arrowDirection: .bottom, onAdvance: advance)
-            }
+            OnboardingManager.shared.showTutorialStep(
+                step, targetView: target, in: self, arrowDirection: arrow,
+                onAdvance: { [weak self] in self?.runHomeTourAfterBeat() },
+                onBack: onBack,
+                onLearnMore: self.tourShowMe(for: step),
+                onVideo: step == .addPlaces ? { [weak self] in self?.playTourVideo() } : nil)
         }
     }
-    
+
+    /// Small beat between bubbles so the dismiss/present don't overlap
+    private func runHomeTourAfterBeat() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in self?.runHomeTour() }
+    }
+
+    /// "Show me": the feature itself. Tabs on Home switch and the tour goes
+    /// on; anything that leaves Home pauses it until Home is back.
+    private func tourShowMe(for step: TutorialStep) -> (() -> Void)? {
+        switch step {
+        case .addPlaces: return { [weak self] in self?.quickAddPlaceButtonTapped() }
+        case .followUsers: return { [weak self] in self?.emptyStateFindFriendsTapped() }
+        case .viewActivity: return { [weak self] in self?.tourSwitchTab(.activity) }
+        case .seeWidgets: return { [weak self] in self?.tourSwitchTab(.widgets) }
+        case .moments: return { [weak self] in self?.tourSwitchTab(.moments) }
+        case .locals: return { [weak self] in self?.tourSwitchTab(.specials) }
+        case .checkIn: return { [weak self] in self?.checkInButtonTapped() }
+        case .rewards: return { [weak self] in self?.rewardsButtonTapped() }
+        case .profile: return { [weak self] in
+            guard let tabs = self?.tabBarController, let count = tabs.viewControllers?.count else { return }
+            tabs.selectedIndex = count - 1
+        }
+        }
+    }
+
+    /// A Home tab from "Show me": switch to it, then carry on with the tour
+    private func tourSwitchTab(_ segment: HomeContentSegment) {
+        showHomeTab(segment)
+        OnboardingManager.shared.isTourPaused = false
+        runHomeTourAfterBeat()
+    }
+
+    /// The tutorial video; the tour resumes when they close it
+    private func playTourVideo() {
+        AnalyticsService.shared.logEvent("tour_video_opened", parameters: [:])
+        let nav = UINavigationController(rootViewController: TutorialViewController())
+        nav.modalPresentationStyle = .fullScreen
+        present(nav, animated: true)
+    }
+
+    /// Home is back after "Show me" or the video: pick the tour up again
+    func resumeHomeTourIfPaused() {
+        guard OnboardingManager.shared.isTourPaused, OnboardingManager.shared.shouldShowTutorial else { return }
+        OnboardingManager.shared.isTourPaused = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.runHomeTourWhenSettled() }
+    }
+
     /// Hand-off from the suggested-users overlay: the tutorial check's
     /// once-per-session latch is already burned by the time the overlay
     /// dismisses, so the tour must be started explicitly here.

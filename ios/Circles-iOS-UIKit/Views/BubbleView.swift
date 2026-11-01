@@ -20,6 +20,10 @@ class BubbleView: UIView {
     // Callbacks
     var onNext: (() -> Void)?
     var onSkip: (() -> Void)?
+    /// Tour extras (Wes, 2026-11-01): back a step, jump to the feature, the video
+    var onBack: (() -> Void)?
+    var onLearnMore: (() -> Void)?
+    var onVideo: (() -> Void)?
     
     // MARK: - UI Elements
     private let containerView: UIView = {
@@ -78,6 +82,47 @@ class BubbleView: UIView {
         return button
     }()
     
+    /// "2 of 4" above the title
+    private let stepLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
+        label.textColor = .white.withAlphaComponent(0.75)
+        label.isHidden = true
+        return label
+    }()
+
+    private let backButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Back", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        button.backgroundColor = .white.withAlphaComponent(0.2)
+        button.layer.cornerRadius = 6
+        button.isHidden = true
+        return button
+    }()
+
+    /// "Show me ›" and "▶ Watch the video" under the description
+    private let linksStack: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.spacing = 16
+        stack.alignment = .leading
+        stack.isHidden = true
+        return stack
+    }()
+
+    private static func linkButton(_ title: String) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        button.contentHorizontalAlignment = .leading
+        return button
+    }
+    private let learnMoreButton = BubbleView.linkButton("Show me \u{203A}")
+    private let videoButton = BubbleView.linkButton("\u{25B6}\u{FE0E} Watch the video")
+
     private let arrowView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.primary
@@ -85,6 +130,9 @@ class BubbleView: UIView {
         return view
     }()
     
+    private var titleTop: NSLayoutConstraint!
+    private var buttonsTop: NSLayoutConstraint!
+
     // MARK: - Initialization
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -124,9 +172,27 @@ class BubbleView: UIView {
         containerView.addSubview(descriptionLabel)
         containerView.addSubview(buttonStackView)
         
+        buttonStackView.addArrangedSubview(backButton)
         buttonStackView.addArrangedSubview(skipButton)
         buttonStackView.addArrangedSubview(nextButton)
+        backButton.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        linksStack.addArrangedSubview(learnMoreButton)
+        linksStack.addArrangedSubview(videoButton)
+        let filler = UIView()
+        filler.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        linksStack.addArrangedSubview(filler)
+        stepLabel.translatesAutoresizingMaskIntoConstraints = false
+        linksStack.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(stepLabel)
+        containerView.addSubview(linksStack)
+        learnMoreButton.addTarget(self, action: #selector(learnMoreTapped), for: .touchUpInside)
+        videoButton.addTarget(self, action: #selector(videoTapped), for: .touchUpInside)
+        backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
         
+        // Title and buttons move down when the step count / links show
+        titleTop = titleLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: bubblePadding)
+        buttonsTop = buttonStackView.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: 16)
+
         // Setup constraints
         NSLayoutConstraint.activate([
             // Container constraints
@@ -136,8 +202,10 @@ class BubbleView: UIView {
             containerView.bottomAnchor.constraint(equalTo: bottomAnchor),
             containerView.widthAnchor.constraint(lessThanOrEqualToConstant: maxWidth),
             
-            // Title
-            titleLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: bubblePadding),
+            // Step count, then title
+            stepLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: bubblePadding),
+            stepLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: bubblePadding),
+            titleTop,
             titleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: bubblePadding),
             titleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -bubblePadding),
             
@@ -146,8 +214,11 @@ class BubbleView: UIView {
             descriptionLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: bubblePadding),
             descriptionLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -bubblePadding),
             
-            // Buttons
-            buttonStackView.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: 16),
+            // Links, then buttons
+            linksStack.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: 10),
+            linksStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: bubblePadding),
+            linksStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -bubblePadding),
+            buttonsTop,
             buttonStackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: bubblePadding),
             buttonStackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -bubblePadding),
             buttonStackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -bubblePadding),
@@ -172,6 +243,33 @@ class BubbleView: UIView {
         
         // Show arrow by default (will be hidden in centerInView if needed)
         arrowView.isHidden = false
+    }
+
+    /// A home-tour step (2026-11-01): "2 of 4", Back after the first step,
+    /// "Show me" when the step has a place to go, the video when offered.
+    /// `nextTitle` is "Next", or "Done"/"Keep going" on the last of a run.
+    func configureTour(title: String, description: String, arrowDirection: ArrowDirection,
+                       stepText: String?, canGoBack: Bool, learnMore: Bool, video: Bool,
+                       skipTitle: String = "Skip", nextTitle: String = "Next") {
+        configure(title: title, description: description, arrowDirection: arrowDirection)
+        stepLabel.text = stepText
+        stepLabel.isHidden = stepText == nil
+        titleTop.isActive = false
+        titleTop = stepText == nil
+            ? titleLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: bubblePadding)
+            : titleLabel.topAnchor.constraint(equalTo: stepLabel.bottomAnchor, constant: 4)
+        titleTop.isActive = true
+        backButton.isHidden = !canGoBack
+        learnMoreButton.isHidden = !learnMore
+        videoButton.isHidden = !video
+        linksStack.isHidden = !learnMore && !video
+        buttonsTop.isActive = false
+        buttonsTop = linksStack.isHidden
+            ? buttonStackView.topAnchor.constraint(equalTo: descriptionLabel.bottomAnchor, constant: 16)
+            : buttonStackView.topAnchor.constraint(equalTo: linksStack.bottomAnchor, constant: 12)
+        buttonsTop.isActive = true
+        skipButton.setTitle(skipTitle, for: .normal)
+        nextButton.setTitle(nextTitle, for: .normal)
     }
 
     /// Configure as a standalone one-off hint with a single dismiss button
@@ -352,6 +450,18 @@ class BubbleView: UIView {
         onSkip?()
     }
     
+    @objc private func backTapped() {
+        onBack?()
+    }
+
+    @objc private func learnMoreTapped() {
+        onLearnMore?()
+    }
+
+    @objc private func videoTapped() {
+        onVideo?()
+    }
+
     @objc private func nextTapped() {
         onNext?()
     }

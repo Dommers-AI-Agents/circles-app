@@ -235,8 +235,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         let coordinates = filteredPlaces.compactMap { $0.location?.clLocation?.coordinate }
         guard !coordinates.isEmpty else { return }
 
-        if coordinates.count == 1, let only = coordinates.first {
-            mapView.setRegion(MapRegionFitter.singleRegion(only), animated: animated)
+        // One or two places: the city around them, not the block
+        if coordinates.count < 3, let region = MapRegionFitter.boundingRegion(coordinates, clampSpan: true) {
+            mapView.setRegion(region, animated: animated)
             return
         }
 

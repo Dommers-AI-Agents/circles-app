@@ -22,6 +22,23 @@ enum TutorialStep: String, CaseIterable {
     // Was "See Your Rewards" (FavCoins 🌵) until 2026-10-09 — too much on
     // day one; the last step now shows the widgets instead
     case seeWidgets = "tour_see_widgets"
+    // "Keep going" after the basics (Wes, 2026-11-01): the rest of the app
+    case moments = "tour_moments"
+    case locals = "tour_locals"
+    case checkIn = "tour_check_in"
+    case rewards = "tour_rewards"
+    case profile = "tour_profile"
+
+    /// The four everyone sees; the rest follow "Keep going"
+    static let basics: [TutorialStep] = [.addPlaces, .followUsers, .viewActivity, .seeWidgets]
+    var isBasic: Bool { Self.basics.contains(self) }
+
+    /// "2 of 4" among the basics, "2 of 5" among the extras
+    var progressText: String {
+        let run = isBasic ? Self.basics : Self.allCases.filter { !$0.isBasic }
+        let index = (run.firstIndex(of: self) ?? 0) + 1
+        return "\(index) of \(run.count)"
+    }
 
     var title: String {
         switch self {
@@ -33,6 +50,16 @@ enum TutorialStep: String, CaseIterable {
             return "See What's New"
         case .seeWidgets:
             return "Your Widgets"
+        case .moments:
+            return "Moments"
+        case .locals:
+            return "Locals"
+        case .checkIn:
+            return "Check In"
+        case .rewards:
+            return "FavCoins and Rewards"
+        case .profile:
+            return "Your Profile"
         }
     }
 
@@ -47,6 +74,16 @@ enum TutorialStep: String, CaseIterable {
             return "What the people you follow are saving, checking into, and loving"
         case .seeWidgets:
             return "Weather, workouts, postcards, events and more — tap Widgets to scroll through them all"
+        case .moments:
+            return "Short videos and photos from the places your people love. Share your own from any place."
+        case .locals:
+            return "Specials, events and markets near you, from the stores and spots around town."
+        case .checkIn:
+            return "Tap the walking person when you're somewhere you love. Your check-ins build your history and earn rewards."
+        case .rewards:
+            return "Your FavCoins and the points you've earned at stores live here. Scan a store's code at the register to earn more."
+        case .profile:
+            return "Your map, circles and moments in one place. Share it so friends can follow you."
         }
     }
 }
@@ -87,6 +124,12 @@ class OnboardingManager {
     }
     
     private var currentBubbleView: BubbleView?
+
+    /// "Show me" or the video took them off Home mid-tour: Home picks the
+    /// tour up again when it's back on screen (2026-11-01)
+    var isTourPaused = false
+    /// They chose "Keep going" after the basics this session
+    var tourKeepGoing = false
     
     private init() {}
     
@@ -177,6 +220,11 @@ class OnboardingManager {
         return completedSteps.contains(step.rawValue)
     }
     
+    /// Back: the previous step shows again
+    func uncompleteStep(_ step: TutorialStep) {
+        completedSteps.remove(step.rawValue)
+    }
+
     /// Mark a step as completed
     func completeStep(_ step: TutorialStep) {
         completedSteps.insert(step.rawValue)
@@ -190,7 +238,8 @@ class OnboardingManager {
     /// Show tutorial bubble for a specific step. `onAdvance` runs after Next
     /// completes the step — the home tour passes `{ runHomeTour() }` so each
     /// dismissal chains straight into the next bubble.
-    func showTutorialStep(_ step: TutorialStep, targetView: UIView? = nil, in viewController: UIViewController, arrowDirection: BubbleView.ArrowDirection = .bottom, onAdvance: (() -> Void)? = nil) {
+    func showTutorialStep(_ step: TutorialStep, targetView: UIView? = nil, in viewController: UIViewController, arrowDirection: BubbleView.ArrowDirection = .bottom, onAdvance: (() -> Void)? = nil,
+                          onBack: (() -> Void)? = nil, onLearnMore: (() -> Void)? = nil, onVideo: (() -> Void)? = nil) {
         // Don't show if tutorial is not active or step already completed
         guard shouldShowTutorial, !hasCompletedStep(step) else { return }
 
@@ -199,11 +248,27 @@ class OnboardingManager {
 
         // Create new bubble
         let bubble = BubbleView()
-        bubble.configure(
-            title: step.title,
-            description: step.description,
-            arrowDirection: arrowDirection
-        )
+        let isLast = step == TutorialStep.allCases.last
+        bubble.configureTour(title: step.title, description: step.description, arrowDirection: arrowDirection,
+                             stepText: step.progressText, canGoBack: onBack != nil,
+                             learnMore: onLearnMore != nil, video: onVideo != nil,
+                             skipTitle: step.isBasic ? "Skip" : "Done", nextTitle: isLast ? "Done" : "Next")
+        bubble.onBack = { [weak self] in
+            self?.dismissCurrentBubble()
+            onBack?()
+        }
+        bubble.onLearnMore = { [weak self] in
+            // Done with this step; the tour resumes when Home is back
+            self?.completeStep(step)
+            self?.isTourPaused = true
+            self?.dismissCurrentBubble()
+            onLearnMore?()
+        }
+        bubble.onVideo = { [weak self] in
+            self?.isTourPaused = true
+            self?.dismissCurrentBubble()
+            onVideo?()
+        }
 
         // Set up actions
         bubble.onNext = { [weak self] in
@@ -227,6 +292,32 @@ class OnboardingManager {
         currentBubbleView = bubble
     }
     
+    /// After the basics: "That's the basics. Keep going?" with the video
+    func showKeepGoingCard(in viewController: UIViewController, onKeepGoing: @escaping () -> Void, onVideo: @escaping () -> Void) {
+        guard shouldShowTutorial else { return }
+        dismissCurrentBubble()
+        let bubble = BubbleView()
+        bubble.configureTour(title: "That\u{2019}s the basics",
+                             description: "Want a quick look at Moments, Locals, check-ins, FavCoins and your profile?",
+                             arrowDirection: .bottom, stepText: nil, canGoBack: false, learnMore: false, video: true,
+                             skipTitle: "Done", nextTitle: "Keep going")
+        bubble.onNext = { [weak self] in
+            self?.tourKeepGoing = true
+            self?.dismissCurrentBubble()
+            onKeepGoing()
+        }
+        bubble.onSkip = { [weak self] in self?.completeOnboarding() }
+        bubble.onVideo = { [weak self] in
+            self?.isTourPaused = true
+            self?.dismissCurrentBubble()
+            onVideo()
+        }
+        viewController.view.addSubview(bubble)
+        bubble.pointTo(nil, in: viewController.view)
+        bubble.show()
+        currentBubbleView = bubble
+    }
+
     /// Dismiss current bubble if any
     func dismissCurrentBubble() {
         currentBubbleView?.dismiss { [weak self] in

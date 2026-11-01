@@ -34,8 +34,11 @@ struct MapRegionFitterTests {
         #expect(clamped.span.longitudeDelta == MapRegionFitter.sparseMinSpan)
         let three = MapRegionFitter.boundingRegion([charlotte, charlotte, charlotte], clampSpan: true)!
         #expect(three.span.latitudeDelta == 0.01)
-        let raw = MapRegionFitter.boundingRegion([charlotte, charlotte], clampSpan: false)!
-        #expect(raw.span.latitudeDelta == 0)
+        // Unclamped too: one place never frames as a zero-size box
+        let raw = MapRegionFitter.boundingRegion([charlotte], clampSpan: false)!
+        #expect(raw.span.latitudeDelta == MapRegionFitter.sparseMinSpan)
+        let rawThree = MapRegionFitter.boundingRegion([charlotte, charlotte, charlotte], clampSpan: false)!
+        #expect(rawThree.span.latitudeDelta == 0)
     }
 
     @Test func enclosingRectCoversBothEnds() {

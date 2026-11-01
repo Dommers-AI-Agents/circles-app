@@ -51,10 +51,14 @@ enum MapRegionFitter {
         )
         var latDelta = (maxLat - minLat) * spanPadding
         var lonDelta = (maxLon - minLon) * spanPadding
-        if clampSpan {
-            let floor = coordinates.count < 3 ? sparseMinSpan : 0.01
-            latDelta = min(max(latDelta, floor), 180)
-            lonDelta = min(max(lonDelta, floor), 360)
+        if coordinates.count < 3 {
+            // One or two places: the city around them, whichever way it's
+            // called (a zero-size box showed the map fully zoomed in)
+            latDelta = min(max(latDelta, sparseMinSpan), 180)
+            lonDelta = min(max(lonDelta, sparseMinSpan), 360)
+        } else if clampSpan {
+            latDelta = min(max(latDelta, 0.01), 180)
+            lonDelta = min(max(lonDelta, 0.01), 360)
         }
         return MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta))
     }

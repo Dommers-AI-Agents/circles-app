@@ -27,6 +27,9 @@ final class PiggyBankDepositView: UIView {
     @discardableResult
     static func play(credit: PiggyBankCredit?) -> Bool {
         guard let credit = credit, credit.credited, let coins = credit.coins, coins > 0 else { return false }
+        // The first run already celebrates its saves: the coins are credited,
+        // the coin drop waits (Wes, 2026-11-01: "too much in the new user flow")
+        if OnboardingManager.shared.isFirstSessionFlowActive { return false }
         DispatchQueue.main.async { show(coins: coins) }
         return true
     }
