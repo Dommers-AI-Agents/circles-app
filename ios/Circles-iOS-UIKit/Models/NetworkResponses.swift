@@ -5,6 +5,8 @@ struct DiscoveryUsersResponse: Codable {
     let success: Bool
     let users: [User]
     let count: Int
+    /// More past this page (offset + limit); nil from older servers
+    let hasMore: Bool?
 }
 
 // Response model for user search endpoints

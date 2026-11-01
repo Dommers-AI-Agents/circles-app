@@ -12,6 +12,13 @@ enum MapRegionFitter {
     /// The nearby-favorites radius: 2 miles at least, 25 miles at most.
     static let minFocusRadius: CLLocationDistance = 3_218.7
     static let maxFocusRadius: CLLocationDistance = 40_233.6
+    /// With fewer than three places to frame, the map still opens on the
+    /// city around them (about 5 miles), so a new map with one pin shows the
+    /// places their people saved nearby too (Wes, 2026-11-01: "why is the
+    /// map zoomed in so far")
+    static let sparseFocusRadius: CLLocationDistance = 8_046.7
+    /// The same city view as a span, for bounding boxes of one or two places
+    static let sparseMinSpan: CLLocationDegrees = 0.14
 
     /// The map rect enclosing every coordinate (nil when there are none). One
     /// coordinate yields a null rect: callers frame that with `singleRegion`.
@@ -45,8 +52,9 @@ enum MapRegionFitter {
         var latDelta = (maxLat - minLat) * spanPadding
         var lonDelta = (maxLon - minLon) * spanPadding
         if clampSpan {
-            latDelta = min(max(latDelta, 0.01), 180)
-            lonDelta = min(max(lonDelta, 0.01), 360)
+            let floor = coordinates.count < 3 ? sparseMinSpan : 0.01
+            latDelta = min(max(latDelta, floor), 180)
+            lonDelta = min(max(lonDelta, floor), 360)
         }
         return MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta))
     }
@@ -63,6 +71,6 @@ enum MapRegionFitter {
             return min(max(sorted[targetIndex] * 1.2, minFocusRadius), maxFocusRadius)
         }
         let targetIndex = min(2, sorted.count - 1)
-        return max(sorted[targetIndex] * 1.2, minFocusRadius)
+        return max(sorted[targetIndex] * 1.2, sparseFocusRadius)
     }
 }

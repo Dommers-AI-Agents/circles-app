@@ -88,6 +88,7 @@ final class FirstSessionCoordinator: SceneCoordinator {
 
     /// The place they saved as their first favorite, for the steps after it
     private var firstFavoriteName: String?
+    private var firstFavoritePlace: Place?
 
     /// Joined in the App Clip, which already saved the store (Wes,
     /// 2026-11-01: they said yes on "Love it here? Save us." — never ask
@@ -100,6 +101,7 @@ final class FirstSessionCoordinator: SceneCoordinator {
               let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
         armFirstSessionChain()
         firstFavoriteName = place.name
+        firstFavoritePlace = place
         FirstFavoriteViewController.recordFirstFavorite(named: place.name)
         let afterName = { [weak self] in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
@@ -248,22 +250,24 @@ final class FirstSessionCoordinator: SceneCoordinator {
         }
     }
 
-    /// After location: "Fill your map from your photos" (Wes, 2026-10-16),
-    /// once, during the first session; then notifications.
+    /// After location: "More places like <favorite>" (Wes, 2026-11-01:
+    /// nearby places to tap, search, and photos as one option; it was a
+    /// photos-only page), once, during the first session; then notifications.
     private func continueOnboardingAfterLocation() {
         guard OnboardingManager.shared.isFirstSessionFlowActive, PhotoMapOnboardingViewController.isNeeded,
               let tabBarController = window?.rootViewController as? CirclesTabBarController else {
             return continueOnboardingAfterPhotoMap()
         }
+        UserDefaults.standard.set(true, forKey: "hasShownPhotoMapOnboarding")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-            let photoVC = PhotoMapOnboardingViewController()
-            photoVC.favoritePlaceName = self?.firstFavoriteName
-            photoVC.onCompletion = { [weak self] in self?.continueOnboardingAfterPhotoMap() }
-            let nav = UINavigationController(rootViewController: photoVC)
+            guard let self else { return }
+            let moreVC = MorePlacesLikeViewController(favorite: self.firstFavoritePlace, favoriteName: self.firstFavoriteName)
+            let nav = UINavigationController(rootViewController: moreVC)
             nav.modalPresentationStyle = .fullScreen
-            var presenter: UIViewController = tabBarController
-            while let presented = presenter.presentedViewController { presenter = presented }
-            presenter.present(nav, animated: true)
+            moreVC.onFinished = { [weak self, weak nav] _ in
+                nav?.dismiss(animated: true) { self?.continueOnboardingAfterPhotoMap() }
+            }
+            self.topPresenter(over: tabBarController).present(nav, animated: true)
         }
     }
 

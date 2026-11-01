@@ -138,6 +138,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         setupPromotedPurchaseNotifications()
         
         window?.makeKeyAndVisible()
+        #if DEBUG
+        // Screenshots of one screen without walking the flow:
+        // PREVIEW_SCREEN=notifications | morePlaces
+        if let screen = ProcessInfo.processInfo.environment["PREVIEW_SCREEN"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                let vc: UIViewController? = screen == "notifications" ? NotificationOnboardingViewController()
+                    : screen == "morePlaces" ? MorePlacesLikeViewController(favorite: nil, favoriteName: "Sal\u{2019}s Bakery (Demo)") : nil
+                guard let vc, let root = self?.window?.rootViewController else { return }
+                let nav = UINavigationController(rootViewController: vc)
+                nav.modalPresentationStyle = .fullScreen
+                root.present(nav, animated: false)
+            }
+        }
+        #endif
         prewarmKeyboard()
     }
 

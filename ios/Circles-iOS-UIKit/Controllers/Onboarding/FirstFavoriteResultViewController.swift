@@ -6,7 +6,7 @@ import UIKit
 /// (or people mapping their city when nobody has it yet), with any
 /// connection requests waiting at the top. Replaces the generic
 /// "Explore other people's maps" sheet on this path.
-final class FirstFavoriteResultViewController: BaseViewController {
+final class FirstFavoriteResultViewController: BaseViewController, UIScrollViewDelegate {
 
     override var showsLoadingIndicator: Bool { false }
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -18,6 +18,13 @@ final class FirstFavoriteResultViewController: BaseViewController {
     private var acceptedRequestIds = Set<String>()
     private var shownUserIds = Set<String>()
     private var followCount = 0
+    /// "People mapping <city>" loads a page at a time as they scroll, for as
+    /// long as there are people (Wes, 2026-11-01: it stopped at four)
+    private static let peoplePage = 12
+    private var peopleOffset = 0
+    private var peopleHasMore = true
+    private var peopleLoading = false
+    private var peopleHeaderShown = false
 
     init(place: Place) {
         self.place = place
@@ -80,6 +87,7 @@ final class FirstFavoriteResultViewController: BaseViewController {
         contentStack.addArrangedSubview(peopleStack)
         contentStack.setCustomSpacing(22, after: contentStack.arrangedSubviews[2])
 
+        scrollView.delegate = self
         view.addSubview(scrollView)
         scrollView.addSubview(contentStack)
         view.addSubview(continueButton)
@@ -231,27 +239,43 @@ final class FirstFavoriteResultViewController: BaseViewController {
                 self.peopleStack.addArrangedSubview(Self.sectionNote("Follow them and the places they love show up on your map."))
                 for user in savers.prefix(8) { self.addFollowRow(user, detail: self.mapDetail(user)) }
                 AnalyticsService.shared.logEvent("first_favorite_savers_shown", parameters: ["count": total])
-                // A short list gets company from the city's mappers
-                if savers.count < 3 { self.loadFallbackPeople(limit: 4) }
+                // The city's mappers follow, page after page
+                self.loadFallbackPeople()
             }
         }
     }
 
-    private func loadFallbackPeople(limit: Int = 6) {
-        APIService.shared.request(endpoint: "users/contacts/discover?type=popular&limit=12", method: .get) { [weak self] (result: Result<DiscoveryUsersResponse, APIError>) in
+    /// The next page of the city's most active mappers
+    private func loadFallbackPeople() {
+        guard peopleHasMore, !peopleLoading else { return }
+        peopleLoading = true
+        let endpoint = "users/contacts/discover?type=popular&limit=\(Self.peoplePage)&offset=\(peopleOffset)"
+        APIService.shared.request(endpoint: endpoint, method: .get) { [weak self] (result: Result<DiscoveryUsersResponse, APIError>) in
             DispatchQueue.main.async {
-                guard let self, case .success(let response) = result else { return }
+                guard let self else { return }
+                self.peopleLoading = false
+                guard case .success(let response) = result else { return }
+                self.peopleOffset += Self.peoplePage
+                self.peopleHasMore = response.hasMore ?? (response.users.count >= Self.peoplePage)
                 let following = Set(AuthService.shared.currentUser?.following ?? [])
                 let people = response.users
                     .filter { !self.isMe($0.id) && !self.shownUserIds.contains($0.id) }
                     .filter { user in !following.contains { IDNormalizer.isSameUser($0, user.id) } }
-                    .prefix(limit)
-                guard !people.isEmpty else { return }
-                let city = AuthService.shared.currentUser?.location?.split(separator: ",").first.map(String.init)
-                self.peopleStack.addArrangedSubview(Self.sectionHeader(FirstFavoriteCopy.fallbackPeopleHeader(cityName: city)))
+                if !people.isEmpty, !self.peopleHeaderShown {
+                    self.peopleHeaderShown = true
+                    let city = AuthService.shared.currentUser?.location?.split(separator: ",").first.map(String.init)
+                    self.peopleStack.addArrangedSubview(Self.sectionHeader(FirstFavoriteCopy.fallbackPeopleHeader(cityName: city)))
+                }
                 for user in people { self.addFollowRow(user, detail: self.mapDetail(user)) }
+                // A page that was all people already shown: fetch on
+                if people.isEmpty, self.peopleHasMore { self.loadFallbackPeople() }
             }
         }
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        let remaining = scrollView.contentSize.height - scrollView.contentOffset.y - scrollView.bounds.height
+        if remaining < 600 { loadFallbackPeople() }
     }
 
     private func mapDetail(_ user: User) -> String {

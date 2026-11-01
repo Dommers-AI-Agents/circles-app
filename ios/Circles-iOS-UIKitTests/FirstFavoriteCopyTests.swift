@@ -36,4 +36,12 @@ struct FirstFavoriteCopyTests {
         #expect(FirstFavoriteCopy.fallbackPeopleHeader(cityName: "Charlotte") == "People mapping Charlotte")
         #expect(FirstFavoriteCopy.fallbackPeopleHeader(cityName: " ") == "Maps worth exploring")
     }
+
+    @Test func morePlacesTitleAndSimilarKinds() {
+        #expect(FirstFavoriteCopy.morePlacesTitle(placeName: "Sal's Bakery") == "More places like Sal's Bakery")
+        #expect(FirstFavoriteCopy.morePlacesTitle(placeName: nil) == "Add a few places you love")
+        #expect(FirstFavoriteCopy.similarCategories(to: .cafe).first == "cafe")
+        #expect(FirstFavoriteCopy.similarCategories(to: .fitness) == ["fitness", "restaurant", "cafe"])
+        #expect(FirstFavoriteCopy.similarCategories(to: nil).count == 3)
+    }
 }

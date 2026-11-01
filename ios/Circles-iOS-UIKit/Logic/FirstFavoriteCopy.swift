@@ -54,6 +54,26 @@ enum FirstFavoriteCopy {
         return "\(placeName) has FavCircles Rewards. Scan the QR code at the register when you visit."
     }
 
+    /// "More places like Sal's Bakery" (2026-11-01)
+    static func morePlacesTitle(placeName: String?) -> String {
+        guard let name = placeName?.trimmingCharacters(in: .whitespaces), !name.isEmpty else {
+            return "Add a few places you love"
+        }
+        return "More places like \(name)"
+    }
+
+    /// Catalog categories that feel like their favorite: its own first, then
+    /// the closest kin (a café's people like bakeries and brunch spots too)
+    static func similarCategories(to category: PlaceCategory?) -> [String] {
+        switch category {
+        case .cafe?: return ["cafe", "restaurant"]
+        case .restaurant?: return ["restaurant", "cafe"]
+        case .bar?: return ["bar", "restaurant"]
+        case .some(let other): return [other.rawValue, "restaurant", "cafe"]
+        case nil: return ["restaurant", "cafe", "bar"]
+        }
+    }
+
     static func photoMapHeadline(placeName: String?) -> String {
         guard let name = placeName, !name.isEmpty else { return "Fill your map from your photos" }
         return "Add more places like \(name)"

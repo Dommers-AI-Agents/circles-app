@@ -28,9 +28,12 @@ struct MapRegionFitterTests {
     }
 
     @Test func clampingKeepsCoincidentPlacesVisible() {
+        // One or two places open on the city around them, not one pin
         let clamped = MapRegionFitter.boundingRegion([charlotte, charlotte], clampSpan: true)!
-        #expect(clamped.span.latitudeDelta == 0.01)
-        #expect(clamped.span.longitudeDelta == 0.01)
+        #expect(clamped.span.latitudeDelta == MapRegionFitter.sparseMinSpan)
+        #expect(clamped.span.longitudeDelta == MapRegionFitter.sparseMinSpan)
+        let three = MapRegionFitter.boundingRegion([charlotte, charlotte, charlotte], clampSpan: true)!
+        #expect(three.span.latitudeDelta == 0.01)
         let raw = MapRegionFitter.boundingRegion([charlotte, charlotte], clampSpan: false)!
         #expect(raw.span.latitudeDelta == 0)
     }
@@ -61,5 +64,7 @@ struct MapRegionFitterTests {
         #expect(abs(MapRegionFitter.focusRadius(distances: distances) - 70_000 * 1.2) < 0.001)
         // A single far favorite still gets the padded reach
         #expect(abs(MapRegionFitter.focusRadius(distances: [100_000]) - 120_000) < 0.001)
+        // A new map with one place a few blocks away: the city, not the block
+        #expect(MapRegionFitter.focusRadius(distances: [600]) == MapRegionFitter.sparseFocusRadius)
     }
 }
