@@ -1035,12 +1035,7 @@ class NotificationService {
   // Send notification for new follower
   async sendFollowerNotification(toUserId, fromUserId, fromUserName) {
     try {
-      // A follow from one of our test accounts never notifies anyone (Wes,
-      // 2026-11-01: testing kept pinging Brittany and Sal)
-      const fromDoc = await this.db.collection(COLLECTIONS.USERS).doc(fromUserId).get();
-      if (fromDoc.exists && require('./hiddenAccounts').isHiddenAccount(fromDoc.data())) {
-        return { success: false, message: 'Follower is a test account' };
-      }
+
       // Get the recipient user to check notification preferences
       const toUserDoc = await this.db.collection(COLLECTIONS.USERS).doc(toUserId).get();
       if (!toUserDoc.exists) {
@@ -1049,6 +1044,17 @@ class NotificationService {
       }
 
       const toUser = toUserDoc.data();
+
+      // A follow from one of our test accounts tells only Wes, who wants to
+      // know about every follow (Wes, 2026-11-01: testing kept pinging
+      // Brittany and Sal)
+      const fromDoc = await this.db.collection(COLLECTIONS.USERS).doc(fromUserId).get();
+      const { isHiddenAccount } = require('./hiddenAccounts');
+      const { TOLD_OF_EVERY_FOLLOW_EMAILS } = require('./defaultAccounts');
+      if (fromDoc.exists && isHiddenAccount(fromDoc.data())
+          && !TOLD_OF_EVERY_FOLLOW_EMAILS.includes(String(toUser.email || '').toLowerCase())) {
+        return { success: false, message: 'Follower is a test account' };
+      }
 
       // Check if user wants follower notifications. Block ONLY on an explicit
       // opt-out — a missing newFollowers key must default to ON, matching the

@@ -83,6 +83,15 @@ exports.getNetworkActivities = async (req, res, next) => {
       });
     }
 
+    // Following only a few people: the most active mappers' public activity
+    // too, so the tab always has something to read (Wes, 2026-11-01)
+    const networkSize = [...connectedUserIds].filter((id) => !String(id).startsWith('place_')).length;
+    try {
+      await require('../services/communityFeedActors').addCommunityIfSparse(connectedUserIds, { viewerId: userId, networkSize });
+    } catch (error) {
+      console.warn('[feed] community actors unavailable:', error.message);
+    }
+
     // Blocked users (either direction) contribute nothing to this feed
     if (currentUserDoc.exists) {
       const { excludedUserIds } = require('../services/moderationService');

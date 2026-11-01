@@ -4,6 +4,9 @@
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 
+/** Told about every follow, test accounts' included (Wes, 2026-11-01) */
+const TOLD_OF_EVERY_FOLLOW_EMAILS = ['sgroiwes@gmail.com'];
+
 const DEFAULT_FOLLOW_EMAILS = [
   'sgroiwes@gmail.com',      // Wes
   'brittanyvans@gmail.com'   // Brittany
@@ -35,4 +38,4 @@ function chosenFollowCount(following, defaultIds) {
   return (Array.isArray(following) ? following : []).filter(id => !defaultIds.has(id)).length;
 }
 
-module.exports = { DEFAULT_FOLLOW_EMAILS, CORE_SUGGESTED_EMAILS, defaultFollowIds, chosenFollowCount, _reset: () => { cached = null; } };
+module.exports = { DEFAULT_FOLLOW_EMAILS, CORE_SUGGESTED_EMAILS, TOLD_OF_EVERY_FOLLOW_EMAILS, defaultFollowIds, chosenFollowCount, _reset: () => { cached = null; } };

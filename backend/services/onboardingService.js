@@ -163,9 +163,10 @@ class OnboardingService {
         console.log(`📍 Added sample place: ${result.samplePlace.name}`);
       }
       
-      // Our own test accounts (Wes, 2026-11-01): flagged at once, and they
-      // don't follow Wes and Brittany or get Wes's welcome suggestion, so
-      // testing never pings the founders
+      // Our own test accounts (Wes, 2026-11-01): flagged at once. They still
+      // follow Wes and Brittany, so they see what a real new user sees, but
+      // nobody follows them back and Wes sends no welcome suggestion. Who
+      // hears about the follow: sendFollowerNotification (Wes yes, others no)
       const { isTestEmail } = require('./hiddenAccounts');
       const isTest = userData.isTestAccount === true || isTestEmail(userData.email);
       if (isTest && userData.isTestAccount !== true) {
@@ -174,7 +175,7 @@ class OnboardingService {
 
       // Auto-follow the default accounts (best-effort — a failure here must
       // not fail onboarding)
-      if (!isTest) await OnboardingService.followDefaultUsers(userId, userData);
+      await OnboardingService.followDefaultUsers(userId, userData, { followBack: !isTest });
 
       // No automatic connection request any more (Wes, 2026-10-09): new
       // users just follow Wes and Brittany, so they start with people on
@@ -293,7 +294,7 @@ class OnboardingService {
    * the counts. The targets get the standard new-follower notification —
    * which doubles as a "someone new joined" signal for them.
    */
-  static async followDefaultUsers(userId, userData = {}) {
+  static async followDefaultUsers(userId, userData = {}, { followBack = true } = {}) {
     try {
       const { FieldValue } = require('firebase-admin/firestore');
       const snap = await db.collection(COLLECTIONS.USERS)
@@ -314,7 +315,8 @@ class OnboardingService {
       // Wes AND Brittany follow every new user BACK (Wes's call, 2026-08-19):
       // both founder accounts follow new users; only Wes additionally sends a
       // connection request (see DEFAULT_CONNECT_EMAILS).
-      const followBackDocs = targets;
+      // A test account gets no follow-back: it stays out of their feeds (2026-11-01)
+      const followBackDocs = followBack ? targets : [];
 
       const batch = db.batch();
       const newUserUpdate = {

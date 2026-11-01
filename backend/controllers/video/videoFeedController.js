@@ -472,6 +472,15 @@ exports.getReelsFeed = async (req, res) => {
     
     // Combine for user content discovery
     const allUserIds = new Set([...connectionIds, ...followingIds]);
+    // Following only a few people: the most active mappers' public moments
+    // too, so the tab always has something (Wes, 2026-11-01). canView still
+    // treats them as strangers.
+    try {
+      await require('../../services/communityFeedActors')
+        .addCommunityIfSparse(allUserIds, { viewerId: userId, networkSize: allUserIds.size - 1 });
+    } catch (error) {
+      console.warn('[moments] community actors unavailable:', error.message);
+    }
     
     // A viewer may see a moment by its visibility + their relationship to the
     // owner. This query already fetches the viewer's whole graph, so the tier
