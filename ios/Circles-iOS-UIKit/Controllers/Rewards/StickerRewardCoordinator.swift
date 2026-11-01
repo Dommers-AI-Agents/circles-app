@@ -129,14 +129,20 @@ final class StickerRewardCoordinator: NSObject {
               let tabBar = UIApplication.shared.connectedScenes
                 .compactMap({ ($0 as? UIWindowScene)?.keyWindow?.rootViewController as? CirclesTabBarController })
                 .first,
-              let nav = tabBar.selectedViewController as? UINavigationController else { return }
+              let nav = tabBar.selectedViewController as? UINavigationController else {
+            DispatchQueue.main.async { self.startClipFirstSessionWithoutPage() }
+            return
+        }
         let name = welcome.venue.venueName
         let points = welcome.awardedPoints ?? 0
         let line = points > 0 ? "Saved to your map · +\(points) points" : "\(name) is on your map"
         waitUntilNothingPresented(over: tabBar) {
             PlaceService.shared.fetchPlaceById(id: placeId) { result in
                 DispatchQueue.main.async {
-                    guard case .success(let place) = result else { return }
+                    guard case .success(let place) = result else {
+                        DispatchQueue.main.async { self.startClipFirstSessionWithoutPage() }
+                        return
+                    }
                     nav.pushViewController(PlaceDetailViewController(place: place), animated: true)
                     let celebrate = {
                         CelebrationBurst.show(line, over: tabBar.view)
@@ -154,6 +160,15 @@ final class StickerRewardCoordinator: NSObject {
                 }
             }
         }
+    }
+
+    /// The store's page couldn't open: the usual first run, from its start
+    @MainActor private func startClipFirstSessionWithoutPage() {
+        guard let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }),
+              let delegate = scene.delegate as? SceneDelegate,
+              !OnboardingManager.shared.isFirstSessionFlowActive else { return }
+        delegate.firstSession.armFirstSessionChain()
+        delegate.firstSession.continueFirstSessionAfterCarousel()
     }
 
     // MARK: - Store page

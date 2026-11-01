@@ -146,7 +146,9 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
                 let result = try await ClipAPIClient.shared.redeemSticker(code: code, token: session.token, atStore: atStore,
                                                                           save: preview.isStoreWindow)
                 // Scan handled in-clip — tell the full app not to redeem it again
-                ClipHandoff.markStickerHandled(code, welcome: result.venue.map { venue in
+                // A save that has to wait for the app goes through its own
+                // save flow, not a welcome sheet as well
+                ClipHandoff.markStickerHandled(code, welcome: result.savePending == true ? nil : result.venue.map { venue in
                     ClipHandoff.Welcome(code: code, kind: result.kind, venue: venue,
                                         awardedPoints: result.awarded?.points,
                                         venueBalance: result.venueBalance,

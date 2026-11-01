@@ -137,6 +137,9 @@ final class FirstSessionCoordinator: SceneCoordinator {
                 if let me = AuthService.shared.currentUser {
                     WelcomeConnectionsViewController.markShown(for: me.id)
                 }
+                // The rest of the first run (and the tour) belongs on Home,
+                // where "You saved <store>. Add two more" now waits
+                (tabBarController.selectedViewController as? UINavigationController)?.popToRootViewController(animated: false)
                 nav?.dismiss(animated: true) { self?.continueOnboardingAfterContacts() }
             }
             self.topPresenter(over: tabBarController).present(nav, animated: true)
