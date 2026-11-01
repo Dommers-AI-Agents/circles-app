@@ -569,6 +569,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if rewardCodes.rewardsPromptOwed { rewardCodes.presentRewardsWaitingPrompt() }
         // Limits, amounts and links the screens show, from the server's one source
         ClientConfigService.shared.refreshIfStale()
+        // This install's App Attest key, made and registered once (2026-11-01)
+        AppAttestService.shared.prepare()
         // A run saved before the app closed carries on (GPS, clock, its lock
         // screen display), as a workout does; a display with no run behind it goes
         if let userId = KeychainService.shared.getUserId(), !userId.isEmpty {

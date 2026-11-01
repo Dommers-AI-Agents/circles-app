@@ -300,6 +300,7 @@ app.get('/share/video/:videoId/preview.jpg', videoShare.sharePreviewImage);
 app.get('/share/video/:videoId', videoShare.renderSharePage);
 app.use('/api/users/referral', require('./routes/referralRoutes'));
 app.use('/api/rewards', require('./routes/rewardRoutes'));
+app.use('/api/attest', require('./routes/appAttestRoutes')); // App Attest key registration
 app.use('/api/wallet', require('./routes/walletRoutes')); // Apple Wallet store cards' web service
 app.use('/api/clip', require('./routes/clipRoutes')); // iOS App Clip (public venue preview + install conversion)
 app.use('/api/leads', require('./routes/leadRoutes')); // favcircles.com email capture (public)

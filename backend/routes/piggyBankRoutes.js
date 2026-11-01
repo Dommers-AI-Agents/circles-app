@@ -91,7 +91,7 @@ router.get('/history', async (req, res) => {
 // POST /api/piggy-bank/wallet — link/replace the user's Cactus wallet address.
 // Changeable anytime: claims snapshot the address, so an in-flight claim
 // keeps its original destination.
-router.post('/wallet', async (req, res) => {
+router.post('/wallet', require('../middleware/appAttestMonitor'), async (req, res) => {
   try {
     const address = normalizeCactusAddress(req.body.address);
     if (!address) {
@@ -109,7 +109,7 @@ router.post('/wallet', async (req, res) => {
 
 // POST /api/piggy-bank/claim — claim the entire confirmed balance (min
 // threshold) to the linked wallet. T1 of the settlement state machine.
-router.post('/claim', async (req, res) => {
+router.post('/claim', require('../middleware/appAttestMonitor'), async (req, res) => {
   try {
     if (!cactusWallet.isEnabled()) {
       return res.status(503).json({

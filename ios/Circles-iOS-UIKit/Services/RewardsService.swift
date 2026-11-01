@@ -60,7 +60,7 @@ class RewardsService {
     func scan(code: String, completion: @escaping (Result<RewardScanData, Error>) -> Void) {
         let body: [String: Any] = ["code": code]
 
-        apiService.request(
+        apiService.attestedRequest(
             endpoint: "rewards/scan",
             method: .post,
             body: body,
@@ -81,7 +81,7 @@ class RewardsService {
     // MARK: - Confirm the sticker place was saved (earns save points)
 
     func confirmStickerSave(code: String, completion: @escaping (Result<RewardSaveData, Error>) -> Void) {
-        apiService.request(
+        apiService.attestedRequest(
             endpoint: "rewards/sticker-save",
             method: .post,
             body: ["code": code],
@@ -129,7 +129,7 @@ class RewardsService {
     func redeemOffer(venueId: String, offerId: String, completion: @escaping (Result<RewardRedeemData, Error>) -> Void) {
         let body: [String: Any] = ["venueId": venueId, "offerId": offerId]
 
-        apiService.request(
+        apiService.attestedRequest(
             endpoint: "rewards/redeem-offer",
             method: .post,
             body: body,
@@ -1944,7 +1944,7 @@ extension RewardsService {
 
     /// Redeem a single-use brand code (order-box card / booth handout)
     func redeemCode(_ code: String, completion: @escaping (Result<RedeemCodeData, Error>) -> Void) {
-        apiService.request(
+        apiService.attestedRequest(
             endpoint: "rewards/redeem-code",
             method: .post,
             body: ["code": code],

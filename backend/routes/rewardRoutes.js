@@ -92,16 +92,19 @@ router.get('/admin/venues', adminAuth, listVenues);
 router.use(protect);
 router.get('/me', getMe);
 router.get('/code-name/:code', require('../controllers/venues/rewardScanController').codeName); // the scan bubble's store name
-router.post('/scan', scan);
-router.post('/sticker-save', confirmStickerSave);
+// App Attest, monitor only (2026-11-01): logs whether points requests come
+// from the real app; refuses nothing unless APP_ATTEST_ENFORCE=true
+const appAttestMonitor = require('../middleware/appAttestMonitor');
+router.post('/scan', appAttestMonitor, scan);
+router.post('/sticker-save', appAttestMonitor, confirmStickerSave);
 router.get('/balance', getBalance);
 // The customer's Apple Wallet card for a store (2026-11-01)
 router.get('/venues/:venueId/wallet-pass', require('../controllers/wallet/walletController').downloadPass);
 router.get('/offers', getOffers);
 router.get('/nearby-events', getNearbyEvents);
-router.post('/redeem-offer', redeemOffer);
+router.post('/redeem-offer', appAttestMonitor, redeemOffer);
 // Single-use brand loyalty codes (order-box cards, booth handouts)
-router.post('/redeem-code', redeemCode);
+router.post('/redeem-code', appAttestMonitor, redeemCode);
 // Brand storefronts (account-anchored businesses / virtual stores)
 router.put('/storefront', updateStorefront);
 router.get('/storefront/:userId', getStorefront);

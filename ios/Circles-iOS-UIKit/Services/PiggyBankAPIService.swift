@@ -36,7 +36,7 @@ final class PiggyBankAPIService {
 
     /// Link (or replace) the user's self-custody Cactus wallet address.
     func linkWallet(address: String, completion: @escaping (Result<String, Error>) -> Void) {
-        APIService.shared.request(
+        APIService.shared.attestedRequest(
             endpoint: "piggy-bank/wallet",
             method: .post,
             body: ["address": address],
@@ -51,7 +51,7 @@ final class PiggyBankAPIService {
 
     /// Claim the entire confirmed balance to the linked wallet.
     func claim(completion: @escaping (Result<PiggyActiveClaim, Error>) -> Void) {
-        APIService.shared.request(
+        APIService.shared.attestedRequest(
             endpoint: "piggy-bank/claim",
             method: .post,
             body: [:],
