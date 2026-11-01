@@ -522,9 +522,11 @@ async function savePlace(user, body) {
         placesCount: (circle.placesCount || 0) + 1, // Increment places count
         updatedAt: new Date().toISOString()
       });
-      // Default cover: a circle with no cover takes its first place photo
-      if (!circle.coverImage && Array.isArray(place.photos) && place.photos.length > 0) {
-        ensureCircleCoverImage(circleId, place.photos[0]);
+      // Default cover: a circle still on a stand-in takes its first place's
+      // photo, or the store's own photo when the save has none yet
+      if (require('../config/circleCovers').isPlaceholderCover(circle)) {
+        const photo = Array.isArray(place.photos) ? place.photos.find((u) => typeof u === 'string' && u.startsWith('https://') && !u.includes('maps.googleapis.com')) : null;
+        ensureCircleCoverImage(circleId, photo || null);
       }
     }
 

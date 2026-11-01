@@ -7,12 +7,30 @@
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
+const { isPlaceholderCover } = require('../config/circleCovers');
 const db = getFirestore();
 
 const usablePhoto = (p) =>
   // Skip raw Google Places photo URLs — every render of those is billed
   (Array.isArray(p.photos) ? p.photos : [])
     .find(u => typeof u === 'string' && u.startsWith('https://') && !u.includes('maps.googleapis.com')) || null;
+
+/**
+ * The store's own photo when the save has none yet (its Google photo lands a
+ * moment after the save): the canonical venue's cover (2026-11-01)
+ */
+async function venuePhoto(place) {
+  if (!place.globalPlaceId) return null;
+  try {
+    const snap = await db.collection('globalPlaces').doc(place.globalPlaceId).get();
+    if (!snap.exists) return null;
+    const v = snap.data();
+    const urls = [v.coverPhotoUrl, ...(Array.isArray(v.photos) ? v.photos.map((ph) => (ph && ph.url) || ph) : [])];
+    return urls.find((u) => typeof u === 'string' && u.startsWith('https://') && !u.includes('maps.googleapis.com')) || null;
+  } catch {
+    return null;
+  }
+}
 
 /** First photo of the first place (in the circle's own order) that has one. */
 async function firstPlacePhoto(circleData, circleId = null) {
@@ -23,7 +41,7 @@ async function firstPlacePhoto(circleData, circleId = null) {
     if (!snap.exists) continue;
     const p = snap.data();
     if (p.deletedAt) continue;
-    const photo = usablePhoto(p);
+    const photo = usablePhoto(p) || await venuePhoto(p);
     if (photo) return photo;
   }
   // Some circles never maintain places[] — "Places I Follow" saves only set
@@ -36,7 +54,7 @@ async function firstPlacePhoto(circleData, circleId = null) {
     for (const doc of snap.docs) {
       const p = doc.data();
       if (p.deletedAt) continue;
-      const photo = usablePhoto(p);
+      const photo = usablePhoto(p) || await venuePhoto(p);
       if (photo) return photo;
     }
   }
@@ -56,7 +74,9 @@ async function ensureCircleCoverImage(circleId, photoUrl = null) {
     const snap = await ref.get();
     if (!snap.exists) return null;
     const circle = snap.data();
-    if (circle.coverImage) return circle.coverImage;
+    // A cover the person picked stays; a stand-in (none, an icon, our stock
+    // photo) gives way to the first real place photo
+    if (!isPlaceholderCover(circle)) return circle.coverImage;
 
     const cover = photoUrl || await firstPlacePhoto(circle, circleId);
     if (!cover) return null;
@@ -72,4 +92,4 @@ async function ensureCircleCoverImage(circleId, photoUrl = null) {
   }
 }
 
-module.exports = { ensureCircleCoverImage, firstPlacePhoto };
+module.exports = { ensureCircleCoverImage, firstPlacePhoto, venuePhoto };

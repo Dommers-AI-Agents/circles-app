@@ -181,7 +181,14 @@ const createCircle = (circleData, ownerId) => {
   return {
     name: circleData.name,
     description: circleData.description || null,
-    coverImage: circleData.coverImage || null,
+    // No photo of its own yet (or just an app icon): the real photo that fits
+    // it, replaced by its first place's photo (config/circleCovers.js)
+    ...(() => {
+      const { stockCoverFor, isPlaceholderCover } = require('../config/circleCovers');
+      return isPlaceholderCover(circleData)
+        ? { coverImage: stockCoverFor(circleData), coverImageSource: 'stock' }
+        : { coverImage: circleData.coverImage, coverImageSource: circleData.coverImageSource || 'user' };
+    })(),
     owner: ownerId,
     editors: circleData.editors || [], // Array of user IDs who can edit this circle
     places: circleData.places || [],

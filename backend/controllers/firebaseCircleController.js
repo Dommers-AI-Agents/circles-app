@@ -608,7 +608,18 @@ exports.updateCircle = async (req, res, next) => {
     }
     
     // Add other fields without validation
-    if (req.body.coverImage !== undefined) updateData.coverImage = req.body.coverImage;
+    if (req.body.coverImage !== undefined) {
+      // Their own photo is theirs for good; clearing it (or an icon) gets the
+      // real photo that fits the circle again (config/circleCovers.js)
+      const { stockCoverFor, isPlaceholderCover } = require('../config/circleCovers');
+      if (isPlaceholderCover({ coverImage: req.body.coverImage })) {
+        updateData.coverImage = stockCoverFor({ ...circle, ...req.body });
+        updateData.coverImageSource = 'stock';
+      } else {
+        updateData.coverImage = req.body.coverImage;
+        updateData.coverImageSource = 'user';
+      }
+    }
     if (req.body.location !== undefined) updateData.location = req.body.location;
     if (req.body.tags !== undefined) updateData.tags = req.body.tags;
     // Owner's map-clutter control: false hides this circle's places from the

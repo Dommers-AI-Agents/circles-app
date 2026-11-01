@@ -1,6 +1,9 @@
-// backend/scripts/backfill-circle-covers.js
-// Every circle without a cover image gets its first place photo as the cover
-// (coverImageSource: 'place_photo'). Idempotent. DRY_RUN=true to preview.
+#!/usr/bin/env node
+// Real photos on every circle (Wes, 2026-11-01). Circles with no cover, an
+// app icon, or a stock photo get their first place's photo (or that store's
+// own photo); circles with no photo anywhere get the stock photo that fits
+// them. A cover the person picked is never touched. Idempotent.
+// DRY_RUN=true reports without writing; --owner <uid> does one person's circles.
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const { initializeFirebase, getFirestore } = require('../config/firebase');
@@ -8,25 +11,29 @@ initializeFirebase();
 const db = getFirestore();
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { firstPlacePhoto } = require('../services/circleCover');
+const { stockCoverFor, isPlaceholderCover } = require('../config/circleCovers');
 
-const DRY_RUN = process.env.DRY_RUN === 'true';
-const onlyOwner = process.argv.indexOf('--owner') > 0 ? process.argv[process.argv.indexOf('--owner') + 1] : null;
+const DRY = process.env.DRY_RUN === 'true';
+const ownerArg = process.argv.indexOf('--owner');
+const onlyOwner = ownerArg > 0 ? process.argv[ownerArg + 1] : null;
 
 (async () => {
   let query = db.collection(COLLECTIONS.CIRCLES);
   if (onlyOwner) query = query.where('owner', '==', onlyOwner);
   const snap = await query.get();
-  let candidates = 0, set = 0, noPhoto = 0;
+  const counts = { circles: snap.size, own: 0, placePhoto: 0, stock: 0, unchanged: 0 };
   for (const doc of snap.docs) {
     const c = doc.data();
-    if (c.coverImage || c.deletedAt) continue;
-    candidates++;
-    const cover = await firstPlacePhoto(c, doc.id);
-    if (!cover) { noPhoto++; continue; }
-    if (DRY_RUN) { console.log(`  would set "${c.name}" ← ${cover.slice(0, 60)}…`); set++; continue; }
-    await doc.ref.update({ coverImage: cover, coverImageSource: 'place_photo', updatedAt: new Date().toISOString() });
-    set++;
+    if (c.deletedAt) continue;
+    if (!isPlaceholderCover(c)) { counts.own += 1; continue; }
+    const photo = await firstPlacePhoto(c, doc.id);
+    const next = photo
+      ? { coverImage: photo, coverImageSource: 'place_photo' }
+      : { coverImage: stockCoverFor(c), coverImageSource: 'stock' };
+    if (next.coverImage === c.coverImage) { counts.unchanged += 1; continue; }
+    counts[photo ? 'placePhoto' : 'stock'] += 1;
+    if (!DRY) await doc.ref.update({ ...next, updatedAt: new Date().toISOString() });
   }
-  console.log(`${snap.size} circles scanned, ${candidates} without cover (with places), ${set} ${DRY_RUN ? 'would be' : ''} set, ${noPhoto} have no place photos yet${DRY_RUN ? ' [DRY RUN]' : ''}`);
+  console.log(`${DRY ? '[dry run] ' : ''}${JSON.stringify(counts)}`);
   process.exit(0);
-})().catch(e => { console.error('❌', e); process.exit(1); });
+})().catch((e) => { console.error(e); process.exit(1); });
