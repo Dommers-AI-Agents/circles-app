@@ -163,9 +163,18 @@ class OnboardingService {
         console.log(`📍 Added sample place: ${result.samplePlace.name}`);
       }
       
+      // Our own test accounts (Wes, 2026-11-01): flagged at once, and they
+      // don't follow Wes and Brittany or get Wes's welcome suggestion, so
+      // testing never pings the founders
+      const { isTestEmail } = require('./hiddenAccounts');
+      const isTest = userData.isTestAccount === true || isTestEmail(userData.email);
+      if (isTest && userData.isTestAccount !== true) {
+        await userRef.update({ isTestAccount: true }).catch(() => {});
+      }
+
       // Auto-follow the default accounts (best-effort — a failure here must
       // not fail onboarding)
-      await OnboardingService.followDefaultUsers(userId, userData);
+      if (!isTest) await OnboardingService.followDefaultUsers(userId, userData);
 
       // No automatic connection request any more (Wes, 2026-10-09): new
       // users just follow Wes and Brittany, so they start with people on
@@ -175,7 +184,7 @@ class OnboardingService {
       // suggestion. Only when signup told us where they are (an email
       // signup's zipcode); otherwise the first app open with a location fix
       // sends it (maybeSendWelcomeSuggestion).
-      if (userData.lastKnownLocation) {
+      if (userData.lastKnownLocation && !isTest) {
         await OnboardingService.sendWelcomeSuggestion(userId, userData, userData.lastKnownLocation);
       }
 
@@ -417,6 +426,9 @@ class OnboardingService {
    * the default location. Only for accounts under a week old, and only once.
    */
   static async maybeSendWelcomeSuggestion(userId, userData = {}, near = null) {
+    // Never from a test account's first open (2026-11-01)
+    const { isHiddenAccount } = require('./hiddenAccounts');
+    if (isHiddenAccount(userData)) return;
     if (userData.welcomeSuggestionAt) return;
     const created = Date.parse(userData.createdAt && userData.createdAt.toDate
       ? userData.createdAt.toDate().toISOString() : userData.createdAt);

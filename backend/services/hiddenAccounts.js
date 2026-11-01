@@ -16,12 +16,23 @@ const TEST_ACCOUNT_EMAILS = new Set([
 // Fields a .select() must include for isHiddenAccount to decide
 const HIDDEN_ACCOUNT_FIELDS = ['email', 'isTestAccount', 'isFakeProfile', 'mergedInto', 'active'];
 
+/**
+ * Our own test sign-ups by their address (Wes, 2026-11-01): any favcircles.com
+ * email starting with "tester" or "cliptest" (tester1.4.5@, cliptest-123@),
+ * so a fresh test account is treated as one from its first second, before
+ * anyone remembers to flag it.
+ */
+const isTestEmail = (email) => {
+  const e = String(email || '').trim().toLowerCase();
+  return TEST_ACCOUNT_EMAILS.has(e) || /^(tester|cliptest)[^@]*@favcircles\.com$/.test(e);
+};
+
 /** @param {object} user  a user doc's data (or a projected user) */
 const isHiddenAccount = (user) => {
   if (!user) return true;
   if (user.isTestAccount === true || user.isFakeProfile === true) return true;
   if (user.mergedInto || user.active === false) return true;
-  return TEST_ACCOUNT_EMAILS.has(String(user.email || '').trim().toLowerCase());
+  return isTestEmail(user.email);
 };
 
-module.exports = { isHiddenAccount, TEST_ACCOUNT_EMAILS, HIDDEN_ACCOUNT_FIELDS };
+module.exports = { isHiddenAccount, isTestEmail, TEST_ACCOUNT_EMAILS, HIDDEN_ACCOUNT_FIELDS };

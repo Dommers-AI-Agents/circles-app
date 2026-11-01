@@ -25,3 +25,13 @@ test('user search never sees test accounts, and never keeps an email', async () 
   expect(found.map(u => u.id)).toEqual(['real']);
   expect(found[0].email).toBeUndefined();
 });
+
+// Our test sign-ups by address (2026-11-01)
+const { isTestEmail } = require('../hiddenAccounts');
+test('tester and cliptest favcircles.com addresses are test accounts', () => {
+  expect(isTestEmail('tester1.4.5@favcircles.com')).toBe(true);
+  expect(isTestEmail('Tester@FavCircles.com')).toBe(true);
+  expect(isTestEmail('cliptest-123@favcircles.com')).toBe(true);
+  expect(isTestEmail('wesley@favcircles.com')).toBe(false);
+  expect(isTestEmail('tester@gmail.com')).toBe(false);
+});

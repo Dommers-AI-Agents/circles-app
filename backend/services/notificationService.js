@@ -1035,6 +1035,12 @@ class NotificationService {
   // Send notification for new follower
   async sendFollowerNotification(toUserId, fromUserId, fromUserName) {
     try {
+      // A follow from one of our test accounts never notifies anyone (Wes,
+      // 2026-11-01: testing kept pinging Brittany and Sal)
+      const fromDoc = await this.db.collection(COLLECTIONS.USERS).doc(fromUserId).get();
+      if (fromDoc.exists && require('./hiddenAccounts').isHiddenAccount(fromDoc.data())) {
+        return { success: false, message: 'Follower is a test account' };
+      }
       // Get the recipient user to check notification preferences
       const toUserDoc = await this.db.collection(COLLECTIONS.USERS).doc(toUserId).get();
       if (!toUserDoc.exists) {
