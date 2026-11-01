@@ -359,22 +359,7 @@ exports.updateUser = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      user: {
-        _id: user.id,
-        email: user.email,
-        displayName: user.displayName,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        phoneNumber: user.phoneNumber,
-        profilePicture: user.profilePicture,
-        bio: user.bio,
-        location: user.location,
-        zipcode: user.zipcode || null,
-        followersCount: user.followersCount || 0,
-        followingCount: user.followingCount || 0,
-        preferences: user.preferences || null,
-        createdAt: user.createdAt
-      }
+      user: require('../../services/ownProfileResponse').ownProfileJson(user)
     });
   } catch (error) {
     console.error('❌ Error updating user profile:', error);

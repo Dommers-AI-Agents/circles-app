@@ -277,50 +277,34 @@ class UserService {
         }
     }
 
-    func updateNotificationPreferences(_ preferences: NotificationPreferences, completion: @escaping (Result<User, Error>) -> Void) {
-        let body: [String: Any] = [
-            "notificationPreferences": [
-                "newMessages": preferences.newMessages,
-                "newSuggestions": preferences.newSuggestions,
-                "newPlaces": preferences.newPlaces,
-                "connectionRequests": preferences.connectionRequests,
-                "circleInvites": preferences.circleInvites,
-                "newFollowers": preferences.newFollowers,
-                "dailyDigest": preferences.dailyDigest,
-                "dailySummary": preferences.dailySummary,
-                "summaryTime": preferences.summaryTime,
-                "timezone": preferences.timezone,
-                "socialActivity": preferences.socialActivity,
-                "discoveryPrompts": preferences.discoveryPrompts,
-                "milestones": preferences.milestones,
-                "weekendRecommendations": preferences.weekendRecommendations,
-                "storeAlerts": preferences.storeAlerts,
-                "reengagement": preferences.reengagement,
-                "frequency": preferences.frequency,
-                "quietHoursEnabled": preferences.quietHoursEnabled,
-                "quietHoursStart": preferences.quietHoursStart,
-                "quietHoursEnd": preferences.quietHoursEnd
-            ]
-        ]
-        
+    /// Saves every notification setting. The server merges them into the
+    /// stored map and answers `{ success }` — this used to require a whole
+    /// user in the reply, so every successful save showed "Oops, something
+    /// went wrong" (Wes, 2026-11-01). The body is the encoded model, so a
+    /// new setting can't be left out (the hand-written list left out
+    /// locationPrompts, the "Alert Me at Saved Places" switch).
+    func updateNotificationPreferences(_ preferences: NotificationPreferences, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let data = try? JSONEncoder().encode(preferences),
+              let prefs = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            completion(.failure(APIError.invalidResponse))
+            return
+        }
         api.request(
             endpoint: "users/notification-preferences",
             method: .put,
-            body: body,
+            body: ["notificationPreferences": prefs],
             requiresAuth: true
-        ) { [weak self] (result: Result<UserResponse, APIError>) in
+        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
             guard let self = self else { return }
-            
             switch result {
-            case .success(let response):
-                completion(.success(response.user))
+            case .success:
+                completion(.success(()))
             case .failure(let error):
-                let mappedError = self.mapAPIErrorToUserError(error)
-                completion(.failure(mappedError))
+                completion(.failure(self.mapAPIErrorToUserError(error)))
             }
         }
     }
-    
+
     // MARK: - Activity privacy
 
     /// `PUT users/me/activity-privacy`. The whole grid is sent every time (the

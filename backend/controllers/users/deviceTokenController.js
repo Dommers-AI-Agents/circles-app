@@ -160,9 +160,14 @@ exports.updateNotificationPreferences = async (req, res, next) => {
     
     console.log(`🔔 Notification preferences updated for user ${req.user.uid}`);
     
+    // The saved profile rides along: app builds before 1.4.4 read `user`
+    // from this reply and showed "Oops" without it (2026-11-01)
+    const { serializeDoc } = require('../../models/FirestoreModels');
+    const saved = serializeDoc(await userRef.get());
     res.status(200).json({
       success: true,
-      message: 'Notification preferences updated successfully'
+      message: 'Notification preferences updated successfully',
+      user: require('../../services/ownProfileResponse').ownProfileJson(saved)
     });
   } catch (error) {
     console.error('Error updating notification preferences:', error);
