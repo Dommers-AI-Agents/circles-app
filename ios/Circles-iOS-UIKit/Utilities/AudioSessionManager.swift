@@ -1,4 +1,5 @@
 import AVFoundation
+import FavWidgets
 
 /// Owns the app's audio session so other apps' audio (Music, Spotify, podcasts)
 /// is only interrupted while the user is actually watching a moment.
@@ -49,6 +50,9 @@ final class AudioSessionManager {
     func allowSilentDecoration() {
         // A Moment is playing and owns the session — leave it exactly alone.
         guard !isHoldingSession else { return }
+        // Sleep Sounds share the session: `.ambient` would silence them the
+        // moment the phone locks (2026-10-31)
+        guard !SleepSoundEngine.isPlayingNow else { return }
         do {
             try AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
         } catch {
@@ -62,6 +66,8 @@ final class AudioSessionManager {
     func endPlayback() {
         guard isHoldingSession else { return }
         isHoldingSession = false
+        // Sleep Sounds still need the session — don't hand it back to other apps
+        if SleepSoundEngine.isPlayingNow { return }
 
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
