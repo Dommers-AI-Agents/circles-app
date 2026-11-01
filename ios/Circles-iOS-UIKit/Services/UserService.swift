@@ -627,6 +627,8 @@ class UserService {
             
             switch result {
             case .success:
+                // The login screen shouldn't welcome back an account that's gone
+                AuthService.shared.forgetLastSignIn()
                 completion(.success(()))
             case .failure(let error):
                 let mappedError = self.mapAPIErrorToUserError(error)

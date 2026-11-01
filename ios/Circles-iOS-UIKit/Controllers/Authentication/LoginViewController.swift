@@ -177,7 +177,7 @@ class LoginViewController: BaseViewController {
     // Section divider that hands returning users off to the login form below
     private let alreadyHaveAccountLabel: UILabel = {
         let label = UILabel()
-        label.text = "— already have an account? —"
+        label.text = LoginViewController.alreadyHaveAccountText
         label.font = UIFont.systemFont(ofSize: 14, weight: .regular)
         label.textColor = UIColor.white.withAlphaComponent(0.7)
         label.textAlignment = .center
@@ -249,6 +249,12 @@ class LoginViewController: BaseViewController {
     // ceremony needs a server challenge anyway.
     private var passkeyConfirmedEmail: String? { didSet { applyStep() } }
 
+    private static let alreadyHaveAccountText = "— already have an account? —"
+
+    /// "Welcome back" for the account last signed in on this phone (2026-11-01)
+    private var welcomeBackCard: WelcomeBackCardView?
+    private var lastSignIn: LastSignInHint?
+
     // MARK: - BaseViewController Configuration
     override var showsLoadingIndicator: Bool { false } // Custom loading state
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -259,6 +265,7 @@ class LoginViewController: BaseViewController {
         setupUI()
         setupActions()
         loadSavedEmail()
+        showWelcomeBackIfKnown()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -497,6 +504,10 @@ class LoginViewController: BaseViewController {
                         // remembered so the password step can offer it again
                         self.passkeyConfirmedEmail = email
                         self.performPasskeySignIn(email: email, preferImmediate: true, fallbackToPassword: true)
+                    } else if check.exists, let social = Self.socialOnlyMethod(check.methods) {
+                        // No password on this account: say how it signs in
+                        // instead of asking for one it never had
+                        self.offerSocialSignIn(social, email: email)
                     } else if check.exists {
                         self.step = .password
                         self.passwordTextField.becomeFirstResponder()
@@ -524,6 +535,90 @@ class LoginViewController: BaseViewController {
         })
         alert.addAction(UIAlertAction(title: "Try Another Email", style: .cancel))
         present(alert, animated: true)
+    }
+
+    /// "google"/"apple" when the account has no password (and no passkey,
+    /// which is checked first); nil when a password works or the server
+    /// didn't say (older backend)
+    private static func socialOnlyMethod(_ methods: [String]?) -> String? {
+        guard let methods, !methods.isEmpty, !methods.contains("password") else { return nil }
+        if methods.contains("google") { return "google" }
+        if methods.contains("apple") { return "apple" }
+        return nil
+    }
+
+    private func offerSocialSignIn(_ method: String, email: String) {
+        let name = method == "google" ? "Google" : "Apple"
+        AlertPresenter.showConfirmation(
+            title: "This account uses \(name)",
+            message: "\(email) signs in with \(name), so there's no password to type. After you're in, you can turn on Face ID for next time.",
+            confirmTitle: "Continue with \(name)",
+            cancelTitle: "Cancel",
+            from: self
+        ) { [weak self] in
+            guard let self else { return }
+            if method == "google" {
+                self.startGoogleSignIn(hint: email)
+            } else {
+                self.proceedWithAppleSignIn()
+            }
+        }
+    }
+
+    // MARK: - Welcome back
+
+    private func showWelcomeBackIfKnown() {
+        guard let hint = AuthService.shared.lastSignIn else { return }
+        lastSignIn = hint
+        let card = WelcomeBackCardView(hint: hint)
+        card.onContinue = { [weak self] in self?.continueAsLastSignIn() }
+        card.onNotYou = { [weak self] in self?.forgetLastSignIn() }
+        buttonsStackView.insertArrangedSubview(card, at: 0)
+        buttonsStackView.setCustomSpacing(20, after: card)
+        welcomeBackCard = card
+        // A returning person doesn't need the new-account pitch first
+        createAccountButton.isHidden = true
+        createAccountCaptionLabel.isHidden = true
+        alreadyHaveAccountLabel.text = "— or sign in another way —"
+        if let email = hint.email, !hint.isHiddenEmail {
+            emailTextField.text = email
+        }
+    }
+
+    private func continueAsLastSignIn() {
+        guard let hint = lastSignIn else { return }
+        switch hint.method {
+        case .google:
+            startGoogleSignIn(hint: hint.email)
+        case .apple:
+            proceedWithAppleSignIn()
+        case .passkey:
+            dismissKeyboard()
+            passkeyConfirmedEmail = hint.email
+            performPasskeySignIn(email: hint.email, preferImmediate: true, fallbackToPassword: hint.email != nil)
+        case .password, .other:
+            // Same as typing the email and tapping Continue: Face ID when the
+            // account has it, the password (AutoFill offers the saved one) when not
+            if let email = hint.email, !hint.isHiddenEmail { emailTextField.text = email }
+            continueTapped()
+        }
+    }
+
+    private func forgetLastSignIn() {
+        AuthService.shared.forgetLastSignIn()
+        lastSignIn = nil
+        UIView.animate(withDuration: 0.25) {
+            self.welcomeBackCard?.isHidden = true
+            self.createAccountButton.isHidden = false
+            self.createAccountCaptionLabel.isHidden = false
+        } completion: { _ in
+            self.welcomeBackCard?.removeFromSuperview()
+            self.welcomeBackCard = nil
+        }
+        alreadyHaveAccountLabel.text = Self.alreadyHaveAccountText
+        emailTextField.text = nil
+        passwordTextField.text = nil
+        step = .email
     }
 
     private static func isValidEmail(_ email: String) -> Bool {
@@ -682,11 +777,14 @@ class LoginViewController: BaseViewController {
     }
 
     @objc private func googleSignInButtonTapped() {
-        isLoggingIn = true
-
         Logger.debug("🔍 Google Sign-In button tapped in LoginViewController")
+        // Preselect last time's Google account when it was a Google sign-in
+        startGoogleSignIn(hint: lastSignIn?.method == .google ? lastSignIn?.email : nil)
+    }
 
-        SocialAuthService.shared.signInWithGoogle(from: self) { [weak self] result in
+    private func startGoogleSignIn(hint: String?) {
+        isLoggingIn = true
+        SocialAuthService.shared.signInWithGoogle(from: self, loginHint: hint) { [weak self] result in
             DispatchQueue.main.async {
                 self?.isLoggingIn = false
 

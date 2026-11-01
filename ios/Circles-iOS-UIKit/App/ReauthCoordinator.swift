@@ -39,20 +39,31 @@ final class ReauthCoordinator: SceneCoordinator {
         // Consume the pending flag regardless of outcome
         UserDefaults.standard.removeObject(forKey: "pendingPasskeyOfferEmail")
 
-        // Only nudge once per account
-        var offered = UserDefaults.standard.stringArray(forKey: "passkeyOfferedEmails") ?? []
-        guard !offered.contains(email) else { return }
-        offered.append(email)
-        UserDefaults.standard.set(offered, forKey: "passkeyOfferedEmails")
+        // At most once a month per account (it used to be once ever, so a
+        // "Not Now" on a busy day meant passwords forever)
+        var offeredAt = UserDefaults.standard.dictionary(forKey: "passkeyOfferedAt") as? [String: Double] ?? [:]
+        if let last = offeredAt[email], Date().timeIntervalSince1970 - last < 30 * 24 * 3600 { return }
 
-        // Let the home screen settle before presenting
+        // Only when the account has no passkey yet
+        AuthService.shared.checkEmail(email) { [weak self] result in
+            if case .success(let check) = result, check.hasPasskey { return }
+            offeredAt[email] = Date().timeIntervalSince1970
+            UserDefaults.standard.set(offeredAt, forKey: "passkeyOfferedAt")
+            self?.presentPasskeyOffer(email: email)
+        }
+    }
+
+    private func presentPasskeyOffer(email: String, attempt: Int = 0) {
+        // Let the home screen and any first-run sheets settle before presenting
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            guard let self = self,
-                  let top = self.topViewController(),
-                  top.presentedViewController == nil else { return }
+            guard let self = self, let top = self.topViewController() else { return }
+            guard top.presentedViewController == nil, !(top is UIAlertController) else {
+                if attempt < 40 { self.presentPasskeyOffer(email: email, attempt: attempt + 1) }
+                return
+            }
             AlertPresenter.showConfirmation(
-                title: "Set up Face ID sign-in?",
-                message: "Skip the password next time — sign in with Face ID or your passcode.",
+                title: "Sign in with Face ID next time?",
+                message: "No password or Google screen: just a glance. You can turn it off in Settings.",
                 confirmTitle: "Set Up",
                 cancelTitle: "Not Now",
                 from: top

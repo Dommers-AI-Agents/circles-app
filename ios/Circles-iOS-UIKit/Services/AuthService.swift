@@ -89,8 +89,22 @@ class AuthService {
             "id": user.id,
             "email": user.email ?? "",
             "displayName": user.displayName,
+            // For the login screen's "Welcome back" after a logout (2026-11-01)
+            "photo": user.profilePicture ?? "",
+            "method": getAuthProvider() ?? "",
             "at": Date().timeIntervalSince1970
         ], forKey: Self.lastAccountKey)
+    }
+
+    /// The account last signed in on this phone (kept through logout), for
+    /// the login screen's "Welcome back"
+    var lastSignIn: LastSignInHint? {
+        LastSignInHint(stored: UserDefaults.standard.dictionary(forKey: Self.lastAccountKey))
+    }
+
+    /// "Not you?" on the login screen, and account deletion
+    func forgetLastSignIn() {
+        UserDefaults.standard.removeObject(forKey: Self.lastAccountKey)
     }
 
     /// A brand-new account, on a phone that authenticated as a DIFFERENT
@@ -403,6 +417,9 @@ class AuthService {
         let success: Bool
         let exists: Bool
         let hasPasskey: Bool
+        /// How the account signs in: "password", "google", "apple", "passkey"
+        /// (nil from a backend older than 2026-11-01)
+        let methods: [String]?
     }
 
     /// Pre-signup routing: does this email already have an account?
@@ -736,6 +753,15 @@ class AuthService {
                 pendingDuplicateSuggestion = local
             }
             rememberAccountOnDevice(response.user)
+            // Any sign-in that wasn't Face ID: offer to set it up once Home has
+            // settled (ReauthCoordinator.offerPasskeySetupIfPending), so next
+            // time is one glance (Wes, 2026-11-01; it used to follow only a
+            // password sign-in, so Google and Apple users never saw it)
+            let brandNew = response.isNewUser == true
+                || (response.user.createdAt.map { Date().timeIntervalSince($0) < 600 } ?? false)
+            if !brandNew, getAuthProvider() != "passkey", let email = response.user.email, !email.isEmpty {
+                UserDefaults.standard.set(email, forKey: "pendingPasskeyOfferEmail")
+            }
 
             // Check if this is a different user than the last one
             let previousUserId = getUserId()

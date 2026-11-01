@@ -67,7 +67,9 @@ class SocialAuthService: NSObject {
     
     // MARK: - Google Sign-In
     
-    func signInWithGoogle(from viewController: UIViewController, completion: @escaping (Result<User, Error>) -> Void) {
+    /// `loginHint`: the email they used last time, so Google preselects that
+    /// account (login screen's "Welcome back", 2026-11-01)
+    func signInWithGoogle(from viewController: UIViewController, loginHint: String? = nil, completion: @escaping (Result<User, Error>) -> Void) {
         self.completionHandler = completion
         
         // CRITICAL: Store a strong reference to the view controller to prevent deallocation
@@ -140,7 +142,8 @@ class SocialAuthService: NSObject {
         Logger.debug("🔍 GIDSignIn configuration: \(String(describing: GIDSignIn.sharedInstance.configuration))")
         
         GIDSignIn.sharedInstance.signIn(
-            withPresenting: viewController
+            withPresenting: viewController,
+            hint: loginHint
         ) { signInResult, error in
             Logger.debug("🔍 ======= GOOGLE SIGN-IN CALLBACK RECEIVED =======")
             Logger.debug("🔍 This message proves the callback was called")

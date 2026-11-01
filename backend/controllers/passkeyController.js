@@ -90,8 +90,14 @@ exports.emailCheck = async (req, res) => {
     const snap = await db.collection(COLLECTIONS.USERS)
       .where('email', '==', email).limit(1).get();
     const exists = !snap.empty;
-    const hasPasskey = exists && !!(snap.docs[0].data().linkedProviders || {}).passkey;
-    res.json({ success: true, exists, hasPasskey });
+    const linked = exists ? (snap.docs[0].data().linkedProviders || {}) : {};
+    const hasPasskey = !!linked.passkey;
+    // How this account signs in, so the app can say "This account signs in
+    // with Google" instead of asking for a password it never had (Wes,
+    // 2026-11-01). Only the method names, nothing else about the account.
+    const METHOD = { manual: 'password', google: 'google', apple: 'apple', passkey: 'passkey', facebook: 'facebook' };
+    const methods = [...new Set(Object.keys(linked).map((k) => METHOD[k]).filter(Boolean))];
+    res.json({ success: true, exists, hasPasskey, methods });
   } catch (error) {
     sendServiceError(res, error, { log: 'email-check failed', fallbackMessage: 'Something went wrong. Please try again.' });
   }
