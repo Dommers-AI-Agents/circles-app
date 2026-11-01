@@ -19,7 +19,9 @@ final class RewardCodeHandler: SceneCoordinator {
     /// (see ClipKeychain.swift in the Circles-Clip target and
     /// KeychainService.adoptClipCredentialsIfPresent).
     func adoptAppClipSessionIfPresent() {
-        guard let result = KeychainService.shared.adoptClipCredentialsIfPresent() else { return }
+        let adoption = KeychainService.shared.adoptClipCredentialsIfPresent()
+        KeychainService.shared.markInstallLaunched()
+        guard let result = adoption else { return }
 
         // Clip users never saw the Safari landing page, so the one-shot
         // pasteboard check would just be a pointless paste-permission prompt

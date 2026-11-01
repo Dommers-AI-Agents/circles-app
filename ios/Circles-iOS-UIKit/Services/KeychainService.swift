@@ -170,6 +170,14 @@ class KeychainService {
         var unconfirmedEmail: String? = nil  // signed up in the clip with just this email
     }
 
+    /// Set once this install has launched (UserDefaults is wiped with the app)
+    static let ranThisInstallKey = "keychain.ranThisInstall"
+
+    /// Marks this install as having launched; call after the clip check
+    func markInstallLaunched() {
+        UserDefaults.standard.set(true, forKey: Self.ranThisInstallKey)
+    }
+
     /// Call once early in launch, before auth state is read.
     func adoptClipCredentialsIfPresent() -> ClipAdoptionResult? {
         guard let url = FileManager.default
@@ -182,8 +190,13 @@ class KeychainService {
 
         defer { try? FileManager.default.removeItem(at: url) }
 
-        // Never clobber an existing session — the mailbox only serves fresh installs
-        if getAuthToken() != nil {
+        // Never clobber a session this install made. But the keychain outlives
+        // a deleted app while UserDefaults doesn't: on the first launch of a
+        // fresh install, a session already in the keychain is left over from
+        // a deleted install, and the clip's sign-in (newer) wins (Wes,
+        // 2026-11-01: reinstall after the clip landed on the login page).
+        let ranThisInstall = UserDefaults.standard.bool(forKey: Self.ranThisInstallKey)
+        if getAuthToken() != nil, ranThisInstall {
             Logger.debug("🔐 KeychainService: clip mailbox found but a session exists — discarding mailbox")
             return ClipAdoptionResult(adopted: false,
                                       handledStickerCode: nil,
