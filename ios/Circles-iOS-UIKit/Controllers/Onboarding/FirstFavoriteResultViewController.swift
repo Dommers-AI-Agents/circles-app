@@ -57,6 +57,9 @@ final class FirstFavoriteResultViewController: BaseViewController, UIScrollViewD
         return stack
     }()
 
+    /// The place's photo fading into a brand wash, behind everything
+    private let backdrop = FirstRunBackdropView()
+
     private lazy var continueButton: UIButton = {
         let button = UIButton.primaryButton(title: "Keep building my map")
         button.addTarget(self, action: #selector(continueTapped), for: .touchUpInside)
@@ -67,6 +70,11 @@ final class FirstFavoriteResultViewController: BaseViewController, UIScrollViewD
         super.viewDidLoad()
         view.backgroundColor = Constants.Colors.background
         navigationItem.hidesBackButton = true
+        // The bar stays out of the way of the photo
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithTransparentBackground()
+        navigationItem.standardAppearance = appearance
+        navigationItem.scrollEdgeAppearance = appearance
 
         let title = UILabel()
         title.text = FirstFavoriteCopy.savedTitle(placeName: place.name)
@@ -88,16 +96,23 @@ final class FirstFavoriteResultViewController: BaseViewController, UIScrollViewD
         contentStack.setCustomSpacing(22, after: contentStack.arrangedSubviews[2])
 
         scrollView.delegate = self
+        backdrop.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backdrop)
+        backdrop.showPhoto(from: place.photos?.first)
         view.addSubview(scrollView)
         scrollView.addSubview(contentStack)
         view.addSubview(continueButton)
         let guide = scrollView.contentLayoutGuide
         NSLayoutConstraint.activate([
+            backdrop.topAnchor.constraint(equalTo: view.topAnchor),
+            backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: continueButton.topAnchor, constant: -8),
-            contentStack.topAnchor.constraint(equalTo: guide.topAnchor, constant: 20),
+            contentStack.topAnchor.constraint(equalTo: guide.topAnchor, constant: place.photos?.first == nil ? 20 : 190),
             contentStack.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 20),
             contentStack.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -20),
             contentStack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor, constant: -40),
@@ -118,8 +133,21 @@ final class FirstFavoriteResultViewController: BaseViewController, UIScrollViewD
 
     private func placeCard() -> UIView {
         let card = UIView()
-        card.backgroundColor = place.category.color.withAlphaComponent(0.12)
+        card.backgroundColor = Constants.Colors.secondaryBackground
         card.layer.cornerRadius = 16
+        Self.lift(card)
+        // The category's color along the left edge
+        let edge = UIView()
+        edge.backgroundColor = place.category.color
+        edge.layer.cornerRadius = 2
+        edge.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(edge)
+        NSLayoutConstraint.activate([
+            edge.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 6),
+            edge.topAnchor.constraint(equalTo: card.topAnchor, constant: 14),
+            edge.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -14),
+            edge.widthAnchor.constraint(equalToConstant: 4)
+        ])
 
         let icon = UIImageView(image: UIImage(systemName: place.category.systemIconName))
         icon.tintColor = place.category.color
@@ -176,6 +204,14 @@ final class FirstFavoriteResultViewController: BaseViewController, UIScrollViewD
                 UIView.animate(withDuration: 0.25) { self.rewardsLabel?.isHidden = false }
             }
         }
+    }
+
+    /// A soft shadow so cards sit on the wash, not in it
+    private static func lift(_ view: UIView) {
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.08
+        view.layer.shadowRadius = 10
+        view.layer.shadowOffset = CGSize(width: 0, height: 3)
     }
 
     // MARK: - People
@@ -274,6 +310,7 @@ final class FirstFavoriteResultViewController: BaseViewController, UIScrollViewD
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        backdrop.follow(scrollOffset: scrollView.contentOffset.y + scrollView.adjustedContentInset.top)
         let remaining = scrollView.contentSize.height - scrollView.contentOffset.y - scrollView.bounds.height
         if remaining < 600 { loadFallbackPeople() }
     }
@@ -298,8 +335,9 @@ final class FirstFavoriteResultViewController: BaseViewController, UIScrollViewD
 
     private func personRow(user: User?, title: String, detail: String, accessory: UIView) -> UIView {
         let container = UIView()
-        container.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.08)
+        container.backgroundColor = Constants.Colors.secondaryBackground
         container.layer.cornerRadius = 14
+        Self.lift(container)
 
         let avatar = UIImageView(image: UIImage(systemName: "person.crop.circle.fill")?
             .withTintColor(Constants.Colors.primary, renderingMode: .alwaysOriginal))

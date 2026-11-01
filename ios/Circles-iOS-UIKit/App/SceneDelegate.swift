@@ -140,11 +140,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window?.makeKeyAndVisible()
         #if DEBUG
         // Screenshots of one screen without walking the flow:
-        // PREVIEW_SCREEN=notifications | morePlaces
+        // PREVIEW_SCREEN=notifications | morePlaces | storeResult
         if let screen = ProcessInfo.processInfo.environment["PREVIEW_SCREEN"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 let vc: UIViewController? = screen == "notifications" ? NotificationOnboardingViewController()
-                    : screen == "morePlaces" ? MorePlacesLikeViewController(favorite: nil, favoriteName: "Sal\u{2019}s Bakery (Demo)") : nil
+                    : screen == "morePlaces" ? MorePlacesLikeViewController(favorite: nil, favoriteName: "Sal\u{2019}s Bakery (Demo)")
+                    : screen == "storeResult" ? FirstFavoriteResultViewController(place: Place(
+                        id: "preview", name: "Sal\u{2019}s Bakery (Demo)", description: nil, address: "1 Main St, Charlotte, NC",
+                        location: nil, website: nil, phone: nil, googlePlaceId: nil,
+                        photos: ["https://images.unsplash.com/photo-1509440159596-0249088772ff?w=1200"], videos: nil,
+                        category: .restaurant, customCategoryId: nil, subcategory: nil, rating: nil, userRatingsTotal: nil,
+                        notes: nil, privateNotes: nil, publicNotes: nil, tags: nil, reviews: nil, openingHours: nil,
+                        priceLevel: nil, likes: nil, likesCount: nil, commentsCount: nil, circleId: nil, addedBy: "preview",
+                        addedByUser: nil, privacy: .public, createdAt: Date(), updatedAt: Date()))
+                    : nil
                 guard let vc, let root = self?.window?.rootViewController else { return }
                 let nav = UINavigationController(rootViewController: vc)
                 nav.modalPresentationStyle = .fullScreen
