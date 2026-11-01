@@ -46,7 +46,7 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
         view.backgroundColor = ClipTheme.ink
         navigationController?.setNavigationBarHidden(true, animated: false)
         setupUI()
-        backdrop.loadPhoto(from: preview.coverUrl.flatMap(URL.init(string:)))
+        Task { await backdrop.loadPhoto(from: preview.coverUrl.flatMap(URL.init(string:))) }
 
         // Hand the session to the full app FIRST — even if the scan call fails,
         // the install lands logged in.

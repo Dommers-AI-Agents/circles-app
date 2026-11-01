@@ -103,6 +103,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		AC10C11B00000000000000E1 /* Exceptions for "Circles-Clip" folder in "Circles-Clip" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AC10C11B0000000000000003 /* Circles-Clip */;
+		};
 		6F9360BF2DD9725C0065A440 /* Exceptions for "Circles-iOS-UIKit" folder in "Circles-iOS" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -168,6 +175,9 @@
 		};
 		AC10C11B0000000000000001 /* Circles-Clip */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AC10C11B00000000000000E1 /* Exceptions for "Circles-Clip" folder in "Circles-Clip" target */,
+			);
 			path = "Circles-Clip";
 			sourceTree = "<group>";
 		};
@@ -975,11 +985,9 @@
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
-				INFOPLIST_KEY_NSAppClipRequestEphemeralUserNotification = YES;
-				INFOPLIST_KEY_NSAppClipRequestLocationConfirmation = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_FILE = "Circles-Clip/Info.plist";
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1006,11 +1014,9 @@
 				DEVELOPMENT_TEAM = 67E8B4E8HV;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = FavCircles;
-				INFOPLIST_KEY_NSAppClipRequestEphemeralUserNotification = YES;
-				INFOPLIST_KEY_NSAppClipRequestLocationConfirmation = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_FILE = "Circles-Clip/Info.plist";
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;

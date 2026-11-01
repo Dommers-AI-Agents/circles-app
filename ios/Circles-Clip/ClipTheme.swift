@@ -252,14 +252,16 @@ final class ClipBackdropView: UIView {
         shade.opacity = showing ? 1 : 0
     }
 
-    /// Loads a photo URL in the background; failures leave the map showing
-    func loadPhoto(from url: URL?) {
-        guard let url else { return }
-        Task { [weak self] in
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
-                  let image = UIImage(data: data) else { return }
-            await MainActor.run { self?.setPhoto(image) }
-        }
+    /// Downloads and shows the store's photo; returns once it's on screen
+    /// (or failed), so the offer can wait for it instead of flashing its
+    /// words over a blank backdrop first (Wes, 2026-11-01)
+    @discardableResult
+    func loadPhoto(from url: URL?) async -> Bool {
+        guard let url,
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let image = UIImage(data: data) else { return false }
+        await MainActor.run { self.setPhoto(image) }
+        return true
     }
 
     override func layoutSubviews() {

@@ -115,7 +115,15 @@ final class ClipOfferViewController: UIViewController {
             do {
                 let preview = try await ClipAPIClient.shared.venuePreview(code: code)
                 self.preview = preview
-                self.backdrop.loadPhoto(from: preview.coverUrl.flatMap(URL.init(string:)))
+                // Photo and words arrive together: wait for the photo, but
+                // never more than 2.5 s (a slow photo fades in afterwards)
+                let photo = Task { await self.backdrop.loadPhoto(from: preview.coverUrl.flatMap(URL.init(string:))) }
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask { _ = await photo.value }
+                    group.addTask { try? await Task.sleep(nanoseconds: 2_500_000_000) }
+                    await group.next()
+                    group.cancelAll()
+                }
                 // Someone the clip already knows: straight to their points
                 #if DEBUG
                 // Screenshots without tapping: CLIP_PREVIEW=signup opens the email step

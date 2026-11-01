@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Merged with the generated Info.plist: only what the build settings
+	     can't say. The launch screen is the clip's dark ink, not white, so
+	     opening the clip doesn't flash (Wes, 2026-11-01). -->
+	<!-- App Clip permissions: Apple only reads these from the NSAppClip
+	     dictionary; the INFOPLIST_KEY_NSAppClipRequest… build settings never
+	     reached the built clip. Ephemeral notifications = the 8-hour push
+	     without asking; location confirmation = "is this phone at the
+	     store" for register points (2026-11-01). -->
+	<key>NSAppClip</key>
+	<dict>
+		<key>NSAppClipRequestEphemeralUserNotification</key>
+		<true/>
+		<key>NSAppClipRequestLocationConfirmation</key>
+		<true/>
+	</dict>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchInk</string>
+	</dict>
+</dict>
+</plist>
