@@ -40,6 +40,9 @@ enum ClipHandoff {
         let offers: [ClipOffer]
         let nextRewardLine: String?
         let alreadySaved: Bool?
+        /// The clip saved the store (2026-11-01): the app opens on it, saved
+        var saved: Bool? = nil
+        var savedCircleId: String? = nil
     }
 
     static var fileURL: URL? {

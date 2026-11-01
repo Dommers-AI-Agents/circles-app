@@ -89,6 +89,66 @@ final class FirstSessionCoordinator: SceneCoordinator {
     /// The place they saved as their first favorite, for the steps after it
     private var firstFavoriteName: String?
 
+    /// Joined in the App Clip, which already saved the store (Wes,
+    /// 2026-11-01: they said yes on "Love it here? Save us." — never ask
+    /// again). The store is their first favorite: name when missing → keep
+    /// the account safe (Face ID) when they joined with just an email →
+    /// "Your place, your people" for that store → location → photos →
+    /// notifications → tour.
+    func startClipFirstSession(store place: Place) {
+        guard !OnboardingManager.shared.isFirstSessionFlowActive,
+              let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
+        armFirstSessionChain()
+        firstFavoriteName = place.name
+        FirstFavoriteViewController.recordFirstFavorite(named: place.name)
+        let afterName = { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                self?.offerAccountSafety(over: tabBarController) { self?.presentStoreResult(place, over: tabBarController) }
+            }
+        }
+        if NameOnboardingViewController.isNeeded {
+            let nameVC = NameOnboardingViewController()
+            nameVC.onCompletion = { afterName() }
+            nameVC.modalPresentationStyle = .fullScreen
+            topPresenter(over: tabBarController).present(nameVC, animated: true)
+        } else {
+            afterName()
+        }
+    }
+
+    /// "Keep your points safe": Face ID or confirm the email, for an account
+    /// made with just an email in the clip; straight on otherwise
+    private func offerAccountSafety(over tabBarController: CirclesTabBarController, then: @escaping () -> Void) {
+        guard let email = AccountSafetyPrompt.stashedEmail else { return then() }
+        AccountSafetyPrompt.present(email: email, from: topPresenter(over: tabBarController)) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { then() }
+        }
+    }
+
+    /// The people who also love the store and its rewards, as if they'd
+    /// picked it on the favorite step
+    private func presentStoreResult(_ place: Place, over tabBarController: CirclesTabBarController) {
+        ensurePendingConnectionsLoaded { [weak self] in
+            guard let self else { return }
+            let result = FirstFavoriteResultViewController(place: place)
+            let nav = UINavigationController(rootViewController: result)
+            nav.modalPresentationStyle = .fullScreen
+            result.onContinue = { [weak self, weak nav] in
+                if let me = AuthService.shared.currentUser {
+                    WelcomeConnectionsViewController.markShown(for: me.id)
+                }
+                nav?.dismiss(animated: true) { self?.continueOnboardingAfterContacts() }
+            }
+            self.topPresenter(over: tabBarController).present(nav, animated: true)
+        }
+    }
+
+    private func topPresenter(over tabBarController: CirclesTabBarController) -> UIViewController {
+        var presenter: UIViewController = tabBarController
+        while let presented = presenter.presentedViewController { presenter = presented }
+        return presenter
+    }
+
     /// Step 2 (Wes, 2026-10-31): "What's the one place near you that you
     /// love most?" Saved → "Your place, your people" already showed the
     /// people, so location follows; skipped → today's people sheet.

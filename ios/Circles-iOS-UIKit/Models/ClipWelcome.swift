@@ -18,6 +18,12 @@ struct ClipWelcome: Codable {
     let offers: [Offer]
     let nextRewardLine: String?
     let alreadySaved: Bool?
+    /// The clip saved the store as it signed them in (2026-11-01): the app
+    /// opens on it already saved and starts the first run from there
+    let saved: Bool?
+    let savedCircleId: String?
+
+    var isOnTheirMap: Bool { saved == true || alreadySaved == true }
 
     private static let stashKey = "clipWelcome"
 

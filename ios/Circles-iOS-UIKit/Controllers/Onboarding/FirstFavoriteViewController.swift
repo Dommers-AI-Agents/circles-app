@@ -21,6 +21,14 @@ final class FirstFavoriteViewController: BaseViewController {
     private static func shownKey(_ userId: String) -> String { "firstFavoriteShown_\(userId)" }
     static func savedNameKey(_ userId: String) -> String { "firstFavoriteName_\(userId)" }
 
+    /// Their first favorite came from somewhere else (the store the App Clip
+    /// saved, 2026-11-01): never ask, and Home's card names that place
+    static func recordFirstFavorite(named placeName: String) {
+        guard let me = AuthService.shared.currentUser else { return }
+        UserDefaults.standard.set(true, forKey: shownKey(me.id))
+        UserDefaults.standard.set(placeName, forKey: savedNameKey(me.id))
+    }
+
     /// A fresh signup on this install that hasn't seen it, unless the server
     /// switched the step off.
     static var isNeeded: Bool {

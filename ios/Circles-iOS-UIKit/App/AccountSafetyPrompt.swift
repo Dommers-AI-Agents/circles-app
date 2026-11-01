@@ -32,55 +32,57 @@ enum AccountSafetyPrompt {
     }
 
     /// The stand-alone ask (no store welcome sheet to put it in)
-    static func present(email: String, from presenter: UIViewController) {
+    /// `then` runs once they're finished with it, whichever way they went
+    /// (the first run continues from there)
+    static func present(email: String, from presenter: UIViewController, then: (() -> Void)? = nil) {
         markAsked()
         AlertPresenter.showAlert(
             title: "Keep your points safe",
             message: "You joined with \(email). Set up Face ID so you can always sign back in, or confirm your email.",
             actions: [
-                (title: "Set Up Face ID", style: .default, handler: { setUpFaceID(email: email, from: presenter) }),
-                (title: "Confirm Email", style: .default, handler: { confirmEmail(email, from: presenter) }),
-                (title: "Not Now", style: .cancel, handler: {})
+                (title: "Set Up Face ID", style: .default, handler: { setUpFaceID(email: email, from: presenter, then: then) }),
+                (title: "Confirm Email", style: .default, handler: { confirmEmail(email, from: presenter, then: then) }),
+                (title: "Not Now", style: .cancel, handler: { then?() })
             ],
             from: presenter
         )
     }
 
     /// A passkey for this account: Face ID signs them in from now on
-    static func setUpFaceID(email: String, from presenter: UIViewController) {
+    static func setUpFaceID(email: String, from presenter: UIViewController, then: (() -> Void)? = nil) {
         PasskeyAuthService.shared.addPasskeyForCurrentUser(accountName: email, presentationAnchor: presenter.view.window) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success:
                     done()
-                    AlertPresenter.showSuccess(title: "You're all set", message: "Sign in with Face ID from now on.", from: presenter)
+                    AlertPresenter.showSuccess(title: "You're all set", message: "Sign in with Face ID from now on.", from: presenter) { then?() }
                 case .failure(let error):
                     // Closing Face ID's sheet isn't worth an alert
-                    if (error as NSError).code == 1001 { return }
-                    AlertPresenter.showError(error, from: presenter)
+                    if (error as NSError).code == 1001 { then?(); return }
+                    AlertPresenter.showError(message: FriendlyError.message(for: error), from: presenter) { then?() }
                 }
             }
         }
     }
 
     /// Emails a code to their own address, then asks for it
-    static func confirmEmail(_ email: String, from presenter: UIViewController) {
+    static func confirmEmail(_ email: String, from presenter: UIViewController, then: (() -> Void)? = nil) {
         let loading = AlertPresenter.showLoading(message: "Sending a code\u{2026}", from: presenter)
         APIService.shared.request(endpoint: "auth/email-code/start", method: .post, body: ["email": email], requiresAuth: false) { (result: Result<SimpleResponse, APIError>) in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) {
                     switch result {
                     case .success:
-                        askForCode(email: email, from: presenter)
+                        askForCode(email: email, from: presenter, then: then)
                     case .failure(let error):
-                        AlertPresenter.showError(error, from: presenter)
+                        AlertPresenter.showError(message: FriendlyError.message(for: error), from: presenter) { then?() }
                     }
                 }
             }
         }
     }
 
-    private static func askForCode(email: String, from presenter: UIViewController) {
+    private static func askForCode(email: String, from presenter: UIViewController, then: (() -> Void)?) {
         AlertPresenter.showTextInput(
             title: "Check your email",
             message: "Enter the 6-digit code we sent to \(email).",
@@ -88,18 +90,19 @@ enum AccountSafetyPrompt {
             keyboardType: .numberPad,
             autocapitalization: .none,
             confirmTitle: "Confirm",
-            from: presenter
+            from: presenter,
+            onCancel: { then?() }
         ) { text in
             let code = (text ?? "").filter(\.isNumber)
-            guard code.count == 6 else { return }
+            guard code.count == 6 else { then?(); return }
             APIService.shared.request(endpoint: "auth/email-code/confirm", method: .post, body: ["code": code], requiresAuth: true) { (result: Result<SimpleResponse, APIError>) in
                 DispatchQueue.main.async {
                     switch result {
                     case .success:
                         done()
-                        AlertPresenter.showSuccess(title: "Email confirmed", message: "Your account and points are safe.", from: presenter)
+                        AlertPresenter.showSuccess(title: "Email confirmed", message: "Your account and points are safe.", from: presenter) { then?() }
                     case .failure(let error):
-                        AlertPresenter.showError(error, from: presenter)
+                        AlertPresenter.showError(message: FriendlyError.message(for: error), from: presenter) { then?() }
                     }
                 }
             }

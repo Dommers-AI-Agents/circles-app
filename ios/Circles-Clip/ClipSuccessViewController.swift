@@ -142,17 +142,25 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
                                                           longitude: preview.location?.longitude)
             }
             do {
-                let result = try await ClipAPIClient.shared.redeemSticker(code: code, token: session.token, atStore: atStore)
+                // A store's window code saves the store as it signs them in
+                let result = try await ClipAPIClient.shared.redeemSticker(code: code, token: session.token, atStore: atStore,
+                                                                          save: preview.isStoreWindow)
                 // Scan handled in-clip — tell the full app not to redeem it again
                 ClipHandoff.markStickerHandled(code, welcome: result.venue.map { venue in
                     ClipHandoff.Welcome(code: code, kind: result.kind, venue: venue,
                                         awardedPoints: result.awarded?.points,
                                         venueBalance: result.venueBalance,
                                         earnRate: result.earnRate ?? preview.earnRate,
-                                        offers: preview.offers ?? [],
+                                        offers: result.offers ?? preview.offers ?? [],
                                         nextRewardLine: result.nextRewardLine,
-                                        alreadySaved: result.alreadySaved)
+                                        alreadySaved: result.alreadySaved,
+                                        saved: result.saved,
+                                        savedCircleId: result.savedPlace?.circleId)
                 })
+                if result.savePending == true {
+                    // Couldn't save it just now: the app's own flow finishes it
+                    ClipHandoff.markStickerPending(code)
+                }
                 show(result)
             } catch ClipAPIError.unauthorized {
                 // The remembered session ran out: sign in again
@@ -175,6 +183,10 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
         let hello = isNewSignIn ? "You're in." : "Welcome back."
         nameLabel.text = name
 
+        if preview.isStoreWindow {
+            showWindowResult(result, balance: balance)
+            return
+        }
         if let award = result.awarded {
             hookLabel.attributedText = ClipTheme.hookText(hello, "+\(award.points) points.", size: 46)
             detailLabel.text = "You have \(balance) points at \(name)."
@@ -194,6 +206,32 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
             fillRewardsPanel(balance: balance, earnRate: result.earnRate ?? preview.earnRate, nextLine: result.nextRewardLine)
         }
         reveal(celebrate: result.awarded != nil)
+    }
+
+    /// A store's window code (Wes, 2026-11-01): the store is saved, said once,
+    /// with its points and confetti; the app opens right on it
+    private func showWindowResult(_ result: ScanResult, balance: Int) {
+        let name = preview.venueName
+        if let award = result.awarded {
+            hookLabel.attributedText = ClipTheme.hookText("Saved.", "+\(award.points) points.", size: 46)
+            detailLabel.text = "\(name) is on your map. Get the app to see it and earn more on every visit."
+        } else if result.saved == true {
+            hookLabel.attributedText = ClipTheme.hookText("Saved.", "It's on your map.", size: 46)
+            detailLabel.text = "Get the app to see \(name) on your map and find more places like it."
+        } else if result.alreadySaved == true {
+            hookLabel.attributedText = ClipTheme.hookText("Welcome back.", "Already on your map.", size: 46)
+            detailLabel.text = "\(name) is saved in your FavCircles. Open the app to see it."
+        } else {
+            // The save waits for the app (savePending)
+            hookLabel.attributedText = ClipTheme.hookText("You're in.", "Almost saved.", size: 46)
+            detailLabel.text = "Open the FavCircles app and \(name) goes on your map."
+        }
+        nameLabel.text = name
+        if result.loyaltyLive == true, result.isOnTheirMap {
+            fillRewardsPanel(balance: balance, earnRate: result.earnRate ?? preview.earnRate, nextLine: result.nextRewardLine)
+        }
+        // Confetti for the save itself, not for a repeat scan
+        reveal(celebrate: result.awarded != nil || result.saved == true)
     }
 
     /// How to keep earning, and what the points buy here

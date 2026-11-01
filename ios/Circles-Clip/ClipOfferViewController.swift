@@ -1,11 +1,13 @@
 import UIKit
 import AuthenticationServices
 
-// The first screen: the store's photo full screen with the card's hook
-// ("Love it here? / Save us." or "Earn 25 points / every visit."), the
-// store's name, and Continue with Apple or email. A customer the clip
-// already knows skips straight to their points (ClipSuccessViewController).
-final class ClipOfferViewController: UIViewController {
+// The first screen: the store's photo full screen and one way in. A store's
+// window code doesn't ask again (Wes, 2026-11-01): they said yes on the
+// card's "Love it here? Save us.", so this screen only signs them in and the
+// store is saved as it does. Apple, or their email right here (a known email
+// goes on to its code). A customer the clip already knows skips straight to
+// the result (ClipSuccessViewController).
+final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
 
     private let invocation: ClipInvocation
     private var code: String? { invocation.code }
@@ -22,7 +24,10 @@ final class ClipOfferViewController: UIViewController {
     private let subtitleLabel = ClipTheme.label(.systemFont(ofSize: 17), color: UIColor.white.withAlphaComponent(0.88))
     private let rewardLabel = ClipTheme.label(.systemFont(ofSize: 15, weight: .semibold), color: ClipTheme.gold)
     private let appleButton = ASAuthorizationAppleIDButton(type: .continue, style: .white)
-    private let emailButton = ClipTheme.glassButton("Continue with email")
+    private let emailButton = ClipTheme.glassButton("Continue with email")  // under the field
+    private let emailField = ClipTheme.field(placeholder: "Your email", contentType: .emailAddress)
+    private let errorLabel = ClipTheme.label(.systemFont(ofSize: 15, weight: .medium), color: UIColor(red: 1, green: 0.62, blue: 0.58, alpha: 1))
+    private var contentBottom: NSLayoutConstraint?
     private let statusLabel = ClipTheme.label(.systemFont(ofSize: 14), color: UIColor.white.withAlphaComponent(0.7))
 
     init(invocation: ClipInvocation) {
@@ -39,6 +44,8 @@ final class ClipOfferViewController: UIViewController {
         view.backgroundColor = ClipTheme.ink
         navigationController?.setNavigationBarHidden(true, animated: false)
         setupUI()
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)),
+                                               name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
 
         if let code = code {
             loadPreview(code: code)
@@ -73,15 +80,23 @@ final class ClipOfferViewController: UIViewController {
         appleButton.heightAnchor.constraint(equalToConstant: 54).isActive = true
         appleButton.cornerRadius = 14
         emailButton.addTarget(self, action: #selector(emailTapped), for: .touchUpInside)
+        emailField.keyboardType = .emailAddress
+        emailField.autocapitalizationType = .none
+        emailField.autocorrectionType = .no
+        emailField.returnKeyType = .go
+        emailField.delegate = self
+        emailField.accessibilityIdentifier = "clipEmail"
+        errorLabel.isHidden = true
 
-        [hookLabel, nameLabel, subtitleLabel, rewardLabel, appleButton, emailButton, statusLabel].forEach {
+        [hookLabel, nameLabel, subtitleLabel, rewardLabel, appleButton, emailField, emailButton, errorLabel, statusLabel].forEach {
             contentStack.addArrangedSubview($0)
         }
         contentStack.setCustomSpacing(14, after: hookLabel)
         contentStack.setCustomSpacing(6, after: nameLabel)
         contentStack.setCustomSpacing(12, after: subtitleLabel)
         contentStack.setCustomSpacing(26, after: rewardLabel)
-        contentStack.setCustomSpacing(12, after: appleButton)
+        contentStack.setCustomSpacing(16, after: appleButton)
+        contentStack.setCustomSpacing(8, after: emailField)
         contentStack.setCustomSpacing(14, after: emailButton)
         contentStack.isHidden = true
         brandHeader.isHidden = true
@@ -91,6 +106,9 @@ final class ClipOfferViewController: UIViewController {
         spinner.startAnimating()
         view.addSubview(spinner)
 
+        let bottom = contentStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18)
+        contentBottom = bottom
+        bottom.isActive = true
         NSLayoutConstraint.activate([
             backdrop.topAnchor.constraint(equalTo: view.topAnchor),
             backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -99,7 +117,7 @@ final class ClipOfferViewController: UIViewController {
             brandHeader.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
             brandHeader.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
             brandHeader.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
-            contentStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18),
+
             contentStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 26),
             contentStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -26),
             contentStack.topAnchor.constraint(greaterThanOrEqualTo: brandHeader.bottomAnchor, constant: 16),
@@ -152,6 +170,9 @@ final class ClipOfferViewController: UIViewController {
         let earnsHere = preview.kind == "register" && preview.loyaltyLive == true
         if earnsHere, let rate = preview.earnRate {
             hookLabel.attributedText = ClipTheme.hookText("Earn \(rate) points", "every visit.", size: 46)
+        } else if preview.isStoreWindow {
+            // They already said yes on the card: sign in and it's saved
+            hookLabel.attributedText = ClipTheme.hookText("Almost saved.", "Just sign in.", size: 46)
         } else {
             hookLabel.attributedText = ClipTheme.hookText("Love it here?", preview.isGeneric ? "Save it." : "Save us.", size: 46)
         }
@@ -162,6 +183,12 @@ final class ClipOfferViewController: UIViewController {
             subtitleLabel.text = "Keep your favorite places on your map and earn rewards wherever you go."
             rewardLabel.text = "\(preview.favCoinBonus) FavCoins to get you started"
             statusLabel.text = "Free to join"
+        } else if preview.isStoreWindow {
+            nameLabel.text = preview.venueName
+            subtitleLabel.isHidden = true
+            rewardLabel.text = preview.pointsHere > 0 ? "+\(preview.pointsHere) points when it's saved" : nil
+            rewardLabel.isHidden = preview.pointsHere == 0
+            statusLabel.text = "Free · no password"
         } else {
             nameLabel.text = preview.venueName
             if earnsHere {
@@ -174,7 +201,7 @@ final class ClipOfferViewController: UIViewController {
             }
             statusLabel.text = "Free to join"
         }
-        ClipTheme.animateIn([brandHeader, hookLabel, nameLabel, subtitleLabel, rewardLabel, appleButton, emailButton, statusLabel])
+        ClipTheme.animateIn([brandHeader, hookLabel, nameLabel, subtitleLabel, rewardLabel, appleButton, emailField, emailButton, statusLabel])
     }
 
     private func showNoCodeState() {
@@ -186,6 +213,7 @@ final class ClipOfferViewController: UIViewController {
         rewardLabel.isHidden = true
         subtitleLabel.text = "Scan a FavCircles code at a participating store to join and earn rewards."
         appleButton.isHidden = true
+        emailField.isHidden = true
         emailButton.configuration?.attributedTitle = AttributedString("Get the full app", attributes: AttributeContainer([.font: UIFont.systemFont(ofSize: 18, weight: .semibold)]))
         emailButton.removeTarget(self, action: #selector(emailTapped), for: .touchUpInside)
         emailButton.addTarget(self, action: #selector(appStoreTapped), for: .touchUpInside)
@@ -226,12 +254,58 @@ final class ClipOfferViewController: UIViewController {
         }
     }
 
+    /// The email typed right here: a new email is in at once; one that
+    /// already has an account goes on to the code we email it
     @objc private func emailTapped() {
         guard let preview = preview else { return }
-        let signupVC = ClipSignupViewController(code: code, preview: preview) { [weak self] response in
-            self?.signedIn(response, provider: "email")
+        let typed = (emailField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard typed.range(of: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", options: .regularExpression) != nil else {
+            showInlineError(typed.isEmpty ? "Type your email to continue." : "Please enter a valid email address.")
+            emailField.becomeFirstResponder()
+            return
         }
-        navigationController?.pushViewController(signupVC, animated: true)
+        errorLabel.isHidden = true
+        setButtons(enabled: false)
+        emailButton.configuration?.showsActivityIndicator = true
+        Task { @MainActor in
+            defer {
+                self.setButtons(enabled: true)
+                self.emailButton.configuration?.showsActivityIndicator = false
+            }
+            do {
+                let response = try await ClipAPIClient.shared.emailInstant(email: typed, stickerCode: code)
+                view.endEditing(true)
+                signedIn(response, provider: "email")
+            } catch ClipAPIError.coded("VERIFY_REQUIRED", _) {
+                // They already have an account: the code is on its way
+                view.endEditing(true)
+                let codeStep = ClipSignupViewController(code: code, preview: preview, knownEmail: typed) { [weak self] response in
+                    self?.signedIn(response, provider: "email")
+                }
+                navigationController?.pushViewController(codeStep, animated: true)
+            } catch {
+                showInlineError(error.localizedDescription)
+            }
+        }
+    }
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        emailTapped()
+        return true
+    }
+
+    private func showInlineError(_ message: String) {
+        errorLabel.text = message
+        errorLabel.isHidden = false
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+    }
+
+    /// Keeps the email field above the keyboard
+    @objc private func keyboardChanged(_ note: Notification) {
+        guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        let overlap = max(0, view.bounds.maxY - view.convert(frame, from: nil).minY - view.safeAreaInsets.bottom)
+        contentBottom?.constant = -18 - overlap
+        UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
     }
 
     @objc private func appStoreTapped() {

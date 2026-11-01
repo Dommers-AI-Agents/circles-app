@@ -30,9 +30,14 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
     private let changeEmailButton = ClipTheme.linkButton("Use a different email")
     private var stackBottom: NSLayoutConstraint?
 
-    init(code: String?, preview: VenuePreview, onSignedIn: @escaping (ClipAuthResponse) -> Void) {
+    /// Typed on the first screen and already has an account (2026-11-01):
+    /// open on the code we emailed it
+    private let knownEmail: String?
+
+    init(code: String?, preview: VenuePreview, knownEmail: String? = nil, onSignedIn: @escaping (ClipAuthResponse) -> Void) {
         self.code = code
         self.preview = preview
+        self.knownEmail = knownEmail
         self.onSignedIn = onSignedIn
         super.init(nibName: nil, bundle: nil)
     }
@@ -45,7 +50,13 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
         super.viewDidLoad()
         view.backgroundColor = ClipTheme.ink
         setupUI()
-        showEmailStep(animated: false)
+        if let knownEmail {
+            email = knownEmail
+            newAccount = false
+            showCodeStep()
+        } else {
+            showEmailStep(animated: false)
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)),
                                                name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
     }
@@ -57,7 +68,7 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        emailField.becomeFirstResponder()
+        (step == .email ? emailField : codeField).becomeFirstResponder()
     }
 
     private func setupUI() {
@@ -174,7 +185,7 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
     // MARK: - Actions
 
     @objc private func backTapped() {
-        if step == .code {
+        if step == .code, knownEmail == nil {
             showEmailStep(animated: true)
         } else {
             navigationController?.popViewController(animated: true)
@@ -193,6 +204,8 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
     }
 
     @objc private func changeEmailTapped() {
+        // Came from the first screen's field: change it there
+        if knownEmail != nil { navigationController?.popViewController(animated: true); return }
         showEmailStep(animated: true)
     }
 

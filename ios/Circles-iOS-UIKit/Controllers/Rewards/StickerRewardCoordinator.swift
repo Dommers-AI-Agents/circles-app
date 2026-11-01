@@ -103,6 +103,13 @@ final class StickerRewardCoordinator: NSObject {
     /// The store they scanned in the App Clip: its page, with a welcome over
     /// it (points earned, how to keep earning, what the points buy)
     func showClipWelcome(_ welcome: ClipWelcome) {
+        // The clip saved the store (2026-11-01): open its page, already saved,
+        // celebrate, and start the first run from it. No sheet asking them to
+        // save what they already saved.
+        if welcome.isOnTheirMap {
+            showSavedStore(welcome)
+            return
+        }
         showStorePage(for: welcome.venue) { [weak self] in
             guard let presenter = self?.presenter else { return }
             let sheet = ClipWelcomeViewController(welcome: welcome)
@@ -114,6 +121,38 @@ final class StickerRewardCoordinator: NSObject {
                 controller.preferredCornerRadius = 24
             }
             presenter.present(sheet, animated: true)
+        }
+    }
+
+    private func showSavedStore(_ welcome: ClipWelcome) {
+        guard let placeId = welcome.venue.globalPlaceId,
+              let tabBar = UIApplication.shared.connectedScenes
+                .compactMap({ ($0 as? UIWindowScene)?.keyWindow?.rootViewController as? CirclesTabBarController })
+                .first,
+              let nav = tabBar.selectedViewController as? UINavigationController else { return }
+        let name = welcome.venue.venueName
+        let points = welcome.awardedPoints ?? 0
+        let line = points > 0 ? "Saved to your map · +\(points) points" : "\(name) is on your map"
+        waitUntilNothingPresented(over: tabBar) {
+            PlaceService.shared.fetchPlaceById(id: placeId) { result in
+                DispatchQueue.main.async {
+                    guard case .success(let place) = result else { return }
+                    nav.pushViewController(PlaceDetailViewController(place: place), animated: true)
+                    let celebrate = {
+                        CelebrationBurst.show(line, over: tabBar.view)
+                        // A moment on the page, then their first run
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) {
+                            (tabBar.view.window?.windowScene?.delegate as? SceneDelegate)?
+                                .firstSession.startClipFirstSession(store: place)
+                        }
+                    }
+                    if let transition = nav.transitionCoordinator {
+                        transition.animate(alongsideTransition: nil) { _ in celebrate() }
+                    } else {
+                        celebrate()
+                    }
+                }
+            }
         }
     }
 

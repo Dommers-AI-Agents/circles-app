@@ -21,8 +21,8 @@ struct VenuePreview: Decodable {
     /// The store's own terms (2026-10-29): points per visit and the first
     /// reward on its menu, only while its loyalty program is live
     let loyaltyLive: Bool?
-    /// "signup" (a window code's one-time bonus) or "visit" (a register
-    /// code's points for this visit); with signupBonusPoints = what it awards
+    /// "save" (a window code's save bonus, 2026-11-01; "signup" before) or
+    /// "visit" (a register code's points); signupBonusPoints = what it awards
     let scanPointsKind: String?
     let earnRate: Int?
     let offers: [ClipOffer]?
@@ -33,6 +33,11 @@ struct VenuePreview: Decodable {
     let location: ClipLocation?
 
     var isGeneric: Bool { generic == true }
+    /// A store's window code: the clip saves the store as it signs them in
+    var isStoreWindow: Bool { !isGeneric && kind != "register" }
+    /// Points that code pays: a window code's save bonus or a register
+    /// code's visit, only where the store's rewards are live
+    var pointsHere: Int { loyaltyLive == true ? signupBonusPoints : 0 }
     var favCoinBonus: Int { signupBonusCoins ?? 50 }
 }
 
@@ -124,6 +129,20 @@ struct ScanResult: Decodable {
     let notAtStore: Bool?
     let alreadyEarnedToday: Bool?
     let earnRate: Int?
+    /// Window code (2026-11-01): the clip asked the server to save the store
+    let saved: Bool?
+    /// The save couldn't be made now; the app's own save flow finishes it
+    let savePending: Bool?
+    let savedPlace: SavedPlace?
+    let loyaltyLive: Bool?
+    let offers: [ClipOffer]?
+
+    struct SavedPlace: Decodable {
+        let placeId: String?
+        let circleId: String?
+    }
+
+    var isOnTheirMap: Bool { saved == true || alreadySaved == true }
 }
 
 struct ScanAward: Decodable {

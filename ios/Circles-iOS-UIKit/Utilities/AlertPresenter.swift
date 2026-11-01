@@ -188,6 +188,7 @@ class AlertPresenter {
         autocapitalization: UITextAutocapitalizationType = .sentences,
         confirmTitle: String = "OK",
         from viewController: UIViewController,
+        onCancel: (() -> Void)? = nil,
         onSubmit: @escaping (String?) -> Void
     ) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
@@ -199,7 +200,7 @@ class AlertPresenter {
             textField.autocapitalizationType = autocapitalization
         }
         
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in onCancel?() })
         alert.addAction(UIAlertAction(title: confirmTitle, style: .default) { _ in
             let text = alert.textFields?.first?.text
             onSubmit(text)
