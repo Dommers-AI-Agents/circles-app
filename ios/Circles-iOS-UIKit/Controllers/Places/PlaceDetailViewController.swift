@@ -3590,6 +3590,10 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         getRewardsTapped()
     }
 
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapAddToWallet venue: PlaceVenue) {
+        WalletCardPresenter.present(venueId: venue.venueId, from: self)
+    }
+
     func placeVenueViewDidTapStats(_ view: PlaceVenueRewardsView, venue: PlaceVenue) {
         let dashboardVC = VenueDashboardViewController(venueId: venue.venueId, venueName: venue.venueName)
         navigationController?.pushViewController(dashboardVC, animated: true)

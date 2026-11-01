@@ -463,6 +463,18 @@ class RewardsViewController: BaseViewController {
 
             row.addArrangedSubview(name)
             row.addArrangedSubview(points)
+            // This store's card in Apple Wallet (2026-11-01)
+            if WalletCardPresenter.isAvailable {
+                let wallet = UIButton.iconButton(systemName: "wallet.pass")
+                wallet.accessibilityLabel = "Add \(balance.venueName) to Apple Wallet"
+                wallet.setContentHuggingPriority(.required, for: .horizontal)
+                let venueId = balance.venueId
+                wallet.addAction(UIAction { [weak self] _ in
+                    guard let self else { return }
+                    WalletCardPresenter.present(venueId: venueId, from: self)
+                }, for: .touchUpInside)
+                row.addArrangedSubview(wallet)
+            }
             storeBalancesStack.addArrangedSubview(row)
         }
     }

@@ -8,6 +8,8 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
     func placeVenueViewDidTapStats(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
     /// A customer tapped the rewards part of the card: this store's rewards page
     func placeVenueViewDidTapRewards(_ view: PlaceVenueRewardsView)
+    /// A customer tapped "Add to Apple Wallet": this store's card (2026-11-01)
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapAddToWallet venue: PlaceVenue)
     /// Owner bar: the store's Orders screen
     func placeVenueViewDidTapOrders(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
     /// Owner bar: flip between the owner's view and the customer's
@@ -165,6 +167,15 @@ class PlaceVenueRewardsView: UIView {
             let row = makeOfferRow(offer, venue: venue, balance: data.venueBalance ?? data.balance ?? 0, isOwner: isOwner)
             if opensRewards { attachRewardsTap(to: row) }
             containerStack.addArrangedSubview(row)
+        }
+
+        // The customer's card for this store in Apple Wallet: points on the
+        // lock screen near the store, updated after every scan
+        if opensRewards && WalletCardPresenter.isAvailable {
+            containerStack.addArrangedSubview(WalletCardPresenter.makeButton { [weak self] in
+                guard let self else { return }
+                self.delegate?.placeVenueView(self, didTapAddToWallet: venue)
+            })
         }
 
         if let storefront = data.storefront {

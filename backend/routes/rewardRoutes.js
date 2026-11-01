@@ -95,6 +95,8 @@ router.get('/code-name/:code', require('../controllers/venues/rewardScanControll
 router.post('/scan', scan);
 router.post('/sticker-save', confirmStickerSave);
 router.get('/balance', getBalance);
+// The customer's Apple Wallet card for a store (2026-11-01)
+router.get('/venues/:venueId/wallet-pass', require('../controllers/wallet/walletController').downloadPass);
 router.get('/offers', getOffers);
 router.get('/nearby-events', getNearbyEvents);
 router.post('/redeem-offer', redeemOffer);

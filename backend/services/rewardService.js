@@ -284,6 +284,7 @@ class RewardService {
       console.warn(`⚠️ awardPoints without venueId (type=${type}) — points have no shop to be spent at`);
     }
     await this.db.collection(COLLECTIONS.USERS).doc(userId).update(userUpdate);
+    this.walletBalanceChanged(userId, venueId);
 
     return { awarded: true, type, points };
   }
@@ -331,6 +332,13 @@ class RewardService {
       if (name) names.set(ids[i], name);
     });
     return rows.map((r) => (r && names.has(String(r.venueId)) ? { ...r, venueName: names.get(String(r.venueId)) } : r));
+  }
+
+  // The customer's Apple Wallet card for this store, if they added it,
+  // refreshes itself. Fire and forget (2026-11-01).
+  walletBalanceChanged(userId, venueId) {
+    if (!venueId) return;
+    require('./wallet/walletPassService').balanceChanged(userId, venueId);
   }
 
   venuePointsFrom(userData, venueId) {
@@ -670,6 +678,7 @@ class RewardService {
     }
 
     await this.incrementVenueStats(venueId, 'redemptions');
+    this.walletBalanceChanged(userId, venueId);
 
     return {
       success: true,
