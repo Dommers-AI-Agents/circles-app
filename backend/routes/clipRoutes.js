@@ -17,6 +17,7 @@ const clipPreviewLimiter = rateLimit({
 });
 
 router.get('/venue/:code', clipPreviewLimiter, clipController.getVenuePreview);
+router.post('/sticker-tap', clipPreviewLimiter, clipController.recordStickerTap);
 router.post('/install-converted', protect, clipController.installConverted);
 router.post('/device', protect, clipController.registerDevice);
 

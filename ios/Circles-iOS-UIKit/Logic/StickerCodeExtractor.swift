@@ -12,7 +12,7 @@ enum StickerCodeExtractor {
         let text = payload.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
         guard let url = URL(string: text), url.scheme != nil else { return nil }
-        if case .sticker(let code)? = router.destination(for: url), !code.isEmpty {
+        if case .sticker(let code, _)? = router.destination(for: url), !code.isEmpty {
             return code
         }
         return nil

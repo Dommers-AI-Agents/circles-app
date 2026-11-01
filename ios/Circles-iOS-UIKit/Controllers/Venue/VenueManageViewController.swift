@@ -970,6 +970,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
 
         case .showWindowSticker:
             set("Window sticker QR", "Show or share the scan-to-save code", "qrcode.viewfinder")
+        case .nfcStickers:
+            set("NFC stickers", "Tap-to-open stickers for tables and coasters", "wave.3.right")
         case .emailStickers:
             set("Email me printable QR codes", contactEmail.map { "Sent to \($0)" } ?? "Window sticker and register card", "envelope")
 
@@ -1053,6 +1055,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
 
         case .showWindowSticker:
             showWindowQR()
+        case .nfcStickers:
+            navigationController?.pushViewController(VenueNFCStickersViewController(venueId: venueId, venueName: venueName), animated: true)
         case .emailStickers:
             emailQR()
 

@@ -189,7 +189,10 @@ final class DeepLinkCoordinator: SceneCoordinator {
             navigateToWidget(id: "run", runToken: token)
         case .referral(let code):
             host?.inviteLinks.handleReferralCode(code)
-        case .sticker(let code):
+        case .sticker(let code, let tag):
+            // A tapped NFC sticker: the store sees which one (the clip and
+            // the web page count their own taps)
+            if let tag { RewardsService.shared.recordStickerTap(code: code, tag: tag) }
             host?.rewardCodes.handleStickerCode(code)
         case .upgradePaywall:
             // The share extension's "Upgrade in FavCircles" path (IAP can't

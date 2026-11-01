@@ -7,6 +7,7 @@
 // minimal (no codes, owner contact info, stats, or place IDs).
 
 const rewardService = require('../services/rewardService');
+const nfcStickers = require('../services/nfcStickerService');
 const rewardConfig = require('../config/rewardConfig');
 const placePhotos = require('../services/placePhotoService');
 const { sendServiceError } = require('../utils/serviceError');
@@ -36,6 +37,8 @@ exports.getVenuePreview = async (req, res) => {
     }
 
     rewardService.incrementVenueStats(venue.venueId, 'clipScans');
+    // An NFC sticker's tap (/s/<code>?t=<tag>): the clip passes the tag
+    if (req.query.t) nfcStickers.recordTap(venue, code, String(req.query.t));
 
     // Generic "Join FavCircles" code (window-sticker QR with no store attached):
     // the clip shows a welcome signup instead of a store offer, and no store
@@ -128,5 +131,22 @@ exports.registerDevice = async (req, res) => {
     return res.json({ success: true, ...result });
   } catch (error) {
     return sendServiceError(res, error, { log: '⚠️ Clip device registration failed', fallbackMessage: 'Something went wrong' });
+  }
+};
+
+// POST /api/clip/sticker-tap { code, tag } — public. The full app opens a
+// tapped NFC sticker as a universal link and never asks for the clip
+// preview, so it reports the tap here (signed in or not). The clip counts
+// through its preview; the no-app landing page through /s/<code>.
+exports.recordStickerTap = async (req, res) => {
+  const code = String(req.body?.code || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const tag = typeof req.body?.tag === 'string' ? req.body.tag : '';
+  if (!code || !tag) return res.status(400).json({ success: false, error: 'code and tag are required' });
+  try {
+    const venue = await rewardService.findVenueByCode(code);
+    const counted = venue && venue.active !== false ? await nfcStickers.recordTap(venue, code, tag) : false;
+    res.json({ success: true, data: { counted } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Tap not recorded' });
   }
 };

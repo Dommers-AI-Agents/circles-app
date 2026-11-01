@@ -31,13 +31,13 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
             code = Self.stickerCode(fromPath: testURL.path)
         }
         #endif
-        window.rootViewController = Self.rootViewController(for: ClipInvocation(code: code, payload: activity?.appClipActivationPayload))
+        window.rootViewController = Self.rootViewController(for: ClipInvocation(code: code, tag: activity.flatMap(Self.stickerTag(from:)), payload: activity?.appClipActivationPayload))
         window.makeKeyAndVisible()
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
         guard let code = Self.stickerCode(from: userActivity) else { return }
-        window?.rootViewController = Self.rootViewController(for: ClipInvocation(code: code, payload: userActivity.appClipActivationPayload))
+        window?.rootViewController = Self.rootViewController(for: ClipInvocation(code: code, tag: Self.stickerTag(from: userActivity), payload: userActivity.appClipActivationPayload))
     }
 
     /// Always the offer screen: it loads the store, then skips straight to
@@ -54,6 +54,15 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard activity.activityType == NSUserActivityTypeBrowsingWeb,
               let url = activity.webpageURL else { return nil }
         return stickerCode(fromPath: url.path)
+    }
+
+    /// An NFC sticker's tag, `?t=` on the store's window link (2026-11-01)
+    static func stickerTag(from activity: NSUserActivity) -> String? {
+        guard let url = activity.webpageURL,
+              let tag = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "t" })?.value,
+              !tag.isEmpty else { return nil }
+        return tag
     }
 
     static func stickerCode(fromPath path: String) -> String? {

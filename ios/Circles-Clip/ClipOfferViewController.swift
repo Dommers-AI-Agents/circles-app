@@ -131,7 +131,7 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
     private func loadPreview(code: String) {
         Task { @MainActor in
             do {
-                let preview = try await ClipAPIClient.shared.venuePreview(code: code)
+                let preview = try await ClipAPIClient.shared.venuePreview(code: code, tag: self.invocation.tag)
                 self.preview = preview
                 // Photo and words arrive together: wait for the photo, but
                 // never more than 2.5 s (a slow photo fades in afterwards)

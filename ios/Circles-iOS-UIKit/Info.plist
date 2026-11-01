@@ -120,6 +120,8 @@
 	</array>
 	<key>LinkedInClientID</key>
 	<string>86rx0d8w7xn8rq</string>
+	<key>NFCReaderUsageDescription</key>
+	<string>FavCircles uses NFC to write your store's link onto stickers for tables and coasters, and to check what a sticker holds.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

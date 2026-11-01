@@ -58,6 +58,8 @@ enum VenueManageLayout {
         case addAnnouncement
         // Window sticker
         case showWindowSticker
+        /// Write the window link onto NFC stickers, taps per sticker (2026-11-01)
+        case nfcStickers
         case emailStickers
         // Owner & team
         case contactName
@@ -121,7 +123,7 @@ enum VenueManageLayout {
             (.announcements, announcements)
         ]
         if physical {
-            result.append((.windowSticker, [.showWindowSticker, .emailStickers]))
+            result.append((.windowSticker, [.showWindowSticker, .nfcStickers, .emailStickers]))
         }
         result.append((.team, [.contactName, .contactEmail, .managers, .plan]))
         result.append((.more, [.ownerGuide, .brandStorefront, .addBusiness]))

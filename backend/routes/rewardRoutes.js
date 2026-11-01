@@ -159,6 +159,14 @@ router.post('/venues/:venueId/app-clip-sync', requireSuperUser, requireVenueOwne
 router.get('/venues/:venueId/managers', requireVenueOwner, listVenueManagers);
 router.post('/venues/:venueId/managers', requireVenueOwner, addVenueManager);
 router.delete('/venues/:venueId/managers/:managerId', requireVenueOwner, removeVenueManager);
+// NFC stickers: the window link with a tag per sticker, written by the
+// owner's phone; free like the window sticker (2026-11-01)
+const venueNfcStickers = require('../controllers/venues/venueNfcStickersController');
+router.get('/venues/:venueId/nfc-stickers', requireVenueOwner, venueNfcStickers.listStickers);
+router.post('/venues/:venueId/nfc-stickers', requireVenueOwner, venueNfcStickers.createSticker);
+router.post('/venues/:venueId/nfc-stickers/:tag/written', requireVenueOwner, venueNfcStickers.markWritten);
+router.patch('/venues/:venueId/nfc-stickers/:tag', requireVenueOwner, venueNfcStickers.renameSticker);
+router.delete('/venues/:venueId/nfc-stickers/:tag', requireVenueOwner, venueNfcStickers.deleteSticker);
 router.patch('/venues/:venueId/info', requireVenueOwner, updateVenueInfo);
 router.post('/venues/:venueId/offers', requireVenueOwner, requireOwnerPremium, addOffer);
 router.put('/venues/:venueId/offers/:offerId', requireVenueOwner, requireOwnerPremium, updateOffer);

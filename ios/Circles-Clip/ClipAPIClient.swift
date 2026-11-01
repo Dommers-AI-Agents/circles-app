@@ -38,8 +38,10 @@ final class ClipAPIClient {
 
     // MARK: - Endpoints
 
-    func venuePreview(code: String) async throws -> VenuePreview {
-        let response: VenuePreviewResponse = try await request(path: "clip/venue/\(code)", method: "GET")
+    /// `tag`: the NFC sticker that was tapped, counted with the preview
+    func venuePreview(code: String, tag: String? = nil) async throws -> VenuePreview {
+        let response: VenuePreviewResponse = try await request(path: "clip/venue/\(code)", method: "GET",
+                                                               query: tag.map { [URLQueryItem(name: "t", value: $0)] })
         return response.data
     }
 
@@ -113,9 +115,12 @@ final class ClipAPIClient {
 
     private func request<T: Decodable>(path: String,
                                        method: String,
+                                       query: [URLQueryItem]? = nil,
                                        body: [String: Any]? = nil,
                                        bearerToken: String? = nil) async throws -> T {
-        var urlRequest = URLRequest(url: baseURL.appendingPathComponent(path))
+        var url = baseURL.appendingPathComponent(path)
+        if let query, !query.isEmpty { url.append(queryItems: query) }
+        var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = method
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let bearerToken = bearerToken {

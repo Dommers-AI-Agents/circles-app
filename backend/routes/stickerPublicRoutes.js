@@ -10,6 +10,7 @@ const express = require('express');
 const router = express.Router();
 const rewardService = require('../services/rewardService');
 const rewardConfig = require('../config/rewardConfig');
+const nfcStickers = require('../services/nfcStickerService');
 
 router.get('/:code', async (req, res) => {
   const code = String(req.params.code).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -23,6 +24,8 @@ router.get('/:code', async (req, res) => {
       // A landing-page hit means the app wasn't installed — count the scan.
       // (Installed-app scans are counted by POST /api/rewards/scan.)
       rewardService.incrementVenueStats(venue.venueId, 'scans');
+      // An NFC sticker (?t=<tag>) opened without the app, e.g. on Android
+      if (req.query.t) nfcStickers.recordTap(venue, code, String(req.query.t));
     }
   } catch (error) {
     console.error('⚠️ Sticker landing lookup failed:', error.message);

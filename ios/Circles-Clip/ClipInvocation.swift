@@ -7,6 +7,9 @@ import Foundation
 // location prompt (NSAppClipRequestLocationConfirmation).
 struct ClipInvocation {
     let code: String?
+    /// The NFC sticker that was tapped (/s/<code>?t=<tag>), so the store
+    /// sees which one; nil for the QR codes
+    var tag: String? = nil
     let payload: APActivationPayload?
 
     /// true = Apple confirmed the phone is at the store, false = Apple says

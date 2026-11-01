@@ -32,7 +32,8 @@ enum DeepLinkDestination: Equatable {
     /// Rewards hub on the Piggy Bank tab (weekly summary email "See my FavCoins").
     case piggyBank
     case referral(code: String)
-    case sticker(code: String)
+    /// `tag` (?t=) names the store's NFC sticker that was tapped (2026-11-01)
+    case sticker(code: String, tag: String? = nil)
     case upgradePaywall
     /// A shared widget link — `/app/widget/<id>` or `circles://widget/<id>`.
     /// Opens the Widgets tab on that widget's page, turning it on if the
@@ -155,8 +156,9 @@ struct DeepLinkRouter {
         case "connect":
             return parts.count >= 2 ? .connectionInvite(userId: parts[1], referralCode: query(url, "code"), inviteToken: query(url, "t")) : nil
         case "s":
-            // Physical sticker QR code: https://<backend>/s/<code>
-            return parts.count >= 2 ? .sticker(code: parts[1]) : nil
+            // Physical sticker QR code: https://<backend>/s/<code>, or an
+            // NFC sticker's tagged link /s/<code>?t=<tag>
+            return parts.count >= 2 ? .sticker(code: parts[1], tag: query(url, "t")) : nil
         default:
             return nil
         }

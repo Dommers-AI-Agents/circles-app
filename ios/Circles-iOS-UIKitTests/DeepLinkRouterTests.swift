@@ -74,6 +74,8 @@ struct DeepLinkRouterTests {
         #expect(dest("https://api.favcircles.com/connect/u1?code=R1&t=abc_DEF-123") == .connectionInvite(userId: "u1", referralCode: "R1", inviteToken: "abc_DEF-123"))
         #expect(dest("circles://connect/u1?t=tok") == .connectionInvite(userId: "u1", referralCode: nil, inviteToken: "tok"))
         #expect(dest("https://api.favcircles.com/s/AB12CD") == .sticker(code: "AB12CD"))
+        // An NFC sticker's tagged link (2026-11-01)
+        #expect(dest("https://api.favcircles.com/s/AB12CD?t=table-7") == .sticker(code: "AB12CD", tag: "table-7"))
         #expect(dest("https://api.favcircles.com/") == nil)
     }
 

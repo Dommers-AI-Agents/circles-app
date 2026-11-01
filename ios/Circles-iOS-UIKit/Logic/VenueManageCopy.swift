@@ -38,7 +38,7 @@ enum VenueManageCopy {
         case .windowSticker:
             return Header(
                 title: "Window sticker",
-                explanation: "Print this code and put it in your window. Customers scan it to save your place in FavCircles and start earning points. Free for every store.")
+                explanation: "Print this code and put it in your window, or write it onto NFC stickers for tables and coasters. Customers scan or tap to save your place in FavCircles and start earning points. Free for every store.")
         case .team:
             return Header(
                 title: "Owner & team",

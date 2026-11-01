@@ -75,7 +75,7 @@ struct VenueManageLayoutTests {
 
     @Test func freePlanKeepsTheBasics() {
         let free: [L.Row] = [.statTiles, .fullStats, .viewPage, .details, .hours, .photos, .storefrontButtons,
-                             .showWindowSticker, .emailStickers, .contactName, .contactEmail, .managers,
+                             .showWindowSticker, .nfcStickers, .emailStickers, .contactName, .contactEmail, .managers,
                              .plan, .ownerGuide, .brandStorefront, .addBusiness]
         free.forEach { #expect(!L.isBusiness($0), "\($0) should be free") }
     }
