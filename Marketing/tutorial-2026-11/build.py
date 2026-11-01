@@ -12,8 +12,9 @@ Output: out/favcircles-tutorial.mp4 (1080x2340, H.264/AAC).
 import html, json, os, subprocess
 
 DIR = os.path.dirname(os.path.abspath(__file__))
-OUT = f"{DIR}/out"
+OUT = os.environ.get("OUT", f"{DIR}/out")
 CAPS = f"{OUT}/caps"
+BEATS = os.environ.get("BEATS", f"{DIR}/beats")
 os.makedirs(CAPS, exist_ok=True)
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 FONT = '-apple-system,"SF Pro Display","Helvetica Neue",Arial,sans-serif'
@@ -73,6 +74,14 @@ marks = {}
 for line in open(f"{OUT}/marks.txt"):
     t, name = line.split()
     marks.setdefault(name, float(t))
+# No save on camera (a real account): the form needs only a moment
+if "rate" not in marks:
+    STEPS[[n for n, _ in STEPS].index("add-form")] = ("add-form", 7.0)
+# A searched place: the search, then the page from where it opens
+if "place-page" in marks:
+    i = [n for n, _ in STEPS].index("place")
+    STEPS[i] = ("place", 7.0)
+    STEPS.insert(i + 1, ("place-page", 9.0))
 
 # CFR 30 at 1080x2340 (recordVideo is variable-rate)
 run(["ffmpeg", "-y", "-v", "error", "-i", f"{OUT}/take.mov", "-vf", "fps=30,scale=1080:2340",
@@ -101,22 +110,22 @@ intro = render("intro", f'<div class=card>{LOGO}<p class=tag>Never forget your f
 outro = render("outro", f'<div class=card>{LOGO}<p class=tag>Never forget your favorite places.</p>'
                '<div class=note><div class=pill>Sign up at favcircles.com</div>'
                '<div class=sub>Never forget a place.</div></div></div>', CARD_CSS)
-card_clip(intro, f"{DIR}/beats/s00.mp3", f"{OUT}/c_intro.mp4", 0.6, 1.4, True)
-card_clip(outro, f"{DIR}/beats/s99.mp3", f"{OUT}/c_outro.mp4", 0.7, 1.8, False)
+card_clip(intro, f"{BEATS}/s00.mp3", f"{OUT}/c_intro.mp4", 0.6, 1.4, True)
+card_clip(outro, f"{BEATS}/s99.mp3", f"{OUT}/c_outro.mp4", 0.7, 1.8, False)
 
 clips = [f"{OUT}/c_intro.mp4"]
 order = [n for n, _ in STEPS]
 for i, (name, cap) in enumerate(STEPS):
     start = marks[name]
     nxt = marks[order[i + 1]] if i + 1 < len(order) else marks.get("end", take_len)
-    mp3 = f"{DIR}/beats/{name}.mp3"
+    mp3 = f"{BEATS}/{name}.mp3"
     speech = dur(mp3)
     want = max(speech + 1.4, 3.0)
     # The step's own video (up to its cap), never shorter than its narration
     length = max(want, min(nxt - start, cap))
     available = max(0.5, min(nxt - start, take_len - start))
     pad = max(0.0, length - available)
-    text = html.escape(open(f"{DIR}/beats/{name}.txt").read().strip())
+    text = html.escape(open(f"{BEATS}/{name}.txt").read().strip())
     cap_png = render(name, f"<div class=cap>{text}</div>", CAP_CSS)
     out = f"{OUT}/c_{i:02d}_{name}.mp4"
     vf = f"trim={start:.2f}:{start + min(length, available):.2f},setpts=PTS-STARTPTS"

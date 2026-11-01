@@ -6,6 +6,13 @@ import XCTest
 /// narration and captions. Skipped unless TOUR_RECORD=1.
 final class TutorialRecordingTour: XCTestCase {
     private let app = XCUIApplication()
+    private let env = ProcessInfo.processInfo.environment
+    /// Whose map the person step shows, which circle closes the tour, and
+    /// whether Add Place really saves (off on a real account: a save posts
+    /// to followers and credits FavCoins)
+    private var person: String { env["TOUR_PERSON"].flatMap { $0.isEmpty ? nil : $0 } ?? "Brittany R" }
+    private var circleName: String { env["TOUR_CIRCLE"].flatMap { $0.isEmpty ? nil : $0 } ?? "Favorite Local Spots" }
+    private var saves: Bool { env["TOUR_SAVE"] != "0" }
 
     override func setUp() { continueAfterFailure = true }
 
@@ -46,6 +53,12 @@ final class TutorialRecordingTour: XCTestCase {
         }
     }
 
+    /// Home scrolled to the top by its tab (a drag there would pan the map)
+    private func homeToTop() {
+        tap(app.tabBars.buttons["Home"]); hold(0.6)
+        tap(app.tabBars.buttons["Home"]); hold(0.8)
+    }
+
     /// Back to the previous screen: the nav bar's back button, else a swipe
     private func goBack() {
         let back = app.navigationBars.buttons.element(boundBy: 0)
@@ -74,7 +87,8 @@ final class TutorialRecordingTour: XCTestCase {
         app.launch()
 
         // Off camera: clear first-launch sheets and hints
-        if app.buttons["Continue"].waitForExistence(timeout: 6) { app.buttons["Continue"].tap(); hold(1.5) }
+        if app.buttons["Not now"].waitForExistence(timeout: 6) { app.buttons["Not now"].tap(); hold(1.5) }
+        if app.buttons["Continue"].waitForExistence(timeout: 4) { app.buttons["Continue"].tap(); hold(1.5) }
         if app.buttons["Got it"].waitForExistence(timeout: 4) { app.buttons["Got it"].tap() }
         XCTAssertTrue(app.staticTexts["Recent Activity"].waitForExistence(timeout: 20))
         // A person picked on the map last take: back to Everyone
@@ -89,9 +103,7 @@ final class TutorialRecordingTour: XCTestCase {
         tapAt(app.buttons["Check in"]); hold(7)
         closeSheet()
         // Home from the top: the map in view
-        tap(app.tabBars.buttons["Home"]); hold(0.6)
-        tap(app.tabBars.buttons["Home"]); hold(0.6)
-        for _ in 0..<3 { scrollList(up: false) }
+        homeToTop()
         hold(2.5)
         mark("start")
 
@@ -100,7 +112,7 @@ final class TutorialRecordingTour: XCTestCase {
 
         // 2. One person's places on the map
         mark("person")
-        tap(app.staticTexts["Brittany R"])
+        tap(app.staticTexts[person])
         hold(1.8)
         if app.staticTexts["Show their places"].exists { app.staticTexts["Show their places"].tap() }
         else if app.buttons["Show their places"].exists { app.buttons["Show their places"].tap() }
@@ -113,12 +125,35 @@ final class TutorialRecordingTour: XCTestCase {
 
         // 4. A place page
         mark("place")
+        if let query = env["TOUR_SEARCH"], !query.isEmpty {
+            // Search anything: a place by name, then its page
+            let field = app.searchFields["Search anything"]
+            // Wait for the keyboard before typing (a tap can land before focus)
+            for _ in 0..<3 where app.keyboards.count == 0 {
+                tapAt(field); _ = app.keyboards.firstMatch.waitForExistence(timeout: 2.5)
+            }
+            app.typeText(query); hold(3)
+            let hit = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", query)).element(boundBy: 1)
+            if hit.exists { hit.tap() } else { app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", query)).firstMatch.tap() }
+            hold(1.0)
+            mark("place-page")
+            hold(3.5)
+            scrollList(); hold(3)
+            goBack()
+            if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap(); hold(0.8) }
+            homeToTop(); hold(1)
+        } else {
         let row = app.cells.containing(.staticText, identifier: "Brittany R added Pasta & Provisions to Charlotte 🫶").firstMatch
-        if !tap(row, wait: 3) { tap(app.cells.containing(NSPredicate(format: "label CONTAINS 'added'")).element(boundBy: 1), wait: 3) }
+        if !tap(row, wait: 3) {
+            // The first single place someone added (not a "Show all" group)
+            let single = app.cells.containing(NSPredicate(format: "label CONTAINS ' added ' AND NOT (label CONTAINS 'Show all')")).firstMatch
+            tap(single, wait: 3)
+        }
         hold(4)
         scrollList(); hold(3)
         goBack()
-        scrollList(up: false); scrollList(up: false); hold(1.5)
+        homeToTop(); hold(1)
+        }
 
         // 5. Add a place
         mark("add")
@@ -127,9 +162,16 @@ final class TutorialRecordingTour: XCTestCase {
         tapAt(app.buttons["Search for a place"], wait: 3)
         hold(1.5)
         // It asks which circle first
-        if app.staticTexts["Favorite Local Spots"].waitForExistence(timeout: 3) {
-            app.staticTexts["Favorite Local Spots"].tap(); hold(1.5)
+        let pick = circleName
+        if !app.staticTexts[pick].waitForExistence(timeout: 3) {
+            let find = app.searchFields["Search circles..."]
+            if find.exists {
+                find.tap(); _ = app.keyboards.firstMatch.waitForExistence(timeout: 2.5)
+                if app.keyboards.count > 0 { app.typeText(String(pick.prefix(9))) }
+                hold(1.2)
+            }
         }
+        if app.staticTexts[pick].exists { app.staticTexts[pick].tap(); hold(1.5) }
         let search = app.searchFields.matching(NSPredicate(format: "placeholderValue != 'Search anything' AND placeholderValue != 'Search circles...'")).firstMatch
         if search.waitForExistence(timeout: 5) {
             search.tap()
@@ -141,6 +183,13 @@ final class TutorialRecordingTour: XCTestCase {
             if tap(result, wait: 2) { hold(3.5) }
             mark("add-form")
             hold(2.5)
+            if !saves {
+                // Shown, not saved: back out and discard
+                hold(2.5)
+                let close = app.buttons["Close"].exists ? app.buttons["Close"] : app.navigationBars.buttons.firstMatch
+                tapAt(close, wait: 2); hold(1.2)
+                closeSheet()
+            } else {
             tapAt(app.buttons["Save Place"], wait: 3)
             hold(2.5)
             // "How was it?" — a 9
@@ -150,34 +199,36 @@ final class TutorialRecordingTour: XCTestCase {
             hold(3.5)
             // The first-place badge, then back Home
             if app.buttons["Keep Exploring"].waitForExistence(timeout: 6) { hold(2.5); app.buttons["Keep Exploring"].tap(); hold(1.2) }
+            }
         }
         closeSheet(); closeSheet()
         if !app.staticTexts["Recent Activity"].exists { goBack() }
 
         // 6. Moments, Locals, Widgets
-        mark("moments"); tap(app.buttons["Moments"]); hold(5)
-        mark("locals"); tap(app.buttons["Locals"]); hold(5)
-        mark("widgets"); tap(app.buttons["Widgets"]); hold(4.5)
+        // Marks land as each screen appears, so narration matches it
+        homeToTop()
+        tap(app.buttons["Moments"]); mark("moments"); hold(5)
+        tap(app.buttons["Locals"]); mark("locals"); hold(5)
+        tap(app.buttons["Widgets"]); mark("widgets"); hold(4.5)
         tap(app.buttons["Activity"]); hold(1)
 
         // 7. Check in
-        mark("checkin")
-        tapAt(app.buttons["Check in"]); hold(2.5)
+        homeToTop()
+        tapAt(app.buttons["Check in"]); mark("checkin"); hold(2.5)
         tap(app.buttons["Nearby"], wait: 2); hold(4)
         closeSheet()
         if !app.staticTexts["Recent Activity"].exists { goBack() }
 
         // 8. Rewards
-        mark("rewards")
-        tapAt(app.buttons["Rewards"]); hold(5)
+        homeToTop()
+        tapAt(app.buttons["Rewards"]); mark("rewards"); hold(5)
         closeSheet()
         if !app.staticTexts["Recent Activity"].exists { goBack() }
 
         // 9. Profile
-        mark("profile")
-        tap(app.tabBars.buttons["Me"]); hold(4)
-        mark("circle")
-        tapAt(app.staticTexts["Favorite Local Spots"], wait: 4); hold(5)
+        tap(app.tabBars.buttons["Me"]); mark("profile"); hold(4)
+        if !app.staticTexts[circleName].exists { scrollList() ; hold(1) }
+        tapAt(app.staticTexts[circleName], wait: 4); mark("circle"); hold(5)
 
         mark("end")
         hold(1.5)
