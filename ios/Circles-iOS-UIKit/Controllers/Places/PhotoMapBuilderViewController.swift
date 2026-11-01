@@ -99,9 +99,20 @@ final class PhotoMapBuilderViewController: BaseViewController {
             shots = all
             group.leave()
         }
-        let saved = savedPlaces.compactMap { $0.location?.clLocation?.coordinate }
+        // Places they've already saved never show up as new: the first run
+        // opens this with none, so fetch them alongside the photos, not
+        // before (Wes, 2026-11-01: Sal's showed up again; keep it fast)
+        var mine = savedPlaces
+        if mine.isEmpty {
+            group.enter()
+            PlaceService.shared.getMyPlacesForCheckIn { result in
+                if case .success(let places) = result { mine = places }
+                group.leave()
+            }
+        }
         let done = PhotoMapProgressStore.done(uid: uid)
         group.notify(queue: .global(qos: .userInitiated)) { [weak self] in
+            let saved = mine.compactMap { $0.location?.clLocation?.coordinate }
             let spots = PhotoFindSpot.fromLibrary(shots, saved: saved, done: done, nearestTo: current, nearestFirst: true)
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -114,7 +125,9 @@ final class PhotoMapBuilderViewController: BaseViewController {
                     return self.showError("No new places in your photos: they were taken at home, at places you\u{2019}ve already saved, or without a location.")
                 }
                 let finder = PhotoPlaceFinder(spots: spots)
-                // Near places first; the review page offers Keep looking
+                // Near places first, 40 at a time; the review page offers Keep
+                // looking, and saving past the free 25 asks for Premium (Wes,
+                // 2026-11-01: "let it go a bit longer")
                 finder.pauseAfterFinds = 40
                 let review = PhotoPlacesReviewViewController(finder: finder, circles: self.circles, target: .photos, title: "Build my map")
                 review.onFinished = self.onFinished

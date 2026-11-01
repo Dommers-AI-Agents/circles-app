@@ -28,6 +28,12 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
     private let privacyControl = UISegmentedControl(items: ["Public", "Connections", "Private"])
     private let mapRow = IncludeOnMapRow(isOn: true)
     private let freeNote = UILabel()
+    /// The places found, as pins dropping in while it looks (Wes, 2026-11-01:
+    /// the plain list on black was "ugly, not exciting")
+    private let mapView = MKMapView()
+    private let heroTitle = UILabel()
+    private let heroCount = UILabel()
+
 
     init(finder: PhotoPlaceFinder, circles: [Circle], target: PhotoMapService.Target, suggestedName: String? = nil, title: String) {
         self.finder = finder
@@ -42,8 +48,14 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = Constants.Colors.background
+        view.backgroundColor = Constants.Colors.groupedBackground
+        tableView.backgroundColor = .clear
         tableView.dataSource = self
+        if onFinished != nil {
+            // The first run: a way out at any point, not only after saving
+            navigationItem.hidesBackButton = true
+            navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Skip", style: .plain, target: self, action: #selector(skipTapped))
+        }
         tableView.delegate = self
         tableView.translatesAutoresizingMaskIntoConstraints = false
         tableView.rowHeight = 64
@@ -60,7 +72,7 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
         footer.translatesAutoresizingMaskIntoConstraints = false
         footer.isLayoutMarginsRelativeArrangement = true
         footer.layoutMargins = UIEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
-        footer.backgroundColor = Constants.Colors.background
+        footer.backgroundColor = Constants.Colors.groupedBackground
 
         view.addSubview(tableView)
         view.addSubview(footer)
@@ -82,6 +94,7 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
             switch event {
             case .found:
                 self.tableView.insertRows(at: [IndexPath(row: self.finder.finds.count - 1, section: 0)], with: .automatic)
+                if let find = self.finder.finds.last { self.dropPin(for: find) }
             case .merged(let find):
                 // Another visit to a place already listed: one row, more photos
                 if let row = self.finder.finds.firstIndex(where: { $0 === find }) {
@@ -121,6 +134,27 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
         header.isLayoutMarginsRelativeArrangement = true
         header.layoutMargins = UIEdgeInsets(top: 12, left: 20, bottom: 8, right: 20)
 
+        heroTitle.text = "Places you\u{2019}ve been"
+        heroTitle.font = Self.serif(30)
+        heroTitle.adjustsFontForContentSizeCategory = true
+        heroTitle.numberOfLines = 0
+        heroCount.font = .systemFont(ofSize: 16, weight: .semibold)
+        heroCount.textColor = Constants.Colors.primary
+        heroCount.numberOfLines = 0
+        mapView.layer.cornerRadius = 16
+        mapView.clipsToBounds = true
+        mapView.isRotateEnabled = false
+        mapView.pointOfInterestFilter = .excludingAll
+        mapView.showsUserLocation = false
+        mapView.heightAnchor.constraint(equalToConstant: 200).isActive = true
+        mapView.isAccessibilityElement = true
+        mapView.accessibilityLabel = "Map of the places found in your photos"
+        header.addArrangedSubview(heroTitle)
+        header.addArrangedSubview(heroCount)
+        header.setCustomSpacing(12, after: heroCount)
+        header.addArrangedSubview(mapView)
+        header.setCustomSpacing(16, after: mapView)
+
         destinationButton.contentHorizontalAlignment = .leading
         destinationButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
         destinationButton.showsMenuAsPrimaryAction = true
@@ -148,6 +182,27 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
 
         [destinationButton, nameField, privacyControl, mapRow, freeNote, hint].forEach(header.addArrangedSubview)
         renderDestination()
+    }
+
+    /// A pin for each place as it's found, the map widening to show them all
+    private func dropPin(for find: PhotoFind) {
+        let pin = MKPointAnnotation()
+        pin.coordinate = find.item.placemark.coordinate
+        pin.title = find.item.name
+        mapView.addAnnotation(pin)
+        mapView.showAnnotations(mapView.annotations, animated: true)
+    }
+
+    private static func serif(_ size: CGFloat) -> UIFont {
+        let base = UIFont.systemFont(ofSize: size, weight: .bold)
+        guard let descriptor = base.fontDescriptor.withDesign(.serif) else { return base }
+        return UIFont(descriptor: descriptor, size: size)
+    }
+
+    @objc private func skipTapped() {
+        finder.stop()
+        AnalyticsService.shared.logEvent("photo_map_skipped", parameters: ["from": "review"])
+        onFinished?()
     }
 
     private func renderDestination() {
@@ -207,6 +262,9 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
 
     private func refreshFooter() {
         let found = finder.finds.count
+        heroCount.text = found == 0
+            ? (finder.isRunning ? "Looking through your photos\u{2026}" : "No places yet")
+            : "\(found) place\(found == 1 ? "" : "s") found \u{00B7} uncheck any you don\u{2019}t want"
         if finder.isRunning {
             statusLabel.text = finder.throttledUntil != nil
                 ? "Apple Maps asked us to slow down. Picking up again in a moment\u{2026} \(found) place\(found == 1 ? "" : "s") found"
@@ -424,6 +482,19 @@ final class PhotoPlacesReviewViewController: BaseViewController, UITableViewData
             onConfirm: { [weak self] in
                 guard let self else { return }
                 SubscriptionManager.shared.showPaywall(from: self, reason: .photoPlaces)
+            },
+            onCancel: { [weak self] in
+                // Not now: done here, like any save (Wes, 2026-11-01: it left
+                // them on the list)
+                guard let self else { return }
+                self.finder.stop()
+                if saved > 0 {
+                    self.finish(saved: saved, circleId: circleId, coins: coins)
+                } else if let onFinished = self.onFinished {
+                    onFinished()
+                } else {
+                    self.navigationController?.popViewController(animated: true)
+                }
             }
         )
     }
