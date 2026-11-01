@@ -429,10 +429,14 @@ class RewardsViewController: BaseViewController {
         latestVenueBalances.first(where: { $0.venueId == venueId })?.points ?? 0
     }
 
+    /// Which store's page each store row opens
+    private var storeRowPlaceIds: [ObjectIdentifier: String] = [:]
+
     private func updateStoreBalances(_ balances: [RewardVenueBalance]?) {
         guard let balances = balances else { return }  // old server payload: keep what we had
         latestVenueBalances = balances
         storeBalancesStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        storeRowPlaceIds.removeAll()
         guard !balances.isEmpty else { return }
 
         let header = UILabel()
@@ -463,6 +467,14 @@ class RewardsViewController: BaseViewController {
 
             row.addArrangedSubview(name)
             row.addArrangedSubview(points)
+            // Tap the store: its page, at its rewards (2026-11-01)
+            if let placeId = balance.globalPlaceId {
+                name.textColor = Constants.Colors.primary
+                row.isUserInteractionEnabled = true
+                row.accessibilityTraits.insert(.button)
+                row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(storeRowTapped(_:))))
+                storeRowPlaceIds[ObjectIdentifier(row)] = placeId
+            }
             // This store's card in Apple Wallet (2026-11-01)
             if WalletCardPresenter.isAvailable {
                 let wallet = UIButton.iconButton(systemName: "wallet.pass")
@@ -476,6 +488,26 @@ class RewardsViewController: BaseViewController {
                 row.addArrangedSubview(wallet)
             }
             storeBalancesStack.addArrangedSubview(row)
+        }
+    }
+
+    @objc private func storeRowTapped(_ gesture: UITapGestureRecognizer) {
+        guard let row = gesture.view, let placeId = storeRowPlaceIds[ObjectIdentifier(row)] else { return }
+        let loading = AlertPresenter.showLoading(from: self)
+        PlaceService.shared.fetchPlaceById(id: placeId) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self else { return }
+                    switch result {
+                    case .success(let place):
+                        let page = PlaceDetailViewController(place: place)
+                        page.scrollsToStoreRewards = true
+                        self.navigationController?.pushViewController(page, animated: true)
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
         }
     }
 

@@ -390,6 +390,10 @@ class PlaceDetailViewController: BaseViewController {
     
     // MARK: - Init
     
+    /// Opened from a store's row in Store Rewards: once the store's card has
+    /// loaded, scroll to it (2026-11-01)
+    var scrollsToStoreRewards = false
+
     init(place: Place, circle: Circle? = nil) {
         self.place = place
         self.circle = circle
@@ -3865,6 +3869,13 @@ extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
         // both describe the physical location, so they read as one
         venueRewardsTopConstraint?.constant = showCard ? Constants.Spacing.small : 0
         view.layoutIfNeeded()
+        if scrollsToStoreRewards && showCard {
+            scrollsToStoreRewards = false
+            let card = venueRewardsView.convert(venueRewardsView.bounds, to: scrollView)
+            let top = scrollView.adjustedContentInset.top
+            let maxY = max(-top, scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom)
+            scrollView.setContentOffset(CGPoint(x: 0, y: min(maxY, card.minY - top - Constants.Spacing.small)), animated: true)
+        }
 
         // Owners get the eye that previews the page as customers see it
         // (the owner bar on the store card has the same toggle). Editing

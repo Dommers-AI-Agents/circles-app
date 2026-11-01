@@ -326,12 +326,23 @@ class RewardService {
     const docs = await Promise.all(ids.map((id) =>
       this.db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(id).get().catch(() => null)));
     const names = new Map();
+    // The store's place record too, so a row can open the store's page
+    const places = new Map();
     docs.forEach((doc, i) => {
       const venue = doc && doc.exists ? doc.data() : null;
       const name = venue && (venue.venueName || venue.placeName);
       if (name) names.set(ids[i], name);
+      if (venue && venue.globalPlaceId) places.set(ids[i], venue.globalPlaceId);
     });
-    return rows.map((r) => (r && names.has(String(r.venueId)) ? { ...r, venueName: names.get(String(r.venueId)) } : r));
+    return rows.map((r) => {
+      if (!r) return r;
+      const id = String(r.venueId);
+      return {
+        ...r,
+        ...(names.has(id) ? { venueName: names.get(id) } : {}),
+        ...(places.has(id) ? { globalPlaceId: places.get(id) } : {})
+      };
+    });
   }
 
   // The customer's Apple Wallet card for this store, if they added it,

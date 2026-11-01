@@ -997,6 +997,8 @@ struct RewardVenueBalance: Codable {
     let venueId: String
     let venueName: String
     let points: Int
+    /// The store's place record, so the row can open the store's page
+    let globalPlaceId: String?
 }
 
 struct RewardVenue: Codable {

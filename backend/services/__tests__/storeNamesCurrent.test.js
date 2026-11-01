@@ -38,7 +38,7 @@ test('GET /rewards/balance: balances AND history rows name the store as it is ca
   await updateVenueDetails({ globalPlaceId: 'g1', user: { uid: 'owner' }, fields: { name: "Sal's Bakery" } });
 
   const { venueBalances, events } = await rewardService.getBalance('cust');
-  expect(venueBalances).toEqual([{ venueId: 'v1', venueName: "Sal's Bakery", points: 50 }]);
+  expect(venueBalances).toEqual([{ venueId: 'v1', venueName: "Sal's Bakery", points: 50, globalPlaceId: 'g1' }]); // the place id opens the store's page
   const byId = Object.fromEntries(events.map((e) => [e.id, e]));
   expect(byId.e1.venueName).toBe("Sal's Bakery");
   expect(byId.e2.venueName).toBe('Old Shop');
