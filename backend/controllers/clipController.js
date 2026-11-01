@@ -62,14 +62,17 @@ exports.getVenuePreview = async (req, res) => {
 
     // The store's own terms (Wes, 2026-10-29): points per visit and the
     // first thing they buy, only while the store's loyalty program is live
-    const { registerScanEarns } = require('../services/ownerSubscriptionService');
+    const { registerScanEarns, isVenueLoyaltyActive } = require('../services/ownerSubscriptionService');
     const { activeOffers } = require('../services/venueHelpers');
     const rewardProgress = require('../services/rewardProgress');
-    // Store points only ever come from a register code at a live store; the
-    // window code is for joining and saving, with no points (2026-10-30)
-    const loyaltyLive = venue.kind === 'register' ? (await registerScanEarns(venue)).earns : false;
+    // Points only at a store whose rewards are live: a register code pays the
+    // visit; a window code pays the save bonus, since the clip saves the
+    // store as it signs them in (Wes, 2026-11-01; 10-30 to 11-01 it paid nothing)
+    const isRegister = venue.kind === 'register';
+    const loyaltyLive = isRegister ? (await registerScanEarns(venue)).earns : await isVenueLoyaltyActive(venue);
     const offers = loyaltyLive ? rewardProgress.rewardLadder(activeOffers(venue)) : [];
-    const scanPoints = loyaltyLive ? rewardService.effectiveEarnRate(venue) : 0;
+    const scanPoints = !loyaltyLive ? 0
+      : isRegister ? rewardService.effectiveEarnRate(venue) : rewardService.effectiveSavePoints(venue);
     // The clip's backdrop is the store's own photo (the same cover as its
     // App Clip card), and Apple's location confirmation checks the scan
     // against where the store is. Both are public on the store's page anyway.
@@ -87,7 +90,7 @@ exports.getVenuePreview = async (req, res) => {
         // where it earns, else nothing. The clip used to promise 100 for both.
         signupBonusPoints: scanPoints,
         scanPoints,
-        scanPointsKind: venue.kind === 'register' ? 'visit' : 'signup',
+        scanPointsKind: isRegister ? 'visit' : 'save',
         loyaltyLive,
         earnRate: loyaltyLive ? rewardService.effectiveEarnRate(venue) : null,
         offers,
