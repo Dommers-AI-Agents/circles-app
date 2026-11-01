@@ -82,6 +82,7 @@ test('the .pkpass holds every file, a matching manifest and a detached signature
 
 test('without the certificate, nothing is built', async () => {
   delete process.env.PASS_CERT_P12_B64;
+  delete process.env.PASS_CERT_PEM_B64;
   wallet._resetCredentials();
   expect(wallet.configured()).toBe(false);
   await expect(wallet.passForCustomer('u1', 'v1')).rejects.toMatchObject({ status: 503, code: 'WALLET_NOT_CONFIGURED' });

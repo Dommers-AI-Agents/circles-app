@@ -7,9 +7,14 @@
 // manifest.json, with Apple's WWDR G4 intermediate), and the same certificate
 // authenticates the update pushes to APNs, as Apple documents for Wallet.
 //
-// Env: PASS_TYPE_ID (default pass.com.favcircles.loyalty), PASS_CERT_P12_B64
-// (the .p12 with its key, base64), PASS_CERT_PASSWORD. Without them every
-// entry point says "not configured" and nothing is built or pushed.
+// Env: PASS_TYPE_ID (default pass.com.favcircles.loyalty), and either
+// PASS_CERT_PEM_B64 + PASS_KEY_PEM_B64 (preferred), or PASS_CERT_P12_B64
+// (the .p12 with its key, base64) + PASS_CERT_PASSWORD. A .p12 that
+// node-forge can't read converts with
+//   openssl pkcs12 -in pass.p12 -clcerts -nokeys -out cert.pem
+//   openssl pkcs12 -in pass.p12 -nocerts -nodes -out key.pem
+// Without them every entry point says "not configured" and nothing is
+// built or pushed.
 //
 // Records: walletPasses/{serial} = { userId, venueId, authToken, createdAt, updatedAt }
 //   serial = sha256(userId:venueId), so a re-add gives the same card.
@@ -35,7 +40,7 @@ const ASSETS = path.join(__dirname, '../../assets/wallet');
 const WEB_SERVICE_URL = () => `${process.env.WALLET_WEB_SERVICE_BASE_URL || 'https://api.favcircles.com'}/api/wallet`;
 
 const passTypeId = () => process.env.PASS_TYPE_ID || 'pass.com.favcircles.loyalty';
-const configured = () => !!process.env.PASS_CERT_P12_B64;
+const configured = () => !!(process.env.PASS_CERT_P12_B64 || (process.env.PASS_CERT_PEM_B64 && process.env.PASS_KEY_PEM_B64));
 
 const db = () => getFirestore();
 
@@ -46,13 +51,19 @@ let cachedCredentials = null;
 function credentials() {
   if (cachedCredentials) return cachedCredentials;
   if (!configured()) throw new ServiceError(503, 'WALLET_NOT_CONFIGURED', 'Apple Wallet cards are not set up yet');
+  const wwdr = forge.pki.certificateFromPem(fs.readFileSync(path.join(ASSETS, 'AppleWWDRCAG4.crt'), 'utf8'));
+  if (process.env.PASS_CERT_PEM_B64 && process.env.PASS_KEY_PEM_B64) {
+    const certPem = Buffer.from(process.env.PASS_CERT_PEM_B64, 'base64').toString('utf8');
+    const keyPem = Buffer.from(process.env.PASS_KEY_PEM_B64, 'base64').toString('utf8');
+    cachedCredentials = { cert: forge.pki.certificateFromPem(certPem), key: forge.pki.privateKeyFromPem(keyPem), wwdr, certPem, keyPem };
+    return cachedCredentials;
+  }
   const der = forge.util.decode64(process.env.PASS_CERT_P12_B64);
   const p12 = forge.pkcs12.pkcs12FromAsn1(forge.asn1.fromDer(der), process.env.PASS_CERT_PASSWORD || '');
   const certBag = (p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag] || [])[0];
   const keyBag = (p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })[forge.pki.oids.pkcs8ShroudedKeyBag] || [])[0]
     || (p12.getBags({ bagType: forge.pki.oids.keyBag })[forge.pki.oids.keyBag] || [])[0];
   if (!certBag || !keyBag) throw new ServiceError(503, 'WALLET_NOT_CONFIGURED', 'The Wallet certificate is missing its key');
-  const wwdr = forge.pki.certificateFromPem(fs.readFileSync(path.join(ASSETS, 'AppleWWDRCAG4.crt'), 'utf8'));
   cachedCredentials = {
     cert: certBag.cert,
     key: keyBag.key,
@@ -293,8 +304,10 @@ function pushUpdate(pushToken) {
       ':method': 'POST',
       ':path': `/3/device/${pushToken}`,
       'apns-topic': passTypeId(),
-      'apns-push-type': 'background',
-      'apns-priority': '5'
+      // Wallet's convention: an empty alert-type push at high priority (a
+      // background push may be deferred or dropped)
+      'apns-push-type': 'alert',
+      'apns-priority': '10'
     });
     let status = 0; let text = '';
     req.on('response', (headers) => { status = headers[':status']; });
