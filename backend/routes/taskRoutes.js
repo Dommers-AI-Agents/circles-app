@@ -12,6 +12,7 @@ const momentExpiryTask = require('../controllers/tasks/momentExpiryController');
 const ordersSweepTask = require('../controllers/tasks/ordersSweepController');
 const emailHealthTask = require('../controllers/tasks/emailHealthController');
 const appClipSyncTask = require('../controllers/tasks/appClipSyncController');
+const walletCertRenewTask = require('../controllers/tasks/walletCertRenewController');
 const clipRemindersTask = require('../controllers/tasks/clipRemindersController');
 const farmersMarketsTask = require('../controllers/tasks/farmersMarketsController');
 const localCoverageTask = require('../controllers/tasks/localCoverageController');
@@ -83,6 +84,8 @@ router.post('/moments-expire', verifyCloudScheduler, momentExpiryTask.sweep);
 router.post('/orders-sweep', verifyCloudScheduler, ordersSweepTask.sweep);
 router.post('/email-health', verifyCloudScheduler, emailHealthTask.check);
 router.post('/app-clip-sync', verifyCloudScheduler, appClipSyncTask.sync);
+// Monthly: renew the Apple Wallet pass certificate when ≤45 days are left
+router.post('/wallet-cert-renew', verifyCloudScheduler, walletCertRenewTask.renew);
 // Every 15 minutes: the App Clip's one reminder, two hours after a clip
 // sign-in, to people who still haven't installed the app
 router.post('/clip-reminders', verifyCloudScheduler, clipRemindersTask.send);
@@ -115,6 +118,7 @@ router.get('/health', (req, res) => {
       '/api/tasks/orphan-uploads',
       '/api/tasks/email-health',
       '/api/tasks/app-clip-sync',
+      '/api/tasks/wallet-cert-renew',
       '/api/tasks/instagram-post'
     ]
   });

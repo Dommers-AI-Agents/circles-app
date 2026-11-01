@@ -14,7 +14,9 @@
 //   openssl pkcs12 -in pass.p12 -clcerts -nokeys -out cert.pem
 //   openssl pkcs12 -in pass.p12 -nocerts -nodes -out key.pem
 // Without them every entry point says "not configured" and nothing is
-// built or pushed.
+// built or pushed. The yearly renewal (passCertificate.renewIfDue, task
+// /api/tasks/wallet-cert-renew) stores a newer certificate in Firestore,
+// which then wins over the deployed one.
 //
 // Records: walletPasses/{serial} = { userId, venueId, authToken, createdAt, updatedAt }
 //   serial = sha256(userId:venueId), so a re-add gives the same card.
@@ -26,6 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const http2 = require('http2');
 const forge = require('node-forge');
+const passCertificate = require('./passCertificate');
 const AdmZip = require('adm-zip');
 const sharp = require('sharp');
 const { getFirestore } = require('../../config/firebase');
@@ -40,39 +43,15 @@ const ASSETS = path.join(__dirname, '../../assets/wallet');
 const WEB_SERVICE_URL = () => `${process.env.WALLET_WEB_SERVICE_BASE_URL || 'https://api.favcircles.com'}/api/wallet`;
 
 const passTypeId = () => process.env.PASS_TYPE_ID || 'pass.com.favcircles.loyalty';
-const configured = () => !!(process.env.PASS_CERT_P12_B64 || (process.env.PASS_CERT_PEM_B64 && process.env.PASS_KEY_PEM_B64));
+const configured = () => passCertificate.configured();
 
 const db = () => getFirestore();
 
 // --- credentials ------------------------------------------------------------
 
-let cachedCredentials = null;
-/// The pass certificate + key out of the .p12, and the WWDR intermediate
-function credentials() {
-  if (cachedCredentials) return cachedCredentials;
-  if (!configured()) throw new ServiceError(503, 'WALLET_NOT_CONFIGURED', 'Apple Wallet cards are not set up yet');
-  const wwdr = forge.pki.certificateFromPem(fs.readFileSync(path.join(ASSETS, 'AppleWWDRCAG4.crt'), 'utf8'));
-  if (process.env.PASS_CERT_PEM_B64 && process.env.PASS_KEY_PEM_B64) {
-    const certPem = Buffer.from(process.env.PASS_CERT_PEM_B64, 'base64').toString('utf8');
-    const keyPem = Buffer.from(process.env.PASS_KEY_PEM_B64, 'base64').toString('utf8');
-    cachedCredentials = { cert: forge.pki.certificateFromPem(certPem), key: forge.pki.privateKeyFromPem(keyPem), wwdr, certPem, keyPem };
-    return cachedCredentials;
-  }
-  const der = forge.util.decode64(process.env.PASS_CERT_P12_B64);
-  const p12 = forge.pkcs12.pkcs12FromAsn1(forge.asn1.fromDer(der), process.env.PASS_CERT_PASSWORD || '');
-  const certBag = (p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag] || [])[0];
-  const keyBag = (p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })[forge.pki.oids.pkcs8ShroudedKeyBag] || [])[0]
-    || (p12.getBags({ bagType: forge.pki.oids.keyBag })[forge.pki.oids.keyBag] || [])[0];
-  if (!certBag || !keyBag) throw new ServiceError(503, 'WALLET_NOT_CONFIGURED', 'The Wallet certificate is missing its key');
-  cachedCredentials = {
-    cert: certBag.cert,
-    key: keyBag.key,
-    wwdr,
-    certPem: forge.pki.certificateToPem(certBag.cert),
-    keyPem: forge.pki.privateKeyToPem(keyBag.key)
-  };
-  return cachedCredentials;
-}
+// The pass certificate + key (deployed, or renewed by the yearly job) and the
+// WWDR intermediate: services/wallet/passCertificate
+const credentials = () => passCertificate.currentCredentials();
 
 // --- the card ---------------------------------------------------------------
 
@@ -229,7 +208,7 @@ async function progressFor(userId, venue) {
 
 /// The customer's card for this store, creating its record the first time
 async function passForCustomer(userId, venueId) {
-  const creds = credentials();
+  const creds = await credentials();
   const venue = await loadVenue(venueId);
   const serial = serialFor(userId, venueId);
   const ref = db().collection(PASSES).doc(serial);
@@ -285,7 +264,7 @@ async function updatedSerials(deviceLibraryIdentifier, since) {
 
 /// The latest card for a pass record (Wallet's update fetch)
 async function latestPass(record) {
-  const creds = credentials();
+  const creds = await credentials();
   const venue = await loadVenue(record.venueId);
   const pass = passJson({ serial: record.serial, authToken: record.authToken, venue, progress: await progressFor(record.userId, venue) });
   return packagePass(pass, await passImages(venue), creds);
@@ -295,8 +274,8 @@ async function latestPass(record) {
 
 /// An empty push to one device: Wallet then asks the web service what changed.
 /// @returns {Promise<true|'gone'|false>}
-function pushUpdate(pushToken) {
-  const { certPem, keyPem } = credentials();
+async function pushUpdate(pushToken) {
+  const { certPem, keyPem } = await credentials();
   return new Promise((resolve) => {
     const client = http2.connect('https://api.push.apple.com', { cert: certPem, key: keyPem });
     client.on('error', (error) => { console.warn('⚠️ Wallet APNs connection failed:', error.message); resolve(false); });
@@ -347,5 +326,5 @@ module.exports = {
   PASSES, REGISTRATIONS,
   configured, passTypeId, serialFor, passJson, manifestFor, signManifest, packagePass,
   passForCustomer, authorizedPass, registerDevice, unregisterDevice, updatedSerials, latestPass, balanceChanged,
-  _resetCredentials: () => { cachedCredentials = null; }
+  _resetCredentials: () => passCertificate._resetCache()
 };
