@@ -34,7 +34,15 @@ async function finishNewAccount(user, { ip, provider, signupSource, stickerCode,
     const userCity = (user.location || '').split(',')[0].trim();
     const cityArg = userCity ? { city: userCity } : null;
     if (clip) {
-      OnboardingService.completeUserOnboarding(userId, cityArg)
+      // Joined from a store's code: the clip saves that store as their first
+      // place (services/clipStoreSave), so no stranger's sample beside it.
+      // The generic "Join FavCircles" code has no store and keeps the sample.
+      let fromStore = false;
+      if (stickerCode) {
+        const venue = await require('./rewardService').findVenueByCode(stickerCode).catch(() => null);
+        fromStore = !!venue && !venue.genericJoin;
+      }
+      OnboardingService.completeUserOnboarding(userId, cityArg, { skipSamplePlace: fromStore })
         .catch((err) => console.error(`❌ Deferred clip onboarding failed for ${userId}:`, err));
     } else {
       const onboarding = await OnboardingService.completeUserOnboarding(userId, cityArg, {

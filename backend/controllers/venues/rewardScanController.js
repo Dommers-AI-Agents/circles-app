@@ -14,6 +14,7 @@ const { isOwnerPremiumUser, isOwnerPremiumForVenue, isVenueLoyaltyActive, regist
 const db = getFirestore();
 const { isVenueTeamMember, isBrowsableBy, publicVenueInfo, activeOffers } = require('../../services/venueHelpers.js');
 const { findOwnSaveOfStore } = require('../../services/ownSaveOfVenue');
+const { saveStoreForClip } = require('../../services/clipStoreSave');
 // The store welcome email goes out after the first scan at the store they
 // joined at (once; fire-and-forget, never slows the scan)
 const welcomeAfterScan = (userId, venue, awardedPoints, balance) => {
@@ -108,27 +109,54 @@ exports.scan = async (req, res) => {
 
     if (venue.kind === 'window') {
       rewardService.incrementVenueStats(venue.venueId, 'scans');
-      // The window QR is for getting the app, saving the store and building
-      // your map: it never pays store points (Wes, 2026-10-30: "store rewards
-      // only come from the Register QR code"). FavCoins for those actions
-      // come from the app's own rules, separately.
-      // Which circle it's saved in, for the app's "Show me" (2026-10-30)
+      // The App Clip saves the store as it signs them in: they already said
+      // yes on "Love it here? Save us." (Wes, 2026-11-01). Only the clip asks
+      // (`save: true`); an in-app window scan keeps its circle picker.
+      const clipSave = req.body.save === true;
       const savedDoc = await findOwnSaveOfStore({ userId, venue });
-      const alreadySaved = !!savedDoc;
+      let alreadySaved = !!savedDoc;
+      // Which circle it's saved in, for the app's "Show me" (2026-10-30)
+      let savedPlace = savedDoc ? { placeId: savedDoc.id, circleId: savedDoc.data().circleId || null } : null;
+      let saved = false;
+      let savePending = false;
+      if (clipSave && !alreadySaved) {
+        const outcome = await saveStoreForClip(req.user, venue);
+        saved = outcome.saved;
+        alreadySaved = outcome.alreadySaved;
+        savedPlace = outcome.savedPlace || savedPlace;
+        savePending = outcome.pending === true;
+      }
+      // Saving the store pays its save bonus once, only where the store's
+      // rewards are live (Wes, 2026-11-01, superseding 2026-10-30's "the
+      // window QR never pays"). Not live: saved, nothing said about points.
+      const loyaltyLive = await isVenueLoyaltyActive(venue);
+      let awarded = null;
+      if (clipSave && loyaltyLive && (saved || alreadySaved)) {
+        const result = await rewardService.awardStickerSave(userId, venue);
+        if (result.awarded) awarded = { type: 'sticker_save', points: result.points };
+      }
       const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
-      welcomeAfterScan(userId, venue, 0, 0);
+      const venueBalance = (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0;
+      const offers = loyaltyLive ? activeOffers(venue) : [];
+      const earnRate = loyaltyLive ? rewardService.effectiveEarnRate(venue) : null;
+      const next = loyaltyLive ? rewardProgress.nextReward(offers, venueBalance, earnRate) : null;
+      welcomeAfterScan(userId, venue, awarded ? awarded.points : 0, venueBalance);
       return res.json({
         success: true,
         data: {
           kind: 'window',
           venue: publicVenueInfo(venue),
-          awarded: null,
+          awarded,
+          saved,
+          ...(savePending ? { savePending: true } : {}),
           alreadySaved,
-          savedPlace: savedDoc ? { placeId: savedDoc.id, circleId: savedDoc.data().circleId || null } : null,
+          savedPlace,
           balance: rewardPoints,
-          venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0,
-          saveBonusPoints: 0,
-          offers: []
+          venueBalance,
+          loyaltyLive,
+          saveBonusPoints: loyaltyLive ? rewardService.effectiveSavePoints(venue) : 0,
+          ...(loyaltyLive ? { earnRate, nextReward: next, nextRewardLine: rewardProgress.nextRewardLine(next) } : {}),
+          offers
         }
       });
     }
@@ -242,11 +270,12 @@ exports.confirmStickerSave = async (req, res) => {
       });
     }
 
-    // The owner's points for saving: only after a REGISTER scan at a store
-    // whose rewards are live, never from the window QR (2026-10-30)
-    const result = venue.kind === 'register' && (await isVenueLoyaltyActive(venue))
+    // The owner's points for saving the store, once, at a store whose
+    // rewards are live: from either code (Wes, 2026-11-01; the window code
+    // paid nothing from 2026-10-30 until then)
+    const result = (await isVenueLoyaltyActive(venue))
       ? await rewardService.awardStickerSave(userId, venue)
-      : { awarded: false, reason: venue.kind === 'register' ? 'not_live' : 'window_code' };
+      : { awarded: false, reason: 'not_live' };
     const { rewardPoints, venueBalances } = await rewardService.getBalance(userId);
 
     res.json({
