@@ -66,7 +66,7 @@ router.post('/rsvp/:token', writeLimiter, form, async (req, res) => {
 router.get('/rsvp/:token/event.ics', pageLimiter, async (req, res) => {
   try {
     const page = await guests.guestPage(tokenOf(req));
-    const ics = details.icsFor(page.eventId, page.event, { url: `${req.protocol}://${req.get('host')}/rsvp/${tokenOf(req)}` });
+    const ics = details.icsFor(page.eventId, page.event, { url: guests.rsvpUrl(tokenOf(req)) });
     if (!ics) return res.status(404).send('No date set yet');
     res.set('Content-Type', 'text/calendar; charset=utf-8');
     res.set('Content-Disposition', 'attachment; filename="event.ics"');

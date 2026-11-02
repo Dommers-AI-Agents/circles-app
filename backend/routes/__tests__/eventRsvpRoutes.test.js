@@ -14,7 +14,8 @@ const mockPage = {
 jest.mock('../../services/eventGuestService', () => ({
   guestPage: jest.fn(async (token) => { if (token !== 'goodTOKENgoodTOKENgood') { const e = new Error('nope'); e.status = 404; throw e; } return mockPage; }),
   replyAsGuest: jest.fn(async (token, body) => ({ rsvp: body.rsvp, adults: 1, kids: 0 })),
-  optOut: jest.fn(async () => ({ name: 'Bday' }))
+  optOut: jest.fn(async () => ({ name: 'Bday' })),
+  rsvpUrl: (token) => `https://api.favcircles.com/rsvp/${token}`
 }));
 const guests = require('../../services/eventGuestService');
 
