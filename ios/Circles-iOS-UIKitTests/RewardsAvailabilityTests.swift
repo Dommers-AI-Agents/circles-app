@@ -45,10 +45,10 @@ struct RewardsAvailabilityTests {
 
     @Test func copy() throws {
         let details = try #require(RewardsAvailability(try data()).details)
-        #expect(RewardsAvailability.earnLine(details) == "Earn 10 points per visit")
+        #expect(RewardsAvailability.earnLine(details) == "Earn 10 points per purchase")
         #expect(RewardsAvailability.balanceLine(details) == "You have 30 points here")
         #expect(RewardsAvailability.checkInNudge(details)
-                == "Pasta & Provisions gives 10 points per visit. Scan the QR code at the register to collect them.")
+                == "Pasta & Provisions gives 10 points per purchase. Scan the QR code at the register to collect them.")
     }
 
     @Test func storeCardSaysRewardsOnlyWhileTheyAreLive() {
@@ -87,7 +87,7 @@ struct RewardsAvailabilityTests {
         #expect(r.visitsLeft == 3)
         #expect(abs(r.fraction - 0.25) < 0.001)
         #expect(!r.canRedeem)
-        #expect(RewardsAvailability.nextRewardLine(r) == "75 more points for a free drip coffee · about 3 more visits")
+        #expect(RewardsAvailability.nextRewardLine(r) == "75 more points for a free drip coffee · about 3 more purchases")
     }
 
     @Test func enoughPointsSaysSoAndNamesTheBestAffordableReward() {

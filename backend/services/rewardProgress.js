@@ -43,12 +43,12 @@ const article = (title) => {
   return `${vowel ? 'an' : 'a'} ${t[0].toLowerCase()}${t.slice(1)}`;
 };
 
-/** "75 more points for a free coffee · about 3 more visits" / "You've got enough for a free coffee". */
+/** "75 more points for a free coffee · about 3 more purchases" / "You've got enough for a free coffee". */
 const nextRewardLine = (reward) => {
   if (!reward) return null;
   if (reward.canRedeem) return `You've got enough for ${article(reward.title)}. Tap Redeem in FavCircles to use it.`;
   let line = `${reward.remaining} more ${reward.remaining === 1 ? 'point' : 'points'} for ${article(reward.title)}`;
-  if (reward.visitsLeft > 0) line += ` · about ${reward.visitsLeft} more ${reward.visitsLeft === 1 ? 'visit' : 'visits'}`;
+  if (reward.visitsLeft > 0) line += ` · about ${reward.visitsLeft} more ${reward.visitsLeft === 1 ? 'purchase' : 'purchases'}`;
   return line;
 };
 

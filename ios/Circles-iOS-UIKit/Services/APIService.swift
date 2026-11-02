@@ -143,6 +143,13 @@ extension APIError {
         return Self.serverMessage(from: data)
     }
 
+    /// The server's machine-readable reason (`{"code": "share_required"}`), if it sent one.
+    var serverCode: String? {
+        guard case .httpError(_, let data) = self, let data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return json["code"] as? String
+    }
+
     /// The one parser for a server error body (also used where a response
     /// isn't wrapped in an APIError, like the widget API channel).
     static func serverMessage(from data: Data?) -> String? {

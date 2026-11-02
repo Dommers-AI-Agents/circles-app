@@ -34,13 +34,13 @@ struct VenueOfferEdit: Equatable {
         return nil
     }
 
-    /// "About 4 visits at 25 points each" — how far away the reward feels
+    /// "About 4 purchases at 25 points each" — how far away the reward feels
     static func visitsHint(pointsCost: Int?, earnRate: Int) -> String? {
         guard let cost = pointsCost, cost > 0, earnRate > 0 else { return nil }
         let visits = Int((Double(cost) / Double(earnRate)).rounded(.up))
         return visits == 1
-            ? "One visit earns it at \(earnRate) points a visit."
-            : "About \(visits) visits at \(earnRate) points each."
+            ? "One purchase earns it, at \(earnRate) points each."
+            : "About \(visits) purchases at \(earnRate) points each."
     }
 
     func changes(from offer: RewardOffer) -> Changes {

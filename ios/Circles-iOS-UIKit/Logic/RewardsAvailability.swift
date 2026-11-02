@@ -87,10 +87,10 @@ enum RewardsAvailability: Equatable {
         return nil
     }
 
-    /// "Earn 10 points per visit" — nil when the server didn't say.
+    /// "Earn 10 points per purchase" — nil when the server didn't say.
     static func earnLine(_ details: Details) -> String? {
         guard let rate = details.earnRate, rate > 0 else { return nil }
-        return "Earn \(rate) \(rate == 1 ? "point" : "points") per visit"
+        return "Earn \(rate) \(rate == 1 ? "point" : "points") per purchase"
     }
 
     /// "You have 30 points here" / "You don't have any points here yet".
@@ -116,12 +116,12 @@ enum RewardsAvailability: Equatable {
                           fraction: Float(balance) / Float(next.pointsCost))
     }
 
-    /// "75 more points for a free drip coffee · about 3 more visits" /
+    /// "75 more points for a free drip coffee · about 3 more purchases" /
     /// "You've got enough for a free drip coffee".
     static func nextRewardLine(_ reward: NextReward) -> String {
         if reward.canRedeem { return "You've got enough for \(article(reward.title)). Tap Redeem to use it at the counter." }
         var line = "\(reward.remaining) more \(reward.remaining == 1 ? "point" : "points") for \(article(reward.title))"
-        if let visits = reward.visitsLeft, visits > 0 { line += " · about \(visits) more \(visits == 1 ? "visit" : "visits")" }
+        if let visits = reward.visitsLeft, visits > 0 { line += " · about \(visits) more \(visits == 1 ? "purchase" : "purchases")" }
         return line
     }
 
@@ -137,7 +137,7 @@ enum RewardsAvailability: Equatable {
 
     /// The check-in confirmation's line about rewards.
     static func checkInNudge(_ details: Details) -> String {
-        let earn = details.earnRate.map { $0 > 0 ? " gives \($0) \($0 == 1 ? "point" : "points") per visit" : " has rewards" } ?? " has rewards"
+        let earn = details.earnRate.map { $0 > 0 ? " gives \($0) \($0 == 1 ? "point" : "points") per purchase" : " has rewards" } ?? " has rewards"
         return "\(details.venueName)\(earn). Scan the QR code at the register to collect them."
     }
 }

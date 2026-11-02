@@ -84,8 +84,8 @@ function frontRewardFields(progress) {
 function frontVisitFields(progress) {
   if (!progress.live) return [];
   const fields = [];
-  if (progress.earnRate) fields.push({ key: 'earn', label: 'EACH VISIT', value: `+${progress.earnRate} points` });
-  if (progress.visits > 0) fields.push({ key: 'visits', label: 'YOUR VISITS', value: progress.visits, textAlignment: 'PKTextAlignmentRight' });
+  if (progress.earnRate) fields.push({ key: 'earn', label: 'EACH PURCHASE', value: `+${progress.earnRate} points` });
+  if (progress.visits > 0) fields.push({ key: 'visits', label: 'PURCHASES', value: progress.visits, textAlignment: 'PKTextAlignmentRight' });
   return fields;
 }
 

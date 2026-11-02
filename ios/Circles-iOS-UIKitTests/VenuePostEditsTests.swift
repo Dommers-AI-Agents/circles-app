@@ -41,9 +41,9 @@ struct VenuePostEditsTests {
     }
 
     @Test func visitsHintRoundsUp() {
-        #expect(VenueOfferEdit.visitsHint(pointsCost: 100, earnRate: 25) == "About 4 visits at 25 points each.")
-        #expect(VenueOfferEdit.visitsHint(pointsCost: 110, earnRate: 25) == "About 5 visits at 25 points each.")
-        #expect(VenueOfferEdit.visitsHint(pointsCost: 20, earnRate: 25) == "One visit earns it at 25 points a visit.")
+        #expect(VenueOfferEdit.visitsHint(pointsCost: 100, earnRate: 25) == "About 4 purchases at 25 points each.")
+        #expect(VenueOfferEdit.visitsHint(pointsCost: 110, earnRate: 25) == "About 5 purchases at 25 points each.")
+        #expect(VenueOfferEdit.visitsHint(pointsCost: 20, earnRate: 25) == "One purchase earns it, at 25 points each.")
         #expect(VenueOfferEdit.visitsHint(pointsCost: nil, earnRate: 25) == nil)
     }
 

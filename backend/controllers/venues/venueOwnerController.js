@@ -378,6 +378,8 @@ exports.getVenueActivity = async (req, res) => {
         points: e.points || 0,
         createdAt: e.createdAt,
         offerTitle: e.offerTitle || null,
+        // Register scans: 'near' | 'far' | 'off' | 'unknown' (services/scanLocation)
+        location: e.location || null,
         user: cards.get(e.userId) || null
       };
     });

@@ -55,6 +55,8 @@ enum VenueManageLayout {
         case loyaltyCodes
         /// Every reward redeemed here: given, open, or points back (2026-11-01)
         case rewardsUsed
+        /// Who earns here: purchases, rewards, last visit; Remove from rewards (2026-11-02)
+        case customers
         // Announcements
         case announcement(Int)
         case addAnnouncement
@@ -112,7 +114,7 @@ enum VenueManageLayout {
         loyalty.append(.addOffer)
         if physical { loyalty += [.showRegisterCard, .replaceRegisterCard] }
         loyalty.append(.loyaltyCodes)
-        loyalty.append(.rewardsUsed)
+        loyalty += [.rewardsUsed, .customers]
 
         var announcements = (0..<facts.announcementCount).map { Row.announcement($0) }
         announcements.append(.addAnnouncement)
@@ -140,7 +142,7 @@ enum VenueManageLayout {
         switch row {
         case .savers, .followers, .activity,
              .menu, .fullMenu, .orders, .onlineOrdering, .orderPage, .gallery,
-             .earnRate, .savePoints, .offer, .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .rewardsUsed,
+             .earnRate, .savePoints, .offer, .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .rewardsUsed, .customers,
              .announcement, .addAnnouncement:
             return true
         default:

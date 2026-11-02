@@ -245,13 +245,13 @@ class RewardService {
 
   // Awards points exactly once per idempotencyKey.
   // Returns { awarded: true, points } or { awarded: false, duplicate: true }.
-  async awardPoints({ userId, type, points, idempotencyKey, venueId, venueName, code, googlePlaceId, sourceUserId }) {
+  async awardPoints({ userId, type, points, idempotencyKey, venueId, venueName, code, googlePlaceId, sourceUserId, location, bucketUpdate }) {
     const eventRef = this.db
       .collection(STICKER_COLLECTIONS.REWARD_EVENTS)
       .doc(sanitizeKeyPart(idempotencyKey));
 
     const event = createRewardEvent({
-      userId, type, points, venueId, venueName, code, googlePlaceId, sourceUserId
+      userId, type, points, venueId, venueName, code, googlePlaceId, sourceUserId, location
     });
 
     try {
@@ -278,6 +278,9 @@ class RewardService {
       if (venueName) {
         userUpdate[`rewardPointsByVenue.${venueId}.venueName`] = venueName;
       }
+      Object.entries(bucketUpdate || {}).forEach(([field, value]) => {
+        userUpdate[`rewardPointsByVenue.${venueId}.${field}`] = value;
+      });
     } else {
       // Every live award type is venue-stamped; a venue-less award would mint
       // points spendable nowhere. Loud so a future caller gets caught in dev.
@@ -602,12 +605,18 @@ class RewardService {
       : rewardConfig.POINTS.VENUE_VISIT;
   }
 
-  // Register-code (purchase) scan. Possession of the physical card is the
-  // security model — no GPS check. The once-per-venue-per-day idempotency key
-  // plus owner-initiated code rotation are the abuse backstops.
-  // Returns { awarded, reason? }.
-  async awardVenueVisit(userId, venue) {
-    const day = new Date().toISOString().slice(0, 10);
+  // Register-code (purchase) scan, on the honor system (Wes, 2026-11-02:
+  // small giveaways): the card sits at the register, the clerk sees the sale.
+  // Backstops: once per store per day, the location check in the scan handler
+  // (services/scanLocation), the owner's "Remove from rewards", and
+  // owner-initiated code rotation. `location` is stamped on the event so the
+  // owner's Activity shows "location off". Returns { awarded, reason? }.
+  async awardVenueVisit(userId, venue, { location = null } = {}) {
+    if (await require('./storeCustomers').isRemoved(userId, venue.venueId)) {
+      return { awarded: false, reason: 'removed' };
+    }
+    const now = new Date().toISOString();
+    const day = now.slice(0, 10);
     const result = await this.awardPoints({
       userId,
       type: 'venue_visit',
@@ -616,7 +625,9 @@ class RewardService {
       venueId: venue.venueId,
       venueName: venue.venueName,
       code: venue.registerCode,
-      googlePlaceId: venue.googlePlaceId
+      googlePlaceId: venue.googlePlaceId,
+      location,
+      bucketUpdate: { purchases: FieldValue.increment(1), lastScanAt: now }
     });
     if (result.awarded) {
       await this.incrementVenueStats(venue.venueId, 'visits');
@@ -624,6 +635,15 @@ class RewardService {
       result.reason = 'already_today';
     }
     return result;
+  }
+
+  // A register scan from far away earns nothing but shows on the owner's
+  // Activity (one row per person per store per day).
+  async recordFarScan(userId, venue) {
+    const day = new Date().toISOString().slice(0, 10);
+    await this.db.collection(STICKER_COLLECTIONS.REWARD_EVENTS)
+      .doc(sanitizeKeyPart(`far:${userId}:${venue.venueId}:${day}`))
+      .set(createRewardEvent({ userId, type: 'scan_far', points: 0, venueId: venue.venueId, venueName: venue.venueName, location: 'far' }));
   }
 
   // (Share conversions no longer pay store points — they aren't tied to any
@@ -643,7 +663,9 @@ class RewardService {
   }
 
   // Atomically checks balance, deducts points, and issues a timed voucher.
-  async redeemOffer(userId, venueId, offerId) {
+  // `askShare`: the app can show the share step (older apps can't, so they
+  // redeem as before until they update)
+  async redeemOffer(userId, venueId, offerId, { askShare = false } = {}) {
     const venueDoc = await this.db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(venueId).get();
     if (!venueDoc.exists) {
       return { success: false, error: 'Venue not found' };
@@ -681,7 +703,13 @@ class RewardService {
     try {
       await this.db.runTransaction(async (transaction) => {
         const userDoc = await transaction.get(userRef);
-        const balanceHere = this.venuePointsFrom(userDoc.exists ? userDoc.data() : {}, venueId);
+        const userData = userDoc.exists ? userDoc.data() : {};
+        const bucket = (userData.rewardPointsByVenue || {})[venueId] || {};
+        // Rewards are claimed by name (Wes, 2026-11-02): the first one at a
+        // store asks to share name, photo and email with it
+        if (bucket.removedFromRewards) throw new Error('REMOVED');
+        if (askShare && !bucket.sharedWithStore) throw new Error('SHARE_REQUIRED');
+        const balanceHere = this.venuePointsFrom(userData, venueId);
         if (balanceHere < offer.pointsCost) {
           shortBy = offer.pointsCost - balanceHere;
           throw new Error('INSUFFICIENT_POINTS');
@@ -689,7 +717,8 @@ class RewardService {
         transaction.update(userRef, {
           rewardPoints: FieldValue.increment(-offer.pointsCost),
           [`rewardPointsByVenue.${venueId}.points`]: FieldValue.increment(-offer.pointsCost),
-          [`rewardPointsByVenue.${venueId}.venueName`]: venue.venueName
+          [`rewardPointsByVenue.${venueId}.venueName`]: venue.venueName,
+          [`rewardPointsByVenue.${venueId}.rewardsClaimed`]: FieldValue.increment(1)
         });
         transaction.set(eventRef, event);
         // The ticket the customer shows at the counter (2026-11-01): staff
@@ -699,6 +728,12 @@ class RewardService {
         }));
       });
     } catch (error) {
+      if (error.message === 'SHARE_REQUIRED') {
+        return { success: false, code: 'share_required', error: `Rewards at ${venue.venueName} are claimed by name. Share your name, photo and email with ${venue.venueName} to claim this one.` };
+      }
+      if (error.message === 'REMOVED') {
+        return { success: false, code: 'removed', error: `${venue.venueName} has taken you off its rewards. Ask at the counter if that's a mistake.` };
+      }
       if (error.message === 'INSUFFICIENT_POINTS') {
         return {
           success: false,

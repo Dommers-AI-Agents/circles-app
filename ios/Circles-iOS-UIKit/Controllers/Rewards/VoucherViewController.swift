@@ -3,7 +3,8 @@ import UIKit
 /// Full-screen reward ticket shown to staff at the counter: the offer, a
 /// short code and a 15-minute countdown. Staff tap "Given" on it when they
 /// hand the reward over (2026-11-01); a ticket that runs out unclaimed says
-/// the points are back (the server refunds them).
+/// the points are back (the server refunds them). The customer's photo and
+/// name sit at the top (Wes, 2026-11-02) so the clerk sees whose reward it is.
 class VoucherViewController: BaseViewController {
 
     // MARK: - Properties
@@ -35,6 +36,26 @@ class VoucherViewController: BaseViewController {
         imageView.tintColor = .systemGreen
         imageView.contentMode = .scaleAspectFit
         return imageView
+    }()
+
+    /// The customer's photo, so the clerk recognizes their regular
+    private let avatarView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = 36
+        return imageView
+    }()
+
+    private let nameLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = UIFont.systemFont(ofSize: 22, weight: .bold)
+        label.textColor = .black
+        label.textAlignment = .center
+        label.numberOfLines = 2
+        return label
     }()
 
     private let venueLabel: UILabel = {
@@ -144,6 +165,13 @@ class VoucherViewController: BaseViewController {
         setupUI()
         venueLabel.text = voucher.venueName
         offerLabel.text = voucher.offerTitle
+        if let me = AuthService.shared.currentUser {
+            avatarView.setUserAvatar(for: me, diameter: 72)
+            nameLabel.text = "For \(me.displayName)"
+        } else {
+            avatarView.image = UIImage(systemName: "checkmark.seal.fill")
+            avatarView.tintColor = .systemGreen
+        }
         codeLabel.text = voucher.voucherCode
 
         if voucher.status == "given" {
@@ -167,7 +195,13 @@ class VoucherViewController: BaseViewController {
     private func setupUI() {
         view.addSubview(countdownLabel)
         view.addSubview(cardView)
+        cardView.addSubview(avatarView)
+        cardView.addSubview(nameLabel)
+        // Given / expired badge on the photo's corner
         cardView.addSubview(checkmarkImageView)
+        checkmarkImageView.isHidden = true
+        checkmarkImageView.backgroundColor = .white
+        checkmarkImageView.layer.cornerRadius = 15
         cardView.addSubview(venueLabel)
         cardView.addSubview(offerLabel)
         cardView.addSubview(codeLabel)
@@ -193,12 +227,21 @@ class VoucherViewController: BaseViewController {
             cardView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
             cardView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
 
-            checkmarkImageView.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 28),
-            checkmarkImageView.centerXAnchor.constraint(equalTo: cardView.centerXAnchor),
-            checkmarkImageView.widthAnchor.constraint(equalToConstant: 56),
-            checkmarkImageView.heightAnchor.constraint(equalToConstant: 56),
+            avatarView.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 24),
+            avatarView.centerXAnchor.constraint(equalTo: cardView.centerXAnchor),
+            avatarView.widthAnchor.constraint(equalToConstant: 72),
+            avatarView.heightAnchor.constraint(equalToConstant: 72),
 
-            venueLabel.topAnchor.constraint(equalTo: checkmarkImageView.bottomAnchor, constant: 14),
+            checkmarkImageView.centerXAnchor.constraint(equalTo: avatarView.trailingAnchor, constant: -6),
+            checkmarkImageView.centerYAnchor.constraint(equalTo: avatarView.bottomAnchor, constant: -6),
+            checkmarkImageView.widthAnchor.constraint(equalToConstant: 30),
+            checkmarkImageView.heightAnchor.constraint(equalToConstant: 30),
+
+            nameLabel.topAnchor.constraint(equalTo: avatarView.bottomAnchor, constant: 10),
+            nameLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 20),
+            nameLabel.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -20),
+
+            venueLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 6),
             venueLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 20),
             venueLabel.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -20),
 
@@ -243,6 +286,7 @@ class VoucherViewController: BaseViewController {
             codeLabel.textColor = .lightGray
             offerLabel.textColor = .lightGray
             givenButton.isHidden = true
+            checkmarkImageView.isHidden = false
             checkmarkImageView.image = UIImage(systemName: "arrow.uturn.backward.circle.fill")
             checkmarkImageView.tintColor = .systemOrange
             staffInstructionLabel.text = "This reward wasn\u{2019}t marked as given, so your \(voucher.pointsCost) points are back at \(voucher.venueName)."
@@ -299,6 +343,7 @@ class VoucherViewController: BaseViewController {
         countdownLabel.textColor = .white
         countdownLabel.text = "Given \u{2713}"
         givenButton.isHidden = true
+        checkmarkImageView.isHidden = false
         checkmarkImageView.image = UIImage(systemName: "checkmark.circle.fill")
         checkmarkImageView.tintColor = .systemGreen
         codeLabel.textColor = .lightGray

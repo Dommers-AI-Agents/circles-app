@@ -64,7 +64,7 @@ struct VenueManageLayoutTests {
 
     @Test func offersAndAnnouncementsListThenAdd() {
         let facts = L.Facts(offerCount: 2, announcementCount: 1)
-        #expect(rows(facts, .loyalty) == [.earnRate, .savePoints, .offer(0), .offer(1), .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .rewardsUsed])
+        #expect(rows(facts, .loyalty) == [.earnRate, .savePoints, .offer(0), .offer(1), .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .rewardsUsed, .customers])
         #expect(rows(facts, .announcements) == [.announcement(0), .addAnnouncement])
     }
 
@@ -82,7 +82,7 @@ struct VenueManageLayoutTests {
 
     @Test func businessToolsAreLocked() {
         let paid: [L.Row] = [.savers, .followers, .activity, .menu, .fullMenu, .orders, .onlineOrdering, .orderPage, .gallery, .earnRate, .offer(0), .addOffer,
-                             .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .rewardsUsed, .announcement(0), .addAnnouncement]
+                             .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .rewardsUsed, .customers, .announcement(0), .addAnnouncement]
         paid.forEach { #expect(L.isBusiness($0), "\($0) should need Business") }
     }
 

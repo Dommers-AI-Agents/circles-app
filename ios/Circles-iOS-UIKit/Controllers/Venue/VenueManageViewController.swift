@@ -875,7 +875,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         case .followers:
             set("Followers", "People who get your announcements", "person.2.fill")
         case .activity:
-            set("Visits & redemptions", "Every check-in and reward, newest first", "list.bullet.rectangle")
+            set("Purchases & redemptions", "Every register scan and reward, newest first", "list.bullet.rectangle")
 
         case .viewPage:
             set("View your place page", "Exactly what customers see", "eye")
@@ -951,6 +951,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             set("Loyalty codes", "Single-use codes for orders and event handouts", "ticket")
         case .rewardsUsed:
             set("Rewards used", "Who redeemed what, and whether staff gave it", "checkmark.seal")
+        case .customers:
+            set("Customers", "Who earns here, and taking someone off your rewards", "person.text.rectangle")
 
         case .announcement(let index):
             let announcement = announcements[index]
@@ -1051,6 +1053,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             navigationController?.pushViewController(VenueCodesViewController(venueId: venueId, venueName: venueName), animated: true)
         case .rewardsUsed:
             navigationController?.pushViewController(VenueRewardTicketsViewController(venueId: venueId), animated: true)
+        case .customers:
+            navigationController?.pushViewController(VenueCustomersViewController(venueId: venueId, venueName: venueName), animated: true)
 
         case .announcement(let index):
             manageAnnouncement(announcements[index])

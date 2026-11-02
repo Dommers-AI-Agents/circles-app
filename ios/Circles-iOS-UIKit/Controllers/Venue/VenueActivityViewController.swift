@@ -286,7 +286,12 @@ class VenueActivityCell: UITableViewCell {
         let who = event.user?.displayName ?? "A customer"
         let (verb, icon): (String, String)
         switch event.type {
-        case "venue_visit": (verb, icon) = ("visited (register scan)", "qrcode.viewfinder")
+        case "venue_visit":
+            // Location off still earns (honor system); the owner sees it
+            (verb, icon) = event.location == "off"
+                ? ("bought something (register scan, location off)", "location.slash")
+                : ("bought something (register scan)", "qrcode.viewfinder")
+        case "scan_far": (verb, icon) = ("scanned your register code from far away (no points)", "location.slash.fill")
         case "sticker_signup": (verb, icon) = ("joined from your sticker", "person.badge.plus")
         case "sticker_save": (verb, icon) = ("saved your place", "bookmark.fill")
         case "redemption":

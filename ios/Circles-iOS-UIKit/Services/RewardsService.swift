@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 
 /// Sticker rewards program: scanning physical venue QR codes, earning points,
 /// and redeeming venue-honored offers. Mirrors the ReferralService patterns
@@ -57,8 +58,18 @@ class RewardsService {
         }
     }
 
-    func scan(code: String, completion: @escaping (Result<RewardScanData, Error>) -> Void) {
-        let body: [String: Any] = ["code": code]
+    /// `location`: where the phone is (register scans away from the store
+    /// earn nothing); `locationOff`: the customer kept location off (still
+    /// earns, marked for the store). Neither = couldn't tell.
+    func scan(code: String, location: CLLocation? = nil, locationOff: Bool = false,
+              completion: @escaping (Result<RewardScanData, Error>) -> Void) {
+        var body: [String: Any] = ["code": code]
+        if let location {
+            body["location"] = ["latitude": location.coordinate.latitude, "longitude": location.coordinate.longitude,
+                                "accuracy": max(0, location.horizontalAccuracy)]
+        } else if locationOff {
+            body["locationOff"] = true
+        }
 
         apiService.attestedRequest(
             endpoint: "rewards/scan",
@@ -131,7 +142,9 @@ class RewardsService {
     // MARK: - Redeem an offer (returns a 5-minute voucher)
 
     func redeemOffer(venueId: String, offerId: String, completion: @escaping (Result<RewardRedeemData, Error>) -> Void) {
-        let body: [String: Any] = ["venueId": venueId, "offerId": offerId]
+        // canShare: this app can ask to share name, photo and email with the
+        // store before its first reward there (server answers code "share_required")
+        let body: [String: Any] = ["venueId": venueId, "offerId": offerId, "canShare": true]
 
         apiService.attestedRequest(
             endpoint: "rewards/redeem-offer",
@@ -147,6 +160,15 @@ class RewardsService {
             case .failure(let error):
                 completion(.failure(error))
             }
+        }
+    }
+
+    /// The customer agrees to share name, photo and email with this store
+    /// (asked once per store, before the first reward there)
+    func shareWithStore(venueId: String, completion: @escaping (Result<Void, APIError>) -> Void) {
+        apiService.request(endpoint: "rewards/venues/\(venueId)/share", method: .post, requiresAuth: true) {
+            (result: Result<RewardsEnvelope<ShareWithStoreData>, APIError>) in
+            completion(result.map { _ in () })
         }
     }
 
@@ -967,6 +989,8 @@ struct RewardsEnvelope<T: Codable>: Codable {
     let data: T
 }
 
+struct ShareWithStoreData: Codable { let shared: Bool }
+
 struct RewardScanData: Codable {
     /// Where the store is saved (window scans), for "Show me"
     struct SavedPlace: Codable { let placeId: String; let circleId: String? }
@@ -976,6 +1000,10 @@ struct RewardScanData: Codable {
     let awarded: RewardAward?
     let alreadySaved: Bool?
     let alreadyEarnedToday: Bool?
+    /// The phone was clearly away from the store: no points
+    let notAtStore: Bool?
+    /// The store took this customer off its rewards
+    let removedFromRewards: Bool?
     /// Register scans while the store's Business plan has lapsed earn nothing
     let loyaltyPaused: Bool?
     /// With loyaltyPaused: "not_started" (the owner never subscribed) or "paused"
@@ -1853,6 +1881,8 @@ struct VenueActivityEvent: Codable {
     let points: Double
     let createdAt: Date?
     let offerTitle: String?
+    /// Register scans: "near" | "far" | "off" | "unknown" (where the phone was)
+    let location: String?
     let user: VenueUserCard?
 }
 

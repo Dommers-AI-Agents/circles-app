@@ -44,7 +44,7 @@ test('a live store shows points, the next reward in short fields, and the store 
   });
   expect(pass.storeCard.primaryFields[0]).toMatchObject({ key: 'points', value: 40 });
   expect(pass.storeCard.secondaryFields.map((f) => [f.label, f.value])).toEqual([['NEXT REWARD', 'Free coffee'], ['TO GO', '60 pts']]);
-  expect(pass.storeCard.auxiliaryFields.map((f) => [f.label, f.value])).toEqual([['EACH VISIT', '+10 points'], ['YOUR VISITS', 4]]);
+  expect(pass.storeCard.auxiliaryFields.map((f) => [f.label, f.value])).toEqual([['EACH PURCHASE', '+10 points'], ['PURCHASES', 4]]);
   // Wallet allows four front fields under the points on a store card
   expect(pass.storeCard.secondaryFields.length + pass.storeCard.auxiliaryFields.length).toBeLessThanOrEqual(4);
   const back = Object.fromEntries(pass.storeCard.backFields.map((f) => [f.key, f.value]));

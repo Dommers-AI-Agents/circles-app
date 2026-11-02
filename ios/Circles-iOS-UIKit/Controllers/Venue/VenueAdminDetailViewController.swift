@@ -622,7 +622,7 @@ extension VenueAdminDetailViewController: UITableViewDataSource, UITableViewDele
             config.image = UIImage(systemName: "slider.horizontal.3")
             config.text = "Offers, earn rate & storefront"
             var parts: [String] = []
-            if let rate = earnRate { parts.append("\(VenueAdminCopy.count(rate, "point")) per visit") }
+            if let rate = earnRate { parts.append("\(VenueAdminCopy.count(rate, "point")) per purchase") }
             let offers = (detail?.venue.offers ?? listVenue.offers ?? []).filter { $0.active != false }.count
             parts.append(VenueAdminCopy.count(offers, "active offer"))
             if let storefront = detail?.storefront {

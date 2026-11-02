@@ -265,6 +265,8 @@ const createRewardEvent = (data) => {
     code: data.code || null,
     googlePlaceId: data.googlePlaceId || null,
     sourceUserId: data.sourceUserId || null,
+    // Register scans: where the phone was (services/scanLocation: near/far/off/unknown)
+    location: data.location || null,
     // Redemption voucher fields (only set for type === 'redemption')
     voucherCode: data.voucherCode || null,
     offerId: data.offerId || null,

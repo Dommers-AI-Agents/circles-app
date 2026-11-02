@@ -13,12 +13,7 @@ const placePhotos = require('../services/placePhotoService');
 const { sendServiceError } = require('../utils/serviceError');
 
 // {latitude, longitude} or null, whichever shape the venue stored
-const clipLocation = (location) => {
-  if (!location) return null;
-  const latitude = Number(location.latitude ?? location.lat ?? location._latitude);
-  const longitude = Number(location.longitude ?? location.lng ?? location._longitude);
-  return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
-};
+const clipLocation = require('../services/scanLocation').pointOf;
 exports.clipLocation = clipLocation;
 
 // GET /api/clip/venue/:code — public offer-screen data for the clip.

@@ -18,8 +18,8 @@ test('the first reward is the cheapest live offer', () => {
 test('the next reward is the cheapest out of reach, with visits at the earn rate', () => {
   expect(p.nextReward(OFFERS, 25, 25)).toMatchObject({ title: 'Free coffee', remaining: 75, visitsLeft: 3, canRedeem: false });
   expect(p.nextReward(OFFERS, 0, null)).toMatchObject({ title: 'Free coffee', remaining: 100, visitsLeft: null });
-  expect(p.nextRewardLine(p.nextReward(OFFERS, 25, 25))).toBe('75 more points for a free coffee · about 3 more visits');
-  expect(p.nextRewardLine(p.nextReward(OFFERS, 99, 25))).toBe('1 more point for a free coffee · about 1 more visit');
+  expect(p.nextRewardLine(p.nextReward(OFFERS, 25, 25))).toBe('75 more points for a free coffee · about 3 more purchases');
+  expect(p.nextRewardLine(p.nextReward(OFFERS, 99, 25))).toBe('1 more point for a free coffee · about 1 more purchase');
 });
 
 test('once something is affordable it is the best one they can take now', () => {

@@ -41,6 +41,15 @@ final class StickerRewardCoordinator: NSObject {
             RewardsService.shared.savePendingStickerCode(code)
             return
         }
+        // Where the phone is first (ScanLocationProvider): a register scan
+        // from far away earns nothing, location off still earns
+        ScanLocationProvider.shared.locate(from: presenter) { [weak self] place in
+            self?.scan(code, place: place)
+        }
+    }
+
+    private func scan(_ code: String, place: ScanLocationProvider.Result) {
+        guard let presenter = presenter else { return }
         // "Checking rewards…", then the store's name as soon as it's known
         // (a quick lookup alongside the scan; remembered for repeat scans)
         let loading = AlertPresenter.showLoading(message: "Checking rewards\u{2026}", from: presenter)
@@ -49,7 +58,7 @@ final class StickerRewardCoordinator: NSObject {
             DispatchQueue.main.async { loading.message = "Checking rewards at \(name)\u{2026}" }
         }
 
-        scanWithRetry(code: code) { [weak self] result in
+        scanWithRetry(code: code, place: place) { [weak self] result in
             DispatchQueue.main.async {
                 if case .success(let scan) = result {
                     UserDefaults.standard.set(scan.venue.venueName, forKey: "storeNameForCode." + code.uppercased())
@@ -80,11 +89,12 @@ final class StickerRewardCoordinator: NSObject {
     /// so a second try is safe and answers "already earned today" if the
     /// first one landed (2026-10-30: a scan that succeeded on the server
     /// showed "Can't reach FavCircles" on the phone).
-    private func scanWithRetry(code: String, completion: @escaping (Result<RewardScanData, Error>) -> Void) {
-        RewardsService.shared.scan(code: code) { result in
+    private func scanWithRetry(code: String, place: ScanLocationProvider.Result,
+                               completion: @escaping (Result<RewardScanData, Error>) -> Void) {
+        RewardsService.shared.scan(code: code, location: place.location, locationOff: place.locationOff) { result in
             if case .failure(let error) = result, Self.isConnectivity(error) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                    RewardsService.shared.scan(code: code, completion: completion)
+                    RewardsService.shared.scan(code: code, location: place.location, locationOff: place.locationOff, completion: completion)
                 }
                 return
             }
@@ -439,9 +449,15 @@ final class StickerRewardCoordinator: NSObject {
             message = balanceHere <= awarded.points
                 ? "Welcome! You now have \(balanceHere) points here."
                 : "Thanks for coming back. You now have \(balanceHere) points here."
+        } else if scan.notAtStore == true {
+            title = "Scan this at the store"
+            message = "Points are for purchases at \(scan.venue.venueName), so the register code only earns when your phone is there. You have \(balanceHere) points here."
+        } else if scan.removedFromRewards == true {
+            title = scan.venue.venueName
+            message = "\(scan.venue.venueName) has taken you off its rewards. Ask at the counter if that's a mistake."
         } else if scan.alreadyEarnedToday == true {
             title = "Already earned today"
-            message = "You've collected today's visit points at \(scan.venue.venueName). You have \(balanceHere) points here."
+            message = "You've collected today's points at \(scan.venue.venueName). You have \(balanceHere) points here."
         } else if balanceHere > 0 {
             message = "You have \(balanceHere) points here."
         }
@@ -535,24 +551,8 @@ final class StickerRewardCoordinator: NSObject {
     }
 
     private func redeemOffer(_ offer: RewardOffer, venue: RewardVenue) {
-        guard let presenter = presenter else { return }
-        let loading = AlertPresenter.showLoading(message: "Redeeming...", from: presenter)
-
-        RewardsService.shared.redeemOffer(venueId: venue.venueId, offerId: offer.offerId) { [weak self] result in
-            DispatchQueue.main.async {
-                loading.dismiss(animated: true) {
-                    guard let presenter = self?.presenter else { return }
-                    switch result {
-                    case .success(let redeem):
-                        let voucherVC = VoucherViewController(voucher: redeem.voucher)
-                        voucherVC.modalPresentationStyle = .fullScreen
-                        presenter.present(voucherVC, animated: true)
-                    case .failure(let error):
-                        AlertPresenter.showError(error, from: presenter)
-                    }
-                }
-            }
-        }
+        // The one redemption flow (UIViewController+RewardRedemption)
+        presenter?.redeemOffer(offer, venueId: venue.venueId, venueName: venue.venueName)
     }
 }
 

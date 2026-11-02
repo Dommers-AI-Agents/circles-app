@@ -6,6 +6,7 @@ const geofire = require('geofire-common');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { sanitizeKeyPart, STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const rewardService = require('../../services/rewardService');
+const { scanLocationCheck } = require('../../services/scanLocation');
 const rewardProgress = require('../../services/rewardProgress');
 const nearbyEventsService = require('../../services/nearbyEventsService');
 const { listLiveVenues } = require('../../services/liveVenues');
@@ -201,16 +202,18 @@ exports.scan = async (req, res) => {
       console.info(`[loyalty-integrity] comped award venue=${venue.venueId} until=${venue.loyaltyCompedUntil || 'open-ended'} reason=${venue.loyaltyCompReason || 'unspecified'}`);
     }
 
-    // Apple's App Clip location confirmation said the phone is not at the
-    // store (`atStore: false`; missing = couldn't tell or not the clip):
-    // no visit points, the rest of the answer as usual
-    const notAtStore = req.body.atStore === false;
+    // Where the phone was (services/scanLocation): clearly away from the
+    // store (the app's fix, or the App Clip's Apple check) earns nothing and
+    // shows on the owner's Activity; location off still earns, marked
+    const location = scanLocationCheck(req.body, venue);
+    const notAtStore = location === 'far';
     if (notAtStore) {
       console.warn(`[loyalty-integrity] register scan away from the store venue=${venue.venueId} user=${userId}`);
+      await rewardService.recordFarScan(userId, venue).catch((e) => console.warn('⚠️ far scan not recorded:', e.message));
     }
     const visitResult = notAtStore
       ? { awarded: false, reason: 'not_at_store' }
-      : await rewardService.awardVenueVisit(userId, venue);
+      : await rewardService.awardVenueVisit(userId, venue, { location });
 
     const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
     const venueBalance = (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0;
@@ -227,6 +230,7 @@ exports.scan = async (req, res) => {
           : null,
         alreadyEarnedToday: visitResult.reason === 'already_today',
         ...(notAtStore ? { notAtStore: true } : {}),
+        ...(visitResult.reason === 'removed' ? { removedFromRewards: true } : {}),
         alreadySaved,
         balance: rewardPoints,
         venueBalance,
@@ -309,6 +313,22 @@ exports.getBalance = async (req, res) => {
 // @desc    Redeem points for a venue offer; returns a 5-minute voucher
 // @route   POST /api/rewards/redeem-offer
 // @access  Private
+// @desc    Share your name, photo and email with a store — asked once, before
+//          the first reward there (services/storeCustomers)
+// @route   POST /api/rewards/venues/:venueId/share
+// @access  Private
+exports.shareWithStore = async (req, res) => {
+  try {
+    const venueDoc = await db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(String(req.params.venueId)).get();
+    if (!venueDoc.exists) return res.status(404).json({ success: false, error: 'Store not found' });
+    await require('../../services/storeCustomers').shareWithStore(req.user.uid, { venueId: venueDoc.id, ...venueDoc.data() });
+    res.json({ success: true, data: { shared: true } });
+  } catch (error) {
+    console.error('❌ Share with store failed:', error);
+    res.status(500).json({ success: false, error: 'Could not share with the store' });
+  }
+};
+
 exports.redeemOffer = async (req, res) => {
   try {
     const { venueId, offerId } = req.body;
@@ -321,9 +341,9 @@ exports.redeemOffer = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Loyalty is paused at this venue' });
     }
 
-    const result = await rewardService.redeemOffer(req.user.uid, venueId, offerId);
+    const result = await rewardService.redeemOffer(req.user.uid, venueId, offerId, { askShare: req.body.canShare === true });
     if (!result.success) {
-      return res.status(400).json({ success: false, error: result.error });
+      return res.status(400).json({ success: false, error: result.error, ...(result.code ? { code: result.code } : {}) });
     }
 
     const { rewardPoints, venueBalances } = await rewardService.getBalance(req.user.uid);

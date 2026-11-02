@@ -1,8 +1,10 @@
 import UIKit
 
 /// Shared offer-redemption flow: confirm → redeem → present the voucher.
-/// Used by the Rewards page and the place-page rewards section so both
-/// screens behave identically.
+/// Used by the Rewards page, the place-page rewards section and the scan
+/// coordinator so every screen behaves identically. The first reward at a
+/// store asks to share name, photo and email with it (Wes, 2026-11-02:
+/// rewards are claimed by name — regulars don't mind, cheaters do).
 extension UIViewController {
 
     func confirmAndRedeemOffer(_ offer: RewardOffer, venueId: String, venueName: String,
@@ -12,12 +14,13 @@ extension UIViewController {
             message: "This uses \(offer.pointsCost) of your points at \(venueName) and opens a 15-minute ticket to show at the counter. If it isn\u{2019}t used in time, your points come back.",
             confirmTitle: "Redeem"
         ) { [weak self] in
-            self?.redeemOffer(offer, venueId: venueId, onSuccess: onSuccess)
+            self?.redeemOffer(offer, venueId: venueId, venueName: venueName, onSuccess: onSuccess)
         }
     }
 
-    private func redeemOffer(_ offer: RewardOffer, venueId: String,
-                             onSuccess: ((RewardRedeemData) -> Void)?) {
+    /// Redeem without the confirm step (the caller already asked)
+    func redeemOffer(_ offer: RewardOffer, venueId: String, venueName: String,
+                     onSuccess: ((RewardRedeemData) -> Void)? = nil) {
         let loading = AlertPresenter.showLoading(message: "Redeeming...", from: self)
 
         RewardsService.shared.redeemOffer(venueId: venueId, offerId: offer.offerId) { [weak self] result in
@@ -31,7 +34,32 @@ extension UIViewController {
                         self.present(voucherVC, animated: true)
                         onSuccess?(redeem)
                     case .failure(let error):
-                        self.showError(error)
+                        if (error as? APIError)?.serverCode == "share_required" {
+                            self.askToShare(venueId: venueId, venueName: venueName) { [weak self] in
+                                self?.redeemOffer(offer, venueId: venueId, venueName: venueName, onSuccess: onSuccess)
+                            }
+                        } else {
+                            self.showError(error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Once per store: "Fresh Monkee will see your name, photo and email."
+    private func askToShare(venueId: String, venueName: String, then retry: @escaping () -> Void) {
+        showConfirmation(
+            title: "Claim rewards by name",
+            message: "Rewards at \(venueName) are claimed by name. \(venueName) will see your name, photo and email, and your name shows on the reward you hand the counter.",
+            confirmTitle: "Share and claim"
+        ) { [weak self] in
+            guard let self else { return }
+            RewardsService.shared.shareWithStore(venueId: venueId) { [weak self] result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success: retry()
+                    case .failure(let error): self?.showError(error)
                     }
                 }
             }
