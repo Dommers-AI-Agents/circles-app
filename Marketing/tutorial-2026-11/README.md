@@ -3,7 +3,7 @@
 The "Watch the video" in the home tour and Help plays
 `tutorial/tutorial.mov` from Firebase Storage. This folder re-makes it.
 
-1. **Account:** `tester-alex@favcircles.com` ("Alex", Charlotte, follows Wes and
+1. **Account (DELETED 2026-11-02 at Wes's request — re-create one before a re-shoot, mark it `isTestAccount: true`):** was `tester-alex@favcircles.com` ("Alex", Charlotte, follows Wes and
    Brittany, seven saved Charlotte places). Its token goes into the recorder
    sim's App Group as `clip-auth-handoff.json` (see the memory note on
    simulator capture) so the app opens signed in.
