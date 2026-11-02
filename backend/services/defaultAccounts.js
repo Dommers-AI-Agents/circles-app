@@ -1,6 +1,7 @@
 // services/defaultAccounts.js — the accounts every new user follows at signup
-// (Wes and Brittany). One list, so "following people" checks, suggestions and
-// onboarding agree on who they are.
+// (Wes, Brittany and Sal; nobody follows back automatically — Wes, 2026-11-02).
+// One list, so "following people" checks, suggestions and onboarding agree on
+// who they are.
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 
@@ -9,7 +10,8 @@ const TOLD_OF_EVERY_FOLLOW_EMAILS = ['sgroiwes@gmail.com'];
 
 const DEFAULT_FOLLOW_EMAILS = [
   'sgroiwes@gmail.com',      // Wes
-  'brittanyvans@gmail.com'   // Brittany
+  'brittanyvans@gmail.com',  // Brittany
+  'salasgroi@gmail.com'      // Sal
 ];
 
 /**
@@ -17,10 +19,7 @@ const DEFAULT_FOLLOW_EMAILS = [
  * default accounts plus the other content-rich founders. Kept here so the
  * founder accounts are listed in ONE file (2026-10-31 audit).
  */
-const CORE_SUGGESTED_EMAILS = [
-  ...DEFAULT_FOLLOW_EMAILS,
-  'salasgroi@gmail.com'      // Sal
-];
+const CORE_SUGGESTED_EMAILS = [...DEFAULT_FOLLOW_EMAILS];
 
 let cached = null;
 

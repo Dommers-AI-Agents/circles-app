@@ -58,7 +58,7 @@ const selectCandidates = (users, { now = new Date(), maxAgeDays = maxAccountAgeD
   const selected = [];
   const skipped = { following_enough: 0, no_usable_email: 0, internal: 0, too_old: 0, opted_out: 0, sent_recently: 0 };
   for (const user of users) {
-    // Wes and Brittany are followed for everyone at signup — they don't count
+    // The default accounts are followed by everyone at signup — they don't count
     // (one real follow used to switch this email off)
     const followingCount = Array.isArray(user.following)
       ? user.following.filter((id) => !defaultIds.has(id)).length

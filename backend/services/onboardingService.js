@@ -164,8 +164,8 @@ class OnboardingService {
       }
       
       // Our own test accounts (Wes, 2026-11-01): flagged at once. They still
-      // follow Wes and Brittany, so they see what a real new user sees, but
-      // nobody follows them back and Wes sends no welcome suggestion. Who
+      // follow the default accounts, so they see what a real new user sees,
+      // and Wes sends no welcome suggestion. Who
       // hears about the follow: sendFollowerNotification (Wes yes, others no)
       const { isTestEmail } = require('./hiddenAccounts');
       const isTest = userData.isTestAccount === true || isTestEmail(userData.email);
@@ -175,10 +175,10 @@ class OnboardingService {
 
       // Auto-follow the default accounts (best-effort — a failure here must
       // not fail onboarding)
-      await OnboardingService.followDefaultUsers(userId, userData, { followBack: !isTest });
+      await OnboardingService.followDefaultUsers(userId, userData);
 
       // No automatic connection request any more (Wes, 2026-10-09): new
-      // users just follow Wes and Brittany, so they start with people on
+      // users just follow the default accounts, so they start with people on
       // their map without a request from a stranger to answer.
 
       // Personal touch: Wes sends one favorite place near them as a directed
@@ -289,12 +289,12 @@ class OnboardingService {
   }
   
   /**
-   * Make a new user follow the default accounts (Wes, Brittany). Idempotent:
+   * Make a new user follow the default accounts (Wes, Brittany, Sal). Idempotent:
    * already-followed targets are skipped, so retried onboarding can't double
    * the counts. The targets get the standard new-follower notification —
    * which doubles as a "someone new joined" signal for them.
    */
-  static async followDefaultUsers(userId, userData = {}, { followBack = true } = {}) {
+  static async followDefaultUsers(userId, userData = {}) {
     try {
       const { FieldValue } = require('firebase-admin/firestore');
       const snap = await db.collection(COLLECTIONS.USERS)
@@ -312,39 +312,23 @@ class OnboardingService {
       );
       if (targets.length === 0) return;
 
-      // Wes AND Brittany follow every new user BACK (Wes's call, 2026-08-19):
-      // both founder accounts follow new users; only Wes additionally sends a
-      // connection request (see DEFAULT_CONNECT_EMAILS).
-      // A test account gets no follow-back: it stays out of their feeds (2026-11-01)
-      const followBackDocs = followBack ? targets : [];
-
+      // Nobody follows the new user back automatically (Wes, 2026-11-02):
+      // each of the default accounts chooses for themselves.
       const batch = db.batch();
-      const newUserUpdate = {
+      batch.update(userRef, {
         following: FieldValue.arrayUnion(...targets.map(doc => doc.id)),
         followingCount: FieldValue.increment(targets.length),
         updatedAt: new Date().toISOString()
-      };
-      if (followBackDocs.length > 0) {
-        // arrayUnion() with zero args throws — only add when Wes is in play
-        newUserUpdate.followers = FieldValue.arrayUnion(...followBackDocs.map(doc => doc.id));
-        newUserUpdate.followersCount = FieldValue.increment(followBackDocs.length);
-      }
-      batch.update(userRef, newUserUpdate);
+      });
       targets.forEach(doc => {
-        const followsBack = followBackDocs.includes(doc);
-        const update = {
+        batch.update(doc.ref, {
           followers: FieldValue.arrayUnion(userId),
           followersCount: FieldValue.increment(1),
           updatedAt: new Date().toISOString()
-        };
-        if (followsBack) {
-          update.following = FieldValue.arrayUnion(userId);
-          update.followingCount = FieldValue.increment(1);
-        }
-        batch.update(doc.ref, update);
+        });
       });
       await batch.commit();
-      console.log(`🤝 New user ${userId} auto-follows: ${targets.map(d => d.data().email).join(', ')}${followBackDocs.length ? ' (Wes follows back)' : ''}`);
+      console.log(`🤝 New user ${userId} auto-follows: ${targets.map(d => d.data().email).join(', ')}`);
 
       const notificationService = require('./notificationService');
       const newUserName = userData.displayName || userData.email || 'A new user';
