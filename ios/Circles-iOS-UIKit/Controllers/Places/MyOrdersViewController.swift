@@ -9,6 +9,16 @@ final class MyOrdersViewController: BaseViewController {
     override var reloadsDataOnAppear: Bool { true }
     override var emptyStateMessage: String? { "No orders yet. Order ahead from a store's menu and it shows here." }
 
+    /// The empty screen's way forward (2026-11-02: never a dead end)
+    override var emptyStateActionTitle: String? { NextStep.explore.title }
+    override func emptyStateActionTapped() {
+        if presentingViewController != nil, navigationController?.viewControllers.first === self {
+            dismiss(animated: true) { NextStepNavigator.explore() }
+        } else {
+            NextStepNavigator.explore()
+        }
+    }
+
     private var open: [StoreOrder] = []
     private var past: [StoreOrder] = []
 

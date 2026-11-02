@@ -60,6 +60,16 @@ class NotificationsViewController: BaseViewController {
     override var emptyStateMessage: String? {
         return currentTab == .active ? "No notifications yet" : "No archived notifications"
     }
+
+    /// The empty screen's way forward (2026-11-02: never a dead end)
+    override var emptyStateActionTitle: String? { NextStep.findPeople.title }
+    override func emptyStateActionTapped() {
+        if presentingViewController != nil, navigationController?.viewControllers.first === self {
+            dismiss(animated: true) { NextStepNavigator.findPeople() }
+        } else {
+            NextStepNavigator.findPeople()
+        }
+    }
     override var enablesPullToRefresh: Bool { true }
     
     override func viewDidLoad() {

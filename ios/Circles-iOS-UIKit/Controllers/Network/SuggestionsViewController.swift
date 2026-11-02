@@ -47,6 +47,16 @@ class SuggestionsViewController: BaseViewController {
             return "No suggestions for you yet\n\nWhen someone suggests a place just for you, it shows up here."
         }
     }
+
+    /// The empty screen's way forward (2026-11-02: never a dead end)
+    override var emptyStateActionTitle: String? { NextStep.explore.title }
+    override func emptyStateActionTapped() {
+        if presentingViewController != nil, navigationController?.viewControllers.first === self {
+            dismiss(animated: true) { NextStepNavigator.explore() }
+        } else {
+            NextStepNavigator.explore()
+        }
+    }
     override var reloadsDataOnAppear: Bool { true }
     
     // MARK: - Lifecycle

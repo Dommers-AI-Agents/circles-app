@@ -64,6 +64,16 @@ class CheckInViewController: BaseViewController {
     override var showsLoadingIndicator: Bool { true }
     private var customEmptyStateMessage: String = "No places found"
     override var emptyStateMessage: String? { customEmptyStateMessage }
+
+    /// The empty screen's way forward (2026-11-02: never a dead end)
+    override var emptyStateActionTitle: String? { NextStep.addPlace.title }
+    override func emptyStateActionTapped() {
+        if presentingViewController != nil, navigationController?.viewControllers.first === self {
+            dismiss(animated: true) { NextStepNavigator.addPlace() }
+        } else {
+            NextStepNavigator.addPlace()
+        }
+    }
     override var loadsDataOnViewDidLoad: Bool { false } // We'll load manually after view appears
     
     // MARK: - UI Elements

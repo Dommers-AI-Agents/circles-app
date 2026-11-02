@@ -123,6 +123,16 @@ class VisitHistoryViewController: BaseViewController {
             return "No visits recorded\n\nEnable visit tracking to automatically save places you visit"
         }
     }
+
+    /// The empty screen's way forward (2026-11-02: never a dead end)
+    override var emptyStateActionTitle: String? { NextStep.explore.title }
+    override func emptyStateActionTapped() {
+        if presentingViewController != nil, navigationController?.viewControllers.first === self {
+            dismiss(animated: true) { NextStepNavigator.explore() }
+        } else {
+            NextStepNavigator.explore()
+        }
+    }
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -533,7 +543,12 @@ class VisitHistoryViewController: BaseViewController {
                 loading.dismiss(animated: true) {
                     switch result {
                     case .success(let response):
-                        self?.showSuccess("Added \(response.results.added.count) places to circles!")
+                        if let self {
+                            let count = response.results.added.count
+                            AlertPresenter.showDone(title: "Added \(count) place\(count == 1 ? "" : "s") to your circles", message: nil,
+                                                    steps: [(.seeOnMap, { NextStepNavigator.explore() })],
+                                                    surface: "visits_added", from: self)
+                        }
                         self?.toggleSelectionMode()
                         self?.loadData()
                         

@@ -490,7 +490,13 @@ extension CheckInComposeViewController {
         let host = navigationController ?? self
         guard let details = RewardsAvailability(venueRewards).details,
               let rewards = GetRewardsViewController(place: place, data: venueRewards) else {
-            showSuccess(message) { host.dismiss(animated: true) }
+            // Never a dead end (2026-11-02): a moment from here, or their check-ins
+            let leave = { (then: @escaping () -> Void) in host.dismiss(animated: true, completion: then) }
+            AlertPresenter.showDone(
+                title: message, message: nil,
+                steps: [(.postMoment, { leave { NextStepNavigator.postMoment() } }),
+                        (.myCheckIns, { leave { NextStepNavigator.checkIns() } })],
+                surface: "check_in", from: self, onDone: { host.dismiss(animated: true) })
             return
         }
         showConfirmation(

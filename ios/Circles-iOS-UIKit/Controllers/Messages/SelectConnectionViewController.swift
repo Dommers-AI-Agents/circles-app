@@ -31,6 +31,16 @@ class SelectConnectionViewController: BaseViewController {
     override var showsLoadingIndicator: Bool { false }
     override var loadsDataOnViewDidLoad: Bool { true }
     override var emptyStateMessage: String? { "No connections available" }
+
+    /// The empty screen's way forward (2026-11-02: never a dead end)
+    override var emptyStateActionTitle: String? { NextStep.findPeople.title }
+    override func emptyStateActionTapped() {
+        if presentingViewController != nil, navigationController?.viewControllers.first === self {
+            dismiss(animated: true) { NextStepNavigator.findPeople() }
+        } else {
+            NextStepNavigator.findPeople()
+        }
+    }
     
     // MARK: - Lifecycle
     override func viewDidLoad() {

@@ -48,6 +48,13 @@ class AddPlaceToCircleViewController: BaseViewController {
     // MARK: - Configuration
     override var showsLoadingIndicator: Bool { true }
     override var emptyStateMessage: String? { "No circles found. Create a circle first." }
+
+    /// No circles yet: make one right here (2026-11-02: never a dead end)
+    override var emptyStateActionTitle: String? { "Create a circle" }
+    override func emptyStateActionTapped() {
+        let create = CreateCircleViewController()
+        present(UINavigationController(rootViewController: create), animated: true)
+    }
     
     // MARK: - Lifecycle
     override func viewDidLoad() {
@@ -179,10 +186,7 @@ class AddPlaceToCircleViewController: BaseViewController {
                         
                         switch result {
                         case .success:
-                            self?.showSuccess("Place added to circle!")
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                                self?.dismiss(animated: true)
-                            }
+                            self?.finishAdded()
                             
                         case .failure(let error):
                             self?.showError(error)
@@ -201,10 +205,7 @@ class AddPlaceToCircleViewController: BaseViewController {
                         
                         switch result {
                         case .success:
-                            self?.showSuccess("Place added to circle!")
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                                self?.dismiss(animated: true)
-                            }
+                            self?.finishAdded()
                             
                         case .failure(let error):
                             // If adding existing place fails, create a new one
@@ -225,10 +226,7 @@ class AddPlaceToCircleViewController: BaseViewController {
                                         
                                         switch result {
                                         case .success:
-                                            self?.showSuccess("Place added to circle!")
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                                                self?.dismiss(animated: true)
-                                            }
+                                            self?.finishAdded()
                                             
                                         case .failure(let error):
                                             self?.showError(error)
@@ -292,5 +290,19 @@ extension AddPlaceToCircleViewController: UITableViewDelegate {
         
         tableView.reloadRows(at: indexPathsToReload, with: .automatic)
         updateSaveButton()
+    }
+
+    /// Added: where to next (2026-11-02: never a dead end), not an alert that
+    /// vanished under the dismiss a second later
+    fileprivate func finishAdded() {
+        let leave = { [weak self] (then: @escaping () -> Void) in
+            guard let self else { return }
+            self.dismiss(animated: true) { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: then) }
+        }
+        AlertPresenter.showDone(
+            title: "Added to your circle", message: nil,
+            steps: [(.seeOnMap, { leave { NextStepNavigator.explore() } }),
+                    (.addPlace, { leave { NextStepNavigator.addPlace() } })],
+            surface: "add_to_circle", from: self, onDone: { [weak self] in self?.dismiss(animated: true) })
     }
 }

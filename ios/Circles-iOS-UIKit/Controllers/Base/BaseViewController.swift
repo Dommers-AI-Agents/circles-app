@@ -49,6 +49,25 @@ class BaseViewController: UIViewController {
     
     /// Empty state message when no data is available
     var emptyStateMessage: String? { nil }
+
+    /// The empty screen's way forward (2026-11-02: never a dead end): a
+    /// button under the message. Override with its words and
+    /// `emptyStateActionTapped()`.
+    var emptyStateActionTitle: String? { nil }
+    func emptyStateActionTapped() {}
+
+    private lazy var emptyStateButton: UIButton = {
+        let button = UIButton.smallActionButton(title: emptyStateActionTitle ?? "", style: .primary)
+        button.isHidden = true
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(emptyStateButtonTapped), for: .touchUpInside)
+        return button
+    }()
+
+    @objc private func emptyStateButtonTapped() {
+        AnalyticsService.shared.logEvent("next_step_tapped", parameters: ["surface": "\(type(of: self))", "step": "empty_state"])
+        emptyStateActionTapped()
+    }
     
     /// Whether to automatically load data on viewDidLoad
     var loadsDataOnViewDidLoad: Bool { true }
@@ -102,6 +121,13 @@ class BaseViewController: UIViewController {
                 emptyStateLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 32),
                 emptyStateLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32)
             ])
+            if emptyStateActionTitle != nil {
+                view.addSubview(emptyStateButton)
+                NSLayoutConstraint.activate([
+                    emptyStateButton.topAnchor.constraint(equalTo: emptyStateLabel.bottomAnchor, constant: 16),
+                    emptyStateButton.centerXAnchor.constraint(equalTo: view.centerXAnchor)
+                ])
+            }
         }
         
         // Setup refresh control if enabled
@@ -162,6 +188,7 @@ class BaseViewController: UIViewController {
             loadingIndicator.startAnimating()
         }
         emptyStateLabel.isHidden = true
+        emptyStateButton.isHidden = true
     }
     
     func hideLoadingState() {
@@ -173,11 +200,14 @@ class BaseViewController: UIViewController {
         hideLoadingState()
         emptyStateLabel.text = message ?? emptyStateMessage
         emptyStateLabel.isHidden = false
+        emptyStateButton.isHidden = emptyStateActionTitle == nil
+        if !emptyStateButton.isHidden { view.bringSubviewToFront(emptyStateButton) }
     }
     
     /// Hide empty state
     func hideEmptyState() {
         emptyStateLabel.isHidden = true
+        emptyStateButton.isHidden = true
     }
     
     // MARK: - Error Handling
@@ -264,6 +294,35 @@ class BaseTableViewController: UITableViewController {
     // MARK: - Configuration Properties
     
     var emptyStateMessage: String? { nil }
+
+    /// The empty screen's way forward (2026-11-02): a button under the message
+    var emptyStateActionTitle: String? { nil }
+    func emptyStateActionTapped() {}
+
+    /// The label, and the button when there is one, as the table's background
+    private lazy var emptyStateView: UIView = {
+        guard let title = emptyStateActionTitle else { return emptyStateLabel }
+        let container = UIView()
+        let button = UIButton.smallActionButton(title: title, style: .primary)
+        button.addTarget(self, action: #selector(emptyStateButtonTapped), for: .touchUpInside)
+        let stack = UIStackView(arrangedSubviews: [emptyStateLabel, button])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 16
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 32),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -32)
+        ])
+        return container
+    }()
+
+    @objc private func emptyStateButtonTapped() {
+        AnalyticsService.shared.logEvent("next_step_tapped", parameters: ["surface": "\(type(of: self))", "step": "empty_state"])
+        emptyStateActionTapped()
+    }
     var loadsDataOnViewDidLoad: Bool { true }
     var reloadsDataOnAppear: Bool { false }
     
@@ -299,6 +358,7 @@ class BaseTableViewController: UITableViewController {
         // Setup empty state
         if let message = emptyStateMessage {
             emptyStateLabel.text = message
+            // Just the (hidden) message until the screen is actually empty
             tableView.backgroundView = emptyStateLabel
         }
     }
@@ -332,7 +392,7 @@ class BaseTableViewController: UITableViewController {
     func showEmptyState(message: String? = nil) {
         emptyStateLabel.text = message ?? emptyStateMessage
         emptyStateLabel.isHidden = false
-        tableView.backgroundView = emptyStateLabel
+        tableView.backgroundView = emptyStateView
     }
     
     func hideEmptyState() {

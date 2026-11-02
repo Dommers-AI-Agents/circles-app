@@ -45,6 +45,32 @@ class AlertPresenter {
         viewController.present(alert, animated: true)
     }
     
+    /// A finished action with where to go next (2026-11-02: never a dead
+    /// end): the message, up to two next steps, and Done. Each step's handler
+    /// runs after the alert closes. Shown and tapped steps are counted per
+    /// `surface` so the ones that work can be told from the ones that don't.
+    static func showDone(
+        title: String?,
+        message: String?,
+        steps: [(step: NextStep, handler: () -> Void)],
+        surface: String,
+        from viewController: UIViewController,
+        onDone: (() -> Void)? = nil
+    ) {
+        let offered = Array(steps.prefix(2))
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        for (step, handler) in offered {
+            alert.addAction(UIAlertAction(title: step.title, style: .default) { _ in
+                AnalyticsService.shared.logEvent("next_step_tapped", parameters: ["surface": surface, "step": step.id])
+                handler()
+            })
+        }
+        alert.addAction(UIAlertAction(title: "Done", style: .cancel) { _ in onDone?() })
+        if let first = alert.actions.first, !offered.isEmpty { alert.preferredAction = first }
+        AnalyticsService.shared.logEvent("next_step_shown", parameters: ["surface": surface, "steps": offered.map(\.step.id).joined(separator: ",")])
+        viewController.present(alert, animated: true)
+    }
+
     /// Shows a success alert with just a message (no title)
     static func showSuccess(
         _ message: String,

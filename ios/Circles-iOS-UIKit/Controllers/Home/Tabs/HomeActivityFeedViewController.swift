@@ -333,6 +333,13 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
         // Update table footer for loading more
         if isLoadingMoreActivities && hasMoreActivities {
             tableView.tableFooterView = loadMoreIndicatorView
+        } else if !hasMoreActivities && !activities.isEmpty {
+            // The end of the feed is never the end (2026-11-02)
+            tableView.tableFooterView = ListEndFooterView(
+                text: "You're all caught up. Follow more people to see more here.",
+                step: .findPeople, surface: "activity_end") { [weak self] in
+                    self?.tabBarController?.selectedIndex = 1
+                }
         } else {
             tableView.tableFooterView = nil
         }

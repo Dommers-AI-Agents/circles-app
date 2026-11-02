@@ -435,9 +435,16 @@ class VisitDetailViewController: UIViewController {
                     loading.dismiss(animated: true) {
                         switch result {
                         case .success:
-                            self.showSuccess("Added to circles!")
                             self.onVisitUpdated?()
-                            self.navigationController?.popViewController(animated: true)
+                            // Back to the list, then where to next (2026-11-02)
+                            let host = self.navigationController
+                            host?.popViewController(animated: true)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                                guard let top = host?.topViewController else { return }
+                                AlertPresenter.showDone(title: "Added to your circles", message: nil,
+                                                        steps: [(.seeOnMap, { NextStepNavigator.explore() })],
+                                                        surface: "visit_added", from: top)
+                            }
                             
                         case .failure(let error):
                             self.showError(error)

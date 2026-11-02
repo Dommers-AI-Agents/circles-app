@@ -434,7 +434,13 @@ class MyNetworkViewController: BaseViewController {
                     // Accepting a connection earns coins — play the deposit
                     PiggyBankDepositView.play(credit: credit)
                     let name = request.connectedUser?.displayName ?? "your new connection"
-                    self.showSuccess("You're now connected with \(name)!")
+                    if let user = request.connectedUser {
+                        AlertPresenter.showDone(title: "You're now connected with \(name)!", message: nil,
+                                                steps: [(.seeTheirMap, { NextStepNavigator.profile(user) })],
+                                                surface: "connection_accepted", from: self)
+                    } else {
+                        self.showSuccess("You're now connected with \(name)!")
+                    }
                     self.updateIncomingRequestBanner()
                     // The lists below hold relationship state too — refresh them
                     self.allUsersListVC?.loadPeople()

@@ -188,11 +188,17 @@ class CreateSuggestionViewController: BaseViewController {
                     // Showing the success alert on this composer and then
                     // calling dismiss() made the dismiss swallow the alert
                     // instead of the composer — which stayed stuck on screen.
-                    let recipientName = self.recipientUser?.displayName
+                    let recipient = self.recipientUser
+                    let recipientName = recipient?.displayName
                     let presenter = self.presentingViewController
                     self.dismiss(animated: true) {
                         if let name = recipientName, !name.isEmpty, let presenter = presenter {
-                            AlertPresenter.showSuccess("Suggestion sent to \(name)", from: presenter)
+                            // Where to next (2026-11-02): their map, or more places
+                            var steps: [(step: NextStep, handler: () -> Void)] = []
+                            if let recipient { steps.append((.seeTheirMap, { NextStepNavigator.profile(recipient) })) }
+                            steps.append((.explore, { NextStepNavigator.explore() }))
+                            AlertPresenter.showDone(title: "Suggestion sent to \(name)", message: nil, steps: steps,
+                                                    surface: "suggestion_sent", from: presenter)
                         }
                     }
                 case .failure(let error):

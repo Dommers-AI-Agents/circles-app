@@ -58,6 +58,16 @@ class FollowersListViewController: BaseViewController {
             return "No connections yet\n\nConnect with people and they'll appear here."
         }
     }
+
+    /// The empty screen's way forward (2026-11-02: never a dead end)
+    override var emptyStateActionTitle: String? { NextStep.findPeople.title }
+    override func emptyStateActionTapped() {
+        if presentingViewController != nil, navigationController?.viewControllers.first === self {
+            dismiss(animated: true) { NextStepNavigator.findPeople() }
+        } else {
+            NextStepNavigator.findPeople()
+        }
+    }
     
     override func viewDidLoad() {
         super.viewDidLoad()

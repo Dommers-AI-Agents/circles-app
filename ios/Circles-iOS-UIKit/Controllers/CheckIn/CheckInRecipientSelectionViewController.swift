@@ -365,13 +365,21 @@ class CheckInRecipientSelectionViewController: BaseViewController {
                     case .success(let created):
                         // "That's your 3rd time here" — the personal history
                         // is the reason to keep checking in
-                        var message = isPrivate ? "Checked in privately — no one was notified." : "Check-in created successfully!"
+                        var message = isPrivate ? "Checked in privately — no one was notified." : "You're checked in!"
                         if let count = created.stats?.count, count > 1 {
                             message = "You're checked in\(isPrivate ? " privately" : ""). That's your \(CheckInHistoryFormatter.ordinal(count)) time here!"
                         }
-                        self?.showSuccess(message) {
-                            self?.delegate?.didCompleteCheckIn()
+                        // Never a dead end (2026-11-02): a moment from here, or their check-ins
+                        guard let self else { return }
+                        let finish = { (then: (() -> Void)?) in
+                            self.delegate?.didCompleteCheckIn()
+                            if let then { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: then) }
                         }
+                        AlertPresenter.showDone(
+                            title: message, message: nil,
+                            steps: [(.postMoment, { finish { NextStepNavigator.postMoment() } }),
+                                    (.myCheckIns, { finish { NextStepNavigator.checkIns() } })],
+                            surface: "check_in", from: self, onDone: { finish(nil) })
                         
                     case .failure(let error):
                         self?.showError(FriendlyError.message(for: error))
