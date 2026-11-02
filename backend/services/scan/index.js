@@ -22,10 +22,12 @@ const localToday = (timeZone) => {
   catch (e) { return new Date().toISOString().slice(0, 10); }
 };
 
-async function scan({ kind, images: raw, venue, userId, db = getFirestore() }) {
+async function scan({ kind, images: raw, pdf, venue, userId, db = getFirestore() }) {
   const reader = KINDS[kind];
   if (!reader) throw new ServiceError(400, 'bad_kind', 'Choose what you’re scanning: a menu, hours or a flyer.');
-  const prepared = await images.prepare(kind === 'menu' ? raw : (raw || []).slice(0, 1));
+  // A menu can come as a PDF instead of photos (2026-11-01)
+  if (pdf && kind !== 'menu') throw new ServiceError(400, 'pdf_menu_only', 'PDFs work for menus. Photograph the hours or flyer instead.');
+  const prepared = pdf ? [images.preparePdf(pdf)] : await images.prepare(kind === 'menu' ? raw : (raw || []).slice(0, 1));
   const budget = await dailyBudget.consume('venueScan', venue.venueId);
   if (!budget.allowed) throw new ServiceError(429, 'scan_limit', `That’s ${budget.limit} scans today. Try again tomorrow.`);
   const personal = await dailyBudget.consume('aiScan', userId);
@@ -33,7 +35,7 @@ async function scan({ kind, images: raw, venue, userId, db = getFirestore() }) {
   const started = Date.now();
   const { draft, usage } = await reader().read(prepared, { referenceDate: localToday(venue.timeZone) });
   db.collection('scanUsage').add({
-    venueId: venue.venueId, userId, kind, images: prepared.length,
+    venueId: venue.venueId, userId, kind, images: prepared.length, ...(pdf ? { pdfPages: prepared[0].pages } : {}),
     ...usage, ms: Date.now() - started, at: new Date().toISOString()
   }).catch(() => {});
   return { kind, draft, truncated: !!usage.truncated };

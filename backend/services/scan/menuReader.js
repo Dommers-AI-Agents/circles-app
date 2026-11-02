@@ -86,9 +86,15 @@ function toDraft(input, { now = Date.now() } = {}) {
 
 async function read(images) {
   if (!isConfigured()) throw new ServiceError(503, 'scan_unavailable', 'Menu scanning isn’t available right now. You can add items by hand.');
+  // A PDF goes in as a document (Claude reads its text and its pages);
+  // photos as images
+  const isPdf = images.length === 1 && images[0].mediaType === 'application/pdf';
   const content = [
-    ...images.map((img) => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } })),
-    { type: 'text', text: images.length > 1 ? `These ${images.length} photos are pages of one menu. Copy it into the menu tool.` : 'Copy this menu into the menu tool.' }
+    ...images.map((img) => (img.mediaType === 'application/pdf'
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: img.base64 } }
+      : { type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } })),
+    { type: 'text', text: isPdf ? 'This PDF is the menu. Copy it into the menu tool.'
+      : images.length > 1 ? `These ${images.length} photos are pages of one menu. Copy it into the menu tool.` : 'Copy this menu into the menu tool.' }
   ];
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);

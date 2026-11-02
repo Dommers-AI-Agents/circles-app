@@ -1,8 +1,10 @@
 import UIKit
 import PhotosUI
+import UniformTypeIdentifiers
 
 /// "Scan your menu / hours sign / flyer" (2026-10-20): takes or picks the
-/// photo(s), shrinks them, sends them to POST /rewards/venues/:id/scan and
+/// photo(s), shrinks them (or, for a menu, picks a PDF, 2026-11-01), sends
+/// them to POST /rewards/venues/:id/scan and
 /// hands back the draft. The screen that owns it opens its editor on the
 /// draft; nothing is saved by a scan. Business only (the caller gates).
 /// Hold a strong reference while it runs.
@@ -13,7 +15,10 @@ final class VenueScanController: NSObject {
     private var photos: [Data] = []
     private var finish: ((Result<Any, APIError>) -> Void)?
     /// Called with the raw response so each screen decodes its own draft
-    private var run: (([Data], @escaping (Result<Any, APIError>) -> Void) -> Void)?
+    private var run: (([Data], Data?, @escaping (Result<Any, APIError>) -> Void) -> Void)?
+
+    /// What the server reads in one PDF (it checks again)
+    static let maxPDFBytes = 8 * 1024 * 1024
 
     /// The long edge sent; the server reads at 2,000 px
     static let longEdge: CGFloat = 2000
@@ -29,8 +34,8 @@ final class VenueScanController: NSObject {
                                  completion: @escaping (Result<VenueScanResponse<Draft>, APIError>) -> Void) {
         let venueId = self.venueId
         let kind = self.kind
-        run = { images, done in
-            RewardsService.shared.scanVenue(venueId: venueId, kind: kind, images: images) { (result: Result<VenueScanResponse<Draft>, APIError>) in
+        run = { images, pdf, done in
+            RewardsService.shared.scanVenue(venueId: venueId, kind: kind, images: images, pdf: pdf) { (result: Result<VenueScanResponse<Draft>, APIError>) in
                 done(result.map { $0 as Any })
             }
         }
@@ -44,7 +49,7 @@ final class VenueScanController: NSObject {
 
     private var whatToShoot: String {
         switch kind {
-        case .menu: return "Photograph each page of your menu straight on, in good light. Up to 4 pages."
+        case .menu: return "Photograph each page of your menu straight on, in good light (up to 4 pages), or choose your menu as a PDF (up to 20 pages)."
         case .hours: return "Photograph the hours on your door or window."
         case .flyer: return "Photograph the flyer, poster or specials board."
         }
@@ -58,6 +63,9 @@ final class VenueScanController: NSObject {
         }
         actions.append((title: kind.maxPhotos > 1 ? "Choose photos" : "Choose a photo", style: .default,
                         handler: { [weak self] in self?.openLibrary() }))
+        if kind == .menu {
+            actions.append((title: "Choose a PDF", style: .default, handler: { [weak self] in self?.openPDF() }))
+        }
         AlertPresenter.showActionSheet(title: nil, message: whatToShoot, actions: actions, from: presenter, sourceView: sourceView)
     }
 
@@ -76,6 +84,15 @@ final class VenueScanController: NSObject {
         config.selectionLimit = max(1, kind.maxPhotos - photos.count)
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = self
+        presenter.present(picker, animated: true)
+    }
+
+    /// A menu PDF from Files (or anything that shares to Files)
+    private func openPDF() {
+        guard let presenter else { return }
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.pdf], asCopy: true)
+        picker.delegate = self
+        picker.allowsMultipleSelection = false
         presenter.present(picker, animated: true)
     }
 
@@ -120,12 +137,12 @@ final class VenueScanController: NSObject {
 
     // MARK: - Scan
 
-    private func send() {
-        guard let presenter, !photos.isEmpty, let run else { return }
+    private func send(pdf: Data? = nil) {
+        guard let presenter, !photos.isEmpty || pdf != nil, let run else { return }
         let loading = AlertPresenter.showLoading(message: kind.readingMessage, from: presenter)
-        let images = photos
+        let images = pdf == nil ? photos : []
         photos = []
-        run(images) { [weak self] result in
+        run(images, pdf) { [weak self] result in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) { self?.finish?(result) }
             }
@@ -176,5 +193,19 @@ extension VenueScanController: PHPickerViewControllerDelegate {
             }
             self.send()
         }
+    }
+}
+
+extension VenueScanController: UIDocumentPickerDelegate {
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let url = urls.first, let presenter else { return }
+        let data = try? Data(contentsOf: url)
+        guard let data, !data.isEmpty else {
+            return AlertPresenter.showError(message: "That PDF couldn\u{2019}t be opened. Try another.", from: presenter)
+        }
+        guard data.count <= Self.maxPDFBytes else {
+            return AlertPresenter.showError(message: "That PDF is too large (8 MB at most). Try a smaller copy, or photograph the pages.", from: presenter)
+        }
+        send(pdf: data)
     }
 }

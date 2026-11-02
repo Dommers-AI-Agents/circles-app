@@ -643,9 +643,11 @@ class RewardsService {
 
     /// A photo (or menu pages) → a draft for the editor; nothing is saved.
     /// `images` are JPEG data, already downsized (VenueScanController).
-    func scanVenue<Draft: Decodable>(venueId: String, kind: VenueScanKind, images: [Data],
+    /// `pdf`: a menu as a PDF instead of photos (2026-11-01)
+    func scanVenue<Draft: Decodable>(venueId: String, kind: VenueScanKind, images: [Data], pdf: Data? = nil,
                                      completion: @escaping (Result<VenueScanResponse<Draft>, APIError>) -> Void) {
-        let body: [String: Any] = ["kind": kind.rawValue, "images": images.map { $0.base64EncodedString() }]
+        var body: [String: Any] = ["kind": kind.rawValue]
+        if let pdf { body["pdf"] = pdf.base64EncodedString() } else { body["images"] = images.map { $0.base64EncodedString() } }
         apiService.request(endpoint: "rewards/venues/\(venueId)/scan", method: .post, body: body, requiresAuth: true) {
             (result: Result<VenueScanEnvelope<Draft>, APIError>) in
             completion(result.map { $0.data })

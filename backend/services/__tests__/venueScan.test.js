@@ -160,6 +160,45 @@ describe('images', () => {
   });
 });
 
+describe('menu PDFs (2026-11-01)', () => {
+  // A minimal PDF with `pages` page objects
+  const pdfBase64 = (pages = 1) => Buffer.from(
+    `%PDF-1.4\n1 0 obj << /Type /Pages /Count ${pages} >> endobj\n`
+    + Array.from({ length: pages }, (_, i) => `${i + 2} 0 obj << /Type /Page /Parent 1 0 R >> endobj\n`).join('')
+    + '%%EOF', 'latin1').toString('base64');
+
+  test('a PDF is checked and counted, not rasterized', () => {
+    const pdf = images.preparePdf(pdfBase64(3));
+    expect(pdf).toMatchObject({ mediaType: 'application/pdf', pages: 3 });
+    expect(images.pdfPageCount(Buffer.from('/Type /Pages /Type /Page /Type/Page'))).toBe(2);
+  });
+
+  test('not a PDF, or too many pages, is refused', () => {
+    expect(() => images.preparePdf(Buffer.from('hello').toString('base64'))).toThrow(expect.objectContaining({ code: 'bad_pdf' }));
+    expect(() => images.preparePdf(pdfBase64(images.MAX_PDF_PAGES + 1))).toThrow(expect.objectContaining({ code: 'pdf_too_long' }));
+  });
+
+  test('the menu reader sends the PDF as a document', async () => {
+    const key = process.env.ANTHROPIC_API_KEY; process.env.ANTHROPIC_API_KEY = 'test';
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ content: [{ type: 'tool_use', input: { sections: [{ name: 'Coffee', items: [{ name: 'Latte', price: '$5' }] }] } }], usage: { input_tokens: 3000, output_tokens: 200 } })
+    });
+    const { draft } = await menuReader.read([images.preparePdf(pdfBase64(2))]);
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    expect(body.messages[0].content[0]).toMatchObject({ type: 'document', source: { type: 'base64', media_type: 'application/pdf' } });
+    expect(body.messages[0].content[1].text).toMatch(/PDF/);
+    expect(draft.sections[0].items[0]).toMatchObject({ name: 'Latte', price: '$5' });
+    fetchSpy.mockRestore();
+    if (key) process.env.ANTHROPIC_API_KEY = key; else delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  test('a PDF is for menus only', async () => {
+    await expect(scanService.scan({ kind: 'hours', pdf: pdfBase64(1), venue: { venueId: 'v1' }, userId: 'u', db: mockDb }))
+      .rejects.toMatchObject({ code: 'pdf_menu_only' });
+  });
+});
+
 describe('the scan service', () => {
   const venue = { venueId: 'v1', timeZone: 'America/New_York' };
   beforeEach(() => { mockDb.rows('dailyBudgets').clear(); mockDb.rows('scanUsage').clear(); });

@@ -42,4 +42,30 @@ async function prepare(images) {
   return out;
 }
 
-module.exports = { MAX_IMAGES, MAX_TOTAL_BYTES, LONG_EDGE, decode, prepare };
+/// A menu PDF (2026-11-01): the model reads it as a document, text layer
+/// and all, so it isn't rasterized here. Checked to be a PDF, within size,
+/// and at most MAX_PDF_PAGES pages (each page is a model call's worth of
+/// tokens). Returns { base64, mediaType: 'application/pdf', pages }.
+const MAX_PDF_PAGES = 20;
+
+/** Pages in a PDF, counted from its page objects (good enough to cap). Pure. */
+function pdfPageCount(buf) {
+  const text = buf.toString('latin1');
+  const matches = text.match(/\/Type\s*\/Page(?!s)/g);
+  return matches ? matches.length : 0;
+}
+
+function preparePdf(input) {
+  const buf = decode(input);
+  if (!buf || buf.subarray(0, 5).toString('latin1') !== '%PDF-') {
+    throw new ServiceError(400, 'bad_pdf', 'That file isn’t a PDF we can read.');
+  }
+  if (buf.length > MAX_TOTAL_BYTES) throw new ServiceError(413, 'pdf_too_large', 'That PDF is too large (8 MB at most).');
+  const pages = pdfPageCount(buf);
+  if (pages > MAX_PDF_PAGES) {
+    throw new ServiceError(400, 'pdf_too_long', `That PDF has ${pages} pages. Menus up to ${MAX_PDF_PAGES} pages can be read.`);
+  }
+  return { base64: buf.toString('base64'), mediaType: 'application/pdf', pages };
+}
+
+module.exports = { MAX_IMAGES, MAX_TOTAL_BYTES, LONG_EDGE, MAX_PDF_PAGES, decode, prepare, preparePdf, pdfPageCount };

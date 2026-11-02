@@ -899,7 +899,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
                     "list.bullet.rectangle.portrait")
             } else {
                 // No menu yet: the row IS the scan button's name (Wes, 2026-10-21)
-                set("Scan your \(label.lowercased())", "Photograph the printed one and every item goes on your page", "camera.viewfinder")
+                set("Scan your \(label.lowercased())", "Photograph it or choose a PDF, and every item goes on your page", "camera.viewfinder")
             }
         case .orders:
             if storefront?.ordering?.enabled == true {

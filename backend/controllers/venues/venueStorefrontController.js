@@ -74,11 +74,12 @@ exports.updateMenu = async (req, res) => {
 
 // @route POST /api/rewards/venues/:venueId/scan   (Business)
 //        body: { kind: 'menu' | 'hours' | 'flyer', images: [base64] }
+//              or, for a menu, { kind: 'menu', pdf: base64 } (2026-11-01)
 // A draft for the matching editor; nothing is saved (services/scan).
 exports.scan = async (req, res) => {
   try {
     const result = await require('../../services/scan').scan({
-      kind: (req.body || {}).kind, images: (req.body || {}).images, venue: req.venue, userId: req.user.uid
+      kind: (req.body || {}).kind, images: (req.body || {}).images, pdf: (req.body || {}).pdf, venue: req.venue, userId: req.user.uid
     });
     res.json({ success: true, data: result });
   } catch (error) {
