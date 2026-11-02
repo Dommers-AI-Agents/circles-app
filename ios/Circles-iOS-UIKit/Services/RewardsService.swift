@@ -1009,6 +1009,23 @@ struct RewardVenueBalance: Codable {
     let points: Int
     /// The store's place record, so the row can open the store's page
     let globalPlaceId: String?
+    /// What points buy at this store, cheapest first, and how many a visit
+    /// earns: the card's progress bar (2026-11-02; nil from older servers)
+    let offers: [BalanceOffer]?
+    let earnRate: Int?
+
+    struct BalanceOffer: Codable {
+        let title: String
+        let pointsCost: Int
+    }
+
+    /// The reward this balance is working toward (or can take now)
+    var nextReward: RewardsAvailability.NextReward? {
+        guard let offers, !offers.isEmpty else { return nil }
+        return RewardsAvailability.nextReward(RewardsAvailability.Details(
+            venueName: venueName, earnRate: earnRate, venueBalance: points,
+            offers: offers.map { RewardsAvailability.Offer(title: $0.title, pointsCost: $0.pointsCost) }))
+    }
 }
 
 struct RewardVenue: Codable {

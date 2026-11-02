@@ -11,6 +11,13 @@ enum RewardTicketCopy {
         let isOpen: Bool
     }
 
+    /// The tickets worth a row: the ones still open and the ones staff gave.
+    /// A ticket that ran out came back as points, so it says nothing worth
+    /// the space (Wes, 2026-11-02).
+    static func shown(_ tickets: [RewardVoucher]) -> [RewardVoucher] {
+        tickets.filter { $0.status != "expired" }
+    }
+
     static func historyLine(_ ticket: RewardVoucher, calendar: Calendar = .current, now: Date = Date()) -> Line {
         let what = "\(ticket.offerTitle) at \(ticket.venueName)"
         switch ticket.status {

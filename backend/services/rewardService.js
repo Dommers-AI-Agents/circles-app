@@ -328,19 +328,34 @@ class RewardService {
     const names = new Map();
     // The store's place record too, so a row can open the store's page
     const places = new Map();
+    // ...and, for a balance, what its points buy there and how fast they
+    // come: the Store Rewards card draws its progress bar from these
+    // (Wes, 2026-11-02; same rule as the scan's "75 more points for…")
+    const terms = new Map();
+    const { rewardLadder } = require('./rewardProgress');
     docs.forEach((doc, i) => {
       const venue = doc && doc.exists ? doc.data() : null;
       const name = venue && (venue.venueName || venue.placeName);
       if (name) names.set(ids[i], name);
       if (venue && venue.globalPlaceId) places.set(ids[i], venue.globalPlaceId);
+      if (venue) {
+        terms.set(ids[i], {
+          offers: rewardLadder((venue.offers || []).filter((o) => o.active !== false))
+            .map(({ title, pointsCost }) => ({ title, pointsCost })),
+          earnRate: this.effectiveEarnRate(venue)
+        });
+      }
     });
     return rows.map((r) => {
       if (!r) return r;
       const id = String(r.venueId);
+      // Balance rows only (history events carry a type)
+      const isBalance = r.type === undefined && terms.has(id);
       return {
         ...r,
         ...(names.has(id) ? { venueName: names.get(id) } : {}),
-        ...(places.has(id) ? { globalPlaceId: places.get(id) } : {})
+        ...(places.has(id) ? { globalPlaceId: places.get(id) } : {}),
+        ...(isBalance ? terms.get(id) : {})
       };
     });
   }

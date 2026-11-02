@@ -7,6 +7,11 @@ import CoreLocation
 /// button on the Profile screen.
 class RewardsViewController: BaseViewController {
 
+    /// Coming from a scan (2026-11-02): this store's card goes first,
+    /// outlined, with what was just earned
+    var highlightVenueId: String?
+    var justEarnedPoints: Int?
+
     // MARK: - Properties
 
     private var balanceData: RewardBalanceData?
@@ -235,7 +240,7 @@ class RewardsViewController: BaseViewController {
             DispatchQueue.main.async {
                 guard let self, case .success(let data) = result else { return }
                 self.updateActiveVoucherBanner()
-                self.renderTickets(data.recent)
+                self.renderTickets(RewardTicketCopy.shown(data.recent))
             }
         }
     }
@@ -359,6 +364,7 @@ class RewardsViewController: BaseViewController {
         scrollView.addSubview(contentView)
 
         contentView.addSubview(headerView)
+        headerView.isHidden = true
         headerView.addSubview(starImageView)
         headerView.addSubview(balanceLabel)
         headerView.addSubview(balanceCaptionLabel)
@@ -396,7 +402,9 @@ class RewardsViewController: BaseViewController {
             headerView.topAnchor.constraint(equalTo: contentView.topAnchor),
             headerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
             headerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
-            headerView.heightAnchor.constraint(equalToConstant: 190),
+            // No account-wide total (Wes, 2026-11-02: each store sets its own
+            // rewards, so a sum of every store's points means nothing)
+            headerView.heightAnchor.constraint(equalToConstant: 0),
 
             starImageView.centerXAnchor.constraint(equalTo: headerView.centerXAnchor),
             starImageView.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 20),
@@ -423,16 +431,16 @@ class RewardsViewController: BaseViewController {
             voucherBannerTimeLabel.trailingAnchor.constraint(equalTo: activeVoucherBanner.trailingAnchor, constant: -14),
             voucherBannerTimeLabel.centerYAnchor.constraint(equalTo: activeVoucherBanner.centerYAnchor),
 
-            redeemCodeButton.topAnchor.constraint(equalTo: activeVoucherBanner.bottomAnchor, constant: 12),
+            redeemCodeButton.topAnchor.constraint(equalTo: storeBalancesStack.bottomAnchor, constant: 16),
             redeemCodeButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
             redeemCodeButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             redeemCodeButton.heightAnchor.constraint(equalToConstant: 44),
 
-            storeBalancesStack.topAnchor.constraint(equalTo: redeemCodeButton.bottomAnchor, constant: 16),
+            storeBalancesStack.topAnchor.constraint(equalTo: activeVoucherBanner.bottomAnchor, constant: 4),
             storeBalancesStack.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
             storeBalancesStack.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
-            ticketsStack.topAnchor.constraint(equalTo: storeBalancesStack.bottomAnchor, constant: 16),
+            ticketsStack.topAnchor.constraint(equalTo: redeemCodeButton.bottomAnchor, constant: 20),
             ticketsStack.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
             ticketsStack.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
@@ -500,54 +508,141 @@ class RewardsViewController: BaseViewController {
 
         let header = UILabel()
         header.text = "Your rewards by store"
-        header.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+        header.font = UIFont.systemFont(ofSize: 20, weight: .bold)
         header.textColor = .label
         storeBalancesStack.addArrangedSubview(header)
-        storeBalancesStack.setCustomSpacing(10, after: header)
+        storeBalancesStack.setCustomSpacing(12, after: header)
 
-        for balance in balances {
-            let row = UIStackView()
-            row.axis = .horizontal
-            row.spacing = 8
-
-            let name = UILabel()
-            name.text = "🏬 \(balance.venueName.isEmpty ? "A shop" : balance.venueName)"
-            name.font = UIFont.systemFont(ofSize: 14)
-            name.textColor = .label
-            name.numberOfLines = 1
-
-            let points = UILabel()
-            points.text = "\(balance.points) pts"
-            points.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-            points.textColor = Constants.Colors.primary
-            points.textAlignment = .right
-            points.setContentHuggingPriority(.required, for: .horizontal)
-            points.setContentCompressionResistancePriority(.required, for: .horizontal)
-
-            row.addArrangedSubview(name)
-            row.addArrangedSubview(points)
-            // Tap the store: its page, at its rewards (2026-11-01)
-            if let placeId = balance.globalPlaceId {
-                name.textColor = Constants.Colors.primary
-                row.isUserInteractionEnabled = true
-                row.accessibilityTraits.insert(.button)
-                row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(storeRowTapped(_:))))
-                storeRowPlaceIds[ObjectIdentifier(row)] = placeId
-            }
-            // This store's card in Apple Wallet (2026-11-01)
-            if WalletCardPresenter.isAvailable {
-                let wallet = UIButton.iconButton(systemName: "wallet.pass")
-                wallet.accessibilityLabel = "Add \(balance.venueName) to Apple Wallet"
-                wallet.setContentHuggingPriority(.required, for: .horizontal)
-                let venueId = balance.venueId
-                wallet.addAction(UIAction { [weak self] _ in
-                    guard let self else { return }
-                    WalletCardPresenter.present(venueId: venueId, from: self)
-                }, for: .touchUpInside)
-                row.addArrangedSubview(wallet)
-            }
-            storeBalancesStack.addArrangedSubview(row)
+        // The store just earned at leads (2026-11-02)
+        let ordered = balances.sorted { a, b in
+            (a.venueId == highlightVenueId ? 0 : 1, -a.points) < (b.venueId == highlightVenueId ? 0 : 1, -b.points)
         }
+        var highlighted: UIView?
+        for balance in ordered {
+            let isNew = balance.venueId == highlightVenueId
+            let card = storeCard(balance, isNew: isNew)
+            storeBalancesStack.addArrangedSubview(card)
+            storeBalancesStack.setCustomSpacing(10, after: card)
+            if isNew { highlighted = card }
+        }
+        if let highlighted { celebrate(highlighted) }
+    }
+
+    /// One store: its name, points here, a bar toward its next reward and
+    /// what that reward is; the whole card opens the store's rewards
+    private func storeCard(_ balance: RewardVenueBalance, isNew: Bool) -> UIView {
+        let card = UIView()
+        card.backgroundColor = Constants.Colors.secondaryBackground
+        card.layer.cornerRadius = 16
+        card.layer.borderWidth = isNew ? 2.5 : 0
+        card.layer.borderColor = Constants.Colors.primary.cgColor
+
+        let name = UILabel()
+        name.text = balance.venueName.isEmpty ? "A shop" : balance.venueName
+        name.font = .systemFont(ofSize: 17, weight: .semibold)
+        name.numberOfLines = 2
+        let points = UILabel()
+        points.text = "\(balance.points) pts"
+        points.font = .systemFont(ofSize: 17, weight: .bold)
+        points.textColor = Constants.Colors.primary
+        points.setContentHuggingPriority(.required, for: .horizontal)
+        points.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+        chevron.tintColor = .tertiaryLabel
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+        let top = UIStackView(arrangedSubviews: [name, points])
+        top.spacing = 8
+        top.alignment = .firstBaseline
+
+        let stack = UIStackView(arrangedSubviews: [top])
+        stack.axis = .vertical
+        stack.spacing = 8
+
+        if isNew, let earned = justEarnedPoints, earned > 0 {
+            let badge = UILabel()
+            badge.text = "  +\(earned) just now  "
+            badge.font = .systemFont(ofSize: 13, weight: .bold)
+            badge.textColor = .white
+            badge.backgroundColor = .systemGreen
+            badge.layer.cornerRadius = 10
+            badge.clipsToBounds = true
+            let row = UIStackView(arrangedSubviews: [badge, UIView()])
+            stack.insertArrangedSubview(row, at: 0)
+        }
+
+        if let next = balance.nextReward {
+            let bar = UIProgressView(progressViewStyle: .bar)
+            bar.progressTintColor = next.canRedeem ? .systemGreen : Constants.Colors.primary
+            bar.trackTintColor = Constants.Colors.tertiaryBackground
+            bar.progress = next.fraction
+            bar.layer.cornerRadius = 4
+            bar.clipsToBounds = true
+            bar.heightAnchor.constraint(equalToConstant: 8).isActive = true
+            let line = UILabel()
+            line.text = next.canRedeem
+                ? "Ready: \(next.title). Tap to redeem it at the counter."
+                : RewardsAvailability.nextRewardLine(next)
+            line.font = .systemFont(ofSize: 14)
+            line.textColor = next.canRedeem ? .systemGreen : .secondaryLabel
+            line.numberOfLines = 0
+            stack.addArrangedSubview(bar)
+            stack.addArrangedSubview(line)
+        }
+
+        let actions = UIStackView()
+        actions.spacing = 12
+        let open = UILabel()
+        open.text = "See rewards here"
+        open.font = .systemFont(ofSize: 14, weight: .semibold)
+        open.textColor = Constants.Colors.primary
+        actions.addArrangedSubview(open)
+        actions.addArrangedSubview(UIView())
+        // This store's card in Apple Wallet (2026-11-01)
+        if WalletCardPresenter.isAvailable {
+            let wallet = UIButton.iconButton(systemName: "wallet.pass")
+            wallet.accessibilityLabel = "Add \(balance.venueName) to Apple Wallet"
+            wallet.setContentHuggingPriority(.required, for: .horizontal)
+            let venueId = balance.venueId
+            wallet.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                WalletCardPresenter.present(venueId: venueId, from: self)
+            }, for: .touchUpInside)
+            actions.addArrangedSubview(wallet)
+        }
+        actions.addArrangedSubview(chevron)
+        stack.addArrangedSubview(actions)
+
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 14),
+            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -12),
+            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16)
+        ])
+
+        // Tap the store: its page, at its rewards (2026-11-01)
+        if let placeId = balance.globalPlaceId {
+            card.isUserInteractionEnabled = true
+            card.accessibilityTraits.insert(.button)
+            card.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(storeRowTapped(_:))))
+            storeRowPlaceIds[ObjectIdentifier(card)] = placeId
+        } else {
+            open.isHidden = true
+            chevron.isHidden = true
+        }
+        return card
+    }
+
+    /// The store just earned at: a quick pulse so the eye lands on it
+    private func celebrate(_ card: UIView) {
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            UIView.animate(withDuration: 0.22, animations: { card.transform = CGAffineTransform(scaleX: 1.03, y: 1.03) }) { _ in
+                UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.5, initialSpringVelocity: 0.5) { card.transform = .identity }
+            }
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
     @objc private func storeRowTapped(_ gesture: UITapGestureRecognizer) {

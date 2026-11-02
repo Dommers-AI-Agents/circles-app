@@ -10,9 +10,8 @@ final class RewardsHubViewController: BaseViewController {
 
     override var loadsDataOnViewDidLoad: Bool { false }
 
-    // Piggy Bank leads: the $ button reads as "my money", and the piggy bank
-    // always has something personal to show; store offers are situational.
-    enum Tab: Int { case piggyBank = 0, rewards = 1 }
+    // Store Rewards leads (Wes, 2026-11-02; it was Piggy Bank first)
+    enum Tab: Int { case rewards = 0, piggyBank = 1 }
 
     private let rewardsVC = RewardsViewController()
     private let piggyBankVC = PiggyBankViewController()
@@ -20,7 +19,7 @@ final class RewardsHubViewController: BaseViewController {
 
     private lazy var segmentedControl: UISegmentedControl = {
         // "Store Rewards" (Wes, 2026-10-30): the rewards are the point; points are the tally
-        let control = UISegmentedControl(items: ["Piggy Bank", "Store Rewards"])
+        let control = UISegmentedControl(items: ["Store Rewards", "Piggy Bank"])
         control.selectedSegmentIndex = 0
         control.addTarget(self, action: #selector(tabChanged), for: .valueChanged)
         control.translatesAutoresizingMaskIntoConstraints = false
@@ -34,7 +33,17 @@ final class RewardsHubViewController: BaseViewController {
     }()
 
     /// Deep-link straight to a tab (e.g. the deposit toast could open the bank).
-    var initialTab: Tab = .piggyBank
+    var initialTab: Tab = .rewards
+
+    /// From a scan: the store just earned at, highlighted on Store Rewards
+    var highlightVenueId: String? {
+        get { rewardsVC.highlightVenueId }
+        set { rewardsVC.highlightVenueId = newValue }
+    }
+    var justEarnedPoints: Int? {
+        get { rewardsVC.justEarnedPoints }
+        set { rewardsVC.justEarnedPoints = newValue }
+    }
 
     /// When set (via the "your FavCoins are real crypto" engagement tip), the
     /// Piggy Bank child shows a one-off coach-mark pointing at the wallet
@@ -78,7 +87,7 @@ final class RewardsHubViewController: BaseViewController {
     }
 
     @objc private func tabChanged() {
-        showTab(Tab(rawValue: segmentedControl.selectedSegmentIndex) ?? .piggyBank)
+        showTab(Tab(rawValue: segmentedControl.selectedSegmentIndex) ?? .rewards)
     }
 
     private func showTab(_ tab: Tab) {

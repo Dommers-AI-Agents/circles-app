@@ -33,4 +33,9 @@ struct RewardTicketCopyTests {
                                      createdAt: "2026-11-01T21:58:00Z", status: "issued", givenAt: nil, customerName: "Ann")
         #expect(VenueRewardTicketCopy.line(open, calendar: calendar, now: now).status == "issued")
     }
+
+    @Test func expiredTicketsAreLeftOut() {
+        let kept = RewardTicketCopy.shown([ticket("issued"), ticket("expired"), ticket("given", givenAt: "2026-11-01T21:54:00Z")])
+        #expect(kept.map(\.status) == ["issued", "given"])
+    }
 }

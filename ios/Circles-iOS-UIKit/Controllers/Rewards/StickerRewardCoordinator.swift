@@ -392,7 +392,8 @@ final class StickerRewardCoordinator: NSObject {
                                     ? "Place saved! +\(awarded.points) points"
                                     : "Already saved! +\(awarded.points) points",
                                 message: "You now have \(save.venueBalance ?? save.balance) points at \(venue.venueName).",
-                                from: presenter
+                                from: presenter,
+                                highlight: venue.venueId, earned: awarded.points
                             )
                         } else if alreadySaved != nil {
                             AlertPresenter.showSuccess(title: "Already saved", message: savedWhere, from: presenter)
@@ -456,7 +457,9 @@ final class StickerRewardCoordinator: NSObject {
             // OK, or straight to their rewards (Wes, 2026-10-30). The save
             // offer follows OK only: My Rewards leaves the store page.
             AlertPresenter.showAlert(title: title, message: message, actions: [
-                (title: "My Rewards", style: .default, handler: { [weak self] in self?.openStoreRewards() }),
+                (title: "My Rewards", style: .default, handler: { [weak self] in
+                    self?.openStoreRewards(highlight: scan.venue.venueId, earned: scan.awarded?.points)
+                }),
                 (title: "OK", style: .cancel, handler: offerSave)
             ], from: presenter)
             return
@@ -469,7 +472,9 @@ final class StickerRewardCoordinator: NSObject {
                 self?.redeemOffer(offer, venue: scan.venue)
             })
         }
-        actions.append((title: "My Rewards", style: .default, handler: { [weak self] in self?.openStoreRewards() }))
+        actions.append((title: "My Rewards", style: .default, handler: { [weak self] in
+            self?.openStoreRewards(highlight: scan.venue.venueId, earned: scan.awarded?.points)
+        }))
         actions.append((title: "Not now", style: .default, handler: offerSave))
 
         AlertPresenter.showActionSheet(
@@ -483,9 +488,10 @@ final class StickerRewardCoordinator: NSObject {
     /// A rewards result with two ways out: My Rewards (the Store Rewards
     /// screen) or OK, which carries on with `onOK` (Wes, 2026-10-30: saving a
     /// store from its QR code earns points too, so it gets the button as well)
-    private func showWithMyRewards(title: String, message: String, from presenter: UIViewController, onOK: (() -> Void)? = nil) {
+    private func showWithMyRewards(title: String, message: String, from presenter: UIViewController, onOK: (() -> Void)? = nil,
+                                   highlight venueId: String? = nil, earned: Int? = nil) {
         AlertPresenter.showAlert(title: title, message: message, actions: [
-            (title: "My Rewards", style: .default, handler: { [weak self] in self?.openStoreRewards() }),
+            (title: "My Rewards", style: .default, handler: { [weak self] in self?.openStoreRewards(highlight: venueId, earned: earned) }),
             (title: "OK", style: .cancel, handler: { onOK?() })
         ], from: presenter)
     }
@@ -512,9 +518,12 @@ final class StickerRewardCoordinator: NSObject {
 
     /// The Store Rewards screen (every store's points and offers), pushed on
     /// the screen the scan result showed over
-    private func openStoreRewards() {
+    private func openStoreRewards(highlight venueId: String? = nil, earned: Int? = nil) {
         let hub = RewardsHubViewController()
         hub.initialTab = .rewards
+        // The store just earned at leads, outlined, with "+25 just now"
+        hub.highlightVenueId = venueId
+        hub.justEarnedPoints = earned
         // Usually the tab bar: push onto the current tab, after the store page,
         // so Back returns to the store
         let tabNav = (presenter as? UITabBarController)?.selectedViewController as? UINavigationController
