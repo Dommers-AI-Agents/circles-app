@@ -1075,9 +1075,16 @@ const removeConnection = async (req, res) => {
       // connections, so access is gone either way — this keeps the owner's
       // list screen honest rather than showing someone who no longer counts.
       await revokeMutualGrants(connection.userId, connection.connectedUserId);
-      // Disconnect stops the follow both ways (Wes, 2026-11-02)
-      await require('../services/followLinks').removeFollowsBetween(connection.userId, connection.connectedUserId)
+      // Disconnect stops YOUR follow of them; theirs of you stays — unless
+      // your profile is private, where they'd have to ask again (Wes, 2026-11-02)
+      const otherId = isSameUser(connection.userId, userId) ? connection.connectedUserId : connection.userId;
+      const { removeFollow } = require('../services/followLinks');
+      await removeFollow(userId, otherId)
         .catch((e) => console.error('⚠️ Unfollow on disconnect failed:', e.message));
+      if (require('../services/profilePrivacy').isPrivateProfile(userId)) {
+        await removeFollow(otherId, userId)
+          .catch((e) => console.error('⚠️ Private-profile unfollow on disconnect failed:', e.message));
+      }
       console.log('✅ Connection removed and user arrays updated');
     } catch (updateError) {
       console.error('❌ Error updating arrays during connection removal:', updateError);

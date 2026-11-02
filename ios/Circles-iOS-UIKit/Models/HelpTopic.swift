@@ -549,7 +549,8 @@ class HelpContentProvider {
                 
                 **Managing follows:**
                 • Unfollow from the ••• menu on their profile
-                • Connected? Disconnect instead — it ends the follow too
+                • Connected? Disconnect instead — it ends your follow; they can keep following you unless your profile is private
+                • To stop someone following you: block them
                 • Your following list is visible on your profile
                 
                 **Note:** Only people who follow you get your updates. Following is different from connecting: connections get everything followers do, plus messages and your Connections circles.

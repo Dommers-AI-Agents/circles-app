@@ -1,41 +1,31 @@
 // services/followLinks.js
 //
-// Connected always means following (Wes, 2026-11-02), so Disconnect ends the
-// follow in both directions too. One transaction keeps the arrays and their
-// counts in step; a side that wasn't following is left alone.
+// Connected always means following (Wes, 2026-11-02), so Disconnect also ends
+// the follow of the person who disconnects. Only theirs: the other person
+// keeps following unless they choose otherwise — or the one disconnecting has
+// a private profile, where the other has to ask again (Wes, 2026-11-02). One transaction keeps
+// the arrays and their counts in step; nothing changes if they weren't
+// following.
 
 const { getFirestore } = require('../config/firebase');
 const { FieldValue } = require('firebase-admin/firestore');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { normalizeUserId } = require('./idService');
 
-async function removeFollowsBetween(a, b) {
+async function removeFollow(followerId, targetId) {
   const db = getFirestore();
-  const idA = normalizeUserId(a);
-  const idB = normalizeUserId(b);
-  const refA = db.collection(COLLECTIONS.USERS).doc(idA);
-  const refB = db.collection(COLLECTIONS.USERS).doc(idB);
+  const follower = normalizeUserId(followerId);
+  const target = normalizeUserId(targetId);
+  const followerRef = db.collection(COLLECTIONS.USERS).doc(follower);
+  const targetRef = db.collection(COLLECTIONS.USERS).doc(target);
   await db.runTransaction(async (tx) => {
-    const [docA, docB] = await Promise.all([tx.get(refA), tx.get(refB)]);
-    if (!docA.exists || !docB.exists) return;
+    const [followerDoc, targetDoc] = await Promise.all([tx.get(followerRef), tx.get(targetRef)]);
+    if (!followerDoc.exists || !targetDoc.exists) return;
+    if (!(followerDoc.data().following || []).includes(target)) return;
     const now = new Date().toISOString();
-    const aFollowsB = (docA.data().following || []).includes(idB);
-    const bFollowsA = (docB.data().following || []).includes(idA);
-    const updA = { updatedAt: now };
-    const updB = { updatedAt: now };
-    if (aFollowsB) {
-      Object.assign(updA, { following: FieldValue.arrayRemove(idB), followingCount: FieldValue.increment(-1) });
-      Object.assign(updB, { followers: FieldValue.arrayRemove(idA), followersCount: FieldValue.increment(-1) });
-    }
-    if (bFollowsA) {
-      Object.assign(updB, { following: FieldValue.arrayRemove(idA), followingCount: FieldValue.increment(-1) });
-      Object.assign(updA, { followers: FieldValue.arrayRemove(idB), followersCount: FieldValue.increment(-1) });
-    }
-    if (aFollowsB || bFollowsA) {
-      tx.update(refA, updA);
-      tx.update(refB, updB);
-    }
+    tx.update(followerRef, { following: FieldValue.arrayRemove(target), followingCount: FieldValue.increment(-1), updatedAt: now });
+    tx.update(targetRef, { followers: FieldValue.arrayRemove(follower), followersCount: FieldValue.increment(-1), updatedAt: now });
   });
 }
 
-module.exports = { removeFollowsBetween };
+module.exports = { removeFollow };

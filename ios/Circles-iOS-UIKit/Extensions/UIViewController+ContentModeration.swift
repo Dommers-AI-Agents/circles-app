@@ -61,7 +61,7 @@ extension UIViewController {
         }))
 
         // Connected always means following (Wes, 2026-11-02): the way out of
-        // a connection is Disconnect, which ends the follow too
+        // a connection is Disconnect, which ends your follow of them (theirs only on a private profile)
         let me = AuthService.shared.getUserId() ?? ""
         let connection = NetworkManager.shared.connections.first { $0.otherUserId(currentUserId: me) == userId }
         let isFollowing = (AuthService.shared.currentUser?.following ?? []).contains(userId)
@@ -187,7 +187,7 @@ extension UIViewController {
     private func confirmDisconnect(connectionId: String, name: String) {
         AlertPresenter.showConfirmation(
             title: "Disconnect from \(name)?",
-            message: "You'll stop following each other and lose access to each other's Connections circles and messages.",
+            message: "You'll stop following them and lose access to each other's Connections circles and messages. They can keep following you — unless your profile is private, then they'd have to ask again.",
             confirmTitle: "Disconnect",
             isDestructive: true,
             from: self
