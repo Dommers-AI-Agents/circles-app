@@ -241,6 +241,8 @@ app.get('/apple-app-site-association', (req, res) => {
 // Shared-link pages (connect, circle, place, user, widget, tab, quote, event,
 // club, run, workout, postcard, store ordering) — routes/sharePageRoutes.js
 app.use(require('./routes/sharePageRoutes'));
+// Email guests' reply pages and calendar files (Events widget, 2026-11-02)
+app.use(require('./routes/eventRsvpRoutes'));
 
 // Route debug middleware (reduced logging)
 app.use('/api/users', (req, res, next) => {

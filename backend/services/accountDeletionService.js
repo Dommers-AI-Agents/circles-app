@@ -141,7 +141,11 @@ async function deleteAccount(uid, { db = getFirestore(), auth = getAuth(), stora
   // 3b. Events (Party Bus): events they coordinate end; they leave the rest;
   // their event photos and tags go (photo files are deleted in step 4's way)
   const events = db.collection(COLLECTIONS.EVENTS);
-  await updateAll('eventsEnded', events.where('hostId', '==', uid), () => ({ deletedAt: now, joinOpen: false }));
+  await updateAll('eventsEnded', events.where('hostId', '==', uid), () => ({ deletedAt: now, joinOpen: false, reminderAt: null }));
+  // The email guests they invited (addresses they typed) go with them; a
+  // guest row that pointed at this account forgets it
+  await deleteAll('eventGuests', db.collection('eventGuests').where('invitedBy', '==', uid));
+  await updateAll('eventGuestLinks', db.collection('eventGuests').where('linkedUserId', '==', uid), () => ({ linkedUserId: FieldValue.delete() }));
   await updateAll('eventSeats', events.where('memberIds', 'array-contains', uid), (d) => {
     // The whole map rewritten without them (a dotted field path would break
     // on legacy ids that contain dots)

@@ -24,7 +24,7 @@ function renderEventInvite(token, preview) {
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
 <meta property="og:title" content="${esc(title)}">
-<meta property="og:description" content="${host} invited you. Share photos and places with everyone who's there.">
+<meta property="og:description" content="${esc([preview.whenText, preview.whereText].filter(Boolean).join(' · ') || `${preview.hostName || 'A friend'} invited you. Share photos and places with everyone who's there.`)}">
 <meta property="og:site_name" content="FavCircles">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://api.favcircles.com/app/event/${t}">
@@ -36,7 +36,11 @@ function renderEventInvite(token, preview) {
   <div style="font-size:84px;line-height:1">${emoji}</div>
   <h1 style="font-size:34px;margin:14px 0 6px">${name}</h1>
   <p style="margin:0 0 4px;font-size:17px;opacity:.92">${host} invited you</p>
-  <p style="margin:0 0 26px;font-size:15px;opacity:.75">${count} ${count === 1 ? 'person is' : 'people are'} in${preview.joinOpen ? '' : ' · joining is closed'}</p>
+  <p style="margin:0 0 ${preview.whenText || preview.whereText ? '14' : '26'}px;font-size:15px;opacity:.75">${count} ${count === 1 ? 'person is' : 'people are'} in${preview.joinOpen ? '' : ' · joining is closed'}</p>
+  ${preview.whenText || preview.whereText ? `<section style="background:rgba(255,255,255,.16);border-radius:16px;padding:14px 18px;margin:0 0 18px;text-align:left;font-size:16px;line-height:1.5">
+    ${preview.whenText ? `<p style="margin:0">📅 ${esc(preview.whenText)}</p>` : ''}
+    ${preview.whereText ? `<p style="margin:${preview.whenText ? '6px' : '0'} 0 0">📍 ${esc(preview.whereText)}</p>` : ''}
+  </section>` : ''}
   <section style="background:rgba(255,255,255,.12);border-radius:18px;padding:20px;text-align:left;font-size:16px;line-height:1.5">
     <p style="margin:0 0 10px"><b>1.</b> Get the FavCircles app (free).</p>
     <p style="margin:0 0 10px"><b>2.</b> Come back to this message and tap the link again. You'll join ${name} and get a FavCoin 🌵.</p>

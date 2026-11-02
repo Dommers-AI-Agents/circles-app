@@ -1171,7 +1171,9 @@ FavCircles · Save the places you love`;
     return this.sendEmail({ to: toEmail, subject, html, text });
   }
 
-  async sendEmail({ to, subject: rawSubject, html, text, attachments, headers, userTriggered = false }) {
+  // `fromName`: a sender label for mail one person sends through us ("Wes
+  // via FavCircles"); the address is always ours.
+  async sendEmail({ to, subject: rawSubject, html, text, attachments, headers, userTriggered = false, fromName = null }) {
     const subject = oneLine(rawSubject);
     if (userTriggered && userMailDisabled()) {
       if (!killSwitchLogged) {
@@ -1188,7 +1190,7 @@ FavCircles · Save the places you love`;
       }
 
       const mailOptions = {
-        from: `"${this.fromName}" <${this.fromAddress}>`,
+        from: `"${oneLine(fromName || this.fromName).replace(/"/g, '')}" <${this.fromAddress}>`,
         to: to,
         subject: subject,
         html: html,

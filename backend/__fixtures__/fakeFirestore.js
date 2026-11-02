@@ -141,10 +141,12 @@ class FakeFirestore {
         if (store.docs.has(id)) throw new Error('ALREADY_EXISTS');
         store.docs.set(id, { ...data });
       },
-      async update(patch) {
+      // update(patch) or update(field, value, field, value, …) where a field
+      // is a dotted string or a FieldPath ({ segments } / { parts })
+      async update(...args) {
         const current = store.docs.get(id);
         if (!current) throw new Error('NOT_FOUND');
-        store.docs.set(id, applyPatch(current, patch));
+        store.docs.set(id, args.length > 1 ? applyPairs(current, args) : applyPatch(current, args[0]));
       }
     };
   }
@@ -165,7 +167,7 @@ class FakeFirestore {
     const ops = [];
     return {
       set(ref, data, options = {}) { ops.push(() => ref.set(data, options)); return this; },
-      update(ref, patch) { ops.push(() => ref.update(patch)); return this; },
+      update(ref, ...args) { ops.push(() => ref.update(...args)); return this; },
       delete(ref) { ops.push(() => ref.delete()); return this; },
       async commit() { for (const op of ops) await op(); }
     };
@@ -182,7 +184,7 @@ class FakeFirestore {
     const tx = {
       // A query reads like the query itself; a ref reads its doc
       async get(ref) { return ref.id === undefined && ref.get ? ref.get() : storeOf(ref).snapshot(ref.id, storeOf(ref).docs.get(ref.id)); },
-      update(ref, patch) { writes.push([ref, patch]); },
+      update(ref, ...args) { writes.push([ref, args.length > 1 ? { __pairs: args } : args[0]]); },
       set(ref, data) { writes.push([ref, data]); },
       delete(ref) { writes.push([ref, null]); }
     };
@@ -190,17 +192,40 @@ class FakeFirestore {
     for (const [ref, patch] of writes) {
       const store = storeOf(ref);
       if (patch === null) store.docs.delete(ref.id);
+      else if (patch.__pairs) store.docs.set(ref.id, applyPairs(store.docs.get(ref.id) || {}, patch.__pairs));
       else store.docs.set(ref.id, applyPatch(store.docs.get(ref.id) || {}, patch));
     }
     return result;
   }
 }
 
-// Mirrors FieldValue.increment, arrayUnion and arrayRemove.
+// update(field, value, …): each field a dotted string or a FieldPath; the
+// value lands at that nested spot (sentinels apply there).
+function applyPairs(current, args) {
+  const next = JSON.parse(JSON.stringify(current));
+  for (let i = 0; i + 1 < args.length; i += 2) {
+    const key = args[i];
+    const segments = typeof key === 'string' ? key.split('.') : (key.segments || key.parts || [String(key)]);
+    let parent = next;
+    for (const seg of segments.slice(0, -1)) {
+      if (!parent[seg] || typeof parent[seg] !== 'object') parent[seg] = {};
+      parent = parent[seg];
+    }
+    const leaf = segments[segments.length - 1];
+    const patched = applyPatch(parent, { [leaf]: args[i + 1] });
+    for (const k of Object.keys(parent)) delete parent[k];
+    Object.assign(parent, patched);
+  }
+  return next;
+}
+
+// Mirrors FieldValue.increment, arrayUnion, arrayRemove and delete.
 function applyPatch(current, patch) {
   const next = { ...current };
   for (const [key, value] of Object.entries(patch)) {
-    if (value && typeof value === 'object' && value.__increment !== undefined) {
+    if (value && typeof value === 'object' && value.__delete) {
+      delete next[key];
+    } else if (value && typeof value === 'object' && value.__increment !== undefined) {
       next[key] = (next[key] || 0) + value.__increment;
     } else if (value && typeof value === 'object' && Array.isArray(value.__arrayUnion)) {
       const prev = Array.isArray(next[key]) ? next[key] : [];
@@ -218,7 +243,8 @@ function applyPatch(current, patch) {
 const FakeFieldValue = {
   increment: (n) => ({ __increment: n }),
   arrayUnion: (...items) => ({ __arrayUnion: items }),
-  arrayRemove: (...items) => ({ __arrayRemove: items })
+  arrayRemove: (...items) => ({ __arrayRemove: items }),
+  delete: () => ({ __delete: true })
 };
 
 module.exports = { FakeFirestore, FakeFieldValue };

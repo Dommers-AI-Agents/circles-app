@@ -15,6 +15,7 @@ const appClipSyncTask = require('../controllers/tasks/appClipSyncController');
 const walletCertRenewTask = require('../controllers/tasks/walletCertRenewController');
 const voucherExpiryTask = require('../controllers/tasks/voucherExpiryController');
 const clipRemindersTask = require('../controllers/tasks/clipRemindersController');
+const eventRemindersTask = require('../controllers/tasks/eventRemindersController');
 const farmersMarketsTask = require('../controllers/tasks/farmersMarketsController');
 const localCoverageTask = require('../controllers/tasks/localCoverageController');
 const instagramTask = require('../controllers/tasks/instagramController');
@@ -92,6 +93,8 @@ router.post('/reward-tickets-expire', verifyCloudScheduler, voucherExpiryTask.ex
 // Every 15 minutes: the App Clip's one reminder, two hours after a clip
 // sign-in, to people who still haven't installed the app
 router.post('/clip-reminders', verifyCloudScheduler, clipRemindersTask.send);
+// Hourly: day-before reminders for events with a start time (email + push)
+router.post('/event-reminders', verifyCloudScheduler, eventRemindersTask.send);
 // Monthly: copy the USDA farmers market directory (Locals tab markets)
 router.post('/farmers-markets-sync', verifyCloudScheduler, farmersMarketsTask.sync);
 // Weekly: where people opened the Local tab with no library calendar

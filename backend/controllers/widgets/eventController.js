@@ -22,7 +22,17 @@ exports.listEvents = handle('listEvents', async (req) => ({
 exports.createEvent = handle('createEvent', async (req) => ({ event: await eventService.createEvent(uid(req), req.body || {}) }));
 exports.getEvent = handle('getEvent', async (req) => eventService.getEvent(req.params.id, uid(req)));
 exports.previewInvite = handle('previewInvite', async (req) => ({ preview: await eventService.previewByToken(req.params.token, uid(req)) }));
-exports.join = handle('join', async (req) => eventService.joinByToken((req.body || {}).token, uid(req)));
+exports.join = handle('join', async (req) => eventService.joinByToken((req.body || {}).token, uid(req), { rsvp: (req.body || {}).rsvp }));
+
+// Email invites and RSVPs (services/eventGuestService, 2026-11-02)
+const guests = require('../../services/eventGuestService');
+exports.listGuests = handle('listGuests', async (req) => guests.listGuests(req.params.id, uid(req)));
+exports.inviteByEmail = handle('inviteByEmail', async (req) => guests.inviteByEmail(req.params.id, uid(req), req.body || {}));
+exports.resendInvite = handle('resendInvite', async (req) => guests.resendInvite(req.params.id, uid(req), req.params.guestId));
+exports.removeGuest = handle('removeGuest', async (req) => guests.removeGuest(req.params.id, uid(req), req.params.guestId));
+exports.messageGuests = handle('messageGuests', async (req) => guests.messageGuests(req.params.id, uid(req), req.body || {}));
+exports.rsvp = handle('rsvp', async (req) => guests.replyAsMember(req.params.id, uid(req), req.body || {}));
+exports.decline = handle('decline', async (req) => guests.declineInvite((req.body || {}).token, uid(req)));
 exports.invite = handle('invite', async (req) => eventService.inviteConnections(req.params.id, uid(req), (req.body || {}).userIds));
 exports.leave = handle('leave', async (req) => eventService.leaveEvent(req.params.id, uid(req)));
 exports.removeMember = handle('removeMember', async (req) => eventService.removeMember(req.params.id, uid(req), req.params.memberId));

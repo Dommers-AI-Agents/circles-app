@@ -60,6 +60,7 @@ const PHOTO_PAGE = 200;
 const CAPTION_MAX = 200;
 const LINK_BASE = `${process.env.API_PUBLIC_BASE_URL || 'https://api.favcircles.com'}/app/event/`;
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,32}$/;
+const CALENDAR_BASE = `${process.env.API_PUBLIC_BASE_URL || 'https://api.favcircles.com'}/calendar/event/`;
 // One "new photos" push per uploader per event at most this often
 const PHOTO_PUSH_COOLDOWN_MS = 15 * 60 * 1000;
 
@@ -183,8 +184,21 @@ const toClientEvent = (id, data, viewerId, users = NO_USERS) => ({
   // Ended events stay for their members with a recap (2026-10-06)
   endedAt: data.endedAt || null,
   challenges: (data.challenges || []).map(c => ({ id: c.id, text: c.text, emoji: c.emoji || '📸' })),
-  rollCall: toClientRollCall(data, viewerId, users)
+  rollCall: toClientRollCall(data, viewerId, users),
+  // When, where, what (2026-11-02; all optional) and the replies
+  ...require('./eventDetails').toClientDetails(data),
+  calendarUrl: data.startsAt ? `${CALENDAR_BASE}${data.inviteToken}.ics` : null,
+  myRsvp: myRsvpOf(data, viewerId),
+  rsvpCounts: require('./eventGuestService').countRsvps(data, [], data.guestRsvpCounts),
+  guestCount: data.guestCount || 0
 });
+
+/** The viewer's own reply: members default to Going (they joined). */
+const myRsvpOf = (data, viewerId) => {
+  const m = data.members && data.members[viewerId];
+  if (!m) return null;
+  return { rsvp: m.rsvp || 'yes', adults: m.adults || 1, kids: m.kids || 0, note: m.rsvpNote || '' };
+};
 
 /** The roll call in progress, if any: who's said "here", and where (only
  *  for those who chose to share it, and only inside the event). */
@@ -361,7 +375,10 @@ async function previewByToken(token, uid) {
     hostName: hostNameOf(data, users),
     memberCount: (data.memberIds || []).length,
     joinOpen: data.joinOpen !== false,
-    alreadyMember: isMember(data, uid)
+    alreadyMember: isMember(data, uid),
+    // When/where, so the join sheet can ask Going or Maybe (2026-11-02)
+    ...require('./eventDetails').toClientDetails(data),
+    declined: ((data.invited || {})[uid] || {}).rsvp === 'no'
   };
 }
 
@@ -374,7 +391,8 @@ async function publicPreview(token) {
     emoji: data.emoji || DEFAULT_EMOJI,
     hostName: hostNameOf(data, users),
     memberCount: (data.memberIds || []).length,
-    joinOpen: data.joinOpen !== false
+    joinOpen: data.joinOpen !== false,
+    ...require('./eventDetails').toClientDetails(data)
   };
 }
 
@@ -382,10 +400,13 @@ async function publicPreview(token) {
 // Membership
 // ---------------------------------------------------------------------------
 
-async function createEvent(uid, { name, emoji } = {}) {
+async function createEvent(uid, body = {}) {
+  const { name, emoji } = body;
   const me = await userSummary(uid);
   const now = nowIso();
+  const when = require('./eventDetails').parseEventDetails(body);
   const data = {
+    ...when,
     name: cleanEventName(name),
     emoji: cleanEmoji(emoji),
     hostId: uid,
@@ -400,6 +421,7 @@ async function createEvent(uid, { name, emoji } = {}) {
     createdAt: now,
     updatedAt: now
   };
+  if (data.reminderAt === null) delete data.reminderAt;
   const ref = await eventsCol().add(data);
   return toClientEvent(ref.id, data, uid);
 }
@@ -408,7 +430,8 @@ async function createEvent(uid, { name, emoji } = {}) {
  * Join from a link token (or an in-app invite, which carries the same
  * token). Instant; idempotent. Returns { event, joined, coinCredited }.
  */
-async function joinByToken(token, uid) {
+async function joinByToken(token, uid, { rsvp } = {}) {
+  const reply = rsvp === 'maybe' ? 'maybe' : 'yes';
   const { ref } = await loadByToken(token);
   const me = await userSummary(uid);
   const result = await db().runTransaction(async (tx) => {
@@ -424,13 +447,13 @@ async function joinByToken(token, uid) {
     tx.update(ref,
       'memberIds', FieldValue.arrayUnion(uid),
       'pendingInviteIds', FieldValue.arrayRemove(uid),
-      memberPath(uid), { name: me.name, avatarUrl: me.avatarUrl, joinedAt: now },
+      memberPath(uid), { name: me.name, avatarUrl: me.avatarUrl, joinedAt: now, rsvp: reply, adults: 1, kids: 0 },
       'updatedAt', now);
     return {
       data: {
         ...data,
         memberIds: [...(data.memberIds || []), uid],
-        members: { ...(data.members || {}), [uid]: { name: me.name, avatarUrl: me.avatarUrl, joinedAt: now } }
+        members: { ...(data.members || {}), [uid]: { name: me.name, avatarUrl: me.avatarUrl, joinedAt: now, rsvp: reply, adults: 1, kids: 0 } }
       },
       joined: true
     };
@@ -451,6 +474,11 @@ async function joinByToken(token, uid) {
       coinCredited = !!(bonus && bonus.credited);
     }
     syncAllInnerLists(ref.id).catch(err => console.error('🚌 inner list sync failed:', err.message));
+    // Invited by email under the same address: counted once, as this member
+    const guestService = require('./eventGuestService');
+    await guestService.linkJoinedMember(ref.id, uid, me.data.email)
+      .then(() => guestService.refreshCounts(ref.id))
+      .catch(err => console.error('🎟️ guest link failed:', err.message));
   }
   return { event: await presentEvent(ref.id, result.data, uid), joined: result.joined, coinCredited };
 }
@@ -524,10 +552,12 @@ async function removeMemberInternal(ref, data, uid, { removed }) {
   syncAllInnerLists(ref.id).catch(err => console.error('🚌 inner list sync failed:', err.message));
 }
 
-async function updateEvent(eventId, hostUid, { name, emoji, joinOpen } = {}) {
+async function updateEvent(eventId, hostUid, body = {}) {
+  const { name, emoji, joinOpen, notifyGuests } = body;
   const { ref, data } = await loadAsMember(eventId, hostUid);
   if (data.hostId !== hostUid) throw new ServiceError(403, 'not_host', 'Only the coordinator can change the event');
-  const update = { updatedAt: nowIso() };
+  const eventDetails = require('./eventDetails');
+  const update = { updatedAt: nowIso(), ...eventDetails.parseEventDetails(body, data) };
   if (name !== undefined) update.name = cleanEventName(name);
   if (emoji !== undefined) update.emoji = cleanEmoji(emoji);
   if (joinOpen !== undefined) update.joinOpen = joinOpen === true;
@@ -538,6 +568,12 @@ async function updateEvent(eventId, hostUid, { name, emoji, joinOpen } = {}) {
   }
   if (update.emoji && update.emoji !== data.emoji) {
     syncEventCircleCovers(ref.id, update.emoji).catch(err => console.error('🚌 cover swap failed:', err.message));
+  }
+  // "Let guests know": only when when/where actually changed
+  const moved = eventDetails.whenLine(next) !== eventDetails.whenLine(data) || eventDetails.whereLine(next) !== eventDetails.whereLine(data);
+  if (notifyGuests === true && moved && !data.endedAt) {
+    require('./eventGuestService').notifyDetailsChanged(ref.id, hostUid)
+      .catch(err => console.error('🎟️ change notice failed:', err.message));
   }
   return await presentEvent(ref.id, next, hostUid);
 }
@@ -584,7 +620,7 @@ async function endEvent(eventId, hostUid) {
   if (data.endedAt) return { ended: true };
   // Ended, not deleted: members keep the photos and get the recap. Roll
   // call and shared locations close with it.
-  await ref.update({ endedAt: nowIso(), joinOpen: false, 'rollCall.closedAt': nowIso(), 'rollCall.locations': FieldValue.delete(), updatedAt: nowIso() });
+  await ref.update({ endedAt: nowIso(), joinOpen: false, reminderAt: null, 'rollCall.closedAt': nowIso(), 'rollCall.locations': FieldValue.delete(), updatedAt: nowIso() });
   require('./eventLiveActivityService').endForEvent(ref.id).catch(() => {});
   // Event lists are removed; circles of saved places stay with their owners
   const innerCircleService = require('./innerCircleService');

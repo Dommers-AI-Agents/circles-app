@@ -54,12 +54,20 @@ router.get('/events', events.listEvents);
 router.post('/events', perUserLimit({ bucket: 'event-create', windowMs: 86400000, max: 20 }), events.createEvent);
 router.get('/events/invite/:token', events.previewInvite);
 router.post('/events/join', perUserLimit({ bucket: 'event-join', windowMs: 3600000, max: 30 }), events.join);
+router.post('/events/decline', perUserLimit({ bucket: 'event-join', windowMs: 3600000, max: 30 }), events.decline);
 router.get('/events/:id', events.getEvent);
 router.put('/events/:id', events.update); // the widget API channel has no PATCH
 router.delete('/events/:id', events.end);
 router.post('/events/:id/invite', messageLimiter, events.invite);
 router.post('/events/:id/link/reset', events.resetLink);
 router.post('/events/:id/leave', events.leave);
+// Email invites + RSVPs (the service also caps emails per coordinator per day)
+router.get('/events/:id/guests', events.listGuests);
+router.post('/events/:id/guests', perUserLimit({ bucket: 'event-guest-invite', windowMs: 3600000, max: 20 }), events.inviteByEmail);
+router.post('/events/:id/guests/message', perUserLimit({ bucket: 'event-guest-message', windowMs: 3600000, max: 10 }), events.messageGuests);
+router.post('/events/:id/guests/:guestId/resend', perUserLimit({ bucket: 'event-guest-resend', windowMs: 3600000, max: 30 }), events.resendInvite);
+router.delete('/events/:id/guests/:guestId', events.removeGuest);
+router.post('/events/:id/rsvp', perUserLimit({ bucket: 'event-rsvp', windowMs: 3600000, max: 60 }), events.rsvp);
 router.post('/events/:id/archive', events.archive);
 router.post('/events/:id/unarchive', events.unarchive);
 router.delete('/events/:id/members/:memberId', events.removeMember);

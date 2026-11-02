@@ -23,6 +23,7 @@ const OLD_TYPE_MAP = {
   engagement_reminder: 'reengagement', milestone: 'milestones', did_you_know: 'tips',
   nextbar_round: 'socialActivity', nextbar_result: 'socialActivity', postcard_order: 'socialActivity', fridgemail: 'socialActivity',
   event_invite: 'socialActivity', event_joined: 'socialActivity', event_photos: 'socialActivity',
+  event_rsvp: 'socialActivity', event_message: 'socialActivity', event_reminder: 'socialActivity',
   event_challenge: 'socialActivity', event_rollcall: 'socialActivity', event_rollcall_ping: 'socialActivity',
   run_live_invite: 'socialActivity', run_live_split: 'socialActivity', run_live_finished: 'socialActivity', run_cheer: 'socialActivity', run_watcher_joined: 'socialActivity',
   care_invite: 'careCheckins', care_ask: 'careCheckins', care_answer: 'careCheckins', care_accepted: 'careCheckins', care_silence: 'careCheckins',
@@ -73,7 +74,7 @@ test('the rows a person can catch up on in Notifications (Wes, 2026-10-01)', () 
   expect(recorded).toEqual([
     'care_accepted', 'care_alert_response', 'care_comment', 'care_invite', 'care_silence', 'care_watcher_accepted', 'care_watcher_declined',
     'care_watcher_invite', 'care_watcher_joined', 'care_watcher_removed', 'care_watcher_request',
-    'check_in_response', 'club_bulletin', 'club_event', 'club_invite', 'club_joined', 'club_reply', 'dog_comment', 'dog_pet', 'event_invite', 'event_joined', 'favcoin_claim_settled', 'follow_request', 'follow_request_accepted', 'fridgemail', 'milestone', 'nextbar_result',
+    'check_in_response', 'club_bulletin', 'club_event', 'club_invite', 'club_joined', 'club_reply', 'dog_comment', 'dog_pet', 'event_invite', 'event_joined', 'event_message', 'event_rsvp', 'favcoin_claim_settled', 'follow_request', 'follow_request_accepted', 'fridgemail', 'milestone', 'nextbar_result',
     'nextbar_round', 'order_new', 'order_update', 'postcard_order', 'run_live_finished', 'run_live_invite', 'store_alert'
   ]);
   // Reminders, digests and the questions themselves stay push-only

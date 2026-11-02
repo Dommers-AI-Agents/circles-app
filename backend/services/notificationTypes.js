@@ -85,6 +85,11 @@ const TYPES = {
   daily_dog:               { category: null,                      pref: 'dailyDog',               badge: false },
   event_invite:            { category: null,                      pref: 'socialActivity',         badge: false, record: true },
   event_joined:            { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  // Email invites + RSVPs (2026-11-02): a guest's reply to the coordinator,
+  // the coordinator's message / changed details, the day-before reminder
+  event_rsvp:              { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  event_message:           { category: null,                      pref: 'socialActivity',         badge: false, record: true },
+  event_reminder:          { category: null,                      pref: 'socialActivity',         badge: false },
   event_photos:            { category: null,                      pref: 'socialActivity',         badge: false },
   // 2026-10-06: new photo challenges; roll call and the coordinator's
   // "where are you?" (not Time Sensitive: only How Are You? is, Wes 2026-10-02)
