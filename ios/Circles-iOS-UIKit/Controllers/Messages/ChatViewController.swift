@@ -648,10 +648,13 @@ class ChatViewController: BaseViewController {
     
     // MARK: - Sharing (the "+" menu; 2026-10-30, these were empty stubs)
 
+    /// Through the message manager, like a typed message, so the card shows
+    /// in the chat at once (Wes, 2026-11-02: it sent but the chat didn't
+    /// update until it reloaded; the service alone never told the chat)
     private func sendShare(_ share: MessageShareCard.Outgoing) {
         guard let conversationId = conversation?.id else { return }
-        MessagingService.shared.sendMessage(conversationId: conversationId, type: share.type,
-                                            content: share.content, metadata: share.metadata) { [weak self] result in
+        messagingManager.sendMessage(conversationId: conversationId, type: share.type,
+                                     content: share.content, metadata: share.metadata) { [weak self] result in
             if case .failure(let error) = result {
                 DispatchQueue.main.async { self?.showError(error) }
             }
