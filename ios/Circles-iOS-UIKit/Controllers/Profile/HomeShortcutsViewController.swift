@@ -17,7 +17,7 @@ final class HomeShortcutsViewController: BaseViewController {
         }
         options = HomeShortcutCatalog.options(widgets: widgets)
         selection = HomeShortcutCatalog.selection(
-            stored: UserDefaults.standard.stringArray(forKey: HomeShortcutCatalog.selectionKey),
+            stored: HomeShortcutSettings.storedSelection,
             options: options
         ).map(\.id)
         super.init(nibName: nil, bundle: nil)
@@ -51,7 +51,7 @@ final class HomeShortcutsViewController: BaseViewController {
     }
 
     private func save() {
-        UserDefaults.standard.set(selection, forKey: HomeShortcutCatalog.selectionKey)
+        HomeShortcutSettings.saveSelection(selection)
         QuickCheckInShortcuts.updateFromCache()
     }
 

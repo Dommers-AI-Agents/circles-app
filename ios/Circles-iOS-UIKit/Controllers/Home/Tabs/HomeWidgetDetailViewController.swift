@@ -95,9 +95,7 @@ final class HomeWidgetDetailViewController: BaseViewController {
 
     private var thisPin: HomeButtonPin { HomeButtonPin(id: widget.descriptor.id, title: widget.descriptor.title) }
 
-    private var storedShortcuts: [String]? {
-        UserDefaults.standard.stringArray(forKey: HomeShortcutCatalog.selectionKey)
-    }
+    private var storedShortcuts: [String]? { HomeShortcutSettings.storedSelection }
 
     private var isPinned: Bool {
         (storedShortcuts ?? HomeShortcutCatalog.defaultSelection).contains(HomeShortcutCatalog.optionId(forWidget: thisPin.id))
@@ -144,7 +142,8 @@ final class HomeWidgetDetailViewController: BaseViewController {
     private func saveShortcuts(_ selection: [String], homeTabPinned: Bool) {
         UserDefaults.standard.set(selection, forKey: HomeShortcutCatalog.selectionKey)
         let pins = HomeButtonPinStore.load().filter { $0.id != thisPin.id }
-        HomeButtonPinStore.save(homeTabPinned ? HomeButtonPins.toggle(thisPin, in: pins) : pins)
+        // Both on the account too (2026-11-01): one save sends the pair
+        HomeShortcutSettings.savePins(homeTabPinned ? HomeButtonPins.toggle(thisPin, in: pins) : pins)
         QuickCheckInShortcuts.updateFromCache()
         refreshPinButton()
     }

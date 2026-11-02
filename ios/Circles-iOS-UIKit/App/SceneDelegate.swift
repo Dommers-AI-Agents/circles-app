@@ -718,13 +718,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     /// The Motivation coach's notifications are scheduled a few days ahead (each with
-    /// its own line), so every return to the app rolls the window forward.
+    /// its own line), so every return to the app rolls the window forward. Water and
+    /// Meds reminders come back the same way after a reinstall (2026-11-01), and the
+    /// Home Screen shortcuts are restored from the account once per install.
     private func topUpMotivationReminders() {
         guard AuthService.shared.isLoggedIn, let userId = KeychainService.shared.getUserId() else { return }
         Task {
-            await MotivationReminderScheduler.refresh(store: AppWidgetHost.makeDataStore(userId: userId),
-                                                      quietHours: AppWidgetHost.accountQuietHours)
+            await WidgetRemindersRestore.refreshAll(store: AppWidgetHost.makeDataStore(userId: userId),
+                                                    quietHours: AppWidgetHost.accountQuietHours)
         }
+        HomeShortcutSettings.restoreOnce()
     }
 
     /// Sleep Sounds is playing and the person just came back to the app —
