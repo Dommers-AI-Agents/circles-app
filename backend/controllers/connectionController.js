@@ -40,8 +40,11 @@ const db = getFirestore();
 // exists, nothing changes (in particular the counts don't drift — arrayUnion
 // is a no-op on repeats but increment() is not, which is why callers must
 // never bump counts blindly). Returns true when a follow was actually added.
-const ensureFollows = async (followerId, targetId) => {
+// `onRequest`: only asking to connect, not connected yet — a private profile
+// isn't followed until its owner says yes (accepting connects and follows).
+const ensureFollows = async (followerId, targetId, { onRequest = false } = {}) => {
   if (!followerId || !targetId || isSameUser(followerId, targetId)) return false;
+  if (onRequest && require('../services/profilePrivacy').isPrivateProfile(targetId)) return false;
 
   const followerRef = db.collection(COLLECTIONS.USERS).doc(followerId);
   const followerDoc = await followerRef.get();
@@ -416,7 +419,7 @@ const sendConnectionRequest = async (req, res) => {
       console.log(`⚠️ Connection request already exists with status: ${connectionData.status}`);
       // Connecting implies following — self-heal requests sent before that
       // rule existed when the user taps Connect again
-      ensureFollows(userId, targetUserDocId).catch(err =>
+      ensureFollows(userId, targetUserDocId, { onRequest: true }).catch(err =>
         console.error('⚠️ Auto-follow on repeat connect failed:', err.message));
       // Idempotent: a second tap (or a retry) gets the request that already
       // exists, as a success. It used to 409, and every card treated that
@@ -496,9 +499,10 @@ const sendConnectionRequest = async (req, res) => {
 
     // Connecting implies following: the requester follows the target right
     // away, so the target's public content shows up even if the request is
-    // never accepted. (Follow-back stays tied to acceptance.)
+    // never accepted — unless the profile is private (2026-11-02), where the
+    // follow waits for the yes. (Follow-back stays tied to acceptance.)
     try {
-      if (await ensureFollows(userId, targetUserDocId)) {
+      if (await ensureFollows(userId, targetUserDocId, { onRequest: !inviteVerified })) {
         sseService.notifyUser(userId, 'following_added', { targetUserId: targetUserDocId });
       }
     } catch (followError) {
