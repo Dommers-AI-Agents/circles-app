@@ -11,6 +11,10 @@ enum DeepLinkDestination: Equatable {
     case circle(id: String, shareToken: String?)
     case sharedCircle(shareId: String)
     case place(id: String, refUserId: String?)
+    /// A store's Get Rewards page, from its Apple Wallet card (2026-11-02):
+    /// `/app/rewards/<placeId>` on the card's back, `circles://rewards/<placeId>`
+    /// when Wallet opens the app
+    case storeRewards(placeId: String)
     /// `circles://place/<id>` from the widget / share extension — the receiver
     /// also consumes the pending-open mailbox so a cold launch doesn't
     /// navigate a second time.
@@ -112,6 +116,8 @@ struct DeepLinkRouter {
                 return query(url, "path").flatMap(openPathDestination)
             case "video":
                 return parts.count >= 3 ? .video(id: parts[2], promptsLogin: false) : nil
+            case "rewards":
+                return parts.count >= 3 ? .storeRewards(placeId: parts[2]) : nil
             case "widget":
                 return parts.count >= 3 ? widgetDestination(id: parts[2], url: url) : nil
             case "quote":
@@ -198,6 +204,8 @@ struct DeepLinkRouter {
             if let code = query(url, "code") { return .sticker(code: code) }
         case "daily-summary":
             return .dailySummary
+        case "rewards" where !hostPathId.isEmpty:
+            return .storeRewards(placeId: hostPathId)
         case "place" where !hostPathId.isEmpty:
             return .placeFromExtension(id: hostPathId)
         case "upgrade":

@@ -95,7 +95,7 @@ struct RewardsAvailabilityTests {
         #expect(r.title == "Free croissant with any latte")
         #expect(r.canRedeem)
         #expect(r.fraction == 1)
-        #expect(RewardsAvailability.nextRewardLine(r) == "You've got enough for a free croissant with any latte. Scan at the register to use it.")
+        #expect(RewardsAvailability.nextRewardLine(r) == "You've got enough for a free croissant with any latte. Tap Redeem to use it at the counter.")
     }
 
     @Test func unknownEarnRateSkipsTheVisitCount() {

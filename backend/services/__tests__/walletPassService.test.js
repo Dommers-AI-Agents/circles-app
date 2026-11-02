@@ -42,6 +42,14 @@ test('a live store shows points, the next reward and the store on the lock scree
   expect(pass.locations[0]).toMatchObject({ latitude: 35.2, longitude: -80.8 });
 });
 
+test('the card opens the app on the store’s rewards (2026-11-02)', () => {
+  const pass = wallet.passJson({ serial: 's1', authToken: 't'.repeat(32), venue: { ...venue, globalPlaceId: 'gp1' }, progress: { live: true, points: 0 } });
+  expect(pass.associatedStoreIdentifiers).toEqual([6746807095]);
+  expect(pass.appLaunchURL).toBe('circles://rewards/gp1');
+  expect(pass.storeCard.backFields[0]).toMatchObject({ key: 'open', value: 'https://api.favcircles.com/app/rewards/gp1' });
+  expect(pass.storeCard.backFields[0].attributedValue).toMatch(/<a href='https:\/\/api.favcircles.com\/app\/rewards\/gp1'>/);
+});
+
 test('a store without live rewards never says "earn" on the front', () => {
   const pass = wallet.passJson({ serial: 's1', authToken: 'x'.repeat(32), venue: { ...venue, location: null }, progress: { live: false, points: 0 } });
   expect(pass.storeCard.primaryFields[0]).toMatchObject({ label: 'SAVED STORE', value: 'Sal’s Bakery' });

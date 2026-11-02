@@ -14,6 +14,11 @@ final class GetRewardsViewController: BaseViewController {
 
     private let place: Place
     private var details: RewardsAvailability.Details
+    /// The store's id and offers as the server sent them, so an offer the
+    /// customer can afford is redeemed right here (Wes, 2026-11-02: it was
+    /// only on the store page's rewards card)
+    private var venueId: String?
+    private var redeemableOffers: [RewardOffer] = []
 
     private let scrollView: UIScrollView = {
         let scroll = UIScrollView()
@@ -76,6 +81,8 @@ final class GetRewardsViewController: BaseViewController {
         guard let details = RewardsAvailability(data).details else { return nil }
         self.place = place
         self.details = details
+        self.venueId = data?.venue?.venueId
+        self.redeemableOffers = (data?.offers ?? []).filter { $0.active != false }
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -197,6 +204,24 @@ final class GetRewardsViewController: BaseViewController {
         card.backgroundColor = Constants.Colors.secondaryBackground
         card.layer.cornerRadius = 10
         nextRewardStack.addArrangedSubview(card)
+        if reward.canRedeem, let offer = offer(titled: reward.title, cost: reward.pointsCost) {
+            let redeem = UIButton.primaryButton(title: "Redeem \(reward.title)")
+            redeem.addAction(UIAction { [weak self] _ in self?.redeem(offer) }, for: .touchUpInside)
+            nextRewardStack.addArrangedSubview(redeem)
+        }
+    }
+
+    // MARK: - Redeem
+
+    private func offer(titled title: String, cost: Int) -> RewardOffer? {
+        redeemableOffers.first { $0.title == title && $0.pointsCost == cost }
+    }
+
+    private func redeem(_ offer: RewardOffer) {
+        guard let venueId else { return }
+        confirmAndRedeemOffer(offer, venueId: venueId, venueName: details.venueName) { [weak self] _ in
+            self?.loadData()
+        }
     }
 
     private func renderAnnouncements() {
@@ -229,9 +254,18 @@ final class GetRewardsViewController: BaseViewController {
         cost.setContentHuggingPriority(.required, for: .horizontal)
         cost.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        let row = UIStackView(arrangedSubviews: [title, cost])
+        var parts: [UIView] = [title, cost]
+        // Enough points: Redeem right in the row
+        if offer.pointsCost <= details.venueBalance, let match = self.offer(titled: offer.title, cost: offer.pointsCost) {
+            let redeem = UIButton.smallActionButton(title: "Redeem", style: .primary)
+            redeem.setContentHuggingPriority(.required, for: .horizontal)
+            redeem.setContentCompressionResistancePriority(.required, for: .horizontal)
+            redeem.addAction(UIAction { [weak self] _ in self?.redeem(match) }, for: .touchUpInside)
+            parts.append(redeem)
+        }
+        let row = UIStackView(arrangedSubviews: parts)
         row.spacing = Constants.Spacing.small
-        row.alignment = .firstBaseline
+        row.alignment = parts.count > 2 ? .center : .firstBaseline
         row.isLayoutMarginsRelativeArrangement = true
         row.layoutMargins = UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
         row.backgroundColor = Constants.Colors.secondaryBackground
@@ -247,6 +281,8 @@ final class GetRewardsViewController: BaseViewController {
             DispatchQueue.main.async {
                 if case .success(let data) = result, let details = RewardsAvailability(data).details {
                     self?.details = details
+                    self?.venueId = data.venue?.venueId
+                    self?.redeemableOffers = (data.offers ?? []).filter { $0.active != false }
                     self?.render()
                 }
                 completion?()

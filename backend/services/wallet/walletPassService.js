@@ -37,6 +37,9 @@ const { STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const { ServiceError } = require('../../utils/serviceError');
 
 const TEAM_ID = '67E8B4E8HV';
+/// FavCircles on the App Store: Wallet shows it on the card and opens it
+const APP_STORE_ID = 6746807095;
+const LINK_BASE = () => process.env.STICKER_LINK_BASE_URL || 'https://api.favcircles.com';
 const PASSES = 'walletPasses';
 const REGISTRATIONS = 'walletPassRegistrations';
 const ASSETS = path.join(__dirname, '../../assets/wallet');
@@ -69,6 +72,10 @@ const coords = (location) => {
 function passJson({ serial, authToken, venue, progress }) {
   const name = venue.venueName || venue.placeName || 'Your store';
   const where = coords(venue.location);
+  // The card opens the app on this store's rewards (Wes, 2026-11-02): the
+  // app row on the card (appLaunchURL) and a link on its back
+  const placeId = venue.globalPlaceId || null;
+  const rewardsLink = placeId ? `${LINK_BASE()}/app/rewards/${placeId}` : null;
   const pass = {
     formatVersion: 1,
     passTypeIdentifier: passTypeId(),
@@ -83,6 +90,8 @@ function passJson({ serial, authToken, venue, progress }) {
     labelColor: 'rgb(147, 197, 253)',
     backgroundColor: 'rgb(15, 27, 51)',
     sharingProhibited: true,
+    associatedStoreIdentifiers: [APP_STORE_ID],
+    ...(placeId ? { appLaunchURL: `circles://rewards/${placeId}` } : {}),
     storeCard: {
       primaryFields: [{
         key: 'points',
@@ -97,11 +106,17 @@ function passJson({ serial, authToken, venue, progress }) {
         ? [{ key: 'earn', label: 'EACH VISIT', value: `+${progress.earnRate} points` }]
         : [],
       backFields: [
+        ...(rewardsLink ? [{
+          key: 'open',
+          label: 'Redeem or check your points',
+          value: rewardsLink,
+          attributedValue: `<a href='${rewardsLink}'>Open ${name} in FavCircles</a>`
+        }] : []),
         {
           key: 'how',
           label: 'How it works',
           value: progress.live
-            ? `Scan ${name}'s code at the register after you buy something to earn points, then spend them on rewards there. This card updates by itself.`
+            ? `Scan ${name}'s code at the register after you buy something to earn points. To use a reward, open ${name} in FavCircles (the link above, or the FavCircles app on this card) and tap Redeem. This card updates by itself.`
             : `${name} is saved on your FavCircles map. When the store starts rewards, your points show up here.`
         },
         ...(venue.placeAddress ? [{ key: 'address', label: 'Address', value: venue.placeAddress }] : []),

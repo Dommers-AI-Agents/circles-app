@@ -77,6 +77,9 @@ struct DeepLinkRouterTests {
         #expect(dest("https://api.favcircles.com/s/AB12CD") == .sticker(code: "AB12CD"))
         // An NFC sticker's tagged link (2026-11-01)
         #expect(dest("https://api.favcircles.com/s/AB12CD?t=table-7") == .sticker(code: "AB12CD", tag: "table-7"))
+        // A store's Apple Wallet card opens its rewards (2026-11-02)
+        #expect(dest("https://api.favcircles.com/app/rewards/gp1") == .storeRewards(placeId: "gp1"))
+        #expect(dest("circles://rewards/gp1") == .storeRewards(placeId: "gp1"))
         #expect(dest("https://api.favcircles.com/") == nil)
     }
 

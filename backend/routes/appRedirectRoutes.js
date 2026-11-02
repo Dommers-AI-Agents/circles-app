@@ -25,6 +25,12 @@ router.get('/video/:videoId', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/app-redirect.html'));
 });
 
+// A store's rewards, from its Apple Wallet card (2026-11-02): the app opens
+// on the store's Get Rewards page; without the app, the App Store page
+router.get('/rewards/:placeId', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/app-redirect.html'));
+});
+
 // Circle deep link redirect
 router.get('/circle/:circleId', (req, res) => {
   console.log(`📱 App redirect: Circle link for ID: ${req.params.circleId}`);

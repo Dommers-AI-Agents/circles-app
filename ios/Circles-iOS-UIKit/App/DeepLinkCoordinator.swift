@@ -123,6 +123,8 @@ final class DeepLinkCoordinator: SceneCoordinator {
             host?.inviteLinks.handleSharedCircle(shareId: shareId)
         case .place(let id, let refUserId):
             navigateToPlace(placeId: id, refUserId: refUserId)
+        case .storeRewards(let placeId):
+            navigateToPlace(placeId: placeId, opensRewards: true)
         case .placeFromExtension(let id):
             // The share extension writes the pending-open mailbox as a
             // fallback before trying this deep link — consume it so the
@@ -259,7 +261,8 @@ final class DeepLinkCoordinator: SceneCoordinator {
         }
     }
 
-    func navigateToPlace(placeId: String, refUserId: String? = nil) {
+    /// `opensRewards`: then its Get Rewards page, once the store's rewards load
+    func navigateToPlace(placeId: String, refUserId: String? = nil, opensRewards: Bool = false) {
         guard AuthService.shared.isLoggedIn,
               let tabBarController = window?.rootViewController as? CirclesTabBarController else {
             // Store the deep link target to navigate after login
@@ -281,6 +284,7 @@ final class DeepLinkCoordinator: SceneCoordinator {
                     }
                     if let navController = tabBarController.selectedViewController as? UINavigationController {
                         let detailVC = PlaceDetailViewController(place: place)
+                        detailVC.opensGetRewardsOnLoad = opensRewards
                         navController.pushViewController(detailVC, animated: true)
                     }
                 case .failure:

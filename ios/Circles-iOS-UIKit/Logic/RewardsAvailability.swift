@@ -119,7 +119,7 @@ enum RewardsAvailability: Equatable {
     /// "75 more points for a free drip coffee · about 3 more visits" /
     /// "You've got enough for a free drip coffee".
     static func nextRewardLine(_ reward: NextReward) -> String {
-        if reward.canRedeem { return "You've got enough for \(article(reward.title)). Scan at the register to use it." }
+        if reward.canRedeem { return "You've got enough for \(article(reward.title)). Tap Redeem to use it at the counter." }
         var line = "\(reward.remaining) more \(reward.remaining == 1 ? "point" : "points") for \(article(reward.title))"
         if let visits = reward.visitsLeft, visits > 0 { line += " · about \(visits) more \(visits == 1 ? "visit" : "visits")" }
         return line
